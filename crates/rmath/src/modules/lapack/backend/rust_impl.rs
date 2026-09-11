@@ -2088,30 +2088,104 @@ pub unsafe fn zgeqp3_(
     info: *mut core::ffi::c_int,
 ) {
     unsafe {
-        let m_val = *m as usize;
-        let n_val = *n as usize;
-        let lda_val = *lda as usize;
         let lwork_val = *lwork;
 
-        if m_val == 0 || n_val == 0 {
-            *info = 0;
+        // Validate the signed LAPACK arguments before converting them to
+        // usize.  In particular, a negative dimension must be reported as an
+        // argument error rather than becoming a giant allocation request.
+        if *m < 0 {
+            *info = -1;
+            return;
+        }
+        if *n < 0 {
+            *info = -2;
+            return;
+        }
+        if *lda < (*m).max(1) {
+            *info = -4;
+            return;
+        }
+        if lwork_val < -1 {
+            *info = -8;
+            return;
+        }
+        // LAPACK ZGEQP3 requires N+1 complex work values for nonempty
+        // matrices, and one for empty matrices (RWORK separately has 2*N).
+        let minimum_work = if *m == 0 || *n == 0 {
+            1
+        } else {
+            i64::from(*n) + 1
+        };
+        if lwork_val != -1 && i64::from(lwork_val) < minimum_work {
+            *info = -8;
             return;
         }
 
-        // Workspace query
-        if lwork_val == -1 {
-            *work = Rcomplex {
-                r: (m_val * n_val + n_val) as f64,
-                i: 0.0,
-            };
+        let Some(m_val) = usize::try_from(*m).ok() else {
+            *info = -1;
+            return;
+        };
+        let Some(n_val) = usize::try_from(*n).ok() else {
+            *info = -2;
+            return;
+        };
+        let Some(lda_val) = usize::try_from(*lda).ok() else {
+            *info = -4;
+            return;
+        };
+
+        // This unblocked implementation does not require a larger work array.
+        *work = Rcomplex {
+            r: minimum_work as f64,
+            i: 0.0,
+        };
+        if lwork_val == -1 || m_val == 0 || n_val == 0 {
             *info = 0;
             return;
         }
+        let Some(matrix_elems) = m_val.checked_mul(n_val) else {
+            *info = -1;
+            return;
+        };
 
         let k = m_val.min(n_val);
 
+        // Account for every local Vec held concurrently below: the copied
+        // matrix, column norms, and the x/v Householder work vectors.  The
+        // caller-owned LAPACK work arrays are not included here; this
+        // reservation covers the additional native scratch before allocating
+        // any of it.
+        let Some(matrix_bytes) = matrix_elems.checked_mul(std::mem::size_of::<c64>()) else {
+            *info = -1;
+            return;
+        };
+        let Some(norm_bytes) = n_val.checked_mul(std::mem::size_of::<f64>()) else {
+            *info = -1;
+            return;
+        };
+        let Some(householder_elems) = m_val.checked_mul(2) else {
+            *info = -1;
+            return;
+        };
+        let Some(householder_bytes) = householder_elems.checked_mul(std::mem::size_of::<c64>())
+        else {
+            *info = -1;
+            return;
+        };
+        let Some(workspace_bytes) = matrix_bytes
+            .checked_add(norm_bytes)
+            .and_then(|bytes| bytes.checked_add(householder_bytes))
+        else {
+            *info = -1;
+            return;
+        };
+        let Ok(_workspace_reservation) = reserve_native_workspace(workspace_bytes) else {
+            *info = -100;
+            return;
+        };
+
         // Read into buffer
-        let mut buf = vec![c64::new(0.0, 0.0); m_val * n_val];
+        let mut buf = vec![c64::new(0.0, 0.0); matrix_elems];
         for j in 0..n_val {
             for i in 0..m_val {
                 let rc = *a.add(i + j * lda_val);
@@ -2658,5 +2732,159 @@ pub unsafe fn ztrtrs_(
         };
         write_owned_c64(&x, b, n_val, nrhs_val, ldb_val);
         *info = 0;
+    }
+}
+
+#[cfg(test)]
+mod zgeqp3_tests {
+    use super::zgeqp3_;
+    use crate::modules::lapack::lapack::Rcomplex;
+    use crate::sexp::memory::ArenaBudget;
+    use crate::sexp::session::RSession;
+
+    fn call_small(lwork: i32, info: &mut i32) {
+        let m = 2;
+        let n = 1;
+        let lda = 2;
+        let mut a = [Rcomplex { r: 1.0, i: 1.0 }, Rcomplex { r: 2.0, i: 0.0 }];
+        let mut jpvt = [0; 1];
+        let mut tau = [Rcomplex { r: 0.0, i: 0.0 }];
+        let mut work = [Rcomplex { r: 0.0, i: 0.0 }; 3];
+        let mut rwork = [0.0; 2];
+        unsafe {
+            zgeqp3_(
+                &m,
+                &n,
+                a.as_mut_ptr(),
+                &lda,
+                jpvt.as_mut_ptr(),
+                tau.as_mut_ptr(),
+                work.as_mut_ptr(),
+                &lwork,
+                rwork.as_mut_ptr(),
+                info,
+            );
+        }
+    }
+
+    #[test]
+    fn zgeqp3_rejects_signed_arguments_before_casting() {
+        let m = -1;
+        let n = 1;
+        let lda = 1;
+        let lwork = 3;
+        let mut info = 0;
+        unsafe {
+            zgeqp3_(
+                &m,
+                &n,
+                std::ptr::null_mut(),
+                &lda,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &lwork,
+                std::ptr::null_mut(),
+                &mut info,
+            );
+        }
+        assert_eq!(info, -1);
+    }
+
+    #[test]
+    fn zgeqp3_query_and_insufficient_workspace_follow_lapack_contract() {
+        let m = 2;
+        let n = 1;
+        let lda = 2;
+        let mut work = [Rcomplex { r: 0.0, i: 0.0 }];
+        let lwork = -1;
+        let mut info = 0;
+        unsafe {
+            zgeqp3_(
+                &m,
+                &n,
+                std::ptr::null_mut(),
+                &lda,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                work.as_mut_ptr(),
+                &lwork,
+                std::ptr::null_mut(),
+                &mut info,
+            );
+        }
+        assert_eq!(info, 0);
+        assert_eq!(work[0].r, 2.0);
+
+        let mut info = 0;
+        call_small(1, &mut info);
+        assert_eq!(info, -8);
+    }
+
+    #[test]
+    fn zgeqp3_rejects_native_workspace_before_local_vec_allocations() {
+        let mut session = RSession::new();
+        session.set_arena_budget(ArenaBudget::new(1, 0));
+        let mut info = 0;
+        session.with_active(|| call_small(3, &mut info));
+        assert_eq!(info, -100);
+    }
+
+    #[test]
+    fn zgeqp3_valid_small_inputs_are_accepted() {
+        let mut info = 0;
+        call_small(3, &mut info);
+        assert_eq!(info, 0);
+    }
+
+    #[test]
+    fn zgeqp3_validates_all_dimensions_and_empty_workspace_query() {
+        for (m, n, lda, lwork, expected) in [(1, -1, 1, 3, -2), (2, 1, 1, 3, -4), (1, 1, 1, -2, -8)]
+        {
+            let mut info = 0;
+            unsafe {
+                zgeqp3_(
+                    &m,
+                    &n,
+                    std::ptr::null_mut(),
+                    &lda,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    &lwork,
+                    std::ptr::null_mut(),
+                    &mut info,
+                );
+            }
+            assert_eq!(info, expected);
+        }
+        for (m, n) in [(0, 3), (3, 0), (i32::MAX, i32::MAX)] {
+            let lda = m.max(1);
+            let mut work = Rcomplex { r: 0.0, i: 0.0 };
+            let mut info = 0;
+            unsafe {
+                zgeqp3_(
+                    &m,
+                    &n,
+                    std::ptr::null_mut(),
+                    &lda,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    &mut work,
+                    &-1,
+                    std::ptr::null_mut(),
+                    &mut info,
+                );
+            }
+            assert_eq!(info, 0);
+            assert_eq!(
+                work.r,
+                if m == 0 || n == 0 {
+                    1.0
+                } else {
+                    f64::from(n) + 1.0
+                }
+            );
+        }
     }
 }

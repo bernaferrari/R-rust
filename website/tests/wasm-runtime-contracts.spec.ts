@@ -1,6 +1,32 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("GNU SWITCH executes modified branches and rejects malformed constants", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-switch/switch.rds", import.meta.url))
+  const stream = Buffer.alloc(80)
+  ;[12,20,1,102,0,2,6,7,17,15,1,16,3,1,16,4,1,16,5,1].forEach((word,index) => stream.writeInt32BE(word,index*4))
+  const offset = bytes.indexOf(stream)
+  expect(offset).toBeGreaterThan(-1)
+  bytes.writeInt32BE(4,offset+48)
+  const malformed = Buffer.from(bytes)
+  malformed.writeInt32BE(999,offset+28)
+  await page.goto("/console/")
+  const output = await page.evaluate(async ({good,bad}) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const values = []
+      for (const code of [
+        `f<-unserialize(as.raw(c(${good})));g<-unserialize(serialize(f,NULL));identical(c(g('a'),g('b'),g('z')),c(2L,2L,0L))`,
+        `isTRUE(tryCatch(unserialize(as.raw(c(${bad}))),error=function(e)TRUE))`,
+        "identical(unserialize(serialize(NULL,NULL)),NULL)",
+      ]) values.push((await runtime.run(code,"console")).output.trim())
+      return values
+    } finally { runtime.dispose() }
+  }, {good:Array.from(bytes).join(","),bad:Array.from(malformed).join(",")})
+  expect(output).toEqual(Array(3).fill("[1] TRUE"))
+})
+
 test("GNU DUP executes its stream in the browser", async ({ page }) => {
   const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-dup/duplicate.rds", import.meta.url))
   const stream = Buffer.alloc(28)

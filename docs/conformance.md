@@ -453,13 +453,33 @@ separate stack-validator test pass; the rebuilt Wasm suite passes 24 contracts.
 These checks cover this opcode, not the full GNU instruction set.
 
 
-A subsequent discovery test remains **red**: GNU `SWITCH` (opcode 102) is not
+A subsequent discovery test was **red**: GNU `SWITCH` (opcode 102) was not
 executed by the bounded adapter (`rport-bzxv`). In `gnu_bytecode_switch`, ordinary
 named/default results pass, but changing the first branch's compiled constant
 still runs the retained source. GNU executes the modified branch. The two-test
 run reports **one pass and one failure**; the failing regression is neither
 ignored nor marked as an expected panic. Reproduce it with
 `scripts/cargo_dev.sh test -p r-embed --test gnu_bytecode_switch`. Consequently,
-the current full workspace is not claimed green. Enabling this opcode still
-requires validating target vectors and control-flow stack states, along with
+that discovery checkpoint was not green. Enabling this opcode required
+validating target vectors and control-flow stack states, along with
 string/numeric selection, defaults, and fallthrough semantics.
+
+
+The SWITCH repair validates constant-pool types, nonempty offset tables,
+instruction boundaries, forward jumps, and stack states at every possible
+successor before execution or serialization. The runtime preserves exact
+string matching, numeric/default selection, fallthrough, and visibility. Seven
+native tests pass, including changed bytecode surviving a serialization round
+trip and malformed constant/jump tables failing without losing the session.
+
+Two separate bounded fixes allow explicit `serialize(NULL, NULL)` and validate
+complex QR (`zgeqp3_`) signed dimensions/workspace sizes before allocation.
+The latter reserves its matrix, norm, and Householder scratch against the
+active session's transient budget; this is not total native memory accounting
+or a claim of complete complex-QR numerical parity.
+
+A new normal regression for persistence hooks remains red (`rport-rvxe`): GNU
+invokes a supplied `serialize(..., refhook=...)` callback for an environment,
+while the port discards it. This requires writer/reader protocol support and
+callback rooting, not merely forwarding the function argument. Arbitrary CRAN
+support remains outside scope; the other broader parity gaps remain tracked.

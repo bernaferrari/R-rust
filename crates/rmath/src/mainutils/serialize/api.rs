@@ -548,8 +548,9 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         // serialize(object, connection, ascii, xdr, version, refhook)
         let object = arg_by_name_or_position(args, "object", 0);
         let conn = arg_by_name_or_position(args, "connection", 1);
-        if object.is_null() || object == R_NilValue() {
-            error("argument \"connection\" is missing, with no default");
+        let has_object = arg_present_by_name_or_position(args, "object", 0);
+        if !has_object || object.is_null() || object == R_MissingArg() {
+            error("argument \"object\" is missing, with no default");
         }
         let has_conn = arg_present_by_name_or_position(args, "connection", 1);
         if !has_conn || conn.is_null() || conn == R_MissingArg() {
