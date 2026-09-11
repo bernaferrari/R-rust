@@ -739,7 +739,7 @@ unsafe fn write_gnu_bc_payload(
         if constant_count > i32::MAX as usize {
             error("GNU bytecode constant pool is too large to serialize");
         }
-        match crate::eval::bytecode::validate_gnu_adapter_stream(words, constant_count) {
+        match crate::eval::bytecode::validate_gnu_adapter_with_constants(words, constants) {
             Ok(true) => {}
             Ok(false) => error("unsupported GNU bytecode stream cannot be serialized"),
             Err(message) => error(&message),
@@ -1055,7 +1055,7 @@ unsafe fn read_bc_source(
         // Keep source fallback for every validated GNU stream outside the
         // bounded adapter. This avoids treating a private opcode collision as
         // GNU execution and preserves the existing interpreted behavior.
-        if !crate::eval::bytecode::validate_gnu_adapter_stream(words, count as usize)? {
+        if !crate::eval::bytecode::validate_gnu_adapter_with_constants(words, constants)? {
             return Ok(VECTOR_ELT(constants, 0));
         }
 

@@ -133,6 +133,7 @@ pub const GNU_OP_PUSHARG: c_int = 33;
 pub const GNU_OP_CALLBUILTIN: c_int = 39;
 pub const GNU_OP_POP: c_int = 4;
 pub const GNU_OP_DUP: c_int = 5;
+pub const GNU_OP_SWITCH: c_int = 102;
 pub const GNU_OP_GOTO: c_int = 2;
 pub const GNU_OP_STARTFOR: c_int = 11;
 pub const GNU_OP_STEPFOR: c_int = 12;
@@ -258,6 +259,24 @@ pub fn validate_gnu_return_stream(
 /// an operand in an otherwise supported stream is malformed and must not be
 /// hidden by source fallback.
 pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Result<bool, String> {
+    validate_gnu_adapter_impl(code, constant_count, None)
+}
+
+pub unsafe fn validate_gnu_adapter_with_constants(
+    code: &[c_int],
+    constants: SEXP,
+) -> Result<bool, String> {
+    unsafe {
+        let switches = super::gnu_switch::targets(code, constants)?;
+        validate_gnu_adapter_impl(code, XLENGTH(constants) as usize, Some(&switches))
+    }
+}
+
+fn validate_gnu_adapter_impl(
+    code: &[c_int],
+    constant_count: usize,
+    switches: Option<&std::collections::BTreeMap<usize, Vec<usize>>>,
+) -> Result<bool, String> {
     validate_gnu_bytecode_stream(code)?;
 
     let mut pc = 1usize;
@@ -290,6 +309,18 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                     return Err(format!(
                         "GNU opcode {opcode} constant pool index {index} is out of range for pool length {constant_count}"
                     ));
+                }
+            }
+            GNU_OP_SWITCH => {
+                for index in &code[pc..pc + 4] {
+                    if *index < 0 || *index as usize >= constant_count {
+                        return Err("GNU SWITCH constant index out of range".into());
+                    }
+                }
+                if let Some(targets) = switches.and_then(|all| all.get(&opcode_pc)) {
+                    branches.extend(targets.iter().map(|target| (opcode_pc, *target)));
+                } else {
+                    supported = false;
                 }
             }
             GNU_OP_BRIFNOT => {
@@ -475,6 +506,17 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                     ));
                 }
                 saw_return = true;
+            }
+            GNU_OP_SWITCH => {
+                if depth == 0 {
+                    return Err("GNU SWITCH has an empty stack".into());
+                }
+                let targets = switches
+                    .and_then(|all| all.get(&instruction_pc))
+                    .ok_or("GNU SWITCH has no validated targets")?;
+                for target in targets {
+                    pending.push((*target, depth - 1, loop_stack.clone(), call_stack.clone()));
+                }
             }
             GNU_OP_BRIFNOT => {
                 if depth == 0 {

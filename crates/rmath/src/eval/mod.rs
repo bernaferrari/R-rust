@@ -30,6 +30,7 @@ pub(crate) mod error;
 #[allow(clippy::module_inception)]
 pub mod eval;
 pub(crate) mod evalq;
+mod gnu_switch;
 pub(crate) mod jit;
 pub(crate) mod limits;
 pub(crate) mod missing;

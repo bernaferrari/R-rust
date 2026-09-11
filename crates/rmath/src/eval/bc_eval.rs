@@ -417,7 +417,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
             bc_error("GNU bytecode instruction stream has a null data pointer");
         }
         let words = std::slice::from_raw_parts(code, n);
-        if !super::bytecode::validate_gnu_adapter_stream(words, LENGTH(consts) as usize)
+        if !super::bytecode::validate_gnu_adapter_with_constants(words, consts)
             .unwrap_or_else(|message| bc_error(message))
         {
             bc_mismatch("unsupported tagged GNU bytecode stream (outside bounded adapter)");
@@ -437,6 +437,17 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
             match opcode {
                 super::bytecode::GNU_OP_RETURN => {
                     return stack_pop_checked(&mut stack, "GNU RETURN");
+                }
+                super::bytecode::GNU_OP_SWITCH => {
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    let names = VECTOR_ELT(consts, words[pc + 1] as i64);
+                    let chars = VECTOR_ELT(consts, words[pc + 2] as i64);
+                    let ints = VECTOR_ELT(consts, words[pc + 3] as i64);
+                    let value = stack_pop_checked(&mut stack, "GNU SWITCH");
+                    pc = with_stack_rooted(&stack, value, || {
+                        super::gnu_switch::select(value, call, names, chars, ints)
+                            .unwrap_or_else(|error| bc_error(error))
+                    });
                 }
                 super::bytecode::GNU_OP_BRIFNOT => {
                     let _call_index = words[pc];
