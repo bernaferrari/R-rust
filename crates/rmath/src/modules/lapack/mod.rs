@@ -107,3 +107,6 @@ mod complex_dgecon_tests;
 
 #[cfg(test)]
 mod complex_ztrcon_tests;
+
+#[cfg(test)]
+mod complex_rs_tests;
