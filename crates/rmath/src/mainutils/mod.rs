@@ -73,6 +73,7 @@ pub mod printvector;
 pub mod qr;
 pub mod qr_apply;
 pub mod qr_coef;
+pub mod qr_fitted;
 pub mod qr_extract;
 pub mod qr_x;
 pub mod qr_q;
