@@ -25,12 +25,49 @@ use crate::sexp::symbol::Rf_install;
 // do_nchar — string length
 // ---------------------------------------------------------------------------
 
-/// R's `nchar(x)` — number of characters in strings.
+/// R's `nchar(x, type = "chars", allowNA = FALSE, keepNA = NA)`.
+///
+/// GNU default `type="chars"` counts Unicode code points, not bytes.
 pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
+        }
+        let mut nchar_type = NcharKind::Chars;
+        let mut cell = CDR(args);
+        let mut positional = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                let pname = PRINTNAME(tag);
+                if !pname.is_null() {
+                    Some(
+                        std::ffi::CStr::from_ptr(CHAR(pname))
+                            .to_string_lossy()
+                            .into_owned(),
+                    )
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let is_type = named.as_deref() == Some("type")
+                || (named.is_none() && positional == 0);
+            if is_type && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
+                let text = elt_to_string(value, 0);
+                nchar_type = match text.as_str() {
+                    t if t.starts_with('b') => NcharKind::Bytes,
+                    t if t.starts_with('w') => NcharKind::Width,
+                    _ => NcharKind::Chars,
+                };
+            }
+            if named.is_none() {
+                positional += 1;
+            }
+            cell = CDR(cell);
         }
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
@@ -48,10 +85,57 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     continue;
                 }
             }
-            *dst.add(i as usize) = elt_to_string(x, i).len() as c_int;
+            let s = elt_to_string(x, i);
+            *dst.add(i as usize) = nchar_count(&s, nchar_type) as c_int;
         }
         result
     }
+}
+
+#[derive(Clone, Copy)]
+enum NcharKind {
+    Bytes,
+    Chars,
+    Width,
+}
+
+fn nchar_count(s: &str, kind: NcharKind) -> usize {
+    match kind {
+        NcharKind::Bytes => s.len(),
+        NcharKind::Chars => s.chars().count(),
+        NcharKind::Width => s.chars().map(unicode_display_width).sum(),
+    }
+}
+
+pub(crate) fn unicode_display_width(ch: char) -> usize {
+    let c = ch as u32;
+    if ch.is_control() {
+        return 0;
+    }
+    // Combining marks.
+    if (0x0300..=0x036F).contains(&c)
+        || (0x1AB0..=0x1AFF).contains(&c)
+        || (0x1DC0..=0x1DFF).contains(&c)
+        || (0x20D0..=0x20FF).contains(&c)
+        || (0xFE20..=0xFE2F).contains(&c)
+    {
+        return 0;
+    }
+    // East Asian Wide / Fullwidth (enough for GNU width of 中 = 2).
+    if (0x1100..=0x115F).contains(&c)
+        || (0x2329..=0x232A).contains(&c)
+        || (0x2E80..=0xA4CF).contains(&c) && c != 0x303F
+        || (0xAC00..=0xD7A3).contains(&c)
+        || (0xF900..=0xFAFF).contains(&c)
+        || (0xFE10..=0xFE19).contains(&c)
+        || (0xFE30..=0xFE6F).contains(&c)
+        || (0xFF00..=0xFF60).contains(&c)
+        || (0xFFE0..=0xFFE6).contains(&c)
+        || (0x20000..=0x3FFFD).contains(&c)
+    {
+        return 2;
+    }
+    1
 }
 
 // ---------------------------------------------------------------------------

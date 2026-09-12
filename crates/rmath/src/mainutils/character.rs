@@ -452,7 +452,18 @@ unsafe fn r_nchar(
         }
         match type_str {
             "bytes" => charsxp_byte_len(string),
-            "chars" | "width" => charsxp_byte_len(string),
+            "chars" => {
+                let bytes = charsxp_bytes(string);
+                std::str::from_utf8(bytes)
+                    .map(|s| s.chars().count() as c_int)
+                    .unwrap_or_else(|_| charsxp_byte_len(string))
+            }
+            "width" => {
+                let bytes = charsxp_bytes(string);
+                std::str::from_utf8(bytes)
+                    .map(|s| s.chars().map(nchar_display_width).sum::<usize>() as c_int)
+                    .unwrap_or_else(|_| charsxp_byte_len(string))
+            }
             _ => charsxp_byte_len(string),
         }
     }
@@ -460,6 +471,11 @@ unsafe fn r_nchar(
 
 // ---------------------------------------------------------------------------
 // Safe wrapper helpers for CHARSXP byte operations
+
+fn nchar_display_width(ch: char) -> usize {
+    crate::mainutils::essentials::unicode_display_width(ch)
+}
+
 // ---------------------------------------------------------------------------
 
 /// Read a CHARSXP as a byte slice.
