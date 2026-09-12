@@ -1298,20 +1298,11 @@ fn pretty_num_one(
     } else {
         ("", body)
     };
-    let (int_part, frac_exp) = if !decimal_mark.is_empty() {
-        if let Some((int_part, rest)) = rest.split_once(decimal_mark) {
-            (int_part, Some(rest))
-        } else if let Some((int_part, rest)) = rest.split_once('.') {
-            (int_part, Some(rest))
-        } else {
-            (rest, None)
-        }
-    } else {
-        match rest.split_once('.') {
-            Some((int_part, rest)) => (int_part, Some(rest)),
-            None => (rest, None),
-        }
-    };
+    let (int_part, frac_exp) = rest
+        .split_once(decimal_mark)
+        .or_else(|| rest.split_once('.'))
+        .map(|(int_part, rest)| (int_part, Some(rest)))
+        .unwrap_or((rest, None));
     let (mut frac, exp) = match frac_exp {
         Some(rest) => match rest.find(['e', 'E']) {
             Some(at) => (rest[..at].to_string(), Some(&rest[at..])),
