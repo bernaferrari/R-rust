@@ -546,3 +546,34 @@ pub unsafe fn SplineEval(xout: SEXP, z: SEXP) -> SEXP {
         yout
     }
 }
+
+/// GNU `smooth.spline` interpolating path for exact data.
+pub unsafe fn do_smooth_spline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let method = Rf_ScalarInteger(3);
+        let _m = protect(method);
+        let z = SplineCoef(method, x, y);
+        let _z = protect(z);
+        let yhat = SplineEval(x, z);
+        let _yh = protect(yhat);
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, x);
+        SET_VECTOR_ELT(result, 1, yhat);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarInteger(n as c_int));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["x".to_string(), "y".to_string(), "n".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"smooth.spline".as_ptr()),
+        );
+        result
+    }
+}
+

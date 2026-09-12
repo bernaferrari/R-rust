@@ -1613,6 +1613,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_princomp,
     },
     EvaluatedBuiltin {
+        name: "smooth.spline",
+        handler: crate::library::stats::splines::do_smooth_spline,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

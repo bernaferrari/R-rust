@@ -43,7 +43,7 @@ mod rcont;
 mod rwishart;
 mod sbart;
 pub(crate) mod smooth;
-mod splines;
+pub(crate) mod splines;
 mod srunmed;
 mod starma;
 pub(crate) mod stl;
