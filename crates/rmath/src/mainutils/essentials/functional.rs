@@ -13,8 +13,8 @@ use crate::sexp::accessors::{
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
-    Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_lang3,
+    Rf_mkChar, Rf_mkString,
 };
 use crate::sexp::ffi::{
     FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP,
@@ -1474,83 +1474,151 @@ pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
             return R_NilValue();
         }
-
         let nx = XLENGTH(x);
         let ny = XLENGTH(y);
-
-        // Determine if FUN is a symbol (operator name) or a function object
-        let use_multiply = if fun_arg.is_null() || fun_arg == R_NilValue() {
-            true
-        } else if TYPEOF(fun_arg) == SEXPTYPE::STRSXP {
-            elt_to_string(fun_arg, 0) == "*"
-        } else if TYPEOF(fun_arg) == SEXPTYPE::SYMSXP {
-            let pname = crate::sexp::accessors::PRINTNAME(fun_arg);
-            if !pname.is_null() {
-                let s = crate::sexp::accessors::CHAR(pname);
-                if !s.is_null() {
-                    std::ffi::CStr::from_ptr(s).to_str().unwrap_or("") == "*"
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nx * ny);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = REAL(result);
-
-        if use_multiply {
-            // Fast path: multiply
+        let star = fun_arg.is_null()
+            || fun_arg == R_NilValue()
+            || (TYPEOF(fun_arg) == SEXPTYPE::STRSXP && elt_to_string(fun_arg, 0) == "*");
+        let robj = if star {
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, nx * ny);
+            let _result = protect(result);
+            let dst = REAL(result);
             for i in 0..nx {
                 let xi = elt_real_safe(x, i);
                 for j in 0..ny {
-                    let yj = elt_real_safe(y, j);
-                    *dst.add((j * nx + i) as usize) = xi * yj;
+                    *dst.add((j * nx + i) as usize) = xi * elt_real_safe(y, j);
                 }
             }
+            result
         } else {
-            // General path: call FUN(x_i, y_j) for each pair
-            for i in 0..nx {
-                let xi = extract_element(x, i);
-                for j in 0..ny {
-                    let yj = extract_element(y, j);
-                    let call_args = Rf_cons(xi, Rf_cons(yj, R_NilValue()));
-                    let call_sexp = Rf_cons(fun_arg, call_args);
-                    if !call_sexp.is_null() {
-                        (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                    }
-                    let val = crate::eval::eval::Rf_eval(call_sexp, rho);
-                    let v = if !val.is_null() && TYPEOF(val) == SEXPTYPE::REALSXP {
-                        *REAL(val)
-                    } else if !val.is_null()
-                        && (TYPEOF(val) == SEXPTYPE::INTSXP || TYPEOF(val) == SEXPTYPE::LGLSXP)
-                    {
-                        let iv = *INTEGER(val);
-                        if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
-                    } else {
-                        NA_REAL
-                    };
-                    *dst.add((j * nx + i) as usize) = v;
+            let fun = resolve_outer_fun(fun_arg, rho);
+            let _fun = protect(fun);
+            let xrep = rep_times(x, ny);
+            let _xrep = protect(xrep);
+            let yrep = rep_each(y, nx);
+            let _yrep = protect(yrep);
+            let call = Rf_lang3(fun, xrep, yrep);
+            let _call = protect(call);
+            crate::eval::eval::Rf_eval(call, rho)
+        };
+        let _robj = protect(robj);
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dim) = nx as c_int;
+        *INTEGER(dim).add(1) = ny as c_int;
+        crate::sexp::attrib_core::setAttrib(robj, Rf_install(c"dim".as_ptr()), dim);
+        attach_outer_dimnames(robj, x, y);
+        robj
+    }
+}
+
+unsafe fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
+    unsafe {
+        let nxn = crate::attrib_core::getAttrib(x, crate::attrib_core::R_NamesSymbol());
+        let nyn = crate::attrib_core::getAttrib(y, crate::attrib_core::R_NamesSymbol());
+        let has_x = !nxn.is_null() && nxn != R_NilValue();
+        let has_y = !nyn.is_null() && nyn != R_NilValue();
+        if !has_x && !has_y {
+            return;
+        }
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, if has_x { nxn } else { R_NilValue() });
+        SET_VECTOR_ELT(dn, 1, if has_y { nyn } else { R_NilValue() });
+        crate::sexp::attrib_core::setAttrib(robj, crate::attrib_core::R_DimNamesSymbol(), dn);
+    }
+}
+
+unsafe fn resolve_outer_fun(fun_arg: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if fun_arg.is_null() || fun_arg == R_NilValue() {
+            return crate::sexp::envir::findFun(Rf_install(c"*".as_ptr()), rho);
+        }
+        let ty = TYPEOF(fun_arg);
+        if ty == SEXPTYPE::CLOSXP || ty == SEXPTYPE::BUILTINSXP || ty == SEXPTYPE::SPECIALSXP {
+            return fun_arg;
+        }
+        let sym = if ty == SEXPTYPE::STRSXP {
+            let name = elt_to_string(fun_arg, 0);
+            let cstr = CString::new(name.as_str()).unwrap_or_default();
+            Rf_install(cstr.as_ptr())
+        } else if ty == SEXPTYPE::SYMSXP {
+            fun_arg
+        } else {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "object of mode 'function' was not found",
+            );
+        };
+        let fun = crate::sexp::envir::findFun(sym, rho);
+        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+            let name = if TYPEOF(sym) == SEXPTYPE::SYMSXP {
+                let p = PRINTNAME(sym);
+                if p.is_null() {
+                    "FUN".to_string()
+                } else {
+                    std::ffi::CStr::from_ptr(CHAR(p))
+                        .to_string_lossy()
+                        .into_owned()
                 }
+            } else {
+                "FUN".to_string()
+            };
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                &format!("object '{name}' of mode 'function' was not found"),
+            );
+        }
+        fun
+    }
+}
+
+unsafe fn rep_times(x: SEXP, times: i64) -> SEXP {
+    unsafe {
+        let n = XLENGTH(x);
+        let out_n = n.saturating_mul(times);
+        let result = Rf_allocVector3(TYPEOF(x), out_n);
+        let _r = protect(result);
+        for t in 0..times {
+            for i in 0..n {
+                copy_elt(x, i, result, t * n + i);
             }
         }
-
-        // Set dim attribute: c(nx, ny)
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            *INTEGER(dim) = nx as c_int;
-            *INTEGER(dim).add(1) = ny as c_int;
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
-        }
-
         result
+    }
+}
+
+unsafe fn rep_each(x: SEXP, each: i64) -> SEXP {
+    unsafe {
+        let n = XLENGTH(x);
+        let out_n = n.saturating_mul(each);
+        let result = Rf_allocVector3(TYPEOF(x), out_n);
+        let _r = protect(result);
+        for i in 0..n {
+            for e in 0..each {
+                copy_elt(x, i, result, i * each + e);
+            }
+        }
+        result
+    }
+}
+
+unsafe fn copy_elt(src: SEXP, si: i64, dst: SEXP, di: i64) {
+    unsafe {
+        match TYPEOF(src) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                *INTEGER(dst).add(di as usize) = *INTEGER(src).add(si as usize);
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                *REAL(dst).add(di as usize) = *REAL(src).add(si as usize);
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                SET_STRING_ELT(dst, di, STRING_ELT(src, si));
+            }
+            _ => {
+                let v = extract_element(src, si);
+                SET_VECTOR_ELT(dst, di, v);
+            }
+        }
     }
 }
 

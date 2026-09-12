@@ -1,0 +1,5 @@
+structure(c(2L, 3L, 3L, 4L), dim = c(2L, 2L))
+structure(c(1, 2, 2, 4, 3, 6), dim = 2:3)
+structure(c(2, 3, 3, 4), dim = c(2L, 2L), dimnames = list(c("a", 
+"b"), NULL))
+object 'notafun' of mode 'function' was not found
