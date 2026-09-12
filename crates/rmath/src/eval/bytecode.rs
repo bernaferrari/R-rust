@@ -190,6 +190,7 @@ pub const GNU_OP_VECSUBSET: c_int = 84;
 pub const GNU_OP_MATSUBSET: c_int = 85;
 pub const GNU_OP_VECSUBSET2: c_int = 106;
 pub const GNU_OP_VECSUBASSIGN: c_int = 86;
+pub const GNU_OP_MATSUBASSIGN: c_int = 87;
 pub const GNU_OP_STARTSUBSET2_N: c_int = 110;
 pub const GNU_OP_SUBSET_N: c_int = 112;
 
@@ -399,12 +400,14 @@ fn validate_gnu_adapter_impl(
                 }
                 branches.push((opcode_pc, target as usize));
             }
-            GNU_OP_VECSUBSET | GNU_OP_VECSUBSET2 | GNU_OP_VECSUBASSIGN | GNU_OP_MATSUBSET => {
+            GNU_OP_VECSUBSET | GNU_OP_VECSUBSET2 | GNU_OP_VECSUBASSIGN | GNU_OP_MATSUBSET
+            | GNU_OP_MATSUBASSIGN => {
                 let call_index = code[pc];
                 let name = match opcode {
                     GNU_OP_VECSUBSET => "VECSUBSET",
                     GNU_OP_VECSUBSET2 => "VECSUBSET2",
                     GNU_OP_MATSUBSET => "MATSUBSET",
+                    GNU_OP_MATSUBASSIGN => "MATSUBASSIGN",
                     _ => "VECSUBASSIGN",
                 };
                 if call_index < 0 || call_index as usize >= constant_count {
@@ -948,6 +951,14 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_MATSUBASSIGN => {
+                if depth < 4 {
+                    return Err(format!(
+                        "GNU MATSUBASSIGN at instruction {instruction_pc} has stack depth {depth}, requires 4"
+                    ));
+                }
+                pending.push((next, depth - 3, loop_stack, call_stack.clone()));
             }
             GNU_OP_STARTFOR => {
                 if depth == 0 {
@@ -2622,6 +2633,61 @@ mod tests {
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 16, 1, 16, 1, 85, 2, 1], 2).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 112, 0, 3, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 112, 0, -1, 1], 1).is_err());
+    }
+
+    #[test]
+    fn gnu_matsubassign_validator_accepts_matrix_streams() {
+        // compiler:::disassemble(cmpfun(function(x,v){x[1L,2L]<-v;x}, options=list(optimize=3)))
+        let mat_const = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTASSIGN,
+            2,
+            GNU_OP_STARTSUBASSIGN_N,
+            4,
+            14,
+            GNU_OP_LDCONST,
+            6,
+            GNU_OP_LDCONST,
+            7,
+            GNU_OP_MATSUBASSIGN,
+            4,
+            GNU_OP_ENDASSIGN,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&mat_const, 8), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x,i,j,v){x[i,j]<-v;x}, options=list(optimize=3)))
+        let mat_vars = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTASSIGN,
+            2,
+            GNU_OP_STARTSUBASSIGN_N,
+            4,
+            14,
+            GNU_OP_GETVAR_MISSOK,
+            6,
+            GNU_OP_GETVAR_MISSOK,
+            7,
+            GNU_OP_MATSUBASSIGN,
+            4,
+            GNU_OP_ENDASSIGN,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&mat_vars, 8), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 87, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 87, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 16, 1, 16, 1, 87, 2, 1], 2).is_err());
     }
 
     #[test]

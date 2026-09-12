@@ -637,6 +637,37 @@ unsafe fn eval_gnu_vecsubassign(call: SEXP, x: SEXP, rhs: SEXP, index: SEXP, rho
     }
 }
 
+/// GNU MATSUBASSIGN falls through to do_subassign_dflt(x, i, j, value=rhs).
+unsafe fn eval_gnu_matsubassign(
+    call: SEXP,
+    x: SEXP,
+    rhs: SEXP,
+    row: SEXP,
+    column: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let mut x = x;
+        if crate::sexp::accessors::NAMED(x) > 1 {
+            x = crate::mainutils::duplicate::shallow_duplicate(x);
+        }
+        let _x = crate::sexp::protect::protect(x);
+        let _rhs = crate::sexp::protect::protect(rhs);
+        let _row = crate::sexp::protect::protect(row);
+        let _column = crate::sexp::protect::protect(column);
+        let value = Rf_cons(rhs, R_NilValue());
+        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
+        let args = Rf_cons(x, Rf_cons(row, Rf_cons(column, value)));
+        let _args = crate::sexp::protect::protect(args);
+        crate::mainutils::subassign::do_subassign_dflt(
+            call,
+            crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+            args,
+            rho,
+        )
+    }
+}
+
 /// GNU AND/OR/NOT reuse the same primitive as interpreted `&` / `|` / `!`.
 unsafe fn eval_gnu_logic(
     call: SEXP,
@@ -1784,6 +1815,19 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let x = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN object");
                     let result = with_stack_rooted(&stack, rhs, || {
                         eval_gnu_vecsubassign(call, x, rhs, index, rho)
+                    });
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_MATSUBASSIGN => {
+                    let call_index = words[pc] as usize;
+                    pc += 1;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let column = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN column");
+                    let row = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN row");
+                    let rhs = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN rhs");
+                    let x = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN object");
+                    let result = with_stack_rooted(&stack, rhs, || {
+                        eval_gnu_matsubassign(call, x, rhs, row, column, rho)
                     });
                     stack.push(result);
                 }
