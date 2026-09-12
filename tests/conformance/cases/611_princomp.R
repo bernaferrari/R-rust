@@ -1,0 +1,5 @@
+d <- princomp(matrix(1:12, 4, 3))
+cat(sprintf("%.8f", d$sdev[1]), "\n", sep = "")
+cat(d$sdev[2] < 1e-6, "\n", sep = "")
+cat(d$sdev[3] < 1e-6, "\n", sep = "")
+cat(paste(class(d), collapse = ","), "\n", sep = "")

@@ -1609,6 +1609,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_prcomp,
     },
     EvaluatedBuiltin {
+        name: "princomp",
+        handler: crate::mainutils::essentials::do_princomp,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
