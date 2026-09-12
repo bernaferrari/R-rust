@@ -1604,6 +1604,84 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
                 }
+                super::bytecode::GNU_OP_LOG | super::bytecode::GNU_OP_LOGBASE => {
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU logarithm opcode requires a call in the constant pool");
+                    }
+                    pc += 1;
+                    let result = if opcode == super::bytecode::GNU_OP_LOG {
+                        let value = stack_pop_checked(&mut stack, "GNU LOG");
+                        let result = with_stack_rooted(&stack, value, || {
+                            let args = Rf_cons(value, R_NilValue());
+                            let _args = crate::sexp::protect::protect(args);
+                            let op = crate::sexp::envir::findFun(
+                                crate::sexp::symbol::Rf_install(c"log".as_ptr()),
+                                super::runtime::base_env(),
+                            );
+                            crate::eval::arithmetic::do_math1(call, op, args, rho)
+                        });
+                        result
+                    } else {
+                        let base = stack_pop_checked(&mut stack, "GNU LOGBASE");
+                        let value = stack_pop_checked(&mut stack, "GNU LOGBASE");
+                        let result = with_stack_rooted(&stack, value, || {
+                            with_stack_rooted(&stack, base, || {
+                                let tail = Rf_cons(base, R_NilValue());
+                                let _tail = crate::sexp::protect::protect(tail);
+                                let args = Rf_cons(value, tail);
+                                let _args = crate::sexp::protect::protect(args);
+                                let op = crate::sexp::envir::findFun(
+                                    crate::sexp::symbol::Rf_install(c"log".as_ptr()),
+                                    super::runtime::base_env(),
+                                );
+                                crate::eval::arithmetic::do_math1(call, op, args, rho)
+                            })
+                        });
+                        result
+                    };
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_MATH1 => {
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    let math_index = words[pc + 1];
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU MATH1 requires a call in the constant pool");
+                    }
+                    pc += 2;
+                    let names = [
+                        "floor", "ceiling", "sign", "expm1", "log1p", "cos", "sin", "tan",
+                        "acos", "asin", "atan", "cosh", "sinh", "tanh", "acosh", "asinh",
+                        "atanh", "lgamma", "gamma", "digamma", "trigamma", "cospi", "sinpi", "tanpi",
+                    ];
+                    let Some(name) = names.get(math_index as usize).copied() else {
+                        bc_error(format!("GNU MATH1 function index {math_index} is invalid"));
+                    };
+                    // Rf_install reads the bytes; keep CString alive across the call.
+                    let cname = std::ffi::CString::new(name).unwrap();
+                    let symbol = crate::sexp::symbol::Rf_install(cname.as_ptr());
+                    if CAR(call) != symbol {
+                        bc_error("math1 compiler/interpreter mismatch");
+                    }
+                    let value = stack_pop_checked(&mut stack, "GNU MATH1");
+                    let result = with_stack_rooted(&stack, value, || {
+                        let args = Rf_cons(value, R_NilValue());
+                        let _args = crate::sexp::protect::protect(args);
+                        let op = crate::sexp::envir::findFun(symbol, super::runtime::base_env());
+                        // GNU's slow path calls do_math1 on the primitive. rport's
+                        // do_math1 only covers a subset (floor/sign/log/exp/...), so
+                        // dispatch through the named builtin for sin/expm1/etc.
+                        if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(name)
+                        {
+                            handler(call, op, args, rho)
+                        } else {
+                            crate::eval::arithmetic::do_math1(call, op, args, rho)
+                        }
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
                 super::bytecode::GNU_OP_ADD
                 | super::bytecode::GNU_OP_SUB
                 | super::bytecode::GNU_OP_MUL

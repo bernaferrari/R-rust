@@ -10,7 +10,7 @@ use std::os::raw::c_int;
 use super::bc_eval::opcodes;
 use crate::sexp::accessors::{BODY, CAR, CDR, PRINTNAME, SET_BODY, TAG, TYPEOF};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_BaseEnv, R_NilValue};
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::with_arena_in;
 use crate::sexp::protect::protect;
@@ -20,14 +20,25 @@ struct BytecodeCompiler {
     consts: Vec<SEXP>,
     code: Vec<c_int>,
     stack_hint: c_int,
+    /// Enclosing compile environment. Nested function() constants capture
+    /// this so formals resolve in the call frame and base operators remain
+    /// visible through the parent chain. GNU MAKECLOSURE rebinds this at
+    /// runtime; the private dialect's LDCLOSURE uses the compile-time env.
+    rho: SEXP,
+    /// Symbols assigned from a compiled function() in this body. Calls to
+    /// those locals are lowered like eager builtins; other user calls stay
+    /// rejected so user_fun(x) remains unsupported compiler syntax.
+    compiled_local_funs: Vec<SEXP>,
 }
 
 impl BytecodeCompiler {
-    fn new() -> Self {
+    fn new(rho: SEXP) -> Self {
         BytecodeCompiler {
             consts: Vec::new(),
             code: Vec::new(),
             stack_hint: 8,
+            rho,
+            compiled_local_funs: Vec::new(),
         }
     }
 
@@ -89,9 +100,29 @@ impl BytecodeCompiler {
                     self.emit_operand(opcodes::OP_GETVAR, idx);
                     true
                 }
+                t if t == SEXPTYPE::CLOSXP => self.compile_closure_expr(expr),
                 t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => self.compile_call(expr),
                 _ => false,
             }
+        }
+    }
+
+    /// Lower a function expression to a closure constant.  GNU's compiler
+    /// represents this as MAKECLOSURE; the private bytecode dialect uses
+    /// LDCLOSURE for the same constant-pool operation.
+    unsafe fn compile_closure_expr(&mut self, expr: SEXP) -> bool {
+        unsafe {
+            let closure = crate::mainutils::duplicate::duplicate(expr);
+            if closure.is_null() || TYPEOF(closure) != SEXPTYPE::CLOSXP {
+                return false;
+            }
+            let _closure_guard = protect(closure);
+            if TYPEOF(BODY(closure)) != SEXPTYPE::BCODESXP && !compile_closure(closure) {
+                return false;
+            }
+            let idx = self.add_const(closure);
+            self.emit_operand(opcodes::OP_LDCLOSURE, idx);
+            true
         }
     }
 
@@ -119,7 +150,12 @@ impl BytecodeCompiler {
                 if matches!(name.as_deref(), Some("<-") | Some("=")) {
                     return self.compile_assignment(expr);
                 }
-                if !name.as_deref().is_some_and(is_eager_builtin_call) {
+                if name.as_deref() == Some("function") {
+                    return self.compile_function_expr(expr);
+                }
+                if !name.as_deref().is_some_and(is_eager_builtin_call)
+                    && !self.is_compiled_local_fun(fun)
+                {
                     return false;
                 }
             } else {
@@ -151,6 +187,45 @@ impl BytecodeCompiler {
             let fun_idx = self.add_const(fun);
             self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
             self.emit_operand(opcodes::OP_CALL, arg_cells.len() as c_int);
+            true
+        }
+    }
+
+    /// Lower parsed `function(formals, body)` syntax to a closure constant.
+    unsafe fn compile_function_expr(&mut self, expr: SEXP) -> bool {
+        unsafe {
+            let formals_cell = CDR(expr);
+            let body_cell = if !formals_cell.is_null() {
+                CDR(formals_cell)
+            } else {
+                std::ptr::null_mut()
+            };
+            if formals_cell.is_null()
+                || formals_cell == R_NilValue()
+                || body_cell.is_null()
+                || body_cell == R_NilValue()
+            {
+                return false;
+            }
+            let enclosing = if self.rho.is_null() || self.rho == R_NilValue() {
+                R_BaseEnv()
+            } else {
+                self.rho
+            };
+            let closure = crate::mainutils::dstruct::mkCLOSXP(
+                CAR(formals_cell),
+                CAR(body_cell),
+                enclosing,
+            );
+            if closure.is_null() {
+                return false;
+            }
+            let _closure_guard = protect(closure);
+            if !compile_closure(closure) {
+                return false;
+            }
+            let idx = self.add_const(closure);
+            self.emit_operand(opcodes::OP_LDCLOSURE, idx);
             true
         }
     }
@@ -215,8 +290,12 @@ impl BytecodeCompiler {
         unsafe {
             let lhs = CAR(CDR(expr));
             let rhs = CAR(CDR(CDR(expr)));
+            let binds_compiled_fun = is_function_syntax(rhs);
             if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
                 return false;
+            }
+            if binds_compiled_fun {
+                self.compiled_local_funs.push(lhs);
             }
             let symbol_idx = self.add_const(lhs);
             self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
@@ -286,6 +365,10 @@ impl BytecodeCompiler {
             }
             true
         }
+    }
+
+    fn is_compiled_local_fun(&self, fun: SEXP) -> bool {
+        self.compiled_local_funs.iter().any(|&sym| sym == fun)
     }
 
     unsafe fn finish(&mut self, source_expr: SEXP) -> SEXP {
@@ -372,6 +455,15 @@ fn is_eager_builtin_call(name: &str) -> bool {
     )
 }
 
+unsafe fn is_function_syntax(expr: SEXP) -> bool {
+    unsafe {
+        !expr.is_null()
+            && expr != R_NilValue()
+            && TYPEOF(expr) == SEXPTYPE::LANGSXP
+            && symbol_name_from_sexp(CAR(expr)).as_deref() == Some("function")
+    }
+}
+
 unsafe fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
     unsafe {
         if sym.is_null() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
@@ -397,7 +489,7 @@ unsafe fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
 /// complex for the minimal compiler.
 pub unsafe fn compile_expr(expr: SEXP, _rho: SEXP) -> Option<SEXP> {
     unsafe {
-        let mut compiler = BytecodeCompiler::new();
+        let mut compiler = BytecodeCompiler::new(_rho);
         if !compiler.compile_expr(expr) {
             return None;
         }

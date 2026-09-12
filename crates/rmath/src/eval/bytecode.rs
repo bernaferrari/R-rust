@@ -213,6 +213,9 @@ pub const GNU_OP_SUBASSIGN_N: c_int = 114;
 pub const GNU_OP_MATSUBASSIGN2: c_int = 109;
 pub const GNU_OP_SUBSET2_N: c_int = 113;
 pub const GNU_OP_SUBASSIGN2_N: c_int = 115;
+pub const GNU_OP_LOG: c_int = 116;
+pub const GNU_OP_LOGBASE: c_int = 117;
+pub const GNU_OP_MATH1: c_int = 118;
 pub const GNU_OP_COLON: c_int = 120;
 pub const GNU_OP_SEQALONG: c_int = 121;
 pub const GNU_OP_SEQLEN: c_int = 122;
@@ -585,7 +588,7 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
             | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND | GNU_OP_OR
-            | GNU_OP_NOT | GNU_OP_SQRT | GNU_OP_EXP
+            | GNU_OP_NOT | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_LOG | GNU_OP_LOGBASE
             | GNU_OP_SETVAR | GNU_OP_SETVAR2
             | GNU_OP_COLON | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
                 let index = code[pc];
@@ -598,6 +601,19 @@ fn validate_gnu_adapter_impl(
                     return Err(format!(
                         "GNU opcode {opcode} constant pool index {index} is out of range for pool length {constant_count}"
                     ));
+                }
+            }
+            GNU_OP_MATH1 => {
+                let call_index = code[pc];
+                let math_index = code[pc + 1];
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU MATH1 constant pool index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+                // This is the fixed math1funs[] order in GNU eval.c.
+                if !(0..24).contains(&math_index) {
+                    return Err(format!("GNU MATH1 function index {math_index} is invalid"));
                 }
             }
             GNU_OP_SWITCH => {
@@ -1220,7 +1236,7 @@ fn validate_gnu_adapter_impl(
             }
             GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ
             | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND
-            | GNU_OP_OR | GNU_OP_COLON => {
+            | GNU_OP_OR | GNU_OP_LOGBASE | GNU_OP_COLON => {
                 if depth < 2 {
                     return Err(format!(
                         "GNU binary opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
@@ -1229,6 +1245,7 @@ fn validate_gnu_adapter_impl(
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT
+            | GNU_OP_LOG | GNU_OP_MATH1
             | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
             | GNU_OP_ISNUMERIC | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
@@ -3465,6 +3482,98 @@ mod tests {
                 .unwrap_err()
                 .contains("empty stack")
         );
+    }
+
+    #[test]
+    fn gnu_log_validator_accepts_compiled_stream() {
+        assert_eq!(GNU_BC_OPERAND_WIDTHS[GNU_OP_LOG as usize], 1);
+        // compiler:::disassemble(cmpfun(function(x) log(x), options=list(optimize=3)))
+        let log = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_LOG,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&log, 3), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 116, 0, 1], 1)
+                .unwrap_err()
+                .contains("empty stack")
+        );
+    }
+
+    #[test]
+    fn gnu_logbase_validator_accepts_compiled_stream() {
+        assert_eq!(GNU_BC_OPERAND_WIDTHS[GNU_OP_LOGBASE as usize], 1);
+        // compiler:::disassemble(cmpfun(function(x) log(x, 10), options=list(optimize=3)))
+        let logbase = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_LDCONST,
+            2,
+            GNU_OP_LOGBASE,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&logbase, 4), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x,b) log(x,b), options=list(optimize=3)))
+        let logbase_var = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_LOGBASE,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&logbase_var, 4), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 117, 0, 1], 1)
+                .unwrap_err()
+                .contains("requires 2")
+        );
+    }
+
+    #[test]
+    fn gnu_math1_validator_accepts_compiled_streams() {
+        assert_eq!(GNU_BC_OPERAND_WIDTHS[GNU_OP_MATH1 as usize], 2);
+        // compiler:::disassemble(cmpfun(function(x) sin(x), options=list(optimize=3)))
+        let sin = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_MATH1,
+            0,
+            6,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&sin, 3), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x) expm1(x), options=list(optimize=3)))
+        let expm1 = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_MATH1,
+            0,
+            3,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&expm1, 3), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 118, 0, 6, 1], 1)
+                .unwrap_err()
+                .contains("empty stack")
+        );
+        assert!(
+            validate_gnu_adapter_stream(&[12, 20, 1, 118, 0, 24, 1], 3)
+                .unwrap_err()
+                .contains("function index")
+        );
+        assert!(validate_gnu_adapter_stream(&[12, 20, 1, 118, 9, 6, 1], 3).is_err());
     }
 
     #[test]
