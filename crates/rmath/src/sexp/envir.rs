@@ -15,16 +15,16 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use super::accessors::{
-    CDR, CHAR, ENCLOS, FRAME, PRINTNAME, SET_FRAME, SET_PRENV, SET_PRVALUE, SETCAR, SETCDR, SETTAG,
-    TAG, TYPEOF,
+    CAR, CDR, CHAR, ENCLOS, FRAME, PRINTNAME, SET_FRAME, SET_PRENV, SET_PRVALUE, SETCAR, SETCDR,
+    SETTAG, TAG, TYPEOF,
 };
 use super::constructors::{Rf_cons, Rf_lang2};
 use super::ffi::{SEXP, SEXPTYPE};
-use super::globals::{R_GlobalEnv_in, R_MissingArg, R_NilValue, R_UnboundValue};
+use super::globals::{R_EmptyEnv, R_GlobalEnv_in, R_MissingArg, R_NilValue, R_UnboundValue};
 use super::instance::{with_current_instance, with_required_current_instance};
 use super::memory_ext::NewEnvironment;
 use super::object::{PairlistIter, Sexp, SexpError};
-use super::symbol::{Rf_install, symbol_name_bytes_equal};
+use super::symbol::{R_DotsSymbol, symbol_name_bytes_equal};
 
 // ---------------------------------------------------------------------------
 // Safe wrapper types
@@ -781,6 +781,25 @@ pub fn match_args_result<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> EnvResult<Loo
 /// Check if a symbol has a missing argument in the given environment.
 #[must_use]
 pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
+    if let Some(n) = dd_val(symbol.clone()) {
+        return dd_missing_in_frame(n, rho, false);
+    }
+    ordinary_frame_is_missing(symbol, rho)
+}
+
+/// GNU `R_missing`: the `missing()` builtin.
+///
+/// For `..N`, this uses the Nth dots cell. If the current frame has no
+/// `...` formal, it raises `'missing(...)' did not find an argument`.
+#[must_use]
+pub fn r_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
+    if let Some(n) = dd_val(symbol.clone()) {
+        return dd_missing_in_frame(n, rho, true);
+    }
+    ordinary_frame_is_missing(symbol, rho)
+}
+
+fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     // Upstream R_isMissing (envir.c): a symbol NOT bound in this frame is
     // simply not missing — the missing check exists for the current
     // call's formals (bound as promises or R_MissingArg in the closure
@@ -793,54 +812,193 @@ pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
         None => return false,
     };
 
-    let missing_arg = unsafe { Sexp::from_raw_unchecked(R_MissingArg()) };
-    if val == missing_arg {
-        return true;
-    }
-
-    if val.clone().typeof_() == SEXPTYPE::PROMSXP
-        && let Ok(expr) = val.try_prcode()
-        && expr == missing_arg
-    {
-        return true;
-    }
-
-    false
+    value_is_missing(val)
 }
 
 // ---------------------------------------------------------------------------
 // ddfindVar — safe version (dots lookup)
 // ---------------------------------------------------------------------------
 
-/// Find a variable in the ... (dots) arguments.
+/// Parse GNU `ddVal`: `..N` yields `Some(N)`, including `..0`.
+///
+/// `..`, `..abc`, and other non-integer tails are not DDVAL names.
 #[must_use]
-pub fn dd_find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
-    let dots_name = std::ffi::CString::new("...").ok()?;
-    let dots_sym = unsafe { Sexp::from_raw(Rf_install(dots_name.as_ptr()))? };
-    let dots_val = find_var_in_frame_safe(rho, dots_sym)?;
-
-    let missing_arg = unsafe { Sexp::from_raw_unchecked(R_MissingArg()) };
-    if dots_val == missing_arg {
+pub fn dd_val(symbol: Sexp<'_>) -> Option<i32> {
+    let name = symbol_printname(symbol)?;
+    let rest = name.strip_prefix("..")?;
+    if rest.is_empty() {
         return None;
     }
+    rest.parse().ok()
+}
 
-    for cell in PairlistIter::new(dots_val) {
-        if cell
-            .clone()
-            .try_tag()
-            .clone()
-            .ok()
-            .is_some_and(|tag| symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()))
-        {
-            let val = cell.try_car().ok()?;
-            if val.clone().typeof_() == SEXPTYPE::PROMSXP {
-                return force_promise_safe(val);
+fn symbol_printname(symbol: Sexp<'_>) -> Option<String> {
+    unsafe {
+        if TYPEOF(symbol.clone().as_raw()) != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let pname = PRINTNAME(symbol.as_raw());
+        if pname.is_null() {
+            return None;
+        }
+        let bytes = CHAR(pname);
+        if bytes.is_null() {
+            return None;
+        }
+        Some(
+            std::ffi::CStr::from_ptr(bytes)
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+}
+
+fn dots_symbol<'a>() -> Sexp<'a> {
+    unsafe { Sexp::from_raw_unchecked(R_DotsSymbol()) }
+}
+
+fn missing_arg_value<'a>() -> Sexp<'a> {
+    unsafe { Sexp::from_raw_unchecked(R_MissingArg()) }
+}
+
+fn is_empty_dots_value(value: Sexp<'_>) -> bool {
+    value.clone().is_nil() || value == missing_arg_value()
+}
+
+fn is_usable_dots_value(value: Sexp<'_>) -> bool {
+    is_empty_dots_value(value.clone()) || value.typeof_() == SEXPTYPE::DOTSXP
+}
+
+fn dots_len(dots: Sexp<'_>) -> i32 {
+    if is_empty_dots_value(dots.clone()) {
+        return 0;
+    }
+    unsafe {
+        let mut n = 0;
+        let mut cell = dots.as_raw();
+        while !cell.is_null() && cell != R_NilValue() {
+            n += 1;
+            cell = CDR(cell);
+        }
+        n
+    }
+}
+
+fn dots_car_at<'a>(dots: Sexp<'a>, index: i32) -> Option<Sexp<'a>> {
+    if index <= 0 {
+        return None;
+    }
+    unsafe {
+        let mut cell = dots.as_raw();
+        let mut i = 1;
+        while !cell.is_null() && cell != R_NilValue() {
+            if i == index {
+                return Sexp::from_raw(CAR(cell));
             }
-            return Some(val);
+            i += 1;
+            cell = CDR(cell);
         }
     }
-
     None
+}
+
+/// Walk enclosing environments for the first usable `...` binding.
+///
+/// GNU `R_findDotsEnv` accepts `R_MissingArg` or `DOTSXP`. rport binds an
+/// unused `...` formal to `R_NilValue`, so that empty list is accepted too.
+fn find_dots_binding<'a>(rho: Sexp<'a>) -> Option<Sexp<'a>> {
+    let empty = unsafe { R_EmptyEnv() };
+    let dots_sym = dots_symbol();
+    let mut current = rho;
+    while current.clone().is_environment() && current.clone().as_raw() != empty {
+        if let Some(value) = find_var_in_frame_safe(current.clone(), dots_sym.clone())
+            && is_usable_dots_value(value.clone())
+        {
+            return Some(value);
+        }
+        current = match current.try_enclos() {
+            Ok(parent) => parent,
+            Err(_) => break,
+        };
+    }
+    None
+}
+
+fn fewer_dots_error(n: i32) -> ! {
+    if n == 1 {
+        binding_error("the ... list contains fewer than 1 element");
+    } else {
+        binding_error(format!("the ... list contains fewer than {n} elements"));
+    }
+}
+
+fn value_is_missing(val: Sexp<'_>) -> bool {
+    let missing_arg = missing_arg_value();
+    if val == missing_arg {
+        return true;
+    }
+    if val.clone().typeof_() == SEXPTYPE::PROMSXP
+        && let Ok(expr) = val.clone().try_prcode()
+    {
+        if expr == missing_arg {
+            return true;
+        }
+        if expr.clone().is_symbol()
+            && let Ok(env) = val.try_prenv()
+        {
+            return is_missing_safe(expr, env);
+        }
+    }
+    false
+}
+
+fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool) -> bool {
+    let Some(dots) = find_var_in_frame_safe(rho, dots_symbol()) else {
+        if error_if_absent {
+            binding_error("'missing(...)' did not find an argument");
+        }
+        return false;
+    };
+    if is_empty_dots_value(dots.clone()) || dots_len(dots.clone()) < n {
+        return true;
+    }
+    if dots.clone().typeof_() != SEXPTYPE::DOTSXP {
+        return false;
+    }
+    // GNU nthcdr(..0) uses n-1 == -1, which leaves the first cell in place.
+    let index = if n <= 0 { 1 } else { n };
+    match dots_car_at(dots, index) {
+        Some(val) => value_is_missing(val),
+        None => true,
+    }
+}
+
+/// Find `..N` in the current (or enclosing) `...` list.
+///
+/// GNU `ddfindVar` parses N from the symbol, walks to the dots environment,
+/// and returns the Nth cell (1-based), forcing promises.
+#[must_use]
+pub fn dd_find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
+    let n = dd_val(symbol).unwrap_or(0);
+    if n <= 0 {
+        binding_error(format!("indexing '...' with non-positive index {n}"));
+    }
+    let Some(dots) = find_dots_binding(rho) else {
+        binding_error(format!(
+            "..{n} used in an incorrect context, no ... to look in"
+        ));
+    };
+    if dots.clone().typeof_() != SEXPTYPE::DOTSXP && !is_empty_dots_value(dots.clone()) {
+        binding_error("bad ... value");
+    }
+    if dots_len(dots.clone()) < n {
+        fewer_dots_error(n);
+    }
+    let val = dots_car_at(dots, n)?;
+    if val.clone().typeof_() == SEXPTYPE::PROMSXP {
+        return force_promise_safe(val);
+    }
+    Some(val)
 }
 
 // ---------------------------------------------------------------------------
@@ -1080,6 +1238,20 @@ pub unsafe fn R_isMissing(symbol: SEXP, rho: SEXP) -> c_int {
 
         match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
             (Some(symbol), Some(rho)) => is_missing_safe(symbol, rho) as c_int,
+            _ => 0,
+        }
+    }
+}
+
+/// FFI wrapper around [`r_missing_safe`].
+pub unsafe fn R_missing(symbol: SEXP, rho: SEXP) -> c_int {
+    unsafe {
+        if symbol.is_null() || rho.is_null() {
+            return 0;
+        }
+
+        match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
+            (Some(symbol), Some(rho)) => r_missing_safe(symbol, rho) as c_int,
             _ => 0,
         }
     }
@@ -1522,6 +1694,25 @@ mod tests {
             define_var_safe(sexp_sym.clone(), sexp_val, sexp_env.clone());
 
             assert!(exists_var_in_frame_safe(sexp_env, sexp_sym));
+        }
+    }
+
+    #[test]
+    fn test_dd_val_parses_gnu_dot_dot_names() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let dd1 = Sexp::from_raw(Rf_install(c"..1".as_ptr())).expect("..1");
+            let dd0 = Sexp::from_raw(Rf_install(c"..0".as_ptr())).expect("..0");
+            let dd01 = Sexp::from_raw(Rf_install(c"..01".as_ptr())).expect("..01");
+            let dd2 = Sexp::from_raw(Rf_install(c"..2".as_ptr())).expect("..2");
+            let dots = Sexp::from_raw(Rf_install(c"..".as_ptr())).expect("..");
+            let x = Sexp::from_raw(Rf_install(c"x".as_ptr())).expect("x");
+            assert_eq!(dd_val(dd1), Some(1));
+            assert_eq!(dd_val(dd0), Some(0));
+            assert_eq!(dd_val(dd01), Some(1));
+            assert_eq!(dd_val(dd2), Some(2));
+            assert_eq!(dd_val(dots), None);
+            assert_eq!(dd_val(x), None);
         }
     }
 }

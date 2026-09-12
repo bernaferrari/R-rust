@@ -370,6 +370,19 @@ pub(crate) fn find_var_result<'a>(
         return Ok(None);
     }
 
+    // GNU Rf_eval SYMSXP: DDVAL names (`..1`, `..2`, ...) go through
+    // ddfindVar, not ordinary findVar.
+    if crate::sexp::envir::dd_val(symbol.clone()).is_some() {
+        let Some(value) = crate::sexp::envir::dd_find_var_safe(symbol.clone(), rho) else {
+            return Ok(None);
+        };
+        if value.clone().as_raw() == unsafe { R_MissingArg() } {
+            let name = unsafe { get_symbol_name(symbol.as_raw()) };
+            missing_arg_error(&name);
+        }
+        return Ok(Some(value));
+    }
+
     // Keep evaluator lookup aligned with envir.c semantics. In particular,
     // frame lookup must invoke active bindings rather than returning the
     // closure stored in the frame, and inherited lookup must force promises.
@@ -827,5 +840,73 @@ mod tests {
             .eval(expr)
             .expect_err("unowned expression should be rejected");
         assert!(err.contains("expression is not owner-scoped"));
+    }
+
+    #[test]
+    fn ddval_first_dot_evaluates_like_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) =
+            session.eval_script_with_output_capture("f <- function(...) ..1; identical(f(10), 10)");
+        let result = result.expect("..1 should read the first dots element");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn ddval_empty_dots_uses_gnu_message() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture("f <- function(...) ..1; f()");
+        let err = result.expect_err("empty ... should error");
+        assert!(
+            err.message
+                .contains("the ... list contains fewer than 1 element"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn ddval_second_dot_uses_gnu_plural_message() {
+        let mut session = RSession::new();
+        let (result, _, _) =
+            session.eval_script_with_output_capture("h <- function(...) ..2; h(1)");
+        let err = result.expect_err("short ... should error");
+        assert!(
+            err.message
+                .contains("the ... list contains fewer than 2 elements"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn ddval_incorrect_context_uses_gnu_message() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture("..1");
+        let err = result.expect_err("top-level ..1 should error");
+        assert!(
+            err.message
+                .contains("..1 used in an incorrect context, no ... to look in"),
+            "{}",
+            err.message
+        );
+
+        let (result, _, _) = session.eval_script_with_output_capture("g <- function() ..1; g()");
+        let err = result.expect_err("..1 without ... should error");
+        assert!(
+            err.message
+                .contains("..1 used in an incorrect context, no ... to look in"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn missing_ddval_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "m <- function(...) missing(..1); identical(c(m(), m(1)), c(TRUE, FALSE))",
+        );
+        let result = result.expect("missing(..1) should follow GNU Nth-cell rules");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 }

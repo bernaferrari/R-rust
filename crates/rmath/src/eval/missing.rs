@@ -1259,7 +1259,7 @@ pub unsafe fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 Rf_ScalarLogical(FALSE)
             }
         } else {
-            let missing = crate::sexp::envir::R_isMissing(sym, rho);
+            let missing = crate::sexp::envir::R_missing(sym, rho);
             Rf_ScalarLogical(missing)
         }
     }
