@@ -77,7 +77,7 @@ fn imported_gnu_dollar_matches_list_environment_and_atomic_edges() {
     );
     assert_eq!(
         session
-            .eval("d<-structure(list(a=1L), class='foo'); `$.foo`<-function(x,n) paste0('m',n); identical(f(d), 'ma')")
+            .eval("d<-structure(list(a=1L), class='foo'); `$.foo`<-function(x,name) paste0('m',name); identical(f(d), 'ma')")
             .unwrap()
             .trim(),
         "[1] TRUE"

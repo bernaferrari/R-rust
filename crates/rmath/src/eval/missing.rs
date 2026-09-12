@@ -409,6 +409,16 @@ pub(crate) unsafe fn tryDispatch(
         // Try S3 dispatch
         let rho1 = NewEnvironment(R_NilValue(), R_NilValue(), rho);
         let _rho1_guard = protect(rho1);
+        let op = crate::sexp::accessors::SYMVALUE(generic_sym);
+        let _ctx = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_RETURN,
+            call,
+            rho1,
+            rho,
+            None,
+            op,
+            pargs,
+        );
 
         let mut dispatched: c_int = FALSE;
         let mut result: SEXP = R_NilValue();

@@ -413,8 +413,15 @@ unsafe fn eval_gnu_dollar(call: SEXP, symbol: SEXP, x: SEXP, rho: SEXP) -> SEXP 
             let _ncall = crate::sexp::protect::protect(ncall);
             let name = crate::sexp::constructors::Rf_ScalarString(PRINTNAME(symbol));
             let _name = crate::sexp::protect::protect(name);
+            // GNU SETCAR(CDDR(ncall), ScalarString(PRINTNAME(symbol))).
+            // A compiled x$a call may have no second cell; create one so
+            // $.class methods receive the field name as their second formal.
             let field_cell = crate::sexp::accessors::CDDR(ncall);
-            if !field_cell.is_null() && field_cell != R_NilValue() {
+            if field_cell.is_null() || field_cell == R_NilValue() {
+                let extra = Rf_cons(name, R_NilValue());
+                let _extra = crate::sexp::protect::protect(extra);
+                crate::sexp::accessors::SETCDR(crate::sexp::accessors::CDR(ncall), extra);
+            } else {
                 crate::sexp::accessors::SETCAR(field_cell, name);
             }
             let mut value = R_NilValue();
@@ -439,8 +446,15 @@ unsafe fn eval_gnu_dollargets(call: SEXP, symbol: SEXP, mut x: SEXP, rhs: SEXP, 
             let _ncall = crate::sexp::protect::protect(ncall);
             let name = crate::sexp::constructors::Rf_ScalarString(PRINTNAME(symbol));
             let _name = crate::sexp::protect::protect(name);
+            // GNU SETCAR(CDDR(ncall), ScalarString(PRINTNAME(symbol))).
+            // A compiled x$a call may have no second cell; create one so
+            // $.class methods receive the field name as their second formal.
             let field_cell = crate::sexp::accessors::CDDR(ncall);
-            if !field_cell.is_null() && field_cell != R_NilValue() {
+            if field_cell.is_null() || field_cell == R_NilValue() {
+                let extra = Rf_cons(name, R_NilValue());
+                let _extra = crate::sexp::protect::protect(extra);
+                crate::sexp::accessors::SETCDR(crate::sexp::accessors::CDR(ncall), extra);
+            } else {
                 crate::sexp::accessors::SETCAR(field_cell, name);
             }
             let rhs_cell = crate::sexp::accessors::CDDDR(ncall);
