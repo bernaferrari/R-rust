@@ -113,3 +113,6 @@ mod complex_rs_tests;
 
 #[cfg(test)]
 mod complex_rg_tests;
+
+#[cfg(test)]
+mod real_qr_coef_tests;
