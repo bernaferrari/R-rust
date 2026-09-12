@@ -668,7 +668,7 @@ unsafe fn eval_gnu_vecsubassign(
     }
 }
 
-/// GNU MATSUBASSIGN falls through to do_subassign_dflt(x, i, j, value=rhs).
+/// GNU MATSUBASSIGN / MATSUBASSIGN2 fall through to do_subassign(_2)_dflt.
 unsafe fn eval_gnu_matsubassign(
     call: SEXP,
     x: SEXP,
@@ -676,6 +676,7 @@ unsafe fn eval_gnu_matsubassign(
     row: SEXP,
     column: SEXP,
     rho: SEXP,
+    subset2: bool,
 ) -> SEXP {
     unsafe {
         let mut x = x;
@@ -690,22 +691,32 @@ unsafe fn eval_gnu_matsubassign(
         crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
         let args = Rf_cons(x, Rf_cons(row, Rf_cons(column, value)));
         let _args = crate::sexp::protect::protect(args);
-        crate::mainutils::subassign::do_subassign_dflt(
-            call,
-            crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
-            args,
-            rho,
-        )
+        if subset2 {
+            crate::mainutils::subassign::do_subassign2_dflt(
+                call,
+                crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
+                args,
+                rho,
+            )
+        } else {
+            crate::mainutils::subassign::do_subassign_dflt(
+                call,
+                crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                args,
+                rho,
+            )
+        }
     }
 }
 
-/// GNU SUBASSIGN_N falls through to do_subassign_dflt(x, i1..irank, value=rhs).
+/// GNU SUBASSIGN_N / SUBASSIGN2_N fall through to do_subassign(_2)_dflt.
 unsafe fn eval_gnu_subassign_indices(
     call: SEXP,
     x: SEXP,
     rhs: SEXP,
     indices: &[SEXP],
     rho: SEXP,
+    subset2: bool,
 ) -> SEXP {
     unsafe {
         let mut x = x;
@@ -730,12 +741,21 @@ unsafe fn eval_gnu_subassign_indices(
         args = Rf_cons(x, args);
         let _args = crate::sexp::protect::protect(args);
         let _ = roots;
-        crate::mainutils::subassign::do_subassign_dflt(
-            call,
-            crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
-            args,
-            rho,
-        )
+        if subset2 {
+            crate::mainutils::subassign::do_subassign2_dflt(
+                call,
+                crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
+                args,
+                rho,
+            )
+        } else {
+            crate::mainutils::subassign::do_subassign_dflt(
+                call,
+                crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                args,
+                rho,
+            )
+        }
     }
 }
 
@@ -1122,6 +1142,13 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_DUP => {
                     let value = stack_top_checked(&stack, "GNU DUP");
+                    stack.push(value);
+                }
+                super::bytecode::GNU_OP_DUP2ND => {
+                    if stack.depth() < 2 {
+                        bc_error("GNU DUP2ND has an empty stack");
+                    }
+                    let value = stack_at_checked(&stack, stack.depth() - 2, "GNU DUP2ND");
                     stack.push(value);
                 }
                 super::bytecode::GNU_OP_POP => {
@@ -2054,7 +2081,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_SUBSET_N => {
+                super::bytecode::GNU_OP_SUBSET_N | super::bytecode::GNU_OP_SUBSET2_N => {
                     let call_index = words[pc] as usize;
                     let rank = words[pc + 1];
                     pc += 2;
@@ -2069,7 +2096,13 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     indices.reverse();
                     let x = stack_pop_checked(&mut stack, "GNU SUBSET_N object");
                     let result = with_stack_rooted(&stack, x, || {
-                        eval_gnu_subset_indices(call, x, &indices, rho, false)
+                        eval_gnu_subset_indices(
+                            call,
+                            x,
+                            &indices,
+                            rho,
+                            opcode == super::bytecode::GNU_OP_SUBSET2_N,
+                        )
                     });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
@@ -2087,7 +2120,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_MATSUBASSIGN => {
+                super::bytecode::GNU_OP_MATSUBASSIGN
+                | super::bytecode::GNU_OP_MATSUBASSIGN2 => {
                     let call_index = words[pc] as usize;
                     pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
@@ -2096,11 +2130,20 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let rhs = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN rhs");
                     let x = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN object");
                     let result = with_stack_rooted(&stack, rhs, || {
-                        eval_gnu_matsubassign(call, x, rhs, row, column, rho)
+                        eval_gnu_matsubassign(
+                            call,
+                            x,
+                            rhs,
+                            row,
+                            column,
+                            rho,
+                            opcode == super::bytecode::GNU_OP_MATSUBASSIGN2,
+                        )
                     });
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_SUBASSIGN_N => {
+                super::bytecode::GNU_OP_SUBASSIGN_N
+                | super::bytecode::GNU_OP_SUBASSIGN2_N => {
                     let call_index = words[pc] as usize;
                     let rank = words[pc + 1];
                     pc += 2;
@@ -2116,7 +2159,14 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let rhs = stack_pop_checked(&mut stack, "GNU SUBASSIGN_N rhs");
                     let x = stack_pop_checked(&mut stack, "GNU SUBASSIGN_N object");
                     let result = with_stack_rooted(&stack, rhs, || {
-                        eval_gnu_subassign_indices(call, x, rhs, &indices, rho)
+                        eval_gnu_subassign_indices(
+                            call,
+                            x,
+                            rhs,
+                            &indices,
+                            rho,
+                            opcode == super::bytecode::GNU_OP_SUBASSIGN2_N,
+                        )
                     });
                     stack.push(result);
                 }
