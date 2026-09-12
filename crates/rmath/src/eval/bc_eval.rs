@@ -684,6 +684,46 @@ unsafe fn eval_gnu_matsubassign(
     }
 }
 
+/// GNU SUBASSIGN_N falls through to do_subassign_dflt(x, i1..irank, value=rhs).
+unsafe fn eval_gnu_subassign_indices(
+    call: SEXP,
+    x: SEXP,
+    rhs: SEXP,
+    indices: &[SEXP],
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let mut x = x;
+        if crate::sexp::accessors::NAMED(x) > 1 {
+            x = crate::mainutils::duplicate::shallow_duplicate(x);
+        }
+        let _x = crate::sexp::protect::protect(x);
+        let _rhs = crate::sexp::protect::protect(rhs);
+        let _index_roots = indices
+            .iter()
+            .map(|index| crate::sexp::protect::protect(*index))
+            .collect::<Vec<_>>();
+        let value = Rf_cons(rhs, R_NilValue());
+        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
+        let mut args = value;
+        let mut roots = Vec::with_capacity(indices.len() + 1);
+        roots.push(crate::sexp::protect::protect(args));
+        for &index in indices.iter().rev() {
+            args = Rf_cons(index, args);
+            roots.push(crate::sexp::protect::protect(args));
+        }
+        args = Rf_cons(x, args);
+        let _args = crate::sexp::protect::protect(args);
+        let _ = roots;
+        crate::mainutils::subassign::do_subassign_dflt(
+            call,
+            crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+            args,
+            rho,
+        )
+    }
+}
+
 /// GNU AND/OR/NOT reuse the same primitive as interpreted `&` / `|` / `!`.
 unsafe fn eval_gnu_logic(
     call: SEXP,
@@ -1632,7 +1672,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     stack.set_depth(frame.marker);
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_STARTSUBASSIGN => {
+                super::bytecode::GNU_OP_STARTSUBASSIGN
+                | super::bytecode::GNU_OP_STARTSUBASSIGN2 => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
                     pc += 2;
@@ -1653,7 +1694,12 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         lhs
                     };
                     if let Some(value) = with_stack_rooted(&stack, rhs, || {
-                        eval_gnu_startsubassign_n(c"[<-", call, lhs, rhs, rho)
+                        let generic = if opcode == super::bytecode::GNU_OP_STARTSUBASSIGN2 {
+                            c"[[<-"
+                        } else {
+                            c"[<-"
+                        };
+                        eval_gnu_startsubassign_n(generic, call, lhs, rhs, rho)
                     }) {
                         stack_pop_checked(&mut stack, "GNU STARTSUBASSIGN dispatched rhs");
                         let index = stack.depth() - 1;
@@ -1677,7 +1723,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         });
                     }
                 }
-                super::bytecode::GNU_OP_DFLTSUBASSIGN => {
+                super::bytecode::GNU_OP_DFLTSUBASSIGN
+                | super::bytecode::GNU_OP_DFLTSUBASSIGN2 => {
                     let frame = gnu_call_frames.pop().unwrap_or_else(|| {
                         bc_error("GNU DFLTSUBASSIGN has no active STARTSUBASSIGN frame")
                     });
@@ -1721,12 +1768,21 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         {
                             crate::sexp::accessors::SETTAG(args, *tag);
                         }
-                        crate::mainutils::subassign::do_subassign_dflt(
-                            frame.call,
-                            crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
-                            args,
-                            rho,
-                        )
+                        if opcode == super::bytecode::GNU_OP_DFLTSUBASSIGN2 {
+                            crate::mainutils::subassign::do_subassign2_dflt(
+                                frame.call,
+                                crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
+                                args,
+                                rho,
+                            )
+                        } else {
+                            crate::mainutils::subassign::do_subassign_dflt(
+                                frame.call,
+                                crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                                args,
+                                rho,
+                            )
+                        }
                     });
                     stack.set_depth(frame.marker);
                     stack.push(result);
@@ -1851,6 +1907,26 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let x = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN object");
                     let result = with_stack_rooted(&stack, rhs, || {
                         eval_gnu_matsubassign(call, x, rhs, row, column, rho)
+                    });
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_SUBASSIGN_N => {
+                    let call_index = words[pc] as usize;
+                    let rank = words[pc + 1];
+                    pc += 2;
+                    if rank < 0 {
+                        bc_error("GNU SUBASSIGN_N rank is negative");
+                    }
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let mut indices = Vec::with_capacity(rank as usize);
+                    for _ in 0..rank {
+                        indices.push(stack_pop_checked(&mut stack, "GNU SUBASSIGN_N index"));
+                    }
+                    indices.reverse();
+                    let rhs = stack_pop_checked(&mut stack, "GNU SUBASSIGN_N rhs");
+                    let x = stack_pop_checked(&mut stack, "GNU SUBASSIGN_N object");
+                    let result = with_stack_rooted(&stack, rhs, || {
+                        eval_gnu_subassign_indices(call, x, rhs, &indices, rho)
                     });
                     stack.push(result);
                 }

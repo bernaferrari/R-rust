@@ -172,6 +172,8 @@ pub const GNU_OP_STARTSUBSET: c_int = 63;
 pub const GNU_OP_DFLTSUBSET: c_int = 64;
 pub const GNU_OP_STARTSUBASSIGN: c_int = 65;
 pub const GNU_OP_DFLTSUBASSIGN: c_int = 66;
+pub const GNU_OP_STARTSUBASSIGN2: c_int = 71;
+pub const GNU_OP_DFLTSUBASSIGN2: c_int = 72;
 pub const GNU_OP_DOLLAR: c_int = 73;
 pub const GNU_OP_DOLLARGETS: c_int = 74;
 pub const GNU_OP_ISNULL: c_int = 75;
@@ -195,6 +197,7 @@ pub const GNU_OP_STARTSUBSET2_N: c_int = 110;
 pub const GNU_OP_SUBSET_N: c_int = 112;
 pub const GNU_OP_VECSUBASSIGN2: c_int = 108;
 pub const GNU_OP_STARTSUBASSIGN2_N: c_int = 111;
+pub const GNU_OP_SUBASSIGN_N: c_int = 114;
 
 pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
@@ -336,7 +339,7 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
             | GNU_OP_ISNUMERIC | GNU_OP_DOMISSING | GNU_OP_DFLTSUBSET
-            | GNU_OP_DFLTSUBASSIGN => {}
+            | GNU_OP_DFLTSUBASSIGN | GNU_OP_DFLTSUBASSIGN2 => {}
             GNU_OP_STARTASSIGN | GNU_OP_ENDASSIGN => {
                 let index = code[pc];
                 if index < 0 {
@@ -379,7 +382,8 @@ fn validate_gnu_adapter_impl(
                 }
             }
             GNU_OP_STARTSUBSET | GNU_OP_STARTSUBSET_N | GNU_OP_STARTSUBSET2_N
-            | GNU_OP_STARTSUBASSIGN_N | GNU_OP_STARTSUBASSIGN2_N | GNU_OP_STARTSUBASSIGN => {
+            | GNU_OP_STARTSUBASSIGN_N | GNU_OP_STARTSUBASSIGN2_N | GNU_OP_STARTSUBASSIGN
+            | GNU_OP_STARTSUBASSIGN2 => {
                 let call_index = code[pc];
                 let target = code[pc + 1];
                 let name = match opcode {
@@ -388,6 +392,7 @@ fn validate_gnu_adapter_impl(
                     GNU_OP_STARTSUBSET2_N => "STARTSUBSET2_N",
                     GNU_OP_STARTSUBASSIGN => "STARTSUBASSIGN",
                     GNU_OP_STARTSUBASSIGN2_N => "STARTSUBASSIGN2_N",
+                    GNU_OP_STARTSUBASSIGN2 => "STARTSUBASSIGN2",
                     _ => "STARTSUBASSIGN_N",
                 };
                 if call_index < 0 || call_index as usize >= constant_count {
@@ -430,6 +435,18 @@ fn validate_gnu_adapter_impl(
                 }
                 if rank < 0 {
                     return Err(format!("GNU SUBSET_N rank {rank} is negative"));
+                }
+            }
+            GNU_OP_SUBASSIGN_N => {
+                let call_index = code[pc];
+                let rank = code[pc + 1];
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU SUBASSIGN_N expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+                if rank < 0 {
+                    return Err(format!("GNU SUBASSIGN_N rank {rank} is negative"));
                 }
             }
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
@@ -847,7 +864,7 @@ fn validate_gnu_adapter_impl(
                     call_stack.clone(),
                 ));
             }
-            GNU_OP_STARTSUBASSIGN => {
+            GNU_OP_STARTSUBASSIGN | GNU_OP_STARTSUBASSIGN2 => {
                 if depth < 2 {
                     return Err(format!(
                         "GNU STARTSUBASSIGN at instruction {instruction_pc} has stack depth {depth}, requires 2"
@@ -904,7 +921,7 @@ fn validate_gnu_adapter_impl(
                     call_stack.clone(),
                 ));
             }
-            GNU_OP_DFLTSUBASSIGN => {
+            GNU_OP_DFLTSUBASSIGN | GNU_OP_DFLTSUBASSIGN2 => {
                 let Some(marker) = call_stack.pop() else {
                     return Err(format!(
                         "GNU DFLTSUBASSIGN at instruction {instruction_pc} has no active STARTSUBASSIGN frame"
@@ -947,6 +964,26 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 pending.push((next, depth - rank as usize, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_SUBASSIGN_N => {
+                let rank = code[instruction_pc + 2];
+                if rank < 0 {
+                    return Err(format!(
+                        "GNU SUBASSIGN_N at instruction {instruction_pc} has negative rank {rank}"
+                    ));
+                }
+                let needed = rank as usize + 2;
+                if depth < needed {
+                    return Err(format!(
+                        "GNU SUBASSIGN_N at instruction {instruction_pc} has stack depth {depth}, requires {needed}"
+                    ));
+                }
+                pending.push((
+                    next,
+                    depth - rank as usize - 1,
+                    loop_stack,
+                    call_stack.clone(),
+                ));
             }
             GNU_OP_VECSUBASSIGN | GNU_OP_VECSUBASSIGN2 => {
                 if depth < 3 {
@@ -2577,6 +2614,32 @@ mod tests {
     }
 
     #[test]
+    fn gnu_dfltsubassign2_validator_accepts_missing_index_stream() {
+        // compiler:::disassemble(cmpfun(function(x,v){x[[]]<-v;x}, options=list(optimize=3)))
+        let empty = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTASSIGN,
+            2,
+            GNU_OP_STARTSUBASSIGN2,
+            4,
+            10,
+            GNU_OP_DOMISSING,
+            GNU_OP_DFLTSUBASSIGN2,
+            GNU_OP_ENDASSIGN,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&empty, 7), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 71, 0, 4, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 61, 1, 72, 1], 2).is_err());
+    }
+
+    #[test]
     fn gnu_matsubset_validator_accepts_matrix_and_array_streams() {
         // compiler:::disassemble(cmpfun(function(x) x[1L,2L], options=list(optimize=3)))
         let mat_const = [
@@ -2692,6 +2755,67 @@ mod tests {
         assert!(validate_gnu_adapter_stream(&[12, 87, 0, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 87, 0, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 16, 1, 16, 1, 87, 2, 1], 2).is_err());
+    }
+
+    #[test]
+    fn gnu_subassign_n_validator_accepts_array_streams() {
+        // compiler:::disassemble(cmpfun(function(x,v){x[1L,2L,3L]<-v;x}, options=list(optimize=3)))
+        let const_idx = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTASSIGN,
+            2,
+            GNU_OP_STARTSUBASSIGN_N,
+            4,
+            17,
+            GNU_OP_LDCONST,
+            6,
+            GNU_OP_LDCONST,
+            7,
+            GNU_OP_LDCONST,
+            8,
+            GNU_OP_SUBASSIGN_N,
+            4,
+            3,
+            GNU_OP_ENDASSIGN,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&const_idx, 9), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x,i,j,k,v){x[i,j,k]<-v;x}, options=list(optimize=3)))
+        let vars = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTASSIGN,
+            2,
+            GNU_OP_STARTSUBASSIGN_N,
+            4,
+            17,
+            GNU_OP_GETVAR_MISSOK,
+            6,
+            GNU_OP_GETVAR_MISSOK,
+            7,
+            GNU_OP_GETVAR_MISSOK,
+            8,
+            GNU_OP_SUBASSIGN_N,
+            4,
+            3,
+            GNU_OP_ENDASSIGN,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&vars, 9), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 114, 0, 3, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 114, 0, 3, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 16, 1, 114, 0, -1, 1], 2).is_err());
     }
 
     #[test]
