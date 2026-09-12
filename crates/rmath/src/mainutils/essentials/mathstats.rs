@@ -1360,6 +1360,101 @@ pub unsafe fn do_jitter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 
+/// GNU `margin.table(x, margin)`.
+pub unsafe fn do_margin_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let margin_arg = CAR(CDR(args));
+        let xt = TYPEOF(x);
+        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'x' is not an array",
+            );
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (nr, nc) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as i64, *INTEGER(dim).add(1) as i64)
+        } else {
+            (XLENGTH(x), 1)
+        };
+        let has_margin = !margin_arg.is_null()
+            && margin_arg != R_NilValue()
+            && XLENGTH(margin_arg) > 0;
+        if !has_margin {
+            let mut acc = 0.0;
+            let n = XLENGTH(x);
+            for i in 0..n {
+                acc += if xt == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i as usize)
+                } else {
+                    *INTEGER(x).add(i as usize) as f64
+                };
+            }
+            return if xt == SEXPTYPE::REALSXP {
+                Rf_ScalarReal(acc)
+            } else {
+                Rf_ScalarInteger(acc as c_int)
+            };
+        }
+        let margin = if TYPEOF(margin_arg) == SEXPTYPE::INTSXP {
+            *INTEGER(margin_arg)
+        } else if TYPEOF(margin_arg) == SEXPTYPE::REALSXP {
+            *REAL(margin_arg) as c_int
+        } else {
+            1
+        };
+        let out_n = if margin == 1 { nr } else { nc };
+        let result = Rf_allocVector3(
+            if xt == SEXPTYPE::REALSXP {
+                SEXPTYPE::REALSXP
+            } else {
+                SEXPTYPE::INTSXP
+            },
+            out_n,
+        );
+        let _r = protect(result);
+        if xt == SEXPTYPE::REALSXP {
+            for i in 0..out_n as usize {
+                *REAL(result).add(i) = 0.0;
+            }
+        } else {
+            for i in 0..out_n as usize {
+                *INTEGER(result).add(i) = 0;
+            }
+        }
+        for col in 0..nc {
+            for row in 0..nr {
+                let src = row + col * nr;
+                let val = if xt == SEXPTYPE::REALSXP {
+                    *REAL(x).add(src as usize)
+                } else {
+                    *INTEGER(x).add(src as usize) as f64
+                };
+                let dst = if margin == 1 { row } else { col };
+                if xt == SEXPTYPE::REALSXP {
+                    *REAL(result).add(dst as usize) += val;
+                } else {
+                    *INTEGER(result).add(dst as usize) += val as i32;
+                }
+            }
+        }
+        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+        *INTEGER(out_dim) = out_n as c_int;
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimSymbol(),
+            out_dim,
+        );
+        result
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
 // ---------------------------------------------------------------------------
