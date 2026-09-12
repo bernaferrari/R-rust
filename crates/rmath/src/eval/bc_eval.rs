@@ -164,6 +164,8 @@ struct GnuCallFrame {
     tags: Vec<(usize, SEXP)>,
     // STARTSUBSET/DFLTSUBSET accumulate raw arguments instead of wrapping
     // them as GETFUN promises. GNU INIT_CALL_FRAME(R_NilValue) does the same.
+    // STARTSUBASSIGN/DFLTSUBASSIGN reuse that raw frame, with lhs at marker
+    // and rhs in the next slot so missing indices can be pushed after it.
     raw_args: bool,
     call: SEXP,
 }
@@ -1580,6 +1582,105 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         )
                     });
                     super::runtime::set_visible(TRUE);
+                    stack.set_depth(frame.marker);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_STARTSUBASSIGN => {
+                    let call_index = words[pc] as usize;
+                    let target = words[pc + 1] as usize;
+                    pc += 2;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    if stack.depth() < 2 {
+                        bc_error("GNU STARTSUBASSIGN requires lhs and rhs");
+                    }
+                    let rhs = stack_top_checked(&stack, "GNU STARTSUBASSIGN rhs");
+                    let lhs_slot = stack.depth() - 2;
+                    let lhs = stack_at_checked(&stack, lhs_slot, "GNU STARTSUBASSIGN lhs");
+                    let lhs = if crate::sexp::accessors::NAMED(lhs) > 1 {
+                        let copy = with_stack_rooted(&stack, lhs, || {
+                            crate::mainutils::duplicate::shallow_duplicate(lhs)
+                        });
+                        stack.set(lhs_slot, copy);
+                        copy
+                    } else {
+                        lhs
+                    };
+                    if let Some(value) = with_stack_rooted(&stack, rhs, || {
+                        eval_gnu_startsubassign_n(c"[<-", call, lhs, rhs, rho)
+                    }) {
+                        stack_pop_checked(&mut stack, "GNU STARTSUBASSIGN dispatched rhs");
+                        let index = stack.depth() - 1;
+                        stack.set(index, value);
+                        pc = target;
+                    } else {
+                        let tag = if !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+                            crate::sexp::accessors::TAG(CDR(call))
+                        } else {
+                            R_NilValue()
+                        };
+                        let mut tags = Vec::new();
+                        if tag != R_NilValue() {
+                            tags.push((lhs_slot, tag));
+                        }
+                        gnu_call_frames.push(GnuCallFrame {
+                            marker: lhs_slot,
+                            tags,
+                            raw_args: true,
+                            call,
+                        });
+                    }
+                }
+                super::bytecode::GNU_OP_DFLTSUBASSIGN => {
+                    let frame = gnu_call_frames.pop().unwrap_or_else(|| {
+                        bc_error("GNU DFLTSUBASSIGN has no active STARTSUBASSIGN frame")
+                    });
+                    if !frame.raw_args {
+                        bc_error("GNU DFLTSUBASSIGN requires a STARTSUBASSIGN call frame");
+                    }
+                    let depth = stack.depth();
+                    if depth < frame.marker + 2 {
+                        bc_error("GNU DFLTSUBASSIGN requires lhs and rhs");
+                    }
+                    let x = stack_at_checked(&stack, frame.marker, "GNU DFLTSUBASSIGN object");
+                    let rhs = stack_at_checked(&stack, frame.marker + 1, "GNU DFLTSUBASSIGN rhs");
+                    let result = with_stack_rooted(&stack, x, || {
+                        let mut args = R_NilValue();
+                        let mut argument_roots = Vec::new();
+                        let _tag_roots = frame
+                            .tags
+                            .iter()
+                            .map(|(_, tag)| crate::sexp::protect::protect(*tag))
+                            .collect::<Vec<_>>();
+                        let _call = crate::sexp::protect::protect(frame.call);
+                        args = Rf_cons(rhs, args);
+                        argument_roots.push(crate::sexp::protect::protect(args));
+                        crate::sexp::accessors::SETTAG(
+                            args,
+                            crate::sexp::symbol::Rf_install(c"value".as_ptr()),
+                        );
+                        for index in (frame.marker + 2..depth).rev() {
+                            args = Rf_cons(stack.at(index), args);
+                            argument_roots.push(crate::sexp::protect::protect(args));
+                            if let Some((_, tag)) =
+                                frame.tags.iter().find(|(slot, _)| *slot == index)
+                            {
+                                crate::sexp::accessors::SETTAG(args, *tag);
+                            }
+                        }
+                        args = Rf_cons(x, args);
+                        argument_roots.push(crate::sexp::protect::protect(args));
+                        if let Some((_, tag)) =
+                            frame.tags.iter().find(|(slot, _)| *slot == frame.marker)
+                        {
+                            crate::sexp::accessors::SETTAG(args, *tag);
+                        }
+                        crate::mainutils::subassign::do_subassign_dflt(
+                            frame.call,
+                            crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                            args,
+                            rho,
+                        )
+                    });
                     stack.set_depth(frame.marker);
                     stack.push(result);
                 }
