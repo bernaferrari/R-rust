@@ -1815,43 +1815,115 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
 /// Port of: static SEXP La_svd_cmplx(SEXP jobu, SEXP x, SEXP s, SEXP u, SEXP v)
 pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SEXP {
     unsafe {
-        if TYPEOF(jobu) != 16 {
-            Rf_error(b"'jobu' must be a character string\0".as_ptr() as *const c_char);
+        if TYPEOF(jobu) != STRSXP_C || XLENGTH(jobu) < 1 {
+            crate::sexp::context::r_error("'jobu' must be a character string");
         }
+        if TYPEOF(x) != CPLXSXP_C {
+            crate::sexp::context::r_error("'x' must be a complex matrix");
+        }
+        if TYPEOF(s) != REALSXP_C {
+            crate::sexp::context::r_error("'s' must be a numeric vector");
+        }
+        if TYPEOF(u) != CPLXSXP_C {
+            crate::sexp::context::r_error("'u' must be a complex matrix");
+        }
+        if TYPEOF(v) != CPLXSXP_C {
+            crate::sexp::context::r_error("'v' must be a complex matrix");
+        }
+        let _jobu_guard = protect(jobu);
+        let _x_guard = protect(x);
+        let _s_guard = protect(s);
+        let _u_guard = protect(u);
+        let _v_guard = protect(v);
 
         let dim = getAttrib(x, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'x' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'x' must be a matrix");
         }
 
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let p = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
-        let xvals: *mut LapRcomplex;
-        let mut x = x;
-        let mut _x_guard = None;
-        if TYPEOF(x) != 15 {
-            x = coerceVector(x, CPLXSXP_C);
-            _x_guard = Some(protect(x));
-            xvals = COMPLEX(x) as *mut LapRcomplex;
-        } else {
-            let len = (n as usize) * (p as usize);
-            xvals = R_alloc(len, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
-            ptr::copy_nonoverlapping(COMPLEX(x) as *const LapRcomplex, xvals, len);
+        let n = INTEGER(dim).add(0).read();
+        let p = INTEGER(dim).add(1).read();
+        if n < 0 || p < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
+
+        let Some(len) = (n as usize).checked_mul(p as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(x) as usize != len {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+
+        let min_np = if n < p { n } else { p };
+        if XLENGTH(s) as usize != min_np as usize {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
         }
 
         let u_dims = getAttrib(u, R_DimSymbol());
-        let ldu = INTEGER(coerceVector(u_dims, INTSXP_C)).add(0).read() as i32;
+        if u_dims.is_null() || TYPEOF(u_dims) != INTSXP_C || XLENGTH(u_dims) != 2 {
+            crate::sexp::context::r_error("'u' must be a matrix");
+        }
+        let ldu = INTEGER(u_dims).add(0).read();
+        let u_cols = INTEGER(u_dims).add(1).read();
+        if ldu < 0 || u_cols < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
+        let Some(len_u) = (ldu as usize).checked_mul(u_cols as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len_u > c_int::MAX as usize || XLENGTH(u) as usize != len_u {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
 
         let vt_dims = getAttrib(v, R_DimSymbol());
-        let ldvt = INTEGER(coerceVector(vt_dims, INTSXP_C)).add(0).read() as i32;
+        if vt_dims.is_null() || TYPEOF(vt_dims) != INTSXP_C || XLENGTH(vt_dims) != 2 {
+            crate::sexp::context::r_error("'v' must be a matrix");
+        }
+        let ldvt = INTEGER(vt_dims).add(0).read();
+        let vt_cols = INTEGER(vt_dims).add(1).read();
+        if ldvt < 0 || vt_cols < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
+        let Some(len_vt) = (ldvt as usize).checked_mul(vt_cols as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len_vt > c_int::MAX as usize || XLENGTH(v) as usize != len_vt {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
 
         let ju = CHAR(STRING_ELT(jobu, 0)) as *const u8;
-        let min_np = if n < p { n } else { p };
 
-        // Query optimal work sizes
+        let Some(iwork_len) = (min_np as usize).checked_mul(8) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let rwork_len = min_np as usize;
+        let Some(scratch_bytes) = len
+            .checked_mul(std::mem::size_of::<LapRcomplex>())
+            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(iwork_len.checked_mul(std::mem::size_of::<c_int>())?)
+            })
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native SVD workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
+
+        let mut x_copy: Vec<LapRcomplex> = vec![LapRcomplex::default(); len];
+        if len != 0 {
+            ptr::copy_nonoverlapping(COMPLEX(x) as *const LapRcomplex, x_copy.as_mut_ptr(), len);
+        }
+        let mut rwork = vec![0.0f64; rwork_len];
+        let mut iwork = vec![0 as c_int; iwork_len];
+
         let mut tmp = LapRcomplex::default();
-        let mut rwork = vec![0.0f64; min_np as usize];
-        let iwork = R_alloc(8 * min_np as usize, std::mem::size_of::<c_int>()) as *mut c_int;
         let mut info: c_int = 0;
         let mut lwork: c_int = -1;
 
@@ -1859,7 +1931,7 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
             ju,
             &n,
             &p,
-            xvals,
+            x_copy.as_mut_ptr(),
             &n,
             REAL(s),
             COMPLEX(u) as *mut LapRcomplex,
@@ -1869,37 +1941,56 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
             &mut tmp,
             &lwork,
             rwork.as_mut_ptr(),
-            iwork,
+            iwork.as_mut_ptr(),
             &mut info,
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zgesdd'\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error("error code from Lapack routine 'zgesdd'");
         }
 
-        lwork = tmp.r as c_int;
-        let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
+        if n > 0 && p > 0 {
+            if !tmp.r.is_finite() || tmp.r < 1.0 || tmp.r > c_int::MAX as f64 {
+                crate::sexp::context::r_error(
+                    "invalid workspace size from Lapack routine 'zgesdd'",
+                );
+            }
+            lwork = tmp.r as c_int;
+            let work_bytes = (lwork as usize)
+                .checked_mul(std::mem::size_of::<LapRcomplex>())
+                .unwrap_or_else(|| crate::sexp::context::r_error("invalid SVD workspace size"));
+            let work_reservation = with_current_instance(|instance| {
+                with_arena_in(instance, |arena| arena.try_reserve_transient(work_bytes))
+            });
+            if matches!(work_reservation, Some(None)) {
+                crate::sexp::context::r_error(
+                    "allocation failed: native SVD workspace exceeds resource limit",
+                );
+            }
+            let _work_reservation = work_reservation.flatten();
+            let mut work = vec![LapRcomplex::default(); lwork as usize];
 
-        super::backend::zgesdd_(
-            ju,
-            &n,
-            &p,
-            xvals,
-            &n,
-            REAL(s),
-            COMPLEX(u) as *mut LapRcomplex,
-            &ldu,
-            COMPLEX(v) as *mut LapRcomplex,
-            &ldvt,
-            work,
-            &lwork,
-            rwork.as_mut_ptr(),
-            iwork,
-            &mut info,
-        );
+            super::backend::zgesdd_(
+                ju,
+                &n,
+                &p,
+                x_copy.as_mut_ptr(),
+                &n,
+                REAL(s),
+                COMPLEX(u) as *mut LapRcomplex,
+                &ldu,
+                COMPLEX(v) as *mut LapRcomplex,
+                &ldvt,
+                work.as_mut_ptr(),
+                &lwork,
+                rwork.as_mut_ptr(),
+                iwork.as_mut_ptr(),
+                &mut info,
+            );
 
-        if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zgesdd'\0".as_ptr() as *const c_char);
+            if info != 0 {
+                crate::sexp::context::r_error("error code from Lapack routine 'zgesdd'");
+            }
         }
 
         let val = Rf_allocVector(VECSXP_C, 3);

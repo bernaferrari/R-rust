@@ -86,3 +86,6 @@ mod complex_solve_tests;
 
 #[cfg(test)]
 mod real_svd_tests;
+
+#[cfg(test)]
+mod complex_svd_tests;
