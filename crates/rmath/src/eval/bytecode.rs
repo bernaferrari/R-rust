@@ -163,6 +163,15 @@ pub const GNU_OP_NOT: c_int = 59;
 pub const GNU_OP_AND2ND: c_int = 89;
 pub const GNU_OP_OR1ST: c_int = 90;
 pub const GNU_OP_OR2ND: c_int = 91;
+pub const GNU_OP_ISNULL: c_int = 75;
+pub const GNU_OP_ISLOGICAL: c_int = 76;
+pub const GNU_OP_ISINTEGER: c_int = 77;
+pub const GNU_OP_ISDOUBLE: c_int = 78;
+pub const GNU_OP_ISCOMPLEX: c_int = 79;
+pub const GNU_OP_ISCHARACTER: c_int = 80;
+pub const GNU_OP_ISSYMBOL: c_int = 81;
+pub const GNU_OP_ISOBJECT: c_int = 82;
+pub const GNU_OP_ISNUMERIC: c_int = 83;
 
 pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
@@ -300,7 +309,10 @@ fn validate_gnu_adapter_impl(
         match opcode {
             GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
             | GNU_OP_POP | GNU_OP_ENDFOR | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG
-            | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG | GNU_OP_CHECKFUN | GNU_OP_DUP => {}
+            | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG | GNU_OP_CHECKFUN | GNU_OP_DUP
+            | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
+            | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
+            | GNU_OP_ISNUMERIC => {}
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
@@ -695,7 +707,10 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
-            GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT => {
+            GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT
+            | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
+            | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
+            | GNU_OP_ISNUMERIC => {
                 if depth < 1 {
                     return Err(format!(
                         "GNU unary opcode {opcode} at instruction {instruction_pc} has empty stack"
@@ -1966,5 +1981,44 @@ mod tests {
         assert!(validate_gnu_adapter_stream(&underflow, 2).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 59, 0, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 1, 20, 2, 57, 3, 1], 3).is_err());
+    }
+
+    #[test]
+    fn gnu_istype_validator_accepts_isnull_family() {
+        // compiler:::disassemble(cmpfun(function(x) is.null(x), options=list(optimize=3)))
+        let null_stream = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_ISNULL,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&null_stream, 2), Ok(true));
+        let integer_stream = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_ISINTEGER,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&integer_stream, 2), Ok(true));
+        let object_stream = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_ISOBJECT,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&object_stream, 2), Ok(true));
+        // ISNUMERIC is emitted only by older/hand-built streams; still accept it.
+        let numeric_stream = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_ISNUMERIC,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&numeric_stream, 2), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 75, 1], 1).is_err());
     }
 }

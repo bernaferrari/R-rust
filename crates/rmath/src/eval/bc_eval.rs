@@ -370,6 +370,41 @@ unsafe fn eval_bc_condition(val: SEXP) -> bool {
     }
 }
 
+/// GNU ISNULL..ISNUMERIC match eval.c DO_ISTEST/DO_ISTYPE.
+/// is.integer excludes factors; is.numeric is numeric-but-not-logical.
+unsafe fn eval_gnu_istype(opcode: c_int, value: SEXP) -> SEXP {
+    unsafe {
+        use super::bytecode::{
+            GNU_OP_ISCHARACTER, GNU_OP_ISCOMPLEX, GNU_OP_ISDOUBLE, GNU_OP_ISINTEGER,
+            GNU_OP_ISLOGICAL, GNU_OP_ISNULL, GNU_OP_ISNUMERIC, GNU_OP_ISOBJECT,
+            GNU_OP_ISSYMBOL,
+        };
+        let test = match opcode {
+            GNU_OP_ISNULL => TYPEOF(value) == SEXPTYPE::NILSXP,
+            GNU_OP_ISLOGICAL => TYPEOF(value) == SEXPTYPE::LGLSXP,
+            GNU_OP_ISINTEGER => {
+                TYPEOF(value) == SEXPTYPE::INTSXP
+                    && crate::mainutils::seq::inherits(value, c"factor".as_ptr()) == 0
+            }
+            GNU_OP_ISDOUBLE => TYPEOF(value) == SEXPTYPE::REALSXP,
+            GNU_OP_ISCOMPLEX => TYPEOF(value) == SEXPTYPE::CPLXSXP,
+            GNU_OP_ISCHARACTER => TYPEOF(value) == SEXPTYPE::STRSXP,
+            GNU_OP_ISSYMBOL => TYPEOF(value) == SEXPTYPE::SYMSXP,
+            GNU_OP_ISOBJECT => crate::sexp::accessors::OBJECT(value) != 0,
+            GNU_OP_ISNUMERIC => {
+                (TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::REALSXP)
+                    && crate::mainutils::seq::inherits(value, c"factor".as_ptr()) == 0
+            }
+            _ => unreachable!(),
+        };
+        if test {
+            crate::mainutils::relop::R_TrueValue()
+        } else {
+            crate::mainutils::relop::R_FalseValue()
+        }
+    }
+}
+
 /// GNU AND/OR/NOT reuse the same primitive as interpreted `&` / `|` / `!`.
 unsafe fn eval_gnu_logic(
     call: SEXP,
@@ -1115,6 +1150,22 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let value = stack_pop_checked(&mut stack, "GNU NOT");
                     let result = with_stack_rooted(&stack, value, || {
                         eval_gnu_logic(call, c"!", value, None, rho)
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_ISNULL
+                | super::bytecode::GNU_OP_ISLOGICAL
+                | super::bytecode::GNU_OP_ISINTEGER
+                | super::bytecode::GNU_OP_ISDOUBLE
+                | super::bytecode::GNU_OP_ISCOMPLEX
+                | super::bytecode::GNU_OP_ISCHARACTER
+                | super::bytecode::GNU_OP_ISSYMBOL
+                | super::bytecode::GNU_OP_ISOBJECT
+                | super::bytecode::GNU_OP_ISNUMERIC => {
+                    let value = stack_pop_checked(&mut stack, "GNU is-type opcode");
+                    let result = with_stack_rooted(&stack, value, || {
+                        eval_gnu_istype(opcode, value)
                     });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
