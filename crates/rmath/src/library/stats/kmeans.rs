@@ -2,6 +2,7 @@ use core::ffi::c_int;
 use std::slice;
 
 use crate::main::errors::Rf_error;
+use crate::sexp::ffi::SEXP;
 
 fn kmeans_lloyd_impl(
     x: &[f64],
@@ -246,3 +247,100 @@ pub unsafe fn kmnsqpr_(
         Rf_error(b"kmeans tracing stub kmnsqpr_ is not implemented\0".as_ptr() as *const _);
     }
 }
+
+/// GNU `kmeans(x, k)` Lloyd, min/max initial centers.
+pub unsafe fn do_kmeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkString};
+        use crate::sexp::ffi::{SEXP, SEXPTYPE};
+        use crate::sexp::globals::R_NilValue;
+        use crate::sexp::protect::protect;
+        let x0 = CAR(args);
+        let karg = CAR(CDR(args));
+        let n = XLENGTH(x0) as c_int;
+        let k = if TYPEOF(karg) == SEXPTYPE::INTSXP {
+            *INTEGER(karg)
+        } else if TYPEOF(karg) == SEXPTYPE::REALSXP {
+            *REAL(karg) as c_int
+        } else {
+            2
+        };
+        if k < 1 || k > n {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "number of cluster centres must lie between 1 and nrow(x)",
+            );
+        }
+        let mut x = vec![0.0f64; n as usize];
+        let mut xmin = f64::INFINITY;
+        let mut xmax = f64::NEG_INFINITY;
+        for i in 0..n as usize {
+            let v = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                *REAL(x0).add(i)
+            } else {
+                *INTEGER(x0).add(i) as f64
+            };
+            x[i] = v;
+            xmin = xmin.min(v);
+            xmax = xmax.max(v);
+        }
+        let mut cen = vec![0.0f64; k as usize];
+        if k == 1 {
+            cen[0] = xmin;
+        } else {
+            for j in 0..k as usize {
+                cen[j] = xmin + (xmax - xmin) * (j as f64) / ((k - 1) as f64);
+            }
+        }
+        let mut cl = vec![0i32; n as usize];
+        let mut nc = vec![0i32; k as usize];
+        let mut wss = vec![0.0f64; k as usize];
+        let mut maxiter: c_int = 10;
+        let p: c_int = 1;
+        kmeans_Lloyd(
+            x.as_mut_ptr(),
+            &n,
+            &p,
+            cen.as_mut_ptr(),
+            &k,
+            cl.as_mut_ptr(),
+            &mut maxiter,
+            nc.as_mut_ptr(),
+            wss.as_mut_ptr(),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        let cluster = Rf_allocVector3(SEXPTYPE::INTSXP, n as i64);
+        for i in 0..n as usize {
+            *INTEGER(cluster).add(i) = cl[i];
+        }
+        let centers = Rf_allocVector3(SEXPTYPE::REALSXP, k as i64);
+        for j in 0..k as usize {
+            *REAL(centers).add(j) = cen[j];
+        }
+        let size = Rf_allocVector3(SEXPTYPE::INTSXP, k as i64);
+        for j in 0..k as usize {
+            *INTEGER(size).add(j) = nc[j];
+        }
+        SET_VECTOR_ELT(result, 0, cluster);
+        SET_VECTOR_ELT(result, 1, centers);
+        SET_VECTOR_ELT(result, 2, size);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "cluster".to_string(),
+                "centers".to_string(),
+                "size".to_string(),
+            ],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"kmeans".as_ptr()),
+        );
+        let _ = R_NilValue();
+        result
+    }
+}
+

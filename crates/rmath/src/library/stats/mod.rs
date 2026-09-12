@@ -23,7 +23,7 @@ mod init;
 mod integrate;
 pub(crate) mod isoreg;
 mod kendall;
-mod kmeans;
+pub(crate) mod kmeans;
 pub(crate) mod ksmooth;
 pub(crate) mod line;
 mod lm;
