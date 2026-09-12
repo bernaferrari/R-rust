@@ -165,6 +165,9 @@ pub const GNU_OP_OR1ST: c_int = 90;
 pub const GNU_OP_OR2ND: c_int = 91;
 pub const GNU_OP_STARTASSIGN: c_int = 61;
 pub const GNU_OP_ENDASSIGN: c_int = 62;
+pub const GNU_OP_DOMISSING: c_int = 30;
+pub const GNU_OP_STARTSUBSET: c_int = 63;
+pub const GNU_OP_DFLTSUBSET: c_int = 64;
 pub const GNU_OP_DOLLAR: c_int = 73;
 pub const GNU_OP_DOLLARGETS: c_int = 74;
 pub const GNU_OP_ISNULL: c_int = 75;
@@ -323,7 +326,7 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG | GNU_OP_CHECKFUN | GNU_OP_DUP
             | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
-            | GNU_OP_ISNUMERIC => {}
+            | GNU_OP_ISNUMERIC | GNU_OP_DOMISSING | GNU_OP_DFLTSUBSET => {}
             GNU_OP_STARTASSIGN | GNU_OP_ENDASSIGN => {
                 let index = code[pc];
                 if index < 0 {
@@ -352,10 +355,12 @@ fn validate_gnu_adapter_impl(
                     }
                 }
             }
-            GNU_OP_STARTSUBSET_N | GNU_OP_STARTSUBSET2_N | GNU_OP_STARTSUBASSIGN_N => {
+            GNU_OP_STARTSUBSET | GNU_OP_STARTSUBSET_N | GNU_OP_STARTSUBSET2_N
+            | GNU_OP_STARTSUBASSIGN_N => {
                 let call_index = code[pc];
                 let target = code[pc + 1];
                 let name = match opcode {
+                    GNU_OP_STARTSUBSET => "STARTSUBSET",
                     GNU_OP_STARTSUBSET_N => "STARTSUBSET_N",
                     GNU_OP_STARTSUBSET2_N => "STARTSUBSET2_N",
                     _ => "STARTSUBASSIGN_N",
@@ -749,6 +754,25 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
+            GNU_OP_STARTSUBSET => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU STARTSUBSET at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                if depth + 1 > 64 {
+                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                }
+                let mut entered = call_stack.clone();
+                entered.push(depth - 1);
+                pending.push((next, depth, loop_stack.clone(), entered));
+                pending.push((
+                    code[instruction_pc + 2] as usize,
+                    depth,
+                    loop_stack,
+                    call_stack.clone(),
+                ));
+            }
             GNU_OP_STARTSUBSET_N | GNU_OP_STARTSUBSET2_N => {
                 if depth == 0 {
                     return Err(format!(
@@ -762,6 +786,30 @@ fn validate_gnu_adapter_impl(
                     loop_stack,
                     call_stack.clone(),
                 ));
+            }
+            GNU_OP_DOMISSING => {
+                if call_stack.is_empty() {
+                    return Err(format!(
+                        "GNU DOMISSING at instruction {instruction_pc} has no active call frame"
+                    ));
+                }
+                if depth >= 64 {
+                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                }
+                pending.push((next, depth + 1, loop_stack, call_stack));
+            }
+            GNU_OP_DFLTSUBSET => {
+                let Some(marker) = call_stack.pop() else {
+                    return Err(format!(
+                        "GNU DFLTSUBSET at instruction {instruction_pc} has no active STARTSUBSET frame"
+                    ));
+                };
+                if depth <= marker {
+                    return Err(format!(
+                        "GNU DFLTSUBSET at instruction {instruction_pc} has stack depth {depth}, requires object"
+                    ));
+                }
+                pending.push((next, marker + 1, loop_stack, call_stack));
             }
             GNU_OP_STARTSUBASSIGN_N => {
                 if depth < 2 {
@@ -2283,5 +2331,55 @@ mod tests {
         assert!(validate_gnu_adapter_stream(&[12, 104, 0, 1, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 84, 0, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 104, 2, 6, 1], 1).is_err());
+    }
+
+    #[test]
+    fn gnu_dfltsubset_validator_accepts_empty_index_stream() {
+        // compiler:::disassemble(cmpfun(function(x) x[], options=list(optimize=3)))
+        let empty = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET,
+            0,
+            8,
+            GNU_OP_DOMISSING,
+            GNU_OP_DFLTSUBSET,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&empty, 2), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x) x[,], options=list(optimize=3)))
+        let matrix_missing = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET,
+            0,
+            9,
+            GNU_OP_DOMISSING,
+            GNU_OP_DOMISSING,
+            GNU_OP_DFLTSUBSET,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&matrix_missing, 2), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x,i) x[i,], options=list(optimize=3)))
+        let row_missing = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET,
+            0,
+            11,
+            GNU_OP_GETVAR_MISSOK,
+            2,
+            GNU_OP_PUSHARG,
+            GNU_OP_DOMISSING,
+            GNU_OP_DFLTSUBSET,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&row_missing, 3), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 63, 0, 4, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 30, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 64, 1], 1).is_err());
     }
 }

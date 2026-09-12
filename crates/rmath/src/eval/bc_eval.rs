@@ -162,6 +162,10 @@ struct GnuCallFrame {
     // Stack slot and tag symbol for each SETTAG-ed promise. The slot is
     // resolved against the argument pairlist only when CALL rebuilds it.
     tags: Vec<(usize, SEXP)>,
+    // STARTSUBSET/DFLTSUBSET accumulate raw arguments instead of wrapping
+    // them as GETFUN promises. GNU INIT_CALL_FRAME(R_NilValue) does the same.
+    raw_args: bool,
+    call: SEXP,
 }
 
 /// Runtime loop context for compiled `while`/`for` loops — the port of
@@ -915,6 +919,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     gnu_call_frames.push(GnuCallFrame {
                         marker: stack.depth(),
                         tags: Vec::new(),
+                        raw_args: false,
+                        call: R_NilValue(),
                     });
                     stack.push(fun);
                 }
@@ -973,12 +979,16 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         bc_error("GNU PUSHARG has no preceding argument");
                     }
                     let value = stack_pop_checked(&mut stack, "GNU PUSHARG");
-                    let promise = with_stack_rooted(&stack, value, || {
-                        let promise = crate::sexp::memory_ext::mkPROMSXP(value, R_NilValue());
-                        crate::sexp::accessors::SET_PRVALUE(promise, value);
-                        promise
-                    });
-                    stack.push(promise);
+                    let stored = if gnu_call_frames.last().is_some_and(|frame| frame.raw_args) {
+                        value
+                    } else {
+                        with_stack_rooted(&stack, value, || {
+                            let promise = crate::sexp::memory_ext::mkPROMSXP(value, R_NilValue());
+                            crate::sexp::accessors::SET_PRVALUE(promise, value);
+                            promise
+                        })
+                    };
+                    stack.push(stored);
                 }
                 super::bytecode::GNU_OP_CHECKFUN => {
                     let fun = stack_top_checked(&stack, "GNU CHECKFUN");
@@ -992,6 +1002,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     gnu_call_frames.push(GnuCallFrame {
                         marker: stack.depth() - 1,
                         tags: Vec::new(),
+                        raw_args: false,
+                        call: R_NilValue(),
                     });
                 }
                 super::bytecode::GNU_OP_SETTAG => {
@@ -1420,6 +1432,83 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let _cell = stack_pop_checked(&mut stack, "GNU ENDASSIGN cell");
                     with_stack_rooted(&stack, value, || defineVar(symbol, value, rho));
                     super::runtime::set_visible(FALSE);
+                }
+                super::bytecode::GNU_OP_STARTSUBSET => {
+                    let call_index = words[pc] as usize;
+                    let target = words[pc + 1] as usize;
+                    pc += 2;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let x = stack_top_checked(&stack, "GNU STARTSUBSET");
+                    if let Some(value) = with_stack_rooted(&stack, x, || {
+                        eval_gnu_startsubset_n(c"[", call, x, rho)
+                    }) {
+                        let index = stack.depth() - 1;
+                        stack.set(index, value);
+                        pc = target;
+                    } else {
+                        let tag = if !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+                            crate::sexp::accessors::TAG(CDR(call))
+                        } else {
+                            R_NilValue()
+                        };
+                        let mut tags = Vec::new();
+                        if tag != R_NilValue() {
+                            tags.push((stack.depth() - 1, tag));
+                        }
+                        gnu_call_frames.push(GnuCallFrame {
+                            marker: stack.depth() - 1,
+                            tags,
+                            raw_args: true,
+                            call,
+                        });
+                    }
+                }
+                super::bytecode::GNU_OP_DOMISSING => {
+                    if gnu_call_frames.is_empty() {
+                        bc_error("GNU DOMISSING has no active call frame");
+                    }
+                    stack.push(R_MissingArg());
+                }
+                super::bytecode::GNU_OP_DFLTSUBSET => {
+                    let frame = gnu_call_frames
+                        .pop()
+                        .unwrap_or_else(|| bc_error("GNU DFLTSUBSET has no active STARTSUBSET frame"));
+                    if !frame.raw_args {
+                        bc_error("GNU DFLTSUBSET requires a STARTSUBSET call frame");
+                    }
+                    let depth = stack.depth();
+                    if depth <= frame.marker {
+                        bc_error("GNU DFLTSUBSET has no object");
+                    }
+                    let x = stack_at_checked(&stack, frame.marker, "GNU DFLTSUBSET object");
+                    let result = with_stack_rooted(&stack, x, || {
+                        let mut args = R_NilValue();
+                        let mut argument_roots = Vec::new();
+                        let _tag_roots = frame
+                            .tags
+                            .iter()
+                            .map(|(_, tag)| crate::sexp::protect::protect(*tag))
+                            .collect::<Vec<_>>();
+                        let _call = crate::sexp::protect::protect(frame.call);
+                        for index in (frame.marker..depth).rev() {
+                            args = Rf_cons(stack.at(index), args);
+                            argument_roots.push(crate::sexp::protect::protect(args));
+                            if let Some((_, tag)) =
+                                frame.tags.iter().find(|(slot, _)| *slot == index)
+                            {
+                                crate::sexp::accessors::SETTAG(args, *tag);
+                            }
+                        }
+                        crate::mainutils::subset::do_subset_dflt(
+                            frame.call,
+                            crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+                            args,
+                            rho,
+                        )
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.set_depth(frame.marker);
+                    stack.push(result);
                 }
                 super::bytecode::GNU_OP_STARTSUBSET_N | super::bytecode::GNU_OP_STARTSUBSET2_N => {
                     let call_index = words[pc] as usize;
