@@ -725,6 +725,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::qr_extract::do_qr_R,
     },
     EvaluatedBuiltin {
+        name: "qr.coef",
+        handler: crate::mainutils::qr_coef::do_qr_coef,
+    },
+    EvaluatedBuiltin {
         name: "qr",
         handler: crate::mainutils::qr::do_qr,
     },
