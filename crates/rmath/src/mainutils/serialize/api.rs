@@ -47,8 +47,18 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
         // Write native encoding (empty string for our purposes)
         write_i32_to_stream(0, stream); // encoding name length = 0
 
-        // Write the object using a temporary buffer, then stream it out
+        // Write the object using a temporary buffer, then stream it out.
+        // When the C stream carries an R persist hook, reuse the same
+        // PERSISTSXP protocol as public serialize(..., refhook=...).
         let mut writer = BinaryWriter::new();
+        let hook_data = out_ref.OutPersistHookData;
+        if out_ref.OutPersistHookFunc.is_some()
+            && !hook_data.is_null()
+            && hook_data != R_NilValue()
+            && (TYPEOF(hook_data) == SEXPTYPE::CLOSXP || TYPEOF(hook_data) == SEXPTYPE::BUILTINSXP || TYPEOF(hook_data) == SEXPTYPE::SPECIALSXP)
+        {
+            writer.set_persist_hook(hook_data);
+        }
         let mut ref_table = WriteHashTable::new();
         WriteItemInternal(s, &mut ref_table, &mut writer);
 
@@ -90,7 +100,12 @@ pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
             error("read error");
         }
         let raw = raw_from_bytes(&bytes);
-        R_unserialize(raw, R_NilValue())
+        let hook = if (*stream).InPersistHookData.is_null() {
+            R_NilValue()
+        } else {
+            (*stream).InPersistHookData
+        };
+        R_unserialize(raw, hook)
     }
 }
 

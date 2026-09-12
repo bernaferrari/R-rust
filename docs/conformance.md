@@ -487,6 +487,8 @@ gp bits so serialized persistent names match the GNU wire fixture. Eleven native
 hook tests and the rebuilt Wasm persistence contract pass. Stream/connection
 `R_Serialize`/`R_Unserialize` hooks remain separate.
 
+Real QR now uses the same caller-side checks as complex QR: signed dimensions, checked m*n arithmetic, exact payload length, and reserved a_copy/jpvt/tau plus the queried work array. Three focused native safety tests and the public qr() suite pass. This is still not total native memory accounting.
+
 Complex QR now reserves caller-owned scratch (`a_copy`, `rwork`, `jpvt`, `tau`,
 and the queried work array) against the active session budget, after checked
 dimension/length validation. Three focused native safety tests pass. This is
