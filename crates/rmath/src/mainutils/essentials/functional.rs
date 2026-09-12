@@ -2260,6 +2260,85 @@ pub unsafe fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 
+/// GNU `unstack` for a stacked values/ind data.frame.
+pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if TYPEOF(x) != SEXPTYPE::VECSXP {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'form' must be a two-sided formula",
+            );
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let mut values = R_NilValue();
+        let mut ind = R_NilValue();
+        if TYPEOF(names) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(x) {
+                let name = elt_to_string(names, i);
+                if name == "values" {
+                    values = VECTOR_ELT(x, i);
+                } else if name == "ind" {
+                    ind = VECTOR_ELT(x, i);
+                }
+            }
+        }
+        if values == R_NilValue() || ind == R_NilValue() {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'form' must be a two-sided formula",
+            );
+        }
+        let n = XLENGTH(values);
+        let levels = crate::sexp::attrib_core::getAttrib(
+            ind,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        );
+        let nlev = if !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP {
+            XLENGTH(levels)
+        } else {
+            0
+        };
+        if nlev == 0 {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'form' must be a two-sided formula",
+            );
+        }
+        let mut buckets: Vec<Vec<i64>> = vec![Vec::new(); nlev as usize];
+        for i in 0..n {
+            let code = if TYPEOF(ind) == SEXPTYPE::INTSXP {
+                *INTEGER(ind).add(i as usize)
+            } else {
+                0
+            };
+            if code >= 1 && (code as i64) <= nlev {
+                buckets[(code as usize) - 1].push(i);
+            }
+        }
+        let nrow = buckets.first().map(|b| b.len() as i64).unwrap_or(0);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, nlev);
+        let _result = protect(result);
+        let mut col_names: Vec<String> = Vec::new();
+        for (k, bucket) in buckets.iter().enumerate() {
+            let col = Rf_allocVector3(TYPEOF(values), bucket.len() as i64);
+            for (dst, &src) in bucket.iter().enumerate() {
+                copy_elt(values, src, col, dst as i64);
+            }
+            SET_VECTOR_ELT(result, k as i64, col);
+            col_names.push(elt_to_string(levels, k as i64));
+        }
+        set_string_names(result, &col_names);
+        set_compact_row_names(result, nrow);
+        set_data_frame_class(result);
+        result
+    }
+}
+
+
 pub(crate) unsafe fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
     unsafe {
         let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);

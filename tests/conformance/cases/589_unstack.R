@@ -1,0 +1,6 @@
+u <- unstack(stack(list(a = 1:2, b = 3:4)))
+cat(paste(u$a, collapse = ","), "\n", sep = "")
+cat(paste(u$b, collapse = ","), "\n", sep = "")
+cat(paste(class(u), collapse = ","), "\n", sep = "")
+cat(nrow(u), "\n", sep = "")
+cat(paste(names(u), collapse = ","), "\n", sep = "")

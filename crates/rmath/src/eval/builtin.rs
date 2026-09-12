@@ -1521,6 +1521,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_stack,
     },
     EvaluatedBuiltin {
+        name: "unstack",
+        handler: crate::mainutils::essentials::do_unstack,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
