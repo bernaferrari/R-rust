@@ -1541,6 +1541,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_margin_table,
     },
     EvaluatedBuiltin {
+        name: "mad",
+        handler: crate::mainutils::essentials::do_mad,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

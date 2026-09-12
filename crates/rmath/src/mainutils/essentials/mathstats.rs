@@ -1455,6 +1455,80 @@ pub unsafe fn do_margin_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 
+/// GNU `mad(x)` — median absolute deviation times 1.4826.
+pub unsafe fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_ScalarReal(NA_REAL);
+        }
+        let xt = TYPEOF(x);
+        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'x' must be numeric",
+            );
+        }
+        let mut constant = 1.4826;
+        let mut cell = CDR(args);
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "constant" || (name.is_empty() && pos == 1) {
+                let v = CAR(cell);
+                if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    constant = *REAL(v);
+                } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    constant = *INTEGER(v) as f64;
+                }
+            }
+            if name.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
+        }
+        let med_args = Rf_cons(x, R_NilValue());
+        let _ma = protect(med_args);
+        let center = crate::mainutils::essentials::do_median(call, op, med_args, rho);
+        let _c = protect(center);
+        let cval = if TYPEOF(center) == SEXPTYPE::REALSXP {
+            *REAL(center)
+        } else if TYPEOF(center) == SEXPTYPE::INTSXP {
+            *INTEGER(center) as f64
+        } else {
+            NA_REAL
+        };
+        let n = XLENGTH(x);
+        let absv = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _a = protect(absv);
+        for i in 0..n {
+            let xv = if xt == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                *INTEGER(x).add(i as usize) as f64
+            };
+            *REAL(absv).add(i as usize) = (xv - cval).abs();
+        }
+        let abs_args = Rf_cons(absv, R_NilValue());
+        let _aa = protect(abs_args);
+        let med = crate::mainutils::essentials::do_median(call, op, abs_args, rho);
+        let mval = if TYPEOF(med) == SEXPTYPE::REALSXP {
+            *REAL(med)
+        } else {
+            0.0
+        };
+        Rf_ScalarReal(constant * mval)
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
 // ---------------------------------------------------------------------------
