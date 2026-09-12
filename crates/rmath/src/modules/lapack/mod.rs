@@ -82,4 +82,7 @@ mod real_chol2inv_tests;
 mod real_solve_tests;
 
 #[cfg(test)]
+mod complex_solve_tests;
+
+#[cfg(test)]
 mod real_svd_tests;
