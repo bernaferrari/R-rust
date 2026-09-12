@@ -1561,6 +1561,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ecdf_apply,
     },
     EvaluatedBuiltin {
+        name: "density",
+        handler: crate::mainutils::essentials::do_density,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

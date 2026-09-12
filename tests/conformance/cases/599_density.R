@@ -1,0 +1,7 @@
+d <- density(1:5, n = 5)
+cat(paste(sprintf("%.8f", d$x), collapse = ","), "\n", sep = "")
+gnu_y <- c(0.00093702, 0.10340342, 0.19853866, 0.10340342, 0.00093702)
+cat(max(abs(d$y - gnu_y)) < 1e-5, "\n", sep = "")
+cat(d$n, "\n", sep = "")
+cat(sprintf("%.12f", d$bw), "\n", sep = "")
+cat(paste(class(d), collapse = ","), "\n", sep = "")

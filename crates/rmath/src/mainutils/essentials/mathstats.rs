@@ -1709,6 +1709,147 @@ pub unsafe fn do_ecdf_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 
 
+/// GNU `density.default` Gaussian / nrd0 / n grid.
+pub unsafe fn do_density(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let xt = TYPEOF(x);
+        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "argument 'x' must be numeric",
+            );
+        }
+        let n0 = XLENGTH(x);
+        let mut xs: Vec<f64> = Vec::new();
+        for i in 0..n0 {
+            let v = if xt == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    continue;
+                }
+                iv as f64
+            };
+            if v.is_finite() {
+                xs.push(v);
+            }
+        }
+        if xs.len() < 2 {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "need at least 2 points to select a bandwidth automatically",
+            );
+        }
+        let mut n_user: i64 = 512;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "n" {
+                let v = CAR(cell);
+                n_user = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v) as i64
+                } else if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v) as i64
+                } else {
+                    512
+                };
+            }
+            cell = CDR(cell);
+        }
+        if n_user < 1 {
+            n_user = 512;
+        }
+        let bw = bw_nrd0(&xs);
+        let xmin = xs.iter().copied().fold(f64::INFINITY, f64::min);
+        let xmax = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let from = xmin - 3.0 * bw;
+        let to = xmax + 3.0 * bw;
+        let n = n_user as usize;
+        let xgrid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _xg = protect(xgrid);
+        let ygrid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _yg = protect(ygrid);
+        let nx = xs.len() as f64;
+        for i in 0..n {
+            let t = if n == 1 {
+                from
+            } else {
+                from + (to - from) * (i as f64) / ((n - 1) as f64)
+            };
+            *REAL(xgrid).add(i) = t;
+            let mut acc = 0.0;
+            for &xi in &xs {
+                acc += crate::dist::normal::dnorm(t - xi, 0.0, bw, 0);
+            }
+            *REAL(ygrid).add(i) = acc / nx;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, xgrid);
+        SET_VECTOR_ELT(result, 1, ygrid);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(bw));
+        SET_VECTOR_ELT(result, 3, Rf_ScalarInteger(xs.len() as c_int));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "x".to_string(),
+                "y".to_string(),
+                "bw".to_string(),
+                "n".to_string(),
+            ],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"density".as_ptr()),
+        );
+        result
+    }
+}
+
+fn bw_nrd0(x: &[f64]) -> f64 {
+    let n = x.len() as f64;
+    let mean = x.iter().sum::<f64>() / n;
+    let var = x.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n - 1.0);
+    let sd = var.sqrt();
+    let mut xs = x.to_vec();
+    xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let iqr = if xs.len() < 2 {
+        0.0
+    } else {
+        // type-7 IQR matching do_iqr for 1:5 → 2
+        let q = |p: f64| -> f64 {
+            let h = (xs.len() as f64 - 1.0) * p;
+            let lo = h.floor() as usize;
+            let hi = (lo + 1).min(xs.len() - 1);
+            let f = h - lo as f64;
+            xs[lo] * (1.0 - f) + xs[hi] * f
+        };
+        q(0.75) - q(0.25)
+    };
+    let mut lo = sd.min(iqr / 1.34);
+    if lo == 0.0 {
+        lo = sd;
+    }
+    if lo == 0.0 {
+        lo = x[0].abs();
+    }
+    if lo == 0.0 {
+        lo = 1.0;
+    }
+    0.9 * lo * n.powf(-0.2)
+}
+
+
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
 // ---------------------------------------------------------------------------
