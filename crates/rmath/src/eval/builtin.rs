@@ -1297,6 +1297,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_encodeString,
     },
     EvaluatedBuiltin {
+        name: "Encoding",
+        handler: crate::mainutils::essentials::do_encoding,
+    },
+    EvaluatedBuiltin {
+        name: "Encoding<-",
+        handler: crate::mainutils::essentials::do_setencoding,
+    },
+    EvaluatedBuiltin {
         name: "tolower",
         handler: crate::mainutils::essentials::do_tolower,
     },

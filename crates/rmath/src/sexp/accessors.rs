@@ -1326,6 +1326,25 @@ pub unsafe fn IS_LATIN1(x: SEXP) -> c_int {
     if (gp & LATIN1_MASK) != 0 { 1 } else { 0 }
 }
 
+/// Set exactly one of UTF-8 / latin1 / bytes, or clear all (native/unknown).
+pub unsafe fn mark_charsxp_encoding(x: SEXP, kind: &str) {
+    if !is_valid_sexp_ptr(x) {
+        return;
+    }
+    unsafe {
+        let mut gp = (*x).sxpinfo.gp();
+        gp &= !(UTF8_MASK | LATIN1_MASK | BYTES_MASK);
+        match kind {
+            "UTF-8" => gp |= UTF8_MASK,
+            "latin1" => gp |= LATIN1_MASK,
+            "bytes" => gp |= BYTES_MASK,
+            _ => {}
+        }
+        (*x).sxpinfo.set_gp(gp);
+    }
+}
+
+
 /// ENC_KNOWN: check if CHARSXP has a known encoding.
 /// Returns the OR of LATIN1_MASK, UTF8_MASK, and BYTES_MASK bits.
 pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {
