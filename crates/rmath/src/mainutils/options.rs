@@ -605,7 +605,7 @@ unsafe fn SetOption(tag: SEXP, value: SEXP) -> SEXP {
 }
 
 /// Set or remove an option by plain string key. Returns old value.
-unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
+pub unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
     unsafe {
         let nil = R_NilValue();
         InitOptions();

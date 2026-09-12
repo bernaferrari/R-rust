@@ -1152,10 +1152,22 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
                 CPLXSXP => {
                     let mut wi: c_int = 0;
-                    let di: c_int = 0;
-                    let ei: c_int = 0;
-                    // formatComplex(COMPLEX(x), n, &mut w, &mut d, &mut e,
-                    //              &mut wi, &mut di, &mut ei, nsmall);
+                    let mut di: c_int = 0;
+                    let mut ei: c_int = 0;
+                    let mut wr: c_int = 0;
+                    let mut dr: c_int = 0;
+                    let mut er: c_int = 0;
+                    crate::mainutils::format::formatComplex(
+                        COMPLEX(x),
+                        n,
+                        &mut wr,
+                        &mut dr,
+                        &mut er,
+                        &mut wi,
+                        &mut di,
+                        &mut ei,
+                        nsmall,
+                    );
                     if trim != 0 {
                         wi = 0;
                         w = 0;
@@ -1172,7 +1184,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         } else {
                             *COMPLEX(x).add(i as usize)
                         };
-                        let s = EncodeComplex(val, w, d, e, wi, di, ei, my_OutDec);
+                        let s = EncodeComplex(val, w, dr, er, wi, di, ei, my_OutDec);
                         let ch = Rf_mkChar(s);
                         SET_STRING_ELT(result_y, i, ch);
                     }

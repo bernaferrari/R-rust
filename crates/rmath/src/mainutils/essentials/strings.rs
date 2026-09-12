@@ -842,6 +842,18 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         }
         let _result_guard = protect(result);
+        // GNU format.default numeric core: compute the common field
+        // parameters across the whole vector, encode each element with the
+        // Encode* printers, and right-justify to the shared width.
+        let x_type_now = TYPEOF(x);
+        if matches!(
+            x_type_now,
+            10 | 13 | 14 | 15
+        ) && !sexp_has_class(x, "POSIXct")
+            && !sexp_has_class(x, "Date")
+        {
+            return format_numeric_vector(x, n, args);
+        }
         for i in 0..n {
             let s = if TYPEOF(x) == SEXPTYPE::REALSXP {
                 let v = *REAL(x).add(i as usize);
@@ -873,6 +885,161 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 *data.add(i as usize) = charsxp;
             }
         }
+        result
+    }
+}
+
+/// GNU `format.default` for atomic numeric vectors: shared width/digits
+/// across the vector, honoring `digits`, `trim`, `nsmall`, and `width`
+/// from the remaining arguments (matched by tag or format.default's
+/// positional order after `x`).
+unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
+    unsafe {
+        let mut trim = false;
+        let mut digits_opt: Option<c_int> = None;
+        let mut nsmall: c_int = 0;
+        let mut width: c_int = 0;
+        let mut positional = 0;
+        let mut cell = crate::sexp::accessors::CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                crate::sexp::accessors::PRINTNAME(tag)
+            } else {
+                std::ptr::null_mut()
+            };
+            let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null()
+                && name != R_NilValue()
+            {
+                Some(
+                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name))
+                        .to_string_lossy(),
+                )
+            } else {
+                None
+            };
+            let slot = label
+                .as_deref()
+                .and_then(|label| match label {
+                    "trim" => Some(0),
+                    "digits" => Some(1),
+                    "nsmall" => Some(2),
+                    "justify" => Some(3),
+                    "width" => Some(4),
+                    _ => None,
+                })
+                .unwrap_or_else(|| {
+                    let slot = positional;
+                    positional += 1;
+                    slot
+                });
+            match slot {
+                0 => {
+                    let flag = crate::main::coerce::asLogical(value);
+                    trim = flag != 0;
+                }
+                1 => {
+                    let d = crate::main::coerce::asInteger(value);
+                    if d != NA_INTEGER {
+                        digits_opt = Some(d);
+                }
+                }
+                2 => {
+                    let v = crate::main::coerce::asInteger(value);
+                    if v != NA_INTEGER && v >= 0 && v <= 20 {
+                        nsmall = v;
+                    }
+                }
+                4 => {
+                    let v = crate::main::coerce::asInteger(value);
+                    if v != NA_INTEGER {
+                        width = v;
+                    }
+                }
+                _ => {}
+            }
+            cell = CDR(cell);
+        }
+
+        // formatReal/formatComplex read the live digits option; honor an
+        // explicit digits argument by swapping the option for this call.
+        let digits =
+            digits_opt.unwrap_or_else(|| crate::mainutils::options::GetOptionDigits());
+        let digits_value = crate::sexp::constructors::Rf_ScalarInteger(digits);
+        let _digits_value = protect(digits_value);
+        let saved_digits =
+            crate::mainutils::options::SetOptionByName("digits", digits_value);
+
+        let outdec = b".\0".as_ptr() as *const std::os::raw::c_char;
+        let mut wr: c_int = 0;
+        let mut dr: c_int = 0;
+        let mut er: c_int = 0;
+        let mut wi: c_int = 0;
+        let mut di: c_int = 0;
+        let mut ei: c_int = 0;
+        let mut w: c_int = 0;
+        match TYPEOF(x) {
+            10 => {
+                crate::mainutils::format::formatLogicalS(x, n, &mut w);
+            }
+            13 => {
+                crate::mainutils::format::formatIntegerS(x, n, &mut w);
+            }
+            14 => {
+                crate::mainutils::format::formatRealS(
+                    x, n, &mut wr, &mut dr, &mut er, nsmall,
+                );
+                w = wr;
+            }
+            _ => {
+                crate::mainutils::format::formatComplexS(
+                    x, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, nsmall,
+                );
+                w = wr + wi + 2;
+            }
+        }
+        if trim {
+            w = 0;
+        }
+        if w < width {
+            w = width;
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _result_guard = protect(result);
+        for i in 0..n {
+            let encoded = match TYPEOF(x) {
+                10 => {
+                    let v = crate::sexp::accessors::LOGICAL_ELT(x, i as c_int);
+                    crate::mainutils::printutils::EncodeLogical(v, w)
+                }
+                13 => {
+                    let v = crate::sexp::accessors::INTEGER_ELT(x, i as c_int);
+                    crate::mainutils::printutils::EncodeInteger(v, w)
+                }
+                14 => {
+                    let v = crate::sexp::accessors::REAL_ELT(x, i as c_int);
+                    crate::mainutils::printutils::EncodeReal0(v, w, dr, er, outdec)
+                }
+                _ => {
+                    let v = *crate::sexp::accessors::COMPLEX(x).add(i as usize);
+                    crate::mainutils::printutils::EncodeComplex(
+                        v, w - wi - 2, dr, er, wi, di, ei, outdec,
+                    )
+                }
+            };
+            let text = std::ffi::CStr::from_ptr(encoded).to_bytes().to_vec();
+            let charsxp = crate::sexp::constructors::Rf_mkChar(
+                text.as_ptr() as *const std::os::raw::c_char,
+            );
+            if !charsxp.is_null() {
+                let data = (*result).gengc_next_node as *mut SEXP;
+                *data.add(i as usize) = charsxp;
+            }
+        }
+
+        crate::mainutils::options::SetOptionByName("digits", saved_digits);
         result
     }
 }
