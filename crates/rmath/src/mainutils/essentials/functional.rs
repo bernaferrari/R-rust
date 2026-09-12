@@ -2165,6 +2165,101 @@ unsafe fn format_grid_elt(x: SEXP, i: i64) -> String {
     }
 }
 
+/// GNU `stack.default` — list/data.frame columns to values+ind.
+pub unsafe fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let mut cols: Vec<SEXP> = Vec::new();
+        let mut names: Vec<String> = Vec::new();
+        if TYPEOF(x) == SEXPTYPE::VECSXP {
+            let n = XLENGTH(x);
+            let nm = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            for i in 0..n {
+                let col = VECTOR_ELT(x, i);
+                let dim = crate::sexp::attrib_core::getAttrib(
+                    col,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                );
+                if !dim.is_null() && dim != R_NilValue() {
+                    continue;
+                }
+                cols.push(col);
+                let name = if !nm.is_null()
+                    && nm != R_NilValue()
+                    && TYPEOF(nm) == SEXPTYPE::STRSXP
+                {
+                    elt_to_string(nm, i)
+                } else {
+                    String::new()
+                };
+                names.push(name);
+            }
+        } else {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "at least one vector element is required",
+            );
+        }
+        if cols.is_empty() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "at least one vector element is required",
+            );
+        }
+        let mut total: i64 = 0;
+        let lens: Vec<i64> = cols.iter().map(|c| {
+            let n = XLENGTH(*c);
+            total += n;
+            n
+        }).collect();
+        let values_ty = TYPEOF(cols[0]);
+        let values = Rf_allocVector3(values_ty, total);
+        let _values = protect(values);
+        let ind = Rf_allocVector3(SEXPTYPE::INTSXP, total);
+        let _ind = protect(ind);
+        let mut dst = 0i64;
+        for (i, col) in cols.iter().enumerate() {
+            for j in 0..lens[i] {
+                copy_elt(*col, j, values, dst);
+                *INTEGER(ind).add(dst as usize) = (i as c_int) + 1;
+                dst += 1;
+            }
+        }
+        let levels = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
+        for (i, name) in names.iter().enumerate() {
+            let label = if name.is_empty() {
+                format!("{}", i + 1)
+            } else {
+                name.clone()
+            };
+            let cstr = CString::new(label).unwrap_or_default();
+            SET_STRING_ELT(levels, i as i64, Rf_mkChar(cstr.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            ind,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+            levels,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            ind,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"factor".as_ptr()),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _result = protect(result);
+        SET_VECTOR_ELT(result, 0, values);
+        SET_VECTOR_ELT(result, 1, ind);
+        set_string_names(result, &["values".to_string(), "ind".to_string()]);
+        set_compact_row_names(result, total);
+        set_data_frame_class(result);
+        result
+    }
+}
+
+
 pub(crate) unsafe fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
     unsafe {
         let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);

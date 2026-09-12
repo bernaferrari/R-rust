@@ -1,0 +1,7 @@
+s <- stack(list(a = 1:2, b = 3:4))
+cat(paste(s$values, collapse = ","), "\n", sep = "")
+cat(paste(as.character(s$ind), collapse = ","), "\n", sep = "")
+cat(paste(levels(s$ind), collapse = ","), "\n", sep = "")
+cat(is.factor(s$ind), "\n", sep = "")
+cat(paste(class(s), collapse = ","), "\n", sep = "")
+cat(nrow(s), "\n", sep = "")
