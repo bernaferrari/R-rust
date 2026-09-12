@@ -173,3 +173,29 @@ pub unsafe fn isoreg(y: SEXP) -> SEXP {
         ans
     }
 }
+
+/// GNU `isoreg(y)` for a single numeric series.
+pub unsafe fn do_isoreg(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let y0 = CAR(args);
+        let n = XLENGTH(y0);
+        let yd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _yd = protect(yd);
+        for i in 0..n {
+            *REAL(yd).add(i as usize) = if TYPEOF(y0) == SEXPTYPE::REALSXP {
+                *REAL(y0).add(i as usize)
+            } else {
+                *INTEGER(y0).add(i as usize) as f64
+            };
+        }
+        let z = isoreg(yd);
+        let _z = protect(z);
+        crate::sexp::attrib_core::setAttrib(
+            z,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"isoreg".as_ptr()),
+        );
+        z
+    }
+}
+

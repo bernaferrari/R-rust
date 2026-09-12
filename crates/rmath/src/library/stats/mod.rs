@@ -21,7 +21,7 @@ mod holtwinters;
 mod influence;
 mod init;
 mod integrate;
-mod isoreg;
+pub(crate) mod isoreg;
 mod kendall;
 mod kmeans;
 mod ksmooth;
