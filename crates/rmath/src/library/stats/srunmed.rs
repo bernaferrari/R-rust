@@ -392,3 +392,57 @@ pub unsafe fn runmed(
         ans
     }
 }
+
+/// GNU `runmed(x, k)` Stuetzle, odd k.
+pub unsafe fn do_runmed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_mkString};
+        use crate::sexp::globals::R_NilValue;
+        let x = CAR(args);
+        let karg = CAR(CDR(args));
+        let mut k = if TYPEOF(karg) == SEXPTYPE::INTSXP {
+            *INTEGER(karg)
+        } else {
+            *REAL(karg) as c_int
+        };
+        if k % 2 == 0 {
+            k += 1;
+        }
+        let stype = Rf_ScalarInteger(0);
+        let _st = protect(stype);
+        let sk = Rf_ScalarInteger(k);
+        let _sk = protect(sk);
+        let end = Rf_ScalarInteger(0);
+        let _e = protect(end);
+        let na = Rf_ScalarInteger(1);
+        let _na = protect(na);
+        let pr = Rf_ScalarInteger(0);
+        let _pr = protect(pr);
+        let ans = runmed(x, stype, sk, end, na, pr);
+        let _a = protect(ans);
+        let n = XLENGTH(ans);
+        if n >= 3 && TYPEOF(ans) == SEXPTYPE::REALSXP {
+            let y1 = *REAL(ans);
+            let y2 = *REAL(ans).add(1);
+            let y3 = *REAL(ans).add(2);
+            let yn = *REAL(ans).add((n - 1) as usize);
+            let yn1 = *REAL(ans).add((n - 2) as usize);
+            let yn2 = *REAL(ans).add((n - 3) as usize);
+            let med3 = |a: f64, b: f64, c: f64| {
+                let mut v = [a, b, c];
+                v.sort_by(|p, q| p.partial_cmp(q).unwrap_or(std::cmp::Ordering::Equal));
+                v[1]
+            };
+            *REAL(ans) = med3(y1, y2, y2 - 2.0 * (y3 - y2));
+            *REAL(ans).add((n - 1) as usize) = med3(yn, yn1, yn1 - 2.0 * (yn2 - yn1));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::symbol::Rf_install(c"k".as_ptr()),
+            Rf_ScalarInteger(k),
+        );
+        ans
+    }
+}
+

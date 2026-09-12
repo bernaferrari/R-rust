@@ -44,7 +44,7 @@ mod rwishart;
 mod sbart;
 pub(crate) mod smooth;
 pub(crate) mod splines;
-mod srunmed;
+pub(crate) mod srunmed;
 mod starma;
 pub(crate) mod stl;
 mod swilk;
