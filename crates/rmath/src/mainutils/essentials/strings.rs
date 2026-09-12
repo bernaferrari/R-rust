@@ -211,6 +211,58 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `strrep(x, times)` — recycle `x` and `times` to a common length.
+pub unsafe fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x0 = CAR(args);
+        let n0 = CADR(args);
+        let x = crate::main::coerce::coerceVector(x0, SEXPTYPE::STRSXP.as_c_int());
+        let _x = protect(x);
+        let n = crate::main::coerce::coerceVector(n0, SEXPTYPE::INTSXP.as_c_int());
+        let _n = protect(n);
+        let nx = XLENGTH(x);
+        let nn = XLENGTH(n);
+        if nx == 0 || nn == 0 {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let ns = nx.max(nn);
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, ns);
+        let _result = protect(result);
+        for is in 0..ns {
+            let el = STRING_ELT(x, is % nx);
+            let ni = *INTEGER(n).add((is % nn) as usize);
+            if el == crate::sexp::globals::R_NaString() || ni == NA_INTEGER {
+                SET_STRING_ELT(result, is, crate::sexp::globals::R_NaString());
+                continue;
+            }
+            if ni < 0 {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "invalid 'times' value",
+                );
+            }
+            let s = elt_to_string(x, is % nx);
+            if (s.len() as i64).saturating_mul(ni as i64) > i32::MAX as i64 {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "R character strings are limited to 2^31-1 bytes",
+                );
+            }
+            let repeated = s.repeat(ni as usize);
+            let cstr = CString::new(repeated).unwrap_or_default();
+            SET_STRING_ELT(result, is, Rf_mkChar(cstr.as_ptr()));
+        }
+        if ns == nx {
+            let names = crate::attrib_core::getAttrib(x, crate::attrib_core::R_NamesSymbol());
+            if !names.is_null() && names != R_NilValue() {
+                crate::attrib_core::setAttrib(result, crate::attrib_core::R_NamesSymbol(), names);
+            }
+        }
+        result
+    }
+}
+
+
 /// R's `substring(text, first, last=NULL)` — base::substring is an R
 /// wrapper over the same internal that rep_lens `text` to the common
 /// length max(len(text), len(first), len(last)) first (character.R);

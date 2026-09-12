@@ -949,6 +949,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::logic::do_logic,
     },
     EvaluatedBuiltin {
+        name: "xor",
+        handler: crate::mainutils::logic::do_xor,
+    },
+    EvaluatedBuiltin {
         name: "abs",
         handler: crate::mainutils::essentials::do_abs,
     },
@@ -1259,6 +1263,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         // while plain `substr` iterates len(x) only.
         name: "substring",
         handler: crate::mainutils::essentials::do_substring,
+    },
+    EvaluatedBuiltin {
+        name: "strrep",
+        handler: crate::mainutils::essentials::do_strrep,
     },
     EvaluatedBuiltin {
         name: "tolower",

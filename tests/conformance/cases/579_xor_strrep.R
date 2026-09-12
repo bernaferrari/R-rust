@@ -1,0 +1,8 @@
+cat(xor(TRUE, FALSE), "\n", sep = "")
+cat(paste(xor(c(TRUE, FALSE, NA), FALSE), collapse = ","), "\n", sep = "")
+cat(paste(xor(c(TRUE, FALSE), c(FALSE, FALSE)), collapse = ","), "\n", sep = "")
+cat(xor(1, 2), "\n", sep = "")
+cat(strrep("ab", 3), "\n", sep = "")
+cat(paste(strrep(c("a", "bb"), 1:2), collapse = ","), "\n", sep = "")
+cat(identical(strrep("ab", 0), ""), "\n", sep = "")
+cat(tryCatch(strrep("ab", -1), error = function(e) e$message), "\n", sep = "")

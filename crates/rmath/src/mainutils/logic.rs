@@ -794,6 +794,41 @@ pub unsafe fn do_logic3(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     }
 }
 
+/// GNU `xor(x, y)` is `(x | y) & !(x & y)` with logical recycle.
+pub unsafe fn do_xor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CADR(args);
+        let xl = crate::main::coerce::coerceVector(x, SEXPTYPE::LGLSXP.as_c_int());
+        let _xl = protect(xl);
+        let yl = crate::main::coerce::coerceVector(y, SEXPTYPE::LGLSXP.as_c_int());
+        let _yl = protect(yl);
+        let nx = XLENGTH(xl);
+        let ny = XLENGTH(yl);
+        if nx == 0 || ny == 0 {
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+        }
+        let n = nx.max(ny);
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _result = protect(result);
+        let out = LOGICAL(result);
+        let a = LOGICAL(xl);
+        let b = LOGICAL(yl);
+        for i in 0..n {
+            let av = *a.add((i % nx) as usize);
+            let bv = *b.add((i % ny) as usize);
+            *out.add(i as usize) = if av == NA_LOGICAL || bv == NA_LOGICAL {
+                NA_LOGICAL
+            } else if (av != 0) ^ (bv != 0) {
+                TRUE
+            } else {
+                FALSE
+            };
+        }
+        result
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
