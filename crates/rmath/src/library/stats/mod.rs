@@ -25,7 +25,7 @@ pub(crate) mod isoreg;
 mod kendall;
 mod kmeans;
 pub(crate) mod ksmooth;
-mod line;
+pub(crate) mod line;
 mod lm;
 pub(crate) mod loess;
 pub(crate) mod loessc;

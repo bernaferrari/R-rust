@@ -1589,6 +1589,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::ksmooth::do_ksmooth,
     },
     EvaluatedBuiltin {
+        name: "line",
+        handler: crate::library::stats::line::do_line,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

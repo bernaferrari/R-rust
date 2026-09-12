@@ -207,3 +207,42 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
         ans
     }
 }
+
+/// GNU `line(x, y)` Tukey resistant line.
+pub unsafe fn do_line(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, TYPEOF, XLENGTH};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
+        use crate::sexp::globals::R_NilValue;
+        let x0 = CAR(args);
+        let y0 = CAR(CDR(args));
+        let n = XLENGTH(x0);
+        let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _xd = protect(xd);
+        let yd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _yd = protect(yd);
+        for i in 0..n {
+            *REAL(xd).add(i as usize) = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                *REAL(x0).add(i as usize)
+            } else {
+                *INTEGER(x0).add(i as usize) as f64
+            };
+            *REAL(yd).add(i as usize) = if TYPEOF(y0) == SEXPTYPE::REALSXP {
+                *REAL(y0).add(i as usize)
+            } else {
+                *INTEGER(y0).add(i as usize) as f64
+            };
+        }
+        let iter = Rf_ScalarInteger(1);
+        let _it = protect(iter);
+        let ans = tukeyline(xd, yd, iter, R_NilValue());
+        let _ans = protect(ans);
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"tukeyline".as_ptr()),
+        );
+        ans
+    }
+}
+
