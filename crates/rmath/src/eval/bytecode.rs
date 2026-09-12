@@ -163,6 +163,10 @@ pub const GNU_OP_NOT: c_int = 59;
 pub const GNU_OP_AND2ND: c_int = 89;
 pub const GNU_OP_OR1ST: c_int = 90;
 pub const GNU_OP_OR2ND: c_int = 91;
+pub const GNU_OP_STARTASSIGN: c_int = 61;
+pub const GNU_OP_ENDASSIGN: c_int = 62;
+pub const GNU_OP_DOLLAR: c_int = 73;
+pub const GNU_OP_DOLLARGETS: c_int = 74;
 pub const GNU_OP_ISNULL: c_int = 75;
 pub const GNU_OP_ISLOGICAL: c_int = 76;
 pub const GNU_OP_ISINTEGER: c_int = 77;
@@ -313,6 +317,34 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
             | GNU_OP_ISNUMERIC => {}
+            GNU_OP_STARTASSIGN | GNU_OP_ENDASSIGN => {
+                let index = code[pc];
+                if index < 0 {
+                    return Err(format!(
+                        "GNU opcode {opcode} constant pool index {index} is negative"
+                    ));
+                }
+                if index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU opcode {opcode} constant pool index {index} is out of range for pool length {constant_count}"
+                    ));
+                }
+            }
+            GNU_OP_DOLLAR | GNU_OP_DOLLARGETS => {
+                for slot in 0..2 {
+                    let index = code[pc + slot];
+                    if index < 0 {
+                        return Err(format!(
+                            "GNU opcode {opcode} constant pool index {index} is negative"
+                        ));
+                    }
+                    if index as usize >= constant_count {
+                        return Err(format!(
+                            "GNU opcode {opcode} constant pool index {index} is out of range for pool length {constant_count}"
+                        ));
+                    }
+                }
+            }
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
@@ -640,6 +672,41 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 pending.push((next, depth, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_STARTASSIGN => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU STARTASSIGN at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                if depth + 3 > 64 {
+                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                }
+                pending.push((next, depth + 3, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_ENDASSIGN => {
+                if depth < 3 {
+                    return Err(format!(
+                        "GNU ENDASSIGN at instruction {instruction_pc} has stack depth {depth}, requires 3"
+                    ));
+                }
+                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_DOLLAR => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU DOLLAR at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                pending.push((next, depth, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_DOLLARGETS => {
+                if depth < 2 {
+                    return Err(format!(
+                        "GNU DOLLARGETS at instruction {instruction_pc} has stack depth {depth}, requires 2"
+                    ));
+                }
+                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_STARTFOR => {
                 if depth == 0 {
@@ -2020,5 +2087,42 @@ mod tests {
         ];
         assert_eq!(validate_gnu_adapter_stream(&numeric_stream, 2), Ok(true));
         assert!(validate_gnu_adapter_stream(&[12, 75, 1], 1).is_err());
+    }
+
+    #[test]
+    fn gnu_dollar_validator_accepts_get_and_assign_streams() {
+        // compiler:::disassemble(cmpfun(function(x) x$a, options=list(optimize=3)))
+        let dollar = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_DOLLAR,
+            0,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&dollar, 3), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x,v){x$a<-v;x}, options=list(optimize=3)))
+        let dollargets = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTASSIGN,
+            2,
+            GNU_OP_DOLLARGETS,
+            4,
+            5,
+            GNU_OP_ENDASSIGN,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&dollargets, 7), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 73, 0, 1, 1], 2).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 73, 2, 1, 1], 2).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 61, 1, 1], 2).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 74, 0, 1, 1], 2).is_err());
     }
 }

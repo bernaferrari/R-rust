@@ -405,6 +405,62 @@ unsafe fn eval_gnu_istype(opcode: c_int, value: SEXP) -> SEXP {
     }
 }
 
+/// GNU DOLLAR matches eval.c: dispatch `$` on objects, else R_subset3_dflt.
+unsafe fn eval_gnu_dollar(call: SEXP, symbol: SEXP, x: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if crate::sexp::accessors::OBJECT(x) != 0 && !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+            let ncall = crate::mainutils::duplicate::duplicate(call);
+            let _ncall = crate::sexp::protect::protect(ncall);
+            let name = crate::sexp::constructors::Rf_ScalarString(PRINTNAME(symbol));
+            let _name = crate::sexp::protect::protect(name);
+            let field_cell = crate::sexp::accessors::CDDR(ncall);
+            if !field_cell.is_null() && field_cell != R_NilValue() {
+                crate::sexp::accessors::SETCAR(field_cell, name);
+            }
+            let mut value = R_NilValue();
+            if super::missing::tryDispatch(c"$".as_ptr() as *mut _, ncall, x, rho, &mut value)
+                != 0
+            {
+                return value;
+            }
+        }
+        crate::mainutils::subset::R_subset3_dflt(x, PRINTNAME(symbol), call)
+    }
+}
+
+/// GNU DOLLARGETS matches eval.c: dispatch `$<-` on objects, else R_subassign3_dflt.
+unsafe fn eval_gnu_dollargets(call: SEXP, symbol: SEXP, mut x: SEXP, rhs: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if crate::sexp::accessors::NAMED(x) > 1 {
+            x = crate::mainutils::duplicate::shallow_duplicate(x);
+        }
+        if crate::sexp::accessors::OBJECT(x) != 0 && !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+            let ncall = crate::mainutils::duplicate::duplicate(call);
+            let _ncall = crate::sexp::protect::protect(ncall);
+            let name = crate::sexp::constructors::Rf_ScalarString(PRINTNAME(symbol));
+            let _name = crate::sexp::protect::protect(name);
+            let field_cell = crate::sexp::accessors::CDDR(ncall);
+            if !field_cell.is_null() && field_cell != R_NilValue() {
+                crate::sexp::accessors::SETCAR(field_cell, name);
+            }
+            let rhs_cell = crate::sexp::accessors::CDDDR(ncall);
+            if !rhs_cell.is_null() && rhs_cell != R_NilValue() {
+                let expr = crate::sexp::accessors::CAR(rhs_cell);
+                let prom = crate::sexp::memory_ext::mkPROMSXP(expr, rho);
+                crate::sexp::accessors::SET_PRVALUE(prom, rhs);
+                crate::sexp::accessors::SETCAR(rhs_cell, prom);
+            }
+            let mut value = R_NilValue();
+            if super::missing::tryDispatch(c"$<-".as_ptr() as *mut _, ncall, x, rho, &mut value)
+                != 0
+            {
+                return value;
+            }
+        }
+        crate::mainutils::subassign::R_subassign3_dflt(call, x, symbol, rhs)
+    }
+}
+
 /// GNU AND/OR/NOT reuse the same primitive as interpreted `&` / `|` / `!`.
 unsafe fn eval_gnu_logic(
     call: SEXP,
@@ -1153,6 +1209,88 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
+                }
+                super::bytecode::GNU_OP_DOLLAR => {
+                    let call_index = words[pc] as usize;
+                    let symbol_index = words[pc + 1] as usize;
+                    pc += 2;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let symbol = VECTOR_ELT(consts, symbol_index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU DOLLAR constant pool entry {symbol_index} is not a symbol"
+                        ));
+                    }
+                    let x = stack_pop_checked(&mut stack, "GNU DOLLAR");
+                    let result = with_stack_rooted(&stack, x, || {
+                        eval_gnu_dollar(call, symbol, x, rho)
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_DOLLARGETS => {
+                    let call_index = words[pc] as usize;
+                    let symbol_index = words[pc + 1] as usize;
+                    pc += 2;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let symbol = VECTOR_ELT(consts, symbol_index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU DOLLARGETS constant pool entry {symbol_index} is not a symbol"
+                        ));
+                    }
+                    let rhs = stack_pop_checked(&mut stack, "GNU DOLLARGETS rhs");
+                    let x = stack_pop_checked(&mut stack, "GNU DOLLARGETS lhs");
+                    let result = with_stack_rooted(&stack, rhs, || {
+                        eval_gnu_dollargets(call, symbol, x, rhs, rho)
+                    });
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_STARTASSIGN => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let symbol = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU STARTASSIGN constant pool entry {index} is not a symbol"
+                        ));
+                    }
+                    let rhs = stack_top_checked(&stack, "GNU STARTASSIGN rhs");
+                    let lhs = with_stack_rooted(&stack, symbol, || {
+                        let value = R_findVar(symbol, rho);
+                        if value == R_UnboundValue() {
+                            bc_error("object not found");
+                        }
+                        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                            forcePromise(value)
+                        } else {
+                            value
+                        }
+                    });
+                    let lhs = if crate::sexp::accessors::NAMED(lhs) > 1 {
+                        with_stack_rooted(&stack, lhs, || {
+                            crate::mainutils::duplicate::shallow_duplicate(lhs)
+                        })
+                    } else {
+                        lhs
+                    };
+                    stack.push(R_NilValue());
+                    stack.push(lhs);
+                    stack.push(rhs);
+                }
+                super::bytecode::GNU_OP_ENDASSIGN => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let symbol = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU ENDASSIGN constant pool entry {index} is not a symbol"
+                        ));
+                    }
+                    let value = stack_pop_checked(&mut stack, "GNU ENDASSIGN value");
+                    let _cell = stack_pop_checked(&mut stack, "GNU ENDASSIGN cell");
+                    with_stack_rooted(&stack, value, || defineVar(symbol, value, rho));
+                    super::runtime::set_visible(FALSE);
                 }
                 super::bytecode::GNU_OP_ISNULL
                 | super::bytecode::GNU_OP_ISLOGICAL

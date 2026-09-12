@@ -371,7 +371,7 @@ unsafe fn classForGroupDispatch(obj: SEXP) -> SEXP {
 /// Ported from R's `tryDispatch()` in eval.c. Creates promises for
 /// the arguments, then calls usemethod to dispatch to the appropriate
 /// method. Returns TRUE if dispatch succeeded, FALSE otherwise.
-unsafe fn tryDispatch(
+pub(crate) unsafe fn tryDispatch(
     generic: *mut c_char,
     call: SEXP,
     x: SEXP,
