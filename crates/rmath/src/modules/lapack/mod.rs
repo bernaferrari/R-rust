@@ -76,6 +76,9 @@ mod real_qr_tests;
 mod real_chol_tests;
 
 #[cfg(test)]
+mod real_chol2inv_tests;
+
+#[cfg(test)]
 mod real_solve_tests;
 
 #[cfg(test)]
