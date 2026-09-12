@@ -70,6 +70,7 @@ pub mod print;
 pub mod printarray;
 pub mod printutils;
 pub mod printvector;
+pub mod eigen;
 pub mod qr;
 pub mod qr_apply;
 pub mod qr_coef;
