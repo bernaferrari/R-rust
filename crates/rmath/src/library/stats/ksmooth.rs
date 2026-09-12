@@ -239,6 +239,52 @@ pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP
     }
 }
 
+/// GNU `ksmooth(x, y, kernel="box", bandwidth, x.points)`.
+pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, TAG, TYPEOF, XLENGTH};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
+        use crate::sexp::globals::R_NilValue;
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let mut bw = 0.5;
+        let mut xp = R_NilValue();
+        let mut cell = CDR(CDR(args));
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    crate::sexp::accessors::PRINTNAME(tag),
+                ))
+                .to_string_lossy()
+                .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "bandwidth" {
+                let v = CAR(cell);
+                bw = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v)
+                } else {
+                    *INTEGER(v) as f64
+                };
+            } else if name == "x.points" {
+                xp = CAR(cell);
+            }
+            cell = CDR(cell);
+        }
+        if xp.is_null() || xp == R_NilValue() {
+            xp = x;
+        }
+        let krn = Rf_ScalarInteger(1);
+        let _k = protect(krn);
+        let sbw = Rf_ScalarReal(bw);
+        let _b = protect(sbw);
+        ksmooth(x, y, xp, krn, sbw)
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::BDRksmooth;

@@ -24,7 +24,7 @@ mod integrate;
 pub(crate) mod isoreg;
 mod kendall;
 mod kmeans;
-mod ksmooth;
+pub(crate) mod ksmooth;
 mod line;
 mod lm;
 pub(crate) mod loess;
