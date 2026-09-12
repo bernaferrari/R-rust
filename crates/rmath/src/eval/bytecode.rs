@@ -135,6 +135,10 @@ pub const GNU_OP_POP: c_int = 4;
 pub const GNU_OP_DUP: c_int = 5;
 pub const GNU_OP_SWITCH: c_int = 102;
 pub const GNU_OP_GOTO: c_int = 2;
+pub const GNU_OP_STARTLOOPCNTXT: c_int = 7;
+pub const GNU_OP_ENDLOOPCNTXT: c_int = 8;
+pub const GNU_OP_DOLOOPNEXT: c_int = 9;
+pub const GNU_OP_DOLOOPBREAK: c_int = 10;
 pub const GNU_OP_STARTFOR: c_int = 11;
 pub const GNU_OP_STEPFOR: c_int = 12;
 pub const GNU_OP_ENDFOR: c_int = 13;
@@ -172,6 +176,7 @@ pub const GNU_OP_GETTER_CALL: c_int = 99;
 pub const GNU_OP_SWAP: c_int = 100;
 pub const GNU_OP_DUP2ND: c_int = 101;
 pub const GNU_OP_DOMISSING: c_int = 30;
+pub const GNU_OP_RETURNJMP: c_int = 103;
 pub const GNU_OP_STARTSUBSET: c_int = 63;
 pub const GNU_OP_DFLTSUBSET: c_int = 64;
 pub const GNU_OP_STARTSUBASSIGN: c_int = 65;
@@ -327,6 +332,53 @@ pub unsafe fn validate_gnu_adapter_with_constants(
     }
 }
 
+/// Resolve STARTFOR's end operand to the STEPFOR it owns.
+///
+/// A plain for-loop jumps straight to STEPFOR. When the body may eval() /
+/// return / next / break, GNU wraps it as
+/// STARTFOR -> STARTLOOPCNTXT; GOTO STEPFOR and
+/// STEPFOR; ENDLOOPCNTXT; ENDFOR.
+fn gnu_for_step_from_start_target(code: &[c_int], target: usize) -> Result<usize, String> {
+    match code.get(target).copied() {
+        Some(GNU_OP_STEPFOR) => Ok(target),
+        Some(GNU_OP_STARTLOOPCNTXT) => {
+            let isfor = code.get(target + 1).copied().unwrap_or(-1);
+            let after =
+                target + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_STARTLOOPCNTXT as usize] as usize;
+            if isfor != 1 || code.get(after) != Some(&GNU_OP_GOTO) {
+                return Err(format!(
+                    "GNU STARTFOR entry target {target} is not a STEPFOR instruction"
+                ));
+            }
+            let step = code.get(after + 1).copied().ok_or_else(|| {
+                format!("GNU STARTFOR entry target {target} is not a STEPFOR instruction")
+            })? as usize;
+            if code.get(step) != Some(&GNU_OP_STEPFOR) {
+                return Err(format!(
+                    "GNU STARTFOR entry target {target} is not a STEPFOR instruction"
+                ));
+            }
+            Ok(step)
+        }
+        _ => Err(format!(
+            "GNU STARTFOR entry target {target} is not a STEPFOR instruction"
+        )),
+    }
+}
+
+fn gnu_stepfor_exits_through_endfor(code: &[c_int], step_pc: usize) -> bool {
+    let next = step_pc + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_STEPFOR as usize] as usize;
+    if code.get(next) == Some(&GNU_OP_ENDFOR) {
+        return true;
+    }
+    if code.get(next) != Some(&GNU_OP_ENDLOOPCNTXT) {
+        return false;
+    }
+    let isfor = code.get(next + 1).copied();
+    let after = next + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_ENDLOOPCNTXT as usize] as usize;
+    isfor == Some(1) && code.get(after) == Some(&GNU_OP_ENDFOR)
+}
+
 fn validate_gnu_adapter_impl(
     code: &[c_int],
     constant_count: usize,
@@ -353,7 +405,31 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
             | GNU_OP_ISNUMERIC | GNU_OP_DOMISSING | GNU_OP_DFLTSUBSET
             | GNU_OP_DFLTSUBASSIGN | GNU_OP_DFLTSUBASSIGN2 | GNU_OP_DFLTSUBSET2 | GNU_OP_SWAP
-            | GNU_OP_DUP2ND => {}
+            | GNU_OP_DUP2ND | GNU_OP_RETURNJMP => {}
+            GNU_OP_STARTLOOPCNTXT => {
+                let isfor = code[pc];
+                let target = code[pc + 1];
+                if isfor != 0 && isfor != 1 {
+                    return Err(format!(
+                        "GNU STARTLOOPCNTXT isfor flag {isfor} is not 0 or 1"
+                    ));
+                }
+                if target < 0 || target as usize >= code.len() {
+                    return Err(format!(
+                        "GNU STARTLOOPCNTXT end target {target} is outside instruction stream length {}",
+                        code.len()
+                    ));
+                }
+                branches.push((opcode_pc, target as usize));
+            }
+            GNU_OP_ENDLOOPCNTXT => {
+                let isfor = code[pc];
+                if isfor != 0 && isfor != 1 {
+                    return Err(format!(
+                        "GNU ENDLOOPCNTXT isfor flag {isfor} is not 0 or 1"
+                    ));
+                }
+            }
             GNU_OP_STARTASSIGN | GNU_OP_ENDASSIGN => {
                 let index = code[pc];
                 if index < 0 {
@@ -681,29 +757,29 @@ fn validate_gnu_adapter_impl(
                 "GNU BRIFNOT jump target {target} is not an instruction boundary"
             ));
         }
-        if supported && target <= branch_pc && code[branch_pc] != GNU_OP_STEPFOR {
+        if supported
+            && target <= branch_pc
+            && code[branch_pc] != GNU_OP_STEPFOR
+            && code[branch_pc] != GNU_OP_GOTO
+        {
             return Err(format!(
                 "GNU BRIFNOT backward jump from {branch_pc} to {target} is outside the bounded adapter"
             ));
         }
     }
+    let mut resolved_for_steps = Vec::new();
+    for entry_pc in &for_entry_targets {
+        resolved_for_steps.push(gnu_for_step_from_start_target(code, *entry_pc)?);
+    }
     for step_pc in for_steps {
-        if !for_entry_targets.contains(&step_pc) {
+        if !resolved_for_steps.contains(&step_pc) {
             return Err(format!(
                 "GNU STEPFOR at instruction {step_pc} is not the entry target of STARTFOR"
             ));
         }
-        let next = step_pc + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_STEPFOR as usize] as usize;
-        if code.get(next) != Some(&GNU_OP_ENDFOR) {
+        if !gnu_stepfor_exits_through_endfor(code, step_pc) {
             return Err(format!(
                 "GNU STEPFOR at instruction {step_pc} is not followed by ENDFOR"
-            ));
-        }
-    }
-    for entry_pc in for_entry_targets {
-        if code[entry_pc] != GNU_OP_STEPFOR {
-            return Err(format!(
-                "GNU STARTFOR entry target {entry_pc} is not a STEPFOR instruction"
             ));
         }
     }
@@ -742,7 +818,7 @@ fn validate_gnu_adapter_impl(
         let opcode = code[instruction_pc];
         let next = instruction_pc + 1 + GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
         match opcode {
-            GNU_OP_RETURN => {
+            GNU_OP_RETURN | GNU_OP_RETURNJMP => {
                 if !call_stack.is_empty() {
                     return Err("GNU RETURN exits an unfinished call".into());
                 }
@@ -1090,10 +1166,12 @@ fn validate_gnu_adapter_impl(
                         "GNU STARTFOR at instruction {instruction_pc} has an empty stack"
                     ));
                 }
+                let raw_target = code[instruction_pc + 3] as usize;
+                let step_pc = gnu_for_step_from_start_target(code, raw_target)?;
                 let mut entered = loop_stack;
-                entered.push(code[instruction_pc + 3] as usize);
+                entered.push(step_pc);
                 pending.push((
-                    code[instruction_pc + 3] as usize,
+                    raw_target,
                     depth,
                     entered,
                     call_stack.clone(),
@@ -1263,6 +1341,18 @@ fn validate_gnu_adapter_impl(
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_INVISIBLE => pending.push((next, depth, loop_stack, call_stack.clone())),
+            GNU_OP_STARTLOOPCNTXT => {
+                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
+                pending.push((
+                    code[instruction_pc + 2] as usize,
+                    depth,
+                    loop_stack,
+                    call_stack.clone(),
+                ));
+            }
+            GNU_OP_ENDLOOPCNTXT => {
+                pending.push((next, depth, loop_stack, call_stack.clone()));
+            }
             _ => unreachable!(),
         }
     }
@@ -2335,6 +2425,33 @@ mod tests {
 
         let early_return = [12, 16, 0, 11, 1, 2, 11, 16, 0, 1, 4, 12, 7, 13, 1];
         assert_eq!(validate_gnu_adapter_stream(&early_return, 3), Ok(true));
+    }
+
+    #[test]
+    fn bounded_gnu_adapter_accepts_loopcntxt_returnjmp_streams() {
+        // compiler:::disassemble of
+        // function(x) { for (i in x) { eval(quote(NULL)); if (i > 0L) return(i) }; 0L }
+        let eval_loop = [
+            12, 20, 1, 11, 3, 2, 7, 7, 1, 37, 2, 35, 23, 4, 29, 6, 38, 5, 4, 20, 2, 16, 7, 56, 8,
+            3, 9, 33, 20, 2, 103, 2, 34, 17, 4, 12, 12, 8, 1, 13, 4, 16, 7, 1,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&eval_loop, 10), Ok(true));
+
+        // compiler:::disassemble of function(x) { repeat { eval(quote(NULL)); return(x) } }
+        let repeat_loop = [
+            12, 7, 0, 17, 23, 2, 29, 4, 38, 3, 4, 20, 5, 103, 4, 2, 4, 8, 0, 17, 15, 1,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&repeat_loop, 6), Ok(true));
+
+        assert!(
+            validate_gnu_adapter_stream(&[12, 103], 0)
+                .unwrap_err()
+                .contains("stack")
+        );
+
+        // STARTLOOPCNTXT without the GOTO-to-STEPFOR preamble is not a for entry.
+        let missing_goto = [12, 16, 0, 11, 1, 2, 7, 7, 1, 12, 17, 4, 12, 10, 8, 1, 13, 1];
+        assert!(validate_gnu_adapter_stream(&missing_goto, 3).is_err());
     }
 
     #[test]

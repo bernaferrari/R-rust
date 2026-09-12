@@ -205,6 +205,27 @@ fn loop_jump_from_context(ctx: &LoopContext, is_break: bool) -> LoopJump {
     }
 }
 
+fn recover_loop_jump(
+    payload: Box<dyn std::any::Any + Send>,
+    loop_stack: &[LoopContext],
+) -> LoopJump {
+    match payload.downcast::<crate::sexp::context::RSignal>() {
+        Ok(signal) => {
+            let is_break = matches!(*signal, crate::sexp::context::RSignal::Break);
+            let is_loop_signal =
+                is_break || matches!(*signal, crate::sexp::context::RSignal::Next);
+            if !is_loop_signal {
+                std::panic::panic_any(*signal);
+            }
+            match loop_stack.last() {
+                Some(ctx) => loop_jump_from_context(ctx, is_break),
+                None => std::panic::panic_any(*signal),
+            }
+        }
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
 /// Evaluate `call` in `rho`, routing `break`/`next` signals that escape the
 /// nested evaluation to the innermost compiled-loop context.
 ///
@@ -262,9 +283,9 @@ unsafe fn eval_nested_call(
 
 /// Apply a resolved loop jump: discard partial loop operands and for-loop
 /// state, then continue at the loop's break/next target.
-unsafe fn apply_loop_jump(
+unsafe fn apply_loop_jump<T>(
     stack: &mut R_bcstack_t,
-    for_loops: &mut Vec<ForLoopState>,
+    for_loops: &mut Vec<T>,
     jump: LoopJump,
 ) -> c_int {
     unsafe {
@@ -1035,6 +1056,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
         let mut pc = 1usize;
         let mut stack = R_bcstack_t::new(4);
         let mut for_loops: Vec<GnuForLoopState> = Vec::new();
+        let mut loop_stack: Vec<LoopContext> = Vec::new();
         // GNU GETFUN starts a call frame.  MAKEPROM appends lazy arguments
         // until CALL consumes that frame.  Keeping the marker separate from
         // the operand stack lets the validator and runtime reject malformed
@@ -1356,7 +1378,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             "GNU CALL expression constant {call_index} is not a language object"
                         ));
                     }
-                    let result = with_stack_rooted(&stack, call_expr, || {
+                    let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    with_stack_rooted(&stack, call_expr, || {
                         let fun = stack.at(marker);
                         let mut args = R_NilValue();
                         let mut argument_roots = Vec::new();
@@ -1416,7 +1439,16 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             _ => unreachable!(),
                         };
                         result.unwrap_or_else(|error| bc_error(error)).as_raw()
-                    });
+                    })
+                    })) {
+                        Ok(value) => value,
+                        Err(payload) => {
+                            let jump = recover_loop_jump(payload, &loop_stack);
+                            pc = apply_loop_jump(&mut stack, &mut for_loops, jump) as usize;
+                            super::runtime::set_visible(FALSE);
+                            continue;
+                        }
+                    };
                     stack.set_depth(marker);
                     stack.push(result);
                 }
@@ -2379,6 +2411,30 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let second = stack.at(second_idx);
                     stack.set(top_idx, second);
                     stack.set(second_idx, top);
+                }
+                super::bytecode::GNU_OP_STARTLOOPCNTXT => {
+                    let _is_for_loop = words[pc];
+                    let break_target = words[pc + 1];
+                    pc += 2;
+                    // GNU duplicates for-loop node-stack state when is_for_loop
+                    // is set. The adapter keeps that state in for_loops, so
+                    // only the recoverable next/break pc pair is recorded.
+                    loop_stack.push(LoopContext {
+                        break_target,
+                        next_target: pc as c_int,
+                        stack_depth: stack.depth(),
+                        for_depth: for_loops.len(),
+                    });
+                }
+                super::bytecode::GNU_OP_ENDLOOPCNTXT => {
+                    let _is_for_loop = words[pc];
+                    pc += 1;
+                    if loop_stack.pop().is_none() {
+                        bc_error("GNU ENDLOOPCNTXT has no active loop context");
+                    }
+                }
+                super::bytecode::GNU_OP_RETURNJMP => {
+                    return stack_pop_checked(&mut stack, "GNU RETURNJMP");
                 }
                 _ => bc_mismatch(format!("unsupported tagged GNU bytecode opcode {opcode}")),
             }
