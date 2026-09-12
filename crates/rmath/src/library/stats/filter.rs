@@ -211,6 +211,32 @@ pub unsafe fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) ->
     }
 }
 
+/// GNU `filter(x, filter)` convolution, sides=2.
+pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let f = CAR(CDR(args));
+        let xd = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            x
+        } else {
+            coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
+        };
+        let _xd = protect(xd);
+        let fd = if TYPEOF(f) == SEXPTYPE::REALSXP {
+            f
+        } else {
+            coerceVector(f, SEXPTYPE::REALSXP.as_c_int())
+        };
+        let _fd = protect(fd);
+        let sides = Rf_ScalarInteger(2);
+        let _s = protect(sides);
+        let circ = Rf_ScalarLogical(0);
+        let _c = protect(circ);
+        cfilter(xd, fd, sides, circ)
+    }
+}
+
+
 /* recursive filtering */
 pub unsafe fn rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
     unsafe {

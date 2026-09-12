@@ -14,7 +14,7 @@ mod distn;
 mod family;
 pub(crate) mod fexact;
 pub(crate) mod fft;
-mod filter;
+pub(crate) mod filter;
 pub(crate) mod fourier;
 mod hclust_utils;
 mod holtwinters;
