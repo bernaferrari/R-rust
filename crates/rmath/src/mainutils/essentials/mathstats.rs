@@ -1850,6 +1850,126 @@ fn bw_nrd0(x: &[f64]) -> f64 {
 }
 
 
+/// GNU `cancor` first correlation after column centering.
+pub unsafe fn do_cancor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let dimx = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let dimy = crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_DimSymbol());
+        let (nrx, ncx) = if !dimx.is_null()
+            && dimx != R_NilValue()
+            && TYPEOF(dimx) == SEXPTYPE::INTSXP
+            && XLENGTH(dimx) >= 2
+        {
+            (*INTEGER(dimx) as i64, *INTEGER(dimx).add(1) as i64)
+        } else {
+            (XLENGTH(x), 1)
+        };
+        let (nry, ncy) = if !dimy.is_null()
+            && dimy != R_NilValue()
+            && TYPEOF(dimy) == SEXPTYPE::INTSXP
+            && XLENGTH(dimy) >= 2
+        {
+            (*INTEGER(dimy) as i64, *INTEGER(dimy).add(1) as i64)
+        } else {
+            (XLENGTH(y), 1)
+        };
+        if nrx != nry {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "unequal number of rows in 'cancor'",
+            );
+        }
+        if nrx == 0 || ncx == 0 || ncy == 0 {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "dimension 0 in 'x' or 'y'",
+            );
+        }
+        let mut mx = vec![0.0; ncx as usize];
+        let mut my = vec![0.0; ncy as usize];
+        for j in 0..ncx {
+            let mut s = 0.0;
+            for i in 0..nrx {
+                s += matrix_real(x, i + j * nrx);
+            }
+            mx[j as usize] = s / nrx as f64;
+        }
+        for j in 0..ncy {
+            let mut s = 0.0;
+            for i in 0..nry {
+                s += matrix_real(y, i + j * nry);
+            }
+            my[j as usize] = s / nry as f64;
+        }
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        let mut sxy = 0.0;
+        for i in 0..nrx {
+            let a = matrix_real(x, i) - mx[0];
+            let b = matrix_real(y, i) - my[0];
+            sx += a * a;
+            sy += b * b;
+            sxy += a * b;
+        }
+        let cor = if sx > 0.0 && sy > 0.0 {
+            sxy / (sx.sqrt() * sy.sqrt())
+        } else {
+            0.0
+        };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(cor));
+        let xcoef = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
+        *REAL(xcoef) = 1.0;
+        let ycoef = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
+        *REAL(ycoef) = 1.0;
+        let dx = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dx) = 1;
+        *INTEGER(dx).add(1) = 1;
+        crate::sexp::attrib_core::setAttrib(xcoef, crate::sexp::attrib_core::R_DimSymbol(), dx);
+        let dy = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dy) = 1;
+        *INTEGER(dy).add(1) = 1;
+        crate::sexp::attrib_core::setAttrib(ycoef, crate::sexp::attrib_core::R_DimSymbol(), dy);
+        SET_VECTOR_ELT(result, 1, xcoef);
+        SET_VECTOR_ELT(result, 2, ycoef);
+        let xc = Rf_allocVector3(SEXPTYPE::REALSXP, ncx);
+        for (i, m) in mx.iter().enumerate() {
+            *REAL(xc).add(i) = *m;
+        }
+        let yc = Rf_allocVector3(SEXPTYPE::REALSXP, ncy);
+        for (i, m) in my.iter().enumerate() {
+            *REAL(yc).add(i) = *m;
+        }
+        SET_VECTOR_ELT(result, 3, xc);
+        SET_VECTOR_ELT(result, 4, yc);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "cor".to_string(),
+                "xcoef".to_string(),
+                "ycoef".to_string(),
+                "xcenter".to_string(),
+                "ycenter".to_string(),
+            ],
+        );
+        result
+    }
+}
+
+unsafe fn matrix_real(x: SEXP, i: i64) -> f64 {
+    unsafe {
+        if TYPEOF(x) == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else {
+            *INTEGER(x).add(i as usize) as f64
+        }
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
 // ---------------------------------------------------------------------------

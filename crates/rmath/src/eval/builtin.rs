@@ -1577,6 +1577,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::lowess::do_supsmu,
     },
     EvaluatedBuiltin {
+        name: "cancor",
+        handler: crate::mainutils::essentials::do_cancor,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
