@@ -1161,6 +1161,16 @@ unsafe fn try_group_dispatch(
     }
 }
 
+/// Shared Ops dispatch used by GNU AND/OR/NOT bytecode.
+pub(crate) unsafe fn try_ops_group_dispatch(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> Option<SEXP> {
+    unsafe { try_group_dispatch(b"Ops\0", call, op, args, rho) }
+}
+
 // ---------------------------------------------------------------------------
 // Top-level dispatch functions (called by the evaluator)
 // ---------------------------------------------------------------------------

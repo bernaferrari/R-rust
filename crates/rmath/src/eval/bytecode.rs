@@ -157,6 +157,9 @@ pub const GNU_OP_LE: c_int = 54;
 pub const GNU_OP_GE: c_int = 55;
 pub const GNU_OP_GT: c_int = 56;
 pub const GNU_OP_AND1ST: c_int = 88;
+pub const GNU_OP_AND: c_int = 57;
+pub const GNU_OP_OR: c_int = 58;
+pub const GNU_OP_NOT: c_int = 59;
 pub const GNU_OP_AND2ND: c_int = 89;
 pub const GNU_OP_OR1ST: c_int = 90;
 pub const GNU_OP_OR2ND: c_int = 91;
@@ -301,7 +304,8 @@ fn validate_gnu_adapter_impl(
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
-            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_SQRT | GNU_OP_EXP
+            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND | GNU_OP_OR
+            | GNU_OP_NOT | GNU_OP_SQRT | GNU_OP_EXP
             | GNU_OP_SETVAR | GNU_OP_SETVAR2 => {
                 let index = code[pc];
                 if index < 0 {
@@ -682,7 +686,8 @@ fn validate_gnu_adapter_impl(
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ
-            | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
+            | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND
+            | GNU_OP_OR => {
                 if depth < 2 {
                     return Err(format!(
                         "GNU binary opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
@@ -690,7 +695,7 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
-            GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP => {
+            GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT => {
                 if depth < 1 {
                     return Err(format!(
                         "GNU unary opcode {opcode} at instruction {instruction_pc} has empty stack"
@@ -1911,5 +1916,55 @@ mod tests {
         assert!(validate_gnu_adapter_stream(&[12, 18, 89, 0, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 1, 88, 3, 10, 20, 2, 89, 0, 1], 3).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 1, 90, 0, 99, 20, 2, 91, 0, 1], 3).is_err());
+    }
+
+    #[test]
+    fn gnu_vector_logic_validator_accepts_and_or_not() {
+        // compiler:::disassemble(cmpfun(function(x, y) x & y))
+        let and_stream = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_AND,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&and_stream, 3), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x, y) x | y))
+        let or_stream = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_OR,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&or_stream, 3), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x) !x))
+        let not_stream = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_NOT,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&not_stream, 2), Ok(true));
+
+        let underflow = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_AND,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert!(validate_gnu_adapter_stream(&underflow, 2).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 59, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 1, 20, 2, 57, 3, 1], 3).is_err());
     }
 }

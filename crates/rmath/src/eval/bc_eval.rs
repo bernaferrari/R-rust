@@ -370,6 +370,39 @@ unsafe fn eval_bc_condition(val: SEXP) -> bool {
     }
 }
 
+/// GNU AND/OR/NOT reuse the same primitive as interpreted `&` / `|` / `!`.
+unsafe fn eval_gnu_logic(
+    call: SEXP,
+    symbol: &std::ffi::CStr,
+    left: SEXP,
+    right: Option<SEXP>,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let op = super::primitive::make_primitive_binding(
+            symbol.to_str().unwrap_or(""),
+            SEXPTYPE::BUILTINSXP,
+        );
+        if let Some(right) = right {
+            let tail = Rf_cons(right, R_NilValue());
+            let _tail = crate::sexp::protect::protect(tail);
+            let args = Rf_cons(left, tail);
+            let _args = crate::sexp::protect::protect(args);
+            if let Some(result) = super::arithmetic::try_ops_group_dispatch(call, op, args, rho) {
+                return result;
+            }
+            crate::mainutils::logic::do_logic(call, op, args, rho)
+        } else {
+            let args = Rf_cons(left, R_NilValue());
+            let _args = crate::sexp::protect::protect(args);
+            if let Some(result) = super::arithmetic::try_ops_group_dispatch(call, op, args, rho) {
+                return result;
+            }
+            crate::mainutils::logic::do_logic(call, op, args, rho)
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // BCODESXP accessors
 // ---------------------------------------------------------------------------
@@ -1050,6 +1083,40 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         })
                     });
                     crate::sexp::globals::set_R_Visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_AND | super::bytecode::GNU_OP_OR => {
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU logic operator requires a call in the constant pool");
+                    }
+                    pc += 1;
+                    let b = stack_pop_checked(&mut stack, "GNU logic operator");
+                    let a = stack_pop_checked(&mut stack, "GNU logic operator");
+                    let symbol = if opcode == super::bytecode::GNU_OP_AND {
+                        c"&"
+                    } else {
+                        c"|"
+                    };
+                    let result = with_stack_rooted(&stack, a, || {
+                        with_stack_rooted(&stack, b, || {
+                            eval_gnu_logic(call, symbol, a, Some(b), rho)
+                        })
+                    });
+                    crate::sexp::globals::set_R_Visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_NOT => {
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU NOT requires a call in the constant pool");
+                    }
+                    pc += 1;
+                    let value = stack_pop_checked(&mut stack, "GNU NOT");
+                    let result = with_stack_rooted(&stack, value, || {
+                        eval_gnu_logic(call, c"!", value, None, rho)
+                    });
+                    super::runtime::set_visible(TRUE);
                     stack.push(result);
                 }
                 _ => bc_mismatch(format!("unsupported tagged GNU bytecode opcode {opcode}")),
