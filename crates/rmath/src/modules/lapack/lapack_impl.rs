@@ -1063,6 +1063,11 @@ pub unsafe fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
         if TYPEOF(norm) != 16 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
         }
+        if TYPEOF(a) != CPLXSXP_C {
+            crate::sexp::context::r_error("'a' must be a complex matrix");
+        }
+        let _input_guard = protect(a);
+        let _norm_guard = protect(norm);
 
         let norm_str = CStr::from_ptr(CHAR(STRING_ELT(norm, 0)))
             .to_str()
@@ -1070,19 +1075,47 @@ pub unsafe fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
         let norm_c = La_rcond_type(norm_str);
 
         let dim = getAttrib(a, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'a' must be a matrix");
         }
 
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let n2 = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
-        if n != n2 {
-            Rf_error(b"'a' must be a square matrix\0".as_ptr() as *const c_char);
+        let n = INTEGER(dim).add(0).read();
+        let n2 = INTEGER(dim).add(1).read();
+        if n < 0 || n2 < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
         }
+        if n != n2 {
+            crate::sexp::context::r_error("'a' must be a square matrix");
+        }
+        let Some(len) = (n as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(a) as usize != len {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+        let Some(work_len) = (n as usize).checked_mul(2) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let rwork_len = n as usize;
+        let Some(scratch_bytes) = work_len
+            .checked_mul(std::mem::size_of::<LapRcomplex>())
+            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native complex triangular condition-number workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
 
         let mut rcond: f64 = 0.0;
-        let mut work = vec![LapRcomplex::default(); 2 * n as usize];
-        let mut rwork = vec![0.0f64; n as usize];
+        let mut work = vec![LapRcomplex::default(); work_len];
+        let mut rwork = vec![0.0f64; rwork_len];
         let uplo = b'U';
         let diag = b'N';
         let mut info: c_int = 0;
@@ -1121,6 +1154,12 @@ pub unsafe fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
         if TYPEOF(uplo) != 16 {
             Rf_error(b"'uplo' must be a character string\0".as_ptr() as *const c_char);
         }
+        if TYPEOF(a) != CPLXSXP_C {
+            crate::sexp::context::r_error("'a' must be a complex matrix");
+        }
+        let _input_guard = protect(a);
+        let _norm_guard = protect(norm);
+        let _uplo_guard = protect(uplo);
 
         let norm_str = CStr::from_ptr(CHAR(STRING_ELT(norm, 0)))
             .to_str()
@@ -1132,19 +1171,47 @@ pub unsafe fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
         let uplo_c = La_valid_uplo(uplo_str);
 
         let dim = getAttrib(a, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'a' must be a matrix");
         }
 
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let n2 = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
-        if n != n2 {
-            Rf_error(b"'a' must be a square matrix\0".as_ptr() as *const c_char);
+        let n = INTEGER(dim).add(0).read();
+        let n2 = INTEGER(dim).add(1).read();
+        if n < 0 || n2 < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
         }
+        if n != n2 {
+            crate::sexp::context::r_error("'a' must be a square matrix");
+        }
+        let Some(len) = (n as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(a) as usize != len {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+        let Some(work_len) = (n as usize).checked_mul(2) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let rwork_len = n as usize;
+        let Some(scratch_bytes) = work_len
+            .checked_mul(std::mem::size_of::<LapRcomplex>())
+            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native complex triangular condition-number workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
 
         let mut rcond: f64 = 0.0;
-        let mut work = vec![LapRcomplex::default(); 2 * n as usize];
-        let mut rwork = vec![0.0f64; n as usize];
+        let mut work = vec![LapRcomplex::default(); work_len];
+        let mut rwork = vec![0.0f64; rwork_len];
         let diag = b'N';
         let mut info: c_int = 0;
 

@@ -104,3 +104,6 @@ mod complex_dlange_tests;
 
 #[cfg(test)]
 mod complex_dgecon_tests;
+
+#[cfg(test)]
+mod complex_ztrcon_tests;
