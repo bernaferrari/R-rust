@@ -7,6 +7,6 @@ pub(crate) mod par;
 mod par_common;
 pub(crate) mod plot;
 pub(crate) mod plot3d;
-mod stem;
+pub(crate) mod stem;
 #[allow(dead_code)]
 pub(crate) mod xspline;

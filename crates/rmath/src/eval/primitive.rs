@@ -241,6 +241,7 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "axis"
             | "plot.new"
             | "plot.window"
+            | "stem"
             // Portable grid wrappers return invisible grobs or NULL just as
             // their GNU closures do. Do not overwrite their result flag.
             | "grid.newpage"

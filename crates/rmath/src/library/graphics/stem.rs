@@ -50,7 +50,7 @@ unsafe fn R_rsort(x: *mut c_double, n: c_int) {
 }
 
 unsafe fn Rprintf(msg: &str) -> c_int {
-    eprint!("{}", msg);
+    crate::sexp::output::capture_stdout(msg);
     0
 }
 
@@ -66,10 +66,10 @@ fn imax2(x: c_int, y: c_int) -> c_int {
 
 unsafe fn stem_print(close: c_int, dist: c_int, ndigits: c_int) {
     unsafe {
-        if close / 10 == 0 && dist < 0 {
-            Rprintf(&format!("  {:1$} | ", "-0", (ndigits + 1) as usize));
+        if close / 10 == 0 && (close < 0 || dist < 0) {
+            Rprintf(&format!("  {:1$} | ", "-0", ndigits as usize));
         } else {
-            Rprintf(&format!("  {:1$} | ", close / 10, (ndigits + 1) as usize));
+            Rprintf(&format!("  {:1$} | ", close / 10, ndigits as usize));
         }
     }
 }
@@ -318,3 +318,112 @@ pub unsafe fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SE
         counts
     }
 }
+
+/// GNU `stem(x, scale=1, width=80, atom=1e-8)`.
+pub unsafe fn do_stem(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let xt = TYPEOF(x);
+        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'x' must be numeric",
+            );
+        }
+        let n = XLENGTH(x);
+        let mut finite: Vec<f64> = Vec::new();
+        for i in 0..n {
+            let v = if xt == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    f64::NAN
+                } else {
+                    iv as f64
+                }
+            };
+            if v.is_finite() {
+                finite.push(v);
+            }
+        }
+        if finite.is_empty() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "no finite and non-missing values",
+            );
+        }
+        let mut scale = 1.0;
+        let mut width = 80;
+        let mut atom = 1e-8;
+        let mut cell = CDR(args);
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let slot = match name.as_str() {
+                "scale" => 0,
+                "width" => 1,
+                "atom" => 2,
+                _ => {
+                    let s = pos;
+                    pos += 1;
+                    s
+                }
+            };
+            let v = CAR(cell);
+            match slot {
+                0 => {
+                    scale = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                        *REAL(v)
+                    } else {
+                        *INTEGER(v) as f64
+                    };
+                }
+                1 => {
+                    width = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                        *INTEGER(v)
+                    } else {
+                        *REAL(v) as c_int
+                    };
+                }
+                2 => {
+                    atom = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                        *REAL(v)
+                    } else {
+                        *INTEGER(v) as f64
+                    };
+                }
+                _ => {}
+            }
+            cell = CDR(cell);
+        }
+        if scale <= 0.0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'scale' must be positive",
+            );
+        }
+        let xd = Rf_allocVector3(SEXPTYPE::REALSXP, finite.len() as i64);
+        let _xd = protect(xd);
+        for (i, v) in finite.iter().enumerate() {
+            *REAL(xd).add(i) = *v;
+        }
+        let sc = Rf_ScalarReal(scale);
+        let _sc = protect(sc);
+        let w = Rf_ScalarInteger(width);
+        let _w = protect(w);
+        let a = Rf_ScalarReal(atom);
+        let _a = protect(a);
+        C_StemLeaf(xd, sc, w, a);
+        crate::eval::runtime::set_visible(FALSE);
+        R_NilValue()
+    }
+}
+
