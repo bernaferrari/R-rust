@@ -1230,6 +1230,136 @@ unsafe fn format_rowsum_group(group: SEXP, i: i64) -> String {
 }
 
 
+/// GNU `jitter(x, factor=1, amount=NULL)`.
+pub unsafe fn do_jitter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+            return x;
+        }
+        let xt = TYPEOF(x);
+        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'x' must be numeric",
+            );
+        }
+        let n = XLENGTH(x);
+        let mut finite: Vec<f64> = Vec::new();
+        for i in 0..n {
+            let v = if xt == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                *INTEGER(x).add(i as usize) as f64
+            };
+            if v.is_finite() {
+                finite.push(v);
+            }
+        }
+        let (lo, hi) = finite
+            .iter()
+            .copied()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| {
+                (a.min(v), b.max(v))
+            });
+        let mut z = hi - lo;
+        if z == 0.0 {
+            z = lo.abs();
+        }
+        if z == 0.0 {
+            z = 1.0;
+        }
+        let mut factor = 1.0;
+        let mut amount_arg = R_NilValue();
+        let mut cell = CDR(args);
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let slot = if name == "factor" {
+                0
+            } else if name == "amount" {
+                1
+            } else {
+                let s = pos;
+                pos += 1;
+                s
+            };
+            if slot == 0 {
+                factor = if TYPEOF(CAR(cell)) == SEXPTYPE::REALSXP {
+                    *REAL(CAR(cell))
+                } else if TYPEOF(CAR(cell)) == SEXPTYPE::INTSXP {
+                    *INTEGER(CAR(cell)) as f64
+                } else {
+                    1.0
+                };
+            } else if slot == 1 {
+                amount_arg = CAR(cell);
+            }
+            cell = CDR(cell);
+        }
+        let amount = if amount_arg.is_null() || amount_arg == R_NilValue() {
+            let digits = 3 - (z.log10().floor() as i32);
+            let p = 10f64.powi(digits);
+            let mut rounded: Vec<f64> = finite.iter().map(|v| (v * p).round() / p).collect();
+            rounded.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            rounded.dedup();
+            let d = if rounded.len() >= 2 {
+                rounded.windows(2).map(|w| w[1] - w[0]).fold(f64::INFINITY, f64::min)
+            } else if rounded.first().copied().unwrap_or(0.0) != 0.0 {
+                rounded[0] / 10.0
+            } else {
+                z / 10.0
+            };
+            factor / 5.0 * d.abs()
+        } else {
+            let a = if TYPEOF(amount_arg) == SEXPTYPE::REALSXP {
+                *REAL(amount_arg)
+            } else if TYPEOF(amount_arg) == SEXPTYPE::INTSXP {
+                *INTEGER(amount_arg) as f64
+            } else {
+                0.0
+            };
+            if a == 0.0 {
+                factor * (z / 50.0)
+            } else {
+                a
+            }
+        };
+        let n_s = Rf_ScalarInteger(n as c_int);
+        let _n = protect(n_s);
+        let a_s = Rf_ScalarReal(-1.0);
+        let _a = protect(a_s);
+        let b_s = Rf_ScalarReal(1.0);
+        let _b = protect(b_s);
+        let u = crate::library::stats::random::do_runif(n_s, a_s, b_s);
+        let _u = protect(u);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let xv = if xt == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                *INTEGER(x).add(i as usize) as f64
+            };
+            let uv = if TYPEOF(u) == SEXPTYPE::REALSXP {
+                *REAL(u).add(i as usize)
+            } else {
+                0.0
+            };
+            *REAL(result).add(i as usize) = xv + amount * uv;
+        }
+        result
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
 // ---------------------------------------------------------------------------

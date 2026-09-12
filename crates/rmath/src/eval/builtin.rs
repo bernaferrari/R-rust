@@ -1533,6 +1533,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_rowsum,
     },
     EvaluatedBuiltin {
+        name: "jitter",
+        handler: crate::mainutils::essentials::do_jitter,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

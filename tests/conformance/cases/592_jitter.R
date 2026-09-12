@@ -1,0 +1,6 @@
+set.seed(1)
+j <- jitter(1:3)
+cat(paste(sprintf("%.10f", j), collapse = ","), "\n", sep = "")
+set.seed(1)
+j2 <- jitter(c(1, 1, 1))
+cat(paste(sprintf("%.10f", j2), collapse = ","), "\n", sep = "")
