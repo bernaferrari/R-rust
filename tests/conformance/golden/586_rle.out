@@ -1,0 +1,4 @@
+structure(list(lengths = c(2L, 3L, 1L), values = c(1, 2, 3)), class = "rle")
+structure(list(lengths = 2:1, values = c("a", "b")), class = "rle")
+c(1, 1, 2, 2, 2, 3)
+'x' must be a vector of an atomic type

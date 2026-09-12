@@ -939,6 +939,23 @@ pub unsafe fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let has_dim = !dim.is_null() && dim != R_NilValue();
+        let atomic = matches!(
+            TYPEOF(x),
+            t if t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::INTSXP
+                || t == SEXPTYPE::REALSXP
+                || t == SEXPTYPE::CPLXSXP
+                || t == SEXPTYPE::STRSXP
+                || t == SEXPTYPE::RAWSXP
+        );
+        if has_dim || !(atomic || TYPEOF(x) == SEXPTYPE::VECSXP) {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'x' must be a vector of an atomic type",
+            );
+        }
 
         let n = XLENGTH(x);
         if n == 0 {
