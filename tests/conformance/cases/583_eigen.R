@@ -12,3 +12,13 @@ cat(ok, "\n", sep = "")
 d2 <- eigen(matrix(c(2, 1, 1, 2), 2, 2), only.values = TRUE)
 cat(paste(sort(round(d2$values, 8), decreasing = TRUE), collapse = ","), "\n", sep = "")
 cat(is.null(d2$vectors), "\n", sep = "")
+A <- matrix(c(1, 2, 3, 4), 2, 2)
+d3 <- eigen(A, symmetric = FALSE)
+cat(paste(round(d3$values, 8), collapse = ","), "\n", sep = "")
+ok3 <- TRUE
+for (j in 1:2) {
+  av <- (A %*% d3$vectors[, j])[, 1]
+  lv <- d3$values[j] * d3$vectors[, j]
+  if (max(abs(av - lv)) > 1e-8) ok3 <- FALSE
+}
+cat(ok3, "\n", sep = "")
