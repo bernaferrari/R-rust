@@ -368,7 +368,7 @@ impl BytecodeCompiler {
     }
 
     fn is_compiled_local_fun(&self, fun: SEXP) -> bool {
-        self.compiled_local_funs.iter().any(|&sym| sym == fun)
+        self.compiled_local_funs.contains(&fun)
     }
 
     unsafe fn finish(&mut self, source_expr: SEXP) -> SEXP {

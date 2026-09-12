@@ -11,7 +11,7 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
+use crate::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
 use crate::main::errors::Rf_error;
 use crate::sexp::accessors::*;
@@ -1983,7 +1983,7 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            crate::sexp::context::r_error("error code from Lapack routine 'zgeqp3'");
+            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zgeqp3'"));
         }
 
         if !tmp.r.is_finite() || tmp.r < 1.0 || tmp.r > c_int::MAX as f64 {
@@ -2018,7 +2018,7 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            crate::sexp::context::r_error("error code from Lapack routine 'zgeqp3'");
+            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zgeqp3'"));
         }
 
         let qr = Rf_allocVector(CPLXSXP_C, len as c_int);
@@ -2026,6 +2026,12 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
         if len != 0 {
             ptr::copy_nonoverlapping(a_copy.as_ptr(), COMPLEX(qr) as *mut LapRcomplex, len);
         }
+
+        let qr_dim = Rf_allocVector(INTSXP_C, 2);
+        let _qr_dim_guard = protect(qr_dim);
+        *INTEGER(qr_dim) = m;
+        *INTEGER(qr_dim).add(1) = n;
+        setAttrib(qr, R_DimSymbol(), qr_dim);
 
         let qraux = Rf_allocVector(CPLXSXP_C, min_mn as c_int);
         let _qraux_guard = protect(qraux);
@@ -2042,6 +2048,28 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
             *INTEGER(pivot).add(i) = jpvt[i];
         }
 
+        // GNU pivots the input's column dimnames onto the factored matrix.
+        let adn = getAttrib(ain, R_DimNamesSymbol());
+        if adn != R_NilValue() && TYPEOF(adn) == VECSXP_C && XLENGTH(adn) == 2 {
+            let adn2 = crate::mainutils::duplicate::Rf_duplicate(adn);
+            let _adn2_guard = protect(adn2);
+            let cn = VECTOR_ELT(adn, 1);
+            let cn2 = VECTOR_ELT(adn2, 1);
+            if cn != R_NilValue()
+                && TYPEOF(cn) == STRSXP_C
+                && TYPEOF(cn2) == STRSXP_C
+                && (XLENGTH(cn) as usize) == n as usize
+                && (XLENGTH(cn2) as usize) == n as usize
+            {
+                for j in 0..n as usize {
+                    let source = *INTEGER(pivot).add(j);
+                    if source >= 1 && (source as usize) <= n as usize {
+                        SET_STRING_ELT(cn2, j as i64, STRING_ELT(cn, (source - 1) as i64));
+                    }
+                }
+            }
+            setAttrib(qr, R_DimNamesSymbol(), adn2);
+        }
         let ret = Rf_allocVector(VECSXP_C, 4);
         let _ret_guard = protect(ret);
         let nm = Rf_allocVector(STRSXP_C, 4);
@@ -2677,6 +2705,7 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
         if TYPEOF(qr) != CPLXSXP_C {
             crate::sexp::context::r_error("'qr$qr' must be a complex matrix");
         }
+        let _qr_guard = protect(qr);
 
         let dim = getAttrib(qr, R_DimSymbol());
         if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
@@ -2710,7 +2739,17 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
             crate::sexp::context::r_error("invalid matrix dimensions or length");
         }
 
+        // GNU trusts the stored taus; validate them only after the visible
+        // matrix arguments, right before zunmqr reads them.
+        let qraux = VECTOR_ELT(q, 2);
+        if TYPEOF(qraux) != CPLXSXP_C {
+            crate::sexp::context::r_error("'qr$qraux' must be a complex vector");
+        }
+        let _qraux_guard = protect(qraux);
         let k = if m < n { m } else { n };
+        if (XLENGTH(qraux) as usize) < k as usize {
+            crate::sexp::context::r_error("invalid QR decomposition fields");
+        }
 
         let Some(scratch_bytes) = len_r
             .checked_mul(std::mem::size_of::<LapRcomplex>())
@@ -2745,11 +2784,56 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
             );
         }
 
+        // GNU applies Q^H with zunmqr first, then solves R X = B with
+        // ztrtrs; B keeps its full n rows (the tail holds Q^H residuals).
         let mut info: c_int = 0;
+        let mut tmp = LapRcomplex::default();
+        let mut lwork: c_int = -1;
+        super::backend::zunmqr_(
+            b"L".as_ptr(),
+            b"C".as_ptr(),
+            &m,
+            &nrhs,
+            &k,
+            r_copy.as_ptr(),
+            &m,
+            COMPLEX(qraux) as *const LapRcomplex,
+            b_copy.as_mut_ptr(),
+            &m,
+            &mut tmp,
+            &lwork,
+            &mut info,
+        );
+        if info != 0 {
+            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zunmqr'"));
+        }
+        if !tmp.r.is_finite() || tmp.r < 1.0 || tmp.r > c_int::MAX as f64 {
+            crate::sexp::context::r_error("invalid workspace size from Lapack routine 'zunmqr'");
+        }
+        lwork = tmp.r as c_int;
+        let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
+        super::backend::zunmqr_(
+            b"L".as_ptr(),
+            b"C".as_ptr(),
+            &m,
+            &nrhs,
+            &k,
+            r_copy.as_ptr(),
+            &m,
+            COMPLEX(qraux) as *const LapRcomplex,
+            b_copy.as_mut_ptr(),
+            &m,
+            work,
+            &lwork,
+            &mut info,
+        );
+        if info != 0 {
+            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zunmqr'"));
+        }
 
         super::backend::ztrtrs_(
             b"U".as_ptr(),
-            b"C".as_ptr(),
+            b"N".as_ptr(),
             b"N".as_ptr(),
             &k,
             &nrhs,
@@ -2759,26 +2843,27 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
             &m,
             &mut info,
         );
-
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'ztrtrs'\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'ztrtrs'"));
         }
 
-        let ans = Rf_allocVector(CPLXSXP_C, ((k as usize) * (nrhs as usize)) as c_int);
+        let ans = Rf_allocVector(CPLXSXP_C, len_b as c_int);
         let _ans_guard = protect(ans);
-        for j in 0..nrhs as usize {
-            for i in 0..k as usize {
-                *COMPLEX(ans).add(i + j * k as usize) = {
-                    // SAFETY: LapRcomplex and Rcomplex have identical #[repr(C)] layouts
-                    std::mem::transmute::<LapRcomplex, Rcomplex>(b_copy[i + j * m as usize])
-                };
-            }
+        if len_b != 0 {
+            ptr::copy_nonoverlapping(b_copy.as_ptr(), COMPLEX(ans) as *mut LapRcomplex, len_b);
         }
-
+        let out_dim = Rf_allocVector(INTSXP_C, 2);
+        let _out_dim_guard = protect(out_dim);
+        *INTEGER(out_dim) = m;
+        *INTEGER(out_dim).add(1) = nrhs;
+        setAttrib(ans, R_DimSymbol(), out_dim);
+        let bin_dimnames = getAttrib(bin, R_DimNamesSymbol());
+        if bin_dimnames != R_NilValue() {
+            setAttrib(ans, R_DimNamesSymbol(), bin_dimnames);
+        }
         ans
     }
 }
-
 /// qr_qy_real - real QR multiply Q*y.
 ///
 /// Port of: static SEXP qr_qy_real(SEXP q, SEXP bin, SEXP trans)
@@ -3049,7 +3134,7 @@ pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zunmqr'\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zunmqr'"));
         }
 
         lwork = tmp.r as c_int;
@@ -3072,7 +3157,7 @@ pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zunmqr'\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zunmqr'"));
         }
 
         let ans = Rf_allocVector(CPLXSXP_C, len_b as c_int);

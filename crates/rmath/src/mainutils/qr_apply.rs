@@ -87,6 +87,12 @@ unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) ->
             err("'qr' must be a QR decomposition")
         }
         let (f, a, r) = fields(q);
+        // GNU qr.qy/qr.qty dispatch complex decompositions straight to
+        // qr_qy_cmplx; `y` must be a complex matrix (vectors are promoted
+        // by as.matrix first, as in the R wrapper).
+        if TYPEOF(f) == SEXPTYPE::CPLXSXP {
+            return apply_complex(q, f, y, transpose);
+        }
         if TYPEOF(f) != REALSXP_C || TYPEOF(a) != REALSXP_C {
             err("invalid QR decomposition")
         }
@@ -255,4 +261,87 @@ pub unsafe fn do_qr_qy(c: SEXP, o: SEXP, a: SEXP, r: SEXP) -> SEXP {
 }
 pub unsafe fn do_qr_qty(c: SEXP, o: SEXP, a: SEXP, r: SEXP) -> SEXP {
     unsafe { apply(c, o, a, r, true) }
+}
+
+/// GNU complex qr.qy/qr.qty: `.Internal(qr_qy_cmplx(qr, as.matrix(y), trans))`.
+/// The kernel returns a bare complex vector, so dimensions and dimnames are
+/// rebuilt here the way GNU's `duplicate(Bin)` keeps them.
+unsafe fn apply_complex(q: SEXP, f: SEXP, y: SEXP, transpose: bool) -> SEXP {
+    unsafe {
+        let d = getAttrib(f, R_DimSymbol());
+        if TYPEOF(d) != INTSXP_C || XLENGTH(d) != 2 {
+            err("invalid QR dimensions")
+        }
+        let m = *INTEGER(d);
+        let n = *INTEGER(d).add(1);
+        if m < 0 || n < 0 || m.checked_mul(n).map(|len| len as i64) != Some(XLENGTH(f)) {
+            err("invalid QR dimensions")
+        }
+        let m_us = m as usize;
+        // GNU requires a complex right-hand side; other types error in
+        // qr_qy_cmplx with "'b' must be a complex matrix".
+        if TYPEOF(y) != SEXPTYPE::CPLXSXP {
+            err("'b' must be a complex matrix")
+        }
+        let yy = y;
+        let _yy_guard = protect(yy);
+        let yd = getAttrib(yy, R_DimSymbol());
+        let matrix = yd != R_NilValue() && !yd.is_null();
+        if matrix && (TYPEOF(yd) != INTSXP_C || XLENGTH(yd) != 2) {
+            err("invalid 'y' dimensions")
+        }
+        let ny = if matrix {
+            let rows = *INTEGER(yd);
+            if rows != m {
+                err(&format!("right-hand side should have {m} not {rows} rows"))
+            }
+            let cols = *INTEGER(yd).add(1);
+            if cols < 0 {
+                err("invalid 'y' dimensions")
+            }
+            cols as usize
+        } else {
+            if XLENGTH(yy) as usize != m_us {
+                err("'qr' and 'y' must have the same number of rows")
+            }
+            1
+        };
+        // as.matrix(): a bare complex vector becomes an m x 1 matrix, keeping
+        let y_mat = if matrix {
+            yy
+        } else {
+            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            let _dims_guard = protect(dims);
+            *INTEGER(dims) = m;
+            *INTEGER(dims).add(1) = 1;
+            let duplicated = crate::mainutils::duplicate::Rf_duplicate(yy);
+            let _duplicated_guard = protect(duplicated);
+            setAttrib(duplicated, R_DimSymbol(), dims);
+            let names = getAttrib(yy, R_NamesSymbol());
+            if names != R_NilValue() && !names.is_null() {
+                let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+                let _dimnames_guard = protect(dimnames);
+                SET_VECTOR_ELT(dimnames, 0, names);
+                SET_VECTOR_ELT(dimnames, 1, R_NilValue());
+                setAttrib(duplicated, R_DimNamesSymbol(), dimnames);
+            }
+            duplicated
+        };
+        let _y_mat_guard = protect(y_mat);
+        let trans_flag = Rf_allocVector3(SEXPTYPE::LGLSXP, 1);
+        let _trans_guard = protect(trans_flag);
+        *LOGICAL(trans_flag) = transpose as i32;
+        let out = crate::modules::lapack::lapack_impl::qr_qy_cmplx(q, y_mat, trans_flag);
+        let _out_guard = protect(out);
+        let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _dims_guard = protect(dims);
+        *INTEGER(dims) = m;
+        *INTEGER(dims).add(1) = ny as c_int;
+        setAttrib(out, R_DimSymbol(), dims);
+        let dn = getAttrib(y_mat, R_DimNamesSymbol());
+        if dn != R_NilValue() && !dn.is_null() {
+            setAttrib(out, R_DimNamesSymbol(), crate::mainutils::duplicate::Rf_duplicate(dn));
+        }
+        out
+    }
 }

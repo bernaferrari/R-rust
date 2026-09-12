@@ -109,17 +109,18 @@ pub unsafe fn do_qr_R(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
         }
-        if factor == R_NilValue() || TYPEOF(factor) != REALSXP_C {
-            qr_r_error("invalid QR decomposition");
+        let complex = TYPEOF(factor) == SEXPTYPE::CPLXSXP;
+        if !complex && factor == R_NilValue() || (TYPEOF(factor) != REALSXP_C && !complex) {
+            qr_r_error("invalid QR decomposition")
         }
         let dim = getAttrib(factor, R_DimSymbol());
         if dim == R_NilValue() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
-            qr_r_error("invalid QR matrix dimensions");
+            qr_r_error("invalid QR matrix dimensions")
         }
         let m_i = *INTEGER(dim);
         let n_i = *INTEGER(dim).add(1);
         if m_i < 0 || n_i < 0 {
-            qr_r_error("invalid QR matrix dimensions");
+            qr_r_error("invalid QR matrix dimensions")
         }
         let m = m_i as usize;
         let n = n_i as usize;
@@ -130,25 +131,39 @@ pub unsafe fn do_qr_R(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let complete = complete_arg.is_some_and(|value| {
             let value = asLogical(value);
             if value == NA_LOGICAL {
-                qr_r_error("invalid 'complete' argument");
+                qr_r_error("invalid 'complete' argument")
             }
             value != 0
         });
         let rows = if complete { m } else { m.min(n) };
         if rows > c_int::MAX as usize || n > c_int::MAX as usize {
-            qr_r_error("QR result is too large");
+            qr_r_error("QR result is too large")
         }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, (rows * n) as R_xlen_t);
+        let result_type = if complex {
+            SEXPTYPE::CPLXSXP
+        } else {
+            SEXPTYPE::REALSXP
+        };
+        let result = Rf_allocVector3(result_type, (rows * n) as R_xlen_t);
         let _result_guard = protect(result);
         for col in 0..n {
             crate::eval::limits::poll_computation();
             for row in 0..rows {
-                let value = if row <= col && row < m {
-                    *REAL(factor).add(row + col * m)
+                if complex {
+                    let value = if row <= col && row < m {
+                        *COMPLEX(factor).add(row + col * m)
+                    } else {
+                        Rcomplex { r: 0.0, i: 0.0 }
+                    };
+                    *COMPLEX(result).add(row + col * rows) = value;
                 } else {
-                    0.0
-                };
-                *REAL(result).add(row + col * rows) = value;
+                    let value = if row <= col && row < m {
+                        *REAL(factor).add(row + col * m)
+                    } else {
+                        0.0
+                    };
+                    *REAL(result).add(row + col * rows) = value;
+                }
             }
         }
         let out_dim = Rf_allocVector(INTSXP_C, 2);

@@ -133,15 +133,47 @@ pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if pivoted && ncol < XLENGTH(pivot) as c_int {
             err("need larger value of 'ncol' as pivoting occurred")
         }
+        let r_complex = TYPEOF(r) == SEXPTYPE::CPLXSXP;
+        let r_type = if r_complex {
+            SEXPTYPE::CPLXSXP
+        } else {
+            SEXPTYPE::REALSXP
+        };
+        unsafe fn copy_element(dst: SEXP, src: SEXP, index: usize, complex: bool) {
+            unsafe {
+                if complex {
+                    *COMPLEX(dst).add(index) = *COMPLEX(src).add(index);
+                } else {
+                    *REAL(dst).add(index) = *REAL(src).add(index);
+                }
+            }
+        }
+        unsafe fn fill_zero(dst: SEXP, index: usize, complex: bool) {
+            unsafe {
+                if complex {
+                    *COMPLEX(dst).add(index) = Rcomplex { r: 0.0, i: 0.0 };
+                } else {
+                    *REAL(dst).add(index) = 0.0;
+                }
+            }
+        }
+        unsafe fn set_one(dst: SEXP, index: usize, complex: bool) {
+            unsafe {
+                if complex {
+                    *COMPLEX(dst).add(index) = Rcomplex { r: 1.0, i: 0.0 };
+                } else {
+                    *REAL(dst).add(index) = 1.0;
+                }
+            }
+        }
         let r_use = if ncol == p {
             r
         } else if ncol < p {
-            let out = Rf_allocVector3(SEXPTYPE::REALSXP, (nrow_r * ncol) as R_xlen_t);
+            let out = Rf_allocVector3(r_type, (nrow_r * ncol) as R_xlen_t);
             let _out = protect(out);
             for j in 0..ncol as usize {
                 for i in 0..nrow_r as usize {
-                    *REAL(out).add(i + j * nrow_r as usize) =
-                        *REAL(r).add(i + j * nrow_r as usize);
+                    copy_element(out, r, i + j * nrow_r as usize, r_complex);
                 }
             }
             let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
@@ -151,35 +183,19 @@ pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             setAttrib(out, R_DimSymbol(), dims);
             out
         } else {
-            let out = Rf_allocVector3(SEXPTYPE::REALSXP, (nrow_r * ncol) as R_xlen_t);
+            // GNU does diag(1 or 1+0i, nrow(R), ncol) then overwrites the
+            // first p columns with R.
+            let out = Rf_allocVector3(r_type, (nrow_r * ncol) as R_xlen_t);
             let _out = protect(out);
             for i in 0..(nrow_r * ncol) as usize {
-                *REAL(out).add(i) = 0.0;
-            }
-            for j in 0..p as usize {
-                for i in 0..nrow_r as usize {
-                    *REAL(out).add(i + j * nrow_r as usize) =
-                        *REAL(r).add(i + j * nrow_r as usize);
-                }
-            }
-            for i in 0..nrow_r as usize {
-                if i < ncol as usize {
-                    *REAL(out).add(i + i * nrow_r as usize) = 1.0;
-                }
-            }
-            // The extra-column identity is on the new columns only; GNU does
-            // diag(..., nrow(R), ncol) then overwrites the first p columns.
-            // Rebuild that explicitly.
-            for i in 0..(nrow_r * ncol) as usize {
-                *REAL(out).add(i) = 0.0;
+                fill_zero(out, i, r_complex);
             }
             for i in 0..nrow_r.min(ncol) as usize {
-                *REAL(out).add(i + i * nrow_r as usize) = 1.0;
+                set_one(out, i + i * nrow_r as usize, r_complex);
             }
             for j in 0..p as usize {
                 for i in 0..nrow_r as usize {
-                    *REAL(out).add(i + j * nrow_r as usize) =
-                        *REAL(r).add(i + j * nrow_r as usize);
+                    copy_element(out, r, i + j * nrow_r as usize, r_complex);
                 }
             }
             let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
@@ -216,18 +232,36 @@ pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if cols < pvt_len {
                 err("need larger value of 'ncol' as pivoting occurred")
             }
-            let mut copy = vec![0.0f64; rows * cols];
-            for i in 0..rows * cols {
-                copy[i] = *REAL(res).add(i);
-            }
-            for i in 0..pvt_len {
-                let dest = *INTEGER(pivot).add(i);
-                if dest <= 0 || dest as usize > cols {
-                    err("invalid QR pivot")
+            let res_complex = TYPEOF(res) == SEXPTYPE::CPLXSXP;
+            if res_complex {
+                let mut copy = vec![Rcomplex { r: 0.0, i: 0.0 }; rows * cols];
+                for i in 0..rows * cols {
+                    copy[i] = *COMPLEX(res).add(i);
                 }
-                let src = i;
-                for row in 0..rows {
-                    *REAL(res).add(row + (dest as usize - 1) * rows) = copy[row + src * rows];
+                for i in 0..pvt_len {
+                    let dest = *INTEGER(pivot).add(i);
+                    if dest <= 0 || dest as usize > cols {
+                        err("invalid QR pivot")
+                    }
+                    for row in 0..rows {
+                        *COMPLEX(res).add(row + (dest as usize - 1) * rows) =
+                            copy[row + i * rows];
+                    }
+                }
+            } else {
+                let mut copy = vec![0.0f64; rows * cols];
+                for i in 0..rows * cols {
+                    copy[i] = *REAL(res).add(i);
+                }
+                for i in 0..pvt_len {
+                    let dest = *INTEGER(pivot).add(i);
+                    if dest <= 0 || dest as usize > cols {
+                        err("invalid QR pivot")
+                    }
+                    for row in 0..rows {
+                        *REAL(res).add(row + (dest as usize - 1) * rows) =
+                            copy[row + i * rows];
+                    }
                 }
             }
         }

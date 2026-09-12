@@ -15,6 +15,7 @@ use std::os::raw::c_int;
 const REALSXP_C: c_int = 14;
 const INTSXP_C: c_int = 13;
 const STRSXP_C: c_int = 16;
+const CPLXSXP_C: c_int = 15;
 const VECSXP_C: c_int = 19;
 
 fn err(s: &str) -> ! {
@@ -94,6 +95,9 @@ pub unsafe fn do_qr_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             err("first argument must be a QR decomposition")
         }
         let (f, rank_s, qraux, pivot) = fields(q);
+        if TYPEOF(f) == SEXPTYPE::CPLXSXP {
+            return qr_coef_complex(q, f, qraux, pivot, y);
+        }
         if TYPEOF(f) != REALSXP_C {
             err("complex matrices are not supported by qr.coef in this runtime")
         }
@@ -275,6 +279,102 @@ pub unsafe fn do_qr_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             } else {
                 for i in 0..out_len {
                     *REAL(coef).add(i) = b[i];
+                }
+            }
+        }
+        finish(coef, p, ny, matrix)
+    }
+}
+
+/// GNU qr.coef complex path: `qr_coef_cmplx` applies Q^H and back-substitutes
+/// R; the pivot rows are then mapped back onto the p-column coefficient
+/// matrix and any rows beyond min(n, p) stay NA like `B[ix, ]`.
+unsafe fn qr_coef_complex(q: SEXP, f: SEXP, qraux: SEXP, pivot: SEXP, y: SEXP) -> SEXP {
+    unsafe {
+        let d = getAttrib(f, R_DimSymbol());
+        if TYPEOF(d) != INTSXP_C || XLENGTH(d) != 2 {
+            err("invalid nrow(qr$qr)")
+        }
+        let n = *INTEGER(d);
+        let p = *INTEGER(d).add(1);
+        if n < 0 {
+            err("invalid nrow(qr$qr)")
+        }
+        if p < 0 {
+            err("invalid ncol(qr$qr)")
+        }
+        if n.checked_mul(p).map(|len| len as i64) != Some(XLENGTH(f)) {
+            err("invalid QR matrix length")
+        }
+        if TYPEOF(pivot) != INTSXP_C || XLENGTH(pivot) != p as R_xlen_t {
+            err("invalid QR pivot")
+        }
+        let yy = if TYPEOF(y) == CPLXSXP_C {
+            y
+        } else if matches!(TYPEOF(y), REALSXP_C | INTSXP_C | 10 | STRSXP_C) {
+            coerceVector(y, CPLXSXP_C)
+        } else {
+            err("'y' must be numeric")
+        };
+        let _yy_guard = protect(yy);
+        let yd = getAttrib(yy, R_DimSymbol());
+        let matrix = yd != R_NilValue() && !yd.is_null();
+        if matrix && (TYPEOF(yd) != INTSXP_C || XLENGTH(yd) != 2) {
+            err("invalid ncol(y)")
+        }
+        let ny = if matrix {
+            let rows = *INTEGER(yd);
+            if rows != n {
+                err("'qr' and 'y' must have the same number of rows")
+            }
+            let cols = *INTEGER(yd).add(1);
+            if cols < 0 {
+                err("invalid ncol(y)")
+            }
+            cols as usize
+        } else {
+            if XLENGTH(yy) != n as R_xlen_t {
+                err("'qr' and 'y' must have the same number of rows")
+            }
+            1
+        };
+        // qr.coef does `if (!im) y <- as.matrix(y)` before dispatching.
+        let y_mat = if matrix {
+            yy
+        } else {
+            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            let _dims_guard = protect(dims);
+            *INTEGER(dims) = n;
+            *INTEGER(dims).add(1) = 1;
+            let duplicated = crate::mainutils::duplicate::Rf_duplicate(yy);
+            let _duplicated_guard = protect(duplicated);
+            setAttrib(duplicated, R_DimSymbol(), dims);
+            duplicated
+        };
+        let _y_mat_guard = protect(y_mat);
+        let Some(out_len) = (p as usize).checked_mul(ny) else {
+            err("result too large")
+        };
+        let coef = Rf_allocVector3(SEXPTYPE::CPLXSXP, out_len as R_xlen_t);
+        let _coef_guard = protect(coef);
+        for i in 0..out_len {
+            *COMPLEX(coef).add(i) = Rcomplex {
+                r: NA_REAL,
+                i: NA_REAL,
+            };
+        }
+        if p != 0 {
+            let b = crate::modules::lapack::lapack_impl::qr_coef_cmplx(q, y_mat);
+            let _b_guard = protect(b);
+            let usable = (n as usize).min(p as usize);
+            for j in 0..ny {
+                for i in 0..usable {
+                    let dest = *INTEGER(pivot).add(i);
+                    if dest <= 0 || dest > p {
+                        err("invalid QR pivot")
+                    }
+                    *COMPLEX(coef).add((dest - 1) as usize + j * p as usize) =
+                        *COMPLEX(b).add(i + j * n as usize);
                 }
             }
         }

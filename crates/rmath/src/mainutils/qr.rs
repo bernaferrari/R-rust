@@ -78,6 +78,46 @@ pub unsafe fn do_qr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x0.is_null() || x0 == R_NilValue() {
             qr_error("'data' must be of a vector type, was 'NULL'")
         }
+        // GNU qr.default tests is.complex(x) before `tol` or `LAPACK` are
+        // ever forced, and complex input always decomposes through LAPACK
+        // zgeqp3 regardless of those arguments.
+        if TYPEOF(x0) == CPLXSXP_C {
+            let dim0 = getAttrib(x0, R_DimSymbol());
+            let x = if dim0.is_null() || dim0 == R_NilValue() {
+                // as.matrix(): a bare complex vector becomes an n x 1 matrix,
+                // keeping its names as row dimnames.
+                if XLENGTH(x0) > c_int::MAX as i64 {
+                    qr_error("vector too large for QR")
+                }
+                let duplicated = crate::mainutils::duplicate::Rf_duplicate(x0);
+                let _duplicated_guard = protect(duplicated);
+                let dimensions = Rf_allocVector(INTSXP_C, 2);
+                let _dimensions_guard = protect(dimensions);
+                INTEGER(dimensions).write(XLENGTH(x0) as c_int);
+                INTEGER(dimensions).add(1).write(1);
+                setAttrib(duplicated, R_DimSymbol(), dimensions);
+                let names = getAttrib(x0, R_NamesSymbol());
+                if names != R_NilValue() && !names.is_null() {
+                    let dimnames = Rf_allocVector(VECSXP_C, 2);
+                    let _dimnames_guard = protect(dimnames);
+                    SET_VECTOR_ELT(dimnames, 0, names);
+                    SET_VECTOR_ELT(dimnames, 1, R_NilValue());
+                    setAttrib(duplicated, R_DimNamesSymbol(), dimnames);
+                }
+                duplicated
+            } else {
+                x0
+            };
+            let _x_guard = protect(x);
+            let decomposed = crate::modules::lapack::lapack_impl::La_qr_cmplx(x);
+            let _decomposed_guard = protect(decomposed);
+            setAttrib(
+                decomposed,
+                R_ClassSymbol(),
+                Rf_mkString(b"qr\0".as_ptr() as *const c_char),
+            );
+            return decomposed;
+        }
         let lapack = lapack_arg.map_or(false, |value| {
             let flag = asLogical(value);
             if flag == NA_LOGICAL {
@@ -88,10 +128,6 @@ pub unsafe fn do_qr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let tolerance = tol_arg.map_or(1.0e-7, |value| crate::main::coerce::asReal(value));
         if !lapack && !tolerance.is_finite() {
             qr_error("invalid 'tol' argument")
-        }
-
-        if TYPEOF(x0) == CPLXSXP_C {
-            qr_error("complex matrices are not supported by qr in this runtime");
         }
         if TYPEOF(x0) != REALSXP_C
             && TYPEOF(x0) != INTSXP_C

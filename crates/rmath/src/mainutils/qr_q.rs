@@ -87,6 +87,11 @@ pub unsafe fn do_qr_Q(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
         }
+        // GNU qr.Q builds a complex diagonal D and multiplies through
+        // qr.qy; Dvec defaults to 1+0i for complex decompositions.
+        if TYPEOF(factor) == SEXPTYPE::CPLXSXP {
+            return qr_Q_complex(obj, factor, complete_arg, dvec_arg);
+        }
         if TYPEOF(factor) != REALSXP_C || TYPEOF(aux) != REALSXP_C {
             qr_q_error("invalid QR decomposition")
         }
@@ -195,5 +200,76 @@ pub unsafe fn do_qr_Q(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         *INTEGER(od).add(1) = cols as c_int;
         setAttrib(out, R_DimSymbol(), od);
         out
+    }
+}
+
+/// GNU qr.Q for complex decompositions: build D = Diagonal(Dvec) (or the
+/// 1+0i identity) and delegate to qr.qy, which routes through qr_qy_cmplx.
+unsafe fn qr_Q_complex(
+    obj: SEXP,
+    factor: SEXP,
+    complete_arg: Option<SEXP>,
+    dvec_arg: Option<SEXP>,
+) -> SEXP {
+    unsafe {
+        let dim = getAttrib(factor, R_DimSymbol());
+        if TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            qr_q_error("invalid QR matrix dimensions")
+        }
+        let m = *INTEGER(dim) as isize;
+        let n = *INTEGER(dim).add(1) as isize;
+        if m < 0 || n < 0 {
+            qr_q_error("invalid QR matrix dimensions")
+        }
+        let m_us = m as usize;
+        let k = m_us.min(n as usize);
+        let complete = complete_arg.is_some_and(|x| {
+            let v = asLogical(x);
+            if v == NA_LOGICAL {
+                qr_q_error("invalid 'complete' argument")
+            }
+            v != 0
+        });
+        let cols = if complete { m_us } else { k };
+        let count = m_us
+            .checked_mul(cols)
+            .filter(|&n| n <= isize::MAX as usize / std::mem::size_of::<f64>())
+            .unwrap_or_else(|| qr_q_error("QR result is too large"));
+        let d = Rf_allocVector3(SEXPTYPE::CPLXSXP, count as R_xlen_t);
+        let _d_guard = protect(d);
+        let dvec = dvec_arg.map(|x| {
+            if TYPEOF(x) == SEXPTYPE::CPLXSXP {
+                x
+            } else {
+                coerceVector(x, 15)
+            }
+        });
+        let _dvec_guard = dvec.map(protect);
+        for i in 0..count {
+            *COMPLEX(d).add(i) = Rcomplex { r: 0.0, i: 0.0 };
+        }
+        // Dvec[seq_len(ncols)]: entries past length(Dvec) index NA, exactly
+        // like R's out-of-range subscripting in GNU's diag(Dvec, ...).
+        for j in 0..cols {
+            let value = match (&dvec, j) {
+                (Some(v), j) if (j as i64) < XLENGTH(*v) => *COMPLEX(*v).add(j),
+                (Some(_), _) => Rcomplex {
+                    r: NA_REAL,
+                    i: NA_REAL,
+                },
+                (None, _) => Rcomplex { r: 1.0, i: 0.0 },
+            };
+            *COMPLEX(d).add(j + j * m_us) = value;
+        }
+        let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _dims_guard = protect(dims);
+        *INTEGER(dims) = m as c_int;
+        *INTEGER(dims).add(1) = cols as c_int;
+        setAttrib(d, R_DimSymbol(), dims);
+        let y_tail = Rf_cons(d, R_NilValue());
+        let _y_tail = protect(y_tail);
+        let qy_args = Rf_cons(obj, y_tail);
+        let _qy_args = protect(qy_args);
+        crate::mainutils::qr_apply::do_qr_qy(R_NilValue(), R_NilValue(), qy_args, R_NilValue())
     }
 }

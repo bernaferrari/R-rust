@@ -2200,124 +2200,117 @@ pub unsafe fn zgeqp3_(
             }
         }
 
-        // Column norms (squared magnitude)
-        let mut col_norms_sq = vec![0.0f64; n_val];
+        // Reference LAPACK ZLAQP2 (unblocked ZGEQP3 path): full column
+        // norms in VN1/VN2, first-max pivoting, ZLARFG reflectors with
+        // real beta, H(i)**H application through conjugated tau, and the
+        // LAPACK Working Note 176 partial norm downdate.
+        let mut vn1 = vec![0.0f64; n_val];
+        let mut vn2 = vec![0.0f64; n_val];
         for j in 0..n_val {
             let mut sum = 0.0;
             for i in 0..m_val {
                 let c = buf[i + j * m_val];
                 sum += c.re * c.re + c.im * c.im;
             }
-            col_norms_sq[j] = sum;
+            vn1[j] = sum.sqrt();
+            vn2[j] = vn1[j];
         }
+        let tol3z = f64::EPSILON.sqrt();
 
-        for jj in 0..k {
-            // Find pivot
-            let mut max_norm = 0.0f64;
-            let mut pivot = jj;
-            for j in jj..n_val {
-                if col_norms_sq[j] > max_norm {
-                    max_norm = col_norms_sq[j];
+        for i in 0..k {
+            // IDAMAX over VN1(i:n) keeps the first maximum.
+            let mut pivot = i;
+            let mut best = vn1[i];
+            for j in (i + 1)..n_val {
+                if vn1[j] > best {
+                    best = vn1[j];
                     pivot = j;
                 }
             }
-
-            if pivot != jj {
-                for i in 0..m_val {
-                    buf.swap(i + jj * m_val, i + pivot * m_val);
+            if pivot != i {
+                for r in 0..m_val {
+                    buf.swap(r + i * m_val, r + pivot * m_val);
                 }
-                col_norms_sq.swap(jj, pivot);
-                let tmp = *jpvt.add(jj);
-                *jpvt.add(jj) = *jpvt.add(pivot);
+                vn1.swap(i, pivot);
+                vn2.swap(i, pivot);
+                let tmp = *jpvt.add(i);
+                *jpvt.add(i) = *jpvt.add(pivot);
                 *jpvt.add(pivot) = tmp;
             }
 
-            let remaining = m_val - jj;
-            if remaining == 0 {
-                *tau.add(jj) = Rcomplex { r: 0.0, i: 0.0 };
-                continue;
+            // ZLARFG on buf[i:m, i]: xnorm covers the tail only, and beta
+            // is real with sign opposite to Re(alpha).
+            let alpha = buf[i + i * m_val];
+            let alphar = alpha.re;
+            let alphi = alpha.im;
+            let mut xnorm = 0.0f64;
+            for r in (i + 1)..m_val {
+                let c = buf[r + i * m_val];
+                xnorm += c.re * c.re + c.im * c.im;
             }
-
-            // Extract x = buf[jj:m, jj]
-            let mut x = vec![c64::new(0.0, 0.0); remaining];
-            for i in 0..remaining {
-                x[i] = buf[jj + i + jj * m_val];
-            }
-
-            // Complex norm
-            let norm_x = {
-                let mut s = 0.0;
-                for c in &x {
-                    s += c.re * c.re + c.im * c.im;
-                }
-                s.sqrt()
-            };
-
-            if norm_x == 0.0 {
-                *tau.add(jj) = Rcomplex { r: 0.0, i: 0.0 };
-                continue;
-            }
-
-            // Complex Householder: H = I - tau * v * v^H
-            let alpha = x[0];
-            let r_alpha = (alpha.re * alpha.re + alpha.im * alpha.im).sqrt();
-            let sign = if r_alpha == 0.0 {
-                1.0
+            xnorm = xnorm.sqrt();
+            let tau_i = if xnorm == 0.0 && alphi == 0.0 {
+                c64::new(0.0, 0.0)
             } else {
-                alpha.re / r_alpha
-            };
-            let beta = -sign * norm_x;
-
-            let u1 = c64::new(alpha.re - beta, alpha.im);
-
-            if u1.re == 0.0 && u1.im == 0.0 {
-                *tau.add(jj) = Rcomplex { r: 0.0, i: 0.0 };
-                buf[jj + jj * m_val] = c64::new(beta, 0.0);
-                continue;
-            }
-
-            let mut v = vec![c64::new(0.0, 0.0); remaining];
-            v[0] = c64::new(1.0, 0.0);
-            for i in 1..remaining {
-                v[i] = x[i] / u1;
-            }
-
-            // tau = (beta - alpha) / beta ... simplified for complex
-            // tau = conj(u1) / beta
-            let tau_val = c64::new(u1.re, -u1.im) / c64::new(beta, 0.0);
-
-            // Store
-            buf[jj + jj * m_val] = c64::new(beta, 0.0);
-            for i in 1..remaining {
-                buf[jj + i + jj * m_val] = v[i];
-            }
-            *tau.add(jj) = Rcomplex {
-                r: tau_val.re,
-                i: tau_val.im,
-            };
-
-            // Apply: buf[jj:m, col] -= tau * v * (v^H * buf[jj:m, col])
-            for col in (jj + 1)..n_val {
-                // w = v^H * buf[jj:m, col]
-                let mut w = buf[jj + col * m_val]; // v[0] = 1
-                for i in 1..remaining {
-                    let vi_conj = c64::new(v[i].re, -v[i].im);
-                    w = w + vi_conj * buf[jj + i + col * m_val];
+                let norm3 = (alphar * alphar + alphi * alphi + xnorm * xnorm).sqrt();
+                let beta = -norm3.copysign(alphar);
+                let tau = c64::new((beta - alphar) / beta, -alphi / beta);
+                // v_tail = x_tail / (alpha - beta); the diagonal stores
+                // the real beta.
+                let inv = c64::new(1.0, 0.0) / c64::new(alpha.re - beta, alpha.im);
+                for r in (i + 1)..m_val {
+                    buf[r + i * m_val] = buf[r + i * m_val] * inv;
                 }
-                w = tau_val * w;
+                buf[i + i * m_val] = c64::new(beta, 0.0);
+                tau
+            };
+            *tau.add(i) = Rcomplex {
+                r: tau_i.re,
+                i: tau_i.im,
+            };
 
-                buf[jj + col * m_val] = buf[jj + col * m_val] - w;
-                for i in 1..remaining {
-                    buf[jj + i + col * m_val] = buf[jj + i + col * m_val] - w * v[i];
+            // ZLARF1F with CONJG(TAU): C <- C - conj(tau) v (v^H C), with
+            // the implicit v[0] = 1.
+            let ctau = c64::new(tau_i.re, -tau_i.im);
+            for col in (i + 1)..n_val {
+                let mut w = buf[i + col * m_val];
+                for r in (i + 1)..m_val {
+                    let v = buf[r + i * m_val];
+                    w = w + c64::new(v.re, -v.im) * buf[r + col * m_val];
+                }
+                w = ctau * w;
+                buf[i + col * m_val] = buf[i + col * m_val] - w;
+                for r in (i + 1)..m_val {
+                    buf[r + col * m_val] = buf[r + col * m_val] - w * buf[r + i * m_val];
                 }
             }
 
-            // Update norms
-            for col in (jj + 1)..n_val {
-                let c = buf[jj + col * m_val];
-                col_norms_sq[col] -= c.re * c.re + c.im * c.im;
-                if col_norms_sq[col] < 0.0 {
-                    col_norms_sq[col] = 0.0;
+            // LAWN 176 partial norm downdate.
+            for j in (i + 1)..n_val {
+                if vn1[j] != 0.0 {
+                    let a = buf[i + j * m_val];
+                    let absr = (a.re * a.re + a.im * a.im).sqrt();
+                    let mut temp = 1.0 - (absr / vn1[j]) * (absr / vn1[j]);
+                    if temp < 0.0 {
+                        temp = 0.0;
+                    }
+                    let temp2 = temp * (vn1[j] / vn2[j]) * (vn1[j] / vn2[j]);
+                    if temp2 <= tol3z {
+                        if i + 1 < m_val {
+                            let mut s = 0.0;
+                            for r in (i + 1)..m_val {
+                                let c = buf[r + j * m_val];
+                                s += c.re * c.re + c.im * c.im;
+                            }
+                            vn1[j] = s.sqrt();
+                            vn2[j] = vn1[j];
+                        } else {
+                            vn1[j] = 0.0;
+                            vn2[j] = 0.0;
+                        }
+                    } else {
+                        vn1[j] *= temp.sqrt();
+                    }
                 }
             }
         }
@@ -2384,16 +2377,23 @@ pub unsafe fn zunmqr_(
         let is_conj = trans_byte == b'C' || trans_byte == b'c';
 
         if is_left {
+            // ZUNM2R: Q = H(1)...H(k); 'N' applies H(k) first (backward),
+            // 'C' applies H(1)**H first (forward), with conjugated tau.
             let range: Vec<usize> = if is_conj {
-                (0..k_val).rev().collect()
-            } else {
                 (0..k_val).collect()
+            } else {
+                (0..k_val).rev().collect()
             };
 
             for j in range {
-                let tau_j = {
+                let tau_raw = {
                     let rc = *tau.add(j);
                     c64::new(rc.r, rc.i)
+                };
+                let tau_j = if is_conj {
+                    c64::new(tau_raw.re, -tau_raw.im)
+                } else {
+                    tau_raw
                 };
                 if tau_j.re == 0.0 && tau_j.im == 0.0 {
                     continue;
@@ -2401,7 +2401,6 @@ pub unsafe fn zunmqr_(
 
                 let remaining = m_val - j;
                 for col in 0..n_val {
-                    // w = v^H * C[j:m, col]
                     let c0 = *c__.add(j + col * ldc_val);
                     let mut w = c64::new(c0.r, c0.i); // v[0] = 1
                     for i in 1..remaining {
@@ -2443,16 +2442,23 @@ pub unsafe fn zunmqr_(
                 }
             }
         } else {
-            let range: Vec<usize> = if !is_conj {
+            // ZUNM2R right side: 'N' applies H(1) first (forward), 'C'
+            // applies H(k)**H first (backward), with conjugated tau.
+            let range: Vec<usize> = if is_conj {
                 (0..k_val).rev().collect()
             } else {
                 (0..k_val).collect()
             };
 
             for j in range {
-                let tau_j = {
+                let tau_raw = {
                     let rc = *tau.add(j);
                     c64::new(rc.r, rc.i)
+                };
+                let tau_j = if is_conj {
+                    c64::new(tau_raw.re, -tau_raw.im)
+                } else {
+                    tau_raw
                 };
                 if tau_j.re == 0.0 && tau_j.im == 0.0 {
                     continue;

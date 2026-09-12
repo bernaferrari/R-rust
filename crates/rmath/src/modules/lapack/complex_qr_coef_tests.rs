@@ -37,7 +37,15 @@ unsafe fn make_qr(qr: SEXP) -> SEXP {
         let _obj = protect(obj);
         SET_VECTOR_ELT(obj, 0, qr);
         SET_VECTOR_ELT(obj, 1, R_NilValue());
-        SET_VECTOR_ELT(obj, 2, R_NilValue());
+        // Zero taus make Q the identity, so the full zunmqr+ztrtrs
+        // pipeline must return the Householder-free back-substitution.
+        let qraux = Rf_allocVector3(SEXPTYPE::CPLXSXP, 2);
+        let _qraux = protect(qraux);
+        for i in 0..2 {
+            (*COMPLEX(qraux).add(i)).r = 0.0;
+            (*COMPLEX(qraux).add(i)).i = 0.0;
+        }
+        SET_VECTOR_ELT(obj, 2, qraux);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _names = protect(names);
         SET_STRING_ELT(names, 0, Rf_mkChar(b"qr\0".as_ptr() as *const std::os::raw::c_char));
