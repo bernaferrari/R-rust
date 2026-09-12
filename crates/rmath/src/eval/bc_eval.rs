@@ -475,6 +475,136 @@ unsafe fn eval_gnu_dollargets(call: SEXP, symbol: SEXP, mut x: SEXP, rhs: SEXP, 
     }
 }
 
+/// GNU GETVAR / GETVAR_MISSOK match eval.c getvar(keepmiss).
+unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool) -> SEXP {
+    unsafe {
+        let value = R_findVar(symbol, rho);
+        if value == R_UnboundValue() {
+            bc_error("object not found");
+        }
+        if value == R_MissingArg() {
+            if keep_missing {
+                return value;
+            }
+            bc_missing_arg_error(symbol);
+        }
+        if TYPEOF(value) == SEXPTYPE::DOTSXP {
+            bc_error("'...' used in an invalid context");
+        }
+        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+            if keep_missing && crate::sexp::envir::R_isMissing(symbol, rho) != 0 {
+                return R_MissingArg();
+            }
+            let forced = forcePromise(value);
+            if forced == R_MissingArg() && !keep_missing {
+                bc_missing_arg_error(symbol);
+            }
+            forced
+        } else {
+            value
+        }
+    }
+}
+
+/// GNU STARTSUBSET_N / STARTSUBSET2_N match eval.c DO_STARTDISPATCH_N.
+/// Object methods jump to the label; the default path leaves x on the stack.
+unsafe fn eval_gnu_startsubset_n(
+    generic: &std::ffi::CStr,
+    call: SEXP,
+    x: SEXP,
+    rho: SEXP,
+) -> Option<SEXP> {
+    unsafe {
+        if crate::sexp::accessors::OBJECT(x) == 0
+            || call.is_null()
+            || TYPEOF(call) != SEXPTYPE::LANGSXP
+        {
+            return None;
+        }
+        let mut value = R_NilValue();
+        if super::missing::tryDispatch(generic.as_ptr() as *mut _, call, x, rho, &mut value) != 0 {
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+/// GNU STARTSUBASSIGN_N matches eval.c DO_START_ASSIGN_DISPATCH_N.
+unsafe fn eval_gnu_startsubassign_n(
+    generic: &std::ffi::CStr,
+    call: SEXP,
+    lhs: SEXP,
+    rhs: SEXP,
+    rho: SEXP,
+) -> Option<SEXP> {
+    unsafe {
+        if crate::sexp::accessors::OBJECT(lhs) == 0
+            || call.is_null()
+            || TYPEOF(call) != SEXPTYPE::LANGSXP
+        {
+            return None;
+        }
+        let mut value = R_NilValue();
+        if super::missing::tryAssignDispatch(
+            generic.as_ptr() as *mut _,
+            call,
+            lhs,
+            rhs,
+            rho,
+            &mut value,
+        ) != 0
+        {
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+/// GNU VECSUBSET / VECSUBSET2 fall through to do_subset(_2)_dflt.
+unsafe fn eval_gnu_vecsubset(call: SEXP, x: SEXP, index: SEXP, rho: SEXP, subset2: bool) -> SEXP {
+    unsafe {
+        let args = Rf_cons(x, Rf_cons(index, R_NilValue()));
+        let _args = crate::sexp::protect::protect(args);
+        if subset2 {
+            crate::mainutils::subset::do_subset2_dflt(
+                call,
+                crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
+                args,
+                rho,
+            )
+        } else {
+            crate::mainutils::subset::do_subset_dflt(
+                call,
+                crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+                args,
+                rho,
+            )
+        }
+    }
+}
+
+/// GNU VECSUBASSIGN falls through to do_subassign_dflt.
+unsafe fn eval_gnu_vecsubassign(call: SEXP, x: SEXP, rhs: SEXP, index: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut x = x;
+        if crate::sexp::accessors::NAMED(x) > 1 {
+            x = crate::mainutils::duplicate::shallow_duplicate(x);
+        }
+        let value = Rf_cons(rhs, R_NilValue());
+        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
+        let args = Rf_cons(x, Rf_cons(index, value));
+        let _args = crate::sexp::protect::protect(args);
+        crate::mainutils::subassign::do_subassign_dflt(
+            call,
+            crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+            args,
+            rho,
+        )
+    }
+}
+
 /// GNU AND/OR/NOT reuse the same primitive as interpreted `&` / `|` / `!`.
 unsafe fn eval_gnu_logic(
     call: SEXP,
@@ -734,7 +864,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let value = with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(FALSE));
                     stack.push(value);
                 }
-                super::bytecode::GNU_OP_GETVAR => {
+                super::bytecode::GNU_OP_GETVAR | super::bytecode::GNU_OP_GETVAR_MISSOK => {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
@@ -744,25 +874,10 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         ));
                     }
                     super::runtime::set_visible(TRUE);
-                    let value = with_stack_rooted(&stack, symbol, || R_findVar(symbol, rho));
-                    if value == R_UnboundValue() {
-                        bc_error("object not found");
-                    }
-                    if value == R_MissingArg() {
-                        bc_missing_arg_error(symbol);
-                    }
-                    if TYPEOF(value) == SEXPTYPE::DOTSXP {
-                        bc_error("'...' used in an invalid context");
-                    }
-                    let value = if TYPEOF(value) == SEXPTYPE::PROMSXP {
-                        let forced = with_stack_rooted(&stack, value, || forcePromise(value));
-                        if forced == R_MissingArg() {
-                            bc_missing_arg_error(symbol);
-                        }
-                        forced
-                    } else {
-                        value
-                    };
+                    let keep_missing = opcode == super::bytecode::GNU_OP_GETVAR_MISSOK;
+                    let value = with_stack_rooted(&stack, symbol, || {
+                        eval_gnu_getvar(symbol, rho, keep_missing)
+                    });
                     stack.push(value);
                 }
                 super::bytecode::GNU_OP_GETFUN | super::bytecode::GNU_OP_GETBUILTIN => {
@@ -1305,6 +1420,76 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let _cell = stack_pop_checked(&mut stack, "GNU ENDASSIGN cell");
                     with_stack_rooted(&stack, value, || defineVar(symbol, value, rho));
                     super::runtime::set_visible(FALSE);
+                }
+                super::bytecode::GNU_OP_STARTSUBSET_N | super::bytecode::GNU_OP_STARTSUBSET2_N => {
+                    let call_index = words[pc] as usize;
+                    let target = words[pc + 1] as usize;
+                    pc += 2;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let x = stack_top_checked(&stack, "GNU STARTSUBSET_N");
+                    let generic = if opcode == super::bytecode::GNU_OP_STARTSUBSET2_N {
+                        c"[["
+                    } else {
+                        c"["
+                    };
+                    if let Some(value) = with_stack_rooted(&stack, x, || {
+                        eval_gnu_startsubset_n(generic, call, x, rho)
+                    }) {
+                        let index = stack.depth() - 1;
+                        stack.set(index, value);
+                        pc = target;
+                    }
+                }
+                super::bytecode::GNU_OP_STARTSUBASSIGN_N => {
+                    let call_index = words[pc] as usize;
+                    let target = words[pc + 1] as usize;
+                    pc += 2;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let rhs = stack_top_checked(&stack, "GNU STARTSUBASSIGN_N rhs");
+                    let lhs_slot = stack.depth() - 2;
+                    let lhs = stack_at_checked(&stack, lhs_slot, "GNU STARTSUBASSIGN_N lhs");
+                    let lhs = if crate::sexp::accessors::NAMED(lhs) > 1 {
+                        let copy = with_stack_rooted(&stack, lhs, || {
+                            crate::mainutils::duplicate::shallow_duplicate(lhs)
+                        });
+                        stack.set(lhs_slot, copy);
+                        copy
+                    } else {
+                        lhs
+                    };
+                    if let Some(value) = with_stack_rooted(&stack, rhs, || {
+                        eval_gnu_startsubassign_n(c"[<-", call, lhs, rhs, rho)
+                    }) {
+                        stack_pop_checked(&mut stack, "GNU STARTSUBASSIGN_N dispatched rhs");
+                        let index = stack.depth() - 1;
+                        stack.set(index, value);
+                        pc = target;
+                    }
+                }
+                super::bytecode::GNU_OP_VECSUBSET | super::bytecode::GNU_OP_VECSUBSET2 => {
+                    let call_index = words[pc] as usize;
+                    pc += 1;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let index = stack_pop_checked(&mut stack, "GNU VECSUBSET index");
+                    let x = stack_pop_checked(&mut stack, "GNU VECSUBSET object");
+                    let subset2 = opcode == super::bytecode::GNU_OP_VECSUBSET2;
+                    let result = with_stack_rooted(&stack, index, || {
+                        eval_gnu_vecsubset(call, x, index, rho, subset2)
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_VECSUBASSIGN => {
+                    let call_index = words[pc] as usize;
+                    pc += 1;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let index = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN index");
+                    let rhs = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN rhs");
+                    let x = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN object");
+                    let result = with_stack_rooted(&stack, rhs, || {
+                        eval_gnu_vecsubassign(call, x, rhs, index, rho)
+                    });
+                    stack.push(result);
                 }
                 super::bytecode::GNU_OP_ISNULL
                 | super::bytecode::GNU_OP_ISLOGICAL

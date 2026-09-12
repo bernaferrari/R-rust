@@ -176,6 +176,13 @@ pub const GNU_OP_ISCHARACTER: c_int = 80;
 pub const GNU_OP_ISSYMBOL: c_int = 81;
 pub const GNU_OP_ISOBJECT: c_int = 82;
 pub const GNU_OP_ISNUMERIC: c_int = 83;
+pub const GNU_OP_GETVAR_MISSOK: c_int = 92;
+pub const GNU_OP_STARTSUBSET_N: c_int = 104;
+pub const GNU_OP_STARTSUBASSIGN_N: c_int = 105;
+pub const GNU_OP_VECSUBSET: c_int = 84;
+pub const GNU_OP_VECSUBSET2: c_int = 106;
+pub const GNU_OP_VECSUBASSIGN: c_int = 86;
+pub const GNU_OP_STARTSUBSET2_N: c_int = 110;
 
 pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
@@ -345,7 +352,41 @@ fn validate_gnu_adapter_impl(
                     }
                 }
             }
-            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
+            GNU_OP_STARTSUBSET_N | GNU_OP_STARTSUBSET2_N | GNU_OP_STARTSUBASSIGN_N => {
+                let call_index = code[pc];
+                let target = code[pc + 1];
+                let name = match opcode {
+                    GNU_OP_STARTSUBSET_N => "STARTSUBSET_N",
+                    GNU_OP_STARTSUBSET2_N => "STARTSUBSET2_N",
+                    _ => "STARTSUBASSIGN_N",
+                };
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU {name} expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+                if target < 0 || target as usize >= code.len() {
+                    return Err(format!(
+                        "GNU {name} jump target {target} is outside instruction stream length {}",
+                        code.len()
+                    ));
+                }
+                branches.push((opcode_pc, target as usize));
+            }
+            GNU_OP_VECSUBSET | GNU_OP_VECSUBSET2 | GNU_OP_VECSUBASSIGN => {
+                let call_index = code[pc];
+                let name = match opcode {
+                    GNU_OP_VECSUBSET => "VECSUBSET",
+                    GNU_OP_VECSUBSET2 => "VECSUBSET2",
+                    _ => "VECSUBASSIGN",
+                };
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU {name} expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+            }
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
             | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND | GNU_OP_OR
@@ -708,6 +749,50 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
+            GNU_OP_STARTSUBSET_N | GNU_OP_STARTSUBSET2_N => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU STARTSUBSET_N at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
+                pending.push((
+                    code[instruction_pc + 2] as usize,
+                    depth,
+                    loop_stack,
+                    call_stack.clone(),
+                ));
+            }
+            GNU_OP_STARTSUBASSIGN_N => {
+                if depth < 2 {
+                    return Err(format!(
+                        "GNU STARTSUBASSIGN_N at instruction {instruction_pc} has stack depth {depth}, requires 2"
+                    ));
+                }
+                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
+                pending.push((
+                    code[instruction_pc + 2] as usize,
+                    depth - 1,
+                    loop_stack,
+                    call_stack.clone(),
+                ));
+            }
+            GNU_OP_VECSUBSET | GNU_OP_VECSUBSET2 => {
+                if depth < 2 {
+                    return Err(format!(
+                        "GNU VECSUBSET at instruction {instruction_pc} has stack depth {depth}, requires 2"
+                    ));
+                }
+                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_VECSUBASSIGN => {
+                if depth < 3 {
+                    return Err(format!(
+                        "GNU VECSUBASSIGN at instruction {instruction_pc} has stack depth {depth}, requires 3"
+                    ));
+                }
+                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+            }
             GNU_OP_STARTFOR => {
                 if depth == 0 {
                     return Err(format!(
@@ -758,7 +843,7 @@ fn validate_gnu_adapter_impl(
                     call_stack.clone(),
                 ));
             }
-            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
                 if depth >= 64 {
                     return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
                 }
@@ -2124,5 +2209,79 @@ mod tests {
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 73, 2, 1, 1], 2).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 61, 1, 1], 2).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 74, 0, 1, 1], 2).is_err());
+    }
+
+    #[test]
+    fn gnu_subset_n_validator_accepts_vector_get_and_assign_streams() {
+        // compiler:::disassemble(cmpfun(function(x,i) x[i], options=list(optimize=3)))
+        let subset = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET_N,
+            0,
+            10,
+            GNU_OP_GETVAR_MISSOK,
+            2,
+            GNU_OP_VECSUBSET,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&subset, 3), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x) x[1L], options=list(optimize=3)))
+        let const_index = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET_N,
+            0,
+            10,
+            GNU_OP_LDCONST,
+            2,
+            GNU_OP_VECSUBSET,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&const_index, 3), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x,i) x[[i]], options=list(optimize=3)))
+        let subset2 = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET2_N,
+            0,
+            10,
+            GNU_OP_GETVAR_MISSOK,
+            2,
+            GNU_OP_VECSUBSET2,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&subset2, 3), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x,i,v){x[i]<-v;x}, options=list(optimize=3)))
+        let assign = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTASSIGN,
+            2,
+            GNU_OP_STARTSUBASSIGN_N,
+            4,
+            12,
+            GNU_OP_GETVAR_MISSOK,
+            6,
+            GNU_OP_VECSUBASSIGN,
+            4,
+            GNU_OP_ENDASSIGN,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&assign, 7), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 104, 0, 1, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 84, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 104, 2, 6, 1], 1).is_err());
     }
 }

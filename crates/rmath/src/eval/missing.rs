@@ -451,7 +451,7 @@ pub(crate) unsafe fn tryDispatch(
 ///
 /// Ported from R's `tryAssignDispatch()` in eval.c. Creates a copy of
 /// the call with the RHS wrapped in a promise, then tries dispatch.
-unsafe fn tryAssignDispatch(
+pub(crate) unsafe fn tryAssignDispatch(
     generic: *mut c_char,
     call: SEXP,
     lhs: SEXP,
