@@ -1661,6 +1661,76 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
                 }
+                super::bytecode::GNU_OP_COLON => {
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU COLON requires a call in the constant pool");
+                    }
+                    pc += 1;
+                    let rhs = stack_pop_checked(&mut stack, "GNU COLON");
+                    let lhs = stack_pop_checked(&mut stack, "GNU COLON");
+                    let result = with_stack_rooted(&stack, lhs, || {
+                        with_stack_rooted(&stack, rhs, || {
+                            let op = crate::sexp::envir::findFun(
+                                crate::sexp::symbol::Rf_install(c":".as_ptr()),
+                                super::runtime::base_env(),
+                            );
+                            // GNU asReal coerces strings ("5", "a"). The seq
+                            // helper's asReal only reads INT/REAL/LGL, so
+                            // non-numeric args are coerced first. Factors stay
+                            // intact so do_colon can still take cross_colon.
+                            let (lhs_arg, rhs_arg) = if crate::mainutils::essentials::sexp_has_class(
+                                lhs, "factor",
+                            ) && crate::mainutils::essentials::sexp_has_class(
+                                rhs, "factor",
+                            ) {
+                                (lhs, rhs)
+                            } else {
+                                (gnu_colon_numeric_arg(lhs), gnu_colon_numeric_arg(rhs))
+                            };
+                            let tail = Rf_cons(rhs_arg, R_NilValue());
+                            let _tail = crate::sexp::protect::protect(tail);
+                            let args = Rf_cons(lhs_arg, tail);
+                            let _args = crate::sexp::protect::protect(args);
+                            crate::mainutils::seq::do_colon(call, op, args, rho)
+                        })
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_SEQALONG | super::bytecode::GNU_OP_SEQLEN => {
+                    let name = if opcode == super::bytecode::GNU_OP_SEQALONG {
+                        "GNU SEQALONG"
+                    } else {
+                        "GNU SEQLEN"
+                    };
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error(format!("{name} requires a call in the constant pool"));
+                    }
+                    pc += 1;
+                    let value = stack_pop_checked(&mut stack, name);
+                    let result = with_stack_rooted(&stack, value, || {
+                        let symbol = if opcode == super::bytecode::GNU_OP_SEQALONG {
+                            c"seq_along"
+                        } else {
+                            c"seq_len"
+                        };
+                        let op = crate::sexp::envir::findFun(
+                            crate::sexp::symbol::Rf_install(symbol.as_ptr()),
+                            super::runtime::base_env(),
+                        );
+                        let args = Rf_cons(value, R_NilValue());
+                        let _args = crate::sexp::protect::protect(args);
+                        if opcode == super::bytecode::GNU_OP_SEQALONG {
+                            crate::mainutils::seq::do_seq_along(call, op, args, rho)
+                        } else {
+                            crate::mainutils::seq::do_seq_len(call, op, args, rho)
+                        }
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
                 super::bytecode::GNU_OP_DOLLAR => {
                     let call_index = words[pc] as usize;
                     let symbol_index = words[pc + 1] as usize;
@@ -2396,6 +2466,20 @@ unsafe fn stack_pop_checked(stack: &mut R_bcstack_t, context: &str) -> SEXP {
             bc_error(format!("{context} bytecode stack underflow"));
         }
         value
+    }
+}
+
+/// GNU asReal accepts character and other atomic inputs. COLON reuses
+/// do_colon, whose local asReal only reads INT/REAL/LGL, so non-numeric
+/// arguments are coerced to real first.
+unsafe fn gnu_colon_numeric_arg(value: SEXP) -> SEXP {
+    unsafe {
+        let ty = TYPEOF(value);
+        if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::REALSXP || ty == SEXPTYPE::LGLSXP {
+            value
+        } else {
+            crate::mainutils::coerce::coerceVector(value, SEXPTYPE::REALSXP.0)
+        }
     }
 }
 

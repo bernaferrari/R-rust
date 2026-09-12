@@ -208,6 +208,9 @@ pub const GNU_OP_SUBASSIGN_N: c_int = 114;
 pub const GNU_OP_MATSUBASSIGN2: c_int = 109;
 pub const GNU_OP_SUBSET2_N: c_int = 113;
 pub const GNU_OP_SUBASSIGN2_N: c_int = 115;
+pub const GNU_OP_COLON: c_int = 120;
+pub const GNU_OP_SEQALONG: c_int = 121;
+pub const GNU_OP_SEQLEN: c_int = 122;
 
 pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
@@ -507,7 +510,8 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
             | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND | GNU_OP_OR
             | GNU_OP_NOT | GNU_OP_SQRT | GNU_OP_EXP
-            | GNU_OP_SETVAR | GNU_OP_SETVAR2 => {
+            | GNU_OP_SETVAR | GNU_OP_SETVAR2
+            | GNU_OP_COLON | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -1138,7 +1142,7 @@ fn validate_gnu_adapter_impl(
             }
             GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ
             | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND
-            | GNU_OP_OR => {
+            | GNU_OP_OR | GNU_OP_COLON => {
                 if depth < 2 {
                     return Err(format!(
                         "GNU binary opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
@@ -1149,7 +1153,7 @@ fn validate_gnu_adapter_impl(
             GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT
             | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
-            | GNU_OP_ISNUMERIC => {
+            | GNU_OP_ISNUMERIC | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
                 if depth < 1 {
                     return Err(format!(
                         "GNU unary opcode {opcode} at instruction {instruction_pc} has empty stack"
@@ -3271,6 +3275,78 @@ mod tests {
             validate_gnu_adapter_stream(&[12, 101, 1], 1)
                 .unwrap_err()
                 .contains("DUP2ND")
+        );
+    }
+
+    #[test]
+    fn gnu_colon_validator_accepts_compiled_streams() {
+        // compiler:::disassemble(cmpfun(function(n) 1:n, options=list(optimize=3)))
+        let one_to_n = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_COLON,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&one_to_n, 4), Ok(true));
+        // compiler:::disassemble(cmpfun(function(a,b) a:b, options=list(optimize=3)))
+        let range = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_COLON,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&range, 4), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 120, 0, 1], 1)
+                .unwrap_err()
+                .contains("requires 2")
+        );
+        assert!(validate_gnu_adapter_stream(&[12, 16, 0, 120, 2, 1], 2).is_err());
+    }
+
+    #[test]
+    fn gnu_seqalong_validator_accepts_compiled_stream() {
+        // compiler:::disassemble(cmpfun(function(x) seq_along(x), options=list(optimize=3)))
+        let seqalong = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_SEQALONG,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&seqalong, 3), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 121, 0, 1], 1)
+                .unwrap_err()
+                .contains("empty stack")
+        );
+    }
+
+    #[test]
+    fn gnu_seqlen_validator_accepts_compiled_stream() {
+        // compiler:::disassemble(cmpfun(function(n) seq_len(n), options=list(optimize=3)))
+        let seqlen = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_SEQLEN,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&seqlen, 3), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 122, 0, 1], 1)
+                .unwrap_err()
+                .contains("empty stack")
         );
     }
 
