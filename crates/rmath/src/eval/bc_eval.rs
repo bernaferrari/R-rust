@@ -617,8 +617,15 @@ unsafe fn eval_gnu_subset_indices(call: SEXP, x: SEXP, indices: &[SEXP], rho: SE
     }
 }
 
-/// GNU VECSUBASSIGN falls through to do_subassign_dflt.
-unsafe fn eval_gnu_vecsubassign(call: SEXP, x: SEXP, rhs: SEXP, index: SEXP, rho: SEXP) -> SEXP {
+/// GNU VECSUBASSIGN / VECSUBASSIGN2 fall through to do_subassign(_2)_dflt.
+unsafe fn eval_gnu_vecsubassign(
+    call: SEXP,
+    x: SEXP,
+    rhs: SEXP,
+    index: SEXP,
+    rho: SEXP,
+    subset2: bool,
+) -> SEXP {
     unsafe {
         let mut x = x;
         if crate::sexp::accessors::NAMED(x) > 1 {
@@ -628,12 +635,21 @@ unsafe fn eval_gnu_vecsubassign(call: SEXP, x: SEXP, rhs: SEXP, index: SEXP, rho
         crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
         let args = Rf_cons(x, Rf_cons(index, value));
         let _args = crate::sexp::protect::protect(args);
-        crate::mainutils::subassign::do_subassign_dflt(
-            call,
-            crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
-            args,
-            rho,
-        )
+        if subset2 {
+            crate::mainutils::subassign::do_subassign2_dflt(
+                call,
+                crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
+                args,
+                rho,
+            )
+        } else {
+            crate::mainutils::subassign::do_subassign_dflt(
+                call,
+                crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                args,
+                rho,
+            )
+        }
     }
 }
 
@@ -1734,7 +1750,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         pc = target;
                     }
                 }
-                super::bytecode::GNU_OP_STARTSUBASSIGN_N => {
+                super::bytecode::GNU_OP_STARTSUBASSIGN_N
+                | super::bytecode::GNU_OP_STARTSUBASSIGN2_N => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
                     pc += 2;
@@ -1752,7 +1769,12 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         lhs
                     };
                     if let Some(value) = with_stack_rooted(&stack, rhs, || {
-                        eval_gnu_startsubassign_n(c"[<-", call, lhs, rhs, rho)
+                        let generic = if opcode == super::bytecode::GNU_OP_STARTSUBASSIGN2_N {
+                            c"[[<-"
+                        } else {
+                            c"[<-"
+                        };
+                        eval_gnu_startsubassign_n(generic, call, lhs, rhs, rho)
                     }) {
                         stack_pop_checked(&mut stack, "GNU STARTSUBASSIGN_N dispatched rhs");
                         let index = stack.depth() - 1;
@@ -1806,15 +1828,16 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_VECSUBASSIGN => {
+                super::bytecode::GNU_OP_VECSUBASSIGN | super::bytecode::GNU_OP_VECSUBASSIGN2 => {
                     let call_index = words[pc] as usize;
                     pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let index = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN index");
                     let rhs = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN rhs");
                     let x = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN object");
+                    let subset2 = opcode == super::bytecode::GNU_OP_VECSUBASSIGN2;
                     let result = with_stack_rooted(&stack, rhs, || {
-                        eval_gnu_vecsubassign(call, x, rhs, index, rho)
+                        eval_gnu_vecsubassign(call, x, rhs, index, rho, subset2)
                     });
                     stack.push(result);
                 }
