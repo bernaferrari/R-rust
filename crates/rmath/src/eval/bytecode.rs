@@ -42,7 +42,13 @@ enum ControlFlow {
     Next,
 }
 
+pub const GNU_OP_PRINTVALUE: c_int = 6;
+pub const GNU_OP_SETLOOPVAL: c_int = 14;
 pub const GNU_OP_GETINTLBUILTIN: c_int = 27;
+pub const GNU_OP_GETGLOBFUN: c_int = 24;
+pub const GNU_OP_GETSYMFUN: c_int = 25;
+pub const GNU_OP_DOTSERR: c_int = 60;
+pub const GNU_OP_DOTCALL: c_int = 119;
 pub const GNU_OP_VISIBLE: c_int = 94;
 pub const GNU_OP_INCLNK: c_int = 124;
 pub const GNU_OP_DECLNK: c_int = 125;
@@ -417,6 +423,7 @@ fn validate_gnu_adapter_impl(
             GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
             | GNU_OP_POP | GNU_OP_ENDFOR | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG
             | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG | GNU_OP_CHECKFUN | GNU_OP_DUP
+            | GNU_OP_PRINTVALUE | GNU_OP_SETLOOPVAL | GNU_OP_DOTSERR
             | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
             | GNU_OP_ISNUMERIC | GNU_OP_DOMISSING | GNU_OP_DFLTSUBSET
@@ -599,7 +606,7 @@ fn validate_gnu_adapter_impl(
             }
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_DDVAL
             | GNU_OP_DDVAL_MISSOK | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
-            | GNU_OP_GETINTLBUILTIN
+            | GNU_OP_GETINTLBUILTIN | GNU_OP_GETGLOBFUN | GNU_OP_GETSYMFUN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
             | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND | GNU_OP_OR
@@ -629,6 +636,18 @@ fn validate_gnu_adapter_impl(
                 // This is the fixed math1funs[] order in GNU eval.c.
                 if !(0..24).contains(&math_index) {
                     return Err(format!("GNU MATH1 function index {math_index} is invalid"));
+                }
+            }
+            GNU_OP_DOTCALL => {
+                let call_index = code[pc];
+                let nargs = code[pc + 1];
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU DOTCALL constant pool index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+                if nargs < 0 {
+                    return Err(format!("GNU DOTCALL nargs {nargs} is negative"));
                 }
             }
             GNU_OP_SWITCH => {
@@ -949,10 +968,10 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
-            GNU_OP_POP => {
-                if depth == 0 {
+            GNU_OP_POP | GNU_OP_PRINTVALUE | GNU_OP_SETLOOPVAL => {
+                if depth == 0 || (opcode == GNU_OP_SETLOOPVAL && depth < 2) {
                     return Err(format!(
-                        "GNU POP at instruction {instruction_pc} has an empty stack"
+                        "GNU opcode {opcode} at instruction {instruction_pc} has stack depth {depth}"
                     ));
                 }
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
@@ -1308,6 +1327,7 @@ fn validate_gnu_adapter_impl(
                 pending.push((next, depth, loop_stack, call_stack.clone()));
             }
             GNU_OP_GETFUN | GNU_OP_GETBUILTIN | GNU_OP_GETINTLBUILTIN
+            | GNU_OP_GETGLOBFUN | GNU_OP_GETSYMFUN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG
             | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG | GNU_OP_PUSHFALSEARG => {
                 if depth >= 64 {
@@ -1315,7 +1335,11 @@ fn validate_gnu_adapter_impl(
                 }
                 if matches!(
                     opcode,
-                    GNU_OP_GETFUN | GNU_OP_GETBUILTIN | GNU_OP_GETINTLBUILTIN
+                    GNU_OP_GETFUN
+                        | GNU_OP_GETBUILTIN
+                        | GNU_OP_GETINTLBUILTIN
+                        | GNU_OP_GETGLOBFUN
+                        | GNU_OP_GETSYMFUN
                 ) {
                     call_stack.push(depth);
                 } else if call_stack.is_empty() {
@@ -1324,6 +1348,23 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack));
+            }
+            GNU_OP_DOTSERR => {
+                // GNU emits DOTSERR as a tail error; no RETURN follows.
+                saw_return = true;
+            }
+            GNU_OP_DOTCALL => {
+                let nargs = code[instruction_pc + 2];
+                if nargs < 0 {
+                    return Err(format!("GNU DOTCALL nargs {nargs} is negative"));
+                }
+                let needed = nargs as usize + 1;
+                if depth < needed {
+                    return Err(format!(
+                        "GNU DOTCALL at instruction {instruction_pc} has stack depth {depth}, requires {needed}"
+                    ));
+                }
+                pending.push((next, depth - nargs as usize, loop_stack, call_stack.clone()));
             }
             GNU_OP_VISIBLE => {
                 pending.push((next, depth, loop_stack, call_stack.clone()));
@@ -3734,5 +3775,84 @@ mod tests {
         assert_eq!(validate_gnu_adapter_stream(&subset, 7), Ok(true));
         assert!(validate_gnu_adapter_stream(&[12, 96, 0, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 16, 0, 97, 1, 1], 2).is_err());
+    }
+
+    #[test]
+    fn gnu_printvalue_setloopval_dotserr_validator_accepts_streams() {
+        assert_eq!(GNU_BC_OPERAND_WIDTHS[GNU_OP_PRINTVALUE as usize], 0);
+        assert_eq!(GNU_BC_OPERAND_WIDTHS[GNU_OP_SETLOOPVAL as usize], 0);
+        assert_eq!(GNU_BC_OPERAND_WIDTHS[GNU_OP_DOTSERR as usize], 0);
+        let printvalue = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_PRINTVALUE,
+            GNU_OP_LDNULL,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&printvalue, 3), Ok(true));
+        let setloopval = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDNULL,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_SETLOOPVAL,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&setloopval, 3), Ok(true));
+        let dotserr = [GNU_BC_MAX_VERSION, GNU_OP_DOTSERR];
+        assert_eq!(validate_gnu_adapter_stream(&dotserr, 1), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 6, 1], 1)
+                .unwrap_err()
+                .contains("stack depth")
+        );
+        assert!(
+            validate_gnu_adapter_stream(&[12, 14, 1], 1)
+                .unwrap_err()
+                .contains("stack depth")
+        );
+    }
+
+    #[test]
+    fn gnu_getglobfun_getsymfun_dotcall_validator_accepts_streams() {
+        assert_eq!(GNU_BC_OPERAND_WIDTHS[GNU_OP_GETGLOBFUN as usize], 1);
+        assert_eq!(GNU_BC_OPERAND_WIDTHS[GNU_OP_GETSYMFUN as usize], 1);
+        assert_eq!(GNU_BC_OPERAND_WIDTHS[GNU_OP_DOTCALL as usize], 2);
+        let glob = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETGLOBFUN,
+            1,
+            GNU_OP_PUSHCONSTARG,
+            2,
+            GNU_OP_CALL,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&glob, 4), Ok(true));
+        let sym = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETSYMFUN,
+            1,
+            GNU_OP_CALL,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&sym, 3), Ok(true));
+        let dotcall = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_DOTCALL,
+            0,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&dotcall, 3), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 119, 0, 1, 1], 2)
+                .unwrap_err()
+                .contains("requires 2")
+        );
     }
 }

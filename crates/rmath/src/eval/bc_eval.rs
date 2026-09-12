@@ -1201,6 +1201,23 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_INVISIBLE => {
                     super::runtime::set_visible(FALSE);
                 }
+                super::bytecode::GNU_OP_PRINTVALUE => {
+                    let value = stack_pop_checked(&mut stack, "GNU PRINTVALUE");
+                    with_stack_rooted(&stack, value, || {
+                        crate::mainutils::print::PrintValue(value);
+                    });
+                }
+                super::bytecode::GNU_OP_SETLOOPVAL => {
+                    if stack.depth() < 2 {
+                        bc_error("GNU SETLOOPVAL has stack depth < 2");
+                    }
+                    let _ = stack_pop_checked(&mut stack, "GNU SETLOOPVAL");
+                    let top = stack.depth() - 1;
+                    stack.set(top, R_NilValue());
+                }
+                super::bytecode::GNU_OP_DOTSERR => {
+                    bc_error("'...' used in an incorrect context");
+                }
                 super::bytecode::GNU_OP_DUP => {
                     let value = stack_top_checked(&stack, "GNU DUP");
                     stack.push(value);
@@ -1484,7 +1501,10 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_GETFUN | super::bytecode::GNU_OP_GETBUILTIN => {
+                super::bytecode::GNU_OP_GETFUN
+                | super::bytecode::GNU_OP_GETBUILTIN
+                | super::bytecode::GNU_OP_GETGLOBFUN
+                | super::bytecode::GNU_OP_GETSYMFUN => {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
@@ -1493,13 +1513,25 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             "GNU GETFUN constant pool entry {index} is not a symbol"
                         ));
                     }
-                    let lookup_env = if opcode == super::bytecode::GNU_OP_GETBUILTIN {
-                        super::runtime::base_env()
-                    } else {
-                        rho
-                    };
                     let fun = with_stack_rooted(&stack, symbol, || {
-                        crate::sexp::envir::findFun(symbol, lookup_env)
+                        if opcode == super::bytecode::GNU_OP_GETSYMFUN {
+                            let mut value = crate::sexp::accessors::SYMVALUE(symbol);
+                            if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                                crate::sexp::envir::forcePromise(value);
+                                value = crate::sexp::accessors::PRVALUE(value);
+                            }
+                            value
+                        } else {
+                            let lookup_env = if opcode == super::bytecode::GNU_OP_GETBUILTIN
+                            {
+                                super::runtime::base_env()
+                            } else if opcode == super::bytecode::GNU_OP_GETGLOBFUN {
+                                crate::sexp::globals::R_GlobalEnv()
+                            } else {
+                                rho
+                            };
+                            crate::sexp::envir::findFun(symbol, lookup_env)
+                        }
                     });
                     if fun == R_UnboundValue() {
                         bc_error("could not find function for GNU GETFUN");
@@ -2781,6 +2813,41 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_RETURNJMP => {
                     return stack_pop_checked(&mut stack, "GNU RETURNJMP");
+                }
+                super::bytecode::GNU_OP_DOTCALL => {
+                    let call_index = words[pc] as usize;
+                    let nargs = words[pc + 1];
+                    pc += 2;
+                    if nargs < 0 {
+                        bc_error(format!("GNU DOTCALL nargs {nargs} is negative"));
+                    }
+                    let needed = nargs as usize + 1;
+                    if stack.depth() < needed {
+                        bc_error(format!(
+                            "GNU DOTCALL has stack depth {}, requires {needed}",
+                            stack.depth()
+                        ));
+                    }
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU DOTCALL requires a call in the constant pool");
+                    }
+                    let depth = stack.depth();
+                    let fun_idx = depth - needed;
+                    let result = with_stack_rooted(&stack, call, || {
+                        let mut args = R_NilValue();
+                        let mut roots = Vec::new();
+                        for index in (fun_idx..depth).rev() {
+                            args = Rf_cons(stack.at(index), args);
+                            roots.push(crate::sexp::protect::protect(args));
+                        }
+                        let sym = CAR(call);
+                        let op = crate::sexp::envir::findFun(sym, super::runtime::base_env());
+                        crate::mainutils::dotcode::do_dotcall(call, op, args, rho)
+                    });
+                    stack.set_depth(fun_idx);
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
                 }
                 _ => bc_mismatch(format!("unsupported tagged GNU bytecode opcode {opcode}")),
             }
