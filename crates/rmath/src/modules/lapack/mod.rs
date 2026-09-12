@@ -98,3 +98,9 @@ mod real_dgecon_tests;
 
 #[cfg(test)]
 mod real_dtrcon_tests;
+
+#[cfg(test)]
+mod complex_dlange_tests;
+
+#[cfg(test)]
+mod complex_dgecon_tests;
