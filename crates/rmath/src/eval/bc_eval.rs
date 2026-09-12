@@ -318,6 +318,40 @@ unsafe fn for_sequence_element(sequence: SEXP, index: c_int) -> SEXP {
 // Helper: evaluate a condition value to bool
 // ---------------------------------------------------------------------------
 
+unsafe fn gnu_is_number(value: SEXP) -> bool {
+    unsafe {
+        if value.is_null() {
+            return false;
+        }
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::INTSXP => {
+                crate::mainutils::objects::inherits2(value, c"factor".as_ptr()) == 0
+            }
+            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP => true,
+            _ => false,
+        }
+    }
+}
+
+/// eval.c FIXUP_SCALAR_LOGICAL: coerce the current && / || operand to a
+/// length-1 logical. AND1ST/OR1ST keep the boxed value on the stack.
+unsafe fn fixup_scalar_logical(value: SEXP, call: SEXP, arg: &str, op: &str) -> c_int {
+    unsafe {
+        if TYPEOF(value) == SEXPTYPE::LGLSXP
+            && crate::mainutils::relop::IS_SIMPLE_SCALAR(value, SEXPTYPE::LGLSXP.into()) != 0
+        {
+            return crate::sexp::accessors::SCALAR_LVAL(value);
+        }
+        if !gnu_is_number(value) {
+            crate::mainutils::coerce::errorcall(
+                call,
+                &format!("invalid {arg} type in 'x {op} y'"),
+            );
+        }
+        crate::mainutils::coerce::asLogical2(value, 1, call)
+    }
+}
+
 /// Evaluate a value as a boolean condition for branching.
 unsafe fn eval_bc_condition(val: SEXP) -> bool {
     unsafe {
@@ -459,6 +493,74 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if !branch {
                         pc = target;
                     }
+                }
+                super::bytecode::GNU_OP_AND1ST => {
+                    let call_index = words[pc] as usize;
+                    let target = words[pc + 1] as usize;
+                    pc += 2;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let value = stack_top_checked(&stack, "GNU AND1ST");
+                    let val = with_stack_rooted(&stack, value, || {
+                        fixup_scalar_logical(value, call, "'x'", "&&")
+                    });
+                    let index = stack.depth() - 1;
+                    let boxed = with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(val));
+                    stack.set(index, boxed);
+                    super::runtime::set_visible(TRUE);
+                    if val == FALSE {
+                        pc = target;
+                    }
+                }
+                super::bytecode::GNU_OP_AND2ND => {
+                    let call_index = words[pc] as usize;
+                    pc += 1;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let value = stack_pop_checked(&mut stack, "GNU AND2ND");
+                    let val = with_stack_rooted(&stack, value, || {
+                        fixup_scalar_logical(value, call, "'y'", "&&")
+                    });
+                    if val == FALSE || val == NA_LOGICAL {
+                        let index = stack.depth() - 1;
+                        let result = with_stack_rooted(&stack, R_NilValue(), || {
+                            Rf_ScalarLogical(val)
+                        });
+                        stack.set(index, result);
+                    }
+                    super::runtime::set_visible(TRUE);
+                }
+                super::bytecode::GNU_OP_OR1ST => {
+                    let call_index = words[pc] as usize;
+                    let target = words[pc + 1] as usize;
+                    pc += 2;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let value = stack_top_checked(&stack, "GNU OR1ST");
+                    let val = with_stack_rooted(&stack, value, || {
+                        fixup_scalar_logical(value, call, "'x'", "||")
+                    });
+                    let index = stack.depth() - 1;
+                    let boxed = with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(val));
+                    stack.set(index, boxed);
+                    super::runtime::set_visible(TRUE);
+                    if val != NA_LOGICAL && val != FALSE {
+                        pc = target;
+                    }
+                }
+                super::bytecode::GNU_OP_OR2ND => {
+                    let call_index = words[pc] as usize;
+                    pc += 1;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let value = stack_pop_checked(&mut stack, "GNU OR2ND");
+                    let val = with_stack_rooted(&stack, value, || {
+                        fixup_scalar_logical(value, call, "'y'", "||")
+                    });
+                    if val != FALSE {
+                        let index = stack.depth() - 1;
+                        let result = with_stack_rooted(&stack, R_NilValue(), || {
+                            Rf_ScalarLogical(val)
+                        });
+                        stack.set(index, result);
+                    }
+                    super::runtime::set_visible(TRUE);
                 }
                 super::bytecode::GNU_OP_INVISIBLE => {
                     super::runtime::set_visible(FALSE);

@@ -156,6 +156,10 @@ pub const GNU_OP_LT: c_int = 53;
 pub const GNU_OP_LE: c_int = 54;
 pub const GNU_OP_GE: c_int = 55;
 pub const GNU_OP_GT: c_int = 56;
+pub const GNU_OP_AND1ST: c_int = 88;
+pub const GNU_OP_AND2ND: c_int = 89;
+pub const GNU_OP_OR1ST: c_int = 90;
+pub const GNU_OP_OR2ND: c_int = 91;
 
 pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
@@ -338,6 +342,40 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 branches.push((opcode_pc, target as usize));
+            }
+            GNU_OP_AND1ST | GNU_OP_OR1ST => {
+                let call_index = code[pc];
+                let target = code[pc + 1];
+                let name = if opcode == GNU_OP_AND1ST {
+                    "AND1ST"
+                } else {
+                    "OR1ST"
+                };
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU {name} expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+                if target < 0 || target as usize >= code.len() {
+                    return Err(format!(
+                        "GNU {name} jump target {target} is outside instruction stream length {}",
+                        code.len()
+                    ));
+                }
+                branches.push((opcode_pc, target as usize));
+            }
+            GNU_OP_AND2ND | GNU_OP_OR2ND => {
+                let call_index = code[pc];
+                let name = if opcode == GNU_OP_AND2ND {
+                    "AND2ND"
+                } else {
+                    "OR2ND"
+                };
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU {name} expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
             }
             GNU_OP_CALL => {
                 let call_index = code[pc];
@@ -531,6 +569,28 @@ fn validate_gnu_adapter_impl(
                     loop_stack,
                     call_stack.clone(),
                 ));
+            }
+            GNU_OP_AND1ST | GNU_OP_OR1ST => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU short-circuit opcode {opcode} at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
+                pending.push((
+                    code[instruction_pc + 2] as usize,
+                    depth,
+                    loop_stack,
+                    call_stack.clone(),
+                ));
+            }
+            GNU_OP_AND2ND | GNU_OP_OR2ND => {
+                if depth < 2 {
+                    return Err(format!(
+                        "GNU short-circuit opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
+                    ));
+                }
+                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_GOTO => pending.push((
                 code[instruction_pc + 1] as usize,
@@ -1827,5 +1887,29 @@ mod tests {
                 .contains("stack limit")
         );
         assert!(validate_gnu_adapter_stream(&[12, 17, 5, 4, 1], 0).unwrap());
+    }
+
+    #[test]
+    fn gnu_short_circuit_validator_accepts_and_or_cfg() {
+        // compiler:::disassemble(cmpfun(function(x, y) x && y))
+        let and_stream = [12, 20, 1, 88, 0, 10, 20, 2, 89, 0, 1];
+        assert_eq!(validate_gnu_adapter_stream(&and_stream, 3), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x, y) x || y))
+        let or_stream = [12, 20, 1, 90, 0, 10, 20, 2, 91, 0, 1];
+        assert_eq!(validate_gnu_adapter_stream(&or_stream, 3), Ok(true));
+        let and_const = [12, 20, 1, 88, 0, 9, 18, 89, 0, 1];
+        assert_eq!(validate_gnu_adapter_stream(&and_const, 2), Ok(true));
+
+        let mut non_boundary = and_stream;
+        non_boundary[5] = 9;
+        assert!(
+            validate_gnu_adapter_stream(&non_boundary, 3)
+                .unwrap_err()
+                .contains("instruction boundary")
+        );
+        assert!(validate_gnu_adapter_stream(&[12, 88, 0, 4, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 18, 89, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 1, 88, 3, 10, 20, 2, 89, 0, 1], 3).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 1, 90, 0, 99, 20, 2, 91, 0, 1], 3).is_err());
     }
 }

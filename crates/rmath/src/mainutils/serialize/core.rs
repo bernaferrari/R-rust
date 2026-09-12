@@ -167,6 +167,8 @@ pub struct BinaryWriter {
     pub xdr_body: bool,
     item_depth: usize,
     persist_hook: SEXP,
+    persist_hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
+    persist_hook_data: SEXP,
 }
 
 impl BinaryWriter {
@@ -177,6 +179,8 @@ impl BinaryWriter {
             xdr_body: false,
             item_depth: 0,
             persist_hook: ptr::null_mut(),
+            persist_hook_func: None,
+            persist_hook_data: ptr::null_mut(),
         }
     }
 
@@ -190,6 +194,15 @@ impl BinaryWriter {
 
     pub fn set_persist_hook(&mut self, hook: SEXP) {
         self.persist_hook = hook;
+    }
+
+    pub fn set_c_persist_hook(
+        &mut self,
+        func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
+        data: SEXP,
+    ) {
+        self.persist_hook_func = func;
+        self.persist_hook_data = data;
     }
 
     pub fn write_i32(&mut self, val: i32) {
@@ -273,6 +286,8 @@ pub struct BinaryReader<'a> {
     item_depth: usize,
     bc_source_depth: usize,
     persist_hook: SEXP,
+    persist_hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
+    persist_hook_data: SEXP,
 }
 
 impl<'a> BinaryReader<'a> {
@@ -285,6 +300,8 @@ impl<'a> BinaryReader<'a> {
             item_depth: 0,
             bc_source_depth: 0,
             persist_hook: ptr::null_mut(),
+            persist_hook_func: None,
+            persist_hook_data: ptr::null_mut(),
         }
     }
 
@@ -298,6 +315,15 @@ impl<'a> BinaryReader<'a> {
 
     pub fn set_persist_hook(&mut self, hook: SEXP) {
         self.persist_hook = hook;
+    }
+
+    pub fn set_c_persist_hook(
+        &mut self,
+        func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
+        data: SEXP,
+    ) {
+        self.persist_hook_func = func;
+        self.persist_hook_data = data;
     }
 
     pub fn remaining(&self) -> usize {
@@ -719,7 +745,7 @@ unsafe fn persistent_package_or_namespace(s: SEXP) -> bool {
     }
 }
 
-unsafe fn persistent_hook_eligible(s: SEXP) -> bool {
+pub(super) unsafe fn persistent_hook_eligible(s: SEXP) -> bool {
     unsafe {
         match TYPEOF(s) {
             t if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP => true,
@@ -735,11 +761,25 @@ unsafe fn persistent_hook_eligible(s: SEXP) -> bool {
 }
 
 unsafe fn persistent_name(s: SEXP, hook: SEXP) -> SEXP {
+    unsafe { invoke_persist_hook(s, None, hook) }
+}
+
+unsafe fn invoke_persist_hook(
+    s: SEXP,
+    hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
+    hook_data: SEXP,
+) -> SEXP {
     unsafe {
-        if hook.is_null() || hook == R_NilValue() || !persistent_hook_eligible(s) {
+        if !persistent_hook_eligible(s) {
             return R_NilValue();
         }
-        let name = CallHook(s, hook);
+        let name = if let Some(func) = hook_func {
+            func(s, hook_data)
+        } else if hook_data.is_null() || hook_data == R_NilValue() {
+            return R_NilValue();
+        } else {
+            CallHook(s, hook_data)
+        };
         if name == R_NilValue() || name.is_null() {
             return R_NilValue();
         }
@@ -747,6 +787,16 @@ unsafe fn persistent_name(s: SEXP, hook: SEXP) -> SEXP {
             error("persistent hook must return a nonempty character vector");
         }
         name
+    }
+}
+
+unsafe fn writer_persistent_name(s: SEXP, writer: &BinaryWriter) -> SEXP {
+    unsafe {
+        if writer.persist_hook_func.is_some() {
+            invoke_persist_hook(s, writer.persist_hook_func, writer.persist_hook_data)
+        } else {
+            persistent_name(s, writer.persist_hook)
+        }
     }
 }
 
@@ -882,7 +932,7 @@ pub unsafe fn WriteItemInternal(
 ) {
     unsafe {
         let _item_guard = protect(s);
-        let persistent = persistent_name(s, writer.persist_hook);
+        let persistent = writer_persistent_name(s, writer);
         if persistent != R_NilValue() {
             let _persistent_guard = protect(persistent);
             ref_table.add(s);
@@ -1282,10 +1332,13 @@ unsafe fn read_item_body(
                 }
                 SET_STRING_ELT(names, i as R_xlen_t, value);
             }
-            if reader.persist_hook.is_null() || reader.persist_hook == R_NilValue() {
+            let restored = if let Some(func) = reader.persist_hook_func {
+                func(names, reader.persist_hook_data)
+            } else if reader.persist_hook.is_null() || reader.persist_hook == R_NilValue() {
                 return Err("no restore method available".into());
-            }
-            let restored = CallHook(names, reader.persist_hook);
+            } else {
+                CallHook(names, reader.persist_hook)
+            };
             let _restored_guard = protect(restored);
             ref_table.add(restored);
             return Ok(restored);

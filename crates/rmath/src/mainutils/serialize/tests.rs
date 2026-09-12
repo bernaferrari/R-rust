@@ -1519,3 +1519,162 @@ fn test_roundtrip_pairlist_with_attributes() {
         assert_eq!(R_compute_identical(list, restored, 4), 1);
     }
 }
+
+
+fn assert_r_error(action: impl FnOnce()) -> crate::sexp::context::RError {
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
+        .expect_err("expected RError panic");
+    payload
+        .downcast_ref::<crate::sexp::context::RError>()
+        .expect("expected RError payload")
+        .clone()
+}
+
+unsafe extern "C" fn persist_token_hook(s: SEXP, data: SEXP) -> SEXP {
+    unsafe {
+        PERSIST_HOOK_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        PERSIST_LAST_SEEN.store(s as usize, std::sync::atomic::Ordering::SeqCst);
+        PERSIST_LAST_DATA.store(data as usize, std::sync::atomic::Ordering::SeqCst);
+        make_string_vector("token")
+    }
+}
+
+unsafe extern "C" fn persist_restore_hook(names: SEXP, data: SEXP) -> SEXP {
+    unsafe {
+        PERSIST_RESTORE_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        PERSIST_RESTORE_NAMES.store(names as usize, std::sync::atomic::Ordering::SeqCst);
+        PERSIST_RESTORE_DATA.store(data as usize, std::sync::atomic::Ordering::SeqCst);
+        PERSIST_RESTORE_VALUE.load(std::sync::atomic::Ordering::SeqCst) as SEXP
+    }
+}
+
+static PERSIST_HOOK_HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_LAST_SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_LAST_DATA: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_RESTORE_HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_RESTORE_NAMES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_RESTORE_DATA: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_RESTORE_VALUE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+fn reset_c_persist_hook_state() {
+    PERSIST_HOOK_HITS.store(0, std::sync::atomic::Ordering::SeqCst);
+    PERSIST_LAST_SEEN.store(0, std::sync::atomic::Ordering::SeqCst);
+    PERSIST_LAST_DATA.store(0, std::sync::atomic::Ordering::SeqCst);
+    PERSIST_RESTORE_HITS.store(0, std::sync::atomic::Ordering::SeqCst);
+    PERSIST_RESTORE_NAMES.store(0, std::sync::atomic::Ordering::SeqCst);
+    PERSIST_RESTORE_DATA.store(0, std::sync::atomic::Ordering::SeqCst);
+    PERSIST_RESTORE_VALUE.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
+unsafe fn serialize_env_with_c_hook(env: SEXP, hook_data: SEXP) -> SEXP {
+    unsafe {
+        let mut out_stream: R_outpstream_st = mem::zeroed();
+        let mut out_buf = membuf_st {
+            size: 0,
+            count: 0,
+            buf: ptr::null_mut(),
+        };
+        InitMemOutPStream(
+            &mut out_stream,
+            &mut out_buf,
+            R_pstream_format_t::R_pstream_binary_format,
+            3,
+            Some(persist_token_hook),
+            hook_data,
+        );
+        R_Serialize(env, &mut out_stream);
+        CloseMemOutPStream(&mut out_stream)
+    }
+}
+
+unsafe fn persist_payload_after_version3_header(raw: SEXP) -> &'static [u8] {
+    unsafe {
+        let bytes = slice::from_raw_parts(RAW(raw), XLENGTH(raw) as usize);
+        assert!(bytes.len() >= 18, "serialized payload too short");
+        assert_eq!(&bytes[..2], b"B\n");
+        let encoding_len = i32::from_ne_bytes(bytes[14..18].try_into().unwrap()) as usize;
+        &bytes[18 + encoding_len..]
+    }
+}
+
+#[test]
+fn c_persist_hook_serializes_an_ordinary_environment_as_persistsxp() {
+    let _session = crate::sexp::session::RSession::new();
+    reset_c_persist_hook_state();
+    unsafe {
+        let env = R_NewHashedEnv(R_BaseEnv(), 29);
+        let raw = serialize_env_with_c_hook(env, ptr::null_mut());
+        let _raw_guard = protect(raw);
+        assert_eq!(PERSIST_HOOK_HITS.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(PERSIST_LAST_SEEN.load(std::sync::atomic::Ordering::SeqCst), env as usize);
+        assert_eq!(PERSIST_LAST_DATA.load(std::sync::atomic::Ordering::SeqCst), 0);
+        let payload = persist_payload_after_version3_header(raw);
+        let tag = i32::from_ne_bytes(payload[..4].try_into().unwrap());
+        assert_eq!(tag, PERSISTSXP);
+    }
+}
+
+#[test]
+fn c_persist_hook_unserialize_without_restore_reports_gnu_error() {
+    let _session = crate::sexp::session::RSession::new();
+    reset_c_persist_hook_state();
+    unsafe {
+        let env = R_NewHashedEnv(R_BaseEnv(), 29);
+        let raw = serialize_env_with_c_hook(env, ptr::null_mut());
+        let _raw_guard = protect(raw);
+        let mut in_stream: R_inpstream_st = mem::zeroed();
+        let mut in_buf = membuf_st {
+            size: 0,
+            count: 0,
+            buf: ptr::null_mut(),
+        };
+        InitMemInPStream(
+            &mut in_stream,
+            &mut in_buf,
+            RAW(raw) as *mut c_void,
+            XLENGTH(raw) as R_size_t,
+            None,
+            R_NilValue(),
+        );
+        let err = assert_r_error(|| {
+            let _ = R_Unserialize(&mut in_stream);
+        });
+        assert_eq!(err.message, "no restore method available");
+    }
+}
+
+#[test]
+fn c_persist_hook_unserialize_with_restore_returns_replacement() {
+    let _session = crate::sexp::session::RSession::new();
+    reset_c_persist_hook_state();
+    unsafe {
+        let env = R_NewHashedEnv(R_BaseEnv(), 29);
+        let raw = serialize_env_with_c_hook(env, ptr::null_mut());
+        let _raw_guard = protect(raw);
+        let replacement = R_NewHashedEnv(R_BaseEnv(), 29);
+        PERSIST_RESTORE_VALUE.store(replacement as usize, std::sync::atomic::Ordering::SeqCst);
+        let mut in_stream: R_inpstream_st = mem::zeroed();
+        let mut in_buf = membuf_st {
+            size: 0,
+            count: 0,
+            buf: ptr::null_mut(),
+        };
+        InitMemInPStream(
+            &mut in_stream,
+            &mut in_buf,
+            RAW(raw) as *mut c_void,
+            XLENGTH(raw) as R_size_t,
+            Some(persist_restore_hook),
+            ptr::null_mut(),
+        );
+        let restored = R_Unserialize(&mut in_stream);
+        assert_eq!(restored, replacement);
+        assert_eq!(PERSIST_RESTORE_HITS.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(PERSIST_RESTORE_DATA.load(std::sync::atomic::Ordering::SeqCst), 0);
+        let names = PERSIST_RESTORE_NAMES.load(std::sync::atomic::Ordering::SeqCst) as SEXP;
+        assert_eq!(TYPEOF(names), SEXPTYPE::STRSXP);
+        assert_eq!(XLENGTH(names), 1);
+        let token = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 0)));
+        assert_eq!(token.to_bytes(), b"token");
+    }
+}

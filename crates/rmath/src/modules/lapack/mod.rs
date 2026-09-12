@@ -71,3 +71,6 @@ mod complex_qr_tests;
 
 #[cfg(test)]
 mod real_qr_tests;
+
+#[cfg(test)]
+mod real_chol_tests;

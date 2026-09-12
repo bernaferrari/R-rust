@@ -489,6 +489,8 @@ hook tests and the rebuilt Wasm persistence contract pass. Stream/connection
 
 Real QR now uses the same caller-side checks as complex QR: signed dimensions, checked m*n arithmetic, exact payload length, and reserved a_copy/jpvt/tau plus the queried work array. Three focused native safety tests and the public qr() suite pass. This is still not total native memory accounting.
 
+C persist-hook function pointers now work on the buffered R_Serialize/R_Unserialize path, including NULL hook data, PERSISTSXP emission, missing-restore errors, and restore replacements. Public serialize(..., refhook=...) still passes. Real Cholesky now reserves caller scratch like QR. GNU AND1ST/AND2ND/OR1ST/OR2ND execute with CFG validation, NA/short-circuit/visibility contracts, and mutated-bytecode proof against retained source.
+
 Complex QR now reserves caller-owned scratch (`a_copy`, `rwork`, `jpvt`, `tau`,
 and the queried work array) against the active session budget, after checked
 dimension/length validation. Three focused native safety tests pass. This is

@@ -285,12 +285,15 @@ pub unsafe fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
         let Some(hook) = (*stream).OutPersistHookFunc else {
             return R_NilValue();
         };
+        if !persistent_hook_eligible(s) {
+            return R_NilValue();
+        }
         let res = hook(s, (*stream).OutPersistHookData);
         if res.is_null() || res == R_NilValue() {
             return R_NilValue();
         }
-        if TYPEOF(res) != SEXPTYPE::STRSXP {
-            error("persistent hook must return a character vector");
+        if TYPEOF(res) != SEXPTYPE::STRSXP || XLENGTH(res) == 0 {
+            error("persistent hook must return a nonempty character vector");
         }
         res
     }
@@ -302,7 +305,7 @@ pub unsafe fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
             error("read error");
         }
         let Some(hook) = (*stream).InPersistHookFunc else {
-            error("read error");
+            error("no restore method available");
         };
         hook(s, (*stream).InPersistHookData)
     }

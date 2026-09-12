@@ -48,15 +48,14 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
         write_i32_to_stream(0, stream); // encoding name length = 0
 
         // Write the object using a temporary buffer, then stream it out.
-        // When the C stream carries an R persist hook, reuse the same
-        // PERSISTSXP protocol as public serialize(..., refhook=...).
+        // GNU R_Serialize calls stream->OutPersistHookFunc for eligible
+        // reference objects even when hook data is not an R function.
+        // Keep the R-function path when only hook data is a closure.
         let mut writer = BinaryWriter::new();
         let hook_data = out_ref.OutPersistHookData;
-        if out_ref.OutPersistHookFunc.is_some()
-            && !hook_data.is_null()
-            && hook_data != R_NilValue()
-            && (TYPEOF(hook_data) == SEXPTYPE::CLOSXP || TYPEOF(hook_data) == SEXPTYPE::BUILTINSXP || TYPEOF(hook_data) == SEXPTYPE::SPECIALSXP)
-        {
+        if let Some(func) = out_ref.OutPersistHookFunc {
+            writer.set_c_persist_hook(Some(func), hook_data);
+        } else if persist_hook_is_r_function(hook_data) {
             writer.set_persist_hook(hook_data);
         }
         let mut ref_table = WriteHashTable::new();
@@ -100,12 +99,11 @@ pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
             error("read error");
         }
         let raw = raw_from_bytes(&bytes);
-        let hook = if (*stream).InPersistHookData.is_null() {
-            R_NilValue()
-        } else {
-            (*stream).InPersistHookData
-        };
-        R_unserialize(raw, hook)
+        R_unserialize_from_stream_hooks(
+            raw,
+            (*stream).InPersistHookFunc,
+            (*stream).InPersistHookData,
+        )
     }
 }
 
@@ -486,13 +484,35 @@ pub unsafe fn R_serialize_with_xdr(
 
 /// Unserialize an R object from a raw vector.
 pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
+    unsafe { R_unserialize_from_stream_hooks(icon, None, fun) }
+}
+
+unsafe fn persist_hook_is_r_function(hook: SEXP) -> bool {
+    unsafe {
+        !hook.is_null()
+            && hook != R_NilValue()
+            && (TYPEOF(hook) == SEXPTYPE::CLOSXP
+                || TYPEOF(hook) == SEXPTYPE::BUILTINSXP
+                || TYPEOF(hook) == SEXPTYPE::SPECIALSXP)
+    }
+}
+
+unsafe fn R_unserialize_from_stream_hooks(
+    icon: SEXP,
+    hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
+    hook_data: SEXP,
+) -> SEXP {
     unsafe {
         if icon.is_null() {
             error("read error");
         }
 
         let _input_guard = protect(icon);
-        let _hook_guard = protect(fun);
+        let _hook_guard = if hook_data.is_null() {
+            None
+        } else {
+            Some(protect(hook_data))
+        };
         // Must be RAWSXP
         let stype = TYPEOF(icon);
         if stype != SEXPTYPE::RAWSXP {
@@ -508,7 +528,11 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
         let data = slice::from_raw_parts(raw_ptr, len);
 
         let mut reader = BinaryReader::new(data);
-        reader.set_persist_hook(fun);
+        if hook_func.is_some() {
+            reader.set_c_persist_hook(hook_func, hook_data);
+        } else {
+            reader.set_persist_hook(hook_data);
+        }
 
         // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
         let fmt1 = reader.read_byte().unwrap_or(0);

@@ -920,20 +920,58 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
 
         let tol = asReal(stol);
 
+        if TYPEOF(a) != REALSXP_C {
+            crate::sexp::context::r_error("'a' must be a numeric matrix");
+        }
+        let _input_guard = protect(a);
         let dim = getAttrib(a, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'a' must be a matrix");
         }
 
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let n2 = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
+        let n = INTEGER(dim).add(0).read();
+        let n2 = INTEGER(dim).add(1).read();
+        if n < 0 || n2 < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
         if n != n2 {
-            Rf_error(b"'a' must be a square matrix\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error("'a' must be a square matrix");
         }
 
-        // Work on a copy
-        let mut a_copy = vec![0.0f64; (n as usize) * (n as usize)];
-        ptr::copy_nonoverlapping(REAL(a), a_copy.as_mut_ptr(), a_copy.len());
+        let Some(len) = (n as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(a) as usize != len {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+
+        let work_len = if piv != 0 {
+            (n as usize)
+                .checked_mul(2)
+                .unwrap_or_else(|| crate::sexp::context::r_error("matrix dimensions are too large"))
+        } else {
+            0
+        };
+        let Some(scratch_bytes) = len
+            .checked_mul(std::mem::size_of::<f64>())
+            .and_then(|bytes| bytes.checked_add(work_len.checked_mul(std::mem::size_of::<f64>())?))
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native Cholesky workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
+
+        let mut a_copy = vec![0.0f64; len];
+        if len != 0 {
+            ptr::copy_nonoverlapping(REAL(a), a_copy.as_mut_ptr(), len);
+        }
 
         let mut info: c_int = 0;
         let uplo = b'U';
@@ -942,7 +980,7 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
             // pivoted Cholesky: dpstrf
             let piv_arr = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
             let mut rank: c_int = 0;
-            let mut work = vec![0.0f64; 2 * n as usize];
+            let mut work = vec![0.0f64; work_len];
 
             super::backend::dpstrf_(
                 &uplo,
@@ -973,8 +1011,10 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
             *INTEGER(rank_s) = rank;
             SET_VECTOR_ELT(ret, 0, rank_s);
 
-            let factors = Rf_allocVector(REALSXP_C, (n as c_int) * (n as c_int));
-            ptr::copy_nonoverlapping(a_copy.as_ptr(), REAL(factors), a_copy.len());
+            let factors = Rf_allocVector(REALSXP_C, len as c_int);
+            if len != 0 {
+                ptr::copy_nonoverlapping(a_copy.as_ptr(), REAL(factors), len);
+            }
             SET_VECTOR_ELT(ret, 1, factors);
 
             let pivot_s = Rf_allocVector(INTSXP_C, n as c_int);
@@ -1000,8 +1040,10 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
                 }
             }
 
-            let ans = Rf_allocVector(REALSXP_C, (n as c_int) * (n as c_int));
-            ptr::copy_nonoverlapping(a_copy.as_ptr(), REAL(ans), a_copy.len());
+            let ans = Rf_allocVector(REALSXP_C, len as c_int);
+            if len != 0 {
+                ptr::copy_nonoverlapping(a_copy.as_ptr(), REAL(ans), len);
+            }
             ans
         }
     }
@@ -1254,8 +1296,12 @@ pub unsafe fn La_qr(ain: SEXP) -> SEXP {
         let lda = m.max(1);
         let Some(scratch_bytes) = len
             .checked_mul(std::mem::size_of::<f64>())
-            .and_then(|bytes| bytes.checked_add((n as usize).checked_mul(std::mem::size_of::<c_int>())?))
-            .and_then(|bytes| bytes.checked_add((min_mn as usize).checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| {
+                bytes.checked_add((n as usize).checked_mul(std::mem::size_of::<c_int>())?)
+            })
+            .and_then(|bytes| {
+                bytes.checked_add((min_mn as usize).checked_mul(std::mem::size_of::<f64>())?)
+            })
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
