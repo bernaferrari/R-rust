@@ -559,6 +559,7 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
             unsafe {
                 SETCAR(cell.as_raw(), value.clone().as_raw());
             }
+            increment_named_on_assign(value.clone().as_raw());
             if super::env_hash::env_has_hash_table(rho.clone().as_raw()) {
                 super::env_hash::hash_insert(rho.as_raw(), symbol.as_raw(), value.as_raw());
             }
@@ -576,6 +577,7 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
             SETTAG(new_cell, symbol.clone().as_raw());
             SET_FRAME(rho.clone().as_raw(), new_cell);
         }
+        increment_named_on_assign(value.clone().as_raw());
 
         if super::env_hash::env_has_hash_table(rho.clone().as_raw()) {
             super::env_hash::hash_insert(rho.clone().as_raw(), symbol.as_raw(), value.as_raw());
@@ -964,6 +966,15 @@ pub unsafe fn forcePromise(prom: SEXP) -> SEXP {
 pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
     unsafe {
         let _ = define_var_updates(symbol, value, rho);
+    }
+}
+
+fn increment_named_on_assign(value: SEXP) {
+    unsafe {
+        let named = super::accessors::NAMED(value);
+        if named < 2 {
+            super::accessors::SET_NAMED(value, named + 1);
+        }
     }
 }
 
