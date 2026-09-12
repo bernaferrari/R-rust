@@ -379,3 +379,82 @@ pub unsafe fn Rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
         ans
     }
 }
+
+/// GNU `smooth(x)` default 3RS3R / Tukey / no do.ends.
+pub unsafe fn do_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, INTEGER, VECTOR_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
+        use crate::sexp::ffi::NA_INTEGER;
+        use crate::sexp::globals::R_NilValue;
+        let x = CAR(args);
+        let xt = TYPEOF(x);
+        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "attempt to smooth non-numeric values",
+            );
+        }
+        let n = XLENGTH(x);
+        let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _xd = protect(xd);
+        for i in 0..n {
+            let v = if xt == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    crate::mainutils::errors::errorcall_str(
+                        crate::mainutils::errors::R_getCurrentCall(),
+                        "attempt to smooth NA values",
+                    );
+                }
+                iv as f64
+            };
+            if !v.is_finite() {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "attempt to smooth NA values",
+                );
+            }
+            *REAL(xd).add(i as usize) = v;
+        }
+        let stype = crate::sexp::constructors::Rf_ScalarInteger(1);
+        let _st = protect(stype);
+        let send = crate::sexp::constructors::Rf_ScalarInteger(-2);
+        let _se = protect(send);
+        let smo = Rsm(xd, stype, send);
+        let _smo = protect(smo);
+        let y = VECTOR_ELT(smo, 0);
+        let iter = VECTOR_ELT(smo, 1);
+        crate::sexp::attrib_core::setAttrib(
+            y,
+            crate::sexp::symbol::Rf_install(c"kind".as_ptr()),
+            crate::sexp::constructors::Rf_mkString(c"3RS3R".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            y,
+            crate::sexp::symbol::Rf_install(c"twiced".as_ptr()),
+            crate::sexp::constructors::Rf_ScalarLogical(0),
+        );
+        if !iter.is_null() && iter != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                y,
+                crate::sexp::symbol::Rf_install(c"iter".as_ptr()),
+                iter,
+            );
+        }
+        crate::sexp::attrib_core::setAttrib(
+            y,
+            crate::sexp::symbol::Rf_install(c"endrule".as_ptr()),
+            crate::sexp::constructors::Rf_mkString(c"copy".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            y,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            crate::sexp::constructors::Rf_mkString(c"tukeysmooth".as_ptr()),
+        );
+        y
+    }
+}
+

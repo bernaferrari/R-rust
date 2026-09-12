@@ -1,0 +1,5 @@
+s <- smooth(c(1, 2, 3, 2, 1))
+cat(paste(as.vector(s), collapse = ","), "\n", sep = "")
+cat(attr(s, "kind"), "\n", sep = "")
+cat(paste(class(s), collapse = ","), "\n", sep = "")
+cat(attr(s, "iter"), "\n", sep = "")

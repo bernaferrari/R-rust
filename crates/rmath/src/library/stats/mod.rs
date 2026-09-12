@@ -42,7 +42,7 @@ pub(crate) mod random;
 mod rcont;
 mod rwishart;
 mod sbart;
-mod smooth;
+pub(crate) mod smooth;
 mod splines;
 mod srunmed;
 mod starma;
