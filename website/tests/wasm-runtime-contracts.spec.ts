@@ -1,6 +1,26 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("GNU persistence hooks restore records and survive callback GC", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-persistence-hooks/persistent-token.rds", import.meta.url))
+  await page.goto("/console/")
+  const output = await page.evaluate(async (wire) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const values = []
+      for (const code of [
+        `e<-new.env();identical(unserialize(as.raw(c(${wire})),refhook=function(x){stopifnot(identical(x,'token'));e}),e)`,
+        "local({e<-new.env();hits<-0L;r<-serialize(list(e,e),NULL,refhook=function(x){hits<<-hits+1L;invisible(gc());'token'});z<-unserialize(r,refhook=function(x)e);identical(hits,2L)&&identical(z[[1]],z[[2]])})",
+        "local({r<-serialize(new.env(),NULL,refhook=function(x)'token');identical(unserialize(r,refhook=function(x)NULL),NULL)})",
+        "local({r<-serialize(new.env(),NULL,refhook=function(x)'token');identical(tryCatch(unserialize(r),error=function(e)conditionMessage(e)),'no restore method available')})",
+      ]) values.push((await runtime.run(code, "console")).output.trim())
+      return values
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(output).toEqual(Array(4).fill("[1] TRUE"))
+})
+
 test("GNU SWITCH executes modified branches and rejects malformed constants", async ({ page }) => {
   const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-switch/switch.rds", import.meta.url))
   const stream = Buffer.alloc(80)

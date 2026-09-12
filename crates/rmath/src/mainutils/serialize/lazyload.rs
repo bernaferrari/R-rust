@@ -6,7 +6,11 @@ use super::*;
 
 pub unsafe fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
     unsafe {
-        let call = Rf_cons(fun, Rf_cons(x, R_NilValue()));
+        let _fun_guard = protect(fun);
+        let _x_guard = protect(x);
+        // GNU serialize.c CallHook evaluates LANGSXP fun(x) in GlobalEnv.
+        let call = Rf_lang2(fun, x);
+        let _call_guard = protect(call);
         Rf_eval(call, R_GlobalEnv())
     }
 }

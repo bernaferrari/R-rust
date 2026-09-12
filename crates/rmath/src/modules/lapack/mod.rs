@@ -65,3 +65,6 @@ mod veclib_g95c;
 
 #[cfg(test)]
 mod backend_tests;
+
+#[cfg(test)]
+mod complex_qr_tests;

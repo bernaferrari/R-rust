@@ -18,6 +18,8 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_current_instance;
+use crate::sexp::memory::with_arena_in;
 use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::*;
 
@@ -1330,39 +1332,76 @@ pub unsafe fn La_qr(ain: SEXP) -> SEXP {
 /// Port of: static SEXP La_qr_cmplx(SEXP ain)
 pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
     unsafe {
+        if TYPEOF(ain) != CPLXSXP_C {
+            crate::sexp::context::r_error("'a' must be a complex matrix");
+        }
+        let _input_guard = protect(ain);
         let dim = getAttrib(ain, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'a' must be a matrix");
         }
 
-        let m = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
+        let m = INTEGER(dim).add(0).read();
+        let n = INTEGER(dim).add(1).read();
+        if m < 0 || n < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
         let min_mn = if m < n { m } else { n };
 
-        let len = (m as usize) * (n as usize);
-        let mut a_copy: Vec<LapRcomplex> = vec![LapRcomplex::default(); len];
-        ptr::copy_nonoverlapping(COMPLEX(ain) as *const LapRcomplex, a_copy.as_mut_ptr(), len);
+        let Some(len) = (m as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(ain) as usize != len {
+            crate::sexp::context::r_error("invalid complex matrix dimensions or length");
+        }
+        let Some(rwork_len) = (n as usize).checked_mul(2) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let lda = m.max(1);
+        let Some(scratch_bytes) = len
+            .checked_mul(std::mem::size_of::<LapRcomplex>())
+            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| {
+                bytes.checked_add((n as usize).checked_mul(std::mem::size_of::<c_int>())?)
+            })
+            .and_then(|bytes| {
+                bytes
+                    .checked_add((min_mn as usize).checked_mul(std::mem::size_of::<LapRcomplex>())?)
+            })
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native QR workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
 
-        let jpvt = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
-        for i in 0..n as usize {
-            *jpvt.add(i) = 0;
+        let mut a_copy: Vec<LapRcomplex> = vec![LapRcomplex::default(); len];
+        if len != 0 {
+            ptr::copy_nonoverlapping(COMPLEX(ain) as *const LapRcomplex, a_copy.as_mut_ptr(), len);
         }
 
-        let tau = R_alloc(min_mn as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
+        let mut jpvt = vec![0 as c_int; n as usize];
+        let mut tau = vec![LapRcomplex::default(); min_mn as usize];
 
         // Query optimal work size
         let mut tmp = LapRcomplex::default();
         let mut lwork: c_int = -1;
-        let mut rwork = vec![0.0f64; 2 * n as usize];
+        let mut rwork = vec![0.0f64; rwork_len];
         let mut info: c_int = 0;
 
         super::backend::zgeqp3_(
             &m,
             &n,
             a_copy.as_mut_ptr(),
-            &m,
-            jpvt,
-            tau,
+            &lda,
+            jpvt.as_mut_ptr(),
+            tau.as_mut_ptr(),
             &mut tmp,
             &lwork,
             rwork.as_mut_ptr(),
@@ -1370,46 +1409,63 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zgeqp3'\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error("error code from Lapack routine 'zgeqp3'");
         }
 
+        if !tmp.r.is_finite() || tmp.r < 1.0 || tmp.r > c_int::MAX as f64 {
+            crate::sexp::context::r_error("invalid workspace size from Lapack routine 'zgeqp3'");
+        }
         lwork = tmp.r as c_int;
-        let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
+        let work_bytes = (lwork as usize)
+            .checked_mul(std::mem::size_of::<LapRcomplex>())
+            .unwrap_or_else(|| crate::sexp::context::r_error("invalid QR workspace size"));
+        let work_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(work_bytes))
+        });
+        if matches!(work_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native QR workspace exceeds resource limit",
+            );
+        }
+        let _work_reservation = work_reservation.flatten();
+        let mut work = vec![LapRcomplex::default(); lwork as usize];
 
         super::backend::zgeqp3_(
             &m,
             &n,
             a_copy.as_mut_ptr(),
-            &m,
-            jpvt,
-            tau,
-            work,
+            &lda,
+            jpvt.as_mut_ptr(),
+            tau.as_mut_ptr(),
+            work.as_mut_ptr(),
             &lwork,
             rwork.as_mut_ptr(),
             &mut info,
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zgeqp3'\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error("error code from Lapack routine 'zgeqp3'");
         }
 
         let qr = Rf_allocVector(CPLXSXP_C, len as c_int);
         let _qr_guard = protect(qr);
-        ptr::copy_nonoverlapping(a_copy.as_ptr(), COMPLEX(qr) as *mut LapRcomplex, len);
+        if len != 0 {
+            ptr::copy_nonoverlapping(a_copy.as_ptr(), COMPLEX(qr) as *mut LapRcomplex, len);
+        }
 
         let qraux = Rf_allocVector(CPLXSXP_C, min_mn as c_int);
         let _qraux_guard = protect(qraux);
         for i in 0..min_mn as usize {
             *COMPLEX(qraux).add(i) = {
                 // SAFETY: LapRcomplex and Rcomplex have identical layouts: #[repr(C)] struct { r: f64, i: f64 }
-                std::mem::transmute::<LapRcomplex, Rcomplex>(*tau.add(i))
+                std::mem::transmute::<LapRcomplex, Rcomplex>(tau[i])
             };
         }
 
         let pivot = Rf_allocVector(INTSXP_C, n as c_int);
         let _pivot_guard = protect(pivot);
         for i in 0..n as usize {
-            *INTEGER(pivot).add(i) = *jpvt.add(i);
+            *INTEGER(pivot).add(i) = jpvt[i];
         }
 
         let ret = Rf_allocVector(VECSXP_C, 4);

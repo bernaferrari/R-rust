@@ -478,8 +478,18 @@ The latter reserves its matrix, norm, and Householder scratch against the
 active session's transient budget; this is not total native memory accounting
 or a claim of complete complex-QR numerical parity.
 
-A new normal regression for persistence hooks remains red (`rport-rvxe`): GNU
-invokes a supplied `serialize(..., refhook=...)` callback for an environment,
-while the port discards it. This requires writer/reader protocol support and
-callback rooting, not merely forwarding the function argument. Arbitrary CRAN
-support remains outside scope; the other broader parity gaps remain tracked.
+Public memory `serialize(..., refhook=...)` now follows GNU's persist-hook
+protocol for ordinary environments, weak references, and external pointers.
+NULL hook results fall back to ordinary serialization; nonempty character
+results write `PERSISTSXP` and restore through the matching unserialize hook.
+Special environments are excluded. CHARSXP allocation now records GNU ASCII/UTF-8
+gp bits so serialized persistent names match the GNU wire fixture. Eleven native
+hook tests and the rebuilt Wasm persistence contract pass. Stream/connection
+`R_Serialize`/`R_Unserialize` hooks remain separate.
+
+Complex QR now reserves caller-owned scratch (`a_copy`, `rwork`, `jpvt`, `tau`,
+and the queried work array) against the active session budget, after checked
+dimension/length validation. Three focused native safety tests pass. This is
+not total native memory accounting or complete complex-QR numerical parity.
+Arbitrary CRAN support remains outside scope; the other broader parity gaps
+remain tracked.

@@ -166,6 +166,7 @@ pub struct BinaryWriter {
     pub ascii_body: bool,
     pub xdr_body: bool,
     item_depth: usize,
+    persist_hook: SEXP,
 }
 
 impl BinaryWriter {
@@ -175,6 +176,7 @@ impl BinaryWriter {
             ascii_body: false,
             xdr_body: false,
             item_depth: 0,
+            persist_hook: ptr::null_mut(),
         }
     }
 
@@ -184,6 +186,10 @@ impl BinaryWriter {
 
     pub fn set_xdr_body(&mut self, xdr_body: bool) {
         self.xdr_body = xdr_body;
+    }
+
+    pub fn set_persist_hook(&mut self, hook: SEXP) {
+        self.persist_hook = hook;
     }
 
     pub fn write_i32(&mut self, val: i32) {
@@ -266,6 +272,7 @@ pub struct BinaryReader<'a> {
     pub xdr_body: bool,
     item_depth: usize,
     bc_source_depth: usize,
+    persist_hook: SEXP,
 }
 
 impl<'a> BinaryReader<'a> {
@@ -277,6 +284,7 @@ impl<'a> BinaryReader<'a> {
             xdr_body: false,
             item_depth: 0,
             bc_source_depth: 0,
+            persist_hook: ptr::null_mut(),
         }
     }
 
@@ -286,6 +294,10 @@ impl<'a> BinaryReader<'a> {
 
     pub fn set_xdr_body(&mut self, xdr_body: bool) {
         self.xdr_body = xdr_body;
+    }
+
+    pub fn set_persist_hook(&mut self, hook: SEXP) {
+        self.persist_hook = hook;
     }
 
     pub fn remaining(&self) -> usize {
@@ -475,6 +487,7 @@ impl<'a> BinaryReader<'a> {
 pub struct WriteHashTable {
     pub buckets: Vec<Vec<(usize, i32)>>,
     pub count: i32,
+    roots: Vec<crate::sexp::protect::ProtectGuard<'static>>,
 }
 
 impl WriteHashTable {
@@ -482,6 +495,7 @@ impl WriteHashTable {
         WriteHashTable {
             buckets: vec![Vec::new(); HASHSIZE as usize],
             count: 0,
+            roots: Vec::new(),
         }
     }
 
@@ -490,6 +504,7 @@ impl WriteHashTable {
         let pos = (key >> 2) % (HASHSIZE as usize);
         self.count += 1;
         self.buckets[pos].push((key, self.count));
+        self.roots.push(protect(obj));
     }
 
     pub fn get(&self, item: SEXP) -> i32 {
@@ -552,6 +567,12 @@ pub unsafe fn PackFlags(
     hastag: c_int,
 ) -> c_int {
     let mut levs = levs;
+    if type_ == SEXPTYPE::CHARSXP.as_c_int() {
+        // GNU: levs &= ~(CACHED_MASK | HASHASH_MASK)
+        const CACHED_MASK: c_int = 1 << 5;
+        const HASHASH_MASK: c_int = 1 << 0;
+        levs &= !(CACHED_MASK | HASHASH_MASK);
+    }
     match type_ {
         kind if kind == SEXPTYPE::LGLSXP.as_c_int()
             || kind == SEXPTYPE::INTSXP.as_c_int()
@@ -665,6 +686,67 @@ unsafe fn sexp_has_tag(s: SEXP) -> bool {
     unsafe {
         let tag = TAG(s);
         !tag.is_null() && tag != R_NilValue()
+    }
+}
+
+// Match GNU's structural package/namespace predicates, plus namespaces
+// represented by this runtime's package cache.
+unsafe fn persistent_package_or_namespace(s: SEXP) -> bool {
+    unsafe {
+        let name = crate::eval::attrib_core::getAttrib(s, Rf_install(c"name".as_ptr()));
+        if TYPEOF(name) == SEXPTYPE::STRSXP
+            && XLENGTH(name) > 0
+            && CStr::from_ptr(CHAR(STRING_ELT(name, 0)))
+                .to_bytes()
+                .starts_with(b"package:")
+        {
+            return true;
+        }
+        let info = R_findVarInFrame(s, Rf_install(c".__NAMESPACE__.".as_ptr()));
+        if TYPEOF(info) == SEXPTYPE::ENVSXP {
+            let _info_guard = protect(info);
+            let spec = R_findVarInFrame(info, Rf_install(c"spec".as_ptr()));
+            if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0 {
+                return true;
+            }
+        }
+        with_required_current_instance(|instance| {
+            (*instance)
+                .package_namespace_cache
+                .values()
+                .any(|(_, env)| *env == s)
+        })
+    }
+}
+
+unsafe fn persistent_hook_eligible(s: SEXP) -> bool {
+    unsafe {
+        match TYPEOF(s) {
+            t if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP => true,
+            t if t == SEXPTYPE::ENVSXP => {
+                s != R_GlobalEnv()
+                    && s != R_BaseEnv()
+                    && s != R_EmptyEnv()
+                    && !persistent_package_or_namespace(s)
+            }
+            _ => false,
+        }
+    }
+}
+
+unsafe fn persistent_name(s: SEXP, hook: SEXP) -> SEXP {
+    unsafe {
+        if hook.is_null() || hook == R_NilValue() || !persistent_hook_eligible(s) {
+            return R_NilValue();
+        }
+        let name = CallHook(s, hook);
+        if name == R_NilValue() || name.is_null() {
+            return R_NilValue();
+        }
+        if TYPEOF(name) != SEXPTYPE::STRSXP || XLENGTH(name) == 0 {
+            error("persistent hook must return a nonempty character vector");
+        }
+        name
     }
 }
 
@@ -799,6 +881,21 @@ pub unsafe fn WriteItemInternal(
     writer: &mut BinaryWriter,
 ) {
     unsafe {
+        let _item_guard = protect(s);
+        let persistent = persistent_name(s, writer.persist_hook);
+        if persistent != R_NilValue() {
+            let _persistent_guard = protect(persistent);
+            ref_table.add(s);
+            writer.write_i32(PERSISTSXP);
+            writer.write_i32(0);
+            let length = c_int::try_from(XLENGTH(persistent))
+                .unwrap_or_else(|_| error("persistent name vector is too long"));
+            writer.write_i32(length);
+            for i in 0..XLENGTH(persistent) {
+                WriteItemInternal(STRING_ELT(persistent, i as R_xlen_t), ref_table, writer);
+            }
+            return;
+        }
         // Check for special singletons
         let special = SaveSpecialHook(s);
         if special != 0 {
@@ -914,7 +1011,9 @@ pub unsafe fn WriteItemInternal(
 
         // Handle CHARSXP
         if stype == SEXPTYPE::CHARSXP {
-            let levs = LEVELS(s);
+            // GNU serializes the full gp field here (ASCII/UTF8/BYTES).
+            // Do not use the 2-bit ARGUSED LEVELS() helper.
+            let levs = if s.is_null() { 0 } else { (*s).sxpinfo.gp() as c_int };
             let flags = PackFlags(stype, levs, 0, 0, 0);
             writer.write_i32(flags);
             let len = if s == R_NaString() { -1 } else { LENGTH(s) };
@@ -1168,7 +1267,29 @@ unsafe fn read_item_body(
             &mut hastag,
         );
 
-        if stype == NILVALUE_SXP {
+        if stype == PERSISTSXP {
+            let names_flag = reader.read_i32()?;
+            if names_flag != 0 {
+                return Err("names in persistent strings are not supported".into());
+            }
+            let len = reader.read_vector_length(4)?;
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+            let _names_guard = protect(names);
+            for i in 0..len {
+                let value = ReadItemInternal(reader, ref_table)?;
+                if TYPEOF(value) != SEXPTYPE::CHARSXP {
+                    return Err("persistent names must contain strings".into());
+                }
+                SET_STRING_ELT(names, i as R_xlen_t, value);
+            }
+            if reader.persist_hook.is_null() || reader.persist_hook == R_NilValue() {
+                return Err("no restore method available".into());
+            }
+            let restored = CallHook(names, reader.persist_hook);
+            let _restored_guard = protect(restored);
+            ref_table.add(restored);
+            return Ok(restored);
+        } else if stype == NILVALUE_SXP {
             Ok(R_NilValue())
         } else if stype == GLOBALENV_SXP {
             Ok(R_GlobalEnv())

@@ -607,6 +607,15 @@ impl RArena {
                     truelength: 0,
                 },
             };
+            // GNU CHARSXP gp bits: ASCII (1<<6) and/or UTF8 (1<<3).
+            // Serialization writes these via PackFlags(LEVELS(s)).
+            let mut gp = 0u16;
+            if s.is_ascii() {
+                gp |= 1 << 6;
+            } else if std::str::from_utf8(s).is_ok() {
+                gp |= 1 << 3;
+            }
+            c.sxpinfo.set_gp(gp);
             c
         });
 

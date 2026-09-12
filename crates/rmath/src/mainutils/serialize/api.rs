@@ -416,6 +416,8 @@ pub unsafe fn R_serialize_with_xdr(
             error("read error");
         }
 
+        let _object_guard = protect(object);
+        let _hook_guard = protect(fun);
         let version = if Sversion == R_NilValue() {
             defaultSerializeVersion()
         } else {
@@ -442,6 +444,7 @@ pub unsafe fn R_serialize_with_xdr(
         writer.write_byte(b'\n');
         writer.set_ascii_body(ascii_format);
         writer.set_xdr_body(xdr_format);
+        writer.set_persist_hook(fun);
 
         // Version info
         writer.write_i32(version); // version
@@ -473,6 +476,8 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
             error("read error");
         }
 
+        let _input_guard = protect(icon);
+        let _hook_guard = protect(fun);
         // Must be RAWSXP
         let stype = TYPEOF(icon);
         if stype != SEXPTYPE::RAWSXP {
@@ -488,6 +493,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
         let data = slice::from_raw_parts(raw_ptr, len);
 
         let mut reader = BinaryReader::new(data);
+        reader.set_persist_hook(fun);
 
         // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
         let fmt1 = reader.read_byte().unwrap_or(0);
@@ -570,7 +576,8 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
 
         let xdr = arg_by_name_or_position(args, "xdr", 3);
-        R_serialize_with_xdr(object, R_NilValue(), ascii, xdr, version, R_NilValue())
+        let hook = arg_by_name_or_position(args, "refhook", 5);
+        R_serialize_with_xdr(object, R_NilValue(), ascii, xdr, version, hook)
     }
 }
 
@@ -615,9 +622,10 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 
         // unserializeFromConn(connection, hook)
         let conn = CAR(args);
+        let hook = arg_by_name_or_position(args, "refhook", 1);
         // If the first argument is a raw vector, use R_unserialize directly
         if !conn.is_null() && TYPEOF(conn) == SEXPTYPE::RAWSXP {
-            return R_unserialize(conn, R_NilValue());
+            return R_unserialize(conn, hook);
         }
 
         error("'connection' must be a connection");
