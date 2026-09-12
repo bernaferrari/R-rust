@@ -36,9 +36,8 @@ fn qr_error(message: &str) -> ! {
 
 /// Implementation of the public `qr(x, tol = 1e-7, LAPACK = FALSE)` builtin.
 ///
-/// The dispatcher supplies evaluated arguments.  Complex input is rejected
-/// explicitly: the real LINPACK/LAPACK kernels cannot preserve its imaginary
-/// part and silently coercing it would be data loss.
+/// The dispatcher supplies evaluated arguments. Complex input always
+/// decomposes through LAPACK `zgeqp3`, matching GNU `qr.default`.
 unsafe fn match_qr_args(args: SEXP) -> [Option<SEXP>; 3] {
     unsafe {
         let names = ["x", "tol", "LAPACK"];
@@ -72,6 +71,20 @@ unsafe fn match_qr_args(args: SEXP) -> [Option<SEXP>; 3] {
 }
 
 pub unsafe fn do_qr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        // GNU qr is a generic (UseMethod); dispatch registered qr.<class>
+        // closure methods before the default decomposition. qr.default
+        // itself never dispatches.
+        if let Some(result) =
+            crate::mainutils::essentials::apply_s3_closure_method("qr", _call, args, _rho)
+        {
+            return result;
+        }
+        do_qr_default(_call, _op, args, _rho)
+    }
+}
+
+pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let [x_arg, tol_arg, lapack_arg] = match_qr_args(args);
         let x0 = x_arg.unwrap_or_else(|| qr_error("argument 'x' is missing, with no default"));
@@ -174,11 +187,42 @@ pub unsafe fn do_qr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             qr_error("too large a matrix for LINPACK")
         }
 
-        // Keep a real, mutable factor matrix in the arena.  This avoids an
-        // untracked Rust Vec and keeps the object live while the kernel runs.
+        // Keep a real, mutable factor matrix in the arena. This avoids an
+        // extra LAPACK/LINPACK copy of the input.
         let xr = if TYPEOF(x0) == REALSXP_C {
             x0
         } else {
+            // GNU qr.default assigns storage.mode(x) <- "double" in R;
+            // attribute the coercion warning to that call.
+            let _warn_call = if TYPEOF(x0) == STRSXP_C {
+                // The parser represents `storage.mode(x) <- "double"` as
+                // `<-`(storage.mode(x), "double"); build exactly that so
+                // warning rendering matches GNU byte for byte.
+                let lhs = crate::sexp::constructors::Rf_lang2(
+                    crate::sexp::symbol::Rf_install(c"storage.mode".as_ptr()),
+                    crate::sexp::symbol::Rf_install(c"x".as_ptr()),
+                );
+                let call = crate::sexp::constructors::Rf_lang3(
+                    crate::sexp::symbol::Rf_install(c"<-".as_ptr()),
+                    lhs,
+                    {
+                        let value = crate::sexp::constructors::Rf_allocVector(
+                            SEXPTYPE::STRSXP,
+                            1,
+                        );
+                        crate::sexp::accessors::SET_STRING_ELT(
+                            value,
+                            0,
+                            crate::sexp::constructors::Rf_mkChar(c"double".as_ptr()),
+                        );
+                        value
+                    },
+                );
+                crate::main::coerce::set_coercion_warning_call(call);
+                Some(crate::main::coerce::CoercionWarningCallGuard)
+            } else {
+                None
+            };
             coerceVector(x0, REALSXP_C)
         };
         let _xr_guard = (TYPEOF(x0) != REALSXP_C).then(|| protect(xr));
@@ -187,7 +231,7 @@ pub unsafe fn do_qr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 crate::eval::limits::poll_computation();
             }
             if !(*REAL(xr).add(i)).is_finite() {
-                qr_error("NA/NaN/Inf in 'x'")
+                qr_error("NA/NaN/Inf in foreign function call (arg 1)")
             }
         }
         let qr = crate::mainutils::duplicate::Rf_duplicate(xr);

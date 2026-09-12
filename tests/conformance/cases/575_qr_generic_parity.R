@@ -1,0 +1,23 @@
+x <- 1
+class(x) <- "foo"
+qr.foo <- function(x, ...) "dispatched"
+cat(qr(x), "\n", sep="")
+cat(paste0(class(qr.default(x)), collapse=","), "\n", sep="")
+cat(qr(matrix(numeric(), 0, 0))$rank, "\n", sep="")
+cat(paste(dim(qr(matrix(numeric(), 0, 0))$qr), collapse="x"), "\n", sep="")
+cat(qr(matrix(2, 1, 1))$qr[1,1], "\n", sep="")
+cat(grepl("NA/NaN/Inf in foreign function call", try(qr(matrix(c(1, NA), 2, 1)), silent=TRUE)[1]), "\n", sep="")
+cat(grepl("NA/NaN/Inf in foreign function call", try(qr(matrix(c(1, NaN, 2, Inf), 2, 2)), silent=TRUE)[1]), "\n", sep="")
+cat(qr(matrix(c(1,3,2,4),2,2), tol=1)$rank, "\n", sep="")
+cat(paste(qr(matrix(c(1,3,2,4),2,2), tol=1)$pivot, collapse=","), "\n", sep="")
+cat(paste(qr(matrix(c(1,3,2,4),2,2), LAPACK=TRUE)$pivot, collapse=","), "\n", sep="")
+cat(identical(qr(matrix(c(1,3,2,4),2,2), LAPACK=TRUE)$rank, 2L), "\n", sep="")
+cat(paste(qr(matrix(1:6, 2, 3))$pivot, collapse=","), "\n", sep="")
+cat(paste(qr(matrix(1:6, 3, 2))$pivot, collapse=","), "\n", sep="")
+cat(grepl("NA/NaN/Inf in foreign function call", try(qr(letters), silent=TRUE)[1]), "\n", sep="")
+cat(grepl("vector type", try(qr(NULL), silent=TRUE)[1]), "\n", sep="")
+cat(identical(dim(qr.coef(qr(matrix(1:6,2,3)), 1:2)), c(3L,1L)), "\n", sep="")
+cat(grepl("same number of rows", try(qr.coef(qr(matrix(1:6,2,3)), 1:3), silent=TRUE)[1]), "\n", sep="")
+q <- qr(matrix(c(1,3,2,4),2,2))
+rownames(q$qr) <- c("r1", "r2")
+cat(paste0(identical(colnames(qr.R(q)), NULL), ",", identical(rownames(qr.R(q)), c("r1","r2"))), "\n", sep="")

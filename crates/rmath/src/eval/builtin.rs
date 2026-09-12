@@ -745,6 +745,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::qr::do_qr,
     },
     EvaluatedBuiltin {
+        name: "qr.default",
+        handler: crate::mainutils::qr::do_qr_default,
+    },
+    EvaluatedBuiltin {
         name: "disassemble",
         handler: crate::eval::compiler_disassemble::do_disassemble,
     },

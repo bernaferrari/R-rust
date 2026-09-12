@@ -1,0 +1,20 @@
+dispatched
+qr
+0
+0x0
+2
+TRUE
+TRUE
+1
+1,2
+2,1
+TRUE
+1,2,3
+1,2
+TRUE
+Warning message:
+In storage.mode(x) <- "double" : NAs introduced by coercion
+TRUE
+FALSE
+TRUE
+TRUE,TRUE

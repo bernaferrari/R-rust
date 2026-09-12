@@ -288,6 +288,46 @@ pub unsafe fn CLEAR_ATTRIB(x: SEXP) {
 
 // ---------------------------------------------------------------------------
 // CoercionWarning
+thread_local! {
+    static COERCION_WARN_CALL: std::cell::Cell<SEXP> =
+        const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
+
+/// Attribute the next coercion warnings to `call` (GNU attributes them to
+/// the dynamic R call, e.g. `storage.mode(x) <- "double"` in qr.default).
+/// The call is protected for the scope of the override.
+pub unsafe fn set_coercion_warning_call(call: SEXP) {
+    unsafe {
+        let previous = COERCION_WARN_CALL.get();
+        if !previous.is_null() {
+            crate::sexp::protect::unprotect_count(1);
+        }
+        if !call.is_null() {
+            crate::sexp::protect::protect(call);
+        }
+        COERCION_WARN_CALL.set(call);
+    }
+}
+
+/// Drop the coercion warning call override.
+pub unsafe fn clear_coercion_warning_call() {
+    unsafe {
+        set_coercion_warning_call(std::ptr::null_mut());
+    }
+}
+
+/// Clears the override when dropped, including on R-error unwind.
+pub struct CoercionWarningCallGuard;
+
+impl Drop for CoercionWarningCallGuard {
+    fn drop(&mut self) {
+        unsafe {
+            clear_coercion_warning_call();
+        }
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 
 /// Issue coercion warnings based on the warning flags.
@@ -296,11 +336,19 @@ pub unsafe fn CLEAR_ATTRIB(x: SEXP) {
 pub unsafe fn CoercionWarning(warn: c_int) {
     // Route through the warnings machinery (like stock's warningcall) so
     // handlers such as suppressWarnings()/withCallingHandlers() see them.
+    let override_call = COERCION_WARN_CALL.get();
     if warn & WARN_NA != 0 {
         unsafe {
-            crate::mainutils::errors::Rf_warning(
-                b"NAs introduced by coercion\0".as_ptr() as *const core::ffi::c_char
-            );
+            if !override_call.is_null() {
+                crate::mainutils::errors::warningcall(
+                    override_call,
+                    b"NAs introduced by coercion\0".as_ptr() as *const core::ffi::c_char,
+                );
+            } else {
+                crate::mainutils::errors::Rf_warning(
+                    b"NAs introduced by coercion\0".as_ptr() as *const core::ffi::c_char,
+                );
+            }
         }
     }
     if warn & WARN_INT_NA != 0 {
