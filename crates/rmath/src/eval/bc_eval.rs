@@ -757,6 +757,95 @@ unsafe fn eval_gnu_logic(
     }
 }
 
+
+/// GNU SETTER_CALL matches eval.c: replace the first call argument with lhs,
+/// append rhs tagged `value`, and apply the replacement function.
+unsafe fn eval_gnu_setter_call(
+    fun: SEXP,
+    call: SEXP,
+    vexpr: SEXP,
+    lhs: SEXP,
+    rhs: SEXP,
+    frame_args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        use crate::sexp::object::Sexp;
+        let value_sym = crate::sexp::symbol::Rf_install(c"value".as_ptr());
+        let tmp_sym = crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr());
+        match TYPEOF(fun) {
+            kind if kind == SEXPTYPE::BUILTINSXP => {
+                if frame_args == R_NilValue() {
+                    bc_error("GNU SETTER_CALL has no first argument");
+                }
+                crate::sexp::accessors::SETCAR(frame_args, lhs);
+                let mut last = frame_args;
+                while CDR(last) != R_NilValue() {
+                    last = CDR(last);
+                }
+                let value = Rf_cons(rhs, R_NilValue());
+                crate::sexp::accessors::SETTAG(value, value_sym);
+                crate::sexp::accessors::SETCDR(last, value);
+                super::apply::apply_builtin_safe(
+                    Sexp::from_raw_unchecked(fun),
+                    Sexp::from_raw_unchecked(call),
+                    Sexp::from_raw_unchecked(frame_args),
+                    Sexp::from_raw_unchecked(rho),
+                )
+                .unwrap_or_else(|error| bc_error(error))
+                .as_raw()
+            }
+            kind if kind == SEXPTYPE::SPECIALSXP => {
+                let args = crate::mainutils::duplicate::duplicate(CDR(call));
+                let _args = crate::sexp::protect::protect(args);
+                if args == R_NilValue() {
+                    bc_error("GNU SETTER_CALL special has no arguments");
+                }
+                let lhs_prom = crate::sexp::memory_ext::R_mkEVPROMISE(tmp_sym, lhs);
+                crate::sexp::accessors::SETCAR(args, lhs_prom);
+                let mut last = args;
+                while CDR(last) != R_NilValue() {
+                    last = CDR(last);
+                }
+                let rhs_prom = crate::sexp::memory_ext::R_mkEVPROMISE(vexpr, rhs);
+                crate::sexp::accessors::SETCAR(last, rhs_prom);
+                super::apply::apply_special_safe(
+                    Sexp::from_raw_unchecked(fun),
+                    Sexp::from_raw_unchecked(call),
+                    Sexp::from_raw_unchecked(args),
+                    Sexp::from_raw_unchecked(rho),
+                )
+                .unwrap_or_else(|error| bc_error(error))
+                .as_raw()
+            }
+            kind if kind == SEXPTYPE::CLOSXP => {
+                if frame_args == R_NilValue() {
+                    bc_error("GNU SETTER_CALL has no first argument");
+                }
+                let lhs_prom = crate::sexp::memory_ext::R_mkEVPROMISE(tmp_sym, lhs);
+                crate::sexp::accessors::SETCAR(frame_args, lhs_prom);
+                let mut last = frame_args;
+                while CDR(last) != R_NilValue() {
+                    last = CDR(last);
+                }
+                let rhs_prom = crate::sexp::memory_ext::R_mkEVPROMISE(vexpr, rhs);
+                let value = Rf_cons(rhs_prom, R_NilValue());
+                crate::sexp::accessors::SETTAG(value, value_sym);
+                crate::sexp::accessors::SETCDR(last, value);
+                super::apply::apply_closure_safe(
+                    Sexp::from_raw_unchecked(fun),
+                    Sexp::from_raw_unchecked(call),
+                    Sexp::from_raw_unchecked(frame_args),
+                    Sexp::from_raw_unchecked(rho),
+                )
+                .unwrap_or_else(|error| bc_error(error))
+                .as_raw()
+            }
+            _ => bc_error("GNU SETTER_CALL found a non-function"),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // BCODESXP accessors
 // ---------------------------------------------------------------------------
@@ -1595,14 +1684,20 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     with_stack_rooted(&stack, value, || setVar(symbol, value, ENCLOS(rho)));
                     super::runtime::set_visible(FALSE);
                 }
-                super::bytecode::GNU_OP_STARTSUBSET => {
+                super::bytecode::GNU_OP_STARTSUBSET
+                | super::bytecode::GNU_OP_STARTSUBSET2 => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
                     pc += 2;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let x = stack_top_checked(&stack, "GNU STARTSUBSET");
+                    let generic = if opcode == super::bytecode::GNU_OP_STARTSUBSET2 {
+                        c"[["
+                    } else {
+                        c"["
+                    };
                     if let Some(value) = with_stack_rooted(&stack, x, || {
-                        eval_gnu_startsubset_n(c"[", call, x, rho)
+                        eval_gnu_startsubset_n(generic, call, x, rho)
                     }) {
                         let index = stack.depth() - 1;
                         stack.set(index, value);
@@ -1631,10 +1726,11 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     }
                     stack.push(R_MissingArg());
                 }
-                super::bytecode::GNU_OP_DFLTSUBSET => {
-                    let frame = gnu_call_frames
-                        .pop()
-                        .unwrap_or_else(|| bc_error("GNU DFLTSUBSET has no active STARTSUBSET frame"));
+                super::bytecode::GNU_OP_DFLTSUBSET
+                | super::bytecode::GNU_OP_DFLTSUBSET2 => {
+                    let frame = gnu_call_frames.pop().unwrap_or_else(|| {
+                        bc_error("GNU DFLTSUBSET has no active STARTSUBSET frame")
+                    });
                     if !frame.raw_args {
                         bc_error("GNU DFLTSUBSET requires a STARTSUBSET call frame");
                     }
@@ -1661,12 +1757,21 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                 crate::sexp::accessors::SETTAG(args, *tag);
                             }
                         }
-                        crate::mainutils::subset::do_subset_dflt(
-                            frame.call,
-                            crate::sexp::symbol::Rf_install(c"[".as_ptr()),
-                            args,
-                            rho,
-                        )
+                        if opcode == super::bytecode::GNU_OP_DFLTSUBSET2 {
+                            crate::mainutils::subset::do_subset2_dflt(
+                                frame.call,
+                                crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
+                                args,
+                                rho,
+                            )
+                        } else {
+                            crate::mainutils::subset::do_subset_dflt(
+                                frame.call,
+                                crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+                                args,
+                                rho,
+                            )
+                        }
                     });
                     super::runtime::set_visible(TRUE);
                     stack.set_depth(frame.marker);
@@ -1944,6 +2049,63 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         eval_gnu_istype(opcode, value)
                     });
                     super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_SETTER_CALL => {
+                    let call_index = words[pc] as usize;
+                    let vexpr_index = words[pc + 1] as usize;
+                    pc += 2;
+                    let frame = gnu_call_frames.pop().unwrap_or_else(|| {
+                        bc_error("GNU SETTER_CALL has no active GETFUN call")
+                    });
+                    if frame.raw_args {
+                        bc_error("GNU SETTER_CALL requires a GETFUN call frame");
+                    }
+                    let marker = frame.marker;
+                    let depth = stack.depth();
+                    if marker < 2 {
+                        bc_error("GNU SETTER_CALL has an empty stack");
+                    }
+                    if depth <= marker {
+                        bc_error("GNU SETTER_CALL has no function");
+                    }
+                    let call_expr = VECTOR_ELT(consts, call_index as i64);
+                    let vexpr = VECTOR_ELT(consts, vexpr_index as i64);
+                    if TYPEOF(call_expr) != SEXPTYPE::LANGSXP {
+                        bc_error(format!(
+                            "GNU SETTER_CALL expression constant {call_index} is not a language object"
+                        ));
+                    }
+                    let mut lhs = stack_at_checked(&stack, marker - 2, "GNU SETTER_CALL lhs");
+                    let rhs = stack_at_checked(&stack, marker - 1, "GNU SETTER_CALL rhs");
+                    if crate::sexp::accessors::NAMED(lhs) > 1 {
+                        lhs = with_stack_rooted(&stack, lhs, || {
+                            crate::mainutils::duplicate::shallow_duplicate(lhs)
+                        });
+                        stack.set(marker - 2, lhs);
+                    }
+                    let result = with_stack_rooted(&stack, call_expr, || {
+                        let fun = stack.at(marker);
+                        let mut args = R_NilValue();
+                        let mut argument_roots = Vec::new();
+                        let _tag_roots = frame
+                            .tags
+                            .iter()
+                            .map(|(_, tag)| crate::sexp::protect::protect(*tag))
+                            .collect::<Vec<_>>();
+                        let _vexpr = crate::sexp::protect::protect(vexpr);
+                        for index in (marker + 1..depth).rev() {
+                            args = Rf_cons(stack.at(index), args);
+                            argument_roots.push(crate::sexp::protect::protect(args));
+                            if let Some((_, tag)) =
+                                frame.tags.iter().find(|(slot, _)| *slot == index)
+                            {
+                                crate::sexp::accessors::SETTAG(args, *tag);
+                            }
+                        }
+                        eval_gnu_setter_call(fun, call_expr, vexpr, lhs, rhs, args, rho)
+                    });
+                    stack.set_depth(marker - 2);
                     stack.push(result);
                 }
                 _ => bc_mismatch(format!("unsupported tagged GNU bytecode opcode {opcode}")),
