@@ -190,6 +190,41 @@ unsafe fn isLanguage(x: SEXP) -> bool {
     unsafe { TYPEOF(x) == SEXPTYPE::LANGSXP }
 }
 
+/// Names of a pairlist/language object from cell tags, like names().
+unsafe fn pairlist_tag_names(x: SEXP) -> SEXP {
+    unsafe {
+        let n = xlength(x);
+        if n <= 0 {
+            return R_NilValue();
+        }
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if names.is_null() {
+            return R_NilValue();
+        }
+        let _names_guard = protect(names);
+        let mut cell = x;
+        let mut i: R_xlen_t = 0;
+        let mut any = false;
+        while !cell.is_null() && cell != R_NilValue() && i < n {
+            let tag = TAG(cell);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let printname = PRINTNAME(tag);
+                if !printname.is_null() && printname != R_NilValue() {
+                    SET_STRING_ELT(names, i, printname);
+                    any = true;
+                } else {
+                    SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
+                }
+            } else {
+                SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
+            }
+            i += 1;
+            cell = CDR(cell);
+        }
+        if any { names } else { R_NilValue() }
+    }
+}
+
 /// Check if x is an environment.
 #[inline]
 unsafe fn isEnvironment(x: SEXP) -> bool {
@@ -2143,7 +2178,10 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
 
             /* Single-element index */
-            let xnames = getAttrib(x, sym_Names());
+            let mut xnames = getAttrib(x, sym_Names());
+            if (isNull(xnames) || xnames == R_NilValue()) && (isPairList(x) || isLanguage(x)) {
+                xnames = pairlist_tag_names(x);
+            }
             let _xnames_guard = protect(xnames);
             let offset = get1index(thesub, xnames, xlength(x), pok, -1, call);
 

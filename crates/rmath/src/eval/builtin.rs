@@ -2076,8 +2076,16 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_formals,
     },
     EvaluatedBuiltin {
+        name: "formals<-",
+        handler: crate::mainutils::essentials::do_formalsgets,
+    },
+    EvaluatedBuiltin {
         name: "body",
         handler: crate::mainutils::essentials::do_body,
+    },
+    EvaluatedBuiltin {
+        name: "body<-",
+        handler: crate::mainutils::essentials::do_bodygets,
     },
     EvaluatedBuiltin {
         name: "charmatch",

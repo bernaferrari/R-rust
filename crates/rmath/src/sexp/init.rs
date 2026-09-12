@@ -435,6 +435,8 @@ const NON_GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto("enc2native", X, false),
     proto("enc2utf8", X, false),
     proto("environment<-", &[arg("fun"), arg("value")], false),
+    proto("formals<-", &[arg("fun"), arg("value")], false),
+    proto("body<-", &[arg("fun"), arg("value")], false),
     proto("expression", DOTS, false),
     proto("forceAndCall", &[arg("n"), arg("FUN"), arg("...")], false),
     proto("gc.time", &[arg_default("on", FormalDefault::True)], false),

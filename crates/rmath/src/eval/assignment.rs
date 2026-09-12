@@ -402,6 +402,8 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
             "colnames<-" => {
                 crate::mainutils::essentials::do_colnames_set(call, assign_fn, args, rho)
             }
+            "formals<-" => crate::mainutils::essentials::do_formalsgets(call, assign_fn, args, rho),
+            "body<-" => crate::mainutils::essentials::do_bodygets(call, assign_fn, args, rho),
             _ => Rf_eval(call, rho),
         }
     }

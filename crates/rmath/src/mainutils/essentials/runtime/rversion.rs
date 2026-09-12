@@ -181,6 +181,101 @@ pub unsafe fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// R's `formals(fun) <- value` — replace formals, keep body and environment.
+pub unsafe fn do_formalsgets(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { replace_closure_part(call, args, ClosurePart::Formals) }
+}
+
+/// R's `body(fun) <- value` — replace body, keep formals and environment.
+pub unsafe fn do_bodygets(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { replace_closure_part(call, args, ClosurePart::Body) }
+}
+
+enum ClosurePart {
+    Formals,
+    Body,
+}
+
+unsafe fn replace_closure_part(call: SEXP, args: SEXP, part: ClosurePart) -> SEXP {
+    unsafe {
+        let fun = CAR(args);
+        let value = CADR(args);
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+            crate::mainutils::errors::errorcall_str(call, "use of NULL environment is defunct");
+        }
+        let _fun_guard = crate::sexp::protect::protect(fun);
+        let formals = match part {
+            ClosurePart::Formals => list_or_pairlist_to_formals(call, value),
+            ClosurePart::Body => crate::sexp::accessors::FORMALS(fun),
+        };
+        let body = match part {
+            ClosurePart::Formals => crate::mainutils::essentials::do_body(
+                call,
+                std::ptr::null_mut(),
+                crate::sexp::constructors::Rf_cons(fun, R_NilValue()),
+                R_NilValue(),
+            ),
+            ClosurePart::Body => {
+                if value.is_null() {
+                    R_NilValue()
+                } else {
+                    value
+                }
+            }
+        };
+        let env = crate::sexp::accessors::CLOENV(fun);
+        if env.is_null() || env == R_NilValue() {
+            crate::mainutils::errors::errorcall_str(call, "use of NULL environment is defunct");
+        }
+        let dup = crate::mainutils::dstruct::mkCLOSXP(formals, body, env);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        dup
+    }
+}
+
+unsafe fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(value) == SEXPTYPE::LISTSXP {
+            return value;
+        }
+        if TYPEOF(value) != SEXPTYPE::VECSXP {
+            crate::mainutils::errors::errorcall_str(call, "invalid formals argument");
+        }
+        let n = LENGTH(value);
+        if n == 0 {
+            return R_NilValue();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            value,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let _names_guard = crate::sexp::protect::protect(names);
+        let pargs = crate::sexp::constructors::Rf_allocList(n);
+        let _pargs_guard = crate::sexp::protect::protect(pargs);
+        let mut current = pargs;
+        for i in 0..n {
+            crate::sexp::accessors::SETCAR(current, VECTOR_ELT(value, i as i64));
+            if names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP && (i as i64) < XLENGTH(names) {
+                let name_elt = STRING_ELT(names, i as i64);
+                if !name_elt.is_null() && name_elt != R_NilValue() {
+                    let c = CHAR(name_elt);
+                    if !c.is_null() && *c != 0 {
+                        crate::sexp::accessors::SETTAG(
+                            current,
+                            crate::mainutils::subset::installTrChar(name_elt),
+                        );
+                    }
+                }
+            }
+            current = CDR(current);
+        }
+        pargs
+    }
+}
+
 /// R's `body(fn)` — get the body of a function.
 pub unsafe fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

@@ -398,7 +398,7 @@ pub unsafe fn do_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if t == SEXPTYPE::ENVSXP {
             return names_from_environment(x);
         }
-        if t == SEXPTYPE::LISTSXP {
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
             return names_from_pairlist(x);
         }
         // Get names attribute

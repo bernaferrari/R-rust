@@ -972,21 +972,6 @@ fn list_apply_names(x: SEXP, n: R_xlen_t) -> SEXP {
             return R_NilValue();
         }
         match TYPEOF(x) {
-            t if t == SEXPTYPE::VECSXP => {
-                let names = crate::sexp::attrib_core::getAttrib(
-                    x,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                );
-                if !names.is_null()
-                    && names != R_NilValue()
-                    && TYPEOF(names) == SEXPTYPE::STRSXP
-                    && XLENGTH(names) == n
-                {
-                    names
-                } else {
-                    R_NilValue()
-                }
-            }
             t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
                 let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
                 if names.is_null() {
@@ -1014,7 +999,21 @@ fn list_apply_names(x: SEXP, n: R_xlen_t) -> SEXP {
                 }
                 if any_name { names } else { R_NilValue() }
             }
-            _ => R_NilValue(),
+            _ => {
+                let names = crate::sexp::attrib_core::getAttrib(
+                    x,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                if !names.is_null()
+                    && names != R_NilValue()
+                    && TYPEOF(names) == SEXPTYPE::STRSXP
+                    && XLENGTH(names) == n
+                {
+                    names
+                } else {
+                    R_NilValue()
+                }
+            }
         }
     }
 }
