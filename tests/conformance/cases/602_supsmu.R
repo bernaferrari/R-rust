@@ -1,0 +1,5 @@
+d <- supsmu(1:5, c(1, 2, 1, 2, 1))
+cat(paste(d$x, collapse = ","), "\n", sep = "")
+cat(paste(sprintf("%.4f", d$y), collapse = ","), "\n", sep = "")
+d2 <- supsmu(1:10, 1:10)
+cat(paste(sprintf("%.4f", d2$y), collapse = ","), "\n", sep = "")

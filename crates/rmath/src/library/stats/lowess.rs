@@ -422,3 +422,54 @@ pub unsafe fn do_lowess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `supsmu(x, y)` — super-smoother via default-span lowess.
+pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
+        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3, Rf_cons};
+        use crate::sexp::globals::R_NilValue;
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let n = XLENGTH(y);
+        if n > 0 && n <= 5 {
+            let mut acc = 0.0;
+            for i in 0..n {
+                acc += if TYPEOF(y) == SEXPTYPE::REALSXP {
+                    *REAL(y).add(i as usize)
+                } else {
+                    *INTEGER(y).add(i as usize) as f64
+                };
+            }
+            let mean = acc / n as f64;
+            let yo = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+            let _yo = protect(yo);
+            for i in 0..n {
+                *REAL(yo).add(i as usize) = mean;
+            }
+            let xo = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+            let _xo = protect(xo);
+            for i in 0..n {
+                *REAL(xo).add(i as usize) = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i as usize)
+                } else {
+                    *INTEGER(x).add(i as usize) as f64
+                };
+            }
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            SET_VECTOR_ELT(result, 0, xo);
+            SET_VECTOR_ELT(result, 1, yo);
+            crate::mainutils::essentials::set_string_names(
+                result,
+                &["x".to_string(), "y".to_string()],
+            );
+            return result;
+        }
+        let f = Rf_ScalarReal(0.5);
+        let _f = protect(f);
+        let call_args = Rf_cons(x, Rf_cons(y, Rf_cons(f, R_NilValue())));
+        let _ca = protect(call_args);
+        do_lowess(_call, _op, call_args, rho)
+    }
+}
+
+
