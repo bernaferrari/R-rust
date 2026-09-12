@@ -235,31 +235,46 @@ unsafe fn qr_Q_complex(
             .checked_mul(cols)
             .filter(|&n| n <= isize::MAX as usize / std::mem::size_of::<f64>())
             .unwrap_or_else(|| qr_q_error("QR result is too large"));
-        let d = Rf_allocVector3(SEXPTYPE::CPLXSXP, count as R_xlen_t);
+        // GNU leaves Dvec's type alone: a non-complex Dvec builds a real
+        // D matrix, and qr.qy then raises "'b' must be a complex matrix".
+        let d = if dvec_arg.is_some_and(|x| TYPEOF(x) != SEXPTYPE::CPLXSXP) {
+            Rf_allocVector3(SEXPTYPE::REALSXP, count as R_xlen_t)
+        } else {
+            Rf_allocVector3(SEXPTYPE::CPLXSXP, count as R_xlen_t)
+        };
         let _d_guard = protect(d);
-        let dvec = dvec_arg.map(|x| {
-            if TYPEOF(x) == SEXPTYPE::CPLXSXP {
-                x
-            } else {
-                coerceVector(x, 15)
-            }
-        });
+        let d_complex = TYPEOF(d) == SEXPTYPE::CPLXSXP;
+        let dvec = dvec_arg;
         let _dvec_guard = dvec.map(protect);
-        for i in 0..count {
-            *COMPLEX(d).add(i) = Rcomplex { r: 0.0, i: 0.0 };
-        }
-        // Dvec[seq_len(ncols)]: entries past length(Dvec) index NA, exactly
-        // like R's out-of-range subscripting in GNU's diag(Dvec, ...).
-        for j in 0..cols {
-            let value = match (&dvec, j) {
-                (Some(v), j) if (j as i64) < XLENGTH(*v) => *COMPLEX(*v).add(j),
-                (Some(_), _) => Rcomplex {
-                    r: NA_REAL,
-                    i: NA_REAL,
-                },
-                (None, _) => Rcomplex { r: 1.0, i: 0.0 },
-            };
-            *COMPLEX(d).add(j + j * m_us) = value;
+        if d_complex {
+            for i in 0..count {
+                *COMPLEX(d).add(i) = Rcomplex { r: 0.0, i: 0.0 };
+            }
+            // Dvec[seq_len(ncols)]: entries past length(Dvec) index NA,
+            // exactly like R subscripting in GNU's diag(Dvec, ...).
+            for j in 0..cols {
+                let value = match dvec {
+                    Some(v) if (j as i64) < XLENGTH(v) => *COMPLEX(v).add(j),
+                    Some(_) => Rcomplex {
+                        r: NA_REAL,
+                        i: NA_REAL,
+                    },
+                    None => Rcomplex { r: 1.0, i: 0.0 },
+                };
+                *COMPLEX(d).add(j + j * m_us) = value;
+            }
+        } else {
+            for i in 0..count {
+                *REAL(d).add(i) = 0.0;
+            }
+            for j in 0..cols {
+                let value = match dvec {
+                    Some(v) if (j as i64) < XLENGTH(v) => *REAL(v).add(j),
+                    Some(_) => NA_REAL,
+                    None => 1.0,
+                };
+                *REAL(d).add(j + j * m_us) = value;
+            }
         }
         let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         let _dims_guard = protect(dims);

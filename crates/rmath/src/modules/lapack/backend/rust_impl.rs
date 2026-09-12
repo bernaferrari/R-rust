@@ -2253,6 +2253,8 @@ pub unsafe fn zgeqp3_(
                 c64::new(0.0, 0.0)
             } else {
                 let norm3 = (alphar * alphar + alphi * alphi + xnorm * xnorm).sqrt();
+                // SIGN(A, B) follows B's sign bit (verified against the
+                // pinned oracle for B = -0.0), which is copysign exactly.
                 let beta = -norm3.copysign(alphar);
                 let tau = c64::new((beta - alphar) / beta, -alphi / beta);
                 // v_tail = x_tail / (alpha - beta); the diagonal stores

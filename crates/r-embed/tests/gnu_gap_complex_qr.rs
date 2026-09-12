@@ -64,3 +64,14 @@ fn complex_qr_gnu_error_and_argument_semantics() {
         .unwrap();
     assert_eq!(result.trim(), "[1] TRUE TRUE TRUE TRUE");
 }
+
+#[test]
+fn complex_qr_gnu_dvec_and_negative_zero_edges() {
+    let mut session = RSession::new().unwrap();
+    let result = session
+        .eval(
+            "q <- qr(matrix(c(1+1i, 2+1i, 3+2i, 4+2i), 2, 2));              real_dvec <- grepl('complex matrix', try(qr.Q(q, Dvec=c(1, 1)), silent=TRUE)[1]);              cplx_dvec <- isTRUE(all.equal(qr.Q(q, Dvec=c(1+1i, 1+0i))[1,1],                                        -0.1740777-0.8703883i, tolerance=1e-7));              nz <- qr(matrix(complex(real=c(-0, 1), imaginary=c(1, 0)), 2, 1));              neg_zero <- max(abs(nz$qr[1,1] - (1.4142135623730951+0i))) < 1e-12 &&                           max(abs(nz$qraux[1] - (1-0.7071067811865475i))) < 1e-12;              c(real_dvec, cplx_dvec, neg_zero)",
+        )
+        .unwrap();
+    assert_eq!(result.trim(), "[1] TRUE TRUE TRUE");
+}
