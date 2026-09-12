@@ -168,6 +168,8 @@ pub const GNU_OP_ENDASSIGN: c_int = 62;
 pub const GNU_OP_STARTASSIGN2: c_int = 96;
 pub const GNU_OP_ENDASSIGN2: c_int = 97;
 pub const GNU_OP_SETTER_CALL: c_int = 98;
+pub const GNU_OP_GETTER_CALL: c_int = 99;
+pub const GNU_OP_SWAP: c_int = 100;
 pub const GNU_OP_DOMISSING: c_int = 30;
 pub const GNU_OP_STARTSUBSET: c_int = 63;
 pub const GNU_OP_DFLTSUBSET: c_int = 64;
@@ -193,6 +195,7 @@ pub const GNU_OP_STARTSUBSET_N: c_int = 104;
 pub const GNU_OP_STARTSUBASSIGN_N: c_int = 105;
 pub const GNU_OP_VECSUBSET: c_int = 84;
 pub const GNU_OP_MATSUBSET: c_int = 85;
+pub const GNU_OP_MATSUBSET2: c_int = 107;
 pub const GNU_OP_VECSUBSET2: c_int = 106;
 pub const GNU_OP_VECSUBASSIGN: c_int = 86;
 pub const GNU_OP_MATSUBASSIGN: c_int = 87;
@@ -342,7 +345,7 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
             | GNU_OP_ISNUMERIC | GNU_OP_DOMISSING | GNU_OP_DFLTSUBSET
-            | GNU_OP_DFLTSUBASSIGN | GNU_OP_DFLTSUBASSIGN2 | GNU_OP_DFLTSUBSET2 => {}
+            | GNU_OP_DFLTSUBASSIGN | GNU_OP_DFLTSUBASSIGN2 | GNU_OP_DFLTSUBSET2 | GNU_OP_SWAP => {}
             GNU_OP_STARTASSIGN | GNU_OP_ENDASSIGN => {
                 let index = code[pc];
                 if index < 0 {
@@ -382,6 +385,19 @@ fn validate_gnu_adapter_impl(
                             "GNU SETTER_CALL constant pool index {index} is out of range for pool length {constant_count}"
                         ));
                     }
+                }
+            }
+            GNU_OP_GETTER_CALL => {
+                let index = code[pc];
+                if index < 0 {
+                    return Err(format!(
+                        "GNU GETTER_CALL constant pool index {index} is negative"
+                    ));
+                }
+                if index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU GETTER_CALL constant pool index {index} is out of range for pool length {constant_count}"
+                    ));
                 }
             }
             GNU_OP_DOLLAR | GNU_OP_DOLLARGETS => {
@@ -428,7 +444,7 @@ fn validate_gnu_adapter_impl(
                 branches.push((opcode_pc, target as usize));
             }
             GNU_OP_VECSUBSET | GNU_OP_VECSUBSET2 | GNU_OP_VECSUBASSIGN | GNU_OP_MATSUBSET
-            | GNU_OP_MATSUBASSIGN | GNU_OP_VECSUBASSIGN2 => {
+            | GNU_OP_MATSUBASSIGN | GNU_OP_VECSUBASSIGN2 | GNU_OP_MATSUBSET2 => {
                 let call_index = code[pc];
                 let name = match opcode {
                     GNU_OP_VECSUBSET => "VECSUBSET",
@@ -436,6 +452,7 @@ fn validate_gnu_adapter_impl(
                     GNU_OP_MATSUBSET => "MATSUBSET",
                     GNU_OP_MATSUBASSIGN => "MATSUBASSIGN",
                     GNU_OP_VECSUBASSIGN2 => "VECSUBASSIGN2",
+                    GNU_OP_MATSUBSET2 => "MATSUBSET2",
                     _ => "VECSUBASSIGN",
                 };
                 if call_index < 0 || call_index as usize >= constant_count {
@@ -969,6 +986,14 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth - 2, loop_stack, call_stack.clone()));
             }
+            GNU_OP_MATSUBSET2 => {
+                if depth < 3 {
+                    return Err(format!(
+                        "GNU MATSUBSET2 at instruction {instruction_pc} has stack depth {depth}, requires 3"
+                    ));
+                }
+                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+            }
             GNU_OP_SUBSET_N => {
                 let rank = code[instruction_pc + 2];
                 if rank < 0 {
@@ -1160,6 +1185,32 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 pending.push((next, marker - 1, loop_stack, call_stack));
+            }
+            GNU_OP_GETTER_CALL => {
+                let Some(marker) = call_stack.pop() else {
+                    return Err(format!(
+                        "GNU GETTER_CALL at instruction {instruction_pc} has no active GETFUN call"
+                    ));
+                };
+                if marker < 2 {
+                    return Err(format!(
+                        "GNU GETTER_CALL at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                if depth <= marker {
+                    return Err(format!(
+                        "GNU GETTER_CALL at instruction {instruction_pc} has no function"
+                    ));
+                }
+                pending.push((next, marker + 1, loop_stack, call_stack));
+            }
+            GNU_OP_SWAP => {
+                if depth < 2 {
+                    return Err(format!(
+                        "GNU SWAP at instruction {instruction_pc} has stack depth {depth}, requires 2"
+                    ));
+                }
+                pending.push((next, depth, loop_stack, call_stack.clone()));
             }
             GNU_OP_INVISIBLE => pending.push((next, depth, loop_stack, call_stack.clone())),
             _ => unreachable!(),
@@ -2736,6 +2787,97 @@ mod tests {
     }
 
     #[test]
+    fn gnu_getter_call_validator_accepts_names_subset_assign_stream() {
+        // compiler:::disassemble(cmpfun(function(x,v){names(x)[1]<-v;x}, options=list(optimize=3)))
+        let names = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTASSIGN,
+            2,
+            GNU_OP_GETFUN,
+            4,
+            GNU_OP_PUSHNULLARG,
+            GNU_OP_GETTER_CALL,
+            6,
+            GNU_OP_SWAP,
+            GNU_OP_STARTSUBASSIGN_N,
+            7,
+            18,
+            GNU_OP_LDCONST,
+            9,
+            GNU_OP_VECSUBASSIGN,
+            7,
+            GNU_OP_GETFUN,
+            10,
+            GNU_OP_PUSHNULLARG,
+            GNU_OP_SETTER_CALL,
+            12,
+            13,
+            GNU_OP_ENDASSIGN,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&names, 15), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x,v){attr(x,"a")[1]<-v;x}, options=list(optimize=3)))
+        let attr = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTASSIGN,
+            2,
+            GNU_OP_GETFUN,
+            4,
+            GNU_OP_PUSHNULLARG,
+            GNU_OP_PUSHCONSTARG,
+            6,
+            GNU_OP_GETTER_CALL,
+            7,
+            GNU_OP_SWAP,
+            GNU_OP_STARTSUBASSIGN_N,
+            8,
+            20,
+            GNU_OP_LDCONST,
+            10,
+            GNU_OP_VECSUBASSIGN,
+            8,
+            GNU_OP_GETFUN,
+            11,
+            GNU_OP_PUSHNULLARG,
+            GNU_OP_PUSHCONSTARG,
+            6,
+            GNU_OP_SETTER_CALL,
+            13,
+            14,
+            GNU_OP_ENDASSIGN,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&attr, 16), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 99, 0, 1], 2)
+                .unwrap_err()
+                .contains("no active GETFUN call")
+        );
+        assert!(
+            validate_gnu_adapter_stream(&[12, 23, 0, 99, 0, 1], 2)
+                .unwrap_err()
+                .contains("empty stack")
+        );
+        assert!(
+            validate_gnu_adapter_stream(&[12, 100, 1], 1)
+                .unwrap_err()
+                .contains("SWAP")
+        );
+    }
+
+    #[test]
     fn gnu_dfltsubset2_validator_accepts_empty_index_stream() {
         // compiler:::disassemble(cmpfun(function(x) x[[]], options=list(optimize=3)))
         let empty = [
@@ -2816,6 +2958,29 @@ mod tests {
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 16, 1, 16, 1, 85, 2, 1], 2).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 112, 0, 3, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 112, 0, -1, 1], 1).is_err());
+    }
+
+    #[test]
+    fn gnu_matsubset2_validator_accepts_double_index_stream() {
+        // compiler:::disassemble(cmpfun(function(x) x[[1L,1L]], options=list(optimize=3)))
+        let mat2 = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET2_N,
+            0,
+            12,
+            GNU_OP_LDCONST,
+            2,
+            GNU_OP_LDCONST,
+            2,
+            GNU_OP_MATSUBSET2,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&mat2, 4), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 107, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 107, 0, 1], 1).is_err());
     }
 
     #[test]
