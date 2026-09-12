@@ -2932,16 +2932,55 @@ pub unsafe fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
 /// Port of: static SEXP qr_qy_cmplx(SEXP q, SEXP bin, SEXP trans)
 pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
     unsafe {
+        if TYPEOF(q) != VECSXP_C || XLENGTH(q) < 3 {
+            crate::sexp::context::r_error("'qr' must be a QR decomposition");
+        }
+        if TYPEOF(bin) != CPLXSXP_C {
+            crate::sexp::context::r_error("'y' must be a complex matrix");
+        }
+        let _q_guard = protect(q);
+        let _b_guard = protect(bin);
+        let _trans_guard = protect(trans);
         let qr = VECTOR_ELT(q, 0);
         let qraux = VECTOR_ELT(q, 2);
+        if TYPEOF(qr) != CPLXSXP_C {
+            crate::sexp::context::r_error("'qr$qr' must be a complex matrix");
+        }
+        if TYPEOF(qraux) != CPLXSXP_C {
+            crate::sexp::context::r_error("'qr$qraux' must be a complex vector");
+        }
 
         let dim = getAttrib(qr, R_DimSymbol());
-        let m = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'qr$qr' must be a matrix");
+        }
+        let m = INTEGER(dim).add(0).read();
+        let n = INTEGER(dim).add(1).read();
+        if m < 0 || n < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
+        let Some(len_r) = (m as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len_r > c_int::MAX as usize || XLENGTH(qr) as usize != len_r {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
 
         let b_dim = getAttrib(bin, R_DimSymbol());
-        let b_rows = INTEGER(coerceVector(b_dim, INTSXP_C)).add(0).read() as i32;
-        let nrhs = INTEGER(coerceVector(b_dim, INTSXP_C)).add(1).read() as i32;
+        if b_dim.is_null() || TYPEOF(b_dim) != INTSXP_C || XLENGTH(b_dim) != 2 {
+            crate::sexp::context::r_error("'y' must be a matrix");
+        }
+        let bm = INTEGER(b_dim).add(0).read();
+        let nrhs = INTEGER(b_dim).add(1).read();
+        if bm < 0 || nrhs < 0 || bm != m {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
+        let Some(len_b) = (bm as usize).checked_mul(nrhs as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len_b > c_int::MAX as usize || XLENGTH(bin) as usize != len_b {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
 
         let tr = asLogical(trans);
         if tr == NA_INTEGER {
@@ -2949,22 +2988,42 @@ pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
         }
 
         let k = if m < n { m } else { n };
+        if (XLENGTH(qraux) as usize) < k as usize {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
 
-        let len_r = (m as usize) * (n as usize);
+        let Some(scratch_bytes) = len_r
+            .checked_mul(std::mem::size_of::<LapRcomplex>())
+            .and_then(|bytes| bytes.checked_add(len_b.checked_mul(std::mem::size_of::<LapRcomplex>())?))
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native QR Qy workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
+
         let mut r_copy: Vec<LapRcomplex> = vec![LapRcomplex::default(); len_r];
-        ptr::copy_nonoverlapping(
-            COMPLEX(qr) as *const LapRcomplex,
-            r_copy.as_mut_ptr(),
-            len_r,
-        );
-
-        let len_b = (b_rows as usize) * (nrhs as usize);
+        if len_r != 0 {
+            ptr::copy_nonoverlapping(
+                COMPLEX(qr) as *const LapRcomplex,
+                r_copy.as_mut_ptr(),
+                len_r,
+            );
+        }
         let mut b_copy: Vec<LapRcomplex> = vec![LapRcomplex::default(); len_b];
-        ptr::copy_nonoverlapping(
-            COMPLEX(bin) as *const LapRcomplex,
-            b_copy.as_mut_ptr(),
-            len_b,
-        );
+        if len_b != 0 {
+            ptr::copy_nonoverlapping(
+                COMPLEX(bin) as *const LapRcomplex,
+                b_copy.as_mut_ptr(),
+                len_b,
+            );
+        }
 
         // Query optimal work size
         let mut tmp = LapRcomplex::default();
@@ -3033,20 +3092,50 @@ pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
             Rf_error(b"invalid 'logarithm' argument\0".as_ptr() as *const c_char);
         }
 
+        if TYPEOF(ain) != REALSXP_C {
+            crate::sexp::context::r_error("'a' must be a numeric matrix");
+        }
+        let _a_guard = protect(ain);
+        let _log_guard = protect(logarithm);
+
         let dim = getAttrib(ain, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'a' must be a matrix");
         }
 
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let n2 = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
+        let n = INTEGER(dim).add(0).read();
+        let n2 = INTEGER(dim).add(1).read();
+        if n < 0 || n2 < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
         if n != n2 {
-            Rf_error(b"'a' must be a square matrix\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error("'a' must be a square matrix");
         }
 
-        let len = (n as usize) * (n as usize);
+        let Some(len) = (n as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(ain) as usize != len {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+
+        let Some(scratch_bytes) = len.checked_mul(std::mem::size_of::<f64>()) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native determinant workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
+
         let mut a_copy = vec![0.0f64; len];
-        ptr::copy_nonoverlapping(REAL(ain), a_copy.as_mut_ptr(), len);
+        if len != 0 {
+            ptr::copy_nonoverlapping(REAL(ain), a_copy.as_mut_ptr(), len);
+        }
 
         let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
         let mut info: c_int = 0;

@@ -122,3 +122,9 @@ mod real_qr_qy_tests;
 
 #[cfg(test)]
 mod complex_qr_coef_tests;
+
+#[cfg(test)]
+mod complex_qr_qy_tests;
+
+#[cfg(test)]
+mod real_det_ge_tests;
