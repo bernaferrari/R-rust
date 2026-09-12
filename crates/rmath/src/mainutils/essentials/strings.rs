@@ -1141,7 +1141,11 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             None
         };
 
-        let outdec = b".\0".as_ptr() as *const std::os::raw::c_char;
+        // GNU do_format feeds decimal.mark to EncodeReal0 as OutDec.
+        let outdec_owned = CString::new(decimal_mark.as_str()).unwrap_or_else(|_| {
+            CString::new(".").expect("dot")
+        });
+        let outdec = outdec_owned.as_ptr();
         let mut wr: c_int = 0;
         let mut dr: c_int = 0;
         let mut er: c_int = 0;
@@ -1294,9 +1298,19 @@ fn pretty_num_one(
     } else {
         ("", body)
     };
-    let (int_part, frac_exp) = match rest.split_once('.') {
-        Some((int_part, rest)) => (int_part, Some(rest)),
-        None => (rest, None),
+    let (int_part, frac_exp) = if !decimal_mark.is_empty() {
+        if let Some((int_part, rest)) = rest.split_once(decimal_mark) {
+            (int_part, Some(rest))
+        } else if let Some((int_part, rest)) = rest.split_once('.') {
+            (int_part, Some(rest))
+        } else {
+            (rest, None)
+        }
+    } else {
+        match rest.split_once('.') {
+            Some((int_part, rest)) => (int_part, Some(rest)),
+            None => (rest, None),
+        }
     };
     let (mut frac, exp) = match frac_exp {
         Some(rest) => match rest.find(['e', 'E']) {
