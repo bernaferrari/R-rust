@@ -262,6 +262,135 @@ pub unsafe fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `encodeString(x, width, quote, na.encode, justify)`.
+pub unsafe fn do_encodeString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x0 = CAR(args);
+        if x0.is_null() || x0 == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let x = if TYPEOF(x0) == SEXPTYPE::STRSXP {
+            x0
+        } else {
+            crate::main::coerce::coerceVector(x0, SEXPTYPE::STRSXP.as_c_int())
+        };
+        let _x = protect(x);
+        let mut width = 0;
+        let mut quote: c_int = 0;
+        let mut justify: c_int = 0;
+        let mut na_encode = true;
+        let mut positional = 0;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                let pname = PRINTNAME(tag);
+                if !pname.is_null() {
+                    Some(
+                        std::ffi::CStr::from_ptr(CHAR(pname))
+                            .to_string_lossy()
+                            .into_owned(),
+                    )
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let slot = match name.as_deref() {
+                Some("width") => 0,
+                Some("quote") => 1,
+                Some("na.encode") => 2,
+                Some("justify") => 3,
+                _ => {
+                    let s = positional;
+                    positional += 1;
+                    s
+                }
+            };
+            match slot {
+                0 => {
+                    let v = crate::main::coerce::asInteger(value);
+                    if v != NA_INTEGER && v < 0 {
+                        crate::mainutils::errors::errorcall_str(
+                            crate::mainutils::errors::R_getCurrentCall(),
+                            "invalid 'width' value",
+                        );
+                    }
+                    width = v;
+                }
+                1 => {
+                    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
+                        let q = elt_to_string(value, 0);
+                        if let Some(ch) = q.chars().next() {
+                            quote = ch as c_int;
+                        }
+                    }
+                }
+                2 => {
+                    na_encode = crate::main::coerce::asLogical(value) != 0;
+                }
+                3 => {
+                    if TYPEOF(value) == SEXPTYPE::STRSXP {
+                        let text = elt_to_string(value, 0);
+                        justify = match text.as_str() {
+                            "right" => 1,
+                            "centre" | "center" => 2,
+                            "none" => 3,
+                            _ => 0,
+                        };
+                    } else {
+                        let v = crate::main::coerce::asInteger(value);
+                        if v != NA_INTEGER && (0..=3).contains(&v) {
+                            justify = v;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            cell = CDR(cell);
+        }
+        if justify == 3 {
+            width = 0;
+        }
+        let len = XLENGTH(x);
+        let find_width = width == NA_INTEGER;
+        let mut w = width;
+        if find_width && justify < 3 {
+            w = 0;
+            for i in 0..len {
+                let s = STRING_ELT(x, i);
+                if na_encode || s != crate::sexp::globals::R_NaString() {
+                    w = w.max(crate::mainutils::printutils::Rstrlen(s, quote));
+                }
+            }
+            if quote != 0 {
+                w += 2;
+            }
+        }
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, len);
+        let _result = protect(result);
+        let adj = match justify {
+            1 => crate::mainutils::printutils::Rprt_adj::right,
+            2 => crate::mainutils::printutils::Rprt_adj::centre,
+            3 => crate::mainutils::printutils::Rprt_adj::none,
+            _ => crate::mainutils::printutils::Rprt_adj::left,
+        };
+        for i in 0..len {
+            let s = STRING_ELT(x, i);
+            if !na_encode && s == crate::sexp::globals::R_NaString() {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
+            let encoded = crate::mainutils::printutils::EncodeString(s, w, quote, adj);
+            SET_STRING_ELT(result, i, Rf_mkChar(encoded));
+        }
+        result
+    }
+}
+
+
 
 /// R's `substring(text, first, last=NULL)` — base::substring is an R
 /// wrapper over the same internal that rep_lens `text` to the common

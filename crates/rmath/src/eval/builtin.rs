@@ -1293,6 +1293,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_strrep,
     },
     EvaluatedBuiltin {
+        name: "encodeString",
+        handler: crate::mainutils::essentials::do_encodeString,
+    },
+    EvaluatedBuiltin {
         name: "tolower",
         handler: crate::mainutils::essentials::do_tolower,
     },
