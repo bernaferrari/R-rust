@@ -1513,6 +1513,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_outer,
     },
     EvaluatedBuiltin {
+        name: "expand.grid",
+        handler: crate::mainutils::essentials::do_expand_grid,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

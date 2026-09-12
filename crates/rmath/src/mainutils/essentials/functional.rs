@@ -1980,6 +1980,191 @@ pub(crate) unsafe fn set_string_names(x: SEXP, names: &[String]) {
     }
 }
 
+/// GNU `expand.grid(...)` — Cartesian product as a data.frame.
+pub unsafe fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut cols: Vec<SEXP> = Vec::new();
+        let mut names: Vec<String> = Vec::new();
+        let mut keep_out = true;
+        let mut strings_as_factors = true;
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let tag_s = if !tag.is_null() && tag != R_NilValue() {
+                let p = PRINTNAME(tag);
+                if p.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(CHAR(p))
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            } else {
+                String::new()
+            };
+            if tag_s == "KEEP.OUT.ATTRS" {
+                keep_out = crate::main::coerce::asLogical(CAR(cell)) != 0;
+            } else if tag_s == "stringsAsFactors" {
+                strings_as_factors = crate::main::coerce::asLogical(CAR(cell)) != 0;
+            } else {
+                cols.push(CAR(cell));
+                names.push(tag_s);
+            }
+            cell = CDR(cell);
+        }
+        if cols.len() == 1 && TYPEOF(cols[0]) == SEXPTYPE::VECSXP {
+            let lst = cols[0];
+            let n = XLENGTH(lst);
+            let nm = crate::sexp::attrib_core::getAttrib(
+                lst,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            cols = (0..n).map(|i| VECTOR_ELT(lst, i)).collect();
+            names = (0..n)
+                .map(|i| {
+                    if !nm.is_null() && nm != R_NilValue() && TYPEOF(nm) == SEXPTYPE::STRSXP {
+                        elt_to_string(nm, i)
+                    } else {
+                        String::new()
+                    }
+                })
+                .collect();
+        }
+        let nargs = cols.len();
+        if nargs == 0 {
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+            set_string_names(result, &[]);
+            set_compact_row_names(result, 0);
+            set_data_frame_class(result);
+            return result;
+        }
+        for (i, name) in names.iter_mut().enumerate() {
+            if name.is_empty() {
+                *name = format!("Var{}", i + 1);
+            }
+        }
+        let lens: Vec<i64> = cols.iter().map(|c| XLENGTH(*c)).collect();
+        let mut total: i64 = 1;
+        for &n in &lens {
+            total = total.saturating_mul(n);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, nargs as i64);
+        let _result = protect(result);
+        let mut rep_fac: i64 = 1;
+        let mut orep = total;
+        for i in 0..nargs {
+            let mut x = cols[i];
+            let nx = lens[i];
+            orep = if nx == 0 { 0 } else { orep / nx };
+            if strings_as_factors && TYPEOF(x) == SEXPTYPE::STRSXP {
+                let fargs = Rf_cons(x, R_NilValue());
+                let _fa = protect(fargs);
+                x = crate::mainutils::essentials::do_factor(_call, _op, fargs, _rho);
+            }
+            let expanded = expand_grid_column(x, nx, rep_fac, orep, total);
+            let levels = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_LevelsSymbol(),
+            );
+            if !levels.is_null() && levels != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    expanded,
+                    crate::sexp::attrib_core::R_LevelsSymbol(),
+                    levels,
+                );
+            }
+            let class = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            );
+            if !class.is_null() && class != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    expanded,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    class,
+                );
+            }
+            SET_VECTOR_ELT(result, i as i64, expanded);
+            rep_fac = rep_fac.saturating_mul(nx.max(1));
+        }
+        set_string_names(result, &names);
+        set_compact_row_names(result, total);
+        set_data_frame_class(result);
+        if keep_out {
+            let dimv = Rf_allocVector3(SEXPTYPE::INTSXP, nargs as i64);
+            for (i, n) in lens.iter().enumerate() {
+                *INTEGER(dimv).add(i) = *n as c_int;
+            }
+            let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, nargs as i64);
+            let _dn = protect(dimnames);
+            for i in 0..nargs {
+                let nx = lens[i];
+                let labels = Rf_allocVector3(SEXPTYPE::STRSXP, nx);
+                for j in 0..nx {
+                    let label = format!("{}={}", names[i], format_grid_elt(cols[i], j));
+                    let cstr = CString::new(label).unwrap_or_default();
+                    SET_STRING_ELT(labels, j, Rf_mkChar(cstr.as_ptr()));
+                }
+                SET_VECTOR_ELT(dimnames, i as i64, labels);
+            }
+            set_string_names(dimnames, &names);
+            set_string_names(dimv, &names);
+            let attrs = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            SET_VECTOR_ELT(attrs, 0, dimv);
+            SET_VECTOR_ELT(attrs, 1, dimnames);
+            set_string_names(attrs, &["dim".to_string(), "dimnames".to_string()]);
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"out.attrs".as_ptr()), attrs);
+        }
+        result
+    }
+}
+
+unsafe fn expand_grid_column(x: SEXP, nx: i64, rep_fac: i64, orep: i64, total: i64) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(TYPEOF(x), total);
+        let _r = protect(result);
+        if nx == 0 || total == 0 {
+            return result;
+        }
+        let mut dst = 0i64;
+        for _ in 0..orep {
+            for src in 0..nx {
+                for _ in 0..rep_fac {
+                    copy_elt(x, src, result, dst);
+                    dst += 1;
+                }
+            }
+        }
+        result
+    }
+}
+
+unsafe fn format_grid_elt(x: SEXP, i: i64) -> String {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::INTSXP => format!("{}", *INTEGER(x).add(i as usize)),
+            t if t == SEXPTYPE::REALSXP => {
+                let v = *REAL(x).add(i as usize);
+                if v.fract() == 0.0 {
+                    format!("{}", v as i64)
+                } else {
+                    format!("{v}")
+                }
+            }
+            t if t == SEXPTYPE::STRSXP => elt_to_string(x, i),
+            t if t == SEXPTYPE::LGLSXP => {
+                let v = *INTEGER(x).add(i as usize);
+                if v == 0 {
+                    "FALSE".into()
+                } else {
+                    "TRUE".into()
+                }
+            }
+            _ => elt_to_string(x, i),
+        }
+    }
+}
+
 pub(crate) unsafe fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
     unsafe {
         let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
