@@ -94,7 +94,7 @@ fn my_isok(x: c_double) -> bool {
 unsafe fn nrows(x: SEXP) -> c_int {
     unsafe {
         let d = getAttrib(x, R_DimSymbol());
-        if d.is_null() {
+        if d.is_null() || d == R_NilValue() {
             return LENGTH(x);
         }
         *INTEGER(d)
@@ -104,11 +104,11 @@ unsafe fn nrows(x: SEXP) -> c_int {
 unsafe fn ncols(x: SEXP) -> c_int {
     unsafe {
         let d = getAttrib(x, R_DimSymbol());
-        if d.is_null() {
+        if d.is_null() || d == R_NilValue() {
             return 1;
         }
         if LENGTH(d) >= 2 {
-            return *INTEGER(d.add(1));
+            return *INTEGER(d).add(1);
         }
         1
     }
@@ -365,10 +365,71 @@ pub unsafe fn acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
         let d = Rf_allocVector(SEXPTYPE::INTSXP, 3);
         let _d_guard = protect(d);
         *INTEGER(d) = lagmax + 1;
-        *INTEGER(d.add(1)) = ns;
-        *INTEGER(d.add(2)) = ns;
+        *INTEGER(d).add(1) = ns;
+        *INTEGER(d).add(2) = ns;
         setAttrib(ans, R_DimSymbol(), d);
 
         ans
     }
 }
+
+pub unsafe fn do_acf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x0 = CAR(args);
+        let mut lagmax = 10;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "lag.max" {
+                let v = CAR(cell);
+                lagmax = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v)
+                } else {
+                    *REAL(v) as c_int
+                };
+            }
+            cell = CDR(cell);
+        }
+        let n = XLENGTH(x0);
+        let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _xd = protect(xd);
+        let mut mean = 0.0;
+        for i in 0..n {
+            let v = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                *REAL(x0).add(i as usize)
+            } else {
+                *INTEGER(x0).add(i as usize) as f64
+            };
+            *REAL(xd).add(i as usize) = v;
+            mean += v;
+        }
+        mean /= n as f64;
+        for i in 0..n {
+            *REAL(xd).add(i as usize) -= mean;
+        }
+        let lmax = Rf_ScalarInteger(lagmax);
+        let _l = protect(lmax);
+        let scor = Rf_ScalarLogical(1);
+        let _c = protect(scor);
+        let a = acf(xd, lmax, scor);
+        let _a = protect(a);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, a);
+        crate::mainutils::essentials::set_string_names(result, &["acf".to_string()]);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"acf".as_ptr()),
+        );
+        result
+    }
+}
+
