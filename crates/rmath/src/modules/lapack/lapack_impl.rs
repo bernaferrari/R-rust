@@ -40,55 +40,119 @@ const VECSXP_C: c_int = 19;
 /// Port of: static SEXP La_svd(SEXP jobu, SEXP x, SEXP s, SEXP u, SEXP vt)
 pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
     unsafe {
-        // Validate jobu is a string
-        if TYPEOF(jobu) != 16 {
-            Rf_error(b"'jobu' must be a character string\0".as_ptr() as *const c_char);
+        if TYPEOF(jobu) != STRSXP_C || XLENGTH(jobu) < 1 {
+            crate::sexp::context::r_error("'jobu' must be a character string");
         }
+        if TYPEOF(x) != REALSXP_C {
+            crate::sexp::context::r_error("'x' must be a numeric matrix");
+        }
+        if TYPEOF(s) != REALSXP_C {
+            crate::sexp::context::r_error("'s' must be a numeric vector");
+        }
+        if TYPEOF(u) != REALSXP_C {
+            crate::sexp::context::r_error("'u' must be a numeric matrix");
+        }
+        if TYPEOF(vt) != REALSXP_C {
+            crate::sexp::context::r_error("'vt' must be a numeric matrix");
+        }
+        let _jobu_guard = protect(jobu);
+        let _x_guard = protect(x);
+        let _s_guard = protect(s);
+        let _u_guard = protect(u);
+        let _vt_guard = protect(vt);
 
-        // Get matrix dimensions from dim attribute
         let dim = getAttrib(x, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'x' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'x' must be a matrix");
         }
 
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let p = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
-
-        // Work on a copy of x
-        let xvals: *mut f64;
-        let mut x = x;
-        let mut _x_guard = None;
-        if TYPEOF(x) != 14 {
-            x = coerceVector(x, REALSXP_C);
-            _x_guard = Some(protect(x));
-            xvals = REAL(x);
-        } else {
-            let len = (n as usize) * (p as usize);
-            xvals = R_alloc(len, std::mem::size_of::<f64>()) as *mut f64;
-            ptr::copy_nonoverlapping(REAL(x), xvals, len);
+        let n = INTEGER(dim).add(0).read();
+        let p = INTEGER(dim).add(1).read();
+        if n < 0 || p < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
         }
 
-        // Get leading dimensions from u and vt
+        let Some(len) = (n as usize).checked_mul(p as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(x) as usize != len {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+
+        let min_np = if n < p { n } else { p };
+        if XLENGTH(s) as usize != min_np as usize {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+
         let u_dims = getAttrib(u, R_DimSymbol());
-        let ldu = INTEGER(coerceVector(u_dims, INTSXP_C)).add(0).read() as i32;
+        if u_dims.is_null() || TYPEOF(u_dims) != INTSXP_C || XLENGTH(u_dims) != 2 {
+            crate::sexp::context::r_error("'u' must be a matrix");
+        }
+        let ldu = INTEGER(u_dims).add(0).read();
+        let u_cols = INTEGER(u_dims).add(1).read();
+        if ldu < 0 || u_cols < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
+        let Some(len_u) = (ldu as usize).checked_mul(u_cols as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len_u > c_int::MAX as usize || XLENGTH(u) as usize != len_u {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
 
         let vt_dims = getAttrib(vt, R_DimSymbol());
-        let ldvt = INTEGER(coerceVector(vt_dims, INTSXP_C)).add(0).read() as i32;
+        if vt_dims.is_null() || TYPEOF(vt_dims) != INTSXP_C || XLENGTH(vt_dims) != 2 {
+            crate::sexp::context::r_error("'vt' must be a matrix");
+        }
+        let ldvt = INTEGER(vt_dims).add(0).read();
+        let vt_cols = INTEGER(vt_dims).add(1).read();
+        if ldvt < 0 || vt_cols < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
+        let Some(len_vt) = (ldvt as usize).checked_mul(vt_cols as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len_vt > c_int::MAX as usize || XLENGTH(vt) as usize != len_vt {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
 
-        let mut tmp: f64 = 0.0;
-        let min_np = if n < p { n } else { p };
-        let iwork = R_alloc(8 * min_np as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let Some(iwork_len) = (min_np as usize).checked_mul(8) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let Some(scratch_bytes) = len
+            .checked_mul(std::mem::size_of::<f64>())
+            .and_then(|bytes| {
+                bytes.checked_add(iwork_len.checked_mul(std::mem::size_of::<c_int>())?)
+            })
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native SVD workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
+
+        let mut x_copy = vec![0.0f64; len];
+        if len != 0 {
+            ptr::copy_nonoverlapping(REAL(x), x_copy.as_mut_ptr(), len);
+        }
+        let mut iwork = vec![0 as c_int; iwork_len];
 
         let ju = CHAR(STRING_ELT(jobu, 0)) as *const u8;
+        let mut tmp: f64 = 0.0;
         let mut info: c_int = 0;
         let mut lwork: c_int = -1;
 
-        // Query optimal work size
         super::backend::dgesdd_(
             ju,
             &n,
             &p,
-            xvals,
+            x_copy.as_mut_ptr(),
             &n,
             REAL(s),
             REAL(u),
@@ -97,37 +161,55 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
             &ldvt,
             &mut tmp,
             &lwork,
-            iwork,
+            iwork.as_mut_ptr(),
             &mut info,
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dgesdd'\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error("error code from Lapack routine 'dgesdd'");
         }
 
-        lwork = tmp as c_int;
-        let work = R_alloc(lwork as usize, std::mem::size_of::<f64>()) as *mut f64;
+        if n > 0 && p > 0 {
+            if !tmp.is_finite() || tmp < 1.0 || tmp > c_int::MAX as f64 {
+                crate::sexp::context::r_error(
+                    "invalid workspace size from Lapack routine 'dgesdd'",
+                );
+            }
+            lwork = tmp as c_int;
+            let work_bytes = (lwork as usize)
+                .checked_mul(std::mem::size_of::<f64>())
+                .unwrap_or_else(|| crate::sexp::context::r_error("invalid SVD workspace size"));
+            let work_reservation = with_current_instance(|instance| {
+                with_arena_in(instance, |arena| arena.try_reserve_transient(work_bytes))
+            });
+            if matches!(work_reservation, Some(None)) {
+                crate::sexp::context::r_error(
+                    "allocation failed: native SVD workspace exceeds resource limit",
+                );
+            }
+            let _work_reservation = work_reservation.flatten();
+            let mut work = vec![0.0f64; lwork as usize];
 
-        // Actual computation
-        super::backend::dgesdd_(
-            ju,
-            &n,
-            &p,
-            xvals,
-            &n,
-            REAL(s),
-            REAL(u),
-            &ldu,
-            REAL(vt),
-            &ldvt,
-            work,
-            &lwork,
-            iwork,
-            &mut info,
-        );
+            super::backend::dgesdd_(
+                ju,
+                &n,
+                &p,
+                x_copy.as_mut_ptr(),
+                &n,
+                REAL(s),
+                REAL(u),
+                &ldu,
+                REAL(vt),
+                &ldvt,
+                work.as_mut_ptr(),
+                &lwork,
+                iwork.as_mut_ptr(),
+                &mut info,
+            );
 
-        if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dgesdd'\0".as_ptr() as *const c_char);
+            if info != 0 {
+                crate::sexp::context::r_error("error code from Lapack routine 'dgesdd'");
+            }
         }
 
         // Build result list: list(d=s, u=u, vt=vt)
@@ -1154,7 +1236,9 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             .checked_mul(std::mem::size_of::<f64>())
             .and_then(|bytes| bytes.checked_add(len_b.checked_mul(std::mem::size_of::<f64>())?))
             .and_then(|bytes| bytes.checked_add(work_len.checked_mul(std::mem::size_of::<f64>())?))
-            .and_then(|bytes| bytes.checked_add(iwork_len.checked_mul(std::mem::size_of::<c_int>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(iwork_len.checked_mul(std::mem::size_of::<c_int>())?)
+            })
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
