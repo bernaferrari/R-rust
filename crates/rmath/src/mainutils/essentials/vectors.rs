@@ -91,6 +91,42 @@ unsafe fn bind_element(x: SEXP, t: c_int, i: R_xlen_t) -> SEXP {
     }
 }
 
+/// bind.c HasNames() for a pairlist: any non-NULL cell TAG.
+unsafe fn bind_pairlist_has_tags(x: SEXP) -> bool {
+    unsafe {
+        let mut cell = x;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null() && tag != R_NilValue() {
+                return true;
+            }
+            cell = CDR(cell);
+        }
+        false
+    }
+}
+
+/// bind.c ListAnswer / NewExtractNames: printname of the i-th pairlist TAG.
+unsafe fn bind_pairlist_cell_name(x: SEXP, i: R_xlen_t) -> SEXP {
+    unsafe {
+        let mut cell = x;
+        let mut k: R_xlen_t = 0;
+        while k < i && !cell.is_null() && cell != R_NilValue() {
+            cell = CDR(cell);
+            k += 1;
+        }
+        if cell.is_null() || cell == R_NilValue() {
+            return R_NilValue();
+        }
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+            R_NilValue()
+        } else {
+            PRINTNAME(tag)
+        }
+    }
+}
+
 /// R's `c(...)` — concatenates vectors into a single vector.
 ///
 /// Coercion rules: STRSXP > CPLXSXP > REALSXP > INTSXP > LGLSXP.
@@ -124,6 +160,8 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     && TYPEOF(arg_names) == SEXPTYPE::STRSXP
                     && XLENGTH(arg_names) > 0
                 {
+                    has_names = true;
+                } else if is_bind_pairlist(t) && bind_pairlist_has_tags(arg) {
                     has_names = true;
                 }
                 if t == SEXPTYPE::EXPRSXP {
@@ -252,13 +290,22 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         SET_VECTOR_ELT(result, offset + i, value);
 
                         if has_names {
-                            if !arg_names.is_null()
+                            let mut named = false;
+                            if is_bind_pairlist(t) {
+                                let cell_name = bind_pairlist_cell_name(arg, i);
+                                if !cell_name.is_null() && cell_name != R_NilValue() {
+                                    SET_STRING_ELT(names, offset + i, cell_name);
+                                    named = true;
+                                }
+                            } else if !arg_names.is_null()
                                 && arg_names != R_NilValue()
                                 && TYPEOF(arg_names) == SEXPTYPE::STRSXP
                                 && i < XLENGTH(arg_names)
                             {
                                 SET_STRING_ELT(names, offset + i, STRING_ELT(arg_names, i));
-                            } else {
+                                named = true;
+                            }
+                            if !named {
                                 let tag = TAG(current);
                                 if !tag.is_null() && tag != R_NilValue() && i == 0 {
                                     SET_STRING_ELT(names, offset + i, PRINTNAME(tag));
