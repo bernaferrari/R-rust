@@ -8,7 +8,7 @@ mod burg;
 mod chisqsim;
 mod complete_cases;
 mod d2x2xk;
-mod dblcen;
+pub(crate) mod dblcen;
 mod distance;
 mod distn;
 mod family;

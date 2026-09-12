@@ -1601,6 +1601,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::kmeans::do_kmeans,
     },
     EvaluatedBuiltin {
+        name: "cmdscale",
+        handler: crate::library::stats::dblcen::do_cmdscale,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
