@@ -846,13 +846,14 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         // parameters across the whole vector, encode each element with the
         // Encode* printers, and right-justify to the shared width.
         let x_type_now = TYPEOF(x);
-        if matches!(
-            x_type_now,
-            10 | 13 | 14 | 15
-        ) && !sexp_has_class(x, "POSIXct")
+        if matches!(x_type_now, 10 | 13 | 14 | 15)
+            && !sexp_has_class(x, "POSIXct")
             && !sexp_has_class(x, "Date")
         {
             return format_numeric_vector(x, n, args);
+        }
+        if x_type_now == SEXPTYPE::STRSXP {
+            return format_character_vector(x, n, args);
         }
         for i in 0..n {
             let s = if TYPEOF(x) == SEXPTYPE::REALSXP {
@@ -888,10 +889,9 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         result
     }
 }
-
 /// GNU `format.default` for atomic numeric vectors: shared width/digits
-/// across the vector, honoring `digits`, `trim`, `nsmall`, and `width`
-/// from the remaining arguments (matched by tag or format.default's
+/// across the vector, honoring `digits`, `trim`, `nsmall`, `width`, and
+/// `scientific` (TRUE/FALSE/NA/numeric → scipen -99/310/keep/value).
 /// positional order after `x`).
 unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
     unsafe {
@@ -899,6 +899,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         let mut digits_opt: Option<c_int> = None;
         let mut nsmall: c_int = 0;
         let mut width: c_int = 0;
+        let mut sci_opt: Option<c_int> = None;
         let mut positional = 0;
         let mut cell = crate::sexp::accessors::CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
@@ -927,6 +928,8 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     "nsmall" => Some(2),
                     "justify" => Some(3),
                     "width" => Some(4),
+                    "na.encode" => Some(5),
+                    "scientific" => Some(6),
                     _ => None,
                 })
                 .unwrap_or_else(|| {
@@ -957,6 +960,29 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                         width = v;
                     }
                 }
+                6 => {
+                    // GNU do_format: TRUE -> scipen=-99, FALSE -> 310,
+                    // NA logical leaves the option, numeric sets scipen.
+                    if XLENGTH(value) != 1 {
+                        crate::mainutils::errors::errorcall_str(
+                            crate::mainutils::errors::R_getCurrentCall(),
+                            "invalid 'scientific' argument",
+                        );
+                    }
+                    if TYPEOF(value) == SEXPTYPE::LGLSXP {
+                        let tmp = crate::main::coerce::asLogical(value);
+                        if tmp != NA_LOGICAL {
+                            sci_opt = Some(if tmp != 0 { -99 } else { 310 });
+                        }
+                    } else if matches!(TYPEOF(value), 13 | 14) {
+                        sci_opt = Some(crate::main::coerce::asInteger(value));
+                    } else {
+                        crate::mainutils::errors::errorcall_str(
+                            crate::mainutils::errors::R_getCurrentCall(),
+                            "invalid 'scientific' argument",
+                        );
+                    }
+                }
                 _ => {}
             }
             cell = CDR(cell);
@@ -970,6 +996,17 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         let _digits_value = protect(digits_value);
         let saved_digits =
             crate::mainutils::options::SetOptionByName("digits", digits_value);
+        let saved_scipen = if let Some(sci) = sci_opt {
+            if sci != NA_INTEGER {
+                let sci_value = crate::sexp::constructors::Rf_ScalarInteger(sci);
+                let _sci_value = protect(sci_value);
+                Some(crate::mainutils::options::SetOptionByName("scipen", sci_value))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let outdec = b".\0".as_ptr() as *const std::os::raw::c_char;
         let mut wr: c_int = 0;
@@ -1040,9 +1077,133 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         }
 
         crate::mainutils::options::SetOptionByName("digits", saved_digits);
+        if let Some(old) = saved_scipen {
+            crate::mainutils::options::SetOptionByName("scipen", old);
+        }
         result
     }
 }
+
+unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
+    unsafe {
+        // GNU format.default: match.arg(justify) defaults to "left" (0).
+        // 0=left, 1=right, 2=centre, 3=none.
+        let mut justify: c_int = 0;
+        let mut width: c_int = 0;
+        let mut positional = 0;
+        let mut cell = crate::sexp::accessors::CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                crate::sexp::accessors::PRINTNAME(tag)
+            } else {
+                std::ptr::null_mut()
+            };
+            let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null()
+                && name != R_NilValue()
+            {
+                Some(
+                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name))
+                        .to_string_lossy(),
+                )
+            } else {
+                None
+            };
+            let slot = label
+                .as_deref()
+                .and_then(|label| match label {
+                    "trim" => Some(0),
+                    "digits" => Some(1),
+                    "nsmall" => Some(2),
+                    "justify" => Some(3),
+                    "width" => Some(4),
+                    _ => None,
+                })
+                .unwrap_or_else(|| {
+                    let slot = positional;
+                    positional += 1;
+                    slot
+                });
+            match slot {
+                3 => {
+                    if TYPEOF(value) == SEXPTYPE::STRSXP {
+                        let text = elt_to_string(value, 0);
+                        justify = match text.as_str() {
+                            "left" => 0,
+                            "right" => 1,
+                            "centre" | "center" => 2,
+                            "none" => 3,
+                            _ => 0,
+                        };
+                    } else {
+                        let v = crate::main::coerce::asInteger(value);
+                        if v != NA_INTEGER && (0..=3).contains(&v) {
+                            justify = v;
+                        }
+                    }
+                }
+                4 => {
+                    let v = crate::main::coerce::asInteger(value);
+                    if v != NA_INTEGER {
+                        width = v;
+                    }
+                }
+                _ => {}
+            }
+            cell = CDR(cell);
+        }
+
+        let mut strings = Vec::with_capacity(n as usize);
+        let mut max_w = 0usize;
+        for i in 0..n {
+            let s = elt_to_string(x, i);
+            max_w = max_w.max(s.chars().count());
+            strings.push(s);
+        }
+        let field = if width > 0 {
+            (width as usize).max(max_w)
+        } else {
+            max_w
+        };
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        for (i, s) in strings.iter().enumerate() {
+            let out = if justify == 3 {
+                s.clone()
+            } else {
+                justify_pad(s, field, justify)
+            };
+            let cstr = CString::new(out).unwrap_or_default();
+            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            if !charsxp.is_null() {
+                let data = (*result).gengc_next_node as *mut SEXP;
+                *data.add(i as usize) = charsxp;
+            }
+        }
+        result
+    }
+}
+
+fn justify_pad(s: &str, field: usize, justify: c_int) -> String {
+    let len = s.chars().count();
+    if len >= field {
+        return s.to_string();
+    }
+    let pad = field - len;
+    match justify {
+        1 => format!("{}{s}", " ".repeat(pad)),
+        2 => {
+            let left = pad / 2;
+            format!("{}{s}{}", " ".repeat(left), " ".repeat(pad - left))
+        }
+        _ => format!("{s}{}", " ".repeat(pad)),
+    }
+}
+
 
 #[derive(Clone, Copy)]
 enum CalendarLabel {
