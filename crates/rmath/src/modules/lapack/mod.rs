@@ -110,3 +110,6 @@ mod complex_ztrcon_tests;
 
 #[cfg(test)]
 mod complex_rs_tests;
+
+#[cfg(test)]
+mod complex_rg_tests;

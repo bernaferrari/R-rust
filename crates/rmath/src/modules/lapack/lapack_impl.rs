@@ -2401,15 +2401,29 @@ pub unsafe fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
 /// Port of: static SEXP La_rg_cmplx(SEXP x, SEXP only_values)
 pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
     unsafe {
+        if TYPEOF(x) != CPLXSXP_C {
+            crate::sexp::context::r_error("'x' must be a complex matrix");
+        }
+        let _input_guard = protect(x);
+        let _ov_guard = protect(only_values);
         let dim = getAttrib(x, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'x' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'x' must be a matrix");
         }
 
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let n2 = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
+        let n = INTEGER(dim).add(0).read();
+        let n2 = INTEGER(dim).add(1).read();
+        if n < 0 || n2 < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
         if n != n2 {
-            Rf_error(b"'x' must be a square numeric matrix\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error("'x' must be a square numeric matrix");
+        }
+        let Some(len) = (n as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(x) as usize != len {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
         }
 
         let ov = asLogical(only_values);
@@ -2420,9 +2434,29 @@ pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
         let jobvl = b'N';
         let jobvr = if ov != 0 { b'N' } else { b'V' };
 
-        let len = (n as usize) * (n as usize);
+        let Some(rwork_len) = (n as usize).checked_mul(2) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let Some(scratch_bytes) = len
+            .checked_mul(std::mem::size_of::<LapRcomplex>())
+            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native complex eigen workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
+
         let mut a_copy: Vec<LapRcomplex> = vec![LapRcomplex::default(); len];
-        ptr::copy_nonoverlapping(COMPLEX(x) as *const LapRcomplex, a_copy.as_mut_ptr(), len);
+        if len != 0 {
+            ptr::copy_nonoverlapping(COMPLEX(x) as *const LapRcomplex, a_copy.as_mut_ptr(), len);
+        }
 
         let values = Rf_allocVector(CPLXSXP_C, n as c_int);
         let _values_guard = protect(values);
@@ -2434,7 +2468,7 @@ pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
 
         // Query optimal work size
         let mut tmp = LapRcomplex::default();
-        let mut rwork = vec![0.0f64; 2 * n as usize];
+        let mut rwork = vec![0.0f64; rwork_len];
         let mut lwork: c_int = -1;
         let mut info: c_int = 0;
 
