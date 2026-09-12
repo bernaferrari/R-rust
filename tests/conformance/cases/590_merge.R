@@ -1,0 +1,7 @@
+m <- merge(data.frame(a = 1:2, b = 3:4), data.frame(a = 2:3, c = 5:6))
+cat(paste(m$a, collapse = ","), "\n", sep = "")
+cat(paste(m$b, collapse = ","), "\n", sep = "")
+cat(paste(m$c, collapse = ","), "\n", sep = "")
+cat(paste(names(m), collapse = ","), "\n", sep = "")
+cat(paste(class(m), collapse = ","), "\n", sep = "")
+cat(nrow(m), "\n", sep = "")

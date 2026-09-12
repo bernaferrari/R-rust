@@ -2339,6 +2339,136 @@ pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 
+/// GNU `merge` inner join on intersecting column names.
+pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        if TYPEOF(x) != SEXPTYPE::VECSXP || TYPEOF(y) != SEXPTYPE::VECSXP {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'by' must specify one or more columns as numbers, names or logical",
+            );
+        }
+        let xnames = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let ynames = crate::sexp::attrib_core::getAttrib(
+            y,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let mut by: Vec<String> = Vec::new();
+        let mut x_by: Vec<usize> = Vec::new();
+        let mut y_by: Vec<usize> = Vec::new();
+        if TYPEOF(xnames) == SEXPTYPE::STRSXP && TYPEOF(ynames) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(xnames) {
+                let n = elt_to_string(xnames, i);
+                for j in 0..XLENGTH(ynames) {
+                    if n == elt_to_string(ynames, j) {
+                        by.push(n.clone());
+                        x_by.push(i as usize);
+                        y_by.push(j as usize);
+                    }
+                }
+            }
+        }
+        if by.is_empty() {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'by' must specify one or more columns as numbers, names or logical",
+            );
+        }
+        let nx = if XLENGTH(x) > 0 { XLENGTH(VECTOR_ELT(x, 0)) } else { 0 };
+        let ny = if XLENGTH(y) > 0 { XLENGTH(VECTOR_ELT(y, 0)) } else { 0 };
+        let mut pairs: Vec<(i64, i64)> = Vec::new();
+        for i in 0..nx {
+            for j in 0..ny {
+                let mut ok = true;
+                for k in 0..by.len() {
+                    if !merge_keys_equal(
+                        VECTOR_ELT(x, x_by[k] as i64),
+                        i,
+                        VECTOR_ELT(y, y_by[k] as i64),
+                        j,
+                    ) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if ok {
+                    pairs.push((i, j));
+                }
+            }
+        }
+        let nout = pairs.len() as i64;
+        let x_extra: Vec<usize> = (0..XLENGTH(x) as usize)
+            .filter(|i| !x_by.contains(i))
+            .collect();
+        let y_extra: Vec<usize> = (0..XLENGTH(y) as usize)
+            .filter(|i| !y_by.contains(i))
+            .collect();
+        let ncols = by.len() + x_extra.len() + y_extra.len();
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols as i64);
+        let _result = protect(result);
+        let mut names: Vec<String> = Vec::new();
+        let mut col = 0i64;
+        for (k, name) in by.iter().enumerate() {
+            let src = VECTOR_ELT(x, x_by[k] as i64);
+            let out = Rf_allocVector3(TYPEOF(src), nout);
+            for (dst, (xi, _)) in pairs.iter().enumerate() {
+                copy_elt(src, *xi, out, dst as i64);
+            }
+            SET_VECTOR_ELT(result, col, out);
+            names.push(name.clone());
+            col += 1;
+        }
+        for &xi in &x_extra {
+            let src = VECTOR_ELT(x, xi as i64);
+            let out = Rf_allocVector3(TYPEOF(src), nout);
+            for (dst, (xr, _)) in pairs.iter().enumerate() {
+                copy_elt(src, *xr, out, dst as i64);
+            }
+            SET_VECTOR_ELT(result, col, out);
+            names.push(elt_to_string(xnames, xi as i64));
+            col += 1;
+        }
+        for &yi in &y_extra {
+            let src = VECTOR_ELT(y, yi as i64);
+            let out = Rf_allocVector3(TYPEOF(src), nout);
+            for (dst, (_, yr)) in pairs.iter().enumerate() {
+                copy_elt(src, *yr, out, dst as i64);
+            }
+            SET_VECTOR_ELT(result, col, out);
+            names.push(elt_to_string(ynames, yi as i64));
+            col += 1;
+        }
+        set_string_names(result, &names);
+        set_compact_row_names(result, nout);
+        set_data_frame_class(result);
+        result
+    }
+}
+
+unsafe fn merge_keys_equal(a: SEXP, i: i64, b: SEXP, j: i64) -> bool {
+    unsafe {
+        if TYPEOF(a) != TYPEOF(b) {
+            return format_grid_elt(a, i) == format_grid_elt(b, j);
+        }
+        match TYPEOF(a) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                *INTEGER(a).add(i as usize) == *INTEGER(b).add(j as usize)
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                *REAL(a).add(i as usize) == *REAL(b).add(j as usize)
+            }
+            t if t == SEXPTYPE::STRSXP => STRING_ELT(a, i) == STRING_ELT(b, j),
+            _ => format_grid_elt(a, i) == format_grid_elt(b, j),
+        }
+    }
+}
+
+
 pub(crate) unsafe fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
     unsafe {
         let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
