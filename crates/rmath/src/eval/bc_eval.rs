@@ -132,6 +132,7 @@ pub mod opcodes {
     pub const OP_DFLTFUN: i32 = 52;
     pub const OP_DFLTFORM: i32 = 53;
     pub const OP_STARTFOR: i32 = 54;
+    pub const OP_MAKECLOSURE: i32 = 59;
     pub const OP_NEXTFOR: i32 = 55;
     /// Superassignment `<<-`: store into the enclosing frame (eval.c SETVAR2).
     pub const OP_SETVAR2: i32 = 56;
@@ -503,9 +504,20 @@ unsafe fn eval_gnu_dollargets(call: SEXP, symbol: SEXP, mut x: SEXP, rhs: SEXP, 
 }
 
 /// GNU GETVAR / GETVAR_MISSOK match eval.c getvar(keepmiss).
-unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool) -> SEXP {
+unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: bool) -> SEXP {
     unsafe {
-        let value = R_findVar(symbol, rho);
+        let value = if dots
+            && crate::sexp::envir::dd_val(crate::sexp::object::Sexp::from_raw_unchecked(symbol))
+                .is_some()
+        {
+            let value = crate::sexp::envir::ddfindVar(symbol, rho);
+            if value == R_UnboundValue() {
+                bc_error("object not found");
+            }
+            value
+        } else {
+            R_findVar(symbol, rho)
+        };
         if value == R_UnboundValue() {
             bc_error("object not found");
         }
@@ -1212,9 +1224,130 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     super::runtime::set_visible(TRUE);
                     let keep_missing = opcode == super::bytecode::GNU_OP_GETVAR_MISSOK;
                     let value = with_stack_rooted(&stack, symbol, || {
-                        eval_gnu_getvar(symbol, rho, keep_missing)
+                        eval_gnu_getvar(symbol, rho, keep_missing, false)
                     });
                     stack.push(value);
+                }
+                super::bytecode::GNU_OP_DDVAL | super::bytecode::GNU_OP_DDVAL_MISSOK => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let symbol = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU DDVAL constant pool entry {index} is not a symbol"
+                        ));
+                    }
+                    super::runtime::set_visible(TRUE);
+                    let keep_missing = opcode == super::bytecode::GNU_OP_DDVAL_MISSOK;
+                    let value = with_stack_rooted(&stack, symbol, || {
+                        eval_gnu_getvar(symbol, rho, keep_missing, true)
+                    });
+                    stack.push(value);
+                }
+                super::bytecode::GNU_OP_MAKECLOSURE => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let fb = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(fb) != SEXPTYPE::VECSXP || LENGTH(fb) < 2 {
+                        bc_error(format!(
+                            "GNU MAKECLOSURE constant {index} is not a formals/body pairlist"
+                        ));
+                    }
+                    let forms = VECTOR_ELT(fb, 0);
+                    let body = VECTOR_ELT(fb, 1);
+                    let value = with_stack_rooted(&stack, fb, || {
+                        crate::mainutils::dstruct::mkCLOSXP(forms, body, rho)
+                    });
+                    if LENGTH(fb) > 2 {
+                        let srcref = VECTOR_ELT(fb, 2);
+                        if srcref != R_NilValue() && !srcref.is_null() {
+                            let srcref_symbol = crate::sexp::symbol::Rf_install(
+                                c"srcref".as_ptr(),
+                            );
+                            crate::attrib_core::setAttrib(value, srcref_symbol, srcref);
+                        }
+                    }
+                    super::runtime::set_visible(TRUE);
+                    stack.push(value);
+                }
+                super::bytecode::GNU_OP_DODOTS => {
+                    let Some(marker) = gnu_call_frames.last().map(|frame| frame.marker)
+                    else {
+                        bc_error("GNU DODOTS has no active call frame");
+                    };
+                    if gnu_call_frames.last().is_some_and(|frame| frame.raw_args) {
+                        bc_error("GNU DODOTS has no active function call");
+                    }
+                    if stack.depth() <= marker {
+                        bc_error("GNU DODOTS has no function on the stack");
+                    }
+                    let fun = stack.at(marker);
+                    let ftype = TYPEOF(fun);
+                    if ftype != SEXPTYPE::SPECIALSXP {
+                        let h = with_stack_rooted(&stack, fun, || {
+                            crate::sexp::envir::R_findVar(
+                                crate::sexp::symbol::R_DotsSymbol(),
+                                rho,
+                            )
+                        });
+                        if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
+                            let mut cell = h;
+                            while cell != R_NilValue() && !cell.is_null() {
+                                let argument = with_stack_rooted(&stack, cell, || {
+                                    let expr = CAR(cell);
+                                    if ftype == SEXPTYPE::BUILTINSXP {
+                                        crate::eval::eval::Rf_eval(expr, rho)
+                                    } else if expr == R_MissingArg() {
+                                        expr
+                                    } else {
+                                        crate::sexp::memory_ext::mkPROMSXP(expr, rho)
+                                    }
+                                });
+                                stack.push(argument);
+                                let tag = crate::sexp::accessors::TAG(cell);
+                                if !tag.is_null() && tag != R_NilValue() {
+                                    if let Some(frame) = gnu_call_frames.last_mut() {
+                                        frame.tags.push((stack.depth() - 1, tag));
+                                    }
+                                }
+                                cell = CDR(cell);
+                            }
+                        } else if h != R_MissingArg() {
+                            bc_error("'...' used in an incorrect context");
+                        }
+                    }
+                }
+                super::bytecode::GNU_OP_CALLSPECIAL => {
+                    let call_index = words[pc] as usize;
+                    pc += 1;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU CALLSPECIAL requires a call in the constant pool");
+                    }
+                    let symbol = CAR(call);
+                    if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error("GNU CALLSPECIAL call does not have a symbol operator");
+                    }
+                    let result = with_stack_rooted(&stack, call, || {
+                        // GNU getPrimitive resolves the special from the
+                        // primitive table, ignoring shadowing.
+                        let fun = crate::sexp::envir::findFun(
+                            symbol,
+                            super::runtime::base_env(),
+                        );
+                        if fun == R_UnboundValue() || TYPEOF(fun) != SEXPTYPE::SPECIALSXP {
+                            bc_error("GNU CALLSPECIAL symbol did not resolve to a special");
+                        }
+                        use crate::sexp::object::Sexp;
+                        let result = super::apply::apply_special_safe(
+                            Sexp::from_raw_unchecked(fun),
+                            Sexp::from_raw_unchecked(call),
+                            Sexp::from_raw_unchecked(CDR(call)),
+                            Sexp::from_raw_unchecked(rho),
+                        );
+                        result.unwrap_or_else(|error| bc_error(error)).as_raw()
+                    });
+                    stack.push(result);
                 }
                 super::bytecode::GNU_OP_GETFUN | super::bytecode::GNU_OP_GETBUILTIN => {
                     let index = words[pc] as usize;
@@ -3324,6 +3457,22 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "LDCLOSURE");
                     let val = constant_at(consts, idx, "LDCLOSURE");
                     stack.push(val);
+                }
+                opcodes::OP_MAKECLOSURE => {
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "MAKECLOSURE");
+                    let fb = constant_at(consts, idx, "MAKECLOSURE");
+                    if TYPEOF(fb) != SEXPTYPE::VECSXP || LENGTH(fb) < 2 {
+                        bc_error("MAKECLOSURE constant is not a formals/body pairlist");
+                    }
+                    let value = with_stack_rooted(&stack, fb, || {
+                        crate::mainutils::dstruct::mkCLOSXP(
+                            VECTOR_ELT(fb, 0),
+                            VECTOR_ELT(fb, 1),
+                            rho,
+                        )
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(value);
                 }
 
                 opcodes::OP_CLOSEDEXPR => {

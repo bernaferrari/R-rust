@@ -108,8 +108,6 @@ impl BytecodeCompiler {
     }
 
     /// Lower a function expression to a closure constant.  GNU's compiler
-    /// represents this as MAKECLOSURE; the private bytecode dialect uses
-    /// LDCLOSURE for the same constant-pool operation.
     unsafe fn compile_closure_expr(&mut self, expr: SEXP) -> bool {
         unsafe {
             let closure = crate::mainutils::duplicate::duplicate(expr);
@@ -120,8 +118,15 @@ impl BytecodeCompiler {
             if TYPEOF(BODY(closure)) != SEXPTYPE::BCODESXP && !compile_closure(closure) {
                 return false;
             }
-            let idx = self.add_const(closure);
-            self.emit_operand(opcodes::OP_LDCLOSURE, idx);
+            let fb = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            if fb.is_null() {
+                return false;
+            }
+            let _fb_guard = protect(fb);
+            crate::sexp::accessors::SET_VECTOR_ELT(fb, 0, crate::sexp::accessors::FORMALS(closure));
+            crate::sexp::accessors::SET_VECTOR_ELT(fb, 1, crate::sexp::accessors::BODY(closure));
+            let idx = self.add_const(fb);
+            self.emit_operand(opcodes::OP_MAKECLOSURE, idx);
             true
         }
     }
@@ -191,7 +196,10 @@ impl BytecodeCompiler {
         }
     }
 
-    /// Lower parsed `function(formals, body)` syntax to a closure constant.
+    /// Lower parsed `function(formals, body)` syntax to GNU-style
+    /// MAKECLOSURE: the runtime frame becomes the closure environment,
+    /// exactly like eval.c OP(MAKECLOSURE) — a compile-time environment
+    /// would break lexical capture of enclosing locals.
     unsafe fn compile_function_expr(&mut self, expr: SEXP) -> bool {
         unsafe {
             let formals_cell = CDR(expr);
@@ -207,25 +215,30 @@ impl BytecodeCompiler {
             {
                 return false;
             }
-            let enclosing = if self.rho.is_null() || self.rho == R_NilValue() {
-                R_BaseEnv()
-            } else {
-                self.rho
-            };
-            let closure = crate::mainutils::dstruct::mkCLOSXP(
+            // Compile through a scratch closure so the nested body shares
+            // the BCODESXP pipeline, then store formals/body in the
+            // constant vector MAKECLOSURE consumes.
+            let scratch = crate::mainutils::dstruct::mkCLOSXP(
                 CAR(formals_cell),
                 CAR(body_cell),
-                enclosing,
+                R_BaseEnv(),
             );
-            if closure.is_null() {
+            if scratch.is_null() {
                 return false;
             }
-            let _closure_guard = protect(closure);
-            if !compile_closure(closure) {
+            let _scratch_guard = protect(scratch);
+            if !compile_closure(scratch) {
                 return false;
             }
-            let idx = self.add_const(closure);
-            self.emit_operand(opcodes::OP_LDCLOSURE, idx);
+            let fb = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            if fb.is_null() {
+                return false;
+            }
+            let _fb_guard = protect(fb);
+            crate::sexp::accessors::SET_VECTOR_ELT(fb, 0, crate::sexp::accessors::FORMALS(scratch));
+            crate::sexp::accessors::SET_VECTOR_ELT(fb, 1, crate::sexp::accessors::BODY(scratch));
+            let idx = self.add_const(fb);
+            self.emit_operand(opcodes::OP_MAKECLOSURE, idx);
             true
         }
     }

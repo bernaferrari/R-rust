@@ -42,6 +42,12 @@ enum ControlFlow {
     Next,
 }
 
+pub const GNU_OP_DDVAL: c_int = 21;
+pub const GNU_OP_DODOTS: c_int = 32;
+pub const GNU_OP_CALLSPECIAL: c_int = 40;
+pub const GNU_OP_MAKECLOSURE: c_int = 41;
+pub const GNU_OP_DDVAL_MISSOK: c_int = 93;
+
 pub const BCreturn: c_int = 0;
 pub const BCgvar: c_int = 1;
 pub const BCsvar: c_int = 2;
@@ -584,7 +590,8 @@ fn validate_gnu_adapter_impl(
                     return Err(format!("GNU {name} rank {rank} is negative"));
                 }
             }
-            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_DDVAL
+            | GNU_OP_DDVAL_MISSOK | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
             | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND | GNU_OP_OR
@@ -762,6 +769,23 @@ fn validate_gnu_adapter_impl(
                 }
                 branches.push((opcode_pc, target as usize));
             }
+            GNU_OP_MAKECLOSURE => {
+                let index = code[pc];
+                if index < 0 || index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU MAKECLOSURE constant index {index} is out of range for pool length {constant_count}"
+                    ));
+                }
+            }
+            GNU_OP_CALLSPECIAL => {
+                let call_index = code[pc];
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU CALLSPECIAL call index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+            }
+            GNU_OP_DODOTS => {}
             _ => supported = false,
         }
         pc += GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
@@ -1228,7 +1252,19 @@ fn validate_gnu_adapter_impl(
                     call_stack.clone(),
                 ));
             }
-            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_DDVAL
+            | GNU_OP_DDVAL_MISSOK | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
+                if depth >= 64 {
+                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                }
+                pending.push((next, depth + 1, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_DODOTS => {
+                // Argument splicing: the number of pushed cells is only
+                // known at runtime; CALL pops back to the frame marker.
+                pending.push((next, depth, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_MAKECLOSURE | GNU_OP_CALLSPECIAL => {
                 if depth >= 64 {
                     return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
                 }
