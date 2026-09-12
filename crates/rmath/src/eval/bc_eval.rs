@@ -503,6 +503,33 @@ unsafe fn eval_gnu_dollargets(call: SEXP, symbol: SEXP, mut x: SEXP, rhs: SEXP, 
     }
 }
 
+/// GNU INCREMENT_LINKS for NAMED-tracking values: raise NAMED toward the
+/// maximum so in-place modification of the protected value duplicates.
+unsafe fn increment_named_link(value: SEXP) {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return;
+        }
+        let current = crate::sexp::accessors::NAMED(value);
+        if current < 2 {
+            crate::sexp::accessors::SET_NAMED(value, current + 1);
+        }
+    }
+}
+
+/// GNU DECREMENT_LINKS: release one link taken by INCREMENT_LINKS.
+unsafe fn decrement_named_link(value: SEXP) {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return;
+        }
+        let current = crate::sexp::accessors::NAMED(value);
+        if current > 0 {
+            crate::sexp::accessors::SET_NAMED(value, current - 1);
+        }
+    }
+}
+
 /// GNU GETVAR / GETVAR_MISSOK match eval.c getvar(keepmiss).
 unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: bool) -> SEXP {
     unsafe {
@@ -1225,6 +1252,114 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let keep_missing = opcode == super::bytecode::GNU_OP_GETVAR_MISSOK;
                     let value = with_stack_rooted(&stack, symbol, || {
                         eval_gnu_getvar(symbol, rho, keep_missing, false)
+                    });
+                    stack.push(value);
+                }
+                super::bytecode::GNU_OP_VISIBLE => {
+                    super::runtime::set_visible(TRUE);
+                }
+                super::bytecode::GNU_OP_INCLNK => {
+                    let value = stack_top_checked(&stack, "GNU INCLNK");
+                    increment_named_link(value);
+                }
+                super::bytecode::GNU_OP_DECLNK => {
+                    if stack.depth() < 2 {
+                        bc_error("GNU DECLNK has fewer than two stack values");
+                    }
+                    let value = stack.at(stack.depth() - 2);
+                    decrement_named_link(value);
+                }
+                super::bytecode::GNU_OP_DECLNK_N => {
+                    let count = words[pc] as usize;
+                    pc += 1;
+                    if stack.depth() < count + 2 {
+                        bc_error("GNU DECLNK_N count exceeds the stack depth");
+                    }
+                    for i in 0..count {
+                        let value = stack.at(stack.depth() - 2 - i);
+                        decrement_named_link(value);
+                    }
+                }
+                super::bytecode::GNU_OP_INCLNKSTK => {
+                    let value = stack_top_checked(&stack, "GNU INCLNKSTK");
+                    increment_named_link(value);
+                    // GNU pushes the bcprot offset; record the protected
+                    // slot index for DECLNKSTK to release.
+                    let marker = with_stack_rooted(&stack, value, || {
+                        crate::sexp::constructors::Rf_ScalarInteger(
+                            stack.depth() as c_int - 1,
+                        )
+                    });
+                    stack.push(marker);
+                }
+                super::bytecode::GNU_OP_DECLNKSTK => {
+                    if stack.depth() < 2 {
+                        bc_error("GNU DECLNKSTK has fewer than two stack values");
+                    }
+                    let marker = stack.at(stack.depth() - 2);
+                    if TYPEOF(marker) != SEXPTYPE::INTSXP || LENGTH(marker) != 1 {
+                        bc_error("GNU DECLNKSTK marker is missing");
+                    }
+                    let slot = crate::sexp::accessors::INTEGER_ELT(marker, 0);
+                    if slot < 0 || slot as usize >= stack.depth() - 2 {
+                        bc_error("GNU DECLNKSTK marker is out of range");
+                    }
+                    decrement_named_link(stack.at(slot as usize));
+                    let top = stack.at(stack.depth() - 1);
+                    stack.set(stack.depth() - 2, top);
+                    stack.set_depth(stack.depth() - 1);
+                }
+                super::bytecode::GNU_OP_GETINTLBUILTIN => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let symbol = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU GETINTLBUILTIN constant pool entry {index} is not a symbol"
+                        ));
+                    }
+                    let value = with_stack_rooted(&stack, symbol, || {
+                        let mut internal = crate::sexp::accessors::INTERNAL(symbol);
+                        if internal.is_null() || internal == R_NilValue() {
+                            // On-demand primitives resolve through the
+                            // internal function table like do_internal.
+                            let pname = crate::sexp::accessors::PRINTNAME(symbol);
+                            let name = std::ffi::CStr::from_ptr(
+                                crate::sexp::accessors::CHAR(pname),
+                            );
+                            let idx =
+                                crate::mainutils::names::StrToInternal(name.as_ptr());
+                            if idx != crate::sexp::ffi::NA_INTEGER {
+                                let entry =
+                                    &crate::mainutils::names::R_FunTab[idx as usize];
+                                if (entry.eval % 100) / 10 != 0 {
+                                    internal = crate::mainutils::dstruct::mkPRIMSXP(
+                                        idx,
+                                        entry.eval % 10,
+                                    );
+                                }
+                            }
+                        }
+                        internal
+                    });
+                    if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::BUILTINSXP
+                    {
+                        let name = crate::sexp::accessors::PRINTNAME(symbol);
+                        let text = if name.is_null() || name == R_NilValue() {
+                            std::borrow::Cow::Borrowed("?")
+                        } else {
+                            std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name))
+                                .to_string_lossy()
+                        };
+                        bc_error(format!(
+                            "there is no .Internal function '{text}'"
+                        ));
+                    }
+                    gnu_call_frames.push(GnuCallFrame {
+                        marker: stack.depth(),
+                        tags: Vec::new(),
+                        raw_args: false,
+                        call: R_NilValue(),
                     });
                     stack.push(value);
                 }

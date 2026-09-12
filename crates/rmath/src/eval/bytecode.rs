@@ -42,6 +42,13 @@ enum ControlFlow {
     Next,
 }
 
+pub const GNU_OP_GETINTLBUILTIN: c_int = 27;
+pub const GNU_OP_VISIBLE: c_int = 94;
+pub const GNU_OP_INCLNK: c_int = 124;
+pub const GNU_OP_DECLNK: c_int = 125;
+pub const GNU_OP_DECLNK_N: c_int = 126;
+pub const GNU_OP_INCLNKSTK: c_int = 127;
+pub const GNU_OP_DECLNKSTK: c_int = 128;
 pub const GNU_OP_DDVAL: c_int = 21;
 pub const GNU_OP_DODOTS: c_int = 32;
 pub const GNU_OP_CALLSPECIAL: c_int = 40;
@@ -592,6 +599,7 @@ fn validate_gnu_adapter_impl(
             }
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_DDVAL
             | GNU_OP_DDVAL_MISSOK | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
+            | GNU_OP_GETINTLBUILTIN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
             | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND | GNU_OP_OR
@@ -785,7 +793,14 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
             }
-            GNU_OP_DODOTS => {}
+            GNU_OP_DODOTS | GNU_OP_VISIBLE | GNU_OP_INCLNK | GNU_OP_DECLNK
+            | GNU_OP_INCLNKSTK | GNU_OP_DECLNKSTK => {}
+            GNU_OP_DECLNK_N => {
+                let count = code[pc];
+                if count < 0 {
+                    return Err(format!("GNU DECLNK_N count {count} is negative"));
+                }
+            }
             _ => supported = false,
         }
         pc += GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
@@ -1292,12 +1307,16 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth, loop_stack, call_stack.clone()));
             }
-            GNU_OP_GETFUN | GNU_OP_GETBUILTIN | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG
+            GNU_OP_GETFUN | GNU_OP_GETBUILTIN | GNU_OP_GETINTLBUILTIN
+            | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG
             | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG | GNU_OP_PUSHFALSEARG => {
                 if depth >= 64 {
                     return Err("GNU bytecode exceeds bounded stack limit".into());
                 }
-                if opcode == GNU_OP_GETFUN || opcode == GNU_OP_GETBUILTIN {
+                if matches!(
+                    opcode,
+                    GNU_OP_GETFUN | GNU_OP_GETBUILTIN | GNU_OP_GETINTLBUILTIN
+                ) {
                     call_stack.push(depth);
                 } else if call_stack.is_empty() {
                     return Err(format!(
@@ -1305,6 +1324,36 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack));
+            }
+            GNU_OP_VISIBLE => {
+                pending.push((next, depth, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_INCLNK | GNU_OP_DECLNK | GNU_OP_DECLNK_N => {
+                let needed = if matches!(opcode, GNU_OP_INCLNK) {
+                    1
+                } else {
+                    2
+                };
+                if depth < needed {
+                    return Err(format!(
+                        "GNU link opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires {needed}"
+                    ));
+                }
+                pending.push((next, depth, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_INCLNKSTK => {
+                if depth >= 64 {
+                    return Err("GNU bytecode exceeds bounded stack limit".into());
+                }
+                pending.push((next, depth + 1, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_DECLNKSTK => {
+                if depth < 2 {
+                    return Err(format!(
+                        "GNU DECLNKSTK at instruction {instruction_pc} has stack depth {depth}, requires 2"
+                    ));
+                }
+                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_PUSHARG => {
                 let Some(marker) = call_stack.last() else {

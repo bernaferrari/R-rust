@@ -137,9 +137,21 @@ impl BytecodeCompiler {
             if fun.is_null() {
                 return false;
             }
-
             if TYPEOF(fun) == SEXPTYPE::SYMSXP {
                 let name = symbol_name_from_sexp(fun);
+                if name.as_deref() == Some("(") {
+                    // GNU inlines `(`: compile the inner expression and
+                    // keep the value visible.
+                    let argument = CAR(CDR(expr));
+                    return if argument.is_null() || argument == R_NilValue() {
+                        false
+                    } else {
+                        self.compile_expr(argument) && {
+                            self.emit(opcodes::OP_visible);
+                            true
+                        }
+                    };
+                }
                 if name.as_deref() == Some("{") {
                     return self.compile_block(expr);
                 }
