@@ -1459,6 +1459,53 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     with_stack_rooted(&stack, value, || defineVar(symbol, value, rho));
                     super::runtime::set_visible(FALSE);
                 }
+                super::bytecode::GNU_OP_STARTASSIGN2 => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let symbol = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU STARTASSIGN2 constant pool entry {index} is not a symbol"
+                        ));
+                    }
+                    let rhs = stack_top_checked(&stack, "GNU STARTASSIGN2 rhs");
+                    let parent = ENCLOS(rho);
+                    let lhs = with_stack_rooted(&stack, symbol, || {
+                        let value = R_findVar(symbol, parent);
+                        if value == R_UnboundValue() {
+                            bc_error("object not found");
+                        }
+                        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                            forcePromise(value)
+                        } else {
+                            value
+                        }
+                    });
+                    let lhs = if crate::sexp::accessors::NAMED(lhs) > 1 {
+                        with_stack_rooted(&stack, lhs, || {
+                            crate::mainutils::duplicate::shallow_duplicate(lhs)
+                        })
+                    } else {
+                        lhs
+                    };
+                    stack.push(R_NilValue());
+                    stack.push(lhs);
+                    stack.push(rhs);
+                }
+                super::bytecode::GNU_OP_ENDASSIGN2 => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let symbol = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU ENDASSIGN2 constant pool entry {index} is not a symbol"
+                        ));
+                    }
+                    let value = stack_pop_checked(&mut stack, "GNU ENDASSIGN2 value");
+                    let _cell = stack_pop_checked(&mut stack, "GNU ENDASSIGN2 cell");
+                    with_stack_rooted(&stack, value, || setVar(symbol, value, ENCLOS(rho)));
+                    super::runtime::set_visible(FALSE);
+                }
                 super::bytecode::GNU_OP_STARTSUBSET => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;

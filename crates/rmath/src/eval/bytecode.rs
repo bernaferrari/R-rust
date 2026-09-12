@@ -165,6 +165,8 @@ pub const GNU_OP_OR1ST: c_int = 90;
 pub const GNU_OP_OR2ND: c_int = 91;
 pub const GNU_OP_STARTASSIGN: c_int = 61;
 pub const GNU_OP_ENDASSIGN: c_int = 62;
+pub const GNU_OP_STARTASSIGN2: c_int = 96;
+pub const GNU_OP_ENDASSIGN2: c_int = 97;
 pub const GNU_OP_DOMISSING: c_int = 30;
 pub const GNU_OP_STARTSUBSET: c_int = 63;
 pub const GNU_OP_DFLTSUBSET: c_int = 64;
@@ -330,6 +332,19 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
             | GNU_OP_ISNUMERIC | GNU_OP_DOMISSING | GNU_OP_DFLTSUBSET => {}
             GNU_OP_STARTASSIGN | GNU_OP_ENDASSIGN => {
+                let index = code[pc];
+                if index < 0 {
+                    return Err(format!(
+                        "GNU opcode {opcode} constant pool index {index} is negative"
+                    ));
+                }
+                if index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU opcode {opcode} constant pool index {index} is out of range for pool length {constant_count}"
+                    ));
+                }
+            }
+            GNU_OP_STARTASSIGN2 | GNU_OP_ENDASSIGN2 => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -749,6 +764,25 @@ fn validate_gnu_adapter_impl(
                 if depth < 3 {
                     return Err(format!(
                         "GNU ENDASSIGN at instruction {instruction_pc} has stack depth {depth}, requires 3"
+                    ));
+                }
+                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_STARTASSIGN2 => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU STARTASSIGN2 at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                if depth + 3 > 64 {
+                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                }
+                pending.push((next, depth + 3, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_ENDASSIGN2 => {
+                if depth < 3 {
+                    return Err(format!(
+                        "GNU ENDASSIGN2 at instruction {instruction_pc} has stack depth {depth}, requires 3"
                     ));
                 }
                 pending.push((next, depth - 2, loop_stack, call_stack.clone()));
@@ -2482,5 +2516,51 @@ mod tests {
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 16, 1, 16, 1, 85, 2, 1], 2).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 112, 0, 3, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 112, 0, -1, 1], 1).is_err());
+    }
+
+    #[test]
+    fn gnu_assign2_validator_accepts_dollar_and_subset_streams() {
+        // compiler:::disassemble(cmpfun(function() { x$a <<- 1L; x }, options=list(optimize=3)))
+        let dollar = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_STARTASSIGN2,
+            2,
+            GNU_OP_DOLLARGETS,
+            4,
+            5,
+            GNU_OP_ENDASSIGN2,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&dollar, 7), Ok(true));
+        // compiler:::disassemble(cmpfun(function(i) { x[i] <<- 8L; x }, options=list(optimize=3)))
+        let subset = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_STARTASSIGN2,
+            2,
+            GNU_OP_STARTSUBASSIGN_N,
+            4,
+            12,
+            GNU_OP_GETVAR_MISSOK,
+            6,
+            GNU_OP_VECSUBASSIGN,
+            4,
+            GNU_OP_ENDASSIGN2,
+            2,
+            GNU_OP_POP,
+            GNU_OP_GETVAR,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&subset, 7), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 96, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 16, 0, 97, 1, 1], 2).is_err());
     }
 }
