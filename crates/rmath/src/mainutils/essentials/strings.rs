@@ -986,6 +986,9 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         let mut big_mark = String::new();
         let mut drop0trailing = false;
         let mut zero_print: Option<String> = None;
+        let mut decimal_mark = ".".to_string();
+        let mut small_mark = String::new();
+        let mut small_interval: usize = 5;
         let mut positional = 0;
         let mut cell = crate::sexp::accessors::CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
@@ -1019,6 +1022,9 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     "big.mark" => Some(7),
                     "drop0trailing" => Some(8),
                     "zero.print" => Some(9),
+                    "decimal.mark" => Some(10),
+                    "small.mark" => Some(11),
+                    "small.interval" => Some(12),
                     _ => None,
                 })
                 .unwrap_or_else(|| {
@@ -1092,6 +1098,22 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                         });
                     } else if TYPEOF(value) == SEXPTYPE::STRSXP {
                         zero_print = Some(elt_to_string(value, 0));
+                    }
+                }
+                10 => {
+                    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
+                        decimal_mark = elt_to_string(value, 0);
+                    }
+                }
+                11 => {
+                    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
+                        small_mark = elt_to_string(value, 0);
+                    }
+                }
+                12 => {
+                    let v = crate::main::coerce::asInteger(value);
+                    if v != NA_INTEGER && v > 0 {
+                        small_interval = v as usize;
                     }
                 }
                 _ => {}
@@ -1184,12 +1206,20 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     .into_owned(),
             );
         }
-        if !big_mark.is_empty() || drop0trailing || zero_print.is_some() {
+        if !big_mark.is_empty()
+            || drop0trailing
+            || zero_print.is_some()
+            || decimal_mark != "."
+            || !small_mark.is_empty()
+        {
             pretty_num_inplace(
                 &mut encoded_strings,
                 &big_mark,
                 drop0trailing,
                 zero_print.as_deref(),
+                &decimal_mark,
+                &small_mark,
+                small_interval,
             );
         }
         for (i, text) in encoded_strings.iter().enumerate() {
@@ -1214,13 +1244,16 @@ fn pretty_num_inplace(
     big_mark: &str,
     drop0trailing: bool,
     zero_print: Option<&str>,
+    decimal_mark: &str,
+    small_mark: &str,
+    small_interval: usize,
 ) {
     let before: Vec<usize> = strings.iter().map(|s| s.chars().count()).collect();
     for s in strings.iter_mut() {
         if s.trim() == "NA" || s.trim() == "NaN" || s.trim() == "Inf" || s.trim() == "-Inf" {
             continue;
         }
-        *s = pretty_num_one(s, big_mark, drop0trailing);
+        *s = pretty_num_one(s, big_mark, drop0trailing, decimal_mark, small_mark, small_interval);
     }
     if let Some(zero) = zero_print {
         for s in strings.iter_mut() {
@@ -1244,7 +1277,14 @@ fn pretty_num_inplace(
     }
 }
 
-fn pretty_num_one(s: &str, big_mark: &str, drop0trailing: bool) -> String {
+fn pretty_num_one(
+    s: &str,
+    big_mark: &str,
+    drop0trailing: bool,
+    decimal_mark: &str,
+    small_mark: &str,
+    small_interval: usize,
+) -> String {
     let leading = s.chars().take_while(|c| *c == ' ').count();
     let body = s.trim_start();
     let (sign, rest) = if let Some(stripped) = body.strip_prefix('-') {
@@ -1273,6 +1313,7 @@ fn pretty_num_one(s: &str, big_mark: &str, drop0trailing: bool) -> String {
                     None,
                     Some(exp),
                     drop0trailing,
+                    decimal_mark,
                 );
             }
             None => (String::new(), None),
@@ -1284,24 +1325,28 @@ fn pretty_num_one(s: &str, big_mark: &str, drop0trailing: bool) -> String {
         }
         if let Some(e) = exp {
             if e.bytes().skip(1).all(|b| b == b'+' || b == b'-' || b == b'0') {
+                let marked = insert_small_mark(&frac, small_mark, small_interval);
                 return pretty_num_join(
                     leading,
                     sign,
                     &insert_big_mark(int_part, big_mark),
-                    if frac.is_empty() { None } else { Some(&frac) },
+                    if marked.is_empty() { None } else { Some(&marked) },
                     None,
                     drop0trailing,
+                    decimal_mark,
                 );
             }
         }
     }
+    let marked = insert_small_mark(&frac, small_mark, small_interval);
     pretty_num_join(
         leading,
         sign,
         &insert_big_mark(int_part, big_mark),
-        if frac.is_empty() { None } else { Some(&frac) },
+        if marked.is_empty() { None } else { Some(&marked) },
         exp,
         drop0trailing,
+        decimal_mark,
     )
 }
 
@@ -1312,13 +1357,14 @@ fn pretty_num_join(
     frac: Option<&str>,
     exp: Option<&str>,
     drop0trailing: bool,
+    decimal_mark: &str,
 ) -> String {
     let mut out = " ".repeat(leading);
     out.push_str(sign);
     out.push_str(int_part);
     match frac {
         Some(frac) => {
-            out.push('.');
+            out.push_str(decimal_mark);
             out.push_str(frac);
         }
         None if !drop0trailing => {}
@@ -1329,6 +1375,25 @@ fn pretty_num_join(
     }
     out
 }
+
+fn insert_small_mark(frac: &str, mark: &str, interval: usize) -> String {
+    if mark.is_empty() || interval == 0 {
+        return frac.to_string();
+    }
+    let digits: Vec<char> = frac.chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.len() <= interval {
+        return frac.to_string();
+    }
+    let mut out = String::new();
+    for (i, ch) in digits.iter().enumerate() {
+        out.push(*ch);
+        if (i + 1) % interval == 0 && i + 1 < digits.len() {
+            out.push_str(mark);
+        }
+    }
+    out
+}
+
 
 fn insert_big_mark(int_part: &str, mark: &str) -> String {
     if mark.is_empty() {
