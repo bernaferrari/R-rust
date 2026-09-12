@@ -1529,6 +1529,66 @@ pub unsafe fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 
+/// GNU `fivenum(x)` — Tukey five-number summary.
+pub unsafe fn do_fivenum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, 5);
+            for i in 0..5 {
+                *REAL(result).add(i) = NA_REAL;
+            }
+            return result;
+        }
+        let xt = TYPEOF(x);
+        let n0 = XLENGTH(x);
+        let mut vals: Vec<f64> = Vec::new();
+        for i in 0..n0 {
+            let v = if xt == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if xt == SEXPTYPE::INTSXP || xt == SEXPTYPE::LGLSXP {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
+            } else {
+                NA_REAL
+            };
+            if v.is_finite() {
+                vals.push(v);
+            }
+        }
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, 5);
+        if n == 0 {
+            for i in 0..5 {
+                *REAL(result).add(i) = NA_REAL;
+            }
+            return result;
+        }
+        let n4 = (((n + 3) / 2) as f64) / 2.0;
+        let d = [
+            1.0,
+            n4,
+            (n as f64 + 1.0) / 2.0,
+            n as f64 + 1.0 - n4,
+            n as f64,
+        ];
+        for (i, di) in d.iter().enumerate() {
+            let lo = di.floor() as usize;
+            let hi = di.ceil() as usize;
+            let a = vals[lo.saturating_sub(1).min(n - 1)];
+            let b = vals[hi.saturating_sub(1).min(n - 1)];
+            *REAL(result).add(i) = 0.5 * (a + b);
+        }
+        result
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
 // ---------------------------------------------------------------------------
