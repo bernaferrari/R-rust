@@ -183,9 +183,11 @@ pub const GNU_OP_GETVAR_MISSOK: c_int = 92;
 pub const GNU_OP_STARTSUBSET_N: c_int = 104;
 pub const GNU_OP_STARTSUBASSIGN_N: c_int = 105;
 pub const GNU_OP_VECSUBSET: c_int = 84;
+pub const GNU_OP_MATSUBSET: c_int = 85;
 pub const GNU_OP_VECSUBSET2: c_int = 106;
 pub const GNU_OP_VECSUBASSIGN: c_int = 86;
 pub const GNU_OP_STARTSUBSET2_N: c_int = 110;
+pub const GNU_OP_SUBSET_N: c_int = 112;
 
 pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
@@ -378,17 +380,30 @@ fn validate_gnu_adapter_impl(
                 }
                 branches.push((opcode_pc, target as usize));
             }
-            GNU_OP_VECSUBSET | GNU_OP_VECSUBSET2 | GNU_OP_VECSUBASSIGN => {
+            GNU_OP_VECSUBSET | GNU_OP_VECSUBSET2 | GNU_OP_VECSUBASSIGN | GNU_OP_MATSUBSET => {
                 let call_index = code[pc];
                 let name = match opcode {
                     GNU_OP_VECSUBSET => "VECSUBSET",
                     GNU_OP_VECSUBSET2 => "VECSUBSET2",
+                    GNU_OP_MATSUBSET => "MATSUBSET",
                     _ => "VECSUBASSIGN",
                 };
                 if call_index < 0 || call_index as usize >= constant_count {
                     return Err(format!(
                         "GNU {name} expression index {call_index} is out of range for pool length {constant_count}"
                     ));
+                }
+            }
+            GNU_OP_SUBSET_N => {
+                let call_index = code[pc];
+                let rank = code[pc + 1];
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU SUBSET_N expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+                if rank < 0 {
+                    return Err(format!("GNU SUBSET_N rank {rank} is negative"));
                 }
             }
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
@@ -832,6 +847,29 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_MATSUBSET => {
+                if depth < 3 {
+                    return Err(format!(
+                        "GNU MATSUBSET at instruction {instruction_pc} has stack depth {depth}, requires 3"
+                    ));
+                }
+                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+            }
+            GNU_OP_SUBSET_N => {
+                let rank = code[instruction_pc + 2];
+                if rank < 0 {
+                    return Err(format!(
+                        "GNU SUBSET_N at instruction {instruction_pc} has negative rank {rank}"
+                    ));
+                }
+                let needed = rank as usize + 1;
+                if depth < needed {
+                    return Err(format!(
+                        "GNU SUBSET_N at instruction {instruction_pc} has stack depth {depth}, requires {needed}"
+                    ));
+                }
+                pending.push((next, depth - rank as usize, loop_stack, call_stack.clone()));
             }
             GNU_OP_VECSUBASSIGN => {
                 if depth < 3 {
@@ -2381,5 +2419,68 @@ mod tests {
         assert!(validate_gnu_adapter_stream(&[12, 63, 0, 4, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 30, 1], 1).is_err());
         assert!(validate_gnu_adapter_stream(&[12, 20, 0, 64, 1], 1).is_err());
+    }
+
+    #[test]
+    fn gnu_matsubset_validator_accepts_matrix_and_array_streams() {
+        // compiler:::disassemble(cmpfun(function(x) x[1L,2L], options=list(optimize=3)))
+        let mat_const = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET_N,
+            0,
+            12,
+            GNU_OP_LDCONST,
+            2,
+            GNU_OP_LDCONST,
+            3,
+            GNU_OP_MATSUBSET,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&mat_const, 4), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x,i,j) x[i,j], options=list(optimize=3)))
+        let mat_vars = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET_N,
+            0,
+            12,
+            GNU_OP_GETVAR_MISSOK,
+            2,
+            GNU_OP_GETVAR_MISSOK,
+            3,
+            GNU_OP_MATSUBSET,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&mat_vars, 4), Ok(true));
+        // compiler:::disassemble(cmpfun(function(x) x[1L,2L,3L], options=list(optimize=3)))
+        let subset_n = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_GETVAR,
+            1,
+            GNU_OP_STARTSUBSET_N,
+            0,
+            15,
+            GNU_OP_LDCONST,
+            2,
+            GNU_OP_LDCONST,
+            3,
+            GNU_OP_LDCONST,
+            4,
+            GNU_OP_SUBSET_N,
+            0,
+            3,
+            GNU_OP_RETURN,
+        ];
+        assert_eq!(validate_gnu_adapter_stream(&subset_n, 5), Ok(true));
+        assert!(validate_gnu_adapter_stream(&[12, 85, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 85, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 16, 1, 16, 1, 85, 2, 1], 2).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 112, 0, 3, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 112, 0, -1, 1], 1).is_err());
     }
 }

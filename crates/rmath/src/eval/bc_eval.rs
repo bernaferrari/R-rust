@@ -589,6 +589,32 @@ unsafe fn eval_gnu_vecsubset(call: SEXP, x: SEXP, index: SEXP, rho: SEXP, subset
     }
 }
 
+/// GNU MATSUBSET / SUBSET_N fall through to do_subset_dflt.
+unsafe fn eval_gnu_subset_indices(call: SEXP, x: SEXP, indices: &[SEXP], rho: SEXP) -> SEXP {
+    unsafe {
+        let _x = crate::sexp::protect::protect(x);
+        let _index_roots = indices
+            .iter()
+            .map(|index| crate::sexp::protect::protect(*index))
+            .collect::<Vec<_>>();
+        let mut args = R_NilValue();
+        let mut roots = Vec::with_capacity(indices.len() + 1);
+        for &index in indices.iter().rev() {
+            args = Rf_cons(index, args);
+            roots.push(crate::sexp::protect::protect(args));
+        }
+        args = Rf_cons(x, args);
+        let _args = crate::sexp::protect::protect(args);
+        let _ = roots;
+        crate::mainutils::subset::do_subset_dflt(
+            call,
+            crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+            args,
+            rho,
+        )
+    }
+}
+
 /// GNU VECSUBASSIGN falls through to do_subassign_dflt.
 unsafe fn eval_gnu_vecsubassign(call: SEXP, x: SEXP, rhs: SEXP, index: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -1564,6 +1590,39 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let subset2 = opcode == super::bytecode::GNU_OP_VECSUBSET2;
                     let result = with_stack_rooted(&stack, index, || {
                         eval_gnu_vecsubset(call, x, index, rho, subset2)
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_MATSUBSET => {
+                    let call_index = words[pc] as usize;
+                    pc += 1;
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let column = stack_pop_checked(&mut stack, "GNU MATSUBSET column");
+                    let row = stack_pop_checked(&mut stack, "GNU MATSUBSET row");
+                    let x = stack_pop_checked(&mut stack, "GNU MATSUBSET object");
+                    let result = with_stack_rooted(&stack, column, || {
+                        eval_gnu_subset_indices(call, x, &[row, column], rho)
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_SUBSET_N => {
+                    let call_index = words[pc] as usize;
+                    let rank = words[pc + 1];
+                    pc += 2;
+                    if rank < 0 {
+                        bc_error("GNU SUBSET_N rank is negative");
+                    }
+                    let call = VECTOR_ELT(consts, call_index as i64);
+                    let mut indices = Vec::with_capacity(rank as usize);
+                    for _ in 0..rank {
+                        indices.push(stack_pop_checked(&mut stack, "GNU SUBSET_N index"));
+                    }
+                    indices.reverse();
+                    let x = stack_pop_checked(&mut stack, "GNU SUBSET_N object");
+                    let result = with_stack_rooted(&stack, x, || {
+                        eval_gnu_subset_indices(call, x, &indices, rho)
                     });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
