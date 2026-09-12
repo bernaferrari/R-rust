@@ -1593,6 +1593,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::line::do_line,
     },
     EvaluatedBuiltin {
+        name: "dist",
+        handler: crate::mainutils::essentials::do_dist,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

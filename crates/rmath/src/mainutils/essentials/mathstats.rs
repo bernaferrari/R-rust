@@ -1970,6 +1970,52 @@ unsafe fn matrix_real(x: SEXP, i: i64) -> f64 {
 }
 
 
+/// GNU `dist(x)` Euclidean for a numeric vector.
+pub unsafe fn do_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x);
+        let len = n * (n - 1) / 2;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, len);
+        let _r = protect(result);
+        let mut k = 0usize;
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i as usize)
+                } else {
+                    *INTEGER(x).add(i as usize) as f64
+                };
+                let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(j as usize)
+                } else {
+                    *INTEGER(x).add(j as usize) as f64
+                };
+                *REAL(result).add(k) = (a - b).abs();
+                k += 1;
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(c"Size".as_ptr()),
+            Rf_ScalarInteger(n as c_int),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(c"method".as_ptr()),
+            Rf_mkString(c"euclidean".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"dist".as_ptr()),
+        );
+        result
+    }
+}
+
+
+
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
 // ---------------------------------------------------------------------------

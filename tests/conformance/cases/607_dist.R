@@ -1,0 +1,5 @@
+d <- dist(1:5)
+cat(paste(as.vector(d), collapse = ","), "\n", sep = "")
+cat(attr(d, "Size"), "\n", sep = "")
+cat(attr(d, "method"), "\n", sep = "")
+cat(paste(class(d), collapse = ","), "\n", sep = "")
