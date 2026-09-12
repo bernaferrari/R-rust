@@ -89,3 +89,9 @@ mod real_svd_tests;
 
 #[cfg(test)]
 mod complex_svd_tests;
+
+#[cfg(test)]
+mod real_dlange_tests;
+
+#[cfg(test)]
+mod real_dgecon_tests;

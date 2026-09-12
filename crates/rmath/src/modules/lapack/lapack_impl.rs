@@ -522,6 +522,11 @@ pub unsafe fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
         if TYPEOF(type_) != 16 {
             Rf_error(b"'type' must be a character string\0".as_ptr() as *const c_char);
         }
+        if TYPEOF(a) != REALSXP_C {
+            crate::sexp::context::r_error("'a' must be a numeric matrix");
+        }
+        let _input_guard = protect(a);
+        let _type_guard = protect(type_);
 
         let typ_str = CStr::from_ptr(CHAR(STRING_ELT(type_, 0)))
             .to_str()
@@ -529,21 +534,40 @@ pub unsafe fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
         let norm_c = La_norm_type(typ_str);
 
         let dim = getAttrib(a, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'a' must be a matrix");
         }
 
-        let m = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
+        let m = INTEGER(dim).add(0).read();
+        let n = INTEGER(dim).add(1).read();
+        if m < 0 || n < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
+        let Some(len) = (m as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(a) as usize != len {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
 
-        let mut work = vec![
-            0.0f64;
-            if norm_c == b'I' || norm_c == b'O' {
-                m as usize
-            } else {
-                0
-            }
-        ];
+        let work_len = if norm_c == b'I' || norm_c == b'O' {
+            m as usize
+        } else {
+            0
+        };
+        let Some(scratch_bytes) = work_len.checked_mul(std::mem::size_of::<f64>()) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native matrix-norm workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
+        let mut work = vec![0.0f64; work_len];
 
         let anorm = super::backend::dlange_(&norm_c, &m, &n, REAL(a), &m, work.as_mut_ptr());
 
@@ -561,6 +585,11 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
         if TYPEOF(norm) != 16 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
         }
+        if TYPEOF(a) != REALSXP_C {
+            crate::sexp::context::r_error("'a' must be a numeric matrix");
+        }
+        let _input_guard = protect(a);
+        let _norm_guard = protect(norm);
 
         let norm_str = CStr::from_ptr(CHAR(STRING_ELT(norm, 0)))
             .to_str()
@@ -568,18 +597,48 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
         let norm_c = La_rcond_type(norm_str);
 
         let dim = getAttrib(a, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
+        if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
+            crate::sexp::context::r_error("'a' must be a matrix");
         }
 
-        let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
-        let n2 = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
-        if n != n2 {
-            Rf_error(b"'a' must be a square matrix\0".as_ptr() as *const c_char);
+        let n = INTEGER(dim).add(0).read();
+        let n2 = INTEGER(dim).add(1).read();
+        if n < 0 || n2 < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
         }
+        if n != n2 {
+            crate::sexp::context::r_error("'a' must be a square matrix");
+        }
+        let Some(len) = (n as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len > c_int::MAX as usize || XLENGTH(a) as usize != len {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+
+        let work_norm_len = if norm_c == b'I' { n as usize } else { 0 };
+        let Some(work_len) = (n as usize).checked_mul(4) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let Some(scratch_bytes) = len
+            .checked_mul(std::mem::size_of::<f64>())
+            .and_then(|bytes| bytes.checked_add(work_norm_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| bytes.checked_add(work_len.checked_mul(std::mem::size_of::<f64>())?))
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native condition-number workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
 
         // Compute the norm of A
-        let mut work_norm = vec![0.0f64; if norm_c == b'I' { n as usize } else { 0 }];
+        let mut work_norm = vec![0.0f64; work_norm_len];
         let anorm = super::backend::dlange_(&norm_c, &n, &n, REAL(a), &n, work_norm.as_mut_ptr());
 
         if anorm == 0.0 {
@@ -589,8 +648,10 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
         }
 
         // Work on a copy
-        let mut a_copy = vec![0.0f64; (n as usize) * (n as usize)];
-        ptr::copy_nonoverlapping(REAL(a), a_copy.as_mut_ptr(), a_copy.len());
+        let mut a_copy = vec![0.0f64; len];
+        if len != 0 {
+            ptr::copy_nonoverlapping(REAL(a), a_copy.as_mut_ptr(), len);
+        }
 
         let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
         let mut info: c_int = 0;
@@ -607,7 +668,7 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
         }
 
         let mut rcond: f64 = 0.0;
-        let mut work = vec![0.0f64; 4 * n as usize];
+        let mut work = vec![0.0f64; work_len];
         let iwork = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
 
         super::backend::dgecon_(
