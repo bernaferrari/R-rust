@@ -1092,39 +1092,94 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
     unsafe {
         let tol = asReal(tolin);
 
+        if TYPEOF(a) != REALSXP_C {
+            crate::sexp::context::r_error("'a' must be a numeric matrix");
+        }
+        if TYPEOF(bin) != REALSXP_C {
+            crate::sexp::context::r_error("'b' must be a numeric matrix");
+        }
+        let _a_guard = protect(a);
+        let _b_guard = protect(bin);
+
         let a_dim = getAttrib(a, R_DimSymbol());
-        if a_dim.is_null() || a_dim == R_NilValue() {
-            Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
+        if a_dim.is_null() || TYPEOF(a_dim) != INTSXP_C || XLENGTH(a_dim) != 2 {
+            crate::sexp::context::r_error("'a' must be a matrix");
         }
 
-        let n = INTEGER(coerceVector(a_dim, INTSXP_C)).add(0).read() as i32;
-        let n2 = INTEGER(coerceVector(a_dim, INTSXP_C)).add(1).read() as i32;
+        let n = INTEGER(a_dim).add(0).read();
+        let n2 = INTEGER(a_dim).add(1).read();
+        if n < 0 || n2 < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
         if n != n2 {
-            Rf_error(b"'a' must be a square matrix\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error("'a' must be a square matrix");
         }
 
         let b_dim = getAttrib(bin, R_DimSymbol());
-        if b_dim.is_null() || b_dim == R_NilValue() {
-            Rf_error(b"'b' must be a matrix\0".as_ptr() as *const c_char);
+        if b_dim.is_null() || TYPEOF(b_dim) != INTSXP_C || XLENGTH(b_dim) != 2 {
+            crate::sexp::context::r_error("'b' must be a matrix");
         }
 
-        let nrhs = INTEGER(coerceVector(b_dim, INTSXP_C)).add(1).read() as i32;
-        let m_b = INTEGER(coerceVector(b_dim, INTSXP_C)).add(0).read() as i32;
+        let m_b = INTEGER(b_dim).add(0).read();
+        let nrhs = INTEGER(b_dim).add(1).read();
+        if m_b < 0 || nrhs < 0 {
+            crate::sexp::context::r_error("invalid matrix dimensions");
+        }
         if m_b != n {
-            Rf_error(b"'b' must have same row dimension as 'a'\0".as_ptr() as *const c_char);
+            crate::sexp::context::r_error("'b' must have same row dimension as 'a'");
         }
 
-        // Work on copies
-        let len_a = (n as usize) * (n as usize);
-        let mut a_copy = vec![0.0f64; len_a];
-        ptr::copy_nonoverlapping(REAL(a), a_copy.as_mut_ptr(), len_a);
+        let Some(len_a) = (n as usize).checked_mul(n as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let Some(len_b) = (n as usize).checked_mul(nrhs as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if len_a > c_int::MAX as usize || XLENGTH(a) as usize != len_a {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+        if len_b > c_int::MAX as usize || XLENGTH(bin) as usize != len_b {
+            crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
 
-        let len_b = (n as usize) * (nrhs as usize);
+        let work_len = if tol > 0.0 {
+            (n as usize)
+                .checked_mul(4)
+                .unwrap_or_else(|| crate::sexp::context::r_error("matrix dimensions are too large"))
+        } else {
+            0
+        };
+        let iwork_len = if tol > 0.0 { n as usize } else { 0 };
+        let Some(scratch_bytes) = len_a
+            .checked_mul(std::mem::size_of::<f64>())
+            .and_then(|bytes| bytes.checked_add(len_b.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| bytes.checked_add(work_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| bytes.checked_add(iwork_len.checked_mul(std::mem::size_of::<c_int>())?))
+        else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        let scratch_reservation = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+        });
+        if matches!(scratch_reservation, Some(None)) {
+            crate::sexp::context::r_error(
+                "allocation failed: native solve workspace exceeds resource limit",
+            );
+        }
+        let _scratch_reservation = scratch_reservation.flatten();
+
+        let mut a_copy = vec![0.0f64; len_a];
+        if len_a != 0 {
+            ptr::copy_nonoverlapping(REAL(a), a_copy.as_mut_ptr(), len_a);
+        }
+
         let mut b_copy = vec![0.0f64; len_b];
-        ptr::copy_nonoverlapping(REAL(bin), b_copy.as_mut_ptr(), len_b);
+        if len_b != 0 {
+            ptr::copy_nonoverlapping(REAL(bin), b_copy.as_mut_ptr(), len_b);
+        }
 
         let anorm = a_copy
-            .chunks(n as usize)
+            .chunks((n as usize).max(1))
             .map(|col| col.iter().map(|v| v.abs()).sum::<f64>())
             .fold(0.0, f64::max);
         let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
@@ -1150,8 +1205,8 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
 
         if tol > 0.0 {
             let mut rcond = 0.0;
-            let mut work = vec![0.0; 4 * n as usize];
-            let mut iwork = vec![0; n as usize];
+            let mut work = vec![0.0; work_len];
+            let mut iwork = vec![0; iwork_len];
             super::backend::dgecon_(
                 b"1".as_ptr(),
                 &n,
