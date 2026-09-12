@@ -953,6 +953,30 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::logic::do_xor,
     },
     EvaluatedBuiltin {
+        name: "bitwAnd",
+        handler: crate::mainutils::relop::do_bitwAnd,
+    },
+    EvaluatedBuiltin {
+        name: "bitwOr",
+        handler: crate::mainutils::relop::do_bitwOr,
+    },
+    EvaluatedBuiltin {
+        name: "bitwXor",
+        handler: crate::mainutils::relop::do_bitwXor,
+    },
+    EvaluatedBuiltin {
+        name: "bitwNot",
+        handler: crate::mainutils::relop::do_bitwNot,
+    },
+    EvaluatedBuiltin {
+        name: "bitwShiftL",
+        handler: crate::mainutils::relop::do_bitwShiftL,
+    },
+    EvaluatedBuiltin {
+        name: "bitwShiftR",
+        handler: crate::mainutils::relop::do_bitwShiftR,
+    },
+    EvaluatedBuiltin {
         name: "abs",
         handler: crate::mainutils::essentials::do_abs,
     },

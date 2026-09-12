@@ -1700,21 +1700,53 @@ unsafe fn bitwiseShiftR(a: SEXP, b: SEXP) -> SEXP {
 /// Entry point for bitwise operators dispatched from R's internal mechanism.
 pub unsafe fn do_bitwise(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let _ = (call, op, args, env);
+        let _ = (call, env);
         let a = CAR(args);
         let b = CADR(args);
-
-        match PRIMVAL(op) {
-            BITWISE_AND => bitwiseAnd(a, b),
-            BITWISE_NOT => bitwiseNot(a),
-            BITWISE_OR => bitwiseOr(a, b),
-            BITWISE_XOR => bitwiseXor(a, b),
-            BITWISE_SHIFT_L => bitwiseShiftL(a, b),
-            BITWISE_SHIFT_R => bitwiseShiftR(a, b),
-            _ => ptr::null_mut(),
+        match primitive_name(op).as_str() {
+            "bitwAnd" => bitwiseAnd(a, b),
+            "bitwNot" => bitwiseNot(a),
+            "bitwOr" => bitwiseOr(a, b),
+            "bitwXor" => bitwiseXor(a, b),
+            "bitwShiftL" => bitwiseShiftL(a, b),
+            "bitwShiftR" => bitwiseShiftR(a, b),
+            _ => match PRIMVAL(op) {
+                BITWISE_AND => bitwiseAnd(a, b),
+                BITWISE_NOT => bitwiseNot(a),
+                BITWISE_OR => bitwiseOr(a, b),
+                BITWISE_XOR => bitwiseXor(a, b),
+                BITWISE_SHIFT_L => bitwiseShiftL(a, b),
+                BITWISE_SHIFT_R => bitwiseShiftR(a, b),
+                _ => ptr::null_mut(),
+            },
         }
     }
 }
+
+pub unsafe fn do_bitwAnd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { bitwiseAnd(CAR(args), CADR(args)) }
+}
+
+pub unsafe fn do_bitwOr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { bitwiseOr(CAR(args), CADR(args)) }
+}
+
+pub unsafe fn do_bitwXor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { bitwiseXor(CAR(args), CADR(args)) }
+}
+
+pub unsafe fn do_bitwNot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { bitwiseNot(CAR(args)) }
+}
+
+pub unsafe fn do_bitwShiftL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { bitwiseShiftL(CAR(args), CADR(args)) }
+}
+
+pub unsafe fn do_bitwShiftR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { bitwiseShiftR(CAR(args), CADR(args)) }
+}
+
 
 // ---------------------------------------------------------------------------
 // Tests
