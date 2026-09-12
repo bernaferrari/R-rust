@@ -206,4 +206,42 @@ mod tests {
             assert_eq!(which, 1313);
         }
     }
+
+    #[test]
+    fn test_do_subassign_dflt_duplicates_maybe_shared_integer() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let x = Rf_allocVector3(INTSXP, 3);
+            let _x_guard = protect(x);
+            let px = INTEGER(x);
+            *px.add(0) = 1;
+            *px.add(1) = 2;
+            *px.add(2) = 3;
+            SET_NAMED(x, 2);
+
+            let idx = Rf_ScalarInteger(1);
+            let _idx_guard = protect(idx);
+            let y = Rf_ScalarInteger(9);
+            let _y_guard = protect(y);
+            let args = Rf_cons(x, Rf_cons(idx, Rf_cons(y, R_NilValue())));
+            let _args_guard = protect(args);
+
+            let result = do_subassign_dflt(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                args,
+                ptr::null_mut(),
+            );
+            let _result_guard = protect(result);
+
+            assert!(!result.is_null());
+            assert_ne!(result, x);
+            assert_eq!(*INTEGER(x).add(0), 1);
+            assert_eq!(*INTEGER(x).add(1), 2);
+            assert_eq!(*INTEGER(x).add(2), 3);
+            assert_eq!(*INTEGER(result).add(0), 9);
+            assert_eq!(*INTEGER(result).add(1), 2);
+            assert_eq!(*INTEGER(result).add(2), 3);
+        }
+    }
 }

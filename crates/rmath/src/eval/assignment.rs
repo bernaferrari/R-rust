@@ -6,7 +6,7 @@
 
 use crate::sexp::accessors::ENCLOS;
 use crate::sexp::accessors::{
-    CADR, CAR, CDDR, CDR, CHAR, INTEGER_ELT, LOGICAL_ELT, PRINTNAME, REAL_ELT, SET_INTEGER_ELT,
+    CADR, CAR, CDDR, CDR, CHAR, INTEGER_ELT, LOGICAL_ELT, NAMED, PRINTNAME, REAL_ELT, SET_INTEGER_ELT,
     SET_LOGICAL_ELT, SET_REAL_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::envir::Environment;
@@ -425,6 +425,14 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
 
         let index = scalar_positive_index(CAR(subs))?;
         if index >= XLENGTH(target) {
+            return None;
+        }
+
+        // GNU do_subassign_dflt duplicates when MAYBE_SHARED (NAMED >= 2).
+        // This AST scalar shortcut used to mutate in place and alias every
+        // binding of the same vector (`y <- x; x[1] <- 9L`). Fall through
+        // so the default path can shallow-duplicate first.
+        if NAMED(target) >= 2 {
             return None;
         }
 
