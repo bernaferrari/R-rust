@@ -1098,6 +1098,138 @@ pub unsafe fn do_inverse_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `rowsum(x, group)` — sum rows by group.
+pub unsafe fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let group = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let xt = TYPEOF(x);
+        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'x' must be numeric",
+            );
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (nr, nc) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as i64, *INTEGER(dim).add(1) as i64)
+        } else {
+            (XLENGTH(x), 1)
+        };
+        if XLENGTH(group) != nr {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "incorrect length for 'group'",
+            );
+        }
+        let mut labels: Vec<String> = Vec::new();
+        let mut index: Vec<usize> = Vec::new();
+        for i in 0..nr {
+            let key = format_rowsum_group(group, i);
+            if let Some(pos) = labels.iter().position(|s| s == &key) {
+                index.push(pos);
+            } else {
+                index.push(labels.len());
+                labels.push(key);
+            }
+        }
+        let mut order: Vec<usize> = (0..labels.len()).collect();
+        order.sort_by(|&a, &b| labels[a].cmp(&labels[b]));
+        let mut new_pos = vec![0usize; labels.len()];
+        let mut sorted_labels = vec![String::new(); labels.len()];
+        for (dst, &src) in order.iter().enumerate() {
+            new_pos[src] = dst;
+            sorted_labels[dst] = labels[src].clone();
+        }
+        let ng = labels.len() as i64;
+        let out_ty = if xt == SEXPTYPE::REALSXP {
+            SEXPTYPE::REALSXP
+        } else {
+            SEXPTYPE::INTSXP
+        };
+        let result = Rf_allocVector3(out_ty, ng * nc);
+        let _result = protect(result);
+        if out_ty == SEXPTYPE::REALSXP {
+            for i in 0..(ng * nc) as usize {
+                *REAL(result).add(i) = 0.0;
+            }
+        } else {
+            for i in 0..(ng * nc) as usize {
+                *INTEGER(result).add(i) = 0;
+            }
+        }
+        for col in 0..nc {
+            for row in 0..nr {
+                let g = new_pos[index[row as usize]] as i64;
+                let src = row + col * nr;
+                let dst = g + col * ng;
+                let val = if xt == SEXPTYPE::REALSXP {
+                    *REAL(x).add(src as usize)
+                } else {
+                    *INTEGER(x).add(src as usize) as f64
+                };
+                if out_ty == SEXPTYPE::REALSXP {
+                    *REAL(result).add(dst as usize) += val;
+                } else {
+                    *INTEGER(result).add(dst as usize) += val as i32;
+                }
+            }
+        }
+        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(out_dim) = ng as c_int;
+        *INTEGER(out_dim).add(1) = nc as c_int;
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimSymbol(),
+            out_dim,
+        );
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, ng);
+        for (i, lab) in sorted_labels.iter().enumerate() {
+            let cstr = CString::new(lab.as_str()).unwrap_or_default();
+            SET_STRING_ELT(rn, i as i64, Rf_mkChar(cstr.as_ptr()));
+        }
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, R_NilValue());
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        result
+    }
+}
+
+unsafe fn format_rowsum_group(group: SEXP, i: i64) -> String {
+    unsafe {
+        match TYPEOF(group) {
+            t if t == SEXPTYPE::STRSXP => {
+                let s = STRING_ELT(group, i);
+                if s.is_null() {
+                    "NA".into()
+                } else {
+                    std::ffi::CStr::from_ptr(CHAR(s))
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                format!("{}", *INTEGER(group).add(i as usize))
+            }
+            t if t == SEXPTYPE::REALSXP => format!("{}", *REAL(group).add(i as usize)),
+            _ => i.to_string(),
+        }
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
 // ---------------------------------------------------------------------------

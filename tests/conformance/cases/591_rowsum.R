@@ -1,0 +1,8 @@
+r <- rowsum(1:4, c("a", "a", "b", "b"))
+cat(paste(as.vector(r), collapse = ","), "\n", sep = "")
+cat(paste(dim(r), collapse = "x"), "\n", sep = "")
+cat(paste(rownames(r), collapse = ","), "\n", sep = "")
+m <- rowsum(matrix(1:6, 3, 2), c("x", "y", "x"))
+cat(paste(as.vector(m), collapse = ","), "\n", sep = "")
+cat(paste(dim(m), collapse = "x"), "\n", sep = "")
+cat(paste(rownames(m), collapse = ","), "\n", sep = "")

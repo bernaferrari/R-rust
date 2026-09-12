@@ -1529,6 +1529,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_merge,
     },
     EvaluatedBuiltin {
+        name: "rowsum",
+        handler: crate::mainutils::essentials::do_rowsum,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
