@@ -1,0 +1,5 @@
+d <- lowess(1:5, c(1, 2, 1, 2, 1))
+cat(paste(d$x, collapse = ","), "\n", sep = "")
+cat(paste(sprintf("%.8f", d$y), collapse = ","), "\n", sep = "")
+d2 <- lowess(1:9, c(1, 2, 3, 10, 5, 6, 7, 8, 9))
+cat(paste(sprintf("%.8f", d2$y), collapse = ","), "\n", sep = "")

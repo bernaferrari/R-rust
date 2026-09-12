@@ -1569,6 +1569,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::smooth::do_smooth,
     },
     EvaluatedBuiltin {
+        name: "lowess",
+        handler: crate::library::stats::lowess::do_lowess,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

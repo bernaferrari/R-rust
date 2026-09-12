@@ -62,8 +62,11 @@ unsafe fn lowest(
         let mut r: c_double;
         let range: c_double;
 
-        range = *x.add(n as usize) - *x.add(1);
-        h = fmax2(*xs - *x.add(nleft as usize), *x.add(nright as usize) - *xs);
+        range = *x.add((n - 1) as usize) - *x.add(0);
+        h = fmax2(
+            *xs - *x.add((nleft - 1) as usize),
+            *x.add((nright - 1) as usize) - *xs,
+        );
         h9 = 0.999 * h;
         h1 = 0.001 * h;
 
@@ -71,19 +74,19 @@ unsafe fn lowest(
         a = 0.0;
         j = nleft;
         while j <= n {
-            *w.add(j as usize) = 0.0;
-            r = (*x.add(j as usize) - *xs).abs();
+            *w.add((j - 1) as usize) = 0.0;
+            r = (*x.add((j - 1) as usize) - *xs).abs();
             if r <= h9 {
                 if r <= h1 {
-                    *w.add(j as usize) = 1.0;
+                    *w.add((j - 1) as usize) = 1.0;
                 } else {
-                    *w.add(j as usize) = fcube(1.0 - fcube(r / h));
+                    *w.add((j - 1) as usize) = fcube(1.0 - fcube(r / h));
                 }
                 if userw {
-                    *w.add(j as usize) *= *rw.add(j as usize);
+                    *w.add((j - 1) as usize) *= *rw.add((j - 1) as usize);
                 }
-                a += *w.add(j as usize);
-            } else if *x.add(j as usize) > *xs {
+                a += *w.add((j - 1) as usize);
+            } else if *x.add((j - 1) as usize) > *xs {
                 break;
             }
             j += 1;
@@ -99,7 +102,7 @@ unsafe fn lowest(
             // make sum of w[j] == 1
             j = nleft;
             while j <= nrt {
-                *w.add(j as usize) /= a;
+                *w.add((j - 1) as usize) /= a;
                 j += 1;
             }
             if h > 0.0 {
@@ -109,14 +112,14 @@ unsafe fn lowest(
                 // weighted center of x values
                 j = nleft;
                 while j <= nrt {
-                    a += *w.add(j as usize) * *x.add(j as usize);
+                    a += *w.add((j - 1) as usize) * *x.add((j - 1) as usize);
                     j += 1;
                 }
                 b = *xs - a;
                 c = 0.0;
                 j = nleft;
                 while j <= nrt {
-                    c += *w.add(j as usize) * fsquare(*x.add(j as usize) - a);
+                    c += *w.add((j - 1) as usize) * fsquare(*x.add((j - 1) as usize) - a);
                     j += 1;
                 }
                 if c.sqrt() > 0.001 * range {
@@ -125,7 +128,7 @@ unsafe fn lowest(
                     // points are spread out enough to compute slope
                     j = nleft;
                     while j <= nrt {
-                        *w.add(j as usize) *= b * (*x.add(j as usize) - a) + 1.0;
+                        *w.add((j - 1) as usize) *= b * (*x.add((j - 1) as usize) - a) + 1.0;
                         j += 1;
                     }
                 }
@@ -133,7 +136,7 @@ unsafe fn lowest(
             *ys = 0.0;
             j = nleft;
             while j <= nrt {
-                *ys += *w.add(j as usize) * *y.add(j as usize);
+                *ys += *w.add((j - 1) as usize) * *y.add((j - 1) as usize);
                 j += 1;
             }
         }
@@ -157,7 +160,6 @@ unsafe fn clowess(
             return;
         }
 
-        // at least two, at most n points
         let ns = imax2(2, imin2(n, (f * n as c_double + 1e-7) as c_int));
 
         let mut iter: c_int = 1;
@@ -179,14 +181,13 @@ unsafe fn clowess(
                     }
                 }
 
-                // fitted value at x[i] (1-based)
                 let mut ok = false;
                 lowest(
                     x as *mut c_double,
                     y as *mut c_double,
                     n,
                     &*x.add((i - 1) as usize),
-                    ys.add(i as usize),
+                    ys.add((i - 1) as usize),
                     nleft,
                     nright,
                     res,
@@ -195,25 +196,23 @@ unsafe fn clowess(
                     &mut ok,
                 );
                 if !ok {
-                    *ys.add(i as usize) = *y.add((i - 1) as usize);
+                    *ys.add((i - 1) as usize) = *y.add((i - 1) as usize);
                 }
 
-                // skipped points -- interpolate
                 if last < i - 1 {
                     let denom = *x.add((i - 1) as usize) - *x.add((last - 1) as usize);
                     let mut j = last + 1;
                     while j < i {
                         let alpha =
                             (*x.add((j - 1) as usize) - *x.add((last - 1) as usize)) / denom;
-                        *ys.add(j as usize) =
-                            alpha * *ys.add(i as usize) + (1.0 - alpha) * *ys.add(last as usize);
+                        *ys.add((j - 1) as usize) = alpha * *ys.add((i - 1) as usize)
+                            + (1.0 - alpha) * *ys.add((last - 1) as usize);
                         j += 1;
                     }
                 }
 
                 last = i;
 
-                // x coord of close points
                 let cut = *x.add((last - 1) as usize) + delta;
                 i = last + 1;
                 while i <= n {
@@ -221,7 +220,7 @@ unsafe fn clowess(
                         break;
                     }
                     if *x.add((i - 1) as usize) == *x.add((last - 1) as usize) {
-                        *ys.add(i as usize) = *ys.add(last as usize);
+                        *ys.add((i - 1) as usize) = *ys.add((last - 1) as usize);
                         last = i;
                     }
                     i += 1;
@@ -232,14 +231,12 @@ unsafe fn clowess(
                 }
             }
 
-            // residuals
             let mut i: c_int = 0;
             while i < n {
-                *res.add(i as usize) = *y.add(i as usize) - *ys.add((i + 1) as usize);
+                *res.add(i as usize) = *y.add(i as usize) - *ys.add(i as usize);
                 i += 1;
             }
 
-            // overall scale estimate
             let mut sc: c_double = 0.0;
             let mut i: c_int = 0;
             while i < n {
@@ -248,7 +245,6 @@ unsafe fn clowess(
             }
             sc /= n as c_double;
 
-            // compute robustness weights except last time
             if iter > nsteps {
                 break;
             }
@@ -259,7 +255,6 @@ unsafe fn clowess(
                 i += 1;
             }
 
-            // Compute cmad := 6 * median(rw[], n)
             let m1 = n / 2;
             rPsort(rw, n, m1);
             let cmad = if n % 2 == 0 {
@@ -332,3 +327,98 @@ pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> S
         ans
     }
 }
+
+
+/// GNU `lowess(x, y, f=2/3, iter=3)`.
+pub unsafe fn do_lowess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, SET_VECTOR_ELT, VECTOR_ELT};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
+        use crate::sexp::globals::R_NilValue;
+        let x0 = CAR(args);
+        let y0 = CAR(CDR(args));
+        let mut f = 2.0 / 3.0;
+        let mut iter = 3;
+        let mut cell = CDR(CDR(args));
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = crate::sexp::accessors::TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    crate::sexp::accessors::PRINTNAME(tag),
+                ))
+                .to_string_lossy()
+                .into_owned()
+            } else {
+                String::new()
+            };
+            let slot = match name.as_str() {
+                "f" => 0,
+                "iter" => 1,
+                _ => {
+                    let s = pos;
+                    pos += 1;
+                    s
+                }
+            };
+            let v = CAR(cell);
+            if slot == 0 {
+                f = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v)
+                } else {
+                    *INTEGER(v) as f64
+                };
+            } else if slot == 1 {
+                iter = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v)
+                } else {
+                    *REAL(v) as i32
+                };
+            }
+            cell = CDR(cell);
+        }
+        let n = crate::sexp::accessors::XLENGTH(x0);
+        let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _xd = protect(xd);
+        let yd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _yd = protect(yd);
+        for i in 0..n {
+            *REAL(xd).add(i as usize) = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                *REAL(x0).add(i as usize)
+            } else {
+                *INTEGER(x0).add(i as usize) as f64
+            };
+            *REAL(yd).add(i as usize) = if TYPEOF(y0) == SEXPTYPE::REALSXP {
+                *REAL(y0).add(i as usize)
+            } else {
+                *INTEGER(y0).add(i as usize) as f64
+            };
+        }
+        let mut xmin = f64::INFINITY;
+        let mut xmax = f64::NEG_INFINITY;
+        for i in 0..n {
+            let v = *REAL(xd).add(i as usize);
+            xmin = xmin.min(v);
+            xmax = xmax.max(v);
+        }
+        let delta = 0.01 * (xmax - xmin);
+        let sf = Rf_ScalarReal(f);
+        let _sf = protect(sf);
+        let siter = Rf_ScalarInteger(iter);
+        let _si = protect(siter);
+        let sdelta = Rf_ScalarReal(delta);
+        let _sd = protect(sdelta);
+        let ys = lowess(xd, yd, sf, siter, sdelta);
+        let _ys = protect(ys);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, xd);
+        SET_VECTOR_ELT(result, 1, ys);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["x".to_string(), "y".to_string()],
+        );
+        result
+    }
+}
+
