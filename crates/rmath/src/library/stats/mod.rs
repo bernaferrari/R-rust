@@ -17,7 +17,7 @@ pub(crate) mod fft;
 pub(crate) mod filter;
 pub(crate) mod fourier;
 mod hclust_utils;
-mod holtwinters;
+pub(crate) mod holtwinters;
 mod influence;
 mod init;
 mod integrate;

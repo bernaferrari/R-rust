@@ -2,6 +2,7 @@
 //! Port of r-source/src/library/stats/src/HoltWinters.c
 
 use core::ffi::{c_double, c_int, c_void};
+use crate::sexp::ffi::SEXP;
 
 /// Holt-Winters filtering.
 ///
@@ -104,3 +105,101 @@ pub unsafe fn HoltWinters(
         }
     }
 }
+
+/// GNU `HoltWinters` additive, first-period start.
+pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkString};
+        use crate::sexp::ffi::{SEXP, SEXPTYPE};
+        use crate::sexp::protect::protect;
+        use crate::sexp::symbol::Rf_install;
+        let x0 = CAR(args);
+        let n = XLENGTH(x0) as c_int;
+        let tsp = crate::sexp::attrib_core::getAttrib(x0, Rf_install(c"tsp".as_ptr()));
+        let period = if !tsp.is_null()
+            && TYPEOF(tsp) == SEXPTYPE::REALSXP
+            && XLENGTH(tsp) >= 3
+        {
+            *REAL(tsp).add(2) as c_int
+        } else {
+            12
+        };
+        if n < 2 * period {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "time series has no or less than 2 periods",
+            );
+        }
+        let mut x = vec![0.0f64; n as usize];
+        for i in 0..n as usize {
+            x[i] = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                *REAL(x0).add(i)
+            } else {
+                *INTEGER(x0).add(i) as f64
+            };
+        }
+        let mut alpha = 1.0;
+        let mut beta = 0.0;
+        let mut gamma = 0.1;
+        let mut start_time = period + 1;
+        let mut seasonal = 1;
+        let mut dotrend = 1;
+        let mut doseasonal = 1;
+        let mut a = x[(period - 1) as usize] - (period as f64) / 2.0;
+        let mut b = 1.0;
+        let mut s = vec![0.0f64; period as usize];
+        let mut sse = 0.0;
+        let nfit = (n - period) as usize;
+        let mut level = vec![0.0f64; nfit + 1];
+        let mut trend = vec![0.0f64; nfit + 1];
+        let mut season = vec![0.0f64; n as usize + period as usize];
+        let mut xl = n;
+        let mut per = period;
+        HoltWinters(
+            x.as_mut_ptr(),
+            &mut xl,
+            &mut alpha,
+            &mut beta,
+            &mut gamma,
+            &mut start_time,
+            &mut seasonal,
+            &mut per,
+            &mut dotrend,
+            &mut doseasonal,
+            &mut a,
+            &mut b,
+            s.as_mut_ptr(),
+            &mut sse,
+            level.as_mut_ptr(),
+            trend.as_mut_ptr(),
+            season.as_mut_ptr(),
+        );
+        let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, (nfit * 4) as i64);
+        let _f = protect(fitted);
+        for i in 0..nfit {
+            let lv = level[i];
+            let tr = trend[i];
+            let se = 0.0;
+            *REAL(fitted).add(i) = lv + tr + se;
+            *REAL(fitted).add(i + nfit) = lv;
+            *REAL(fitted).add(i + 2 * nfit) = tr;
+            *REAL(fitted).add(i + 3 * nfit) = se;
+        }
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dim) = nfit as c_int;
+        *INTEGER(dim).add(1) = 4;
+        crate::sexp::attrib_core::setAttrib(fitted, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, fitted);
+        crate::mainutils::essentials::set_string_names(result, &["fitted".to_string()]);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"HoltWinters".as_ptr()),
+        );
+        result
+    }
+}
+
