@@ -1211,7 +1211,7 @@ unsafe fn aggregate_group_value(
 }
 
 /// R's `ave(x, ...)` — group averages for numeric vectors using the default mean.
-pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1223,69 +1223,110 @@ pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let n = XLENGTH(x);
         let mut group_args = Vec::new();
+        let mut fun = R_NilValue();
         let mut cursor = CDR(args);
         while !cursor.is_null() && cursor != R_NilValue() {
-            let group = CAR(cursor);
-            if !group.is_null() && group != R_NilValue() && XLENGTH(group) > 0 {
-                group_args.push(group);
+            let tag = TAG(cursor);
+            let is_fun = if !tag.is_null() && tag != R_NilValue() {
+                let p = PRINTNAME(tag);
+                !p.is_null()
+                    && std::ffi::CStr::from_ptr(CHAR(p))
+                        .to_string_lossy()
+                        == "FUN"
+            } else {
+                false
+            };
+            if is_fun {
+                fun = CAR(cursor);
+            } else {
+                let group = CAR(cursor);
+                if !group.is_null() && group != R_NilValue() && XLENGTH(group) > 0 {
+                    group_args.push(group);
+                }
             }
             cursor = CDR(cursor);
         }
-        if group_args.is_empty() {
-            return x;
+        if fun.is_null() || fun == R_NilValue() {
+            let sym = Rf_install(c"mean".as_ptr());
+            fun = crate::sexp::envir::findFun(sym, rho);
+        } else if TYPEOF(fun) == SEXPTYPE::SYMSXP {
+            fun = crate::sexp::envir::findFun(fun, rho);
+        } else if TYPEOF(fun) == SEXPTYPE::STRSXP {
+            let name = elt_to_string(fun, 0);
+            let cstr = CString::new(name).unwrap_or_default();
+            fun = crate::sexp::envir::findFun(Rf_install(cstr.as_ptr()), rho);
         }
+        let _fun = protect(fun);
 
-        #[derive(Clone, Copy, Default)]
-        struct AveGroup {
-            sum: f64,
-            count: R_xlen_t,
-            has_missing: bool,
-        }
-
-        let mut groups: BTreeMap<String, AveGroup> = BTreeMap::new();
+        let mut groups: BTreeMap<String, Vec<i64>> = BTreeMap::new();
         let mut keys = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let key = group_args
-                .iter()
-                .map(|&group| elt_to_string(group, i))
-                .collect::<Vec<_>>()
-                .join("\r");
-            let value = if t == SEXPTYPE::INTSXP {
-                let raw = *INTEGER(x).add(i as usize);
-                if raw == NA_INTEGER {
-                    None
-                } else {
-                    Some(raw as f64)
-                }
-            } else {
-                let raw = *REAL(x).add(i as usize);
-                if raw.to_bits() == R_NA_BIT_PATTERN || raw.is_nan() {
-                    None
-                } else {
-                    Some(raw)
-                }
-            };
-            let entry = groups.entry(key.clone()).or_default();
-            match value {
-                Some(value) => {
-                    entry.sum += value;
-                    entry.count += 1;
-                }
-                None => entry.has_missing = true,
+        if group_args.is_empty() {
+            groups.insert(String::new(), (0..n).collect());
+            keys = vec![String::new(); n as usize];
+        } else {
+            for i in 0..n {
+                let key = group_args
+                    .iter()
+                    .map(|&group| elt_to_string(group, i))
+                    .collect::<Vec<_>>()
+                    .join("\r");
+                groups.entry(key.clone()).or_default().push(i);
+                keys.push(key);
             }
-            keys.push(key);
         }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let mut result = Rf_allocVector3(t, n);
+        let mut result_real = t == SEXPTYPE::REALSXP;
         let _result_guard = protect(result);
-        for (i, key) in keys.iter().enumerate() {
-            let group = groups.get(key).copied().unwrap_or_default();
-            *REAL(result).add(i) = if group.has_missing || group.count == 0 {
-                NA_REAL
-            } else {
-                group.sum / group.count as f64
-            };
+        for idxs in groups.values() {
+            let sub = Rf_allocVector3(t, idxs.len() as i64);
+            let _sub = protect(sub);
+            for (dst, &src) in idxs.iter().enumerate() {
+                if t == SEXPTYPE::INTSXP {
+                    *INTEGER(sub).add(dst) = *INTEGER(x).add(src as usize);
+                } else {
+                    *REAL(sub).add(dst) = *REAL(x).add(src as usize);
+                }
+            }
+            let call_sexp = Rf_cons(fun, Rf_cons(sub, R_NilValue()));
+            if !call_sexp.is_null() {
+                (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            let _cs = protect(call_sexp);
+            let val = crate::eval::eval::Rf_eval(call_sexp, rho);
+            let _val = protect(val);
+            if TYPEOF(val) == SEXPTYPE::REALSXP && !result_real {
+                let promoted = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+                let _prom = protect(promoted);
+                for i in 0..n {
+                    *REAL(promoted).add(i as usize) = *INTEGER(result).add(i as usize) as f64;
+                }
+                result = promoted;
+                result_real = true;
+            }
+            for (k, &src) in idxs.iter().enumerate() {
+                if !result_real {
+                    let vn = XLENGTH(val).max(1);
+                    let v = if TYPEOF(val) == SEXPTYPE::INTSXP {
+                        *INTEGER(val).add((k as i64 % vn) as usize)
+                    } else {
+                        NA_INTEGER
+                    };
+                    *INTEGER(result).add(src as usize) = v;
+                } else {
+                    let vn = XLENGTH(val).max(1);
+                    let v = if TYPEOF(val) == SEXPTYPE::REALSXP {
+                        *REAL(val).add((k as i64 % vn) as usize)
+                    } else if TYPEOF(val) == SEXPTYPE::INTSXP {
+                        *INTEGER(val).add((k as i64 % vn) as usize) as f64
+                    } else {
+                        NA_REAL
+                    };
+                    *REAL(result).add(src as usize) = v;
+                }
+            }
         }
+        let _ = keys;
         result
     }
 }
