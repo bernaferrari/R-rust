@@ -6,4 +6,5 @@ cat(paste(encodeString(c("a", "b"), quote = "'"), collapse = "|"), "\n", sep = "
 cat(paste(encodeString(c("a", "bb"), width = 4, justify = "left"), collapse = "|"), "\n", sep = "")
 cat(paste(encodeString(c("a", "bb"), width = 4, justify = "centre"), collapse = "|"), "\n", sep = "")
 cat(paste(encodeString(c("a", "bb"), justify = "none"), collapse = "|"), "\n", sep = "")
+cat(is.na(encodeString(NA_character_, na.encode = FALSE)), "\n", sep = "")
 cat(identical(as.name("x"), as.symbol("x")), "\n", sep = "")
