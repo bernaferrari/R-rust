@@ -2014,6 +2014,92 @@ pub unsafe fn do_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `prcomp` via eigen of the sample covariance.
+pub unsafe fn do_prcomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (nr, nc) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            (XLENGTH(x) as usize, 1)
+        };
+        if nr < 2 || nc < 1 {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "cannot rescale a constant/zero column to unit variance",
+            );
+        }
+        let mut data = vec![0.0f64; nr * nc];
+        for j in 0..nc {
+            let mut mean = 0.0;
+            for i in 0..nr {
+                let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i + j * nr)
+                } else {
+                    *INTEGER(x).add(i + j * nr) as f64
+                };
+                data[i + j * nr] = v;
+                mean += v;
+            }
+            mean /= nr as f64;
+            for i in 0..nr {
+                data[i + j * nr] -= mean;
+            }
+        }
+        let cov = Rf_allocVector3(SEXPTYPE::REALSXP, (nc * nc) as i64);
+        let _c = protect(cov);
+        let cdim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(cdim) = nc as c_int;
+        *INTEGER(cdim).add(1) = nc as c_int;
+        crate::sexp::attrib_core::setAttrib(cov, crate::sexp::attrib_core::R_DimSymbol(), cdim);
+        let denom = (nr - 1) as f64;
+        for a in 0..nc {
+            for b in 0..nc {
+                let mut s = 0.0;
+                for i in 0..nr {
+                    s += data[i + a * nr] * data[i + b * nr];
+                }
+                *REAL(cov).add(a + b * nc) = s / denom;
+            }
+        }
+        let ev_args = Rf_cons(cov, R_NilValue());
+        let _ea = protect(ev_args);
+        let ev = crate::mainutils::eigen::do_eigen(_call, _op, ev_args, _rho);
+        let _ev = protect(ev);
+        let values = VECTOR_ELT(ev, 0);
+        let vectors = VECTOR_ELT(ev, 1);
+        let sdev = Rf_allocVector3(SEXPTYPE::REALSXP, nc as i64);
+        for j in 0..nc {
+            let lam = if TYPEOF(values) == SEXPTYPE::REALSXP {
+                *REAL(values).add(j)
+            } else {
+                0.0
+            };
+            *REAL(sdev).add(j) = if lam > 1e-10 { lam.sqrt() } else { 0.0 };
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, sdev);
+        SET_VECTOR_ELT(result, 1, vectors);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["sdev".to_string(), "rotation".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"prcomp".as_ptr()),
+        );
+        result
+    }
+}
+
+
 
 
 // ---------------------------------------------------------------------------

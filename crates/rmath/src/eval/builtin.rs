@@ -1605,6 +1605,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::dblcen::do_cmdscale,
     },
     EvaluatedBuiltin {
+        name: "prcomp",
+        handler: crate::mainutils::essentials::do_prcomp,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
