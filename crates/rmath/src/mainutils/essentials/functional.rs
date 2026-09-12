@@ -1502,14 +1502,96 @@ pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::eval::eval::Rf_eval(call, rho)
         };
         let _robj = protect(robj);
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        *INTEGER(dim) = nx as c_int;
-        *INTEGER(dim).add(1) = ny as c_int;
-        crate::sexp::attrib_core::setAttrib(robj, Rf_install(c"dim".as_ptr()), dim);
+        let mut od = array_dims(x);
+        od.extend(array_dims(y));
+        set_int_dim(robj, &od);
         attach_outer_dimnames(robj, x, y);
         robj
     }
 }
+
+/// GNU `.kronecker(X, Y, FUN="*")` — `aperm(outer(X,Y,FUN))` then `dim <- dX*dY`.
+pub unsafe fn do_kronecker(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = as_array_for_kronecker(CAR(args));
+        let _x = protect(x);
+        let y = as_array_for_kronecker(CAR(CDR(args)));
+        let _y = protect(y);
+        let fun_cell = CDR(CDR(args));
+        let fun = if fun_cell.is_null() || fun_cell == R_NilValue() {
+            Rf_mkString(c"*".as_ptr())
+        } else {
+            CAR(fun_cell)
+        };
+        let _fun = protect(fun);
+        let mut dx = array_dims(x);
+        let mut dy = array_dims(y);
+        if dx.len() < dy.len() {
+            dx.resize(dy.len(), 1);
+            set_int_dim(x, &dx);
+        } else if dy.len() < dx.len() {
+            dy.resize(dx.len(), 1);
+            set_int_dim(y, &dy);
+        }
+        let outer_args = Rf_cons(x, Rf_cons(y, Rf_cons(fun, R_NilValue())));
+        let _oa = protect(outer_args);
+        let opobj = do_outer(call, op, outer_args, rho);
+        let _op = protect(opobj);
+        let k = dx.len();
+        let perm = Rf_allocVector3(SEXPTYPE::INTSXP, (2 * k) as i64);
+        let _perm = protect(perm);
+        for i in 0..k {
+            *INTEGER(perm).add(2 * i) = (k + i + 1) as c_int;
+            *INTEGER(perm).add(2 * i + 1) = (i + 1) as c_int;
+        }
+        let aperm_args = Rf_cons(opobj, Rf_cons(perm, R_NilValue()));
+        let _aa = protect(aperm_args);
+        let permuted = crate::mainutils::array::do_aperm(call, op, aperm_args, rho);
+        let _p = protect(permuted);
+        let out_dim: Vec<c_int> = dx
+            .iter()
+            .zip(dy.iter())
+            .map(|(a, b)| a.saturating_mul(*b))
+            .collect();
+        set_int_dim(permuted, &out_dim);
+        permuted
+    }
+}
+
+unsafe fn as_array_for_kronecker(x: SEXP) -> SEXP {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
+            return x;
+        }
+        let y = crate::mainutils::duplicate::duplicate(x);
+        let _y = protect(y);
+        set_int_dim(y, &[XLENGTH(y) as c_int]);
+        y
+    }
+}
+
+unsafe fn array_dims(x: SEXP) -> Vec<c_int> {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
+            return vec![XLENGTH(x) as c_int];
+        }
+        let n = XLENGTH(dim) as usize;
+        (0..n).map(|i| *INTEGER(dim).add(i)).collect()
+    }
+}
+
+unsafe fn set_int_dim(x: SEXP, dims: &[c_int]) {
+    unsafe {
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, dims.len() as i64);
+        for (i, d) in dims.iter().enumerate() {
+            *INTEGER(dim).add(i) = *d;
+        }
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), dim);
+    }
+}
+
 
 unsafe fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
     unsafe {

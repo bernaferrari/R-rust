@@ -1513,6 +1513,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_outer,
     },
     EvaluatedBuiltin {
+        name: "kronecker",
+        handler: crate::mainutils::essentials::do_kronecker,
+    },
+    EvaluatedBuiltin {
+        name: ".kronecker",
+        handler: crate::mainutils::essentials::do_kronecker,
+    },
+    EvaluatedBuiltin {
         name: "sweep",
         handler: crate::mainutils::essentials::do_sweep,
     },
