@@ -433,3 +433,51 @@ pub unsafe fn do_acf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `pacf` via Durbin-Levinson on demeaned acf.
+pub unsafe fn do_pacf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let a = do_acf(_call, _op, args, rho);
+        let _a = protect(a);
+        let acfv = VECTOR_ELT(a, 0);
+        let nlag = XLENGTH(acfv) as usize;
+        if nlag < 2 {
+            return a;
+        }
+        let m = nlag - 1;
+        let mut rho_v = vec![0.0f64; nlag];
+        for i in 0..nlag {
+            rho_v[i] = *REAL(acfv).add(i);
+        }
+        let pac = Rf_allocVector3(SEXPTYPE::REALSXP, m as i64);
+        let _p = protect(pac);
+        let mut phi_prev = vec![0.0f64; m];
+        let mut phi = vec![0.0f64; m];
+        for k in 1..=m {
+            let mut num = rho_v[k];
+            let mut den = 1.0;
+            for j in 1..k {
+                num -= phi_prev[j - 1] * rho_v[k - j];
+                den -= phi_prev[j - 1] * rho_v[j];
+            }
+            let phikk = if den.abs() > 1e-15 { num / den } else { 0.0 };
+            phi[k - 1] = phikk;
+            for j in 1..k {
+                phi[j - 1] = phi_prev[j - 1] - phikk * phi_prev[k - j - 1];
+            }
+            *REAL(pac).add(k - 1) = phikk;
+            phi_prev.clone_from(&phi);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, pac);
+        crate::mainutils::essentials::set_string_names(result, &["acf".to_string()]);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"acf".as_ptr()),
+        );
+        result
+    }
+}
+
+
