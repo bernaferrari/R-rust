@@ -892,7 +892,6 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// GNU `format.default` for atomic numeric vectors: shared width/digits
 /// across the vector, honoring `digits`, `trim`, `nsmall`, `width`, and
 /// `scientific` (TRUE/FALSE/NA/numeric → scipen -99/310/keep/value).
-/// positional order after `x`).
 unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
     unsafe {
         let mut trim = false;
@@ -900,6 +899,9 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         let mut nsmall: c_int = 0;
         let mut width: c_int = 0;
         let mut sci_opt: Option<c_int> = None;
+        let mut big_mark = String::new();
+        let mut drop0trailing = false;
+        let mut zero_print: Option<String> = None;
         let mut positional = 0;
         let mut cell = crate::sexp::accessors::CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
@@ -930,6 +932,9 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     "width" => Some(4),
                     "na.encode" => Some(5),
                     "scientific" => Some(6),
+                    "big.mark" => Some(7),
+                    "drop0trailing" => Some(8),
+                    "zero.print" => Some(9),
                     _ => None,
                 })
                 .unwrap_or_else(|| {
@@ -981,6 +986,28 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                             crate::mainutils::errors::R_getCurrentCall(),
                             "invalid 'scientific' argument",
                         );
+                    }
+                }
+                7 => {
+                    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
+                        big_mark = elt_to_string(value, 0);
+                    }
+                }
+                8 => {
+                    drop0trailing = crate::main::coerce::asLogical(value) != 0;
+                }
+                9 => {
+                    if value.is_null() || value == R_NilValue() {
+                        zero_print = None;
+                    } else if TYPEOF(value) == SEXPTYPE::LGLSXP {
+                        let flag = crate::main::coerce::asLogical(value);
+                        zero_print = Some(if flag != 0 {
+                            "0".to_string()
+                        } else {
+                            " ".to_string()
+                        });
+                    } else if TYPEOF(value) == SEXPTYPE::STRSXP {
+                        zero_print = Some(elt_to_string(value, 0));
                     }
                 }
                 _ => {}
@@ -1045,6 +1072,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
 
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _result_guard = protect(result);
+        let mut encoded_strings = Vec::with_capacity(n as usize);
         for i in 0..n {
             let encoded = match TYPEOF(x) {
                 10 => {
@@ -1066,10 +1094,23 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     )
                 }
             };
-            let text = std::ffi::CStr::from_ptr(encoded).to_bytes().to_vec();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(
-                text.as_ptr() as *const std::os::raw::c_char,
+            encoded_strings.push(
+                std::ffi::CStr::from_ptr(encoded)
+                    .to_string_lossy()
+                    .into_owned(),
             );
+        }
+        if !big_mark.is_empty() || drop0trailing || zero_print.is_some() {
+            pretty_num_inplace(
+                &mut encoded_strings,
+                &big_mark,
+                drop0trailing,
+                zero_print.as_deref(),
+            );
+        }
+        for (i, text) in encoded_strings.iter().enumerate() {
+            let cstr = CString::new(text.as_str()).unwrap_or_default();
+            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
                 let data = (*result).gengc_next_node as *mut SEXP;
                 *data.add(i as usize) = charsxp;
@@ -1083,6 +1124,186 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         result
     }
 }
+
+fn pretty_num_inplace(
+    strings: &mut [String],
+    big_mark: &str,
+    drop0trailing: bool,
+    zero_print: Option<&str>,
+) {
+    let before: Vec<usize> = strings.iter().map(|s| s.chars().count()).collect();
+    for s in strings.iter_mut() {
+        if s.trim() == "NA" || s.trim() == "NaN" || s.trim() == "Inf" || s.trim() == "-Inf" {
+            continue;
+        }
+        *s = pretty_num_one(s, big_mark, drop0trailing);
+    }
+    if let Some(zero) = zero_print {
+        for s in strings.iter_mut() {
+            if pretty_num_is_zero(s) {
+                *s = format_zero_print(s, zero);
+            }
+        }
+    }
+    if strings
+        .iter()
+        .zip(&before)
+        .any(|(s, old)| s.chars().count() > *old)
+    {
+        let max_w = strings.iter().map(|s| s.chars().count()).max().unwrap_or(0);
+        for s in strings.iter_mut() {
+            let len = s.chars().count();
+            if len < max_w {
+                *s = format!("{}{s}", " ".repeat(max_w - len));
+            }
+        }
+    }
+}
+
+fn pretty_num_one(s: &str, big_mark: &str, drop0trailing: bool) -> String {
+    let leading = s.chars().take_while(|c| *c == ' ').count();
+    let body = s.trim_start();
+    let (sign, rest) = if let Some(stripped) = body.strip_prefix('-') {
+        ("-", stripped)
+    } else if let Some(stripped) = body.strip_prefix('+') {
+        ("+", stripped)
+    } else {
+        ("", body)
+    };
+    let (int_part, frac_exp) = match rest.split_once('.') {
+        Some((int_part, rest)) => (int_part, Some(rest)),
+        None => (rest, None),
+    };
+    let (mut frac, exp) = match frac_exp {
+        Some(rest) => match rest.find(['e', 'E']) {
+            Some(at) => (rest[..at].to_string(), Some(&rest[at..])),
+            None => (rest.to_string(), None),
+        },
+        None => match rest.find(['e', 'E']) {
+            Some(at) => {
+                let (int_only, exp) = rest.split_at(at);
+                return pretty_num_join(
+                    leading,
+                    sign,
+                    &insert_big_mark(int_only, big_mark),
+                    None,
+                    Some(exp),
+                    drop0trailing,
+                );
+            }
+            None => (String::new(), None),
+        },
+    };
+    if drop0trailing {
+        while frac.ends_with('0') {
+            frac.pop();
+        }
+        if let Some(e) = exp {
+            if e.bytes().skip(1).all(|b| b == b'+' || b == b'-' || b == b'0') {
+                return pretty_num_join(
+                    leading,
+                    sign,
+                    &insert_big_mark(int_part, big_mark),
+                    if frac.is_empty() { None } else { Some(&frac) },
+                    None,
+                    drop0trailing,
+                );
+            }
+        }
+    }
+    pretty_num_join(
+        leading,
+        sign,
+        &insert_big_mark(int_part, big_mark),
+        if frac.is_empty() { None } else { Some(&frac) },
+        exp,
+        drop0trailing,
+    )
+}
+
+fn pretty_num_join(
+    leading: usize,
+    sign: &str,
+    int_part: &str,
+    frac: Option<&str>,
+    exp: Option<&str>,
+    drop0trailing: bool,
+) -> String {
+    let mut out = " ".repeat(leading);
+    out.push_str(sign);
+    out.push_str(int_part);
+    match frac {
+        Some(frac) => {
+            out.push('.');
+            out.push_str(frac);
+        }
+        None if !drop0trailing => {}
+        None => {}
+    }
+    if let Some(exp) = exp {
+        out.push_str(exp);
+    }
+    out
+}
+
+fn insert_big_mark(int_part: &str, mark: &str) -> String {
+    if mark.is_empty() {
+        return int_part.to_string();
+    }
+    let digits: String = int_part.chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.len() <= 3 {
+        return int_part.to_string();
+    }
+    let prefix: String = int_part.chars().take_while(|c| !c.is_ascii_digit()).collect();
+    let mut grouped = String::new();
+    for (i, ch) in digits.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            grouped.push_str(mark);
+        }
+        grouped.push(ch);
+    }
+    let grouped: String = grouped.chars().rev().collect();
+    format!("{prefix}{grouped}")
+}
+
+fn pretty_num_is_zero(s: &str) -> bool {
+    let t = s.trim();
+    let t = t.trim_start_matches('+').trim_start_matches('-');
+    if t.is_empty() {
+        return false;
+    }
+    let (mant, exp) = match t.find(['e', 'E']) {
+        Some(at) => (&t[..at], &t[at + 1..]),
+        None => (t, ""),
+    };
+    if !exp.is_empty() && !exp.bytes().all(|b| b == b'+' || b == b'-' || b == b'0') {
+        return false;
+    }
+    mant.chars().all(|c| c == '0' || c == '.')
+}
+
+fn format_zero_print(original: &str, zero: &str) -> String {
+    // GNU .format.zeros keeps width by overwriting the first '0'.
+    let mut chars: Vec<char> = original.chars().collect();
+    let Some(first0) = chars.iter().position(|c| *c == '0') else {
+        return zero.to_string();
+    };
+    let z: Vec<char> = zero.chars().collect();
+    let start = first0.saturating_sub(z.len().saturating_sub(1));
+    for (i, ch) in z.iter().enumerate() {
+        let at = start + i;
+        if at < chars.len() {
+            chars[at] = *ch;
+        }
+    }
+    for ch in chars.iter_mut().skip(start + z.len()) {
+        if *ch == '0' || *ch == '.' {
+            *ch = ' ';
+        }
+    }
+    chars.into_iter().collect()
+}
+
 
 unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
     unsafe {
