@@ -730,6 +730,12 @@ mod tests {
                 .message
                 .contains("function 'X11 dataentry' is not yet implemented")
         );
+        // The full error pipeline ran: the message also landed in the
+        // session error buffer like GNU R_SetErrmessage.
+        assert_eq!(
+            crate::mainutils::errors::R_GetErrorBuf(),
+            "function 'X11 dataentry' is not yet implemented"
+        );
     }
 
     #[test]
