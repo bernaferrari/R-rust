@@ -1553,6 +1553,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::graphics::stem::do_stem,
     },
     EvaluatedBuiltin {
+        name: "ecdf",
+        handler: crate::mainutils::essentials::do_ecdf,
+    },
+    EvaluatedBuiltin {
+        name: ".ecdf_apply",
+        handler: crate::mainutils::essentials::do_ecdf_apply,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

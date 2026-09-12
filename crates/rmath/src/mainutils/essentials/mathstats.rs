@@ -1588,6 +1588,126 @@ pub unsafe fn do_fivenum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `ecdf(x)` — empirical CDF as a step function.
+pub unsafe fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let xt = TYPEOF(x);
+        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'x' must be numeric",
+            );
+        }
+        let n0 = XLENGTH(x);
+        let mut vals: Vec<f64> = Vec::new();
+        for i in 0..n0 {
+            let v = if xt == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    continue;
+                }
+                iv as f64
+            };
+            if v.is_finite() {
+                vals.push(v);
+            }
+        }
+        if vals.is_empty() {
+            crate::mainutils::errors::errorcall_str(
+                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                "'x' must have 1 or more non-missing values",
+            );
+        }
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len() as f64;
+        let mut uniq: Vec<f64> = Vec::new();
+        let mut ys: Vec<f64> = Vec::new();
+        let mut i = 0;
+        while i < vals.len() {
+            let v = vals[i];
+            let mut j = i + 1;
+            while j < vals.len() && vals[j] == v {
+                j += 1;
+            }
+            uniq.push(v);
+            ys.push(j as f64 / n);
+            i = j;
+        }
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
+        let _env = protect(env);
+        let vx = Rf_allocVector3(SEXPTYPE::REALSXP, uniq.len() as i64);
+        let _vx = protect(vx);
+        let vy = Rf_allocVector3(SEXPTYPE::REALSXP, ys.len() as i64);
+        let _vy = protect(vy);
+        for (i, v) in uniq.iter().enumerate() {
+            *REAL(vx).add(i) = *v;
+            *REAL(vy).add(i) = ys[i];
+        }
+        crate::sexp::envir::defineVar(Rf_install(c"vals".as_ptr()), vx, env);
+        crate::sexp::envir::defineVar(Rf_install(c"ys".as_ptr()), vy, env);
+        crate::sexp::envir::defineVar(
+            Rf_install(c"nobs".as_ptr()),
+            Rf_ScalarInteger(n as c_int),
+            env,
+        );
+        let vsym = Rf_install(c"v".as_ptr());
+        let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
+        SETTAG(formals, vsym);
+        let body = crate::sexp::constructors::Rf_lang2(Rf_install(c".ecdf_apply".as_ptr()), vsym);
+        let fun = crate::mainutils::dstruct::mkCLOSXP(formals, body, env);
+        let _fun = protect(fun);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"ecdf".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"stepfun".as_ptr()));
+        SET_STRING_ELT(class, 2, Rf_mkChar(c"function".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(fun, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        fun
+    }
+}
+
+/// Evaluate an ecdf closure: last y with vals <= v, else 0 / 1 at ends.
+pub unsafe fn do_ecdf_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let v = CAR(args);
+        let parent = crate::sexp::accessors::ENCLOS(rho);
+        let vals = crate::sexp::envir::R_findVar(Rf_install(c"vals".as_ptr()), parent);
+        let ys = crate::sexp::envir::R_findVar(Rf_install(c"ys".as_ptr()), parent);
+        if vals.is_null()
+            || ys.is_null()
+            || TYPEOF(vals) != SEXPTYPE::REALSXP
+            || TYPEOF(ys) != SEXPTYPE::REALSXP
+        {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let nv = XLENGTH(vals) as usize;
+        let nq = XLENGTH(v);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nq);
+        for i in 0..nq {
+            let q = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                *REAL(v).add(i as usize)
+            } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+                *INTEGER(v).add(i as usize) as f64
+            } else {
+                NA_REAL
+            };
+            let mut y = 0.0;
+            for j in 0..nv {
+                if *REAL(vals).add(j) <= q {
+                    y = *REAL(ys).add(j);
+                } else {
+                    break;
+                }
+            }
+            *REAL(result).add(i as usize) = y;
+        }
+        result
+    }
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
