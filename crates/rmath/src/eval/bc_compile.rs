@@ -167,44 +167,49 @@ impl BytecodeCompiler {
                 if matches!(name.as_deref(), Some("<-") | Some("=")) {
                     return self.compile_assignment(expr);
                 }
+                if name.as_deref() == Some("<<-") {
+                    return self.compile_superassignment(expr);
+                }
                 if name.as_deref() == Some("function") {
                     return self.compile_function_expr(expr);
                 }
-                if !name.as_deref().is_some_and(is_eager_builtin_call)
-                    && !self.is_compiled_local_fun(fun)
-                {
+                let local_fun = self.is_compiled_local_fun(fun);
+                if !name.as_deref().is_some_and(is_eager_builtin_call) && !local_fun {
                     return false;
                 }
+                let mut arg_cells = Vec::new();
+                let mut cur = CDR(expr);
+                while !cur.is_null() && cur != R_NilValue() {
+                    arg_cells.push(cur);
+                    cur = CDR(cur);
+                }
+                // Closure calls receive lazy promises like GNU MAKEPROM:
+                // `g <- function(y) 5; g(stop("boom"))` must not evaluate
+                // its arguments.  Constants stay eager values
+                // (PUSHCONSTARG semantics).
+                for cell in &arg_cells {
+                    let argument = CAR(*cell);
+                    let lazy_ok = local_fun
+                        && !matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
+                    if lazy_ok {
+                        let idx = self.add_const(argument);
+                        self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
+                    } else if !self.compile_expr(argument) {
+                        return false;
+                    }
+                    let tag = TAG(*cell);
+                    if !tag.is_null() && tag != R_NilValue() {
+                        let tag_idx = self.add_const(tag);
+                        self.emit_operand(opcodes::OP_SETTAG, tag_idx);
+                    }
+                }
+                let fun_idx = self.add_const(fun);
+                self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
+                self.emit_operand(opcodes::OP_CALL, arg_cells.len() as c_int);
+                true
             } else {
                 return false;
             }
-
-            let mut arg_cells = Vec::new();
-            let mut cur = CDR(expr);
-            while !cur.is_null() && cur != R_NilValue() {
-                arg_cells.push(cur);
-                cur = CDR(cur);
-            }
-
-            for cell in &arg_cells {
-                if !self.compile_expr(CAR(*cell)) {
-                    return false;
-                }
-                // Named argument (`name = value`): tag the just-pushed
-                // value so the call opcodes bind it by name (eval.c
-                // SETTAG). Without this, `paste(x, collapse=",")` inside a
-                // compiled closure loses the tag and "," becomes a
-                // positional argument.
-                let tag = TAG(*cell);
-                if !tag.is_null() && tag != R_NilValue() {
-                    let tag_idx = self.add_const(tag);
-                    self.emit_operand(opcodes::OP_SETTAG, tag_idx);
-                }
-            }
-            let fun_idx = self.add_const(fun);
-            self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
-            self.emit_operand(opcodes::OP_CALL, arg_cells.len() as c_int);
-            true
         }
     }
 
@@ -246,6 +251,7 @@ impl BytecodeCompiler {
             if fb.is_null() {
                 return false;
             }
+
             let _fb_guard = protect(fb);
             crate::sexp::accessors::SET_VECTOR_ELT(fb, 0, crate::sexp::accessors::FORMALS(scratch));
             crate::sexp::accessors::SET_VECTOR_ELT(fb, 1, crate::sexp::accessors::BODY(scratch));
@@ -328,6 +334,21 @@ impl BytecodeCompiler {
         }
     }
 
+
+    /// `<<-`: compile the value, then store into the enclosing frame via
+    /// OP_SETVAR2 (eval.c SETVAR2 semantics; the value stays on the stack).
+    unsafe fn compile_superassignment(&mut self, expr: SEXP) -> bool {
+        unsafe {
+            let lhs = CAR(CDR(expr));
+            let rhs = CAR(CDR(CDR(expr)));
+            if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
+                return false;
+            }
+            let symbol_idx = self.add_const(lhs);
+            self.emit_operand(opcodes::OP_SETVAR2, symbol_idx);
+            true
+        }
+    }
     unsafe fn compile_if(&mut self, expr: SEXP) -> bool {
         unsafe {
             // if (test) then else ; form is lang if test then else

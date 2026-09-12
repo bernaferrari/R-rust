@@ -73,3 +73,35 @@ fn imported_gnu_makeclosure_returned_closure_matches_gnu() {
         "[1] TRUE"
     );
 }
+
+#[test]
+fn cmpfun_local_fun_calls_keep_arguments_lazy() {
+    // GNU MAKEPROM semantics: a closure call never evaluates arguments
+    // the callee does not force.
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                "f <- compiler::cmpfun(function() { g <- function(y) 5; g(stop('boom')) }); identical(f(), 5)"
+            )
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+    assert_eq!(
+        session
+            .eval("h <- compiler::cmpfun(function() { g <- function(y) y; g(1+1) }); identical(h(), 2)")
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+    assert_eq!(
+        session
+            .eval(
+                "n <- 0; k <- compiler::cmpfun(function() { g <- function(y) { n <<- n + 1; y }; c(g(9), g(8)) }); identical(k(), c(9, 8)) && identical(n, 2)"
+            )
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+}
