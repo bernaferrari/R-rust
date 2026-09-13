@@ -4632,6 +4632,55 @@ pub unsafe fn do_vcov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `hat(x)` leverages for intercept + x.
+pub unsafe fn do_hat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(x) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let mut xs = Vec::with_capacity(n);
+        for i in 0..n {
+            xs.push(elt_real_safe(x, i as i64));
+        }
+        let mean = xs.iter().sum::<f64>() / n as f64;
+        let sxx = xs.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>();
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _r = protect(result);
+        let invn = 1.0 / n as f64;
+        for i in 0..n {
+            let h = if sxx > 0.0 {
+                invn + (xs[i] - mean) * (xs[i] - mean) / sxx
+            } else {
+                invn
+            };
+            *REAL(result).add(i) = h;
+        }
+        result
+    }
+}
+
+/// GNU `hatvalues(model)` — extract `$hat` or compute `hat(residuals)`.
+pub unsafe fn do_hatvalues(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let h = list_named_elt(obj, "hat");
+        if h != R_NilValue() {
+            return h;
+        }
+        let x = list_named_elt(obj, "x");
+        if x != R_NilValue() {
+            return do_hat(_call, _op, Rf_cons(x, R_NilValue()), rho);
+        }
+        R_NilValue()
+    }
+}
+
+
 
 
 

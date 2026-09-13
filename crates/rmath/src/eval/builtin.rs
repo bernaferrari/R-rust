@@ -1929,6 +1929,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_vcov,
     },
     EvaluatedBuiltin {
+        name: "hat",
+        handler: crate::mainutils::essentials::do_hat,
+    },
+    EvaluatedBuiltin {
+        name: "hatvalues",
+        handler: crate::mainutils::essentials::do_hatvalues,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
