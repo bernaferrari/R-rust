@@ -4529,14 +4529,52 @@ pub unsafe fn do_extract_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-/// GNU `case.names(object)` — rownames.
+/// GNU `case.names(object)` — `names(residuals)` or `1:n`.
 pub unsafe fn do_case_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::essentials::do_rownames(call, op, args, rho) }
+    unsafe {
+        let obj = CAR(args);
+        let r = list_named_elt(obj, "residuals");
+        if r != R_NilValue() {
+            let names = crate::sexp::attrib_core::getAttrib(
+                r,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == XLENGTH(r)
+            {
+                return names;
+            }
+            let n = XLENGTH(r);
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _o = protect(out);
+            for i in 0..n {
+                let s = CString::new((i + 1).to_string()).unwrap_or_default();
+                SET_STRING_ELT(out, i, Rf_mkChar(s.as_ptr()));
+            }
+            return out;
+        }
+        crate::mainutils::essentials::do_rownames(call, op, args, rho)
+    }
 }
 
-/// GNU `variable.names(object)` — colnames.
+/// GNU `variable.names(object)` — `names(coefficients)`.
 pub unsafe fn do_variable_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::essentials::do_colnames(call, op, args, rho) }
+    unsafe {
+        let obj = CAR(args);
+        let c = list_named_elt(obj, "coefficients");
+        if c != R_NilValue() {
+            let names = crate::sexp::attrib_core::getAttrib(
+                c,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                return names;
+            }
+        }
+        crate::mainutils::essentials::do_colnames(call, op, args, rho)
+    }
 }
 
 /// GNU `confint(object)` from `$coefficients` and `$vcov`.
