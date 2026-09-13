@@ -196,26 +196,21 @@ unsafe fn fmm_spline(
 
         // Gaussian elimination
         i = 1;
-        while i < nm1 {
+        while i < n {
             let t = *d.add(i - 1) / *b.add(i - 1);
             *b.add(i) = *b.add(i) - t * *d.add(i - 1);
             *c.add(i) = *c.add(i) - t * *c.add(i - 1);
             i += 1;
         }
 
-        // Backward substitution
         *c.add(nm1) = *c.add(nm1) / *b.add(nm1);
-        i = nm1 - 1;
-        while i >= 1 {
+        let mut i = nm1;
+        loop {
             i -= 1;
-        }
-        i = nm1 - 1;
-        while i >= 1 {
             *c.add(i) = (*c.add(i) - *d.add(i) * *c.add(i + 1)) / *b.add(i);
             if i == 0 {
                 break;
             }
-            i -= 1;
         }
 
         // Polynomial coefficients
@@ -576,4 +571,29 @@ pub unsafe fn do_smooth_spline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         result
     }
 }
+
+/// GNU `spline(x, y, xout)` FMM cubic.
+pub unsafe fn do_spline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let xout = CAR(CDR(CDR(args)));
+        let method = Rf_ScalarInteger(3);
+        let _m = protect(method);
+        let z = SplineCoef(method, x, y);
+        let _z = protect(z);
+        let yout = SplineEval(xout, z);
+        let _yo = protect(yout);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, xout);
+        SET_VECTOR_ELT(result, 1, yout);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["x".to_string(), "y".to_string()],
+        );
+        result
+    }
+}
+
 
