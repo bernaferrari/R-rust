@@ -667,3 +667,44 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
         ans
     }
 }
+
+/// GNU `spec.pgram` raw periodogram, no taper/detrend.
+pub unsafe fn do_spec_pgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
+        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkString};
+        use crate::sexp::protect::protect;
+        let x = CAR(args);
+        let n = XLENGTH(x);
+        let xd = if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::CPLXSXP {
+            x
+        } else {
+            crate::main::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
+        };
+        let _xd = protect(xd);
+        let inv = Rf_ScalarLogical(0);
+        let _inv = protect(inv);
+        let z = fft(xd, inv);
+        let _z = protect(z);
+        let nfreq = n / 2;
+        let spec = Rf_allocVector3(SEXPTYPE::REALSXP, nfreq);
+        let _s = protect(spec);
+        for k in 1..=nfreq {
+            let c = *COMPLEX(z).add(k as usize);
+            let p = (c.r * c.r + c.i * c.i) / n as f64;
+            *REAL(spec).add((k - 1) as usize) = p;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, spec);
+        crate::mainutils::essentials::set_string_names(result, &["spec".to_string()]);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"spec".as_ptr()),
+        );
+        let _ = INTEGER;
+        result
+    }
+}
+
