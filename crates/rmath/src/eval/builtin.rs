@@ -1841,6 +1841,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_mood_test,
     },
     EvaluatedBuiltin {
+        name: "ansari.test",
+        handler: crate::mainutils::essentials::do_ansari_test,
+    },
+    EvaluatedBuiltin {
         name: "stem",
         handler: crate::library::graphics::stem::do_stem,
     },

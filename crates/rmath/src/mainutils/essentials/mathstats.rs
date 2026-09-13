@@ -2751,6 +2751,95 @@ pub unsafe fn do_mood_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `ansari.test(x, y)` asymptotic.
+pub unsafe fn do_ansari_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let xs = CAR(args);
+        let ys = CAR(CDR(args));
+        let mut x = Vec::new();
+        let mut y = Vec::new();
+        for i in 0..XLENGTH(xs) {
+            let v = elt_real_safe(xs, i);
+            if v.is_finite() {
+                x.push(v);
+            }
+        }
+        for i in 0..XLENGTH(ys) {
+            let v = elt_real_safe(ys, i);
+            if v.is_finite() {
+                y.push(v);
+            }
+        }
+        let m = x.len() as f64;
+        let n = y.len() as f64;
+        let ntot = m + n;
+        let mut z = x.clone();
+        z.extend_from_slice(&y);
+        let ranks = rank_average(&z);
+        let scores: Vec<f64> = ranks.iter().map(|r| r.min(ntot - r + 1.0)).collect();
+        let stat: f64 = scores.iter().take(x.len()).sum();
+        let even = (ntot as i64) % 2 == 0;
+        let mut unique = z.clone();
+        unique.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        unique.dedup_by(|a, b| a.to_bits() == b.to_bits());
+        let ties = unique.len() != z.len();
+        let (zz, sigma) = if !ties {
+            if even {
+                (
+                    stat - m * (ntot + 2.0) / 4.0,
+                    (m * n * (ntot + 2.0) * (ntot - 2.0) / (48.0 * (ntot - 1.0))).sqrt(),
+                )
+            } else {
+                (
+                    stat - m * (ntot + 1.0).powi(2) / (4.0 * ntot),
+                    (m * n * (ntot + 1.0) * (3.0 + ntot * ntot) / (48.0 * ntot * ntot)).sqrt(),
+                )
+            }
+        } else {
+            let mean_a = scores.iter().sum::<f64>() / ntot;
+            let var_a = scores.iter().map(|a| (a - mean_a) * (a - mean_a)).sum::<f64>()
+                / (ntot - 1.0);
+            (stat - m * mean_a, (m * n * var_a / ntot).sqrt())
+        };
+        let p = crate::dist::normal::pnorm5_inner(zz / sigma, 0.0, 1.0, true, false);
+        let pval = (2.0 * p.min(1.0 - p)).min(1.0);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["AB".to_string()]);
+        let null_value = Rf_ScalarReal(1.0);
+        let _nv = protect(null_value);
+        set_string_names(null_value, &["ratio of scales".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 2, null_value);
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"two.sided".as_ptr()));
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"Ansari-Bradley test".as_ptr()));
+        SET_VECTOR_ELT(result, 5, Rf_mkString(c"x and y".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "p.value".to_string(),
+                "null.value".to_string(),
+                "alternative".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

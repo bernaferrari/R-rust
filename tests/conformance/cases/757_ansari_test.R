@@ -1,0 +1,5 @@
+at <- ansari.test(1:5, 6:10)
+cat(as.numeric(at$statistic), "\n", sep = "")
+cat(round(at$p.value, 8), "\n", sep = "")
+cat(at$method, "\n", sep = "")
+cat(class(at), "\n", sep = "")
