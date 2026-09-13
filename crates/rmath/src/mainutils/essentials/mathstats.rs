@@ -5058,6 +5058,7 @@ unsafe fn family_object(family: &str, link: &str) -> SEXP {
             "poisson" => Rf_mkString(c"poisson".as_ptr()),
             "Gamma" => Rf_mkString(c"Gamma".as_ptr()),
             "inverse.gaussian" => Rf_mkString(c"inverse.gaussian".as_ptr()),
+            "quasi" => Rf_mkString(c"quasi".as_ptr()),
             _ => Rf_mkString(c"binomial".as_ptr()),
         };
         let lnk = match link {
@@ -5164,6 +5165,34 @@ pub unsafe fn do_inverse_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         family_object("inverse.gaussian", &link)
     }
 }
+
+/// GNU `quasi()` family object.
+pub unsafe fn do_quasi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut link = "identity".to_string();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let v = CAR(cell);
+            if (name == "link" || name.is_empty())
+                && TYPEOF(v) == SEXPTYPE::STRSXP
+                && XLENGTH(v) > 0
+            {
+                link = elt_to_string(v, 0);
+            }
+            cell = CDR(cell);
+        }
+        family_object("quasi", &link)
+    }
+}
+
 
 
 

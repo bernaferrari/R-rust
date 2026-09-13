@@ -1,0 +1,6 @@
+q <- quasi()
+cat(q$family, "\n", sep = "")
+cat(q$link, "\n", sep = "")
+cat(class(q), "\n", sep = "")
+cat(quasi(link = "log")$link, "\n", sep = "")
+cat(quasi(link = "logit")$link, "\n", sep = "")
