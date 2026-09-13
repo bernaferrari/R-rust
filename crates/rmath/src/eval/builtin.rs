@@ -1701,6 +1701,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::approx::do_approx,
     },
     EvaluatedBuiltin {
+        name: "approxfun",
+        handler: crate::library::stats::approx::do_approxfun,
+    },
+    EvaluatedBuiltin {
+        name: ".approx_apply",
+        handler: crate::library::stats::approx::do_approx_apply,
+    },
+    EvaluatedBuiltin {
         name: "spline",
         handler: crate::library::stats::splines::do_spline,
     },

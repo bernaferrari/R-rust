@@ -202,3 +202,53 @@ pub unsafe fn do_approx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `approxfun(x, y)` linear interpolator.
+pub unsafe fn do_approxfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, SETTAG};
+        use crate::sexp::constructors::{Rf_cons, Rf_lang2};
+        use crate::sexp::symbol::Rf_install;
+        use crate::sexp::protect::protect;
+        let x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
+        let _x = protect(x);
+        let y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
+        let _y = protect(y);
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
+        let _env = protect(env);
+        crate::sexp::envir::defineVar(Rf_install(c"x".as_ptr()), x, env);
+        crate::sexp::envir::defineVar(Rf_install(c"y".as_ptr()), y, env);
+        let vsym = Rf_install(c"v".as_ptr());
+        let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
+        SETTAG(formals, vsym);
+        let body = Rf_lang2(Rf_install(c".approx_apply".as_ptr()), vsym);
+        crate::mainutils::dstruct::mkCLOSXP(formals, body, env)
+    }
+}
+
+/// Evaluate an `approxfun` closure at `v`.
+pub unsafe fn do_approx_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, ENCLOS};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal};
+        use crate::sexp::protect::protect;
+        use crate::sexp::symbol::Rf_install;
+        let v = CAR(args);
+        let env = ENCLOS(rho);
+        let x = crate::sexp::envir::R_findVar(Rf_install(c"x".as_ptr()), env);
+        let y = crate::sexp::envir::R_findVar(Rf_install(c"y".as_ptr()), env);
+        let n = XLENGTH(x);
+        let yleft = Rf_ScalarReal(*REAL(y));
+        let _yl = protect(yleft);
+        let yright = Rf_ScalarReal(*REAL(y).add((n - 1) as usize));
+        let _yr = protect(yright);
+        let method = Rf_ScalarInteger(1);
+        let _m = protect(method);
+        let f = Rf_ScalarReal(0.0);
+        let _f = protect(f);
+        let na_rm = Rf_ScalarInteger(1);
+        let _na = protect(na_rm);
+        Approx(x, y, v, method, yleft, yright, f, na_rm)
+    }
+}
+
+
