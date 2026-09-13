@@ -2447,6 +2447,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_arima,
     },
     EvaluatedBuiltin {
+        name: "spec.taper",
+        handler: crate::library::stats::filter::do_spec_taper,
+    },
+    EvaluatedBuiltin {
         name: "ks.test",
         handler: crate::mainutils::essentials::do_ks_test,
     },

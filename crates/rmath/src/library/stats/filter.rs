@@ -686,6 +686,56 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 
+/// GNU `spec.taper(x, p=0.1)` — cosine taper on each end.
+pub unsafe fn do_spec_taper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let mut p = 0.1;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let pv = CAR(rest);
+            if !pv.is_null() && pv != R_NilValue() {
+                p = if TYPEOF(pv) == SEXPTYPE::REALSXP {
+                    *REAL(pv)
+                } else if TYPEOF(pv) == SEXPTYPE::INTSXP {
+                    *INTEGER(pv) as f64
+                } else {
+                    0.1
+                };
+            }
+        }
+        if p < 0.0 {
+            p = 0.0;
+        }
+        if p > 0.5 {
+            p = 0.5;
+        }
+        let n = XLENGTH(x) as usize;
+        let m = ((n as f64) * p).floor() as usize;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _r = protect(result);
+        for i in 0..n {
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+            *REAL(result).add(i) = v;
+        }
+        if m == 0 || n == 0 {
+            return result;
+        }
+        for k in 0..m {
+            let odd = (2 * k + 1) as f64;
+            let w = 0.5 * (1.0 - (std::f64::consts::PI * odd / (2.0 * m as f64)).cos());
+            *REAL(result).add(k) *= w;
+            *REAL(result).add(n - 1 - k) *= w;
+        }
+        result
+    }
+}
+
+
 /// GNU `spec.ar(x)` AR(1) spectral density.
 pub unsafe fn do_spec_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
