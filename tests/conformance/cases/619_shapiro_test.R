@@ -1,0 +1,5 @@
+set.seed(1)
+d <- shapiro.test(rnorm(10))
+cat(sprintf("%.8f", unname(d$statistic)), "\n", sep = "")
+cat(is.numeric(d$p.value) && d$p.value >= 0 && d$p.value <= 1, "\n", sep = "")
+cat(paste(class(d), collapse = ","), "\n", sep = "")

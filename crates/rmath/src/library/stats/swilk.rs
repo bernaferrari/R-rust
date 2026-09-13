@@ -213,3 +213,46 @@ pub unsafe fn SWilk(x: SEXP) -> SEXP {
         ans
     }
 }
+
+pub unsafe fn do_shapiro_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, INTEGER, SET_VECTOR_ELT, XLENGTH};
+        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector, Rf_mkString};
+        let x0 = CAR(args);
+        let n = XLENGTH(x0);
+        let mut vals: Vec<f64> = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let v = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                *REAL(x0).add(i as usize)
+            } else {
+                *INTEGER(x0).add(i as usize) as f64
+            };
+            if v.is_finite() {
+                vals.push(v);
+            }
+        }
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let xs = Rf_allocVector(SEXPTYPE::REALSXP, vals.len() as c_int);
+        let _xs = protect(xs);
+        for (i, v) in vals.iter().enumerate() {
+            *REAL(xs).add(i) = *v;
+        }
+        let wp = SWilk(xs);
+        let _wp = protect(wp);
+        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(*REAL(wp)));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(*REAL(wp).add(1)));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["statistic".to_string(), "p.value".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"htest".as_ptr()),
+        );
+        result
+    }
+}
+

@@ -47,6 +47,6 @@ pub(crate) mod splines;
 pub(crate) mod srunmed;
 mod starma;
 pub(crate) mod stl;
-mod swilk;
+pub(crate) mod swilk;
 mod trunmed;
 mod zeroin;
