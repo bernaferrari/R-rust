@@ -1401,6 +1401,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_octmode,
     },
     EvaluatedBuiltin {
+        name: "nclass.Sturges",
+        handler: crate::mainutils::essentials::do_nclass_sturges,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },

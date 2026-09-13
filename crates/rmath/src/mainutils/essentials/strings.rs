@@ -1898,6 +1898,21 @@ fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
     }
 }
 
+/// GNU `nclass.Sturges(x)` is ceiling(log2(length(x)) + 1).
+pub unsafe fn do_nclass_sturges(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = if x.is_null() || x == R_NilValue() {
+            0.0
+        } else {
+            XLENGTH(x) as f64
+        };
+        let v = (n.log2() + 1.0).ceil();
+        Rf_ScalarReal(v)
+    }
+}
+
+
 
 
 
