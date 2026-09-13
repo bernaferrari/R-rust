@@ -779,6 +779,8 @@ pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 pub unsafe fn do_ARMAacf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut phi = 0.0;
+        let mut theta = 0.0;
+        let mut has_ma = false;
         let mut lag_max = 1i64;
         let mut p = args;
         while !p.is_null() && p != R_NilValue() {
@@ -791,8 +793,15 @@ pub unsafe fn do_ARMAacf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 String::new()
             };
             let v = CAR(p);
-            if name == "ar" || name.is_empty() && p == args {
+            if name == "ar" || (name.is_empty() && p == args) {
                 phi = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v)
+                } else {
+                    *INTEGER(v) as f64
+                };
+            } else if name == "ma" {
+                has_ma = true;
+                theta = if TYPEOF(v) == SEXPTYPE::REALSXP {
                     *REAL(v)
                 } else {
                     *INTEGER(v) as f64
@@ -809,10 +818,20 @@ pub unsafe fn do_ARMAacf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let n = lag_max + 1;
         let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _a = protect(ans);
-        let mut acc = 1.0;
-        for i in 0..n as usize {
-            *REAL(ans).add(i) = acc;
-            acc *= phi;
+        if has_ma && phi == 0.0 {
+            *REAL(ans) = 1.0;
+            if n > 1 {
+                *REAL(ans).add(1) = theta / (1.0 + theta * theta);
+            }
+            for i in 2..n as usize {
+                *REAL(ans).add(i) = 0.0;
+            }
+        } else {
+            let mut acc = 1.0;
+            for i in 0..n as usize {
+                *REAL(ans).add(i) = acc;
+                acc *= phi;
+            }
         }
         let names: Vec<String> = (0..=lag_max).map(|i| i.to_string()).collect();
         crate::mainutils::essentials::set_string_names(ans, &names);
