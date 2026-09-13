@@ -779,6 +779,8 @@ pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 pub unsafe fn do_ARMAacf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut phi = 0.0;
+        let mut phi2 = 0.0;
+        let mut ar_len = 0i64;
         let mut theta = 0.0;
         let mut has_ma = false;
         let mut lag_max = 1i64;
@@ -794,11 +796,18 @@ pub unsafe fn do_ARMAacf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             };
             let v = CAR(p);
             if name == "ar" || (name.is_empty() && p == args) {
-                phi = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                    *REAL(v)
+                ar_len = XLENGTH(v);
+                if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    phi = *REAL(v);
+                    if ar_len >= 2 {
+                        phi2 = *REAL(v).add(1);
+                    }
                 } else {
-                    *INTEGER(v) as f64
-                };
+                    phi = *INTEGER(v) as f64;
+                    if ar_len >= 2 {
+                        phi2 = *INTEGER(v).add(1) as f64;
+                    }
+                }
             } else if name == "ma" {
                 has_ma = true;
                 theta = if TYPEOF(v) == SEXPTYPE::REALSXP {
@@ -818,13 +827,25 @@ pub unsafe fn do_ARMAacf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let n = lag_max + 1;
         let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _a = protect(ans);
-        if has_ma && phi == 0.0 {
+        if has_ma && phi == 0.0 && ar_len <= 1 {
             *REAL(ans) = 1.0;
             if n > 1 {
                 *REAL(ans).add(1) = theta / (1.0 + theta * theta);
             }
             for i in 2..n as usize {
                 *REAL(ans).add(i) = 0.0;
+            }
+        } else if ar_len >= 2 {
+            *REAL(ans) = 1.0;
+            if n > 1 {
+                *REAL(ans).add(1) = phi / (1.0 - phi2);
+            }
+            if n > 2 {
+                *REAL(ans).add(2) = phi2 + phi * *REAL(ans).add(1);
+            }
+            for i in 3..n as usize {
+                *REAL(ans).add(i) =
+                    phi * *REAL(ans).add(i - 1) + phi2 * *REAL(ans).add(i - 2);
             }
         } else {
             let mut acc = 1.0;
