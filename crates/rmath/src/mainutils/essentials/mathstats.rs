@@ -4967,6 +4967,61 @@ pub unsafe fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `predict(lm)` and `predict(lm, newdata)`.
+pub unsafe fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let coef = list_named_elt(obj, "coefficients");
+        if coef == R_NilValue() || XLENGTH(coef) < 2 {
+            return list_named_elt(obj, "fitted.values");
+        }
+        let b0 = elt_real_safe(coef, 0);
+        let b1 = elt_real_safe(coef, 1);
+        let mut newdata = R_NilValue();
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "newdata" || name.is_empty() {
+                newdata = CAR(cell);
+            }
+            cell = CDR(cell);
+        }
+        if newdata.is_null() || newdata == R_NilValue() {
+            return list_named_elt(obj, "fitted.values");
+        }
+        let x = if TYPEOF(newdata) == SEXPTYPE::VECSXP {
+            let named = list_named_elt(newdata, "x");
+            if named != R_NilValue() {
+                named
+            } else if XLENGTH(newdata) > 0 {
+                VECTOR_ELT(newdata, 0)
+            } else {
+                R_NilValue()
+            }
+        } else {
+            newdata
+        };
+        if x == R_NilValue() {
+            return list_named_elt(obj, "fitted.values");
+        }
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            *REAL(result).add(i as usize) = b0 + b1 * elt_real_safe(x, i);
+        }
+        result
+    }
+}
+
+
 
 
 

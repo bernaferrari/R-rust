@@ -39,8 +39,46 @@ pub(crate) unsafe fn do_control(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP
         )
     }
 }
-pub(crate) unsafe fn do_predict(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) unsafe fn do_predict(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        use crate::sexp::accessors::{CAR, CDR, SETCAR, TAG, TYPEOF, XLENGTH, STRING_ELT, CHAR};
+        use crate::sexp::constructors::Rf_cons;
+        use crate::sexp::globals::R_NilValue;
+        use crate::sexp::protect::protect;
+        let mut ev = R_NilValue();
+        let mut tail = R_NilValue();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let val = crate::eval::eval::Rf_eval(CAR(cell), rho);
+            let node = Rf_cons(val, R_NilValue());
+            let _n = protect(node);
+            crate::sexp::accessors::SETTAG(node, TAG(cell));
+            if ev.is_null() || ev == R_NilValue() {
+                ev = node;
+                tail = node;
+            } else {
+                crate::sexp::accessors::SETCDR(tail, node);
+                tail = node;
+            }
+            cell = CDR(cell);
+        }
+        let obj = CAR(ev);
+        let class = crate::sexp::attrib_core::getAttrib(
+            obj,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let is_lm = !class.is_null()
+            && class != R_NilValue()
+            && TYPEOF(class) == crate::sexp::ffi::SEXPTYPE::STRSXP
+            && XLENGTH(class) > 0
+            && {
+                let s = STRING_ELT(class, 0);
+                !s.is_null()
+                    && std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy() == "lm"
+            };
+        if is_lm {
+            return crate::mainutils::essentials::do_predict_lm(call, op, ev, rho);
+        }
         crate::mainutils::base_wrappers::apply(
             "predict",
             "function(object,...) UseMethod('predict')",
