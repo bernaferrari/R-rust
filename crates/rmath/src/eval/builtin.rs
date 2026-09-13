@@ -1861,6 +1861,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_power_prop_test,
     },
     EvaluatedBuiltin {
+        name: "hclust",
+        handler: crate::mainutils::essentials::do_hclust,
+    },
+    EvaluatedBuiltin {
         name: "stem",
         handler: crate::library::graphics::stem::do_stem,
     },

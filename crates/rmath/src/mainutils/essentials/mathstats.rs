@@ -3122,6 +3122,176 @@ pub unsafe fn do_power_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+fn dist_compact(d: &[f64], i: usize, j: usize, n: usize) -> f64 {
+    if i == j {
+        return 0.0;
+    }
+    let (a, b) = if i < j { (i, j) } else { (j, i) };
+    let mut idx = 0;
+    for k in 0..a {
+        idx += n - 1 - k;
+    }
+    d[idx + (b - a - 1)]
+}
+
+fn complete_link(d: &[f64], a: &[usize], b: &[usize], n: usize) -> f64 {
+    let mut m = f64::NEG_INFINITY;
+    for &i in a {
+        for &j in b {
+            m = m.max(dist_compact(d, i, j, n));
+        }
+    }
+    m
+}
+
+/// GNU `hclust(d, method="complete")`.
+pub unsafe fn do_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let d = CAR(args);
+        if d.is_null() || d == R_NilValue() {
+            return R_NilValue();
+        }
+        let size_attr = crate::sexp::attrib_core::getAttrib(
+            d,
+            crate::sexp::symbol::Rf_install(c"Size".as_ptr()),
+        );
+        let n = if !size_attr.is_null()
+            && size_attr != R_NilValue()
+            && TYPEOF(size_attr) == SEXPTYPE::INTSXP
+            && XLENGTH(size_attr) > 0
+        {
+            *INTEGER(size_attr) as usize
+        } else {
+            let len = XLENGTH(d) as usize;
+            // solve n(n-1)/2 = len
+            (((1.0 + (1.0 + 8.0 * len as f64).sqrt()) / 2.0).round()) as usize
+        };
+        let mut dists = Vec::with_capacity(XLENGTH(d) as usize);
+        for i in 0..XLENGTH(d) {
+            dists.push(elt_real_safe(d, i));
+        }
+        #[derive(Clone)]
+        struct Cl {
+            members: Vec<usize>,
+            id: i32,
+        }
+        let mut clusters: Vec<Option<Cl>> = (0..n)
+            .map(|i| {
+                Some(Cl {
+                    members: vec![i],
+                    id: -((i as i32) + 1),
+                })
+            })
+            .collect();
+        let nmerge = n - 1;
+        let merge = crate::mainutils::array::allocMatrix(SEXPTYPE::INTSXP.as_c_int(), nmerge as i32, 2);
+        let _m = protect(merge);
+        let height = Rf_allocVector3(SEXPTYPE::REALSXP, nmerge as i64);
+        let _h = protect(height);
+        for step in 0..nmerge {
+            let mut best = f64::INFINITY;
+            let mut bi = 0usize;
+            let mut bj = 1usize;
+            for i in 0..n {
+                if clusters[i].is_none() {
+                    continue;
+                }
+                for j in (i + 1)..n {
+                    if clusters[j].is_none() {
+                        continue;
+                    }
+                    let dij = complete_link(
+                        &dists,
+                        &clusters[i].as_ref().unwrap().members,
+                        &clusters[j].as_ref().unwrap().members,
+                        n,
+                    );
+                    if dij < best {
+                        best = dij;
+                        bi = i;
+                        bj = j;
+                    }
+                }
+            }
+            let a = clusters[bi].take().unwrap();
+            let b = clusters[bj].take().unwrap();
+            let (left, right) = match (a.id < 0, b.id < 0) {
+                (true, false) => (a.id, b.id),
+                (false, true) => (b.id, a.id),
+                (true, true) => {
+                    if a.id > b.id {
+                        (a.id, b.id)
+                    } else {
+                        (b.id, a.id)
+                    }
+                }
+                (false, false) => {
+                    if a.id < b.id {
+                        (a.id, b.id)
+                    } else {
+                        (b.id, a.id)
+                    }
+                }
+            };
+            *INTEGER(merge).add(step) = left;
+            *INTEGER(merge).add(step + nmerge) = right;
+            *REAL(height).add(step) = best;
+            let mut members = a.members;
+            members.extend(b.members);
+            clusters[bi] = Some(Cl {
+                members,
+                id: (step as i32) + 1,
+            });
+        }
+        let mut order_v = Vec::new();
+        fn walk(id: i32, merge_l: &[i32], merge_r: &[i32], order: &mut Vec<i32>) {
+            if id < 0 {
+                order.push(-id);
+            } else {
+                let s = (id as usize) - 1;
+                walk(merge_l[s], merge_l, merge_r, order);
+                walk(merge_r[s], merge_l, merge_r, order);
+            }
+        }
+        let mut ml = vec![0i32; nmerge];
+        let mut mr = vec![0i32; nmerge];
+        for s in 0..nmerge {
+            ml[s] = *INTEGER(merge).add(s);
+            mr[s] = *INTEGER(merge).add(s + nmerge);
+        }
+        walk(nmerge as i32, &ml, &mr, &mut order_v);
+        let order = Rf_allocVector3(SEXPTYPE::INTSXP, n as i64);
+        let _o = protect(order);
+        for (i, v) in order_v.iter().enumerate() {
+            *INTEGER(order).add(i) = *v;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, merge);
+        SET_VECTOR_ELT(result, 1, height);
+        SET_VECTOR_ELT(result, 2, order);
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"complete".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "merge".to_string(),
+                "height".to_string(),
+                "order".to_string(),
+                "method".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"hclust".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

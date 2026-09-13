@@ -1,0 +1,7 @@
+hc <- hclust(dist(1:5), method = "complete")
+cat(paste(hc$height, collapse = ","), "\n", sep = "")
+cat(paste(hc$order, collapse = ","), "\n", sep = "")
+cat(hc$method, "\n", sep = "")
+cat(class(hc), "\n", sep = "")
+cat(paste(hc$merge[, 1], collapse = ","), "\n", sep = "")
+cat(paste(hc$merge[, 2], collapse = ","), "\n", sep = "")
