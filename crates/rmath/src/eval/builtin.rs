@@ -1677,6 +1677,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_as_ts,
     },
     EvaluatedBuiltin {
+        name: "is.ts",
+        handler: crate::library::stats::filter::do_is_ts,
+    },
+    EvaluatedBuiltin {
         name: "window",
         handler: crate::library::stats::filter::do_window,
     },

@@ -1295,6 +1295,28 @@ pub unsafe fn do_end(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `is.ts(x)`.
+pub unsafe fn do_is_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let mut ok = false;
+        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i)));
+                if s.to_bytes() == b"ts" {
+                    ok = true;
+                    break;
+                }
+            }
+        }
+        Rf_ScalarLogical(if ok { 1 } else { 0 })
+    }
+}
+
 
 
 
