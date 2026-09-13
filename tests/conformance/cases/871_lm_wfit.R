@@ -1,0 +1,6 @@
+x <- cbind(1, 1:5)
+y <- c(1, 2, 2, 4, 5)
+w <- c(1, 1, 1, 1, 4)
+f <- lm.wfit(x, y, w)
+cat(paste(round(unname(f$coefficients), 4), collapse = ","), "\n", sep = "")
+cat(paste(round(f$residuals, 4), collapse = ","), "\n", sep = "")

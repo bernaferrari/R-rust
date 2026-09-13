@@ -5526,6 +5526,83 @@ pub unsafe fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `lm.wfit(x, y, w)` — weighted OLS on a two-column design.
+pub unsafe fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let w = CAR(CDR(CDR(args)));
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (n, p) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            return R_NilValue();
+        };
+        if n < 2 || p != 2 || y.is_null() || y == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = n.min(XLENGTH(y) as usize).min(XLENGTH(w) as usize);
+        let mut a00 = 0.0;
+        let mut sx = 0.0;
+        let mut sxx = 0.0;
+        let mut sy = 0.0;
+        let mut sxy = 0.0;
+        let mut xs = vec![0.0; n];
+        let mut ys = vec![0.0; n];
+        let mut x0s = vec![0.0; n];
+        for i in 0..n {
+            let x0 = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+            let x1 = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i + n)
+            } else {
+                *INTEGER(x).add(i + n) as f64
+            };
+            let yi = elt_real_safe(y, i as i64);
+            let wi = elt_real_safe(w, i as i64);
+            x0s[i] = x0;
+            xs[i] = x1;
+            ys[i] = yi;
+            a00 += wi * x0 * x0;
+            sx += wi * x0 * x1;
+            sxx += wi * x1 * x1;
+            sy += wi * x0 * yi;
+            sxy += wi * x1 * yi;
+        }
+        let Some(inv) = invert2(a00, sx, sx, sxx) else {
+            return R_NilValue();
+        };
+        let b0 = inv.0 * sy + inv.2 * sxy;
+        let b1 = inv.1 * sy + inv.3 * sxy;
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _c = protect(coef);
+        *REAL(coef) = b0;
+        *REAL(coef).add(1) = b1;
+        let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _e = protect(resid);
+        for i in 0..n {
+            *REAL(resid).add(i) = ys[i] - (b0 * x0s[i] + b1 * xs[i]);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        SET_VECTOR_ELT(result, 1, resid);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["coefficients".to_string(), "residuals".to_string()],
+        );
+        result
+    }
+}
+
+
 /// GNU `nls(y ~ expr, start=)` — one-parameter Gauss–Newton.
 pub unsafe fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
