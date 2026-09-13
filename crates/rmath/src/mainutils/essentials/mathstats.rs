@@ -5802,6 +5802,28 @@ pub unsafe fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `SSlogis(input, Asym, xmid, scal)` — logistic curve.
+pub unsafe fn do_sslogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let input = CAR(args);
+        let asym = elt_real_safe(CAR(CDR(args)), 0);
+        let xmid = elt_real_safe(CAR(CDR(CDR(args))), 0);
+        let scal = elt_real_safe(CAR(CDR(CDR(CDR(args)))), 0);
+        if scal == 0.0 {
+            return R_NilValue();
+        }
+        let n = XLENGTH(input);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let x = elt_real_safe(input, i);
+            *REAL(result).add(i as usize) = asym / (1.0 + ((xmid - x) / scal).exp());
+        }
+        result
+    }
+}
+
+
 
 unsafe fn family_object(family: &str, link: &str) -> SEXP {
     unsafe {
