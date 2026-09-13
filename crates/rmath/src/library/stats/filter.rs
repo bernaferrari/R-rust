@@ -1617,6 +1617,46 @@ pub unsafe fn do_reformulate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `dummy.coef(lm)` — named list of coefficients.
+pub unsafe fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let coef = named_list_elt(obj, "coefficients");
+        if coef.is_null() || coef == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(coef);
+        let names = crate::sexp::attrib_core::getAttrib(
+            coef,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let _r = protect(result);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _on = protect(out_names);
+        for i in 0..n {
+            let v = if TYPEOF(coef) == SEXPTYPE::REALSXP {
+                *REAL(coef).add(i as usize)
+            } else if TYPEOF(coef) == SEXPTYPE::INTSXP {
+                *INTEGER(coef).add(i as usize) as f64
+            } else {
+                f64::NAN
+            };
+            SET_VECTOR_ELT(result, i, Rf_ScalarReal(v));
+            if TYPEOF(names) == SEXPTYPE::STRSXP && i < XLENGTH(names) {
+                SET_STRING_ELT(out_names, i, STRING_ELT(names, i));
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            out_names,
+        );
+        result
+    }
+}
+
+
 
 
 
