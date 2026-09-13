@@ -1114,6 +1114,124 @@ pub unsafe fn do_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `as.ts(x)`.
+pub unsafe fn do_as_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x);
+        let existing = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
+        );
+        if !existing.is_null() && existing != R_NilValue() {
+            return x;
+        }
+        let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+        let _t = protect(tsp);
+        *REAL(tsp) = 1.0;
+        *REAL(tsp).add(1) = n as f64;
+        *REAL(tsp).add(2) = 1.0;
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::Rf_install(c"tsp".as_ptr()), tsp);
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"ts".as_ptr()),
+        );
+        x
+    }
+}
+
+/// GNU `window(ts, start, end)`.
+pub unsafe fn do_window(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let start = CAR(CDR(args));
+        let end = CAR(CDR(CDR(args)));
+        let (t0, freq) = ts_start_freq(x);
+        let s = if TYPEOF(start) == SEXPTYPE::REALSXP {
+            *REAL(start)
+        } else {
+            *INTEGER(start) as f64
+        };
+        let e = if TYPEOF(end) == SEXPTYPE::REALSXP {
+            *REAL(end)
+        } else {
+            *INTEGER(end) as f64
+        };
+        let i0 = ((s - t0) * freq).round() as i64;
+        let i1 = ((e - t0) * freq).round() as i64;
+        let n = XLENGTH(x);
+        let lo = i0.max(0);
+        let hi = i1.min(n - 1);
+        let out_n = (hi - lo + 1).max(0);
+        let ty = TYPEOF(x);
+        let ans = Rf_allocVector3(
+            if ty == SEXPTYPE::INTSXP {
+                SEXPTYPE::INTSXP
+            } else {
+                SEXPTYPE::REALSXP
+            },
+            out_n,
+        );
+        let _a = protect(ans);
+        for i in 0..out_n as usize {
+            let src = (lo as usize) + i;
+            if ty == SEXPTYPE::INTSXP {
+                *INTEGER(ans).add(i) = *INTEGER(x).add(src);
+            } else {
+                *REAL(ans).add(i) = *REAL(x).add(src);
+            }
+        }
+        ans
+    }
+}
+
+/// GNU `lag(ts, k)` shifts tsp, keeps values.
+pub unsafe fn do_lag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let k_s = CAR(CDR(args));
+        let k = if TYPEOF(k_s) == SEXPTYPE::REALSXP {
+            *REAL(k_s)
+        } else {
+            *INTEGER(k_s) as f64
+        };
+        let (start, freq) = ts_start_freq(x);
+        let n = XLENGTH(x) as f64;
+        let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+        let _t = protect(tsp);
+        *REAL(tsp) = start - k / freq;
+        *REAL(tsp).add(1) = start - k / freq + (n - 1.0) / freq;
+        *REAL(tsp).add(2) = freq;
+        let ans = if TYPEOF(x) == SEXPTYPE::INTSXP {
+            let a = Rf_allocVector3(SEXPTYPE::INTSXP, n as i64);
+            for i in 0..n as usize {
+                *INTEGER(a).add(i) = *INTEGER(x).add(i);
+            }
+            a
+        } else {
+            let a = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+            for i in 0..n as usize {
+                *REAL(a).add(i) = *REAL(x).add(i);
+            }
+            a
+        };
+        let _a = protect(ans);
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
+            tsp,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"ts".as_ptr()),
+        );
+        ans
+    }
+}
+
+
 
 
 

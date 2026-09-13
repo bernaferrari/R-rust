@@ -1673,6 +1673,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_time,
     },
     EvaluatedBuiltin {
+        name: "as.ts",
+        handler: crate::library::stats::filter::do_as_ts,
+    },
+    EvaluatedBuiltin {
+        name: "window",
+        handler: crate::library::stats::filter::do_window,
+    },
+    EvaluatedBuiltin {
+        name: "lag",
+        handler: crate::library::stats::filter::do_lag,
+    },
+    EvaluatedBuiltin {
         name: "HoltWinters",
         handler: crate::library::stats::holtwinters::do_HoltWinters,
     },
