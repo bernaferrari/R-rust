@@ -854,6 +854,97 @@ pub unsafe fn do_ISOdate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+fn unix_secs_to_utc(secs: i64) -> crate::tzone_strftime::stm {
+    let days = secs.div_euclid(86_400);
+    let sod = secs.rem_euclid(86_400);
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as i64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    let yday = if m > 2 {
+        doy - 59
+    } else {
+        doy + 306
+    };
+    crate::tzone_strftime::stm {
+        tm_sec: (sod % 60) as i32,
+        tm_min: ((sod / 60) % 60) as i32,
+        tm_hour: (sod / 3600) as i32,
+        tm_mday: d as i32,
+        tm_mon: (m as i32) - 1,
+        tm_year: y as i32 - 1900,
+        tm_wday: ((days + 4).rem_euclid(7)) as i32,
+        tm_yday: yday as i32,
+        tm_isdst: 0,
+        tm_gmtoff: 0,
+        tm_zone: b"GMT\0".as_ptr() as *const std::os::raw::c_char,
+    }
+}
+
+/// GNU `strftime(x, format)`.
+pub unsafe fn do_strftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let mut fmt = "%Y-%m-%d %H:%M:%S".to_string();
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let f = CAR(rest);
+            if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
+                let ch = STRING_ELT(f, 0);
+                if !ch.is_null() {
+                    let s = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                    if !s.is_empty() {
+                        fmt = s;
+                    }
+                }
+            }
+        }
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let secs = if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+                let days = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i as usize)
+                } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                    *INTEGER(x).add(i as usize) as f64
+                } else {
+                    f64::NAN
+                };
+                days * 86_400.0
+            } else if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                *INTEGER(x).add(i as usize) as f64
+            } else {
+                f64::NAN
+            };
+            let formatted = if secs.is_finite() {
+                let tm = unix_secs_to_utc(secs as i64);
+                crate::tzone_strftime::strftime_safe(&fmt, &tm)
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            let c = CString::new(formatted).unwrap_or_default();
+            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+
 
 
 /// R's `as.POSIXct(x, tz, origin)` — coerce simple UTC inputs to POSIXct.

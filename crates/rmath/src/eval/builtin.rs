@@ -1461,6 +1461,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ISOdatetime,
     },
     EvaluatedBuiltin {
+        name: "strftime",
+        handler: crate::mainutils::essentials::do_strftime,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
