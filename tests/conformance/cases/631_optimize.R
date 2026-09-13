@@ -1,0 +1,5 @@
+d <- optimize(function(x) x^2, c(-1, 1))
+cat(abs(d$minimum) < 1e-6, "\n", sep = "")
+cat(abs(d$objective) < 1e-12, "\n", sep = "")
+e <- optimise(function(x) x^2, c(-1, 1))
+cat(abs(e$minimum) < 1e-6, "\n", sep = "")

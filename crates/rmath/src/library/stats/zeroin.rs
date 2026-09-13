@@ -224,3 +224,59 @@ pub unsafe fn do_uniroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::S
     }
 }
 
+/// GNU `optimize(f, interval)` golden-section min.
+pub unsafe fn do_optimize(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF};
+        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
+        use crate::sexp::ffi::SEXPTYPE;
+        use crate::sexp::protect::protect;
+        let fun = CAR(args);
+        let interval = CAR(CDR(args));
+        let mut lo = if TYPEOF(interval) == SEXPTYPE::REALSXP {
+            *REAL(interval)
+        } else {
+            *INTEGER(interval) as f64
+        };
+        let mut hi = if TYPEOF(interval) == SEXPTYPE::REALSXP {
+            *REAL(interval).add(1)
+        } else {
+            *INTEGER(interval).add(1) as f64
+        };
+        let mut ctx = ZeroinCtx { fun, rho };
+        let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
+        let gr = (5.0f64.sqrt() - 1.0) / 2.0;
+        let mut x1 = hi - gr * (hi - lo);
+        let mut x2 = lo + gr * (hi - lo);
+        let mut f1 = zeroin_call(x1, info);
+        let mut f2 = zeroin_call(x2, info);
+        for _ in 0..80 {
+            if f1 < f2 {
+                hi = x2;
+                x2 = x1;
+                f2 = f1;
+                x1 = hi - gr * (hi - lo);
+                f1 = zeroin_call(x1, info);
+            } else {
+                lo = x1;
+                x1 = x2;
+                f1 = f2;
+                x2 = lo + gr * (hi - lo);
+                f2 = zeroin_call(x2, info);
+            }
+        }
+        let xmin = 0.5 * (lo + hi);
+        let fmin = zeroin_call(xmin, info);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(xmin));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(fmin));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["minimum".to_string(), "objective".to_string()],
+        );
+        result
+    }
+}
+
+

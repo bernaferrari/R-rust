@@ -1685,6 +1685,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::polyroot::do_polyroot,
     },
     EvaluatedBuiltin {
+        name: "optimize",
+        handler: crate::library::stats::zeroin::do_optimize,
+    },
+    EvaluatedBuiltin {
+        name: "optimise",
+        handler: crate::library::stats::zeroin::do_optimize,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
