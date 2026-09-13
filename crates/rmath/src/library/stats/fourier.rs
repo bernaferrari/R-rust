@@ -686,6 +686,55 @@ pub unsafe fn do_nextn(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU circular `convolve(x, y)` via fft.
+pub unsafe fn do_convolve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
+        let _x = protect(x);
+        let y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
+        let _y = protect(y);
+        let n = XLENGTH(x);
+        if n != XLENGTH(y) {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "length mismatch in convolution",
+            );
+        }
+        let inv_false = Rf_ScalarLogical(0);
+        let _f = protect(inv_false);
+        let inv_true = Rf_ScalarLogical(1);
+        let _t = protect(inv_true);
+        let fx = fft(x, inv_false);
+        let _fx = protect(fx);
+        let fy = fft(y, inv_false);
+        let _fy = protect(fy);
+        let prod = Rf_allocVector(SEXPTYPE::CPLXSXP.as_c_int(), n as c_int);
+        let _p = protect(prod);
+        let px = COMPLEX(fx);
+        let py = COMPLEX(fy);
+        let pz = COMPLEX(prod);
+        for i in 0..n as usize {
+            let a = *px.add(i);
+            let b = *py.add(i);
+            // a * conj(b)
+            *pz.add(i) = Rcomplex {
+                r: a.r * b.r + a.i * b.i,
+                i: a.i * b.r - a.r * b.i,
+            };
+        }
+        let inv = fft(prod, inv_true);
+        let _i = protect(inv);
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), n as c_int);
+        let _a = protect(ans);
+        let nf = n as f64;
+        for i in 0..n as usize {
+            *REAL(ans).add(i) = COMPLEX(inv).add(i).read().r / nf;
+        }
+        ans
+    }
+}
+
+
 
 /// GNU `spec.pgram` raw periodogram, no taper/detrend.
 pub unsafe fn do_spec_pgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
