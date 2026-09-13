@@ -1137,6 +1137,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::seq::do_seq,
     },
     EvaluatedBuiltin {
+        name: "seq.Date",
+        handler: crate::mainutils::seq::do_seq,
+    },
+    EvaluatedBuiltin {
         name: "seq.int",
         handler: crate::mainutils::seq::do_seq,
     },
