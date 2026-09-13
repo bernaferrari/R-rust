@@ -1427,6 +1427,44 @@ pub unsafe fn do_na_fail(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+unsafe fn named_list_elt(x: SEXP, name: &str) -> SEXP {
+    unsafe {
+        if TYPEOF(x) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        for i in 0..XLENGTH(x) {
+            let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)));
+            if s.to_string_lossy() == name {
+                return VECTOR_ELT(x, i);
+            }
+        }
+        R_NilValue()
+    }
+}
+
+/// GNU default `coef(object)`.
+pub unsafe fn do_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "coefficients") }
+}
+
+/// GNU default `fitted(object)`.
+pub unsafe fn do_fitted(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "fitted.values") }
+}
+
+/// GNU default `resid`/`residuals`.
+pub unsafe fn do_resid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "residuals") }
+}
+
+
 
 
 

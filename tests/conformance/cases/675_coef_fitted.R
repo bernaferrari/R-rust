@@ -1,0 +1,5 @@
+m <- list(coefficients = c(a = 1, b = 2), fitted.values = 1:3, residuals = c(0.1, 0.2, 0.3))
+cat(paste(coef(m), collapse = ","), "\n", sep = "")
+cat(paste(fitted(m), collapse = ","), "\n", sep = "")
+cat(paste(resid(m), collapse = ","), "\n", sep = "")
+cat(paste(residuals(m), collapse = ","), "\n", sep = "")

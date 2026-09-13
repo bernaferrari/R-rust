@@ -1701,6 +1701,30 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_na_fail,
     },
     EvaluatedBuiltin {
+        name: "coef",
+        handler: crate::library::stats::filter::do_coef,
+    },
+    EvaluatedBuiltin {
+        name: "coefficients",
+        handler: crate::library::stats::filter::do_coef,
+    },
+    EvaluatedBuiltin {
+        name: "fitted",
+        handler: crate::library::stats::filter::do_fitted,
+    },
+    EvaluatedBuiltin {
+        name: "fitted.values",
+        handler: crate::library::stats::filter::do_fitted,
+    },
+    EvaluatedBuiltin {
+        name: "resid",
+        handler: crate::library::stats::filter::do_resid,
+    },
+    EvaluatedBuiltin {
+        name: "residuals",
+        handler: crate::library::stats::filter::do_resid,
+    },
+    EvaluatedBuiltin {
         name: "window",
         handler: crate::library::stats::filter::do_window,
     },
