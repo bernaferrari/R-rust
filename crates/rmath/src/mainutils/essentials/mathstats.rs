@@ -5347,6 +5347,160 @@ pub unsafe fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `TukeyHSD(aov)` — pairwise studentized-range intervals for one grouping factor.
+pub unsafe fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let form = crate::library::stats::filter::do_formula(
+            _call,
+            _op,
+            Rf_cons(obj, R_NilValue()),
+            rho,
+        );
+        if form.is_null() || form == R_NilValue() || TYPEOF(form) != SEXPTYPE::LANGSXP {
+            return R_NilValue();
+        }
+        let y_expr = CADR(form);
+        let g_cell = CDR(CDR(form));
+        let g_expr = if g_cell.is_null() || g_cell == R_NilValue() {
+            return R_NilValue();
+        } else {
+            CAR(g_cell)
+        };
+        let y = crate::eval::eval::Rf_eval(y_expr, rho);
+        let g = crate::eval::eval::Rf_eval(g_expr, rho);
+        let _y = protect(y);
+        let _g = protect(g);
+        if TYPEOF(g) != SEXPTYPE::INTSXP {
+            return R_NilValue();
+        }
+        let levels = crate::sexp::attrib_core::getAttrib(
+            g,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        );
+        let k = if TYPEOF(levels) == SEXPTYPE::STRSXP {
+            XLENGTH(levels) as usize
+        } else {
+            0
+        };
+        let n = XLENGTH(y).min(XLENGTH(g)) as usize;
+        if k < 2 || n < k {
+            return R_NilValue();
+        }
+        let mut sums = vec![0.0; k];
+        let mut ns = vec![0.0; k];
+        let mut ys = vec![0.0; n];
+        let mut gs = vec![0usize; n];
+        for i in 0..n {
+            let code = *INTEGER(g).add(i);
+            if code < 1 || (code as usize) > k {
+                continue;
+            }
+            let gi = (code as usize) - 1;
+            let yi = elt_real_safe(y, i as i64);
+            ys[i] = yi;
+            gs[i] = gi;
+            sums[gi] += yi;
+            ns[gi] += 1.0;
+        }
+        let mut means = vec![0.0; k];
+        for i in 0..k {
+            if ns[i] > 0.0 {
+                means[i] = sums[i] / ns[i];
+            }
+        }
+        let mut sse = 0.0;
+        for i in 0..n {
+            let e = ys[i] - means[gs[i]];
+            sse += e * e;
+        }
+        let df = n as f64 - k as f64;
+        if df <= 0.0 {
+            return R_NilValue();
+        }
+        let mse = sse / df;
+        let npairs = k * (k - 1) / 2;
+        let tab = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::REALSXP.as_c_int(),
+            npairs as i32,
+            4,
+        );
+        let _t = protect(tab);
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, npairs as i64);
+        let _rn = protect(rn);
+        let qcrit = crate::dist::tukey::qtukey_inner(0.95, 1.0, k as f64, df, true, false);
+        let mut row = 0usize;
+        for j in 1..k {
+            for i in 0..j {
+                let diff = means[j] - means[i];
+                let se = (mse * (1.0 / ns[i] + 1.0 / ns[j])).sqrt();
+                let crit = if se > 0.0 {
+                    qcrit / std::f64::consts::SQRT_2 * se
+                } else {
+                    0.0
+                };
+                let qobs = if se > 0.0 {
+                    diff.abs() / se * std::f64::consts::SQRT_2
+                } else {
+                    0.0
+                };
+                let padj = 1.0
+                    - crate::dist::tukey::ptukey_inner(qobs, 1.0, k as f64, df, true, false);
+                *REAL(tab).add(row) = diff;
+                *REAL(tab).add(row + npairs) = diff - crit;
+                *REAL(tab).add(row + 2 * npairs) = diff + crit;
+                *REAL(tab).add(row + 3 * npairs) = padj;
+                let li = STRING_ELT(levels, i as i64);
+                let lj = STRING_ELT(levels, j as i64);
+                let si = std::ffi::CStr::from_ptr(CHAR(li)).to_string_lossy();
+                let sj = std::ffi::CStr::from_ptr(CHAR(lj)).to_string_lossy();
+                let lab = format!("{sj}-{si}\0");
+                SET_STRING_ELT(rn, row as i64, Rf_mkChar(lab.as_ptr() as *const _));
+                row += 1;
+            }
+        }
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
+        let _cn = protect(cn);
+        SET_STRING_ELT(cn, 0, Rf_mkChar(c"diff".as_ptr()));
+        SET_STRING_ELT(cn, 1, Rf_mkChar(c"lwr".as_ptr()));
+        SET_STRING_ELT(cn, 2, Rf_mkChar(c"upr".as_ptr()));
+        SET_STRING_ELT(cn, 3, Rf_mkChar(c"p adj".as_ptr()));
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        let term = if TYPEOF(g_expr) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(g_expr)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            "g".to_string()
+        };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, tab);
+        let tn = std::ffi::CString::new(term).unwrap_or_default();
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _nm = protect(names);
+        SET_STRING_ELT(names, 0, Rf_mkChar(tn.as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+        let class = Rf_mkString(c"TukeyHSD".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 /// GNU `glm(y ~ x)` gaussian — `lm` with class `c("glm","lm")`.
 pub unsafe fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

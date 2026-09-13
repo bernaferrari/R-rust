@@ -1979,6 +1979,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_aov,
     },
     EvaluatedBuiltin {
+        name: "TukeyHSD",
+        handler: crate::mainutils::essentials::do_tukey_hsd,
+    },
+    EvaluatedBuiltin {
         name: "glm",
         handler: crate::mainutils::essentials::do_glm,
     },
