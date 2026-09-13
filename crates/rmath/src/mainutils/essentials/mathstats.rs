@@ -3374,6 +3374,119 @@ pub unsafe fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+fn prop_test_two(x1: f64, n1: f64, x2: f64, n2: f64) -> f64 {
+    let p = (x1 + x2) / (n1 + n2);
+    let e11 = n1 * p;
+    let e12 = n1 * (1.0 - p);
+    let e21 = n2 * p;
+    let e22 = n2 * (1.0 - p);
+    let delta = (x1 / n1 - x2 / n2).abs();
+    let yates = 0.5_f64.min(delta / (1.0 / n1 + 1.0 / n2));
+    let stat = (x1 - e11).abs() - yates;
+    let stat = stat * stat / e11
+        + ((n1 - x1 - e12).abs() - yates).powi(2) / e12
+        + ((x2 - e21).abs() - yates).powi(2) / e21
+        + ((n2 - x2 - e22).abs() - yates).powi(2) / e22;
+    crate::dist::chisq::pchisq_inner(stat, 1.0, false, false)
+}
+
+/// GNU `pairwise.prop.test(x, n)` with Holm.
+pub unsafe fn do_pairwise_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = CAR(CDR(args));
+        let mut method = "holm".to_string();
+        let mut cell = CDR(CDR(args));
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "p.adjust.method" || name.is_empty() {
+                let v = CAR(cell);
+                if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                    method = elt_to_string(v, 0);
+                }
+            }
+            cell = CDR(cell);
+        }
+        if x.is_null() || x == R_NilValue() || n.is_null() || n == R_NilValue() {
+            return R_NilValue();
+        }
+        let k = XLENGTH(x).min(XLENGTH(n)) as usize;
+        if k < 2 {
+            return R_NilValue();
+        }
+        let mut xs = Vec::with_capacity(k);
+        let mut ns = Vec::with_capacity(k);
+        for i in 0..k {
+            xs.push(elt_real_safe(x, i as i64));
+            ns.push(elt_real_safe(n, i as i64));
+        }
+        let mut raw = Vec::new();
+        for i in 1..k {
+            for j in 0..i {
+                raw.push(prop_test_two(xs[j], ns[j], xs[i], ns[i]));
+            }
+        }
+        let adj = p_adjust_values(&raw, &method);
+        let mdim = k - 1;
+        let pmat = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::REALSXP.as_c_int(),
+            mdim as i32,
+            mdim as i32,
+        );
+        let _pm = protect(pmat);
+        for idx in 0..(mdim * mdim) {
+            *REAL(pmat).add(idx) = NA_REAL;
+        }
+        let mut t = 0usize;
+        for j in 0..mdim {
+            for i in 0..mdim {
+                if i >= j {
+                    *REAL(pmat).add(i + j * mdim) = adj[t];
+                    t += 1;
+                }
+            }
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(
+            result,
+            0,
+            Rf_mkString(c"Pairwise comparison of proportions".as_ptr()),
+        );
+        SET_VECTOR_ELT(result, 1, pmat);
+        let meth = if method == "none" {
+            Rf_mkString(c"none".as_ptr())
+        } else {
+            Rf_mkString(c"holm".as_ptr())
+        };
+        SET_VECTOR_ELT(result, 2, meth);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "method".to_string(),
+                "p.value".to_string(),
+                "p.adjust.method".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"pairwise.htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 fn invert3(a: [[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
     let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
         - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])

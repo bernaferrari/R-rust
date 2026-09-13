@@ -1,0 +1,5 @@
+pw <- pairwise.prop.test(c(10, 20, 30), c(30, 40, 50), p.adjust.method = "holm")
+cat(paste(round(as.vector(pw$p.value), 6), collapse = ","), "\n", sep = "")
+cat(pw$method, "\n", sep = "")
+cat(pw$p.adjust.method, "\n", sep = "")
+cat(class(pw), "\n", sep = "")
