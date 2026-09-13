@@ -49,4 +49,4 @@ mod starma;
 pub(crate) mod stl;
 pub(crate) mod swilk;
 mod trunmed;
-mod zeroin;
+pub(crate) mod zeroin;

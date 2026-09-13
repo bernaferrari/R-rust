@@ -149,3 +149,78 @@ pub unsafe fn R_zeroin2(
         b
     }
 }
+
+struct ZeroinCtx {
+    fun: crate::sexp::ffi::SEXP,
+    rho: crate::sexp::ffi::SEXP,
+}
+
+unsafe extern "C" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
+    unsafe {
+        use crate::sexp::accessors::{REAL, TYPEOF};
+        use crate::sexp::constructors::{Rf_ScalarReal, Rf_lang2};
+        use crate::sexp::ffi::SEXPTYPE;
+        use crate::sexp::protect::protect;
+        let ctx = &*(info as *const ZeroinCtx);
+        let xv = Rf_ScalarReal(x);
+        let _xv = protect(xv);
+        let call = Rf_lang2(ctx.fun, xv);
+        let _c = protect(call);
+        let v = crate::eval::eval::Rf_eval(call, ctx.rho);
+        if TYPEOF(v) == SEXPTYPE::REALSXP {
+            *REAL(v)
+        } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+            *crate::sexp::accessors::INTEGER(v) as f64
+        } else {
+            f64::NAN
+        }
+    }
+}
+
+/// GNU `uniroot(f, interval)`.
+pub unsafe fn do_uniroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
+        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
+        use crate::sexp::ffi::SEXPTYPE;
+        use crate::sexp::protect::protect;
+        let fun = CAR(args);
+        let interval = CAR(CDR(args));
+        let ax = if TYPEOF(interval) == SEXPTYPE::REALSXP {
+            *REAL(interval)
+        } else {
+            *INTEGER(interval) as f64
+        };
+        let bx = if TYPEOF(interval) == SEXPTYPE::REALSXP {
+            *REAL(interval).add(1)
+        } else {
+            *INTEGER(interval).add(1) as f64
+        };
+        let mut ctx = ZeroinCtx { fun, rho };
+        let fa = zeroin_call(ax, &mut ctx as *mut _ as *mut core::ffi::c_void);
+        let fb = zeroin_call(bx, &mut ctx as *mut _ as *mut core::ffi::c_void);
+        let mut tol = 1e-8;
+        let mut maxit: core::ffi::c_int = 1000;
+        let root = R_zeroin2(
+            ax,
+            bx,
+            fa,
+            fb,
+            zeroin_call,
+            &mut ctx as *mut _ as *mut core::ffi::c_void,
+            &mut tol,
+            &mut maxit,
+        );
+        let froot = zeroin_call(root, &mut ctx as *mut _ as *mut core::ffi::c_void);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(root));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(froot));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["root".to_string(), "f.root".to_string()],
+        );
+        result
+    }
+}
+

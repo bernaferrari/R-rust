@@ -1669,6 +1669,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::fourier::do_spec_pgram,
     },
     EvaluatedBuiltin {
+        name: "uniroot",
+        handler: crate::library::stats::zeroin::do_uniroot,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
