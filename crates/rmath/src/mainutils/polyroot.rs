@@ -614,7 +614,6 @@ impl CpolyRootState {
             zeroi[d_n] = 0.0;
             nn -= 1;
         }
-        nn += 1;
         self.nn = nn;
 
         if nn == 1 {
@@ -735,6 +734,92 @@ pub unsafe fn R_cpolyroot(coef: *mut c_double, degree: c_int) -> *mut std::ffi::
         result.leak().as_mut_ptr() as *mut std::ffi::c_void
     }
 }
+
+/// GNU `polyroot(z)` via Jenkins-Traub.
+/// GNU `polyroot(z)` via companion-matrix eigenvalues.
+pub unsafe fn do_polyroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, _rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, VECTOR_ELT, XLENGTH};
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_ScalarLogical};
+        use crate::sexp::ffi::{Rcomplex, SEXPTYPE};
+        use crate::sexp::protect::protect;
+        let z = CAR(args);
+        let ncoef = XLENGTH(z);
+        if ncoef < 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "polyroot needs at least two coefficients",
+            );
+        }
+        let degree = (ncoef - 1) as usize;
+        let mut a_re = vec![0.0f64; ncoef as usize];
+        let mut a_im = vec![0.0f64; ncoef as usize];
+        if TYPEOF(z) == SEXPTYPE::CPLXSXP {
+            let c = COMPLEX(z);
+            for i in 0..ncoef as usize {
+                a_re[i] = (*c.add(i)).r;
+                a_im[i] = (*c.add(i)).i;
+            }
+        } else if TYPEOF(z) == SEXPTYPE::INTSXP {
+            let p = INTEGER(z);
+            for i in 0..ncoef as usize {
+                a_re[i] = *p.add(i) as f64;
+            }
+        } else {
+            let r = REAL(z);
+            for i in 0..ncoef as usize {
+                a_re[i] = *r.add(i);
+            }
+        }
+        let lead_re = a_re[degree];
+        let lead_im = a_im[degree];
+        let lead_n2 = lead_re * lead_re + lead_im * lead_im;
+        if lead_n2 == 0.0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "leading coefficient is zero",
+            );
+        }
+        let n = degree as i64;
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, n as i32);
+        let _m = protect(mat);
+        let p = REAL(mat);
+        for i in 0..(degree * degree) {
+            *p.add(i) = 0.0;
+        }
+        for i in 1..degree {
+            *p.add(i + (i - 1) * degree) = 1.0;
+        }
+        for i in 0..degree {
+            *p.add(i + (degree - 1) * degree) = -a_re[i] / lead_re;
+        }
+        let only = Rf_ScalarLogical(1);
+        let _o = protect(only);
+        let ev = crate::modules::lapack::lapack_impl::La_rg(mat, only);
+        let _e = protect(ev);
+        let values = VECTOR_ELT(ev, 0);
+        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+        let _a = protect(ans);
+        let out = COMPLEX(ans);
+        if TYPEOF(values) == SEXPTYPE::CPLXSXP {
+            let c = COMPLEX(values);
+            for i in 0..degree {
+                *out.add(i) = *c.add(i);
+            }
+        } else {
+            let r = REAL(values);
+            for i in 0..degree {
+                *out.add(i) = Rcomplex {
+                    r: *r.add(i),
+                    i: 0.0,
+                };
+            }
+        }
+        let _ = SET_VECTOR_ELT;
+        ans
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Tests

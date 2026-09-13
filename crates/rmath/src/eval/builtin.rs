@@ -1681,6 +1681,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::integrate::do_integrate,
     },
     EvaluatedBuiltin {
+        name: "polyroot",
+        handler: crate::mainutils::polyroot::do_polyroot,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
