@@ -1433,6 +1433,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::errors::do_geterrmessage,
     },
     EvaluatedBuiltin {
+        name: "localeToCharset",
+        handler: crate::mainutils::essentials::do_localeToCharset,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },

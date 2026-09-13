@@ -2313,6 +2313,58 @@ pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `localeToCharset(locale)`.
+pub unsafe fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut locale = String::new();
+        let first = CAR(args);
+        if !first.is_null()
+            && first != R_NilValue()
+            && TYPEOF(first) == SEXPTYPE::STRSXP
+            && XLENGTH(first) > 0
+        {
+            let ch = STRING_ELT(first, 0);
+            if !ch.is_null() {
+                locale = std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned();
+            }
+        }
+        if locale.is_empty() {
+            let cat = Rf_mkString(c"LC_CTYPE".as_ptr());
+            let _c = protect(cat);
+            let got = crate::mainutils::essentials::do_Sys_getlocale(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                Rf_cons(cat, R_NilValue()),
+                std::ptr::null_mut(),
+            );
+            if TYPEOF(got) == SEXPTYPE::STRSXP && XLENGTH(got) > 0 {
+                let ch = STRING_ELT(got, 0);
+                if !ch.is_null() {
+                    locale = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+            if locale.is_empty() {
+                locale = "C".to_string();
+            }
+        }
+        let charset = if locale == "C" || locale == "POSIX" {
+            "ASCII"
+        } else if locale.to_ascii_lowercase().contains("utf-8")
+            || locale.to_ascii_lowercase().contains("utf8")
+        {
+            "UTF-8"
+        } else {
+            "ASCII"
+        };
+        Rf_mkString(CString::new(charset).unwrap_or_default().as_ptr())
+    }
+}
+
+
 
 
 
