@@ -607,4 +607,125 @@ pub unsafe fn do_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU additive `decompose(ts)` via centered moving average.
+pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x0 = CAR(args);
+        let n = XLENGTH(x0) as usize;
+        let tsp = crate::sexp::attrib_core::getAttrib(
+            x0,
+            crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
+        );
+        let freq = if !tsp.is_null()
+            && TYPEOF(tsp) == SEXPTYPE::REALSXP
+            && XLENGTH(tsp) >= 3
+        {
+            *REAL(tsp).add(2) as usize
+        } else {
+            1
+        };
+        if freq < 2 || n < 2 * freq {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "time series has no or less than 2 periods",
+            );
+        }
+        let mut x = vec![0.0f64; n];
+        for i in 0..n {
+            x[i] = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                *REAL(x0).add(i)
+            } else {
+                *INTEGER(x0).add(i) as f64
+            };
+        }
+        let half = freq / 2;
+        let even = freq % 2 == 0;
+        let trend_s = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _t = protect(trend_s);
+        for i in 0..n {
+            if i < half || i + half >= n || (even && i + half >= n) {
+                *REAL(trend_s).add(i) = NA_REAL;
+                continue;
+            }
+            if even {
+                if i < half || i + half >= n {
+                    *REAL(trend_s).add(i) = NA_REAL;
+                    continue;
+                }
+                let mut s = 0.5 * x[i - half] + 0.5 * x[i + half];
+                for k in (i - half + 1)..(i + half) {
+                    s += x[k];
+                }
+                *REAL(trend_s).add(i) = s / freq as f64;
+            } else {
+                let mut s = 0.0;
+                for k in (i - half)..=(i + half) {
+                    s += x[k];
+                }
+                *REAL(trend_s).add(i) = s / freq as f64;
+            }
+        }
+        let mut fig = vec![0.0f64; freq];
+        let mut cnt = vec![0.0f64; freq];
+        for i in 0..n {
+            let tr = *REAL(trend_s).add(i);
+            if tr.is_nan() {
+                continue;
+            }
+            let k = i % freq;
+            fig[k] += x[i] - tr;
+            cnt[k] += 1.0;
+        }
+        for k in 0..freq {
+            if cnt[k] > 0.0 {
+                fig[k] /= cnt[k];
+            }
+        }
+        let mean = fig.iter().sum::<f64>() / freq as f64;
+        for k in 0..freq {
+            fig[k] -= mean;
+        }
+        let seasonal = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _s = protect(seasonal);
+        let random = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _r = protect(random);
+        for i in 0..n {
+            *REAL(seasonal).add(i) = fig[i % freq];
+            let tr = *REAL(trend_s).add(i);
+            if tr.is_nan() {
+                *REAL(random).add(i) = NA_REAL;
+            } else {
+                *REAL(random).add(i) = x[i] - fig[i % freq] - tr;
+            }
+        }
+        let figure = Rf_allocVector3(SEXPTYPE::REALSXP, freq as i64);
+        let _fg = protect(figure);
+        for k in 0..freq {
+            *REAL(figure).add(k) = fig[k];
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _res = protect(result);
+        SET_VECTOR_ELT(result, 0, seasonal);
+        SET_VECTOR_ELT(result, 1, trend_s);
+        SET_VECTOR_ELT(result, 2, random);
+        SET_VECTOR_ELT(result, 3, figure);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "seasonal".to_string(),
+                "trend".to_string(),
+                "random".to_string(),
+                "figure".to_string(),
+            ],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"decomposed.ts".as_ptr()),
+        );
+        result
+    }
+}
+
+
 
