@@ -4790,8 +4790,26 @@ pub unsafe fn do_rstudent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+unsafe fn lm_named_call(call: SEXP) -> SEXP {
+    unsafe {
+        if call.is_null() || call == R_NilValue() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+            return R_NilValue();
+        }
+        let saved = crate::mainutils::duplicate::Rf_duplicate(call);
+        let _s = protect(saved);
+        let arg = CDR(saved);
+        if !arg.is_null() && arg != R_NilValue() {
+            let tag = TAG(arg);
+            if tag.is_null() || tag == R_NilValue() {
+                SETTAG(arg, Rf_install(c"formula".as_ptr()));
+            }
+        }
+        saved
+    }
+}
+
 /// GNU `lm(y ~ x)` intercept + slope.
-pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let first = CAR(args);
         let mut y = first;
@@ -4920,7 +4938,7 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 f64::NAN
             };
-            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
             let _r = protect(result);
             SET_VECTOR_ELT(result, 0, coef);
             SET_VECTOR_ELT(result, 1, resid);
@@ -4929,6 +4947,7 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             SET_VECTOR_ELT(result, 4, Rf_ScalarInteger(df as i32));
             SET_VECTOR_ELT(result, 5, Rf_ScalarReal(sigma));
             SET_VECTOR_ELT(result, 6, hats);
+            SET_VECTOR_ELT(result, 7, lm_named_call(call));
             crate::mainutils::essentials::set_string_names(
                 result,
                 &[
@@ -4939,6 +4958,7 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     "df.residual".to_string(),
                     "sigma".to_string(),
                     "hat".to_string(),
+                    "call".to_string(),
                 ],
             );
             let class = Rf_mkString(c"lm".as_ptr());
@@ -5018,7 +5038,7 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
             *REAL(hats).add(i) = h;
         }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, coef);
         SET_VECTOR_ELT(result, 1, resid);
@@ -5027,6 +5047,7 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         SET_VECTOR_ELT(result, 4, Rf_ScalarInteger(df as i32));
         SET_VECTOR_ELT(result, 5, Rf_ScalarReal(sigma));
         SET_VECTOR_ELT(result, 6, hats);
+        SET_VECTOR_ELT(result, 7, lm_named_call(call));
         crate::mainutils::essentials::set_string_names(
             result,
             &[
@@ -5037,6 +5058,7 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 "df.residual".to_string(),
                 "sigma".to_string(),
                 "hat".to_string(),
+                "call".to_string(),
             ],
         );
         let class = Rf_mkString(c"lm".as_ptr());
@@ -5342,6 +5364,12 @@ pub unsafe fn do_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
     }
 }
+
+/// GNU `model.offset(x)` — `$offset` or NULL.
+pub unsafe fn do_model_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { list_named_elt(CAR(args), "offset") }
+}
+
 
 /// GNU `lm.influence(model, do.coef=FALSE)` — hat, deletion sigma, wt.res.
 pub unsafe fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

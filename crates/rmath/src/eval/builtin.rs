@@ -2022,6 +2022,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_influence,
     },
     EvaluatedBuiltin {
+        name: "model.offset",
+        handler: crate::mainutils::essentials::do_model_offset,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
