@@ -137,6 +137,33 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         (*padjust_cell).data.listsxp.tagval = Rf_install(c"p.adjust.methods".as_ptr());
         chain = padjust_cell;
 
+        let month_abb = static_string_vector(&[
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        ]);
+        let _month_abb_guard = protect(month_abb);
+        let month_abb_cell = Rf_cons(month_abb, chain);
+        (*month_abb_cell).data.listsxp.tagval = Rf_install(c"month.abb".as_ptr());
+        chain = month_abb_cell;
+
+        let month_name = static_string_vector(&[
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ]);
+        let _month_name_guard = protect(month_name);
+        let month_name_cell = Rf_cons(month_name, chain);
+        (*month_name_cell).data.listsxp.tagval = Rf_install(c"month.name".as_ptr());
+        chain = month_name_cell;
+
         let version_value = do_R_version(
             std::ptr::null_mut(),
             std::ptr::null_mut(),

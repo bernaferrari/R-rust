@@ -1,0 +1,5 @@
+cat(paste(month.abb, collapse = ","), "\n", sep = "")
+cat(paste(month.name, collapse = ","), "\n", sep = "")
+cat(length(month.abb), "\n", sep = "")
+cat(month.abb[1], "\n", sep = "")
+cat(month.name[12], "\n", sep = "")
