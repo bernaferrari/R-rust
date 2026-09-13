@@ -2325,6 +2325,51 @@ pub unsafe fn do_ks_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `Box.test` Box-Pierce lag 1.
+pub unsafe fn do_box_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x);
+        let lag_s = Rf_ScalarInteger(1);
+        let _ls = protect(lag_s);
+        let acf_args = Rf_cons(
+            x,
+            Rf_cons(
+                lag_s,
+                R_NilValue(),
+            ),
+        );
+        SETTAG(CDR(acf_args), Rf_install(c"lag.max".as_ptr()));
+        let _aa = protect(acf_args);
+        let a = crate::library::stats::filter::do_acf(_call, _op, acf_args, rho);
+        let _a = protect(a);
+        let acfv = VECTOR_ELT(a, 0);
+        let rho1 = if XLENGTH(acfv) >= 2 {
+            *REAL(acfv).add(1)
+        } else {
+            0.0
+        };
+        let stat = n as f64 * rho1 * rho1;
+        let p = 1.0
+            - crate::nmath::dist::chisq::pchisq_inner(stat, 1.0, true, false);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(stat));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(p));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["statistic".to_string(), "p.value".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"htest".as_ptr()),
+        );
+        result
+    }
+}
+
+
 
 
 
