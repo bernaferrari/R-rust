@@ -1881,6 +1881,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_pairwise_wilcox_test,
     },
     EvaluatedBuiltin {
+        name: "loadings",
+        handler: crate::mainutils::essentials::do_loadings,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },

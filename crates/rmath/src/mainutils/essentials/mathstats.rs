@@ -4088,6 +4088,38 @@ pub unsafe fn do_promax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `loadings(x)` — extract `$loadings`.
+pub unsafe fn do_loadings(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        for i in 0..XLENGTH(names) {
+            let s = STRING_ELT(names, i);
+            if s.is_null() {
+                continue;
+            }
+            let raw = CHAR(s);
+            if raw.is_null() {
+                continue;
+            }
+            if std::ffi::CStr::from_ptr(raw).to_string_lossy() == "loadings" {
+                return VECTOR_ELT(x, i);
+            }
+        }
+        R_NilValue()
+    }
+}
+
+
 
 
 
