@@ -1857,6 +1857,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_friedman_test,
     },
     EvaluatedBuiltin {
+        name: "quade.test",
+        handler: crate::mainutils::essentials::do_quade_test,
+    },
+    EvaluatedBuiltin {
         name: "power.t.test",
         handler: crate::mainutils::essentials::do_power_t_test,
     },

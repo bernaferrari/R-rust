@@ -3053,6 +3053,107 @@ pub unsafe fn do_friedman_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
+/// GNU unreplicated-block `quade.test(x)`.
+pub unsafe fn do_quade_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (b, k) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            return R_NilValue();
+        };
+        if b < 2 || k < 2 {
+            return R_NilValue();
+        }
+        let mid = (k as f64 + 1.0) / 2.0;
+        let mut ranges = vec![0.0; b];
+        let mut s = vec![0.0; b * k];
+        for i in 0..b {
+            let mut row = Vec::with_capacity(k);
+            for j in 0..k {
+                row.push(elt_real_safe(x, (j * b + i) as i64));
+            }
+            let rr = rank_average(&row);
+            let mut mn = f64::INFINITY;
+            let mut mx = f64::NEG_INFINITY;
+            for &v in &row {
+                mn = mn.min(v);
+                mx = mx.max(v);
+            }
+            ranges[i] = mx - mn;
+            for j in 0..k {
+                s[j * b + i] = rr[j] - mid;
+            }
+        }
+        let q = rank_average(&ranges);
+        let mut a = 0.0;
+        let mut col = vec![0.0; k];
+        for i in 0..b {
+            for j in 0..k {
+                let v = q[i] * s[j * b + i];
+                s[j * b + i] = v;
+                a += v * v;
+                col[j] += v;
+            }
+        }
+        let mut bss = 0.0;
+        for c in col {
+            bss += c * c;
+        }
+        let bb = bss / (b as f64);
+        let stat = if (a - bb).abs() < 1e-15 {
+            f64::NAN
+        } else {
+            (b as f64 - 1.0) * bb / (a - bb)
+        };
+        let df1 = (k - 1) as f64;
+        let df2 = ((b - 1) * (k - 1)) as f64;
+        let pval = crate::dist::f_dist::pf_inner(stat, df1, df2, false, false);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["Quade F".to_string()]);
+        let parameter = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _pa = protect(parameter);
+        *REAL(parameter) = df1;
+        *REAL(parameter).add(1) = df2;
+        set_string_names(parameter, &["num df".to_string(), "denom df".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"Quade test".as_ptr()));
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 /// GNU two-sample `power.t.test(n, delta)`.
 pub unsafe fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

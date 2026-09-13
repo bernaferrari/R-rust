@@ -1,0 +1,7 @@
+x <- matrix(c(1, 2, 3, 4, 2, 3, 4, 5, 3, 4, 5, 7), 3, 4, byrow = TRUE)
+qt <- quade.test(x)
+cat(as.numeric(qt$statistic), "\n", sep = "")
+cat(paste(as.numeric(qt$parameter), collapse = ","), "\n", sep = "")
+cat(round(qt$p.value, 6), "\n", sep = "")
+cat(qt$method, "\n", sep = "")
+cat(class(qt), "\n", sep = "")
