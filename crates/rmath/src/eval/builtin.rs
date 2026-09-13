@@ -841,6 +841,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_xtfrm_Date,
     },
     EvaluatedBuiltin {
+        name: "xtfrm.POSIXct",
+        handler: crate::mainutils::essentials::do_xtfrm_Date,
+    },
+    EvaluatedBuiltin {
+        name: "xtfrm.POSIXt",
+        handler: crate::mainutils::essentials::do_xtfrm_Date,
+    },
+    EvaluatedBuiltin {
         name: "@<-",
         handler: crate::mainutils::essentials::do_at_set,
     },
@@ -1474,6 +1482,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "julian",
+        handler: crate::mainutils::essentials::do_julian,
+    },
+    EvaluatedBuiltin {
+        name: "julian.POSIXt",
         handler: crate::mainutils::essentials::do_julian,
     },
     EvaluatedBuiltin {

@@ -1,0 +1,6 @@
+cat(class(xtfrm(ISOdate(2020, 1, 1))), "\n", sep = "")
+cat(as.numeric(xtfrm(ISOdate(2020, 1, 1))), "\n", sep = "")
+cat(as.numeric(julian(ISOdate(2020, 1, 1))), "\n", sep = "")
+cat(class(julian(ISOdate(2020, 1, 1))), "\n", sep = "")
+cat(as.character(attr(julian(ISOdate(2020, 1, 1)), "origin")), "\n", sep = "")
+cat(as.numeric(julian.POSIXt(ISOdate(2020, 1, 1))), "\n", sep = "")

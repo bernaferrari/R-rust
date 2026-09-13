@@ -642,7 +642,14 @@ pub unsafe fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let mut origin_days = 0.0;
+        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+            do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
+        } else {
+            x
+        };
+        let _x = protect(x);
+        let posix = sexp_has_class(x, "POSIXct") || sexp_has_class(x, "POSIXt");
+        let mut origin_val = 0.0;
         let rest = CDR(args);
         if !rest.is_null() && rest != R_NilValue() {
             let origin = CAR(rest);
@@ -651,7 +658,7 @@ pub unsafe fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 && TYPEOF(origin) == SEXPTYPE::REALSXP
                 && XLENGTH(origin) > 0
             {
-                origin_days = *REAL(origin);
+                origin_val = *REAL(origin);
             }
         }
         let n = XLENGTH(x);
@@ -670,12 +677,26 @@ pub unsafe fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             } else {
                 NA_REAL
             };
-            *REAL(result).add(i as usize) = v - origin_days;
+            *REAL(result).add(i as usize) = if posix {
+                (v - origin_val) / 86_400.0
+            } else {
+                v - origin_val
+            };
         }
         let origin = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
         let _o = protect(origin);
-        *REAL(origin) = origin_days;
-        set_single_class(origin, "Date");
+        *REAL(origin) = origin_val;
+        if posix {
+            set_posixct_class(origin, "GMT");
+            set_single_class(result, "difftime");
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                Rf_mkString(c"days".as_ptr()),
+            );
+        } else {
+            set_single_class(origin, "Date");
+        }
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::symbol::Rf_install(c"origin".as_ptr()),
