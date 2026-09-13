@@ -775,5 +775,93 @@ pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `ARMAacf(ar, lag.max)` for AR(1).
+pub unsafe fn do_ARMAacf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut phi = 0.0;
+        let mut lag_max = 1i64;
+        let mut p = args;
+        while !p.is_null() && p != R_NilValue() {
+            let tag = TAG(p);
+            let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let v = CAR(p);
+            if name == "ar" || name.is_empty() && p == args {
+                phi = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v)
+                } else {
+                    *INTEGER(v) as f64
+                };
+            } else if name == "lag.max" {
+                lag_max = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v) as i64
+                } else {
+                    *REAL(v) as i64
+                };
+            }
+            p = CDR(p);
+        }
+        let n = lag_max + 1;
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _a = protect(ans);
+        let mut acc = 1.0;
+        for i in 0..n as usize {
+            *REAL(ans).add(i) = acc;
+            acc *= phi;
+        }
+        let names: Vec<String> = (0..=lag_max).map(|i| i.to_string()).collect();
+        crate::mainutils::essentials::set_string_names(ans, &names);
+        ans
+    }
+}
+
+/// GNU `ARMAtoMA(ar, lag.max)` for AR(1).
+pub unsafe fn do_ARMAtoMA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut phi = 0.0;
+        let mut lag_max = 1i64;
+        let mut p = args;
+        while !p.is_null() && p != R_NilValue() {
+            let tag = TAG(p);
+            let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let v = CAR(p);
+            if name == "ar" || name.is_empty() && p == args {
+                phi = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v)
+                } else {
+                    *INTEGER(v) as f64
+                };
+            } else if name == "lag.max" {
+                lag_max = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v) as i64
+                } else {
+                    *REAL(v) as i64
+                };
+            }
+            p = CDR(p);
+        }
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, lag_max);
+        let _a = protect(ans);
+        let mut acc = phi;
+        for i in 0..lag_max as usize {
+            *REAL(ans).add(i) = acc;
+            acc *= phi;
+        }
+        ans
+    }
+}
+
+
 
 
