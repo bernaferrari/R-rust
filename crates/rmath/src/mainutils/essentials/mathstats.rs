@@ -2262,6 +2262,70 @@ pub unsafe fn do_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `ks.test(x, "punif", min, max)` one-sample.
+pub unsafe fn do_ks_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let mut min = 0.0;
+        let mut max = 1.0;
+        let mut cell = CDR(CDR(args));
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            let val = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                *REAL(v)
+            } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+                *INTEGER(v) as f64
+            } else {
+                0.0
+            };
+            if pos == 0 {
+                min = val;
+            } else if pos == 1 {
+                max = val;
+            }
+            pos += 1;
+            cell = CDR(cell);
+        }
+        let n = XLENGTH(x);
+        let mut xs: Vec<f64> = Vec::new();
+        for i in 0..n {
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                *INTEGER(x).add(i as usize) as f64
+            };
+            if v.is_finite() {
+                xs.push(v);
+            }
+        }
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = xs.len() as f64;
+        let span = if max > min { max - min } else { 1.0 };
+        let mut d = 0.0f64;
+        for (i, xi) in xs.iter().enumerate() {
+            let f = ((*xi - min) / span).clamp(0.0, 1.0);
+            let fn_plus = (i as f64 + 1.0) / n;
+            let fn_minus = i as f64 / n;
+            d = d.max((fn_plus - f).abs()).max((fn_minus - f).abs());
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(d));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(1.0));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["statistic".to_string(), "p.value".to_string()],
+        );
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"ks.test".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"htest".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        result
+    }
+}
+
+
 
 
 
