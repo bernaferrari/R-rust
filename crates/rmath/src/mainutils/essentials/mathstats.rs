@@ -4943,6 +4943,8 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
             let class = Rf_mkString(c"lm".as_ptr());
             let _cl = protect(class);
+
+
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_ClassSymbol(),
@@ -5045,6 +5047,68 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             class,
         );
         result
+    }
+}
+unsafe fn family_object(family: &str, link: &str) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        let fam = match family {
+            "gaussian" => Rf_mkString(c"gaussian".as_ptr()),
+            _ => Rf_mkString(c"binomial".as_ptr()),
+        };
+        let lnk = match link {
+            "identity" => Rf_mkString(c"identity".as_ptr()),
+            "probit" => Rf_mkString(c"probit".as_ptr()),
+            "log" => Rf_mkString(c"log".as_ptr()),
+            _ => Rf_mkString(c"logit".as_ptr()),
+        };
+        SET_VECTOR_ELT(result, 0, fam);
+        SET_VECTOR_ELT(result, 1, lnk);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["family".to_string(), "link".to_string()],
+        );
+        let class = Rf_mkString(c"family".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+/// GNU `binomial()` family object.
+pub unsafe fn do_binomial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut link = "logit".to_string();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                link = elt_to_string(v, 0);
+            }
+            cell = CDR(cell);
+        }
+        family_object("binomial", &link)
+    }
+}
+
+/// GNU `gaussian()` family object.
+pub unsafe fn do_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut link = "identity".to_string();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                link = elt_to_string(v, 0);
+            }
+            cell = CDR(cell);
+        }
+        family_object("gaussian", &link)
     }
 }
 

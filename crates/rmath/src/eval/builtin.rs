@@ -1974,6 +1974,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_glm,
     },
     EvaluatedBuiltin {
+        name: "binomial",
+        handler: crate::mainutils::essentials::do_binomial,
+    },
+    EvaluatedBuiltin {
+        name: "gaussian",
+        handler: crate::mainutils::essentials::do_gaussian,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },

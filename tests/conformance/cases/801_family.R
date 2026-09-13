@@ -1,0 +1,8 @@
+b <- binomial()
+g <- gaussian()
+cat(b$family, "\n", sep = "")
+cat(b$link, "\n", sep = "")
+cat(g$family, "\n", sep = "")
+cat(g$link, "\n", sep = "")
+cat(class(b), "\n", sep = "")
+cat(binomial("probit")$link, "\n", sep = "")
