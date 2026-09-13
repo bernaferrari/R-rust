@@ -1503,6 +1503,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_bw_nrd,
     },
     EvaluatedBuiltin {
+        name: "bw.SJ",
+        handler: crate::mainutils::essentials::do_bw_sj,
+    },
+    EvaluatedBuiltin {
         name: "formatC",
         handler: crate::mainutils::essentials::do_formatC,
     },

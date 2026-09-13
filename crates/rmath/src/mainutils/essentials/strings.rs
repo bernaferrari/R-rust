@@ -2260,6 +2260,89 @@ pub unsafe fn do_bw_nrd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+fn bw_phi_binned(x: &[f64], h: f64, deriv: i32) -> f64 {
+    let n = x.len();
+    if n < 2 || h <= 0.0 {
+        return f64::NAN;
+    }
+    let xmin = x.iter().copied().fold(f64::INFINITY, f64::min);
+    let xmax = x.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let nb = 1000usize;
+    let rang = (xmax - xmin) * 1.01;
+    if rang == 0.0 {
+        return f64::NAN;
+    }
+    let dd = rang / nb as f64;
+    let mut cnt = vec![0.0; nb];
+    for i in 1..n {
+        let ii = (x[i] / dd) as i32;
+        for j in 0..i {
+            let jj = (x[j] / dd) as i32;
+            let k = (ii - jj).unsigned_abs() as usize;
+            if k < nb {
+                cnt[k] += 1.0;
+            }
+        }
+    }
+    let mut sum = 0.0;
+    for (i, &c) in cnt.iter().enumerate() {
+        if c == 0.0 {
+            continue;
+        }
+        let mut delta = (i as f64) * dd / h;
+        delta *= delta;
+        if delta >= 1000.0 {
+            break;
+        }
+        let term = if deriv == 4 {
+            (-delta / 2.0).exp() * (delta * delta - 6.0 * delta + 3.0)
+        } else {
+            (-delta / 2.0).exp()
+                * (delta * delta * delta - 15.0 * delta * delta + 45.0 * delta - 15.0)
+        };
+        sum += term * c;
+    }
+    let nf = n as f64;
+    if deriv == 4 {
+        sum = 2.0 * sum + nf * 3.0;
+        sum / (nf * (nf - 1.0) * h.powi(5)) / (2.0 * std::f64::consts::PI).sqrt()
+    } else {
+        sum = 2.0 * sum - 15.0 * nf;
+        sum / (nf * (nf - 1.0) * h.powi(7)) / (2.0 * std::f64::consts::PI).sqrt()
+    }
+}
+
+/// GNU `bw.SJ(x, method="dpi")` — Sheather–Jones direct plug-in.
+pub unsafe fn do_bw_sj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = nclass_numeric_copy(CAR(args));
+        let n = x.len();
+        if n < 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "need at least 2 data points",
+            );
+        }
+        let nf = n as f64;
+        let sd = nclass_sample_var(&x).sqrt();
+        let iqr = nclass_iqr(x.clone()) / 1.349;
+        let scale = sd.min(iqr);
+        let b = 1.23 * scale * nf.powf(-1.0 / 9.0);
+        let td = -bw_phi_binned(&x, b, 6);
+        if !td.is_finite() || td <= 0.0 {
+            return Rf_ScalarReal(f64::NAN);
+        }
+        let c1 = 1.0 / (2.0 * std::f64::consts::PI.sqrt() * nf);
+        let h1 = (2.394 / (nf * td)).powf(1.0 / 7.0);
+        let sd_h = bw_phi_binned(&x, h1, 4);
+        let res = (c1 / sd_h).powf(1.0 / 5.0);
+        Rf_ScalarReal(res)
+    }
+}
+
+
+
+
 fn formatc_exp(v: f64, digits: usize, upper: bool) -> String {
     let s = if upper {
         format!("{v:.digits$E}")
