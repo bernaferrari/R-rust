@@ -1,0 +1,6 @@
+ig <- inverse.gaussian()
+cat(ig$family, "\n", sep = "")
+cat(ig$link, "\n", sep = "")
+cat(class(ig), "\n", sep = "")
+cat(inverse.gaussian("log")$link, "\n", sep = "")
+cat(inverse.gaussian("identity")$link, "\n", sep = "")
