@@ -744,6 +744,117 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+fn iso_arg_num(x: SEXP, default: f64) -> f64 {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return default;
+        }
+        if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > 0 {
+            *REAL(x)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
+            let v = *INTEGER(x);
+            if v == NA_INTEGER {
+                default
+            } else {
+                v as f64
+            }
+        } else {
+            default
+        }
+    }
+}
+
+unsafe fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, tz: &str) -> SEXP {
+    unsafe {
+        let stamp = format!(
+            "{:04}-{:02}-{:02}",
+            year as i32,
+            month as i32,
+            day as i32
+        );
+        let days = crate::mainutils::essentials::parse_iso_date_days(&stamp).unwrap_or(f64::NAN);
+        let seconds = days * 86_400.0 + hour * 3600.0 + min * 60.0 + sec;
+        let result = Rf_ScalarReal(seconds);
+        let _r = protect(result);
+        set_posixct_class(result, tz);
+        result
+    }
+}
+
+/// GNU `ISOdatetime(year, month, day, hour, min, sec, tz)`.
+pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let year = iso_arg_num(CAR(args), 1970.0);
+        let month = iso_arg_num(CAR(CDR(args)), 1.0);
+        let day = iso_arg_num(CAR(CDR(CDR(args))), 1.0);
+        let hour = iso_arg_num(CAR(CDR(CDR(CDR(args)))), 0.0);
+        let min = iso_arg_num(CAR(CDR(CDR(CDR(CDR(args))))), 0.0);
+        let sec = iso_arg_num(CAR(CDR(CDR(CDR(CDR(CDR(args)))))), 0.0);
+        let mut tz = String::new();
+        let mut cell = CDR(CDR(CDR(CDR(CDR(CDR(args))))));
+        if !cell.is_null() && cell != R_NilValue() {
+            let t = CAR(cell);
+            if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
+                let ch = STRING_ELT(t, 0);
+                if !ch.is_null() {
+                    tz = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+        }
+        iso_posixct(year, month, day, hour, min, sec, &tz)
+    }
+}
+
+/// GNU `ISOdate(year, month, day)` is noon GMT.
+pub unsafe fn do_ISOdate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let year = iso_arg_num(CAR(args), 1970.0);
+        let month = iso_arg_num(CAR(CDR(args)), 1.0);
+        let day = iso_arg_num(CAR(CDR(CDR(args))), 1.0);
+        let mut hour = 12.0;
+        let mut min = 0.0;
+        let mut sec = 0.0;
+        let mut tz = "GMT".to_string();
+        let mut cell = CDR(CDR(CDR(args)));
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if named == "hour" || (named.is_empty() && pos == 0) {
+                hour = iso_arg_num(value, 12.0);
+            } else if named == "min" || (named.is_empty() && pos == 1) {
+                min = iso_arg_num(value, 0.0);
+            } else if named == "sec" || (named.is_empty() && pos == 2) {
+                sec = iso_arg_num(value, 0.0);
+            } else if named == "tz" || (named.is_empty() && pos == 3) {
+                if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+                    let ch = STRING_ELT(value, 0);
+                    if !ch.is_null() {
+                        tz = std::ffi::CStr::from_ptr(CHAR(ch))
+                            .to_string_lossy()
+                            .into_owned();
+                    }
+                }
+            }
+            if named.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
+        }
+        iso_posixct(year, month, day, hour, min, sec, &tz)
+    }
+}
+
+
 
 /// R's `as.POSIXct(x, tz, origin)` — coerce simple UTC inputs to POSIXct.
 pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
