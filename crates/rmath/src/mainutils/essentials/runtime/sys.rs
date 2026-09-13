@@ -944,6 +944,156 @@ pub unsafe fn do_strftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+fn date_units_arg(args: SEXP) -> String {
+    unsafe {
+        let mut units = "days".to_string();
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if (named == "units" || named.is_empty())
+                && TYPEOF(value) == SEXPTYPE::STRSXP
+                && XLENGTH(value) > 0
+            {
+                let ch = STRING_ELT(value, 0);
+                if !ch.is_null() {
+                    units = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+                break;
+            }
+            cell = CDR(cell);
+        }
+        units
+    }
+}
+
+fn date_days_elt(x: SEXP, i: i64) -> f64 {
+    unsafe {
+        if TYPEOF(x) == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER {
+                NA_REAL
+            } else {
+                v as f64
+            }
+        } else {
+            NA_REAL
+        }
+    }
+}
+
+fn date_first_of_month(days: f64) -> f64 {
+    let tm = unix_secs_to_utc((days * 86_400.0) as i64);
+    let y = tm.tm_year + 1900;
+    let m = tm.tm_mon + 1;
+    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{m:02}-01"))
+        .unwrap_or(days)
+}
+
+fn date_first_of_year(days: f64) -> f64 {
+    let tm = unix_secs_to_utc((days * 86_400.0) as i64);
+    let y = tm.tm_year + 1900;
+    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-01-01")).unwrap_or(days)
+}
+
+fn date_add_months(days: f64, add: i32) -> f64 {
+    let tm = unix_secs_to_utc((days * 86_400.0) as i64);
+    let mut y = tm.tm_year + 1900;
+    let mut m = tm.tm_mon + 1 + add;
+    while m > 12 {
+        m -= 12;
+        y += 1;
+    }
+    while m < 1 {
+        m += 12;
+        y -= 1;
+    }
+    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{m:02}-01"))
+        .unwrap_or(days)
+}
+
+/// GNU `trunc.Date(x, units)`.
+pub unsafe fn do_trunc_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let units = date_units_arg(args);
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let days = date_days_elt(x, i);
+            let out = if !days.is_finite() {
+                days
+            } else if units.starts_with("month") {
+                date_first_of_month(days)
+            } else if units.starts_with("year") {
+                date_first_of_year(days)
+            } else {
+                days.floor()
+            };
+            *REAL(result).add(i as usize) = out;
+        }
+        set_single_class(result, "Date");
+        result
+    }
+}
+
+/// GNU `round.Date(x, units)`.
+pub unsafe fn do_round_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let units = date_units_arg(args);
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let days = date_days_elt(x, i);
+            let out = if !days.is_finite() {
+                days
+            } else if units.starts_with("month") {
+                let lo = date_first_of_month(days);
+                let hi = date_add_months(lo, 1);
+                if (hi - days) <= (days - lo) {
+                    hi
+                } else {
+                    lo
+                }
+            } else if units.starts_with("year") {
+                let lo = date_first_of_year(days);
+                let hi = date_first_of_year(lo + 370.0);
+                if (hi - days) <= (days - lo) {
+                    hi
+                } else {
+                    lo
+                }
+            } else {
+                days.round()
+            };
+            *REAL(result).add(i as usize) = out;
+        }
+        set_single_class(result, "Date");
+        result
+    }
+}
+
+
 
 
 

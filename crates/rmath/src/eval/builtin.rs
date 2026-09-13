@@ -1465,6 +1465,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ISOdatetime,
     },
     EvaluatedBuiltin {
+        name: "trunc.Date",
+        handler: crate::mainutils::essentials::do_trunc_Date,
+    },
+    EvaluatedBuiltin {
+        name: "round.Date",
+        handler: crate::mainutils::essentials::do_round_Date,
+    },
+    EvaluatedBuiltin {
         name: "strftime",
         handler: crate::mainutils::essentials::do_strftime,
     },
