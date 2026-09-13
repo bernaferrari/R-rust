@@ -329,5 +329,36 @@ pub unsafe fn do_nlm(
     }
 }
 
+/// GNU `nlminb(start, objective)` 1-d via nlm.
+pub unsafe fn do_nlminb(
+    call: crate::sexp::ffi::SEXP,
+    op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    rho: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, SET_VECTOR_ELT, VECTOR_ELT};
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
+        use crate::sexp::globals::R_NilValue;
+        use crate::sexp::protect::protect;
+        let start = CAR(args);
+        let fun = CAR(CDR(args));
+        let nlm_args = Rf_cons(fun, Rf_cons(start, R_NilValue()));
+        let _na = protect(nlm_args);
+        let nlm = do_nlm(call, op, nlm_args, rho);
+        let _n = protect(nlm);
+        let result = Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, VECTOR_ELT(nlm, 1));
+        SET_VECTOR_ELT(result, 1, VECTOR_ELT(nlm, 0));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["par".to_string(), "objective".to_string()],
+        );
+        result
+    }
+}
+
+
 
 
