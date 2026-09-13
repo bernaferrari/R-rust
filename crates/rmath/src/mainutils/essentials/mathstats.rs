@@ -4941,6 +4941,27 @@ pub unsafe fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 
+/// GNU `glm(y ~ x)` gaussian — `lm` with class `c("glm","lm")`.
+pub unsafe fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let result = do_lm(call, op, args, rho);
+        if result.is_null() || result == R_NilValue() {
+            return result;
+        }
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _cl = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"glm".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"lm".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 /// GNU `covratio(lm)`.
 pub unsafe fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
