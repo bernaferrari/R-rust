@@ -1,0 +1,6 @@
+d <- contr.treatment(3)
+cat(paste(sprintf("%.0f", as.vector(d)), collapse = ","), "\n", sep = "")
+cat(paste(dim(d), collapse = ","), "\n", sep = "")
+cat(paste(colnames(d), collapse = ","), "\n", sep = "")
+e <- contr.treatment(4, base = 2)
+cat(paste(sprintf("%.0f", as.vector(e)), collapse = ","), "\n", sep = "")

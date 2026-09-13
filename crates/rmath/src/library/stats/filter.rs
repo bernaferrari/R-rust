@@ -1511,6 +1511,76 @@ pub unsafe fn do_getCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe { named_list_elt(CAR(args), "call") }
 }
 
+/// GNU `contr.treatment(n, base=1)`.
+pub unsafe fn do_contr_treatment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_s = CAR(args);
+        let n = if TYPEOF(n_s) == SEXPTYPE::INTSXP {
+            *INTEGER(n_s)
+        } else {
+            *REAL(n_s) as c_int
+        };
+        let mut base = 1i32;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let b = CAR(rest);
+            if TYPEOF(b) == SEXPTYPE::INTSXP {
+                base = *INTEGER(b);
+            } else if TYPEOF(b) == SEXPTYPE::REALSXP {
+                base = *REAL(b) as c_int;
+            }
+        }
+        if n < 2 || base < 1 || base > n {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid contrasts",
+            );
+        }
+        let nc = (n - 1) as i32;
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n, nc);
+        let _m = protect(mat);
+        for i in 0..(n as usize * nc as usize) {
+            *REAL(mat).add(i) = 0.0;
+        }
+        let mut col = 0usize;
+        for lev in 1..=n {
+            if lev == base {
+                continue;
+            }
+            *REAL(mat).add((lev as usize - 1) + col * n as usize) = 1.0;
+            col += 1;
+        }
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, n as i64);
+        let _rn = protect(rn);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, nc as i64);
+        let _cn = protect(cn);
+        for i in 0..n as usize {
+            let lab = format!("{}\0", i + 1);
+            SET_STRING_ELT(rn, i as i64, Rf_mkChar(lab.as_ptr() as *const _));
+        }
+        col = 0;
+        for lev in 1..=n {
+            if lev == base {
+                continue;
+            }
+            let lab = format!("{lev}\0");
+            SET_STRING_ELT(cn, col as i64, Rf_mkChar(lab.as_ptr() as *const _));
+            col += 1;
+        }
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        mat
+    }
+}
+
+
 
 
 
