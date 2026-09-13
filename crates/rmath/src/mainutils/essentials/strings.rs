@@ -2192,6 +2192,128 @@ pub unsafe fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+fn prettynum_group(int_part: &str, mark: &str, interval: usize) -> String {
+    if mark.is_empty() || interval == 0 {
+        return int_part.to_string();
+    }
+    let (sign, digits) = if let Some(rest) = int_part.strip_prefix('-') {
+        ("-", rest)
+    } else {
+        ("", int_part)
+    };
+    let chars: Vec<char> = digits.chars().collect();
+    if chars.len() <= interval {
+        return format!("{sign}{digits}");
+    }
+    let mut out = String::new();
+    let rem = chars.len() % interval;
+    if rem > 0 {
+        out.extend(chars[..rem].iter());
+    }
+    let mut i = rem;
+    while i < chars.len() {
+        if !out.is_empty() {
+            out.push_str(mark);
+        }
+        out.extend(chars[i..i + interval].iter());
+        i += interval;
+    }
+    format!("{sign}{out}")
+}
+
+/// GNU `prettyNum(x, big.mark, decimal.mark)`.
+pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let mut big_mark = String::new();
+        let mut decimal_mark = ".".to_string();
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+                let ch = STRING_ELT(value, 0);
+                if !ch.is_null() {
+                    let s = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                    if named == "big.mark" {
+                        big_mark = s;
+                    } else if named == "decimal.mark" {
+                        decimal_mark = s;
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
+        let formatted = if TYPEOF(x) == SEXPTYPE::STRSXP {
+            x
+        } else {
+            let n = XLENGTH(x);
+            let tmp = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _t = protect(tmp);
+            for i in 0..n {
+                let elt = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    Rf_ScalarReal(*REAL(x).add(i as usize))
+                } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                    Rf_ScalarInteger(*INTEGER(x).add(i as usize))
+                } else {
+                    Rf_ScalarReal(0.0)
+                };
+                let _e = protect(elt);
+                let one = do_format(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    Rf_cons(elt, R_NilValue()),
+                    std::ptr::null_mut(),
+                );
+                if TYPEOF(one) == SEXPTYPE::STRSXP && XLENGTH(one) > 0 {
+                    SET_STRING_ELT(tmp, i, STRING_ELT(one, 0));
+                }
+            }
+            tmp
+        };
+        let _f = protect(formatted);
+        let n = XLENGTH(formatted);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let ch = STRING_ELT(formatted, i);
+            let raw = if ch.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let pretty = if let Some((int_part, frac)) = raw.split_once('.') {
+                format!(
+                    "{}{}{}",
+                    prettynum_group(int_part, &big_mark, 3),
+                    decimal_mark,
+                    frac
+                )
+            } else {
+                prettynum_group(&raw, &big_mark, 3)
+            };
+            let c = CString::new(pretty).unwrap_or_else(|_| CString::new("").unwrap());
+            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+
 
 
 
