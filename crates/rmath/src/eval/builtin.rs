@@ -1685,6 +1685,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_na_contiguous,
     },
     EvaluatedBuiltin {
+        name: "na.pass",
+        handler: crate::library::stats::filter::do_na_pass,
+    },
+    EvaluatedBuiltin {
+        name: "napredict",
+        handler: crate::library::stats::filter::do_napredict,
+    },
+    EvaluatedBuiltin {
+        name: "na.fail",
+        handler: crate::library::stats::filter::do_na_fail,
+    },
+    EvaluatedBuiltin {
         name: "window",
         handler: crate::library::stats::filter::do_window,
     },

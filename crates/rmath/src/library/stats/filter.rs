@@ -1386,6 +1386,48 @@ pub unsafe fn do_na_contiguous(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
+/// GNU `na.pass(x)`.
+pub unsafe fn do_na_pass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(args) }
+}
+
+/// GNU `napredict(omit, x)` with NULL omit returns x.
+pub unsafe fn do_napredict(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(CDR(args)) }
+}
+
+/// GNU `na.fail(x)`.
+pub unsafe fn do_na_fail(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x) as usize;
+        let mut missing = false;
+        if TYPEOF(x) == SEXPTYPE::REALSXP {
+            for i in 0..n {
+                if (*REAL(x).add(i)).is_nan() {
+                    missing = true;
+                    break;
+                }
+            }
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            for i in 0..n {
+                if *INTEGER(x).add(i) == NA_INTEGER {
+                    missing = true;
+                    break;
+                }
+            }
+        }
+        if missing {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "missing values in object",
+            );
+        }
+        x
+    }
+}
+
+
 
 
 
