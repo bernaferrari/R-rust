@@ -1601,6 +1601,56 @@ pub unsafe fn do_format_POSIXct(
     }
 }
 
+unsafe fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+            crate::mainutils::essentials::do_as_Date(call, op, Rf_cons(x, R_NilValue()), env)
+        } else {
+            x
+        }
+    }
+}
+
+/// GNU `weekdays.POSIXt(x)`.
+pub unsafe fn do_weekdays_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = posixlt_as_date(call, op, CAR(args), env);
+        crate::mainutils::essentials::do_weekdays(call, op, Rf_cons(x, CDR(args)), env)
+    }
+}
+
+/// GNU `months.POSIXt(x)`.
+pub unsafe fn do_months_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = posixlt_as_date(call, op, CAR(args), env);
+        crate::mainutils::essentials::do_months(call, op, Rf_cons(x, CDR(args)), env)
+    }
+}
+
+/// GNU `quarters.POSIXt(x)`.
+pub unsafe fn do_quarters_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = posixlt_as_date(call, op, CAR(args), env);
+        crate::mainutils::essentials::do_quarters(call, op, Rf_cons(x, CDR(args)), env)
+    }
+}
+
+
 
 /// Build a CString from an owned string (helper for the code above).
 fn mk_char_str(s: &str) -> CString {
