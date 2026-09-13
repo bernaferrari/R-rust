@@ -2020,6 +2020,37 @@ pub unsafe fn do_as_formula(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 
+/// GNU `model.extract(frame, component)` — `response` or `(component)`.
+pub unsafe fn do_model_extract(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let frame = crate::eval::eval::Rf_eval(CAR(args), rho);
+        let spec = CAR(CDR(args));
+        let name = if TYPEOF(spec) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(spec)))
+                .to_string_lossy()
+                .into_owned()
+        } else if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0 {
+            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(spec, 0)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        };
+        if name == "response" {
+            if TYPEOF(frame) == SEXPTYPE::VECSXP && XLENGTH(frame) > 0 {
+                return VECTOR_ELT(frame, 0);
+            }
+            return R_NilValue();
+        }
+        if name == "offset" {
+            return named_list_elt(frame, "offset");
+        }
+        let key = format!("({name})");
+        named_list_elt(frame, &key)
+    }
+}
+
+
 /// GNU default `terms(object)` via $terms.
 pub unsafe fn do_terms(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { named_list_elt(CAR(args), "terms") }

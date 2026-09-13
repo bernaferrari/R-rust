@@ -2294,6 +2294,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_weights,
     },
     EvaluatedBuiltin {
+        name: "model.extract",
+        handler: crate::library::stats::filter::do_model_extract,
+    },
+    EvaluatedBuiltin {
         name: "formula",
         handler: crate::library::stats::filter::do_formula,
     },
