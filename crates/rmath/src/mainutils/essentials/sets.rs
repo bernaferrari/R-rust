@@ -1569,6 +1569,37 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 }
             }
         }
+        if sexp_has_class(x, "Date") {
+            set_single_class(result, "Date");
+        } else if sexp_has_class(x, "POSIXct") || sexp_has_class(x, "POSIXt") {
+            let tz = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+            );
+            let mut tz_s = "UTC".to_string();
+            if !tz.is_null() && tz != R_NilValue() && TYPEOF(tz) == SEXPTYPE::STRSXP && XLENGTH(tz) > 0 {
+                let ch = STRING_ELT(tz, 0);
+                if !ch.is_null() {
+                    tz_s = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+            set_posixct_class(result, &tz_s);
+        } else if sexp_has_class(x, "difftime") {
+            let units = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+            );
+            set_single_class(result, "difftime");
+            if !units.is_null() && units != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                    units,
+                );
+            }
+        }
         result
     }
 }

@@ -1798,6 +1798,73 @@ pub unsafe fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `is.numeric.Date` / `is.numeric.POSIXt`.
+pub unsafe fn do_is_numeric_Date(
+    _call: SEXP,
+    _op: SEXP,
+    _args: SEXP,
+    _rho: SEXP,
+) -> SEXP {
+    unsafe { Rf_ScalarLogical(FALSE) }
+}
+
+/// GNU `diff.Date(x)`.
+pub unsafe fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            let _e = protect(empty);
+            set_single_class(empty, "difftime");
+            crate::sexp::attrib_core::setAttrib(
+                empty,
+                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                Rf_mkString(c"days".as_ptr()),
+            );
+            return empty;
+        }
+        let n = XLENGTH(x);
+        if n < 2 {
+            let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            let _e = protect(empty);
+            set_single_class(empty, "difftime");
+            crate::sexp::attrib_core::setAttrib(
+                empty,
+                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                Rf_mkString(c"days".as_ptr()),
+            );
+            return empty;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n - 1);
+        let _r = protect(result);
+        for i in 0..(n - 1) {
+            let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                *INTEGER(x).add(i as usize) as f64
+            } else {
+                0.0
+            };
+            let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add((i + 1) as usize)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                *INTEGER(x).add((i + 1) as usize) as f64
+            } else {
+                0.0
+            };
+            *REAL(result).add(i as usize) = b - a;
+        }
+        set_single_class(result, "difftime");
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+            Rf_mkString(c"days".as_ptr()),
+        );
+        result
+    }
+}
+
+
 
 
 

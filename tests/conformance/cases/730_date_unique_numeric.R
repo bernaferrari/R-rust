@@ -1,0 +1,8 @@
+cat(is.numeric(as.Date("2020-01-01")), "\n", sep = "")
+cat(is.numeric(ISOdate(2020, 1, 1)), "\n", sep = "")
+cat(is.numeric.Date(as.Date("2020-01-01")), "\n", sep = "")
+cat(class(unique(as.Date(c("2020-01-01", "2020-01-01", "2020-01-02")))), "\n", sep = "")
+cat(paste(as.character(unique(as.Date(c("2020-01-01", "2020-01-01", "2020-01-02")))), collapse = ","), "\n", sep = "")
+cat(as.numeric(diff.Date(as.Date(c("2020-01-01", "2020-01-03")))), "\n", sep = "")
+cat(class(diff.Date(as.Date(c("2020-01-01", "2020-01-03")))), "\n", sep = "")
+cat(units(diff.Date(as.Date(c("2020-01-01", "2020-01-03")))), "\n", sep = "")

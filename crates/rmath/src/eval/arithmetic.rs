@@ -2637,6 +2637,14 @@ pub unsafe fn do_is_type(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let Some(x) = Sexp::from_raw(x) else {
             return Rf_ScalarLogical(FALSE);
         };
+        if op_name == "is.numeric" {
+            let raw = CAR(args);
+            if crate::mainutils::objects::inherits2(raw, c"Date".as_ptr()) != 0
+                || crate::mainutils::objects::inherits2(raw, c"POSIXt".as_ptr()) != 0
+            {
+                return Rf_ScalarLogical(FALSE);
+            }
+        }
         let t = x.typeof_();
         let result = match op_name {
             "is.numeric" => t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP,

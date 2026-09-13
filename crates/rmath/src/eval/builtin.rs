@@ -1057,6 +1057,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: super::arithmetic::do_is_type,
     },
     EvaluatedBuiltin {
+        name: "is.numeric.Date",
+        handler: crate::mainutils::essentials::do_is_numeric_Date,
+    },
+    EvaluatedBuiltin {
+        name: "is.numeric.POSIXt",
+        handler: crate::mainutils::essentials::do_is_numeric_Date,
+    },
+    EvaluatedBuiltin {
         name: "is.integer",
         handler: super::arithmetic::do_is_type,
     },
@@ -2227,6 +2235,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "diff.POSIXt",
         handler: crate::mainutils::essentials::do_diff_POSIXt,
+    },
+    EvaluatedBuiltin {
+        name: "diff.Date",
+        handler: crate::mainutils::essentials::do_diff_Date,
     },
     EvaluatedBuiltin {
         name: "trunc.POSIXt",
