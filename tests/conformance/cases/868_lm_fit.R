@@ -1,0 +1,6 @@
+x <- cbind(1, 1:5)
+y <- c(1, 2, 2, 4, 5)
+f <- lm.fit(x, y)
+cat(paste(round(unname(f$coefficients), 4), collapse = ","), "\n", sep = "")
+cat(paste(round(f$residuals, 4), collapse = ","), "\n", sep = "")
+cat(f$rank, "\n", sep = "")
