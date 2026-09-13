@@ -1656,6 +1656,75 @@ pub unsafe fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+fn sexp_is_numeric_zero(x: SEXP) -> bool {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return false;
+        }
+        if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) == 1 {
+            return *INTEGER(x) == 0;
+        }
+        if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) == 1 {
+            return *REAL(x) == 0.0;
+        }
+        false
+    }
+}
+
+fn sexp_is_numeric_one(x: SEXP) -> bool {
+    unsafe {
+        if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) == 1 {
+            return *INTEGER(x) == 1;
+        }
+        if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) == 1 {
+            return *REAL(x) == 1.0;
+        }
+        false
+    }
+}
+
+/// GNU `is.empty.model(x)` — no terms and no intercept.
+pub unsafe fn do_is_empty_model(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::LANGSXP {
+            return Rf_ScalarLogical(0);
+        }
+        let rest = CDR(x);
+        let third = if rest.is_null() {
+            R_NilValue()
+        } else {
+            CDR(rest)
+        };
+        let rhs = if third.is_null() || third == R_NilValue() {
+            if rest.is_null() {
+                R_NilValue()
+            } else {
+                CAR(rest)
+            }
+        } else {
+            CAR(third)
+        };
+        let empty = if sexp_is_numeric_zero(rhs) {
+            true
+        } else if TYPEOF(rhs) == SEXPTYPE::LANGSXP {
+            let op = CAR(rhs);
+            let name = if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            name == "-" && sexp_is_numeric_one(CADR(rhs))
+        } else {
+            false
+        };
+        Rf_ScalarLogical(if empty { 1 } else { 0 })
+    }
+}
+
+
 
 
 

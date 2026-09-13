@@ -2238,6 +2238,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_dummy_coef,
     },
     EvaluatedBuiltin {
+        name: "is.empty.model",
+        handler: crate::library::stats::filter::do_is_empty_model,
+    },
+    EvaluatedBuiltin {
         name: "coef",
         handler: crate::library::stats::filter::do_coef,
     },

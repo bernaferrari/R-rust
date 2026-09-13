@@ -1,0 +1,5 @@
+cat(is.empty.model(~0), "\n", sep = "")
+cat(is.empty.model(~1), "\n", sep = "")
+cat(is.empty.model(y ~ x), "\n", sep = "")
+cat(is.empty.model(y ~ 0), "\n", sep = "")
+cat(is.empty.model(~-1), "\n", sep = "")
