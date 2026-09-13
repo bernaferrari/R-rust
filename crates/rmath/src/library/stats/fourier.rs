@@ -786,45 +786,124 @@ pub unsafe fn do_convolve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 
 
-/// GNU `spec.pgram` raw periodogram, no taper/detrend.
+/// GNU `spec.pgram` default: detrend, taper 0.1, pad to `nextn`, scale by `u2`.
 pub unsafe fn do_spec_pgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
         use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkString};
         use crate::sexp::protect::protect;
         let x = CAR(args);
-        let n = XLENGTH(x);
-        let xd = if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::CPLXSXP {
-            x
-        } else {
-            crate::main::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
-        };
+        let n0 = XLENGTH(x) as usize;
+        if n0 == 0 {
+            return R_NilValue();
+        }
+        let mut v = vec![0.0; n0];
+        for i in 0..n0 {
+            v[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                *INTEGER(x).add(i) as f64
+            } else {
+                0.0
+            };
+        }
+        let mut taper = 0.1;
+        let mut detrend = true;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = CAR(cell);
+            if name == "taper" {
+                taper = if TYPEOF(val) == SEXPTYPE::REALSXP {
+                    *REAL(val)
+                } else if TYPEOF(val) == SEXPTYPE::INTSXP {
+                    *INTEGER(val) as f64
+                } else {
+                    taper
+                };
+            } else if name == "detrend" {
+                detrend = as_logical(val) != 0;
+            }
+            cell = CDR(cell);
+        }
+        if taper < 0.0 {
+            taper = 0.0;
+        }
+        if taper > 0.5 {
+            taper = 0.5;
+        }
+        if detrend {
+            let mean = v.iter().sum::<f64>() / n0 as f64;
+            let nf = n0 as f64;
+            let t0 = (nf + 1.0) / 2.0;
+            let sumt2 = nf * (nf * nf - 1.0) / 12.0;
+            let mut sumxt = 0.0;
+            for i in 0..n0 {
+                let t = (i as f64 + 1.0) - t0;
+                sumxt += v[i] * t;
+            }
+            for i in 0..n0 {
+                let t = (i as f64 + 1.0) - t0;
+                v[i] = v[i] - mean - if sumt2 > 0.0 { sumxt * t / sumt2 } else { 0.0 };
+            }
+        }
+        let m = ((n0 as f64) * taper).floor() as usize;
+        for k in 0..m {
+            let odd = (2 * k + 1) as f64;
+            let w = 0.5 * (1.0 - (std::f64::consts::PI * odd / (2.0 * m as f64)).cos());
+            v[k] *= w;
+            v[n0 - 1 - k] *= w;
+        }
+        let n_pad = nextn0(n0 as c_int, &[2, 3, 5]) as usize;
+        let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n_pad as i64);
         let _xd = protect(xd);
+        for i in 0..n0 {
+            *REAL(xd).add(i) = v[i];
+        }
+        for i in n0..n_pad {
+            *REAL(xd).add(i) = 0.0;
+        }
         let inv = Rf_ScalarLogical(0);
         let _inv = protect(inv);
         let z = fft(xd, inv);
         let _z = protect(z);
-        let nfreq = n / 2;
-        let spec = Rf_allocVector3(SEXPTYPE::REALSXP, nfreq);
+        let nspec = n_pad / 2;
+        let u2 = 1.0 - (5.0 / 8.0) * taper * 2.0;
+        let spec = Rf_allocVector3(SEXPTYPE::REALSXP, nspec as i64);
         let _s = protect(spec);
-        for k in 1..=nfreq {
-            let c = *COMPLEX(z).add(k as usize);
-            let p = (c.r * c.r + c.i * c.i) / n as f64;
-            *REAL(spec).add((k - 1) as usize) = p;
+        let freq = Rf_allocVector3(SEXPTYPE::REALSXP, nspec as i64);
+        let _f = protect(freq);
+        let n0f = n0 as f64;
+        for k in 1..=nspec {
+            let c = *COMPLEX(z).add(k);
+            let p = (c.r * c.r + c.i * c.i) / n0f / u2;
+            *REAL(spec).add(k - 1) = p;
+            *REAL(freq).add(k - 1) = k as f64 / n_pad as f64;
         }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, spec);
-        crate::mainutils::essentials::set_string_names(result, &["spec".to_string()]);
+        SET_VECTOR_ELT(result, 1, freq);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["spec".to_string(), "freq".to_string()],
+        );
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),
             Rf_mkString(c"spec".as_ptr()),
         );
-        let _ = INTEGER;
         result
     }
 }
+
 
 /// GNU `spectrum(x, method=)`.
 pub unsafe fn do_spectrum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
