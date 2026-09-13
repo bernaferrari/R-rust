@@ -607,6 +607,54 @@ pub unsafe fn do_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `spec.ar(x)` AR(1) spectral density.
+pub unsafe fn do_spec_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x0 = CAR(args);
+        let n = XLENGTH(x0) as usize;
+        let mut x = vec![0.0f64; n];
+        let mut mean = 0.0;
+        for i in 0..n {
+            x[i] = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                *REAL(x0).add(i)
+            } else {
+                *INTEGER(x0).add(i) as f64
+            };
+            mean += x[i];
+        }
+        mean /= n as f64;
+        let a = do_ar(_call, _op, args, rho);
+        let _a = protect(a);
+        let phi = *REAL(VECTOR_ELT(a, 0));
+        let mut r0 = 0.0;
+        for i in 0..n {
+            let d = x[i] - mean;
+            r0 += d * d;
+        }
+        r0 /= n as f64;
+        let vp = r0 * (1.0 - phi * phi) * (n as f64) / (n as f64 - 2.0);
+        let nfreq = 500i64;
+        let spec = Rf_allocVector3(SEXPTYPE::REALSXP, nfreq);
+        let _s = protect(spec);
+        for k in 0..nfreq as usize {
+            let freq = 0.5 * k as f64 / (nfreq as f64 - 1.0);
+            let den = 1.0 + phi * phi - 2.0 * phi * (2.0 * std::f64::consts::PI * freq).cos();
+            *REAL(spec).add(k) = vp / den;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, spec);
+        crate::mainutils::essentials::set_string_names(result, &["spec".to_string()]);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"spec".as_ptr()),
+        );
+        result
+    }
+}
+
+
 /// GNU additive `decompose(ts)` via centered moving average.
 pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
