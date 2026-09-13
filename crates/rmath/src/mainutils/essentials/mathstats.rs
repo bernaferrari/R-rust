@@ -4990,6 +4990,96 @@ pub unsafe fn do_rstudent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `dfbetas(lm)` — leave-one-out coefficient changes, scaled.
+pub unsafe fn do_dfbetas(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let coef = list_named_elt(obj, "coefficients");
+        let resid = list_named_elt(obj, "residuals");
+        let hat = list_named_elt(obj, "hat");
+        let sigma = list_named_elt(obj, "sigma");
+        let fitted = list_named_elt(obj, "fitted.values");
+        let dfres = list_named_elt(obj, "df.residual");
+        if coef == R_NilValue()
+            || resid == R_NilValue()
+            || hat == R_NilValue()
+            || sigma == R_NilValue()
+            || fitted == R_NilValue()
+        {
+            return R_NilValue();
+        }
+        if XLENGTH(coef) < 2 {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid).min(XLENGTH(hat)).min(XLENGTH(fitted)) as usize;
+        if n < 3 {
+            return R_NilValue();
+        }
+        let b0 = elt_real_safe(coef, 0);
+        let b1 = elt_real_safe(coef, 1);
+        if b1 == 0.0 {
+            return R_NilValue();
+        }
+        let mut xs = vec![0.0; n];
+        let mut sx = 0.0;
+        for i in 0..n {
+            xs[i] = (elt_real_safe(fitted, i as i64) - b0) / b1;
+            sx += xs[i];
+        }
+        let nf = n as f64;
+        let meanx = sx / nf;
+        let sxxc = xs.iter().map(|v| (v - meanx) * (v - meanx)).sum::<f64>();
+        if sxxc <= 0.0 {
+            return R_NilValue();
+        }
+        let c00 = 1.0 / nf + meanx * meanx / sxxc;
+        let c01 = -meanx / sxxc;
+        let c11 = 1.0 / sxxc;
+        let s = elt_real_safe(sigma, 0);
+        let df = if dfres != R_NilValue() {
+            elt_real_safe(dfres, 0)
+        } else {
+            nf - 2.0
+        };
+        let s2 = s * s;
+        let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+        let _r = protect(result);
+        for i in 0..n {
+            let e = elt_real_safe(resid, i as i64);
+            let h = elt_real_safe(hat, i as i64);
+            let den = 1.0 - h;
+            let db0 = if den != 0.0 {
+                (c00 + c01 * xs[i]) * e / den
+            } else {
+                f64::NAN
+            };
+            let db1 = if den != 0.0 {
+                (c01 + c11 * xs[i]) * e / den
+            } else {
+                f64::NAN
+            };
+            let s2i = if df > 1.0 && den != 0.0 {
+                (df * s2 - e * e / den) / (df - 1.0)
+            } else {
+                f64::NAN
+            };
+            let si = s2i.sqrt();
+            *REAL(result).add(i) = if si > 0.0 && c00 > 0.0 {
+                db0 / (si * c00.sqrt())
+            } else {
+                f64::NAN
+            };
+            *REAL(result).add(n + i) = if si > 0.0 && c11 > 0.0 {
+                db1 / (si * c11.sqrt())
+            } else {
+                f64::NAN
+            };
+        }
+        result
+    }
+}
+
+
 unsafe fn lm_named_call(call: SEXP) -> SEXP {
     unsafe {
         if call.is_null() || call == R_NilValue() || TYPEOF(call) != SEXPTYPE::LANGSXP {
