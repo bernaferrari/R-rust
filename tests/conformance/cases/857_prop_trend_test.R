@@ -1,0 +1,5 @@
+x <- c(10, 20, 30, 40)
+n <- c(30, 40, 50, 60)
+t <- prop.trend.test(x, n)
+cat(round(unname(t$statistic), 4), "\n", sep = "")
+cat(round(t$p.value, 6), "\n", sep = "")

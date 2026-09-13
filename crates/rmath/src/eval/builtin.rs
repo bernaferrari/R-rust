@@ -1871,6 +1871,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_poisson_test,
     },
     EvaluatedBuiltin {
+        name: "prop.trend.test",
+        handler: crate::mainutils::essentials::do_prop_trend_test,
+    },
+    EvaluatedBuiltin {
         name: "fisher.test",
         handler: crate::mainutils::essentials::do_fisher_test,
     },

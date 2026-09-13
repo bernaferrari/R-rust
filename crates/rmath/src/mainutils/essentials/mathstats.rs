@@ -2008,6 +2008,97 @@ pub unsafe fn do_poisson_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `prop.trend.test(x, n)` — weighted chi-squared trend in proportions.
+pub unsafe fn do_prop_trend_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = CAR(CDR(args));
+        let k = XLENGTH(x).min(XLENGTH(n)) as usize;
+        if k < 2 {
+            return R_NilValue();
+        }
+        let mut xs = vec![0.0; k];
+        let mut ns = vec![0.0; k];
+        let mut scores = vec![0.0; k];
+        let mut sum_x = 0.0;
+        let mut sum_n = 0.0;
+        let score_arg = CAR(CDR(CDR(args)));
+        let have_scores = !score_arg.is_null()
+            && score_arg != R_NilValue()
+            && (TYPEOF(score_arg) == SEXPTYPE::REALSXP || TYPEOF(score_arg) == SEXPTYPE::INTSXP)
+            && XLENGTH(score_arg) >= k as i64;
+        for i in 0..k {
+            xs[i] = elt_real_safe(x, i as i64);
+            ns[i] = elt_real_safe(n, i as i64);
+            scores[i] = if have_scores {
+                elt_real_safe(score_arg, i as i64)
+            } else {
+                (i + 1) as f64
+            };
+            sum_x += xs[i];
+            sum_n += ns[i];
+        }
+        let p = if sum_n > 0.0 { sum_x / sum_n } else { 0.0 };
+        let pq = p * (1.0 - p);
+        if pq <= 0.0 {
+            return R_NilValue();
+        }
+        let mut w = vec![0.0; k];
+        let mut y = vec![0.0; k];
+        let mut sw = 0.0;
+        for i in 0..k {
+            w[i] = ns[i] / pq;
+            y[i] = if ns[i] > 0.0 { xs[i] / ns[i] } else { 0.0 };
+            sw += w[i];
+        }
+        if sw <= 0.0 {
+            return R_NilValue();
+        }
+        let mut ms = 0.0;
+        let mut my = 0.0;
+        for i in 0..k {
+            ms += w[i] * scores[i];
+            my += w[i] * y[i];
+        }
+        ms /= sw;
+        my /= sw;
+        let mut sxx = 0.0;
+        let mut sxy = 0.0;
+        for i in 0..k {
+            let ds = scores[i] - ms;
+            sxx += w[i] * ds * ds;
+            sxy += w[i] * ds * (y[i] - my);
+        }
+        let stat = if sxx > 0.0 { sxy * sxy / sxx } else { 0.0 };
+        let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["X-squared".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(1.0));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "p.value".to_string(),
+                "parameter".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 /// GNU `chisq.test(x)` goodness-of-fit with equal p.
 pub unsafe fn do_chisq_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
