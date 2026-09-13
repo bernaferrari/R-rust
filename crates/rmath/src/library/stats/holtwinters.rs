@@ -190,13 +190,22 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         *INTEGER(dim) = nfit as c_int;
         *INTEGER(dim).add(1) = 4;
         crate::sexp::attrib_core::setAttrib(fitted, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, fitted);
         SET_VECTOR_ELT(result, 1, crate::sexp::constructors::Rf_ScalarReal(alpha));
+        SET_VECTOR_ELT(result, 2, crate::sexp::constructors::Rf_ScalarReal(beta));
+        SET_VECTOR_ELT(result, 3, crate::sexp::constructors::Rf_ScalarReal(gamma));
+        SET_VECTOR_ELT(result, 4, crate::sexp::constructors::Rf_ScalarReal(sse));
         crate::mainutils::essentials::set_string_names(
             result,
-            &["fitted".to_string(), "alpha".to_string()],
+            &[
+                "fitted".to_string(),
+                "alpha".to_string(),
+                "beta".to_string(),
+                "gamma".to_string(),
+                "SSE".to_string(),
+            ],
         );
         crate::sexp::attrib_core::setAttrib(
             result,
