@@ -737,10 +737,17 @@ pub unsafe fn R_cpolyroot(coef: *mut c_double, degree: c_int) -> *mut std::ffi::
 
 /// GNU `polyroot(z)` via Jenkins-Traub.
 /// GNU `polyroot(z)` via companion-matrix eigenvalues.
-pub unsafe fn do_polyroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, _rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+pub unsafe fn do_polyroot(
+    _call: crate::sexp::ffi::SEXP,
+    _op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    _rho: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, VECTOR_ELT, XLENGTH};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_ScalarLogical};
+        use crate::sexp::accessors::{
+            CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+        };
+        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
         use crate::sexp::ffi::{Rcomplex, SEXPTYPE};
         use crate::sexp::protect::protect;
         let z = CAR(args);
@@ -781,7 +788,8 @@ pub unsafe fn do_polyroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::
             );
         }
         let n = degree as i64;
-        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, n as i32);
+        let mat =
+            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, n as i32);
         let _m = protect(mat);
         let p = REAL(mat);
         for i in 0..(degree * degree) {
@@ -819,7 +827,6 @@ pub unsafe fn do_polyroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::
         ans
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Tests

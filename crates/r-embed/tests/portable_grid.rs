@@ -9,7 +9,9 @@ fn pixels(bytes: &[u8]) -> (usize, Vec<u8>) {
     let pixels = match info.color_type {
         png::ColorType::Rgba => pixels[..info.buffer_size()].to_vec(),
         png::ColorType::Rgb => pixels[..info.buffer_size()]
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2], 255])
             .collect(),
         other => panic!("unexpected PNG {other:?}"),
@@ -111,7 +113,9 @@ fn grob_trees_replay_with_inherited_styles_and_plotmath() {
     assert_eq!(at(w, &p, 150, 100), [255, 0, 0, 255]);
     assert_eq!(at(w, &p, 50, 100), [255, 255, 255, 255]);
     assert!(
-        p.chunks_exact(4)
+        p.as_chunks::<4>()
+            .0
+            .iter()
             .filter(|p| p[0] < 60 && p[1] < 60 && p[2] < 60)
             .count()
             > 20
@@ -178,7 +182,9 @@ fn grid_objects_namespace_and_recording_survive_forced_collection() {
     let png=session.render_with_dimensions("gctorture(TRUE); library(grid); grid.newpage(); g<-grobTree(rectGrob(width=.8,height=.8,gp=gpar(fill='red')),textGrob(expression(alpha[1]^2))); grid.draw(g); saved<-serialize(recordPlot(),NULL); gc(); grid.newpage(); replayPlot(unserialize(saved)); gctorture(FALSE)",240,160).unwrap();
     let (_, p) = pixels(&png);
     assert!(
-        p.chunks_exact(4)
+        p.as_chunks::<4>()
+            .0
+            .iter()
             .filter(|p| p[0] > 200 && p[1] < 20 && p[2] < 20)
             .count()
             > 1000
@@ -218,19 +224,25 @@ fn grouped_polygons_dash_styles_symbols_and_arrows_are_drawn() {
         .unwrap();
     let (_, p) = pixels(&png);
     assert!(
-        p.chunks_exact(4)
+        p.as_chunks::<4>()
+            .0
+            .iter()
             .filter(|p| p[0] > 180 && p[1] < 80)
             .count()
             > 500
     );
     assert!(
-        p.chunks_exact(4)
+        p.as_chunks::<4>()
+            .0
+            .iter()
             .filter(|p| p[2] > 120 && p[0] < 100)
             .count()
             > 500
     );
     assert!(
-        p.chunks_exact(4)
+        p.as_chunks::<4>()
+            .0
+            .iter()
             .filter(|p| p[0] < 60 && p[1] < 60 && p[2] < 60)
             .count()
             > 40
@@ -450,7 +462,7 @@ fn layout_cell_bounds_match_gnu_r_oracle() {
             .unwrap_or_else(|e| panic!("{code}: {e}"));
         let (w, p) = pixels(&png);
         let mut bounds = [usize::MAX, usize::MAX, 0, 0];
-        for (i, pixel) in p.chunks_exact(4).enumerate() {
+        for (i, pixel) in p.as_chunks::<4>().0.iter().enumerate() {
             if pixel[0] > 240 && pixel[1] < 15 && pixel[2] < 15 {
                 let x = i % w;
                 let y = i / w;

@@ -978,11 +978,7 @@ pub unsafe fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             );
         }
         let nrow = n - dimension + 1;
-        let ans = crate::mainutils::array::allocMatrix(
-            TYPEOF(x),
-            nrow as i32,
-            dimension as i32,
-        );
+        let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), nrow as i32, dimension as i32);
         let _a = protect(ans);
         for col in 0..dimension {
             let src0 = dimension - 1 - col;
@@ -1059,8 +1055,6 @@ pub unsafe fn do_diffinv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         ans
     }
 }
-
-
 
 #[cfg(test)]
 mod data_matrix_tests {

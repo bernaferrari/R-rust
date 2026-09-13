@@ -58,9 +58,7 @@ pub unsafe fn DoubleCentre(A: SEXP) -> SEXP {
 /// GNU `cmdscale(d, k)` classical MDS.
 pub unsafe fn do_cmdscale(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{
-            CAR, CDR, INTEGER, REAL, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
-        };
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, TAG, TYPEOF, VECTOR_ELT, XLENGTH};
         use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
@@ -173,4 +171,3 @@ pub unsafe fn do_cmdscale(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         points
     }
 }
-

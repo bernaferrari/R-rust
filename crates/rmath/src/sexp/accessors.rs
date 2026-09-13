@@ -1344,7 +1344,6 @@ pub unsafe fn mark_charsxp_encoding(x: SEXP, kind: &str) {
     }
 }
 
-
 /// ENC_KNOWN: check if CHARSXP has a known encoding.
 /// Returns the OR of LATIN1_MASK, UTF8_MASK, and BYTES_MASK bits.
 pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {

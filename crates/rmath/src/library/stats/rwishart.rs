@@ -176,7 +176,7 @@ pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
 
         // Cholesky factorization: scCp <- U'U where scal = U'U
         let mut info: c_int = 0;
-        let uplo_u: [u8; 1] = [b'U'];
+        let uplo_u: [u8; 1] = *b"U";
         backend::dpotrf_(uplo_u.as_ptr(), &p, sc_cp.as_mut_ptr(), &p, &mut info);
         if info != 0 {
             error("'scal' matrix is not positive-definite");

@@ -136,7 +136,7 @@ The most useful contributions close a real contract: a small R program, its GNU 
 | [`docs`](docs/README.md) | Maintained contracts, verification and release guides |
 
 Root configuration files are used by Cargo, formatting, CI and agent tooling.
-`.cargo` must stay here for Cargo discovery. `LICENSE`, `COPYING` and `NOTICE.md`
+`.cargo` must stay here for Cargo discovery. `LICENSE` and `NOTICE.md`
 preserve license discovery and upstream attribution. Generated artifacts belong
 under `target/`; `r-source/` is an ignored local upstream reference checkout.
 
@@ -144,6 +144,6 @@ Read the [architecture](docs/rust-r-port-architecture.md), [upstream port map](d
 
 ## License & origins
 
-**GPL-2.0-or-later**, matching upstream R. See [LICENSE](LICENSE), [COPYING](COPYING), and [license provenance](docs/license-provenance.md).
+**GPL-2.0-or-later**, matching upstream R. See [LICENSE](LICENSE) and [NOTICE](NOTICE.md).
 
 This project builds on the work of the R Core Team, the R Foundation, and R's contributors. The GNU R source reference is reproducible from a pinned revision; it is used to guide and verify the port. Rust changes do not erase that provenance.

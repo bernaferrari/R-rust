@@ -328,7 +328,6 @@ pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> S
     }
 }
 
-
 /// GNU `lowess(x, y, f=2/3, iter=3)`.
 pub unsafe fn do_lowess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -414,10 +413,7 @@ pub unsafe fn do_lowess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, xd);
         SET_VECTOR_ELT(result, 1, ys);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["x".to_string(), "y".to_string()],
-        );
+        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
     }
 }
@@ -471,5 +467,3 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         do_lowess(_call, _op, call_args, rho)
     }
 }
-
-

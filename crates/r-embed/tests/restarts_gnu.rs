@@ -4,7 +4,9 @@ use r_embed::RSession;
 fn invoked_restart_is_not_visible_inside_its_handler() {
     let mut session = RSession::new().unwrap();
     let result = session
-        .eval("withRestarts({invokeRestart(\"foo\")}, foo=function() is.null(findRestart(\"foo\")))")
+        .eval(
+            "withRestarts({invokeRestart(\"foo\")}, foo=function() is.null(findRestart(\"foo\")))",
+        )
         .unwrap();
     assert_eq!(result.trim(), "[1] TRUE");
 }

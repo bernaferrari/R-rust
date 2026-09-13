@@ -140,5 +140,10 @@ fn persistent_writer_matches_the_gnu_wire_fixture() {
     let encoding_len = i32::from_be_bytes(bytes[14..18].try_into().unwrap()) as usize;
     let payload = &bytes[18 + encoding_len..];
     let value = session.eval(&format!("r<-serialize(new.env(),NULL,version=3,refhook=function(x)'token');identical(r[-(1:18)],{})", raw_expression(payload))).unwrap();
-    assert_eq!(value.trim(), "[1] TRUE", "port bytes: {}", session.eval("as.integer(r)").unwrap());
+    assert_eq!(
+        value.trim(),
+        "[1] TRUE",
+        "port bytes: {}",
+        session.eval("as.integer(r)").unwrap()
+    );
 }

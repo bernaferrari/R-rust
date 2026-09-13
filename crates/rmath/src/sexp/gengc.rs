@@ -606,7 +606,7 @@ pub unsafe fn promote_to_old(obj: SEXP) {
         if obj.is_null() {
             return;
         }
-        debug_assert!((*obj).sxpinfo.gcgen() == Generation::Young as u8);
+        debug_assert_eq!((*obj).sxpinfo.gcgen(), Generation::Young as u8);
         (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
     }
 }

@@ -1229,10 +1229,7 @@ pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let tag = TAG(cursor);
             let is_fun = if !tag.is_null() && tag != R_NilValue() {
                 let p = PRINTNAME(tag);
-                !p.is_null()
-                    && std::ffi::CStr::from_ptr(CHAR(p))
-                        .to_string_lossy()
-                        == "FUN"
+                !p.is_null() && std::ffi::CStr::from_ptr(CHAR(p)).to_string_lossy() == "FUN"
             } else {
                 false
             };

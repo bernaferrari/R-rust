@@ -206,10 +206,7 @@ pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     crate::sexp::symbol::Rf_install(c"<-".as_ptr()),
                     lhs,
                     {
-                        let value = crate::sexp::constructors::Rf_allocVector(
-                            SEXPTYPE::STRSXP,
-                            1,
-                        );
+                        let value = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, 1);
                         crate::sexp::accessors::SET_STRING_ELT(
                             value,
                             0,

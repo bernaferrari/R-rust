@@ -932,7 +932,7 @@ fn format_posixct_element(x: Sexp<'_>, i: R_xlen_t, include_tz: bool, force_time
 
 fn posixct_vector_needs_time(x: Sexp<'_>) -> bool {
     (0..x.clone().len()).any(|i| {
-        x.clone().try_real_elt(i).ok().is_some_and(|seconds| {
+        x.clone().try_real_elt(i).is_ok_and(|seconds| {
             !R_IsNA(seconds) && seconds.is_finite() && seconds.floor() as i64 % 86_400 != 0
         })
     })

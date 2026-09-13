@@ -7,7 +7,7 @@ use std::os::raw::c_int;
 use crate::attrib_core::{R_ClassSymbol, R_DimSymbol, getAttrib, setAttrib};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 

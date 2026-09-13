@@ -149,10 +149,8 @@ unsafe fn list_elt(list: SEXP, name: &str) -> SEXP {
         if list.is_null() || list == R_NilValue() || TYPEOF(list) != SEXPTYPE::VECSXP {
             return R_NilValue();
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            list,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
@@ -176,14 +174,14 @@ unsafe fn list_elt(list: SEXP, name: &str) -> SEXP {
 /// GNU `cutree(tree, k)` / `cutree(tree, h)`.
 pub unsafe fn do_cutree(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        use crate::sexp::accessors::CHAR;
+        use crate::sexp::accessors::PRINTNAME;
         use crate::sexp::accessors::{
             CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TAG, TYPEOF, XLENGTH,
         };
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_ScalarInteger};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
         use crate::sexp::ffi::NA_REAL;
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::accessors::PRINTNAME;
-        use crate::sexp::accessors::CHAR;
 
         let mut tree = R_NilValue();
         let mut k = NA_REAL;
@@ -293,4 +291,3 @@ pub unsafe fn do_cutree(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         out
     }
 }
-

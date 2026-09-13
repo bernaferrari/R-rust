@@ -1,37 +1,31 @@
-/target
-**/target/
+# Build
+target/
 *.o
 *.a
 *.rmeta
 *.so
 *.dylib
 *.dll
+__pycache__/
+*.pyc
+
+# Editors / OS
 .DS_Store
 .idea
 .vscode
 *.swp
 *.swo
 *~
-__pycache__/
-*.pyc
+.ruff_cache/
 
-# Beads / Dolt files (added by bd init)
+# Local checkouts and tools
+r-source/
 .beads/
 .dolt/
-*.db
-.beads-credential-key
-r-source/
-Rplots.pdf
-.R
-.Rhistory
-.RData
+WATCHDOG.yml
+
+# Recreated run artifacts (fuzz/corpus stays tracked)
 .tmp/
-
-# Internal work notes (upstream-sync diffs stay tracked)
-/docs/archive/plans/*.md
+fuzz/artifacts/
+oom-*
 crates/r-wasm/pkg/
-
-# Local tools and exploratory output
-/.ruff_cache/
-/oom-*
-/target/bindings/

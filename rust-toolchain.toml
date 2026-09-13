@@ -4,4 +4,4 @@
 # CI installs `stable`; when stable moves past this pin, CI must be updated
 # deliberately rather than drifting with upstream Rust releases.
 [toolchain]
-channel = "1.96.0"
+channel = "1.98.1"

@@ -102,7 +102,8 @@ pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r_tail = protect(r_tail);
         let r_args = Rf_cons(object, r_tail);
         let _r_args = protect(r_args);
-        let r = crate::mainutils::qr_extract::do_qr_R(R_NilValue(), R_NilValue(), r_args, R_NilValue());
+        let r =
+            crate::mainutils::qr_extract::do_qr_R(R_NilValue(), R_NilValue(), r_args, R_NilValue());
         let _r = protect(r);
         let rdim = getAttrib(r, R_DimSymbol());
         if TYPEOF(rdim) != INTSXP_C || XLENGTH(rdim) != 2 {
@@ -209,12 +210,8 @@ pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _qy_tail = protect(qy_tail);
         let qy_args = Rf_cons(object, qy_tail);
         let _qy_args = protect(qy_args);
-        let res = crate::mainutils::qr_apply::do_qr_qy(
-            R_NilValue(),
-            R_NilValue(),
-            qy_args,
-            R_NilValue(),
-        );
+        let res =
+            crate::mainutils::qr_apply::do_qr_qy(R_NilValue(), R_NilValue(), qy_args, R_NilValue());
         let _res = protect(res);
         if pivoted {
             let pvt_len = XLENGTH(pivot) as usize;
@@ -244,8 +241,7 @@ pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         err("invalid QR pivot")
                     }
                     for row in 0..rows {
-                        *COMPLEX(res).add(row + (dest as usize - 1) * rows) =
-                            copy[row + i * rows];
+                        *COMPLEX(res).add(row + (dest as usize - 1) * rows) = copy[row + i * rows];
                     }
                 }
             } else {
@@ -259,8 +255,7 @@ pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         err("invalid QR pivot")
                     }
                     for row in 0..rows {
-                        *REAL(res).add(row + (dest as usize - 1) * rows) =
-                            copy[row + i * rows];
+                        *REAL(res).add(row + (dest as usize - 1) * rows) = copy[row + i * rows];
                     }
                 }
             }

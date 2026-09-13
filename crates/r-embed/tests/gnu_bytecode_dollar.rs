@@ -50,11 +50,17 @@ fn imported_gnu_dollar_matches_list_environment_and_atomic_edges() {
         "[1] TRUE"
     );
     assert_eq!(
-        session.eval("identical(f(list(aa=7L)), 7L)").unwrap().trim(),
+        session
+            .eval("identical(f(list(aa=7L)), 7L)")
+            .unwrap()
+            .trim(),
         "[1] TRUE"
     );
     assert_eq!(
-        session.eval("identical(f(list(b=1L)), NULL)").unwrap().trim(),
+        session
+            .eval("identical(f(list(b=1L)), NULL)")
+            .unwrap()
+            .trim(),
         "[1] TRUE"
     );
     assert_eq!(
@@ -127,7 +133,10 @@ fn mutated_gnu_dollar_instruction_runs_over_retained_source() {
     let mut session = RSession::new().unwrap();
     load(&mut session, &changed);
     assert_eq!(
-        session.eval("identical(f(list(a=1L)), NULL)").unwrap().trim(),
+        session
+            .eval("identical(f(list(a=1L)), NULL)")
+            .unwrap()
+            .trim(),
         "[1] TRUE",
         "mutated DOLLAR must read x$x, not retained x$a"
     );
@@ -152,10 +161,7 @@ fn malformed_dollar_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

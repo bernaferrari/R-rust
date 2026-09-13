@@ -5288,7 +5288,6 @@ pub unsafe fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `glm(y ~ x)` gaussian — `lm` with class `c("glm","lm")`.
-/// GNU `glm(y ~ x)` gaussian — `lm` with class `c("glm","lm")`.
 pub unsafe fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let lm = do_lm(call, op, args, rho);
@@ -5343,6 +5342,65 @@ pub unsafe fn do_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
     }
 }
+
+/// GNU `lm.influence(model, do.coef=FALSE)` — hat, deletion sigma, wt.res.
+pub unsafe fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let resid = list_named_elt(obj, "residuals");
+        let hat = list_named_elt(obj, "hat");
+        let sigma = list_named_elt(obj, "sigma");
+        let rank = list_named_elt(obj, "rank");
+        if resid == R_NilValue() || hat == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid).min(XLENGTH(hat));
+        let p = if rank == R_NilValue() {
+            2.0
+        } else {
+            elt_real_safe(rank, 0)
+        };
+        let s = if sigma == R_NilValue() {
+            0.0
+        } else {
+            elt_real_safe(sigma, 0)
+        };
+        let sse = s * s * (n as f64 - p);
+        let sigs = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _sg = protect(sigs);
+        for i in 0..n {
+            let e = elt_real_safe(resid, i);
+            let h = elt_real_safe(hat, i);
+            let omh = 1.0 - h;
+            let infl_s2 = if omh > 0.0 && n as f64 - p - 1.0 > 0.0 {
+                (sse - e * e / omh) / (n as f64 - p - 1.0)
+            } else {
+                f64::NAN
+            };
+            *REAL(sigs).add(i as usize) = if infl_s2 > 0.0 {
+                infl_s2.sqrt()
+            } else {
+                f64::NAN
+            };
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, hat);
+        SET_VECTOR_ELT(result, 1, sigs);
+        SET_VECTOR_ELT(result, 2, resid);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["hat".to_string(), "sigma".to_string(), "wt.res".to_string()],
+        );
+        result
+    }
+}
+
+/// GNU `influence(model)` — same as `lm.influence` for lm.
+pub unsafe fn do_influence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_lm_influence(call, op, args, rho) }
+}
+
 
 /// GNU `covratio(lm)`.
 pub unsafe fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

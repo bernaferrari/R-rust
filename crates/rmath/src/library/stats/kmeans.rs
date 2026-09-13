@@ -343,4 +343,3 @@ pub unsafe fn do_kmeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         result
     }
 }
-

@@ -9,7 +9,11 @@ use r_embed::RSession;
 fn raw_expression(bytes: &[u8]) -> String {
     format!(
         "as.raw(c({}))",
-        bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
+        bytes
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
     )
 }
 
@@ -22,7 +26,13 @@ fn load(session: &mut RSession, bytes: &[u8]) {
 #[test]
 fn interpreted_c_empty_and_null_are_null() {
     let mut session = RSession::new().unwrap();
-    assert_eq!(session.eval("is.null(c()) && is.null(c(NULL))").unwrap().trim(), "[1] TRUE");
+    assert_eq!(
+        session
+            .eval("is.null(c()) && is.null(c(NULL))")
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
 }
 
 #[test]

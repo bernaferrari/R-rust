@@ -340,7 +340,11 @@ unsafe fn apply_complex(q: SEXP, f: SEXP, y: SEXP, transpose: bool) -> SEXP {
         setAttrib(out, R_DimSymbol(), dims);
         let dn = getAttrib(y_mat, R_DimNamesSymbol());
         if dn != R_NilValue() && !dn.is_null() {
-            setAttrib(out, R_DimNamesSymbol(), crate::mainutils::duplicate::Rf_duplicate(dn));
+            setAttrib(
+                out,
+                R_DimNamesSymbol(),
+                crate::mainutils::duplicate::Rf_duplicate(dn),
+            );
         }
         out
     }

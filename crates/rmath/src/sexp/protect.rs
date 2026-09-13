@@ -1771,7 +1771,7 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| unsafe {
             let idx = R_ProtectWithIndex(ptr::null_mut());
-            assert!((idx as usize) == 0);
+            assert_eq!((idx as usize), 0);
             assert_eq!(R_ProtectCount(), 0);
             with_protected_objects(|_, roots| assert!(roots.is_empty()));
         });

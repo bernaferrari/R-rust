@@ -15,17 +15,17 @@ fn test_constants() {
 
 #[test]
 fn test_deparse_option_flags() {
-    assert!(KEEPNA == 1);
-    assert!(KEEPINTEGER == 2);
-    assert!(SHOWATTRIBUTES == 4);
-    assert!(USESOURCE == 8);
-    assert!(DELAYPROMISES == 16);
-    assert!(S_COMPAT == 32);
-    assert!(QUOTEEXPRESSIONS == 64);
-    assert!(HEXNUMERIC == 128);
-    assert!(DIGITS17 == 256);
-    assert!(NICE_NAMES == 512);
-    assert!(WARNINCOMPLETE == 1024);
+    assert_eq!(KEEPNA, 1);
+    assert_eq!(KEEPINTEGER, 2);
+    assert_eq!(SHOWATTRIBUTES, 4);
+    assert_eq!(USESOURCE, 8);
+    assert_eq!(DELAYPROMISES, 16);
+    assert_eq!(S_COMPAT, 32);
+    assert_eq!(QUOTEEXPRESSIONS, 64);
+    assert_eq!(HEXNUMERIC, 128);
+    assert_eq!(DIGITS17, 256);
+    assert_eq!(NICE_NAMES, 512);
+    assert_eq!(WARNINCOMPLETE, 1024);
 }
 
 #[test]

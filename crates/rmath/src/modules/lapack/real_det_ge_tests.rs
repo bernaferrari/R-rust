@@ -100,4 +100,3 @@ fn real_det_ge_reserves_caller_scratch_before_allocation_and_recovers() {
         assert!((*REAL(ans) - 1.0).abs() < 1e-12);
     });
 }
-

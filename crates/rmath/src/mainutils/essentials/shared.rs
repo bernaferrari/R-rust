@@ -121,9 +121,7 @@ pub unsafe fn do_xtfrm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         let x = CAR(args);
-        if sexp_has_class(x, "Date")
-            || sexp_has_class(x, "POSIXct")
-            || sexp_has_class(x, "POSIXt")
+        if sexp_has_class(x, "Date") || sexp_has_class(x, "POSIXct") || sexp_has_class(x, "POSIXt")
         {
             return do_xtfrm_Date(_call, _op, args, _rho);
         }

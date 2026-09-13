@@ -339,11 +339,8 @@ unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
                         );
                     }
                     let nm1 = Rf_ScalarReal(n - 1.0);
-                    let pow = crate::sexp::constructors::Rf_lang3(
-                        Rf_install(c"^".as_ptr()),
-                        base,
-                        nm1,
-                    );
+                    let pow =
+                        crate::sexp::constructors::Rf_lang3(Rf_install(c"^".as_ptr()), base, nm1);
                     return crate::sexp::constructors::Rf_lang3(
                         Rf_install(c"*".as_ptr()),
                         n_s,
@@ -631,13 +628,9 @@ pub unsafe fn do_deriv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _et = protect(e_txt);
         let d_txt = crate::mainutils::deparse::deparse1line(d, false);
         let _dt = protect(d_txt);
-        let e_s = CStr::from_ptr(CHAR(STRING_ELT(e_txt, 0)))
-            .to_string_lossy();
-        let d_s = CStr::from_ptr(CHAR(STRING_ELT(d_txt, 0)))
-            .to_string_lossy();
-        let src = format!(
-            "{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; .value }}"
-        );
+        let e_s = CStr::from_ptr(CHAR(STRING_ELT(e_txt, 0))).to_string_lossy();
+        let d_s = CStr::from_ptr(CHAR(STRING_ELT(d_txt, 0))).to_string_lossy();
+        let src = format!("{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; .value }}");
         parse_source_expression_vector(&src)
     }
 }
@@ -679,6 +672,3 @@ pub unsafe fn do_deriv3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         parse_source_expression_vector(&src)
     }
 }
-
-
-

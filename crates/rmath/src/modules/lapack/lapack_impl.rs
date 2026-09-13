@@ -622,7 +622,9 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
         };
         let Some(scratch_bytes) = len
             .checked_mul(std::mem::size_of::<f64>())
-            .and_then(|bytes| bytes.checked_add(work_norm_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(work_norm_len.checked_mul(std::mem::size_of::<f64>())?)
+            })
             .and_then(|bytes| bytes.checked_add(work_len.checked_mul(std::mem::size_of::<f64>())?))
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
@@ -978,8 +980,12 @@ pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
         };
         let Some(scratch_bytes) = len
             .checked_mul(std::mem::size_of::<LapRcomplex>())
-            .and_then(|bytes| bytes.checked_add(work_norm_len.checked_mul(std::mem::size_of::<f64>())?))
-            .and_then(|bytes| bytes.checked_add(work_len.checked_mul(std::mem::size_of::<LapRcomplex>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(work_norm_len.checked_mul(std::mem::size_of::<f64>())?)
+            })
+            .and_then(|bytes| {
+                bytes.checked_add(work_len.checked_mul(std::mem::size_of::<LapRcomplex>())?)
+            })
             .and_then(|bytes| bytes.checked_add(work_len.checked_mul(std::mem::size_of::<f64>())?))
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
@@ -1099,7 +1105,9 @@ pub unsafe fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
         let rwork_len = n as usize;
         let Some(scratch_bytes) = work_len
             .checked_mul(std::mem::size_of::<LapRcomplex>())
-            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?)
+            })
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
@@ -1195,7 +1203,9 @@ pub unsafe fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
         let rwork_len = n as usize;
         let Some(scratch_bytes) = work_len
             .checked_mul(std::mem::size_of::<LapRcomplex>())
-            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?)
+            })
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
@@ -1678,7 +1688,9 @@ pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             .and_then(|bytes| {
                 bytes.checked_add(work_len.checked_mul(std::mem::size_of::<LapRcomplex>())?)
             })
-            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?)
+            })
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
@@ -1983,7 +1995,9 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zgeqp3'"));
+            crate::sexp::context::r_error(format!(
+                "error code {info} from Lapack routine 'zgeqp3'"
+            ));
         }
 
         if !tmp.r.is_finite() || tmp.r < 1.0 || tmp.r > c_int::MAX as f64 {
@@ -2018,7 +2032,9 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zgeqp3'"));
+            crate::sexp::context::r_error(format!(
+                "error code {info} from Lapack routine 'zgeqp3'"
+            ));
         }
 
         let qr = Rf_allocVector(CPLXSXP_C, len as c_int);
@@ -2330,7 +2346,9 @@ pub unsafe fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
         };
         let Some(scratch_bytes) = len
             .checked_mul(std::mem::size_of::<LapRcomplex>())
-            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?)
+            })
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
@@ -2469,7 +2487,9 @@ pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
         };
         let Some(scratch_bytes) = len
             .checked_mul(std::mem::size_of::<LapRcomplex>())
-            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?)
+            })
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
@@ -2753,7 +2773,9 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
 
         let Some(scratch_bytes) = len_r
             .checked_mul(std::mem::size_of::<LapRcomplex>())
-            .and_then(|bytes| bytes.checked_add(len_b.checked_mul(std::mem::size_of::<LapRcomplex>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(len_b.checked_mul(std::mem::size_of::<LapRcomplex>())?)
+            })
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
@@ -2805,7 +2827,9 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
             &mut info,
         );
         if info != 0 {
-            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zunmqr'"));
+            crate::sexp::context::r_error(format!(
+                "error code {info} from Lapack routine 'zunmqr'"
+            ));
         }
         if !tmp.r.is_finite() || tmp.r < 1.0 || tmp.r > c_int::MAX as f64 {
             crate::sexp::context::r_error("invalid workspace size from Lapack routine 'zunmqr'");
@@ -2828,7 +2852,9 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
             &mut info,
         );
         if info != 0 {
-            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zunmqr'"));
+            crate::sexp::context::r_error(format!(
+                "error code {info} from Lapack routine 'zunmqr'"
+            ));
         }
 
         super::backend::ztrtrs_(
@@ -2844,7 +2870,9 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
             &mut info,
         );
         if info != 0 {
-            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'ztrtrs'"));
+            crate::sexp::context::r_error(format!(
+                "error code {info} from Lapack routine 'ztrtrs'"
+            ));
         }
 
         let ans = Rf_allocVector(CPLXSXP_C, len_b as c_int);
@@ -3079,7 +3107,9 @@ pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
 
         let Some(scratch_bytes) = len_r
             .checked_mul(std::mem::size_of::<LapRcomplex>())
-            .and_then(|bytes| bytes.checked_add(len_b.checked_mul(std::mem::size_of::<LapRcomplex>())?))
+            .and_then(|bytes| {
+                bytes.checked_add(len_b.checked_mul(std::mem::size_of::<LapRcomplex>())?)
+            })
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
@@ -3134,7 +3164,9 @@ pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zunmqr'"));
+            crate::sexp::context::r_error(format!(
+                "error code {info} from Lapack routine 'zunmqr'"
+            ));
         }
 
         lwork = tmp.r as c_int;
@@ -3157,7 +3189,9 @@ pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            crate::sexp::context::r_error(format!("error code {info} from Lapack routine 'zunmqr'"));
+            crate::sexp::context::r_error(format!(
+                "error code {info} from Lapack routine 'zunmqr'"
+            ));
         }
 
         let ans = Rf_allocVector(CPLXSXP_C, len_b as c_int);

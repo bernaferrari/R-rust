@@ -12,7 +12,9 @@ fn decode_rgba(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
     let pixels = match info.color_type {
         png::ColorType::Rgba => data[..info.buffer_size()].to_vec(),
         png::ColorType::Rgb => data[..info.buffer_size()]
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2], 255])
             .collect(),
         other => panic!("unexpected PNG color type: {other:?}"),
@@ -63,7 +65,9 @@ fn par_background_and_label_colors_reach_native_pixels() {
     };
     assert_eq!(pixel(0, 0), &[0, 0, 0, 255]);
     let white_ink = pixels
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .filter(|p| p[0] > 220 && p[1] > 220 && p[2] > 220 && p[3] > 200)
         .count();
     assert!(
@@ -80,7 +84,9 @@ fn par_background_and_label_colors_reach_native_pixels() {
         .expect("palette foreground render");
     let (_, _, red_pixels) = decode_rgba(&red_png);
     let red_ink = red_pixels
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .filter(|p| p[0] > 180 && p[1] < 90 && p[2] < 90 && p[3] > 100)
         .count();
     assert!(
@@ -97,7 +103,9 @@ fn par_background_and_label_colors_reach_native_pixels() {
         .expect("alpha foreground render");
     let (_, _, alpha_pixels) = decode_rgba(&alpha_png);
     let alpha_ink = alpha_pixels
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .filter(|p| p[0] > 60 && p[0] < 220 && p[1] < 80 && p[2] < 80)
         .count();
     assert!(
@@ -114,7 +122,9 @@ fn par_background_and_label_colors_reach_native_pixels() {
         .expect("transparent foreground render");
     let (_, _, transparent_pixels) = decode_rgba(&transparent_png);
     let visible_ink = transparent_pixels
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .filter(|p| p[0] > 8 || p[1] > 8 || p[2] > 8)
         .count();
     assert!(

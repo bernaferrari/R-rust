@@ -22,7 +22,6 @@ target/release-artifacts/rport-<version>/
   CHANGELOG.md
   NOTICE.md
   LICENSE
-  COPYING
   docs/
   bindings/kotlin/
   android/jniLibs/arm64-v8a/libr_uniffi.so

@@ -598,9 +598,21 @@ pub unsafe fn do_stl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         *INTEGER(dim).add(1) = 3;
         crate::sexp::attrib_core::setAttrib(ts, crate::sexp::attrib_core::R_DimSymbol(), dim);
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        SET_STRING_ELT(cn, 0, crate::sexp::constructors::Rf_mkChar(c"seasonal".as_ptr()));
-        SET_STRING_ELT(cn, 1, crate::sexp::constructors::Rf_mkChar(c"trend".as_ptr()));
-        SET_STRING_ELT(cn, 2, crate::sexp::constructors::Rf_mkChar(c"remainder".as_ptr()));
+        SET_STRING_ELT(
+            cn,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"seasonal".as_ptr()),
+        );
+        SET_STRING_ELT(
+            cn,
+            1,
+            crate::sexp::constructors::Rf_mkChar(c"trend".as_ptr()),
+        );
+        SET_STRING_ELT(
+            cn,
+            2,
+            crate::sexp::constructors::Rf_mkChar(c"remainder".as_ptr()),
+        );
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         SET_VECTOR_ELT(dn, 0, R_NilValue());
         SET_VECTOR_ELT(dn, 1, cn);

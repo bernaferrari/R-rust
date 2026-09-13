@@ -11,6 +11,6 @@ homepage.workspace = true
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-uniffi = { version = "0.32.0" }
+uniffi = { version = "0.32.1" }
 r-embed = { path = "../r-embed" }
 thiserror = { workspace = true }

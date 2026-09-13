@@ -193,10 +193,7 @@ pub unsafe fn do_approx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, xout);
         SET_VECTOR_ELT(result, 1, yout);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["x".to_string(), "y".to_string()],
-        );
+        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         let _ = INTEGER;
         result
     }
@@ -207,8 +204,8 @@ pub unsafe fn do_approxfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, SETTAG};
         use crate::sexp::constructors::{Rf_cons, Rf_lang2};
-        use crate::sexp::symbol::Rf_install;
         use crate::sexp::protect::protect;
+        use crate::sexp::symbol::Rf_install;
         let x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
         let _x = protect(x);
         let y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
@@ -250,5 +247,3 @@ pub unsafe fn do_approx_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
         Approx(x, y, v, method, yleft, yright, f, na_rm)
     }
 }
-
-

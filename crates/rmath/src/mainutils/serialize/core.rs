@@ -1063,7 +1063,11 @@ pub unsafe fn WriteItemInternal(
         if stype == SEXPTYPE::CHARSXP {
             // GNU serializes the full gp field here (ASCII/UTF8/BYTES).
             // Do not use the 2-bit ARGUSED LEVELS() helper.
-            let levs = if s.is_null() { 0 } else { (*s).sxpinfo.gp() as c_int };
+            let levs = if s.is_null() {
+                0
+            } else {
+                (*s).sxpinfo.gp() as c_int
+            };
             let flags = PackFlags(stype, levs, 0, 0, 0);
             writer.write_i32(flags);
             let len = if s == R_NaString() { -1 } else { LENGTH(s) };

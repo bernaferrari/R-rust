@@ -657,8 +657,6 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
 #[cfg(test)]
 mod tests {
-    use crate::sexp::globals::*;
-
     use super::*;
     use crate::sexp::ffi::SexprecCore;
     use std::ptr;

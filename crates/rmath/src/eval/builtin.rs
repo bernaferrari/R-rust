@@ -2014,6 +2014,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_family,
     },
     EvaluatedBuiltin {
+        name: "lm.influence",
+        handler: crate::mainutils::essentials::do_lm_influence,
+    },
+    EvaluatedBuiltin {
+        name: "influence",
+        handler: crate::mainutils::essentials::do_influence,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },

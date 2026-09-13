@@ -47,7 +47,9 @@ fn imported_gnu_seqalong_preserves_values_types_and_visibility() {
     );
     assert_eq!(
         session
-            .eval("identical(f(letters[1:3]), 1:3) && identical(typeof(f(letters[1:3])), 'integer')")
+            .eval(
+                "identical(f(letters[1:3]), 1:3) && identical(typeof(f(letters[1:3])), 'integer')"
+            )
             .unwrap()
             .trim(),
         "[1] TRUE"
@@ -111,10 +113,7 @@ fn malformed_seqalong_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;
