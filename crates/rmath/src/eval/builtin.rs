@@ -1713,6 +1713,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::splines::do_spline,
     },
     EvaluatedBuiltin {
+        name: "splinefun",
+        handler: crate::library::stats::splines::do_splinefun,
+    },
+    EvaluatedBuiltin {
+        name: ".spline_apply",
+        handler: crate::library::stats::splines::do_spline_apply,
+    },
+    EvaluatedBuiltin {
         name: "nextn",
         handler: crate::library::stats::fourier::do_nextn,
     },

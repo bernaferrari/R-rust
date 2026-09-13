@@ -13,7 +13,7 @@ use crate::main::errors::Rf_error;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::protect::*;
 
 // ---------------------------------------------------------------------------
@@ -595,5 +595,36 @@ pub unsafe fn do_spline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         result
     }
 }
+
+/// GNU `splinefun(x, y)` FMM interpolator.
+pub unsafe fn do_splinefun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let method = Rf_ScalarInteger(3);
+        let _m = protect(method);
+        let z = SplineCoef(method, x, y);
+        let _z = protect(z);
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
+        let _env = protect(env);
+        crate::sexp::envir::defineVar(crate::sexp::symbol::Rf_install(c"z".as_ptr()), z, env);
+        let vsym = crate::sexp::symbol::Rf_install(c"v".as_ptr());
+        let formals = Rf_cons(R_MissingArg(), R_NilValue());
+        SETTAG(formals, vsym);
+        let body = Rf_lang2(crate::sexp::symbol::Rf_install(c".spline_apply".as_ptr()), vsym);
+        crate::mainutils::dstruct::mkCLOSXP(formals, body, env)
+    }
+}
+
+/// Evaluate a `splinefun` closure at `v`.
+pub unsafe fn do_spline_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let v = CAR(args);
+        let env = ENCLOS(rho);
+        let z = crate::sexp::envir::R_findVar(crate::sexp::symbol::Rf_install(c"z".as_ptr()), env);
+        SplineEval(v, z)
+    }
+}
+
 
 
