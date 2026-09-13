@@ -1046,6 +1046,29 @@ pub unsafe fn do_kernapply(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `is.tskernel(x)`.
+pub unsafe fn do_is_tskernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let mut ok = false;
+        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i)));
+                if s.to_bytes() == b"tskernel" {
+                    ok = true;
+                    break;
+                }
+            }
+        }
+        Rf_ScalarLogical(if ok { 1 } else { 0 })
+    }
+}
+
+
 
 
 

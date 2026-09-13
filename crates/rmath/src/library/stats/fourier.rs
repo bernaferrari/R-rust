@@ -826,3 +826,27 @@ pub unsafe fn do_spec_pgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `spectrum(x, method=)`.
+pub unsafe fn do_spectrum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut method_ar = false;
+        let mut p = CDR(args);
+        while !p.is_null() && p != R_NilValue() {
+            let s = CAR(p);
+            if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) >= 1 {
+                let t = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(s, 0)));
+                if t.to_bytes() == b"ar" {
+                    method_ar = true;
+                }
+            }
+            p = CDR(p);
+        }
+        if method_ar {
+            crate::library::stats::filter::do_spec_ar(call, op, args, rho)
+        } else {
+            do_spec_pgram(call, op, args, rho)
+        }
+    }
+}
+
+

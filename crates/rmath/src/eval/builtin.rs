@@ -1661,6 +1661,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_kernapply,
     },
     EvaluatedBuiltin {
+        name: "is.tskernel",
+        handler: crate::library::stats::filter::do_is_tskernel,
+    },
+    EvaluatedBuiltin {
         name: "HoltWinters",
         handler: crate::library::stats::holtwinters::do_HoltWinters,
     },
@@ -1698,7 +1702,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "spectrum",
-        handler: crate::library::stats::fourier::do_spec_pgram,
+        handler: crate::library::stats::fourier::do_spectrum,
     },
     EvaluatedBuiltin {
         name: "uniroot",
