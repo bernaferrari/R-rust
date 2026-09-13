@@ -1028,6 +1028,39 @@ pub unsafe fn do_toeplitz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `diffinv(x, xi=0)`.
+pub unsafe fn do_diffinv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x);
+        let mut xi = 0.0;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let xi_s = CAR(rest);
+            if TYPEOF(xi_s) == SEXPTYPE::INTSXP {
+                xi = *INTEGER(xi_s) as f64;
+            } else if TYPEOF(xi_s) == SEXPTYPE::REALSXP {
+                xi = *REAL(xi_s);
+            }
+        }
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n + 1);
+        let _a = protect(ans);
+        *REAL(ans) = xi;
+        let mut acc = xi;
+        for i in 0..n as usize {
+            let dx = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                *INTEGER(x).add(i) as f64
+            } else {
+                *REAL(x).add(i)
+            };
+            acc += dx;
+            *REAL(ans).add(i + 1) = acc;
+        }
+        ans
+    }
+}
+
+
 
 #[cfg(test)]
 mod data_matrix_tests {

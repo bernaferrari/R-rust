@@ -1713,6 +1713,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_toeplitz,
     },
     EvaluatedBuiltin {
+        name: "diffinv",
+        handler: crate::mainutils::essentials::do_diffinv,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },
