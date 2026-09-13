@@ -2157,6 +2157,22 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             crate::sexp::symbol::Rf_install(c"intercept".as_ptr()),
             Rf_ScalarInteger(1),
         );
+        let mut labels = Vec::new();
+        collect_formula_symbols(form, &mut labels);
+        if response > 0 && !labels.is_empty() {
+            labels.remove(0);
+        }
+        let lab = Rf_allocVector3(SEXPTYPE::STRSXP, labels.len() as i64);
+        let _lb = protect(lab);
+        for (i, name) in labels.iter().enumerate() {
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(lab, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            form,
+            crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
+            lab,
+        );
         form
     }
 }
@@ -2207,6 +2223,55 @@ pub unsafe fn do_delete_response(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         mark_terms(Rf_lang2(tilde, CAR(third)), 0)
     }
 }
+
+/// GNU `drop.terms(termobj, dropx)` — drop term.labels[dropx].
+pub unsafe fn do_drop_terms(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let drop = CAR(CDR(args));
+        let drop_i = if drop.is_null() || drop == R_NilValue() {
+            0
+        } else if TYPEOF(drop) == SEXPTYPE::INTSXP {
+            *INTEGER(drop)
+        } else if TYPEOF(drop) == SEXPTYPE::REALSXP {
+            *REAL(drop) as i32
+        } else {
+            0
+        };
+        let labs = crate::sexp::attrib_core::getAttrib(
+            obj,
+            crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
+        );
+        if labs.is_null() || labs == R_NilValue() || TYPEOF(labs) != SEXPTYPE::STRSXP {
+            return do_delete_response(call, op, args, rho);
+        }
+        let n = XLENGTH(labs);
+        let keep_n = if drop_i >= 1 && (drop_i as i64) <= n {
+            n - 1
+        } else {
+            n
+        };
+        let kept = Rf_allocVector3(SEXPTYPE::STRSXP, keep_n);
+        let _k = protect(kept);
+        let mut j = 0i64;
+        for i in 0..n {
+            if drop_i >= 1 && i + 1 == drop_i as i64 {
+                continue;
+            }
+            SET_STRING_ELT(kept, j, STRING_ELT(labs, i));
+            j += 1;
+        }
+        let form = do_reformulate(
+            call,
+            op,
+            Rf_cons(kept, R_NilValue()),
+            rho,
+        );
+        let _f = protect(form);
+        mark_terms(form, 0)
+    }
+}
+
 
 
 /// GNU `offset(object)` is identity.

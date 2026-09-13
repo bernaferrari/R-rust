@@ -2319,6 +2319,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_delete_response,
     },
     EvaluatedBuiltin {
+        name: "drop.terms",
+        handler: crate::library::stats::filter::do_drop_terms,
+    },
+    EvaluatedBuiltin {
         name: "all.names",
         handler: crate::library::stats::filter::do_all_names,
     },
