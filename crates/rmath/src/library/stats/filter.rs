@@ -1470,6 +1470,12 @@ pub unsafe fn do_na_action(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `model.weights(x)` — `x[["(weights)"]]`.
+pub unsafe fn do_model_weights(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "(weights)") }
+}
+
+
 
 unsafe fn named_list_elt(x: SEXP, name: &str) -> SEXP {
     unsafe {
