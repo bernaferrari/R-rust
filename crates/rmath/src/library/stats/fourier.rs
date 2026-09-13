@@ -689,10 +689,45 @@ pub unsafe fn do_nextn(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU circular `convolve(x, y)` via fft.
 pub unsafe fn do_convolve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
+        let mut x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
         let _x = protect(x);
-        let y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
+        let mut y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
         let _y = protect(y);
+        let mut is_open = false;
+        let mut p = CDR(CDR(args));
+        while !p.is_null() && p != R_NilValue() {
+            let s = CAR(p);
+            if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) >= 1 {
+                let t = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(s, 0)));
+                if t.to_bytes() == b"open" {
+                    is_open = true;
+                }
+            }
+            p = CDR(p);
+        }
+        if is_open {
+            let nx = XLENGTH(x);
+            let ny = XLENGTH(y);
+            let n1 = ny - 1;
+            let x2 = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), (nx + n1) as c_int);
+            let _x2 = protect(x2);
+            for i in 0..n1 as usize {
+                *REAL(x2).add(i) = 0.0;
+            }
+            for i in 0..nx as usize {
+                *REAL(x2).add(n1 as usize + i) = *REAL(x).add(i);
+            }
+            let y2 = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), (ny + nx - 1) as c_int);
+            let _y2 = protect(y2);
+            for i in 0..ny as usize {
+                *REAL(y2).add(i) = *REAL(y).add(i);
+            }
+            for i in ny as usize..(ny + nx - 1) as usize {
+                *REAL(y2).add(i) = 0.0;
+            }
+            x = x2;
+            y = y2;
+        }
         let n = XLENGTH(x);
         if n != XLENGTH(y) {
             crate::mainutils::errors::errorcall_str(
