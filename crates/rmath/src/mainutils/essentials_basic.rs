@@ -1396,6 +1396,16 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                     *crate::sexp::accessors::COMPLEX(elem) =
                         *crate::sexp::accessors::COMPLEX(x).add(i as usize);
                 }
+                if crate::mainutils::essentials::sexp_has_class(x, "Date") {
+                    crate::mainutils::essentials::set_single_class(elem, "Date");
+                } else if crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
+                    || crate::mainutils::essentials::sexp_has_class(x, "POSIXt")
+                {
+                    crate::mainutils::essentials::set_posixct_class(
+                        elem,
+                        &crate::mainutils::essentials::posixct_tzone_string(x),
+                    );
+                }
             }
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, elem);
         }

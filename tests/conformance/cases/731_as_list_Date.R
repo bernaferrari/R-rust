@@ -1,0 +1,7 @@
+x <- as.list(as.Date(c("2020-01-01", "2020-01-02")))
+cat(length(x), "\n", sep = "")
+cat(class(x[[1]]), "\n", sep = "")
+cat(as.character(x[[1]]), "\n", sep = "")
+cat(as.character(x[[2]]), "\n", sep = "")
+cat(as.numeric(as.POSIXct(mean.POSIXlt(as.POSIXlt(c(ISOdate(2020, 1, 1), ISOdate(2020, 1, 3)))))), "\n", sep = "")
+cat(paste(class(mean.POSIXlt(as.POSIXlt(c(ISOdate(2020, 1, 1), ISOdate(2020, 1, 3))))), collapse = ","), "\n", sep = "")

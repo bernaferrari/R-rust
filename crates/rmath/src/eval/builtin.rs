@@ -1297,6 +1297,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_list,
     },
     EvaluatedBuiltin {
+        name: "as.list.Date",
+        handler: crate::mainutils::essentials::do_as_list,
+    },
+    EvaluatedBuiltin {
         name: "nchar",
         handler: crate::mainutils::essentials::do_nchar,
     },
@@ -2231,6 +2235,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "mean.POSIXct",
         handler: crate::mainutils::essentials::do_mean_POSIXct,
+    },
+    EvaluatedBuiltin {
+        name: "mean.POSIXlt",
+        handler: crate::mainutils::essentials::do_mean_POSIXlt,
     },
     EvaluatedBuiltin {
         name: "diff.POSIXt",

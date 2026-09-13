@@ -1563,6 +1563,24 @@ pub unsafe fn do_mean_POSIXct(
     }
 }
 
+/// GNU `mean.POSIXlt(x)`.
+pub unsafe fn do_mean_POSIXlt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let ct = do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho);
+        let _ct = protect(ct);
+        let m = do_mean_POSIXct(call, op, Rf_cons(ct, R_NilValue()), rho);
+        let _m = protect(m);
+        crate::mainutils::datetime::do_as_POSIXlt(call, op, Rf_cons(m, R_NilValue()), rho)
+    }
+}
+
+
 /// GNU `diff.POSIXt(x)`.
 pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
