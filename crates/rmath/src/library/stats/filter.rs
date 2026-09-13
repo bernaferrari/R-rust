@@ -1580,6 +1580,51 @@ pub unsafe fn do_contr_treatment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+/// GNU `contr.sum(n)`.
+pub unsafe fn do_contr_sum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_s = CAR(args);
+        let n = if TYPEOF(n_s) == SEXPTYPE::INTSXP {
+            *INTEGER(n_s)
+        } else {
+            *REAL(n_s) as c_int
+        };
+        if n < 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid contrasts",
+            );
+        }
+        let nc = n - 1;
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n, nc);
+        let _m = protect(mat);
+        for i in 0..(n as usize * nc as usize) {
+            *REAL(mat).add(i) = 0.0;
+        }
+        for j in 0..nc as usize {
+            *REAL(mat).add(j + j * n as usize) = 1.0;
+            *REAL(mat).add((n as usize - 1) + j * n as usize) = -1.0;
+        }
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, n as i64);
+        let _rn = protect(rn);
+        for i in 0..n as usize {
+            let lab = format!("{}\0", i + 1);
+            SET_STRING_ELT(rn, i as i64, Rf_mkChar(lab.as_ptr() as *const _));
+        }
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, R_NilValue());
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        mat
+    }
+}
+
+
 
 
 

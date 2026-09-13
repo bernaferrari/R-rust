@@ -1,0 +1,5 @@
+d <- contr.sum(3)
+cat(paste(sprintf("%.0f", as.vector(d)), collapse = ","), "\n", sep = "")
+cat(paste(dim(d), collapse = ","), "\n", sep = "")
+e <- contr.sum(4)
+cat(paste(sprintf("%.0f", as.vector(e)), collapse = ","), "\n", sep = "")
