@@ -5526,6 +5526,104 @@ pub unsafe fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `nls(y ~ expr, start=)` — one-parameter Gauss–Newton.
+pub unsafe fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let form = CAR(args);
+        if form.is_null() || form == R_NilValue() || TYPEOF(form) != SEXPTYPE::LANGSXP {
+            return R_NilValue();
+        }
+        let y_expr = CADR(form);
+        let rhs = CAR(CDR(CDR(form)));
+        let y = crate::eval::eval::Rf_eval(y_expr, rho);
+        let _y = protect(y);
+        let n = XLENGTH(y) as usize;
+        if n == 0 {
+            return R_NilValue();
+        }
+        let mut start = std::ptr::null_mut();
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "start" || (name.is_empty() && TYPEOF(CAR(cell)) == SEXPTYPE::VECSXP) {
+                start = CAR(cell);
+                break;
+            }
+            cell = CDR(cell);
+        }
+        if start.is_null() || TYPEOF(start) != SEXPTYPE::VECSXP || XLENGTH(start) < 1 {
+            return R_NilValue();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            start,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) < 1 {
+            return R_NilValue();
+        }
+        let pname = STRING_ELT(names, 0);
+        let psym = Rf_install(CHAR(pname));
+        let mut b = elt_real_safe(VECTOR_ELT(start, 0), 0);
+        let mut ys = vec![0.0; n];
+        for i in 0..n {
+            ys[i] = elt_real_safe(y, i as i64);
+        }
+        for _ in 0..30 {
+            crate::sexp::envir::defineVar(psym, Rf_ScalarReal(b), rho);
+            let pred = crate::eval::eval::Rf_eval(rhs, rho);
+            let _p = protect(pred);
+            let eps = 1e-6 * (b.abs() + 1.0);
+            crate::sexp::envir::defineVar(psym, Rf_ScalarReal(b + eps), rho);
+            let pred2 = crate::eval::eval::Rf_eval(rhs, rho);
+            let _p2 = protect(pred2);
+            let mut jtj = 0.0;
+            let mut jtr = 0.0;
+            for i in 0..n {
+                let f = elt_real_safe(pred, i as i64);
+                let f2 = elt_real_safe(pred2, i as i64);
+                let ji = (f2 - f) / eps;
+                jtj += ji * ji;
+                jtr += ji * (ys[i] - f);
+            }
+            if jtj <= 0.0 {
+                break;
+            }
+            let db = jtr / jtj;
+            b += db;
+            if db.abs() < 1e-12 {
+                break;
+            }
+        }
+        crate::sexp::envir::defineVar(psym, Rf_ScalarReal(b), rho);
+        let coef = Rf_ScalarReal(b);
+        let _c = protect(coef);
+        let pname_str = std::ffi::CStr::from_ptr(CHAR(pname))
+            .to_string_lossy()
+            .into_owned();
+        crate::mainutils::essentials::set_string_names(coef, &[pname_str]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        crate::mainutils::essentials::set_string_names(result, &["coefficients".to_string()]);
+        let class = Rf_mkString(c"nls".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 unsafe fn family_object(family: &str, link: &str) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);

@@ -1995,6 +1995,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_manova,
     },
     EvaluatedBuiltin {
+        name: "nls",
+        handler: crate::mainutils::essentials::do_nls,
+    },
+    EvaluatedBuiltin {
         name: "lm.fit",
         handler: crate::mainutils::essentials::do_lm_fit,
     },
