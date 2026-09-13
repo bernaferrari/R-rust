@@ -331,6 +331,13 @@ fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
             return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
         }
     }
+    if crate::eval::builtin::unevaluated_builtin_handler(&name).is_some() {
+        let primitive =
+            unsafe { crate::eval::primitive::make_primitive_binding(&name, SEXPTYPE::SPECIALSXP) };
+        if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
+            return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
+        }
+    }
     CString::new(name.as_str())
         .ok()
         .map(|name| unsafe { crate::mainutils::names::R_Primitive(name.as_ptr()) })

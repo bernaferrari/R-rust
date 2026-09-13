@@ -652,6 +652,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: true,
     },
     UnevaluatedBuiltin {
+        name: "model.extract",
+        handler: crate::library::stats::filter::do_model_extract,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "evalq",
         handler: crate::eval::evalq::do_evalq,
         restore_visibility_always: false,
@@ -2292,10 +2297,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "weights",
         handler: crate::library::stats::filter::do_weights,
-    },
-    EvaluatedBuiltin {
-        name: "model.extract",
-        handler: crate::library::stats::filter::do_model_extract,
     },
     EvaluatedBuiltin {
         name: "formula",

@@ -96,7 +96,12 @@ unsafe fn dispatch_special_by_name(
             "@" => crate::mainutils::essentials::do_at(call, op, args, rho),
             "@<-" => crate::mainutils::essentials::do_at_set(call, op, args, rho),
             "$<-" => crate::mainutils::essentials::do_dollar_set(call, op, args, rho),
-            _ => unimplemented_special_form(name),
+            _ => {
+                if let Some(builtin) = super::builtin::unevaluated_builtin_handler(name) {
+                    return (builtin.handler)(call, op, args, rho);
+                }
+                unimplemented_special_form(name)
+            }
         }
     }
 }
