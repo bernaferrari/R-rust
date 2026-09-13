@@ -1829,6 +1829,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_bartlett_test,
     },
     EvaluatedBuiltin {
+        name: "kruskal.test",
+        handler: crate::mainutils::essentials::do_kruskal_test,
+    },
+    EvaluatedBuiltin {
         name: "stem",
         handler: crate::library::graphics::stem::do_stem,
     },

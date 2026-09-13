@@ -1,0 +1,6 @@
+kt <- kruskal.test(1:10, gl(2, 5))
+cat(round(as.numeric(kt$statistic), 6), "\n", sep = "")
+cat(as.numeric(kt$parameter), "\n", sep = "")
+cat(sprintf("%.6e", kt$p.value), "\n", sep = "")
+cat(kt$method, "\n", sep = "")
+cat(class(kt), "\n", sep = "")

@@ -2408,6 +2408,109 @@ pub unsafe fn do_bartlett_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
+fn rank_average(x: &[f64]) -> Vec<f64> {
+    let mut idx: Vec<usize> = (0..x.len()).collect();
+    idx.sort_by(|&a, &b| x[a].partial_cmp(&x[b]).unwrap_or(std::cmp::Ordering::Equal));
+    let mut ranks = vec![0.0; x.len()];
+    let mut i = 0;
+    while i < idx.len() {
+        let mut j = i + 1;
+        while j < idx.len() && x[idx[j]] == x[idx[i]] {
+            j += 1;
+        }
+        let avg = ((i + 1) + j) as f64 / 2.0;
+        for k in i..j {
+            ranks[idx[k]] = avg;
+        }
+        i = j;
+    }
+    ranks
+}
+
+/// GNU `kruskal.test(x, g)`.
+pub unsafe fn do_kruskal_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let g = CAR(CDR(args));
+        let n0 = XLENGTH(x);
+        let mut vals = Vec::new();
+        let mut groups = Vec::new();
+        for i in 0..n0 {
+            let v = elt_real_safe(x, i);
+            if !v.is_finite() {
+                continue;
+            }
+            let gi = if g.is_null() || g == R_NilValue() {
+                1
+            } else if TYPEOF(g) == SEXPTYPE::INTSXP || TYPEOF(g) == SEXPTYPE::LGLSXP {
+                *INTEGER(g).add((i as usize) % XLENGTH(g) as usize)
+            } else if TYPEOF(g) == SEXPTYPE::REALSXP {
+                *REAL(g).add((i as usize) % XLENGTH(g) as usize) as i32
+            } else {
+                1
+            };
+            vals.push(v);
+            groups.push(gi);
+        }
+        let ranks = rank_average(&vals);
+        let n = vals.len() as f64;
+        let mut by_g: std::collections::BTreeMap<i32, (f64, f64)> =
+            std::collections::BTreeMap::new();
+        for (r, g) in ranks.iter().zip(groups.iter()) {
+            let e = by_g.entry(*g).or_insert((0.0, 0.0));
+            e.0 += *r;
+            e.1 += 1.0;
+        }
+        let k = by_g.len();
+        let sum_r2_n: f64 = by_g.values().map(|(sr, ng)| sr * sr / ng).sum();
+        let mut tie_adj = 0.0;
+        let mut counts: std::collections::BTreeMap<u64, f64> =
+            std::collections::BTreeMap::new();
+        for v in &vals {
+            *counts.entry(v.to_bits()).or_insert(0.0) += 1.0;
+        }
+        for t in counts.values() {
+            tie_adj += t * t * t - t;
+        }
+        let den = 1.0 - tie_adj / (n * n * n - n);
+        let stat = (12.0 * sum_r2_n / (n * (n + 1.0)) - 3.0 * (n + 1.0)) / den;
+        let df = (k as f64) - 1.0;
+        let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["Kruskal-Wallis chi-squared".to_string()]);
+        let parameter = Rf_ScalarReal(df);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["df".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"Kruskal-Wallis rank sum test".as_ptr()));
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x and g".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 
