@@ -808,6 +808,122 @@ pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+fn glob2rx_escape_open(s: &str, open: char) -> String {
+    let b = s.as_bytes();
+    let open_b = open as u8;
+    let mut out = String::with_capacity(s.len() + 4);
+    let mut i = 0;
+    while i < b.len() {
+        if i + 1 < b.len() && b[i] != b'\\' && b[i + 1] == open_b {
+            out.push(b[i] as char);
+            out.push('\\');
+            out.push(open);
+            i += 2;
+        } else {
+            out.push(b[i] as char);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn glob2rx_one(pattern: &str, trim_head: bool, trim_tail: bool) -> String {
+    let mut p = format!("^{pattern}$");
+    p = p.replace('.', r"\.");
+    p = p.replace('*', ".*");
+    p = p.replace('?', ".");
+    p = glob2rx_escape_open(&p, '(');
+    p = glob2rx_escape_open(&p, '[');
+    p = glob2rx_escape_open(&p, '{');
+    if trim_tail {
+        if let Some(i) = p.find(".*$") {
+            p.replace_range(i..i + 3, "");
+        }
+    }
+    if trim_head {
+        if let Some(i) = p.find("^.*") {
+            p.replace_range(i..i + 3, "");
+        }
+    }
+    p
+}
+
+/// GNU `glob2rx(pattern, trim.head=FALSE, trim.tail=TRUE)`.
+pub unsafe fn do_glob2rx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let pattern = CAR(args);
+        if pattern.is_null() || pattern == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let n = if TYPEOF(pattern) == SEXPTYPE::STRSXP {
+            XLENGTH(pattern)
+        } else {
+            0
+        };
+        if n == 0 {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let mut trim_head = false;
+        let mut trim_tail = true;
+        let mut cell = CDR(args);
+        let mut positional = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let is_true = !value.is_null()
+                && value != R_NilValue()
+                && ((TYPEOF(value) == SEXPTYPE::LGLSXP
+                    && XLENGTH(value) > 0
+                    && *LOGICAL(value) == TRUE)
+                    || (TYPEOF(value) == SEXPTYPE::INTSXP
+                        && XLENGTH(value) > 0
+                        && *INTEGER(value) != 0
+                        && *INTEGER(value) != NA_INTEGER));
+            let is_false = !value.is_null()
+                && value != R_NilValue()
+                && ((TYPEOF(value) == SEXPTYPE::LGLSXP
+                    && XLENGTH(value) > 0
+                    && *LOGICAL(value) == FALSE)
+                    || (TYPEOF(value) == SEXPTYPE::INTSXP
+                        && XLENGTH(value) > 0
+                        && *INTEGER(value) == 0));
+            if named == "trim.head" || (named.is_empty() && positional == 0) {
+                trim_head = is_true;
+            } else if named == "trim.tail" || (named.is_empty() && positional == 1) {
+                trim_tail = !is_false;
+            }
+            if named.is_empty() {
+                positional += 1;
+            }
+            cell = CDR(cell);
+        }
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let ch = STRING_ELT(pattern, i);
+            let raw = if ch.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let converted = glob2rx_one(&raw, trim_head, trim_tail);
+            let c = CString::new(converted).unwrap_or_else(|_| CString::new("").unwrap());
+            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+
 
 
 

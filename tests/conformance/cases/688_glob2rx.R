@@ -1,0 +1,6 @@
+cat(glob2rx("*.R"), "\n", sep = "")
+cat(glob2rx("*.R", trim.head = TRUE), "\n", sep = "")
+cat(glob2rx("a?b"), "\n", sep = "")
+cat(paste(glob2rx(c("*.R", "foo*")), collapse = ","), "\n", sep = "")
+cat(glob2rx("a[bc]"), "\n", sep = "")
+cat(glob2rx("*"), "\n", sep = "")

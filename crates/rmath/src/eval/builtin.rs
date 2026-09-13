@@ -1329,6 +1329,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_make_names,
     },
     EvaluatedBuiltin {
+        name: "glob2rx",
+        handler: crate::mainutils::essentials::do_glob2rx,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
