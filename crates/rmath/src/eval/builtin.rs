@@ -1793,6 +1793,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_fivenum,
     },
     EvaluatedBuiltin {
+        name: "boxplot.stats",
+        handler: crate::mainutils::essentials::do_boxplot_stats,
+    },
+    EvaluatedBuiltin {
         name: "stem",
         handler: crate::library::graphics::stem::do_stem,
     },

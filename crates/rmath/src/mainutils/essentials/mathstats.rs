@@ -1588,6 +1588,104 @@ pub unsafe fn do_fivenum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `boxplot.stats(x, coef=1.5)`.
+pub unsafe fn do_boxplot_stats(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let mut coef = 1.5;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let c = CAR(rest);
+            if !c.is_null() && c != R_NilValue() {
+                coef = elt_real_safe(c, 0);
+            }
+        }
+        let stats = do_fivenum(_call, _op, Rf_cons(x, R_NilValue()), _rho);
+        let _s = protect(stats);
+        let q1 = *REAL(stats).add(1);
+        let med = *REAL(stats).add(2);
+        let q3 = *REAL(stats).add(3);
+        let iqr = q3 - q1;
+        let n0 = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let xt = if x.is_null() || x == R_NilValue() {
+            SEXPTYPE::REALSXP
+        } else {
+            SEXPTYPE(TYPEOF(x))
+        };
+        let mut n = 0i32;
+        let mut outs: Vec<f64> = Vec::new();
+        let mut insides: Vec<f64> = Vec::new();
+        for i in 0..n0 {
+            let v = if xt == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if xt == SEXPTYPE::INTSXP || xt == SEXPTYPE::LGLSXP {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
+            } else {
+                NA_REAL
+            };
+            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
+                continue;
+            }
+            n += 1;
+            let is_out = coef > 0.0
+                && iqr.is_finite()
+                && (v < q1 - coef * iqr || v > q3 + coef * iqr);
+            if is_out {
+                outs.push(v);
+            } else if v.is_finite() {
+                insides.push(v);
+            }
+        }
+        if !insides.is_empty() && coef > 0.0 {
+            let lo = insides.iter().copied().fold(f64::INFINITY, f64::min);
+            let hi = insides.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            *REAL(stats) = lo;
+            *REAL(stats).add(4) = hi;
+        }
+        let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _c = protect(conf);
+        if n > 0 && iqr.is_finite() {
+            let half = 1.58 * iqr / (n as f64).sqrt();
+            *REAL(conf) = med - half;
+            *REAL(conf).add(1) = med + half;
+        } else {
+            *REAL(conf) = NA_REAL;
+            *REAL(conf).add(1) = NA_REAL;
+        }
+        let out = Rf_allocVector3(SEXPTYPE::REALSXP, outs.len() as i64);
+        let _o = protect(out);
+        for (i, v) in outs.iter().enumerate() {
+            *REAL(out).add(i) = *v;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, stats);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(n));
+        SET_VECTOR_ELT(result, 2, conf);
+        SET_VECTOR_ELT(result, 3, out);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "stats".to_string(),
+                "n".to_string(),
+                "conf".to_string(),
+                "out".to_string(),
+            ],
+        );
+        result
+    }
+}
+
+
 /// GNU `ecdf(x)` — empirical CDF as a step function.
 pub unsafe fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

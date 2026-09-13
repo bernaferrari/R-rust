@@ -1,0 +1,6 @@
+cat(paste(boxplot.stats(1:10)$stats, collapse = ","), "\n", sep = "")
+cat(boxplot.stats(1:10)$n, "\n", sep = "")
+cat(paste(round(boxplot.stats(1:10)$conf, 6), collapse = ","), "\n", sep = "")
+cat(length(boxplot.stats(1:10)$out), "\n", sep = "")
+cat(paste(boxplot.stats(c(1:10, 100))$out, collapse = ","), "\n", sep = "")
+cat(paste(boxplot.stats(c(1:10, 100))$stats, collapse = ","), "\n", sep = "")
