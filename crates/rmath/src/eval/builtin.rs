@@ -2115,6 +2115,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::line::do_line,
     },
     EvaluatedBuiltin {
+        name: "as.dist",
+        handler: crate::mainutils::essentials::do_as_dist,
+    },
+    EvaluatedBuiltin {
         name: "dist",
         handler: crate::mainutils::essentials::do_dist,
     },

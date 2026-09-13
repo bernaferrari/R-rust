@@ -1,0 +1,6 @@
+m <- matrix(c(0, 1, 3, 1, 0, 2, 3, 2, 0), 3, 3)
+d <- as.dist(m)
+cat(paste(as.vector(d), collapse = ","), "\n", sep = "")
+cat(attr(d, "Size"), "\n", sep = "")
+cat(class(d), "\n", sep = "")
+cat(paste(as.vector(as.dist(dist(1:3))), collapse = ","), "\n", sep = "")

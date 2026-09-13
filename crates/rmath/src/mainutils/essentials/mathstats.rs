@@ -6982,6 +6982,68 @@ pub unsafe fn do_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `as.dist(m)` — lower triangle of a square matrix, or pass through `dist`.
+pub unsafe fn do_as_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                let raw = CHAR(STRING_ELT(class, i));
+                if !raw.is_null() && std::ffi::CStr::from_ptr(raw).to_bytes() == b"dist" {
+                    return x;
+                }
+            }
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let n = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 1
+        {
+            *INTEGER(dim) as usize
+        } else {
+            return R_NilValue();
+        };
+        if n < 2 {
+            return R_NilValue();
+        }
+        let len = n * (n - 1) / 2;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, len as i64);
+        let _r = protect(result);
+        let mut k = 0usize;
+        for i in 0..n {
+            for j in (i + 1)..n {
+                // lower triangle m[j, i] in column-major storage
+                let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(j + i * n)
+                } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                    *INTEGER(x).add(j + i * n) as f64
+                } else {
+                    f64::NAN
+                };
+                *REAL(result).add(k) = v;
+                k += 1;
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"Size".as_ptr()),
+            Rf_ScalarInteger(n as c_int),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"dist".as_ptr()),
+        );
+        result
+    }
+}
+
+
 /// GNU `prcomp` via eigen of the sample covariance.
 pub unsafe fn do_prcomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
