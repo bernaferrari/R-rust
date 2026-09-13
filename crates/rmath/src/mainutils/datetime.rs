@@ -1650,6 +1650,26 @@ pub unsafe fn do_quarters_POSIXt(
     }
 }
 
+/// GNU `as.character.POSIXt(x)`.
+pub unsafe fn do_as_character_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let lt = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+            x
+        } else {
+            do_as_POSIXlt(call, op, Rf_cons(x, R_NilValue()), env)
+        };
+        let _lt = protect(lt);
+        do_format_POSIXlt(call, op, Rf_cons(lt, R_NilValue()), env)
+    }
+}
+
+
 
 
 /// Build a CString from an owned string (helper for the code above).
