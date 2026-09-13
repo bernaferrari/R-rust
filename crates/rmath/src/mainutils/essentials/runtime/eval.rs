@@ -415,6 +415,44 @@ unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
                 );
             }
         }
+        if name == "cos" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                let s = crate::sexp::constructors::Rf_lang2(Rf_install(c"sin".as_ptr()), arg);
+                return crate::sexp::constructors::Rf_lang2(Rf_install(c"-".as_ptr()), s);
+            }
+        }
+        if name == "sqrt" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                let pow = crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"^".as_ptr()),
+                    arg,
+                    Rf_ScalarReal(-0.5),
+                );
+                return crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"*".as_ptr()),
+                    Rf_ScalarReal(0.5),
+                    pow,
+                );
+            }
+        }
+        if name == "tan" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                let c = crate::sexp::constructors::Rf_lang2(Rf_install(c"cos".as_ptr()), arg);
+                let c2 = crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"^".as_ptr()),
+                    c,
+                    Rf_ScalarReal(2.0),
+                );
+                return crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"/".as_ptr()),
+                    Rf_ScalarReal(1.0),
+                    c2,
+                );
+            }
+        }
         Rf_ScalarInteger(0)
     }
 }
