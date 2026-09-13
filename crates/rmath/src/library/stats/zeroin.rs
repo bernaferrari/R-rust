@@ -280,4 +280,54 @@ pub unsafe fn do_optimize(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::
     }
 }
 
+/// GNU `nlm(f, p)` for one-dimensional p via optimize.
+pub unsafe fn do_nlm(
+    call: crate::sexp::ffi::SEXP,
+    op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    rho: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, VECTOR_ELT, XLENGTH};
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
+        use crate::sexp::ffi::SEXPTYPE;
+        use crate::sexp::globals::R_NilValue;
+        use crate::sexp::protect::protect;
+        let fun = CAR(args);
+        let p = CAR(CDR(args));
+        if XLENGTH(p) != 1 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "nlm currently supports one-dimensional p only",
+            );
+        }
+        let p0 = if TYPEOF(p) == SEXPTYPE::REALSXP {
+            *REAL(p)
+        } else {
+            *INTEGER(p) as f64
+        };
+        let span = 10.0 * p0.abs() + 1.0;
+        let interval = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _iv = protect(interval);
+        *REAL(interval) = p0 - span;
+        *REAL(interval).add(1) = p0 + span;
+        let opt_args = Rf_cons(fun, Rf_cons(interval, R_NilValue()));
+        let _oa = protect(opt_args);
+        let opt = do_optimize(call, op, opt_args, rho);
+        let _o = protect(opt);
+        let xmin = VECTOR_ELT(opt, 0);
+        let fmin = VECTOR_ELT(opt, 1);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, fmin);
+        SET_VECTOR_ELT(result, 1, xmin);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["minimum".to_string(), "estimate".to_string()],
+        );
+        result
+    }
+}
+
+
 

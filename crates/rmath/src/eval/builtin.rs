@@ -1697,6 +1697,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::zeroin::do_optimize,
     },
     EvaluatedBuiltin {
+        name: "nlm",
+        handler: crate::library::stats::zeroin::do_nlm,
+    },
+    EvaluatedBuiltin {
         name: "approx",
         handler: crate::library::stats::approx::do_approx,
     },
