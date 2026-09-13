@@ -1022,6 +1022,48 @@ pub unsafe fn do_strftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `format.Date(x, format="%Y-%m-%d")`.
+pub unsafe fn do_format_Date(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let mut fmt = "%Y-%m-%d".to_string();
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let f = CAR(rest);
+            if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
+                let ch = STRING_ELT(f, 0);
+                if !ch.is_null() {
+                    let s = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                    if !s.is_empty() {
+                        fmt = s;
+                    }
+                }
+            }
+        }
+        let fmt_s = Rf_mkString(CString::new(fmt.as_str()).unwrap_or_default().as_ptr());
+        let _f = protect(fmt_s);
+        do_strftime(call, op, Rf_cons(x, Rf_cons(fmt_s, R_NilValue())), rho)
+    }
+}
+
+/// GNU `as.character.Date(x)`.
+pub unsafe fn do_as_character_Date(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe { do_format_Date(call, op, args, rho) }
+}
+
+
 fn date_units_arg(args: SEXP) -> String {
     unsafe {
         let mut units = "days".to_string();

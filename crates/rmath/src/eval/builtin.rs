@@ -1477,6 +1477,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_trunc_Date,
     },
     EvaluatedBuiltin {
+        name: "format.Date",
+        handler: crate::mainutils::essentials::do_format_Date,
+    },
+    EvaluatedBuiltin {
+        name: "as.character.Date",
+        handler: crate::mainutils::essentials::do_as_character_Date,
+    },
+    EvaluatedBuiltin {
         name: "round.Date",
         handler: crate::mainutils::essentials::do_round_Date,
     },
