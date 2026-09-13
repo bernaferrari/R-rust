@@ -1,0 +1,5 @@
+mod <- makeARIMA(0.5, numeric(0), numeric(0))
+kr <- KalmanRun(c(1, 2, 1, 2, 1), mod)
+cat(paste(round(as.numeric(kr$values), 6), collapse = ","), "\n", sep = "")
+cat(paste(round(kr$resid, 4), collapse = ","), "\n", sep = "")
+cat(paste(round(as.vector(kr$states), 4), collapse = ","), "\n", sep = "")

@@ -876,17 +876,21 @@ fn elt_real_or(x: SEXP, default: f64) -> f64 {
     }
 }
 
-/// GNU `KalmanLike(y, mod)` — univariate AR(1) state-space likelihood.
-pub unsafe fn do_kalman_like(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+struct KalmanFit {
+    lik: f64,
+    s2: f64,
+    resid: Vec<f64>,
+    states: Vec<f64>,
+}
+
+unsafe fn kalman_run_1d(y: SEXP, model: SEXP) -> Option<KalmanFit> {
     unsafe {
-        let y = CAR(args);
-        let model = CAR(CDR(args));
         if y.is_null() || y == R_NilValue() || model.is_null() || model == R_NilValue() {
-            return R_NilValue();
+            return None;
         }
         let n = XLENGTH(y) as usize;
         if n == 0 {
-            return R_NilValue();
+            return None;
         }
         let z = elt_real_or(named_list_elt(model, "Z"), 1.0);
         let mut a = elt_real_or(named_list_elt(model, "a"), 0.0);
@@ -896,6 +900,8 @@ pub unsafe fn do_kalman_like(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let mut p = elt_real_or(named_list_elt(model, "Pn"), 1.0);
         let mut s2 = 0.0;
         let mut sumlog = 0.0;
+        let mut resid_out = vec![0.0; n];
+        let mut states = vec![0.0; n];
         for i in 0..n {
             let yi = if TYPEOF(y) == SEXPTYPE::REALSXP {
                 *REAL(y).add(i)
@@ -907,20 +913,37 @@ pub unsafe fn do_kalman_like(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             if f > 0.0 {
                 s2 += resid * resid / f;
                 sumlog += f.ln();
+                resid_out[i] = resid / f.sqrt();
                 let k = p * z / f;
                 a += k * resid;
                 p -= k * k * f;
             }
+            states[i] = a;
             a = t * a;
             p = t * p * t + v;
         }
         let nf = n as f64;
         s2 /= nf;
         let lik = 0.5 * (s2.ln() + sumlog / nf);
+        Some(KalmanFit {
+            lik,
+            s2,
+            resid: resid_out,
+            states,
+        })
+    }
+}
+
+/// GNU `KalmanLike(y, mod)` — univariate AR(1) state-space likelihood.
+pub unsafe fn do_kalman_like(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let Some(fit) = kalman_run_1d(CAR(args), CAR(CDR(args))) else {
+            return R_NilValue();
+        };
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(lik));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(s2));
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(fit.lik));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(fit.s2));
         crate::mainutils::essentials::set_string_names(
             result,
             &["Lik".to_string(), "s2".to_string()],
@@ -928,6 +951,47 @@ pub unsafe fn do_kalman_like(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         result
     }
 }
+
+/// GNU `KalmanRun(y, mod)` — likelihood, standardized residuals, filtered states.
+pub unsafe fn do_kalman_run(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let Some(fit) = kalman_run_1d(CAR(args), CAR(CDR(args))) else {
+            return R_NilValue();
+        };
+        let n = fit.resid.len();
+        let values = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _v = protect(values);
+        *REAL(values) = fit.lik;
+        *REAL(values).add(1) = fit.s2;
+        crate::mainutils::essentials::set_string_names(
+            values,
+            &["Lik".to_string(), "s2".to_string()],
+        );
+        let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _e = protect(resid);
+        let states = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _s = protect(states);
+        for i in 0..n {
+            *REAL(resid).add(i) = fit.resid[i];
+            *REAL(states).add(i) = fit.states[i];
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, values);
+        SET_VECTOR_ELT(result, 1, resid);
+        SET_VECTOR_ELT(result, 2, states);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "values".to_string(),
+                "resid".to_string(),
+                "states".to_string(),
+            ],
+        );
+        result
+    }
+}
+
 
 
 
