@@ -973,6 +973,80 @@ pub unsafe fn do_acf2AR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `kernel("daniell", m)`.
+pub unsafe fn do_kernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let m_s = CAR(CDR(args));
+        let m = if TYPEOF(m_s) == SEXPTYPE::INTSXP {
+            *INTEGER(m_s)
+        } else {
+            *REAL(m_s) as c_int
+        };
+        if m < 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'m' must be non-negative",
+            );
+        }
+        let w = 1.0 / (2.0 * m as f64 + 1.0);
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, (m + 1) as i64);
+        let _c = protect(coef);
+        for i in 0..=m as usize {
+            *REAL(coef).add(i) = w;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(m));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["coef".to_string(), "m".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"tskernel".as_ptr()),
+        );
+        result
+    }
+}
+
+/// GNU `kernapply(x, k)` two-sided Daniell.
+pub unsafe fn do_kernapply(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let k = CAR(CDR(args));
+        let xd = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            x
+        } else {
+            coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
+        };
+        let _xd = protect(xd);
+        let n = XLENGTH(xd) as usize;
+        let m_s = VECTOR_ELT(k, 1);
+        let m = if TYPEOF(m_s) == SEXPTYPE::INTSXP {
+            *INTEGER(m_s) as usize
+        } else {
+            *REAL(m_s) as usize
+        };
+        let coef = VECTOR_ELT(k, 0);
+        let out_n = n.saturating_sub(2 * m);
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, out_n as i64);
+        let _a = protect(ans);
+        for i in 0..out_n {
+            let t = i + m;
+            let mut s = *REAL(coef) * *REAL(xd).add(t);
+            for j in 1..=m {
+                let w = *REAL(coef).add(j);
+                s += w * *REAL(xd).add(t - j) + w * *REAL(xd).add(t + j);
+            }
+            *REAL(ans).add(i) = s;
+        }
+        ans
+    }
+}
+
+
 
 
 
