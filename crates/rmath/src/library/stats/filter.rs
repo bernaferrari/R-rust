@@ -1724,6 +1724,38 @@ pub unsafe fn do_is_empty_model(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
+/// GNU `alias.lm` for full-rank models — `list(Model = formula)`.
+pub unsafe fn do_alias(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let call = named_list_elt(obj, "call");
+        let model = if !call.is_null() && call != R_NilValue() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+            CADR(call)
+        } else {
+            R_NilValue()
+        };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, model);
+        let names = Rf_mkString(c"Model".as_ptr());
+        let _nm = protect(names);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+        let class = Rf_mkString(c"listof".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

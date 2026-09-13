@@ -2242,6 +2242,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_is_empty_model,
     },
     EvaluatedBuiltin {
+        name: "alias",
+        handler: crate::library::stats::filter::do_alias,
+    },
+    EvaluatedBuiltin {
         name: "coef",
         handler: crate::library::stats::filter::do_coef,
     },
