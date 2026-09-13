@@ -1695,6 +1695,76 @@ pub unsafe fn do_ngettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+fn bindtextdomain_map()
+-> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
+    static MAP: std::sync::LazyLock<
+        std::sync::Mutex<std::collections::HashMap<String, String>>,
+    > = std::sync::LazyLock::new(|| {
+        std::sync::Mutex::new(std::collections::HashMap::new())
+    });
+    &MAP
+}
+
+/// GNU `bindtextdomain(domain, dirname)`.
+pub unsafe fn do_bindtextdomain(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let domain = CAR(args);
+        let dirname = CAR(CDR(args));
+        if (domain.is_null() || domain == R_NilValue())
+            && (dirname.is_null() || dirname == R_NilValue())
+        {
+            return Rf_ScalarLogical(TRUE);
+        }
+        if domain.is_null()
+            || domain == R_NilValue()
+            || TYPEOF(domain) != SEXPTYPE::STRSXP
+            || XLENGTH(domain) != 1
+        {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid 'domain' value",
+            );
+        }
+        let dch = STRING_ELT(domain, 0);
+        let dname = if dch.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(CHAR(dch))
+                .to_string_lossy()
+                .into_owned()
+        };
+        if dirname.is_null() || dirname == R_NilValue() {
+            let path = bindtextdomain_map()
+                .lock()
+                .ok()
+                .and_then(|map| map.get(&dname).cloned())
+                .unwrap_or_default();
+            let c = CString::new(path).unwrap_or_else(|_| CString::new("").unwrap());
+            return Rf_mkString(c.as_ptr());
+        }
+        if TYPEOF(dirname) != SEXPTYPE::STRSXP || XLENGTH(dirname) != 1 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid 'dirname' value",
+            );
+        }
+        let pch = STRING_ELT(dirname, 0);
+        let path = if pch.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(CHAR(pch))
+                .to_string_lossy()
+                .into_owned()
+        };
+        if let Ok(mut map) = bindtextdomain_map().lock() {
+            map.insert(dname, path.clone());
+        }
+        let c = CString::new(path).unwrap_or_else(|_| CString::new("").unwrap());
+        Rf_mkString(c.as_ptr())
+    }
+}
+
+
 
 
 
