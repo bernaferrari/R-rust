@@ -2963,6 +2963,87 @@ pub unsafe fn do_fisher_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU two-sample `power.t.test(n, delta)`.
+pub unsafe fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut n = NA_REAL;
+        let mut delta = NA_REAL;
+        let mut sd = 1.0;
+        let mut sig_level = 0.05;
+        let mut cell = args;
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = if !v.is_null() && v != R_NilValue() {
+                elt_real_safe(v, 0)
+            } else {
+                NA_REAL
+            };
+            if name == "n" || (name.is_empty() && pos == 0) {
+                n = val;
+            } else if name == "delta" || (name.is_empty() && pos == 1) {
+                delta = val;
+            } else if name == "sd" || (name.is_empty() && pos == 2) {
+                if val.is_finite() {
+                    sd = val;
+                }
+            } else if name == "sig.level" || (name.is_empty() && pos == 3) {
+                if val.is_finite() {
+                    sig_level = val;
+                }
+            }
+            if name.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
+        }
+        let nu = (n - 1.0).max(1e-7) * 2.0;
+        let qu = crate::dist::t_dist::qt_inner(sig_level / 2.0, nu, false, false);
+        let ncp = (n / 2.0).sqrt() * delta.abs() / sd;
+        let power = crate::dist::nt_dist::pnt_inner(qu, nu, ncp, false, false);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(n));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(delta));
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(sd));
+        SET_VECTOR_ELT(result, 3, Rf_ScalarReal(sig_level));
+        SET_VECTOR_ELT(result, 4, Rf_ScalarReal(power));
+        SET_VECTOR_ELT(result, 5, Rf_mkString(c"two.sided".as_ptr()));
+        SET_VECTOR_ELT(result, 6, Rf_mkString(c"n is number in *each* group".as_ptr()));
+        SET_VECTOR_ELT(result, 7, Rf_mkString(c"Two-sample t test power calculation".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "n".to_string(),
+                "delta".to_string(),
+                "sd".to_string(),
+                "sig.level".to_string(),
+                "power".to_string(),
+                "alternative".to_string(),
+                "note".to_string(),
+                "method".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"power.htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

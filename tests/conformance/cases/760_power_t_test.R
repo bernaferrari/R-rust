@@ -1,0 +1,8 @@
+pw <- power.t.test(n = 10, delta = 1)
+cat(pw$n, "\n", sep = "")
+cat(pw$delta, "\n", sep = "")
+cat(pw$sd, "\n", sep = "")
+cat(pw$sig.level, "\n", sep = "")
+cat(round(pw$power, 6), "\n", sep = "")
+cat(pw$method, "\n", sep = "")
+cat(class(pw), "\n", sep = "")
