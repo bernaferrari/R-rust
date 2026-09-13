@@ -1520,9 +1520,20 @@ pub unsafe fn do_weights(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe { named_list_elt(CAR(args), "weights") }
 }
 
-/// GNU default `formula(object)` via $formula.
+/// GNU `formula(object)` — `$formula`, else `$call` formula.
 pub unsafe fn do_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { named_list_elt(CAR(args), "formula") }
+    unsafe {
+        let x = CAR(args);
+        let f = named_list_elt(x, "formula");
+        if !f.is_null() && f != R_NilValue() {
+            return f;
+        }
+        let call = named_list_elt(x, "call");
+        if !call.is_null() && call != R_NilValue() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+            return CADR(call);
+        }
+        R_NilValue()
+    }
 }
 
 /// GNU default `terms(object)` via $terms.
