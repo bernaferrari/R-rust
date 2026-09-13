@@ -1441,6 +1441,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_iconv,
     },
     EvaluatedBuiltin {
+        name: "julian",
+        handler: crate::mainutils::essentials::do_julian,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },

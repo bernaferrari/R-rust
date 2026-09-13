@@ -602,6 +602,57 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `julian.Date(x, origin=as.Date("1970-01-01"))`.
+pub unsafe fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let mut origin_days = 0.0;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let origin = CAR(rest);
+            if !origin.is_null()
+                && origin != R_NilValue()
+                && TYPEOF(origin) == SEXPTYPE::REALSXP
+                && XLENGTH(origin) > 0
+            {
+                origin_days = *REAL(origin);
+            }
+        }
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
+            } else {
+                NA_REAL
+            };
+            *REAL(result).add(i as usize) = v - origin_days;
+        }
+        let origin = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
+        let _o = protect(origin);
+        *REAL(origin) = origin_days;
+        set_single_class(origin, "Date");
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"origin".as_ptr()),
+            origin,
+        );
+        result
+    }
+}
+
+
 /// R's `as.POSIXct(x, tz, origin)` — coerce simple UTC inputs to POSIXct.
 pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
