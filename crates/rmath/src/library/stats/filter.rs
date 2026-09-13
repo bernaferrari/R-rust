@@ -2155,10 +2155,73 @@ pub unsafe fn do_model_extract(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
 }
 
 
-/// GNU default `terms(object)` via $terms.
-pub unsafe fn do_terms(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { named_list_elt(CAR(args), "terms") }
+fn mark_terms(form: SEXP, response: i32) -> SEXP {
+    unsafe {
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _cl = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"terms".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"formula".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            form,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            form,
+            crate::sexp::symbol::Rf_install(c"response".as_ptr()),
+            Rf_ScalarInteger(response),
+        );
+        form
+    }
 }
+
+/// GNU `terms(object)` — `$terms`, or a formula as `c("terms","formula")`.
+pub unsafe fn do_terms(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let t = named_list_elt(x, "terms");
+        if !t.is_null() && t != R_NilValue() {
+            return t;
+        }
+        if TYPEOF(x) == SEXPTYPE::LANGSXP || inherits_formula(x) {
+            let rest = CDR(x);
+            let third = if rest.is_null() {
+                R_NilValue()
+            } else {
+                CDR(rest)
+            };
+            let response = if third.is_null() || third == R_NilValue() {
+                0
+            } else {
+                1
+            };
+            return mark_terms(x, response);
+        }
+        R_NilValue()
+    }
+}
+
+/// GNU `delete.response(termobj)` — drop the LHS of a two-sided formula.
+pub unsafe fn do_delete_response(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::LANGSXP {
+            return x;
+        }
+        let rest = CDR(x);
+        let third = if rest.is_null() {
+            R_NilValue()
+        } else {
+            CDR(rest)
+        };
+        if third.is_null() || third == R_NilValue() {
+            return mark_terms(x, 0);
+        }
+        let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
+        mark_terms(Rf_lang2(tilde, CAR(third)), 0)
+    }
+}
+
 
 /// GNU `offset(object)` is identity.
 pub unsafe fn do_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
