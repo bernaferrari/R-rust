@@ -5603,6 +5603,108 @@ pub unsafe fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 
+/// GNU `glm.fit(x, y, family=poisson())` — IRLS log-link Poisson.
+pub unsafe fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (n, p) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            return R_NilValue();
+        };
+        if n < 2 || p != 2 || y.is_null() || y == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = n.min(XLENGTH(y) as usize);
+        let mut x0s = vec![0.0; n];
+        let mut x1s = vec![0.0; n];
+        let mut ys = vec![0.0; n];
+        for i in 0..n {
+            x0s[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+            x1s[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i + n)
+            } else {
+                *INTEGER(x).add(i + n) as f64
+            };
+            ys[i] = elt_real_safe(y, i as i64);
+        }
+        let mut b0 = 0.0;
+        let mut b1 = 0.0;
+        let mut converged = false;
+        for _ in 0..25 {
+            let mut a00 = 0.0;
+            let mut sx = 0.0;
+            let mut sxx = 0.0;
+            let mut sy = 0.0;
+            let mut sxy = 0.0;
+            for i in 0..n {
+                let eta = b0 * x0s[i] + b1 * x1s[i];
+                let mu = eta.exp().max(1e-12);
+                let z = eta + (ys[i] - mu) / mu;
+                let w = mu;
+                a00 += w * x0s[i] * x0s[i];
+                sx += w * x0s[i] * x1s[i];
+                sxx += w * x1s[i] * x1s[i];
+                sy += w * x0s[i] * z;
+                sxy += w * x1s[i] * z;
+            }
+            let Some(inv) = invert2(a00, sx, sx, sxx) else {
+                break;
+            };
+            let nb0 = inv.0 * sy + inv.2 * sxy;
+            let nb1 = inv.1 * sy + inv.3 * sxy;
+            if (nb0 - b0).abs() < 1e-10 && (nb1 - b1).abs() < 1e-10 {
+                b0 = nb0;
+                b1 = nb1;
+                converged = true;
+                break;
+            }
+            b0 = nb0;
+            b1 = nb1;
+        }
+        let mut dev = 0.0;
+        for i in 0..n {
+            let mu = (b0 * x0s[i] + b1 * x1s[i]).exp().max(1e-12);
+            let yi = ys[i];
+            if yi > 0.0 {
+                dev += yi * (yi / mu).ln() - (yi - mu);
+            } else {
+                dev += mu;
+            }
+        }
+        dev *= 2.0;
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _c = protect(coef);
+        *REAL(coef) = b0;
+        *REAL(coef).add(1) = b1;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarLogical(if converged { 1 } else { 0 }));
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(dev));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "coefficients".to_string(),
+                "converged".to_string(),
+                "deviance".to_string(),
+            ],
+        );
+        result
+    }
+}
+
+
 /// GNU `nls(y ~ expr, start=)` — one-parameter Gauss–Newton.
 pub unsafe fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

@@ -2007,6 +2007,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_lm_wfit,
     },
     EvaluatedBuiltin {
+        name: "glm.fit",
+        handler: crate::mainutils::essentials::do_glm_fit,
+    },
+    EvaluatedBuiltin {
         name: "lm",
         handler: crate::mainutils::essentials::do_lm,
     },

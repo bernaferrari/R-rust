@@ -1,0 +1,6 @@
+x <- cbind(1, 0:4)
+y <- c(1, 2, 4, 7, 12)
+f <- glm.fit(x, y, family = poisson())
+cat(paste(round(unname(f$coefficients), 6), collapse = ","), "\n", sep = "")
+cat(as.integer(f$converged), "\n", sep = "")
+cat(round(f$deviance, 6), "\n", sep = "")
