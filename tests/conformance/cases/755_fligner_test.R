@@ -1,0 +1,6 @@
+ft <- fligner.test(1:10, gl(2, 5))
+cat(round(as.numeric(ft$statistic), 8), "\n", sep = "")
+cat(as.numeric(ft$parameter), "\n", sep = "")
+cat(round(ft$p.value, 8), "\n", sep = "")
+cat(ft$method, "\n", sep = "")
+cat(class(ft), "\n", sep = "")

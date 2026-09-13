@@ -2510,6 +2510,126 @@ pub unsafe fn do_kruskal_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+fn median_of(x: &[f64]) -> f64 {
+    let mut s = x.to_vec();
+    s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = s.len();
+    if n == 0 {
+        return f64::NAN;
+    }
+    if n % 2 == 1 {
+        s[n / 2]
+    } else {
+        0.5 * (s[n / 2 - 1] + s[n / 2])
+    }
+}
+
+/// GNU `fligner.test(x, g)`.
+pub unsafe fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let g = CAR(CDR(args));
+        let n0 = XLENGTH(x);
+        let mut vals = Vec::new();
+        let mut groups = Vec::new();
+        for i in 0..n0 {
+            let v = elt_real_safe(x, i);
+            if !v.is_finite() {
+                continue;
+            }
+            let gi = if g.is_null() || g == R_NilValue() {
+                1
+            } else if TYPEOF(g) == SEXPTYPE::INTSXP || TYPEOF(g) == SEXPTYPE::LGLSXP {
+                *INTEGER(g).add((i as usize) % XLENGTH(g) as usize)
+            } else if TYPEOF(g) == SEXPTYPE::REALSXP {
+                *REAL(g).add((i as usize) % XLENGTH(g) as usize) as i32
+            } else {
+                1
+            };
+            vals.push(v);
+            groups.push(gi);
+        }
+        let mut by_g: std::collections::BTreeMap<i32, Vec<f64>> =
+            std::collections::BTreeMap::new();
+        for (v, g) in vals.iter().zip(groups.iter()) {
+            by_g.entry(*g).or_default().push(*v);
+        }
+        let medians: std::collections::BTreeMap<i32, f64> = by_g
+            .iter()
+            .map(|(k, v)| (*k, median_of(v)))
+            .collect();
+        let centered: Vec<f64> = vals
+            .iter()
+            .zip(groups.iter())
+            .map(|(v, g)| v - medians[g])
+            .collect();
+        let abs_c: Vec<f64> = centered.iter().map(|v| v.abs()).collect();
+        let ranks = rank_average(&abs_c);
+        let n = vals.len() as f64;
+        let mut a: Vec<f64> = ranks
+            .iter()
+            .map(|r| crate::dist::normal::qnorm5_inner((1.0 + r / (n + 1.0)) / 2.0, 0.0, 1.0, true, false))
+            .collect();
+        let mean_a = a.iter().sum::<f64>() / n;
+        for v in &mut a {
+            *v -= mean_a;
+        }
+        let vsum = a.iter().map(|v| v * v).sum::<f64>() / (n - 1.0);
+        let mut a_by_g: std::collections::BTreeMap<i32, Vec<f64>> =
+            std::collections::BTreeMap::new();
+        for (ai, g) in a.iter().zip(groups.iter()) {
+            a_by_g.entry(*g).or_default().push(*ai);
+        }
+        let k = a_by_g.len();
+        let stat = a_by_g
+            .values()
+            .map(|ag| {
+                let m = ag.iter().sum::<f64>() / ag.len() as f64;
+                (ag.len() as f64) * m * m
+            })
+            .sum::<f64>()
+            / vsum;
+        let df = (k as f64) - 1.0;
+        let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["Fligner-Killeen:med chi-squared".to_string()]);
+        let parameter = Rf_ScalarReal(df);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["df".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(
+            result,
+            3,
+            Rf_mkString(c"Fligner-Killeen test of homogeneity of variances".as_ptr()),
+        );
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x and g".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 
