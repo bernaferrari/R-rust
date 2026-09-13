@@ -1517,6 +1517,91 @@ pub unsafe fn do_as_POSIXlt(
 }
 
 
+/// GNU `format.POSIXlt(x, format)`.
+pub unsafe fn do_format_POSIXlt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let mut fmt = String::new();
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let f = CAR(rest);
+            if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
+                let ch = STRING_ELT(f, 0);
+                if !ch.is_null() {
+                    fmt = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+        }
+        if fmt.is_empty() {
+            fmt = "%Y-%m-%d".to_string();
+            if TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 3 {
+                let hour = VECTOR_ELT(x, 2);
+                let min = VECTOR_ELT(x, 1);
+                let sec = VECTOR_ELT(x, 0);
+                let nonzero = |v: SEXP| -> bool {
+                    if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                        *INTEGER(v) != 0
+                    } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                        *REAL(v) != 0.0
+                    } else {
+                        false
+                    }
+                };
+                if nonzero(hour) || nonzero(min) || nonzero(sec) {
+                    fmt = "%Y-%m-%d %H:%M:%S".to_string();
+                }
+            }
+        }
+        let fmt_s = Rf_mkString(CString::new(fmt.as_str()).unwrap_or_default().as_ptr());
+        let _f = protect(fmt_s);
+        do_formatPOSIXlt(call, op, Rf_cons(x, Rf_cons(fmt_s, R_NilValue())), env)
+    }
+}
+
+/// GNU `format.POSIXct(x, format, tz)`.
+pub unsafe fn do_format_POSIXct(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let mut fmt = String::new();
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let f = CAR(rest);
+            if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
+                let ch = STRING_ELT(f, 0);
+                if !ch.is_null() {
+                    fmt = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+        }
+        if fmt.is_empty() {
+            fmt = "%Y-%m-%d %H:%M:%S".to_string();
+        }
+        let fmt_s = Rf_mkString(CString::new(fmt.as_str()).unwrap_or_default().as_ptr());
+        let _f = protect(fmt_s);
+        crate::mainutils::essentials::do_strftime(
+            call,
+            op,
+            Rf_cons(x, Rf_cons(fmt_s, R_NilValue())),
+            env,
+        )
+    }
+}
+
+
 /// Build a CString from an owned string (helper for the code above).
 fn mk_char_str(s: &str) -> CString {
     CString::new(s).unwrap_or_default()
