@@ -1725,6 +1725,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::fourier::do_convolve,
     },
     EvaluatedBuiltin {
+        name: "D",
+        handler: crate::mainutils::essentials::do_D,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

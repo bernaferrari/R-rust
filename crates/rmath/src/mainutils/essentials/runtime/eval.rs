@@ -279,3 +279,124 @@ pub(crate) unsafe fn parse_source_expression_vector(source: &str) -> SEXP {
         result
     }
 }
+
+unsafe fn d_symbol_name(sym: SEXP) -> String {
+    unsafe {
+        if TYPEOF(sym) != SEXPTYPE::SYMSXP {
+            return String::new();
+        }
+        let pn = PRINTNAME(sym);
+        if pn.is_null() {
+            return String::new();
+        }
+        CStr::from_ptr(CHAR(pn)).to_string_lossy().into_owned()
+    }
+}
+
+unsafe fn d_numeric(x: SEXP) -> Option<f64> {
+    unsafe {
+        if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) == 1 {
+            Some(*REAL(x))
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) == 1 {
+            Some(*INTEGER(x) as f64)
+        } else {
+            None
+        }
+    }
+}
+
+unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
+    unsafe {
+        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+            return if d_symbol_name(expr) == var {
+                Rf_ScalarInteger(1)
+            } else {
+                Rf_ScalarInteger(0)
+            };
+        }
+        if d_numeric(expr).is_some() {
+            return Rf_ScalarInteger(0);
+        }
+        if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+            return Rf_ScalarInteger(0);
+        }
+        let op = CAR(expr);
+        let name = d_symbol_name(op);
+        if name == "^" {
+            let base = CAR(CDR(expr));
+            let exp = CAR(CDR(CDR(expr)));
+            if d_symbol_name(base) == var {
+                if let Some(n) = d_numeric(exp) {
+                    if (n - 1.0).abs() < 1e-15 {
+                        return Rf_ScalarInteger(1);
+                    }
+                    let n_s = Rf_ScalarReal(n);
+                    if (n - 2.0).abs() < 1e-15 {
+                        return crate::sexp::constructors::Rf_lang3(
+                            Rf_install(c"*".as_ptr()),
+                            n_s,
+                            base,
+                        );
+                    }
+                    let nm1 = if n == n.trunc() && n.abs() < 1e9 {
+                        Rf_ScalarInteger((n - 1.0) as i32)
+                    } else {
+                        Rf_ScalarReal(n - 1.0)
+                    };
+                    let pow = crate::sexp::constructors::Rf_lang3(
+                        Rf_install(c"^".as_ptr()),
+                        base,
+                        nm1,
+                    );
+                    return crate::sexp::constructors::Rf_lang3(
+                        Rf_install(c"*".as_ptr()),
+                        n_s,
+                        pow,
+                    );
+                }
+            }
+        }
+        if name == "+" || name == "-" {
+            let a = d_diff(CAR(CDR(expr)), var);
+            let b = d_diff(CAR(CDR(CDR(expr))), var);
+            return crate::sexp::constructors::Rf_lang3(op, a, b);
+        }
+        if name == "*" {
+            let a = CAR(CDR(expr));
+            let b = CAR(CDR(CDR(expr)));
+            if d_numeric(a).is_some() {
+                return crate::sexp::constructors::Rf_lang3(op, a, d_diff(b, var));
+            }
+            if d_numeric(b).is_some() {
+                return crate::sexp::constructors::Rf_lang3(op, d_diff(a, var), b);
+            }
+        }
+        if name == "sin" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                return crate::sexp::constructors::Rf_lang2(Rf_install(c"cos".as_ptr()), arg);
+            }
+        }
+        Rf_ScalarInteger(0)
+    }
+}
+
+/// GNU `D(expr, name)`.
+pub unsafe fn do_D(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut expr = CAR(args);
+        if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
+            expr = VECTOR_ELT(expr, 0);
+        }
+        let name_s = CAR(CDR(args));
+        let var = if TYPEOF(name_s) == SEXPTYPE::STRSXP {
+            CStr::from_ptr(CHAR(STRING_ELT(name_s, 0)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            d_symbol_name(name_s)
+        };
+        d_diff(expr, &var)
+    }
+}
+
