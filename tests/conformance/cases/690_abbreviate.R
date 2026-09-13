@@ -1,0 +1,5 @@
+cat(abbreviate(c("foo bar")), "\n", sep = "")
+cat(paste(abbreviate(c("foo bar", "foo baz")), collapse = ","), "\n", sep = "")
+cat(abbreviate(c("Statistics"), minlength = 4), "\n", sep = "")
+cat(paste(abbreviate(c("Alabama", "Alaska", "Arizona"), minlength = 4), collapse = ","), "\n", sep = "")
+cat(paste(names(abbreviate(c("foo bar"))), collapse = ","), "\n", sep = "")

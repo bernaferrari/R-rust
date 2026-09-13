@@ -1022,6 +1022,206 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+fn abbreviate_first_char(s: &[u8], i: usize) -> bool {
+    i > 0 && s[i - 1].is_ascii_whitespace()
+}
+
+fn abbreviate_last_char(s: &[u8], i: usize) -> bool {
+    i > 0
+        && !s[i - 1].is_ascii_whitespace()
+        && (i + 1 >= s.len() || s[i + 1].is_ascii_whitespace())
+}
+
+fn abbreviate_lc_vowel(c: u8) -> bool {
+    matches!(c, b'a' | b'e' | b'i' | b'o' | b'u')
+}
+
+fn abbreviate_strip(inchar: &str, minlen: usize, usecl: bool) -> String {
+    let trimmed = inchar.trim();
+    if trimmed.len() < minlen {
+        return trimmed.to_string();
+    }
+    let mut s: Vec<u8> = trimmed.as_bytes().to_vec();
+    let mut nspace = 0usize;
+    let mut j = 1i32;
+    let mut i = s.len() - 1;
+    while i > 0 {
+        if s[i].is_ascii_whitespace() {
+            if j != 0 {
+                s.truncate(i);
+            } else {
+                nspace += 1;
+            }
+        } else {
+            j = 0;
+        }
+        if s.len().saturating_sub(nspace) <= minlen {
+            return abbreviate_drop_spaces(s, minlen);
+        }
+        i -= 1;
+    }
+    if usecl {
+        i = s.len().saturating_sub(1);
+        while i > 0 {
+            if abbreviate_lc_vowel(s[i]) && abbreviate_last_char(&s, i) {
+                s.remove(i);
+            }
+            if s.len().saturating_sub(nspace) <= minlen {
+                return abbreviate_drop_spaces(s, minlen);
+            }
+            i -= 1;
+        }
+        i = s.len().saturating_sub(1);
+        while i > 0 {
+            if abbreviate_lc_vowel(s[i]) && !abbreviate_first_char(&s, i) {
+                s.remove(i);
+            }
+            if s.len().saturating_sub(nspace) <= minlen {
+                return abbreviate_drop_spaces(s, minlen);
+            }
+            i -= 1;
+        }
+        i = s.len().saturating_sub(1);
+        while i > 0 {
+            if s[i].is_ascii_lowercase() && abbreviate_last_char(&s, i) {
+                s.remove(i);
+            }
+            if s.len().saturating_sub(nspace) <= minlen {
+                return abbreviate_drop_spaces(s, minlen);
+            }
+            i -= 1;
+        }
+        i = s.len().saturating_sub(1);
+        while i > 0 {
+            if s[i].is_ascii_lowercase() && !abbreviate_first_char(&s, i) {
+                s.remove(i);
+            }
+            if s.len().saturating_sub(nspace) <= minlen {
+                return abbreviate_drop_spaces(s, minlen);
+            }
+            i -= 1;
+        }
+    }
+    i = s.len().saturating_sub(1);
+    while i > 0 {
+        if !abbreviate_first_char(&s, i) && !s[i].is_ascii_whitespace() {
+            s.remove(i);
+        }
+        if s.len().saturating_sub(nspace) <= minlen {
+            return abbreviate_drop_spaces(s, minlen);
+        }
+        i -= 1;
+    }
+    abbreviate_drop_spaces(s, minlen)
+}
+
+fn abbreviate_drop_spaces(mut s: Vec<u8>, minlen: usize) -> String {
+    if s.len() > minlen {
+        let mut i = s.len() - 1;
+        while i > 0 {
+            if s[i].is_ascii_whitespace() {
+                s.remove(i);
+            }
+            if s.len() <= minlen {
+                break;
+            }
+            i -= 1;
+        }
+    }
+    String::from_utf8(s).unwrap_or_default()
+}
+
+fn abbreviate_unique(names: &[String], minlength: usize) -> Vec<String> {
+    if minlength == 0 {
+        return vec![String::new(); names.len()];
+    }
+    let mut minlen = minlength;
+    let mut x: Vec<String> = names.to_vec();
+    let mut these_idx: Vec<usize> = (0..names.len()).collect();
+    loop {
+        for &idx in &these_idx {
+            x[idx] = abbreviate_strip(&names[idx], minlen, true);
+        }
+        let mut seen = std::collections::HashMap::<String, usize>::new();
+        let mut dup2 = vec![false; x.len()];
+        let mut any = false;
+        for (i, val) in x.iter().enumerate() {
+            if let Some(&first) = seen.get(val) {
+                dup2[i] = true;
+                dup2[first] = true;
+                any = true;
+            } else {
+                seen.insert(val.clone(), i);
+            }
+        }
+        if !any {
+            break;
+        }
+        minlen += 1;
+        these_idx = (0..x.len()).filter(|&i| dup2[i]).collect();
+    }
+    x
+}
+
+/// GNU `abbreviate(names.arg, minlength=4)`.
+pub unsafe fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let names_s = CAR(args);
+        if names_s.is_null() || names_s == R_NilValue() || TYPEOF(names_s) != SEXPTYPE::STRSXP {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let n = XLENGTH(names_s);
+        let mut minlength = 4i32;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let m = CAR(rest);
+            if TYPEOF(m) == SEXPTYPE::INTSXP && XLENGTH(m) > 0 {
+                minlength = *INTEGER(m);
+            } else if TYPEOF(m) == SEXPTYPE::REALSXP && XLENGTH(m) > 0 {
+                minlength = *REAL(m) as i32;
+            }
+        }
+        let mut old = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let ch = STRING_ELT(names_s, i);
+            let raw = if ch.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            old.push(raw.trim().to_string());
+        }
+        let mut unique_names = Vec::new();
+        let mut first_of: Vec<usize> = Vec::with_capacity(n as usize);
+        for name in &old {
+            if let Some(pos) = unique_names.iter().position(|u| u == name) {
+                first_of.push(pos);
+            } else {
+                first_of.push(unique_names.len());
+                unique_names.push(name.clone());
+            }
+        }
+        let minlen = if minlength < 0 { 0 } else { minlength as usize };
+        let uniq = abbreviate_unique(&unique_names, minlen);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        let nm = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _n = protect(nm);
+        for i in 0..n as usize {
+            let abbr = &uniq[first_of[i]];
+            let c = CString::new(abbr.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+            let oc = CString::new(old[i].as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+            SET_STRING_ELT(nm, i as i64, Rf_mkChar(oc.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), nm);
+        out
+    }
+}
+
+
 
 
 
