@@ -7640,6 +7640,138 @@ pub unsafe fn do_princomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+fn largest_eigenpair(a: &[f64], p: usize) -> (f64, Vec<f64>) {
+    let mut v = vec![1.0; p];
+    for _ in 0..64 {
+        let mut w = vec![0.0; p];
+        for i in 0..p {
+            for j in 0..p {
+                w[i] += a[i + j * p] * v[j];
+            }
+        }
+        let nrm = w.iter().map(|x| x * x).sum::<f64>().sqrt();
+        if nrm > 0.0 {
+            for i in 0..p {
+                v[i] = w[i] / nrm;
+            }
+        }
+    }
+    let mut lam = 0.0;
+    for i in 0..p {
+        let mut s = 0.0;
+        for j in 0..p {
+            s += a[i + j * p] * v[j];
+        }
+        lam += v[i] * s;
+    }
+    (lam, v)
+}
+
+/// GNU `factanal(x, factors=1)` — one-factor principal-axis solution.
+pub unsafe fn do_factanal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (nr, nc) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            return R_NilValue();
+        };
+        if nr < 2 || nc < 2 {
+            return R_NilValue();
+        }
+        let mut data = vec![0.0; nr * nc];
+        let mut mean = vec![0.0; nc];
+        let mut sd = vec![0.0; nc];
+        for j in 0..nc {
+            for i in 0..nr {
+                let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i + j * nr)
+                } else {
+                    *INTEGER(x).add(i + j * nr) as f64
+                };
+                data[i + j * nr] = v;
+                mean[j] += v;
+            }
+            mean[j] /= nr as f64;
+            for i in 0..nr {
+                let d = data[i + j * nr] - mean[j];
+                sd[j] += d * d;
+            }
+            sd[j] = (sd[j] / (nr as f64 - 1.0)).sqrt();
+            if sd[j] <= 0.0 {
+                sd[j] = 1.0;
+            }
+        }
+        let mut r = vec![0.0; nc * nc];
+        for a in 0..nc {
+            for b in 0..nc {
+                let mut s = 0.0;
+                for i in 0..nr {
+                    s += (data[i + a * nr] - mean[a]) / sd[a]
+                        * ((data[i + b * nr] - mean[b]) / sd[b]);
+                }
+                r[a + b * nc] = s / (nr as f64 - 1.0);
+            }
+        }
+        let mut psi = vec![1.0; nc];
+        for _ in 0..25 {
+            let mut a = r.clone();
+            for i in 0..nc {
+                a[i + i * nc] = (1.0f64 - psi[i]).max(0.0);
+            }
+            let (lam, v) = largest_eigenpair(&a, nc);
+            if lam <= 0.0 {
+                break;
+            }
+            let mut sign = 1.0;
+            if let Some(&first) = v.iter().find(|x| x.abs() > 1e-8) {
+                if first < 0.0 {
+                    sign = -1.0;
+                }
+            }
+            for i in 0..nc {
+                let li = sign * v[i] * lam.max(0.0f64).sqrt();
+                psi[i] = (1.0f64 - li * li).clamp(0.0, 1.0);
+            }
+        }
+        let mut a = r.clone();
+        for i in 0..nc {
+            a[i + i * nc] = (1.0f64 - psi[i]).max(0.0);
+        }
+        let (lam, v) = largest_eigenpair(&a, nc);
+        let mut sign = 1.0;
+        if let Some(&first) = v.iter().find(|x| x.abs() > 1e-8) {
+            if first < 0.0 {
+                sign = -1.0;
+            }
+        }
+        let uniq = Rf_allocVector3(SEXPTYPE::REALSXP, nc as i64);
+        let _u = protect(uniq);
+        let load = Rf_allocVector3(SEXPTYPE::REALSXP, nc as i64);
+        let _l = protect(load);
+        for i in 0..nc {
+            let li = sign * v[i] * lam.max(0.0f64).sqrt();
+            *REAL(load).add(i) = li;
+            *REAL(uniq).add(i) = (1.0f64 - li * li).clamp(0.0, 1.0);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, load);
+        SET_VECTOR_ELT(result, 1, uniq);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["loadings".to_string(), "uniquenesses".to_string()],
+        );
+        result
+    }
+}
+
+
 /// GNU `wilcox.test(x, y)` two-sample rank-sum.
 pub unsafe fn do_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
