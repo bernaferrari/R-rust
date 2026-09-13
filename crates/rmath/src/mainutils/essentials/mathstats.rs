@@ -4808,6 +4808,105 @@ pub unsafe fn do_rstudent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `lm(y ~ x)` intercept + slope.
+pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let first = CAR(args);
+        let mut y = first;
+        let mut x = CAR(CDR(args));
+        if !first.is_null() && first != R_NilValue() && TYPEOF(first) == SEXPTYPE::LANGSXP {
+            let lhs = CADR(first);
+            let rhs = CAR(CDR(CDR(first)));
+            if !lhs.is_null() && lhs != R_NilValue() {
+                y = crate::eval::eval::Rf_eval(lhs, rho);
+            }
+            if !rhs.is_null() && rhs != R_NilValue() {
+                x = crate::eval::eval::Rf_eval(rhs, rho);
+            }
+        }
+        if y.is_null() || y == R_NilValue() || x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(y).min(XLENGTH(x)) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let mut ys = Vec::with_capacity(n);
+        let mut xs = Vec::with_capacity(n);
+        for i in 0..n {
+            ys.push(elt_real_safe(y, i as i64));
+            xs.push(elt_real_safe(x, i as i64));
+        }
+        let mut sxx = 0.0;
+        let mut sxy = 0.0;
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        for i in 0..n {
+            sx += xs[i];
+            sy += ys[i];
+            sxx += xs[i] * xs[i];
+            sxy += xs[i] * ys[i];
+        }
+        let nf = n as f64;
+        let Some(inv) = invert2(nf, sx, sx, sxx) else {
+            return R_NilValue();
+        };
+        let b0 = inv.0 * sy + inv.2 * sxy;
+        let b1 = inv.1 * sy + inv.3 * sxy;
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _c = protect(coef);
+        *REAL(coef) = b0;
+        *REAL(coef).add(1) = b1;
+        set_string_names(coef, &["(Intercept)".to_string(), "x".to_string()]);
+        let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _f = protect(fitted);
+        let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _e = protect(resid);
+        let mut sse = 0.0;
+        for i in 0..n {
+            let fit = b0 + b1 * xs[i];
+            let e = ys[i] - fit;
+            *REAL(fitted).add(i) = fit;
+            *REAL(resid).add(i) = e;
+            sse += e * e;
+        }
+        let df = (n as i64) - 2;
+        let sigma = if df > 0 {
+            (sse / df as f64).sqrt()
+        } else {
+            f64::NAN
+        };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        SET_VECTOR_ELT(result, 1, resid);
+        SET_VECTOR_ELT(result, 2, fitted);
+        SET_VECTOR_ELT(result, 3, Rf_ScalarInteger(2));
+        SET_VECTOR_ELT(result, 4, Rf_ScalarInteger(df as i32));
+        SET_VECTOR_ELT(result, 5, Rf_ScalarReal(sigma));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "coefficients".to_string(),
+                "residuals".to_string(),
+                "fitted.values".to_string(),
+                "rank".to_string(),
+                "df.residual".to_string(),
+                "sigma".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"lm".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

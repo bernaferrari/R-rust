@@ -1953,6 +1953,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_rstudent,
     },
     EvaluatedBuiltin {
+        name: "lm",
+        handler: crate::mainutils::essentials::do_lm,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
