@@ -1298,13 +1298,13 @@ pub unsafe fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let out = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
         let _o = protect(out);
         for i in 0..n as usize {
-            let v = *RAW(x).add(i);
+            let v = *RAW(x).add(i) as u32;
             *RAW(out).add(i) = if shift > 0 {
-                v << shift
+                (v << shift) as u8
             } else if shift < 0 {
-                v >> (-shift)
+                (v >> (-shift)) as u8
             } else {
-                v
+                v as u8
             };
         }
         out
