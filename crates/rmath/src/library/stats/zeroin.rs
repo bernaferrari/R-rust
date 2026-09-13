@@ -60,15 +60,12 @@ pub unsafe fn R_zeroin2(
             let mut new_step: c_double;
 
             if libm::fabs(fc) < libm::fabs(fb) {
-                let tmp_a = a;
                 a = b;
-                b = c;
-                c = tmp_a;
-
-                let tmp_fa = fa;
                 fa = fb;
+                b = c;
                 fb = fc;
-                fc = tmp_fa;
+                c = a;
+                fc = fa;
             }
             tol_act = 2.0 * f64::EPSILON * libm::fabs(b) + tol / 2.0;
             new_step = (c - b) / 2.0;
@@ -157,7 +154,7 @@ struct ZeroinCtx {
 
 unsafe extern "C" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
     unsafe {
-        use crate::sexp::accessors::{REAL, TYPEOF};
+        use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
         use crate::sexp::constructors::{Rf_ScalarReal, Rf_lang2};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::protect;
@@ -167,13 +164,17 @@ unsafe extern "C" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
         let call = Rf_lang2(ctx.fun, xv);
         let _c = protect(call);
         let v = crate::eval::eval::Rf_eval(call, ctx.rho);
-        if TYPEOF(v) == SEXPTYPE::REALSXP {
-            *REAL(v)
-        } else if TYPEOF(v) == SEXPTYPE::INTSXP {
-            *crate::sexp::accessors::INTEGER(v) as f64
+        let _v = protect(v);
+        let vr = if TYPEOF(v) == SEXPTYPE::REALSXP {
+            v
         } else {
-            f64::NAN
+            crate::main::coerce::coerceVector(v, SEXPTYPE::REALSXP.as_c_int())
+        };
+        let _vr = protect(vr);
+        if XLENGTH(vr) < 1 {
+            return f64::NAN;
         }
+        *REAL(vr)
     }
 }
 
