@@ -5833,6 +5833,218 @@ pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+fn lm_n_p_rss(obj: SEXP) -> Option<(f64, f64, f64)> {
+    unsafe {
+        let resid = list_named_elt(obj, "residuals");
+        if resid == R_NilValue() {
+            return None;
+        }
+        let n = XLENGTH(resid) as f64;
+        if n <= 0.0 {
+            return None;
+        }
+        let mut rss = 0.0;
+        for i in 0..XLENGTH(resid) {
+            let e = elt_real_safe(resid, i);
+            rss += e * e;
+        }
+        let rank = list_named_elt(obj, "rank");
+        let p = if rank == R_NilValue() {
+            2.0
+        } else {
+            elt_real_safe(rank, 0)
+        };
+        Some((n, p, rss))
+    }
+}
+
+fn lm_aic(n: f64, p: f64, rss: f64) -> f64 {
+    n * (rss / n).ln() + 2.0 * p
+}
+
+unsafe fn add1_drop1_table(
+    none_rss: f64,
+    none_aic: f64,
+    term: &str,
+    df: f64,
+    ssq: f64,
+    alt_rss: f64,
+    alt_aic: f64,
+) -> SEXP {
+    unsafe {
+        let col = |a: f64, b: f64| {
+            let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+            *REAL(v) = a;
+            *REAL(v).add(1) = b;
+            v
+        };
+        let dfv = col(f64::NAN, df);
+        let _d = protect(dfv);
+        let ssqv = col(f64::NAN, ssq);
+        let _s = protect(ssqv);
+        let rssv = col(none_rss, alt_rss);
+        let _r = protect(rssv);
+        let aicv = col(none_aic, alt_aic);
+        let _a = protect(aicv);
+        let tab = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _t = protect(tab);
+        SET_VECTOR_ELT(tab, 0, dfv);
+        SET_VECTOR_ELT(tab, 1, ssqv);
+        SET_VECTOR_ELT(tab, 2, rssv);
+        SET_VECTOR_ELT(tab, 3, aicv);
+        set_string_names(
+            tab,
+            &[
+                "Df".to_string(),
+                "Sum of Sq".to_string(),
+                "RSS".to_string(),
+                "AIC".to_string(),
+            ],
+        );
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _rn = protect(rn);
+        SET_STRING_ELT(rn, 0, Rf_mkChar(c"<none>".as_ptr()));
+        let c = CString::new(term).unwrap_or_default();
+        SET_STRING_ELT(rn, 1, Rf_mkChar(c.as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            tab,
+            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+            rn,
+        );
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _cl = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"anova".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"data.frame".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        tab
+    }
+}
+
+
+/// GNU `drop1(lm)` — intercept-only vs fitted model.
+pub unsafe fn do_drop1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let Some((n, p, rss)) = lm_n_p_rss(obj) else {
+            return R_NilValue();
+        };
+        let resid = list_named_elt(obj, "residuals");
+        let fitted = list_named_elt(obj, "fitted.values");
+        let mut ysum = 0.0;
+        let mut ys = Vec::new();
+        for i in 0..XLENGTH(resid) {
+            let y = elt_real_safe(fitted, i) + elt_real_safe(resid, i);
+            ys.push(y);
+            ysum += y;
+        }
+        let ybar = ysum / n;
+        let rss0: f64 = ys.iter().map(|y| (y - ybar) * (y - ybar)).sum();
+        let term = {
+            let coef = list_named_elt(obj, "coefficients");
+            let names = crate::sexp::attrib_core::getAttrib(
+                coef,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) >= 2 {
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 1)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                "x".to_string()
+            }
+        };
+        add1_drop1_table(
+            rss,
+            lm_aic(n, p, rss),
+            &term,
+            1.0,
+            rss0 - rss,
+            rss0,
+            lm_aic(n, 1.0, rss0),
+        )
+    }
+}
+
+/// GNU `add1(lm, scope)` — add one extra numeric term.
+pub unsafe fn do_add1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let Some((n, p, rss)) = lm_n_p_rss(obj) else {
+            return R_NilValue();
+        };
+        let scope = CAR(CDR(args));
+        let form = crate::library::stats::filter::do_formula(
+            call,
+            op,
+            Rf_cons(obj, R_NilValue()),
+            rho,
+        );
+        let _f = protect(form);
+        let extra = crate::library::stats::filter::do_add_scope(
+            call,
+            op,
+            Rf_cons(form, Rf_cons(scope, R_NilValue())),
+            rho,
+        );
+        let _e = protect(extra);
+        let term = if TYPEOF(extra) == SEXPTYPE::STRSXP && XLENGTH(extra) > 0 {
+            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(extra, 0)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            return R_NilValue();
+        };
+        let t0 = crate::library::stats::filter::do_terms(
+            call,
+            op,
+            Rf_cons(form, R_NilValue()),
+            rho,
+        );
+        let _t0 = protect(t0);
+        let old = crate::sexp::attrib_core::getAttrib(
+            t0,
+            crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
+        );
+        let nlab = if TYPEOF(old) == SEXPTYPE::STRSXP {
+            XLENGTH(old)
+        } else {
+            0
+        };
+        let kept = Rf_allocVector3(SEXPTYPE::STRSXP, nlab + 1);
+        let _k = protect(kept);
+        for i in 0..nlab {
+            SET_STRING_ELT(kept, i, STRING_ELT(old, i));
+        }
+        let tc = CString::new(term.as_str()).unwrap_or_default();
+        SET_STRING_ELT(kept, nlab, Rf_mkChar(tc.as_ptr()));
+        let resp = Rf_mkString(c"y".as_ptr());
+        let _rs = protect(resp);
+        let bigf = crate::library::stats::filter::do_reformulate(
+            call,
+            op,
+            Rf_cons(kept, Rf_cons(resp, R_NilValue())),
+            rho,
+        );
+        let _bf = protect(bigf);
+        let bigger = do_lm(call, op, Rf_cons(bigf, R_NilValue()), rho);
+        let _b = protect(bigger);
+        let Some((n2, p2, rss2)) = lm_n_p_rss(bigger) else {
+            return R_NilValue();
+        };
+        let _ = n2;
+        add1_drop1_table(
+            rss,
+            lm_aic(n, p, rss),
+            &term,
+            1.0,
+            rss - rss2,
+            rss2,
+            lm_aic(n, p2, rss2),
+        )
+    }
+}
+
+
 /// GNU two-sample `power.t.test(n, delta)`.
 pub unsafe fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

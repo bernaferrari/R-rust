@@ -1,0 +1,12 @@
+y <- c(1, 2, 2, 4, 5)
+x <- 1:5
+z <- c(1, 1, 2, 2, 3)
+fit <- lm(y ~ x)
+d <- drop1(fit)
+cat(paste(round(d$RSS, 4), collapse = ","), "\n", sep = "")
+cat(paste(round(d$AIC, 4), collapse = ","), "\n", sep = "")
+cat(paste(rownames(d), collapse = ","), "\n", sep = "")
+a <- add1(fit, ~x + z)
+cat(paste(round(a$RSS, 4), collapse = ","), "\n", sep = "")
+cat(paste(round(a$AIC, 4), collapse = ","), "\n", sep = "")
+cat(paste(rownames(a), collapse = ","), "\n", sep = "")
