@@ -1700,6 +1700,67 @@ pub unsafe fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `round.POSIXt(x, units)`.
+pub unsafe fn do_round_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return x;
+        }
+        let mut units = "secs".to_string();
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let u = CAR(rest);
+            if TYPEOF(u) == SEXPTYPE::STRSXP && XLENGTH(u) > 0 {
+                let ch = STRING_ELT(u, 0);
+                if !ch.is_null() {
+                    units = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+        }
+        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+            do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho)
+        } else {
+            x
+        };
+        let _x = protect(x);
+        let half = if units.starts_with("min") {
+            30.0
+        } else if units.starts_with("hour") {
+            1800.0
+        } else if units.starts_with("day") {
+            43200.0
+        } else if units.starts_with("month") || units.starts_with("year") {
+            0.0
+        } else {
+            0.5
+        };
+        let n = XLENGTH(x);
+        let shifted = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _s = protect(shifted);
+        for i in 0..n {
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                0.0
+            };
+            *REAL(shifted).add(i as usize) = v + half;
+        }
+        set_posixct_class(shifted, "GMT");
+        let u = Rf_mkString(CString::new(units.as_str()).unwrap_or_default().as_ptr());
+        let _u = protect(u);
+        do_trunc_POSIXt(call, op, Rf_cons(shifted, Rf_cons(u, R_NilValue())), rho)
+    }
+}
+
+
 
 
 
