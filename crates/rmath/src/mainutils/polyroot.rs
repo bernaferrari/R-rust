@@ -793,7 +793,7 @@ pub unsafe fn do_polyroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::
         for i in 0..degree {
             *p.add(i + (degree - 1) * degree) = -a_re[i] / lead_re;
         }
-        let only = Rf_ScalarLogical(1);
+        let only = Rf_ScalarLogical(0);
         let _o = protect(only);
         let ev = crate::modules::lapack::lapack_impl::La_rg(mat, only);
         let _e = protect(ev);
