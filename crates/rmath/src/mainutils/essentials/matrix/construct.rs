@@ -714,6 +714,62 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                let raw = CHAR(STRING_ELT(class, i));
+                if raw.is_null() || std::ffi::CStr::from_ptr(raw).to_bytes() != b"dist" {
+                    continue;
+                }
+                let size = crate::sexp::attrib_core::getAttrib(
+                    x,
+                    crate::sexp::symbol::Rf_install(c"Size".as_ptr()),
+                );
+                let n = if TYPEOF(size) == SEXPTYPE::INTSXP && XLENGTH(size) > 0 {
+                    *INTEGER(size) as usize
+                } else {
+                    0
+                };
+                if n < 1 {
+                    return R_NilValue();
+                }
+                let mat = crate::mainutils::array::allocMatrix(
+                    SEXPTYPE::REALSXP.as_c_int(),
+                    n as i32,
+                    n as i32,
+                );
+                let _m = protect(mat);
+                for i in 0..(n * n) {
+                    *REAL(mat).add(i) = 0.0;
+                }
+                let mut k = 0usize;
+                for i in 0..n {
+                    for j in (i + 1)..n {
+                        let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                            *REAL(x).add(k)
+                        } else {
+                            0.0
+                        };
+                        *REAL(mat).add(j + i * n) = v;
+                        *REAL(mat).add(i + j * n) = v;
+                        k += 1;
+                    }
+                }
+                return mat;
+            }
+        }
+        let existing_dim =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if !existing_dim.is_null()
+            && existing_dim != R_NilValue()
+            && TYPEOF(existing_dim) == SEXPTYPE::INTSXP
+            && XLENGTH(existing_dim) >= 2
+        {
+            return x;
+        }
         let t = TYPEOF(x);
         if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Simple vector — copy and set dim attribute
