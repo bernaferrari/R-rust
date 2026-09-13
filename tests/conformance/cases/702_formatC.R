@@ -1,0 +1,5 @@
+cat(formatC(1.234, digits = 2, format = "f"), "\n", sep = "")
+cat(formatC(1.234, digits = 3, format = "e"), "\n", sep = "")
+cat(paste(formatC(c(1, 2.5), digits = 1, format = "f"), collapse = ","), "\n", sep = "")
+cat(formatC(12.34, digits = 4, format = "g"), "\n", sep = "")
+cat(formatC(255L, digits = 2, format = "d"), "\n", sep = "")

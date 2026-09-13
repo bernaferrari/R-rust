@@ -2051,6 +2051,148 @@ pub unsafe fn do_bw_nrd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+fn formatc_exp(v: f64, digits: usize, upper: bool) -> String {
+    let s = if upper {
+        format!("{v:.digits$E}")
+    } else {
+        format!("{v:.digits$e}")
+    };
+    // GNU uses at least two exponent digits and a sign: e+00
+    if let Some(idx) = s.rfind(['e', 'E']) {
+        let (head, exp) = s.split_at(idx);
+        let mut chars = exp.chars();
+        let mark = chars.next().unwrap();
+        let rest: String = chars.collect();
+        let (sign, digits_part) = if let Some(stripped) = rest.strip_prefix('+') {
+            ('+', stripped)
+        } else if let Some(stripped) = rest.strip_prefix('-') {
+            ('-', stripped)
+        } else {
+            ('+', rest.as_str())
+        };
+        format!("{head}{mark}{sign}{digits_part:0>2}")
+    } else {
+        s
+    }
+}
+
+fn formatc_one(v: f64, digits: i32, format: &str) -> String {
+    let d = if digits < 0 { 6 } else { digits as usize };
+    match format {
+        "f" => format!("{v:.d$}"),
+        "e" => formatc_exp(v, d, false),
+        "E" => formatc_exp(v, d, true),
+        "g" | "G" => {
+            if !v.is_finite() {
+                return if v.is_nan() {
+                    "NA".to_string()
+                } else if v.is_sign_negative() {
+                    "-Inf".to_string()
+                } else {
+                    "Inf".to_string()
+                };
+            }
+            if v == 0.0 {
+                return "0".to_string();
+            }
+            let exp = v.abs().log10().floor() as i32;
+            let upper = format == "G";
+            if exp < -4 || exp >= d as i32 {
+                formatc_exp(v, d.saturating_sub(1), upper)
+            } else {
+                let decimals = (d as i32 - exp - 1).max(0) as usize;
+                let s = format!("{v:.decimals$}");
+                if s.contains('.') {
+                    s.trim_end_matches('0')
+                        .trim_end_matches('.')
+                        .to_string()
+                } else {
+                    s
+                }
+            }
+        }
+        "d" => format!("{}", v as i64),
+        _ => format!("{v:.d$}"),
+    }
+}
+
+/// GNU `formatC(x, digits, width, format)`.
+pub unsafe fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let mut digits = 4i32;
+        let mut format = if TYPEOF(x) == SEXPTYPE::INTSXP {
+            "d".to_string()
+        } else {
+            "g".to_string()
+        };
+        let mut cell = CDR(args);
+        let mut positional = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if named == "digits" || (named.is_empty() && positional == 0) {
+                if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
+                    digits = *INTEGER(value);
+                } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
+                    digits = *REAL(value) as i32;
+                }
+            } else if named == "format"
+                || (named.is_empty() && positional == 2)
+            {
+                if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+                    let ch = STRING_ELT(value, 0);
+                    if !ch.is_null() {
+                        format = std::ffi::CStr::from_ptr(CHAR(ch))
+                            .to_string_lossy()
+                            .into_owned();
+                    }
+                }
+            }
+            if named.is_empty() {
+                positional += 1;
+            }
+            cell = CDR(cell);
+        }
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    f64::NAN
+                } else {
+                    iv as f64
+                }
+            } else {
+                0.0
+            };
+            let s = if v.is_nan() {
+                "NA".to_string()
+            } else {
+                formatc_one(v, digits, &format)
+            };
+            let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
+            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+
 
 
 
