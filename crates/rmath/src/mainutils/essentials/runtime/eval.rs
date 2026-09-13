@@ -642,4 +642,43 @@ pub unsafe fn do_deriv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `deriv3(~expr, name)` with hessian.
+pub unsafe fn do_deriv3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut expr = CAR(args);
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP && d_symbol_name(CAR(expr)) == "~" {
+            expr = CAR(CDR(expr));
+        }
+        if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
+            expr = VECTOR_ELT(expr, 0);
+        }
+        let name_s = CAR(CDR(args));
+        let var = if TYPEOF(name_s) == SEXPTYPE::STRSXP {
+            CStr::from_ptr(CHAR(STRING_ELT(name_s, 0)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            d_symbol_name(name_s)
+        };
+        let d = d_diff(expr, &var);
+        let _d = protect(d);
+        let h = d_diff(d, &var);
+        let _h = protect(h);
+        let e_txt = crate::mainutils::deparse::deparse1line(expr, false);
+        let _et = protect(e_txt);
+        let d_txt = crate::mainutils::deparse::deparse1line(d, false);
+        let _dt = protect(d_txt);
+        let h_txt = crate::mainutils::deparse::deparse1line(h, false);
+        let _ht = protect(h_txt);
+        let e_s = CStr::from_ptr(CHAR(STRING_ELT(e_txt, 0))).to_string_lossy();
+        let d_s = CStr::from_ptr(CHAR(STRING_ELT(d_txt, 0))).to_string_lossy();
+        let h_s = CStr::from_ptr(CHAR(STRING_ELT(h_txt, 0))).to_string_lossy();
+        let src = format!(
+            "{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; attr(.value, \"hessian\") <- {h_s}; .value }}"
+        );
+        parse_source_expression_vector(&src)
+    }
+}
+
+
 
