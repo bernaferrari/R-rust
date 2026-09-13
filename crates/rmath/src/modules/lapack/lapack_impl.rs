@@ -1442,10 +1442,10 @@ pub unsafe fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'dpotri'\0".as_ptr() as *const c_char);
         }
 
-        // Copy upper triangle to lower
+        // Copy upper triangle to lower (dpotri U writes i<=j only).
         for j in 1..n as usize {
             for i in 0..j {
-                a_copy[i + j * n as usize] = a_copy[j + i * n as usize];
+                a_copy[j + i * n as usize] = a_copy[i + j * n as usize];
             }
         }
 

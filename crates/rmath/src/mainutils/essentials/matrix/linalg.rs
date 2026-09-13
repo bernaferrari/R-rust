@@ -251,6 +251,50 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `chol(x)` — upper Cholesky factor.
+pub unsafe fn do_chol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let pivot = Rf_ScalarLogical(FALSE);
+        let _p = protect(pivot);
+        let tol = Rf_ScalarReal(-1.0);
+        let _t = protect(tol);
+        let ans = crate::modules::lapack::lapack_impl::La_chol(x, pivot, tol);
+        let _a = protect(ans);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        }
+        ans
+    }
+}
+
+/// GNU `chol2inv(x)` — inverse from an upper Cholesky factor.
+pub unsafe fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let n = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 1
+        {
+            *INTEGER(dim)
+        } else {
+            return R_NilValue();
+        };
+        let size = Rf_ScalarInteger(n);
+        let _s = protect(size);
+        let ans = crate::modules::lapack::lapack_impl::La_chol2inv(x, size);
+        let _a = protect(ans);
+        if !dim.is_null() && dim != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        }
+        ans
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // Matrix helpers
 // ---------------------------------------------------------------------------

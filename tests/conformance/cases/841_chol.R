@@ -1,0 +1,6 @@
+S <- matrix(c(4, 2, 2, 3), 2, 2)
+R <- chol(S)
+cat(paste(round(as.vector(R), 4), collapse = ","), "\n", sep = "")
+inv <- chol2inv(R)
+cat(paste(round(as.vector(inv), 4), collapse = ","), "\n", sep = "")
+cat(paste(dim(R), collapse = ","), "\n", sep = "")

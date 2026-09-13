@@ -3194,6 +3194,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_tcrossprod,
     },
     EvaluatedBuiltin {
+        name: "chol",
+        handler: crate::mainutils::essentials::do_chol,
+    },
+    EvaluatedBuiltin {
+        name: "chol2inv",
+        handler: crate::mainutils::essentials::do_chol2inv,
+    },
+    EvaluatedBuiltin {
         name: "max.col",
         handler: crate::mainutils::array::do_maxcol,
     },
