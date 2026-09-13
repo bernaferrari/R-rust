@@ -1,0 +1,7 @@
+cat(paste(make.names(c("a", "a")), collapse = ","), "\n", sep = "")
+cat(paste(make.names(c("1a", "a b", "if", ".2", "_x", "NA")), collapse = ","), "\n", sep = "")
+cat(paste(make.names(c("a", "a"), unique = TRUE), collapse = ","), "\n", sep = "")
+cat(paste(make.names(c("1", "X1"), unique = TRUE), collapse = ","), "\n", sep = "")
+cat(make.names(""), "\n", sep = "")
+cat(make.names("."), "\n", sep = "")
+cat(paste(make.names("a_b", allow_ = FALSE), collapse = ","), "\n", sep = "")
