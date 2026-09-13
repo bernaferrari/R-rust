@@ -331,18 +331,22 @@ fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
             return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
         }
     }
+    if let Some(primitive) = CString::new(name.as_str())
+        .ok()
+        .map(|n| unsafe { crate::mainutils::names::R_Primitive(n.as_ptr()) })
+        .filter(|primitive| !primitive.is_null() && *primitive != unsafe { R_NilValue() })
+        .map(|primitive| unsafe { Sexp::from_raw_unchecked(primitive) })
+    {
+        return Some(primitive);
+    }
     if crate::eval::builtin::unevaluated_builtin_handler(&name).is_some() {
         let primitive =
-            unsafe { crate::eval::primitive::make_primitive_binding(&name, SEXPTYPE::SPECIALSXP) };
+            unsafe { crate::eval::primitive::make_primitive_binding(&name, SEXPTYPE::BUILTINSXP) };
         if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
             return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
         }
     }
-    CString::new(name.as_str())
-        .ok()
-        .map(|name| unsafe { crate::mainutils::names::R_Primitive(name.as_ptr()) })
-        .filter(|primitive| !primitive.is_null() && *primitive != unsafe { R_NilValue() })
-        .map(|primitive| unsafe { Sexp::from_raw_unchecked(primitive) })
+    None
 }
 
 /// Safe variable lookup using Sexp types.
