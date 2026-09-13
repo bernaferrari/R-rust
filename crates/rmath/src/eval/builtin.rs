@@ -1693,6 +1693,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_napredict,
     },
     EvaluatedBuiltin {
+        name: "naresid",
+        handler: crate::library::stats::filter::do_napredict,
+    },
+    EvaluatedBuiltin {
         name: "na.fail",
         handler: crate::library::stats::filter::do_na_fail,
     },
