@@ -2963,6 +2963,97 @@ pub unsafe fn do_fisher_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU unreplicated-block `friedman.test(x)`.
+pub unsafe fn do_friedman_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (n, k) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            return R_NilValue();
+        };
+        if n < 2 || k < 2 {
+            return R_NilValue();
+        }
+        let mut ranks = vec![0.0; n * k];
+        let mut tie_sum = 0.0;
+        for i in 0..n {
+            let mut row = Vec::with_capacity(k);
+            for j in 0..k {
+                row.push(elt_real_safe(x, (j * n + i) as i64));
+            }
+            let rr = rank_average(&row);
+            let mut counts: Vec<(f64, i32)> = Vec::new();
+            for (j, &r) in rr.iter().enumerate() {
+                ranks[j * n + i] = r;
+                if let Some(c) = counts.iter_mut().find(|(v, _)| *v == r) {
+                    c.1 += 1;
+                } else {
+                    counts.push((r, 1));
+                }
+            }
+            for (_, u) in counts {
+                let uf = u as f64;
+                tie_sum += uf * uf * uf - uf;
+            }
+        }
+        let expect = n as f64 * (k as f64 + 1.0) / 2.0;
+        let mut ss = 0.0;
+        for j in 0..k {
+            let mut s = 0.0;
+            for i in 0..n {
+                s += ranks[j * n + i];
+            }
+            let d = s - expect;
+            ss += d * d;
+        }
+        let denom = (n * k * (k + 1)) as f64 - tie_sum / (k as f64 - 1.0);
+        let stat = if denom > 0.0 { 12.0 * ss / denom } else { 0.0 };
+        let df = (k - 1) as f64;
+        let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["Friedman chi-squared".to_string()]);
+        let parameter = Rf_ScalarReal(df);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["df".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"Friedman rank sum test".as_ptr()));
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 /// GNU two-sample `power.t.test(n, delta)`.
 pub unsafe fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

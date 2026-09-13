@@ -1,0 +1,7 @@
+x <- matrix(c(1, 2, 3, 4, 2, 3, 4, 5, 3, 4, 5, 7), 3, 4, byrow = TRUE)
+ft <- friedman.test(x)
+cat(as.numeric(ft$statistic), "\n", sep = "")
+cat(as.numeric(ft$parameter), "\n", sep = "")
+cat(round(ft$p.value, 6), "\n", sep = "")
+cat(ft$method, "\n", sep = "")
+cat(class(ft), "\n", sep = "")
