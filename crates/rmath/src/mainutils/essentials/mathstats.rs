@@ -1938,6 +1938,77 @@ pub unsafe fn do_binom_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `poisson.test(x, T=1, r=1)` — one-sample exact Poisson rate.
+pub unsafe fn do_poisson_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = elt_real_safe(CAR(args), 0).round();
+        let mut t = 1.0;
+        let mut r = 1.0;
+        let mut alt = "two.sided";
+        let mut cell = CDR(args);
+        let mut pos = 1usize;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0)))
+                    .to_string_lossy()
+                    .into_owned();
+                if s == "less" || s == "greater" || s == "two.sided" {
+                    alt = if s == "less" {
+                        "less"
+                    } else if s == "greater" {
+                        "greater"
+                    } else {
+                        "two.sided"
+                    };
+                }
+            } else if pos == 1 {
+                t = elt_real_safe(v, 0);
+            } else if pos == 2 {
+                r = elt_real_safe(v, 0);
+            }
+            pos += 1;
+            cell = CDR(cell);
+        }
+        if t <= 0.0 {
+            t = 1.0;
+        }
+        let m = r * t;
+        let p_less = crate::dist::poisson::ppois_inner(x, m, true, false);
+        let p_greater = crate::dist::poisson::ppois_inner(x - 1.0, m, false, false);
+        let pval = match alt {
+            "less" => p_less,
+            "greater" => p_greater,
+            _ => (2.0 * p_less.min(p_greater)).min(1.0),
+        };
+        let estimate = Rf_ScalarReal(x / t);
+        let _es = protect(estimate);
+        set_string_names(estimate, &["event rate".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 1, estimate);
+        SET_VECTOR_ELT(result, 2, Rf_mkString(c"Exact Poisson test".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "p.value".to_string(),
+                "estimate".to_string(),
+                "method".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 /// GNU `chisq.test(x)` goodness-of-fit with equal p.
 pub unsafe fn do_chisq_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
