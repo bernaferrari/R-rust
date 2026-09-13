@@ -6489,6 +6489,77 @@ pub unsafe fn do_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+fn dist_compact_set(d: &mut [f64], i: usize, j: usize, n: usize, val: f64) {
+    if i == j {
+        return;
+    }
+    let (a, b) = if i < j { (i, j) } else { (j, i) };
+    let mut idx = 0;
+    for k in 0..a {
+        idx += n - 1 - k;
+    }
+    d[idx + (b - a - 1)] = val;
+}
+
+/// GNU `cophenetic(hclust)` — height of the first common ancestor.
+pub unsafe fn do_cophenetic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let merge = list_named_elt(obj, "merge");
+        let height = list_named_elt(obj, "height");
+        if merge == R_NilValue() || height == R_NilValue() {
+            return R_NilValue();
+        }
+        let nmerge = XLENGTH(height) as usize;
+        if nmerge == 0 {
+            return R_NilValue();
+        }
+        let n = nmerge + 1;
+        let mut members: Vec<Vec<usize>> = vec![Vec::new(); nmerge];
+        let mut coph = vec![0.0; n * (n - 1) / 2];
+        for s in 0..nmerge {
+            let left = *INTEGER(merge).add(s);
+            let right = *INTEGER(merge).add(s + nmerge);
+            let left_m = if left < 0 {
+                vec![(-left as usize) - 1]
+            } else {
+                members[(left as usize) - 1].clone()
+            };
+            let right_m = if right < 0 {
+                vec![(-right as usize) - 1]
+            } else {
+                members[(right as usize) - 1].clone()
+            };
+            let h = elt_real_safe(height, s as i64);
+            for &i in &left_m {
+                for &j in &right_m {
+                    dist_compact_set(&mut coph, i, j, n, h);
+                }
+            }
+            let mut both = left_m;
+            both.extend(right_m);
+            members[s] = both;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, coph.len() as i64);
+        let _r = protect(result);
+        for (i, v) in coph.iter().enumerate() {
+            *REAL(result).add(i) = *v;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"Size".as_ptr()),
+            Rf_ScalarInteger(n as c_int),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"dist".as_ptr()),
+        );
+        result
+    }
+}
+
+
 /// GNU `ecdf(x)` — empirical CDF as a step function.
 pub unsafe fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

@@ -2067,6 +2067,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::hclust_utils::do_cutree,
     },
     EvaluatedBuiltin {
+        name: "cophenetic",
+        handler: crate::mainutils::essentials::do_cophenetic,
+    },
+    EvaluatedBuiltin {
         name: "stem",
         handler: crate::library::graphics::stem::do_stem,
     },
