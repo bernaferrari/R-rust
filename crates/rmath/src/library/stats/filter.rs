@@ -1028,6 +1028,84 @@ pub unsafe fn do_kalman_forecast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+/// GNU `KalmanSmooth(y, mod)` — Rauch–Tung–Striebel smoother, state dim 1.
+pub unsafe fn do_kalman_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let y = CAR(args);
+        let model = CAR(CDR(args));
+        if y.is_null() || y == R_NilValue() || model.is_null() || model == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(y) as usize;
+        if n == 0 {
+            return R_NilValue();
+        }
+        let z = elt_real_or(named_list_elt(model, "Z"), 1.0);
+        let mut a = elt_real_or(named_list_elt(model, "a"), 0.0);
+        let t = elt_real_or(named_list_elt(model, "T"), 0.0);
+        let v = elt_real_or(named_list_elt(model, "V"), 1.0);
+        let h = elt_real_or(named_list_elt(model, "h"), 0.0);
+        let mut p = elt_real_or(named_list_elt(model, "Pn"), 1.0);
+        let mut a_pred = vec![0.0; n];
+        let mut p_pred = vec![0.0; n];
+        let mut a_filt = vec![0.0; n];
+        let mut p_filt = vec![0.0; n];
+        for i in 0..n {
+            a_pred[i] = a;
+            p_pred[i] = p;
+            let yi = if TYPEOF(y) == SEXPTYPE::REALSXP {
+                *REAL(y).add(i)
+            } else {
+                *INTEGER(y).add(i) as f64
+            };
+            let resid = yi - z * a;
+            let f = z * z * p + h;
+            if f > 0.0 {
+                let k = p * z / f;
+                a += k * resid;
+                p -= k * k * f;
+            }
+            a_filt[i] = a;
+            p_filt[i] = p.max(0.0);
+            a = t * a;
+            p = t * p * t + v;
+        }
+        let mut smooth = vec![0.0; n];
+        let mut svar = vec![0.0; n];
+        smooth[n - 1] = a_filt[n - 1];
+        svar[n - 1] = p_filt[n - 1];
+        if n >= 2 {
+            for i in (0..n - 1).rev() {
+                let j = if p_pred[i + 1] > 1e-15 {
+                    p_filt[i] * t / p_pred[i + 1]
+                } else {
+                    0.0
+                };
+                smooth[i] = a_filt[i] + j * (smooth[i + 1] - a_pred[i + 1]);
+                svar[i] = p_filt[i] + j * j * (svar[i + 1] - p_pred[i + 1]);
+            }
+        }
+        let sm = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _sm = protect(sm);
+        let va = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _va = protect(va);
+        for i in 0..n {
+            *REAL(sm).add(i) = smooth[i];
+            *REAL(va).add(i) = svar[i].max(0.0);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, sm);
+        SET_VECTOR_ELT(result, 1, va);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["smooth".to_string(), "var".to_string()],
+        );
+        result
+    }
+}
+
+
 
 
 
