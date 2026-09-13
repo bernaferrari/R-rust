@@ -3642,6 +3642,47 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `unsplit(value, f)` inverse of `split`.
+pub unsafe fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let value = CAR(args);
+        let f = CAR(CDR(args));
+        if value.is_null()
+            || value == R_NilValue()
+            || TYPEOF(value) != SEXPTYPE::VECSXP
+            || XLENGTH(value) == 0
+            || f.is_null()
+            || f == R_NilValue()
+        {
+            return R_NilValue();
+        }
+        let first = VECTOR_ELT(value, 0);
+        let n = XLENGTH(f);
+        let result = Rf_allocVector3(TYPEOF(first), n);
+        let _r = protect(result);
+        let ng = XLENGTH(value) as usize;
+        let mut cursor = vec![0i64; ng];
+        for i in 0..n {
+            let g = if TYPEOF(f) == SEXPTYPE::INTSXP {
+                (*INTEGER(f).add(i as usize) as i64) - 1
+            } else {
+                elt_real_safe(f, i).round() as i64 - 1
+            };
+            if g < 0 || (g as usize) >= ng {
+                continue;
+            }
+            let src = VECTOR_ELT(value, g);
+            let pos = cursor[g as usize];
+            if !src.is_null() && src != R_NilValue() && pos < XLENGTH(src) {
+                copy_matrix_element(result, i, src, pos);
+                cursor[g as usize] = pos + 1;
+            }
+        }
+        result
+    }
+}
+
+
 unsafe fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
     unsafe {
         let levels =

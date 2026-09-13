@@ -3613,6 +3613,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_split,
     },
     EvaluatedBuiltin {
+        name: "unsplit",
+        handler: crate::mainutils::essentials::do_unsplit,
+    },
+    EvaluatedBuiltin {
         name: "with",
         handler: crate::mainutils::essentials::do_with,
     },
