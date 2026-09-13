@@ -2127,6 +2127,113 @@ pub unsafe fn do_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+fn pearson_r(x: &[f64], y: &[f64]) -> f64 {
+    let n = x.len() as f64;
+    let mx = x.iter().sum::<f64>() / n;
+    let my = y.iter().sum::<f64>() / n;
+    let mut num = 0.0;
+    let mut sx = 0.0;
+    let mut sy = 0.0;
+    for i in 0..x.len() {
+        let dx = x[i] - mx;
+        let dy = y[i] - my;
+        num += dx * dy;
+        sx += dx * dx;
+        sy += dy * dy;
+    }
+    num / (sx * sy).sqrt()
+}
+
+/// GNU Pearson `cor.test(x, y)`.
+pub unsafe fn do_cor_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let xs = CAR(args);
+        let ys = CAR(CDR(args));
+        let n0 = XLENGTH(xs).min(XLENGTH(ys));
+        let mut x = Vec::new();
+        let mut y = Vec::new();
+        for i in 0..n0 {
+            let a = elt_real_safe(xs, i);
+            let b = elt_real_safe(ys, i);
+            if a.is_finite() && b.is_finite() {
+                x.push(a);
+                y.push(b);
+            }
+        }
+        let n = x.len() as f64;
+        let r = pearson_r(&x, &y);
+        let df = n - 2.0;
+        let stat = df.sqrt() * r / (1.0 - r * r).sqrt();
+        let p1 = crate::dist::t_dist::pt_inner(stat, df, true, false);
+        let p2 = crate::dist::t_dist::pt_inner(stat, df, false, false);
+        let pval = (2.0 * p1.min(p2)).min(1.0);
+        let z = r.atanh();
+        let sigma = 1.0 / (n - 3.0).sqrt();
+        let qz = crate::dist::normal::qnorm5_inner(0.975, 0.0, 1.0, true, false);
+        let lo = (z - sigma * qz).tanh();
+        let hi = (z + sigma * qz).tanh();
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["t".to_string()]);
+        let parameter = Rf_ScalarReal(df);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["df".to_string()]);
+        let estimate = Rf_ScalarReal(r);
+        let _es = protect(estimate);
+        set_string_names(estimate, &["cor".to_string()]);
+        let null_value = Rf_ScalarReal(0.0);
+        let _nv = protect(null_value);
+        set_string_names(null_value, &["correlation".to_string()]);
+        let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _cf = protect(conf);
+        *REAL(conf) = lo;
+        *REAL(conf).add(1) = hi;
+        crate::sexp::attrib_core::setAttrib(
+            conf,
+            crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
+            Rf_ScalarReal(0.95),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 9);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, estimate);
+        SET_VECTOR_ELT(result, 4, null_value);
+        SET_VECTOR_ELT(result, 5, Rf_mkString(c"two.sided".as_ptr()));
+        SET_VECTOR_ELT(
+            result,
+            6,
+            Rf_mkString(c"Pearson's product-moment correlation".as_ptr()),
+        );
+        SET_VECTOR_ELT(result, 7, Rf_mkString(c"x and y".as_ptr()));
+        SET_VECTOR_ELT(result, 8, conf);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "estimate".to_string(),
+                "null.value".to_string(),
+                "alternative".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+                "conf.int".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

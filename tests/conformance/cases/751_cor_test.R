@@ -1,0 +1,10 @@
+x <- 1:10
+y <- c(2, 3, 4, 5, 6, 8, 7, 9, 10, 12)
+ct <- cor.test(x, y)
+cat(round(as.numeric(ct$statistic), 6), "\n", sep = "")
+cat(as.numeric(ct$parameter), "\n", sep = "")
+cat(sprintf("%.6e", ct$p.value), "\n", sep = "")
+cat(round(as.numeric(ct$estimate), 6), "\n", sep = "")
+cat(paste(round(ct$conf.int, 6), collapse = ","), "\n", sep = "")
+cat(ct$method, "\n", sep = "")
+cat(class(ct), "\n", sep = "")
