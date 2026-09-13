@@ -162,3 +162,43 @@ pub unsafe fn Approx(
     );
     yout
 }
+
+/// GNU `approx(x, y, xout)`.
+pub unsafe fn do_approx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, SET_VECTOR_ELT};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
+        use crate::sexp::protect::protect;
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let xout = CAR(CDR(CDR(args)));
+        let xc = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+        let _xc = protect(xc);
+        let yc = coerceVector(y, SEXPTYPE::REALSXP.as_c_int());
+        let _yc = protect(yc);
+        let n = XLENGTH(xc);
+        let yleft = Rf_ScalarReal(*REAL(yc));
+        let _yl = protect(yleft);
+        let yright = Rf_ScalarReal(*REAL(yc).add((n - 1) as usize));
+        let _yr = protect(yright);
+        let method = Rf_ScalarInteger(1);
+        let _m = protect(method);
+        let f = Rf_ScalarReal(0.0);
+        let _f = protect(f);
+        let na_rm = Rf_ScalarInteger(1);
+        let _na = protect(na_rm);
+        let yout = Approx(xc, yc, xout, method, yleft, yright, f, na_rm);
+        let _yo = protect(yout);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, xout);
+        SET_VECTOR_ELT(result, 1, yout);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["x".to_string(), "y".to_string()],
+        );
+        let _ = INTEGER;
+        result
+    }
+}
+

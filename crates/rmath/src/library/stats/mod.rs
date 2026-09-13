@@ -1,7 +1,7 @@
 //! Stats package - statistical functions
 
 mod ansari;
-mod approx;
+pub(crate) mod approx;
 mod bandwidths;
 pub(crate) mod bspline;
 mod burg;
