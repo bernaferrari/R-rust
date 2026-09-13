@@ -2973,6 +2973,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_summary_lm,
     },
     EvaluatedBuiltin {
+        name: "anova",
+        handler: crate::mainutils::essentials::do_anova_lm,
+    },
+    EvaluatedBuiltin {
+        name: "anova.lm",
+        handler: crate::mainutils::essentials::do_anova_lm,
+    },
+    EvaluatedBuiltin {
         name: "summary.default",
         handler: crate::mainutils::essentials::do_summary_default,
     },

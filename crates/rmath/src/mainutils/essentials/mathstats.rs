@@ -5151,6 +5151,83 @@ pub unsafe fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `anova(lm)` one-term table.
+pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let resid = list_named_elt(obj, "residuals");
+        let fitted = list_named_elt(obj, "fitted.values");
+        let dfr = list_named_elt(obj, "df.residual");
+        if resid == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid) as usize;
+        let df_res = if dfr != R_NilValue() {
+            elt_real_safe(dfr, 0)
+        } else {
+            (n as f64) - 2.0
+        };
+        let mut sse = 0.0;
+        let mut ysum = 0.0;
+        let mut ys = Vec::with_capacity(n);
+        for i in 0..n {
+            let e = elt_real_safe(resid, i as i64);
+            let f = if fitted != R_NilValue() {
+                elt_real_safe(fitted, i as i64)
+            } else {
+                0.0
+            };
+            let y = f + e;
+            ys.push(y);
+            ysum += y;
+            sse += e * e;
+        }
+        let ybar = ysum / n as f64;
+        let sst: f64 = ys.iter().map(|y| (y - ybar) * (y - ybar)).sum();
+        let ssr = sst - sse;
+        let df_mod = 1.0;
+        let msr = ssr / df_mod;
+        let mse = if df_res > 0.0 { sse / df_res } else { f64::NAN };
+        let f = if mse > 0.0 { msr / mse } else { f64::NAN };
+        let p = crate::dist::f_dist::pf_inner(f, df_mod, df_res, false, false);
+        let tab = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 5);
+        let _t = protect(tab);
+        *REAL(tab) = df_mod;
+        *REAL(tab).add(1) = df_res;
+        *REAL(tab).add(2) = ssr;
+        *REAL(tab).add(3) = sse;
+        *REAL(tab).add(4) = msr;
+        *REAL(tab).add(5) = mse;
+        *REAL(tab).add(6) = f;
+        *REAL(tab).add(7) = NA_REAL;
+        *REAL(tab).add(8) = p;
+        *REAL(tab).add(9) = NA_REAL;
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _rn = protect(rn);
+        SET_STRING_ELT(rn, 0, Rf_mkChar(c"x".as_ptr()));
+        SET_STRING_ELT(rn, 1, Rf_mkChar(c"Residuals".as_ptr()));
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
+        let _cn = protect(cn);
+        SET_STRING_ELT(cn, 0, Rf_mkChar(c"Df".as_ptr()));
+        SET_STRING_ELT(cn, 1, Rf_mkChar(c"Sum Sq".as_ptr()));
+        SET_STRING_ELT(cn, 2, Rf_mkChar(c"Mean Sq".as_ptr()));
+        SET_STRING_ELT(cn, 3, Rf_mkChar(c"F value".as_ptr()));
+        SET_STRING_ELT(cn, 4, Rf_mkChar(c"Pr(>F)".as_ptr()));
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _cl = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"anova".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"data.frame".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        tab
+    }
+}
+
+
 
 
 
