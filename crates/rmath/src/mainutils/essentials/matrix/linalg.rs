@@ -326,10 +326,61 @@ pub unsafe fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `kappa(z, method="direct")` — `1/rcond(z)`.
+/// GNU `kappa` — `1/rcond`, or `smax/smin` when `exact=TRUE`.
 pub unsafe fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let rc = do_rcond(call, op, Rf_cons(CAR(args), R_NilValue()), rho);
+        let x = CAR(args);
+        let mut exact = false;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let v = CAR(cell);
+            if name == "exact"
+                || (name.is_empty() && TYPEOF(v) == SEXPTYPE::LGLSXP)
+            {
+                if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 {
+                    exact = *LOGICAL(v) != 0;
+                }
+            }
+            cell = CDR(cell);
+        }
+        if exact {
+            let sv = do_svd(call, op, Rf_cons(x, R_NilValue()), rho);
+            let _sv = protect(sv);
+            let d = crate::sexp::attrib_core::getAttrib(
+                sv,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            let mut dvec = R_NilValue();
+            if TYPEOF(sv) == SEXPTYPE::VECSXP && TYPEOF(d) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(d) {
+                    let raw = CHAR(STRING_ELT(d, i));
+                    if !raw.is_null()
+                        && std::ffi::CStr::from_ptr(raw).to_bytes() == b"d"
+                    {
+                        dvec = VECTOR_ELT(sv, i);
+                        break;
+                    }
+                }
+            }
+            if TYPEOF(dvec) == SEXPTYPE::REALSXP && XLENGTH(dvec) > 0 {
+                let first = *REAL(dvec);
+                let last = *REAL(dvec).add((XLENGTH(dvec) as usize) - 1);
+                return Rf_ScalarReal(if last == 0.0 {
+                    f64::INFINITY
+                } else {
+                    first / last
+                });
+            }
+        }
+        let rc = do_rcond(call, op, Rf_cons(x, R_NilValue()), rho);
         if rc.is_null() || rc == R_NilValue() || TYPEOF(rc) != SEXPTYPE::REALSXP {
             return R_NilValue();
         }
