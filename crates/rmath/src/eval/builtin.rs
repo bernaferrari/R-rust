@@ -907,6 +907,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::array::do_backsolve,
     },
     EvaluatedBuiltin {
+        name: "forwardsolve",
+        handler: crate::mainutils::essentials::do_forwardsolve,
+    },
+    EvaluatedBuiltin {
         name: "asplit",
         handler: crate::mainutils::array::do_asplit,
     },

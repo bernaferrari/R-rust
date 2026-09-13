@@ -338,6 +338,23 @@ pub unsafe fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `forwardsolve(l, x)` — `backsolve(..., upper.tri=FALSE)`.
+pub unsafe fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let l = CAR(args);
+        let x = CAR(CDR(args));
+        let ut = Rf_ScalarLogical(FALSE);
+        let _u = protect(ut);
+        let tail = Rf_cons(ut, R_NilValue());
+        let _t = protect(tail);
+        crate::sexp::accessors::SETTAG(tail, crate::sexp::symbol::Rf_install(c"upper.tri".as_ptr()));
+        let packed = Rf_cons(l, Rf_cons(x, tail));
+        let _p = protect(packed);
+        crate::mainutils::array::do_backsolve(call, op, packed, rho)
+    }
+}
+
+
 
 
 
