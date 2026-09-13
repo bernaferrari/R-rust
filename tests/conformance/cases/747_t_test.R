@@ -1,0 +1,8 @@
+tt <- t.test(1:10)
+cat(round(as.numeric(tt$statistic), 6), "\n", sep = "")
+cat(as.numeric(tt$parameter), "\n", sep = "")
+cat(round(tt$p.value, 8), "\n", sep = "")
+cat(as.numeric(tt$estimate), "\n", sep = "")
+cat(tt$method, "\n", sep = "")
+cat(paste(round(tt$conf.int, 6), collapse = ","), "\n", sep = "")
+cat(class(tt), "\n", sep = "")

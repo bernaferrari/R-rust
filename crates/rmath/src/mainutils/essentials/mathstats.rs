@@ -1753,6 +1753,111 @@ pub unsafe fn do_p_adjust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 
+/// GNU one-sample `t.test(x)`.
+pub unsafe fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let n0 = XLENGTH(x);
+        let t = TYPEOF(x);
+        let mut vals = Vec::new();
+        for i in 0..n0 {
+            let v = if t == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
+            } else {
+                NA_REAL
+            };
+            if v.is_finite() {
+                vals.push(v);
+            }
+        }
+        let n = vals.len() as f64;
+        if n < 2.0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "not enough 'x' observations",
+            );
+        }
+        let mean = vals.iter().sum::<f64>() / n;
+        let var = vals.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n - 1.0);
+        let s = var.sqrt();
+        let se = s / n.sqrt();
+        let stat = mean / se;
+        let df = n - 1.0;
+        let p = 2.0 * crate::dist::t_dist::pt_inner(-stat.abs(), df, true, false);
+        let crit = crate::dist::t_dist::qt_inner(0.975, df, true, false);
+        let lo = mean - crit * se;
+        let hi = mean + crit * se;
+
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["t".to_string()]);
+        let parameter = Rf_ScalarReal(df);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["df".to_string()]);
+        let estimate = Rf_ScalarReal(mean);
+        let _es = protect(estimate);
+        set_string_names(estimate, &["mean of x".to_string()]);
+        let null_value = Rf_ScalarReal(0.0);
+        let _nv = protect(null_value);
+        set_string_names(null_value, &["mean".to_string()]);
+        let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _cf = protect(conf);
+        *REAL(conf) = lo;
+        *REAL(conf).add(1) = hi;
+        crate::sexp::attrib_core::setAttrib(
+            conf,
+            crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
+            Rf_ScalarReal(0.95),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 10);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(p));
+        SET_VECTOR_ELT(result, 3, conf);
+        SET_VECTOR_ELT(result, 4, estimate);
+        SET_VECTOR_ELT(result, 5, null_value);
+        SET_VECTOR_ELT(result, 6, Rf_ScalarReal(se));
+        SET_VECTOR_ELT(result, 7, Rf_mkString(c"two.sided".as_ptr()));
+        SET_VECTOR_ELT(result, 8, Rf_mkString(c"One Sample t-test".as_ptr()));
+        SET_VECTOR_ELT(result, 9, Rf_mkString(c"x".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "conf.int".to_string(),
+                "estimate".to_string(),
+                "null.value".to_string(),
+                "stderr".to_string(),
+                "alternative".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 /// GNU `ecdf(x)` — empirical CDF as a step function.
 pub unsafe fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
