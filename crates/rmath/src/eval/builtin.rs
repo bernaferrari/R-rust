@@ -2007,6 +2007,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ssasymp,
     },
     EvaluatedBuiltin {
+        name: "SSmicmen",
+        handler: crate::mainutils::essentials::do_ssmicmen,
+    },
+    EvaluatedBuiltin {
         name: "lm.fit",
         handler: crate::mainutils::essentials::do_lm_fit,
     },

@@ -5842,6 +5842,24 @@ pub unsafe fn do_ssasymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `SSmicmen(input, Vm, K)` — Michaelis–Menten.
+pub unsafe fn do_ssmicmen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let input = CAR(args);
+        let vm = elt_real_safe(CAR(CDR(args)), 0);
+        let k = elt_real_safe(CAR(CDR(CDR(args))), 0);
+        let n = XLENGTH(input);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let x = elt_real_safe(input, i);
+            *REAL(result).add(i as usize) = vm * x / (k + x);
+        }
+        result
+    }
+}
+
+
 
 
 
