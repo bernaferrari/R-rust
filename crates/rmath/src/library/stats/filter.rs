@@ -805,6 +805,131 @@ pub unsafe fn do_arima_sim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `makeARIMA(phi, theta, Delta)` — AR(1), no MA/difference.
+pub unsafe fn do_makeARIMA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let phi = elt_real_or(CAR(args), 0.0);
+        let z = Rf_ScalarReal(1.0);
+        let _z = protect(z);
+        let a = Rf_ScalarReal(0.0);
+        let _a = protect(a);
+        let p0 = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _p0 = protect(p0);
+        *REAL(p0) = 0.0;
+        let t = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _t = protect(t);
+        *REAL(t) = phi;
+        let v = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _v = protect(v);
+        *REAL(v) = 1.0;
+        let h = Rf_ScalarReal(0.0);
+        let _h = protect(h);
+        let pn = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _pn = protect(pn);
+        let den = 1.0 - phi * phi;
+        *REAL(pn) = if den > 1e-15 { 1.0 / den } else { 1.0 };
+        let phi_s = Rf_ScalarReal(phi);
+        let _ps = protect(phi_s);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 10);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, phi_s);
+        SET_VECTOR_ELT(result, 1, R_NilValue());
+        SET_VECTOR_ELT(result, 2, R_NilValue());
+        SET_VECTOR_ELT(result, 3, z);
+        SET_VECTOR_ELT(result, 4, a);
+        SET_VECTOR_ELT(result, 5, p0);
+        SET_VECTOR_ELT(result, 6, t);
+        SET_VECTOR_ELT(result, 7, v);
+        SET_VECTOR_ELT(result, 8, h);
+        SET_VECTOR_ELT(result, 9, pn);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "phi".to_string(),
+                "theta".to_string(),
+                "Delta".to_string(),
+                "Z".to_string(),
+                "a".to_string(),
+                "P".to_string(),
+                "T".to_string(),
+                "V".to_string(),
+                "h".to_string(),
+                "Pn".to_string(),
+            ],
+        );
+        result
+    }
+}
+
+fn elt_real_or(x: SEXP, default: f64) -> f64 {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return default;
+        }
+        if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > 0 {
+            return *REAL(x);
+        }
+        if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
+            return *INTEGER(x) as f64;
+        }
+        default
+    }
+}
+
+/// GNU `KalmanLike(y, mod)` — univariate AR(1) state-space likelihood.
+pub unsafe fn do_kalman_like(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let y = CAR(args);
+        let model = CAR(CDR(args));
+        if y.is_null() || y == R_NilValue() || model.is_null() || model == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(y) as usize;
+        if n == 0 {
+            return R_NilValue();
+        }
+        let z = elt_real_or(named_list_elt(model, "Z"), 1.0);
+        let mut a = elt_real_or(named_list_elt(model, "a"), 0.0);
+        let t = elt_real_or(named_list_elt(model, "T"), 0.0);
+        let v = elt_real_or(named_list_elt(model, "V"), 1.0);
+        let h = elt_real_or(named_list_elt(model, "h"), 0.0);
+        let mut p = elt_real_or(named_list_elt(model, "Pn"), 1.0);
+        let mut s2 = 0.0;
+        let mut sumlog = 0.0;
+        for i in 0..n {
+            let yi = if TYPEOF(y) == SEXPTYPE::REALSXP {
+                *REAL(y).add(i)
+            } else {
+                *INTEGER(y).add(i) as f64
+            };
+            let resid = yi - z * a;
+            let f = z * z * p + h;
+            if f > 0.0 {
+                s2 += resid * resid / f;
+                sumlog += f.ln();
+                let k = p * z / f;
+                a += k * resid;
+                p -= k * k * f;
+            }
+            a = t * a;
+            p = t * p * t + v;
+        }
+        let nf = n as f64;
+        s2 /= nf;
+        let lik = 0.5 * (s2.ln() + sumlog / nf);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(lik));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(s2));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["Lik".to_string(), "s2".to_string()],
+        );
+        result
+    }
+}
+
+
 
 
 /// GNU `spec.taper(x, p=0.1)` — cosine taper on each end.

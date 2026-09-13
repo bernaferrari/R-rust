@@ -2455,6 +2455,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::swilk::do_shapiro_test,
     },
     EvaluatedBuiltin {
+        name: "makeARIMA",
+        handler: crate::library::stats::filter::do_makeARIMA,
+    },
+    EvaluatedBuiltin {
+        name: "KalmanLike",
+        handler: crate::library::stats::filter::do_kalman_like,
+    },
+    EvaluatedBuiltin {
         name: "wilcox.test",
         handler: crate::mainutils::essentials::do_wilcox_test,
     },
