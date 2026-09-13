@@ -2428,6 +2428,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_cut_Date,
     },
     EvaluatedBuiltin {
+        name: "cut.POSIXt",
+        handler: crate::mainutils::essentials::do_cut_POSIXt,
+    },
+    EvaluatedBuiltin {
         name: "format.info",
         handler: crate::mainutils::essentials::do_format_info,
     },

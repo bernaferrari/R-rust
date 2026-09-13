@@ -1251,6 +1251,41 @@ pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `cut.POSIXt(x, breaks)` for day/week/month/year/quarter.
+pub unsafe fn do_cut_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+            do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho)
+        } else {
+            x
+        };
+        let _x = protect(x);
+        let n = XLENGTH(x);
+        let days = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _d = protect(days);
+        for i in 0..n {
+            let secs = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                0.0
+            };
+            *REAL(days).add(i as usize) = (secs / 86_400.0).floor();
+        }
+        set_single_class(days, "Date");
+        do_cut_Date(call, op, Rf_cons(days, CDR(args)), rho)
+    }
+}
+
+
 
 
 fn date_units_arg(args: SEXP) -> String {

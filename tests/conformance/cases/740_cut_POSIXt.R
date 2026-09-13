@@ -1,0 +1,5 @@
+cat(as.character(cut(ISOdate(2020, 1, 1), "days")), "\n", sep = "")
+cat(paste(as.character(cut(c(ISOdate(2020, 1, 1), ISOdate(2020, 1, 3)), "days")), collapse = ","), "\n", sep = "")
+cat(paste(levels(cut(c(ISOdate(2020, 1, 1), ISOdate(2020, 1, 3)), "days")), collapse = ","), "\n", sep = "")
+cat(class(cut(ISOdate(2020, 1, 1), "days")), "\n", sep = "")
+cat(paste(as.character(cut(c(ISOdate(2020, 1, 1), ISOdate(2020, 6, 1)), "quarter")), collapse = ","), "\n", sep = "")

@@ -1360,12 +1360,18 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        if sexp_has_class(x, "Date")
+        if (sexp_has_class(x, "Date")
+            || sexp_has_class(x, "POSIXct")
+            || sexp_has_class(x, "POSIXt")
+            || sexp_has_class(x, "POSIXlt"))
             && !breaks_arg.is_null()
             && breaks_arg != R_NilValue()
             && TYPEOF(breaks_arg) == SEXPTYPE::STRSXP
         {
-            return do_cut_Date(_call, _op, args, _rho);
+            if sexp_has_class(x, "Date") {
+                return do_cut_Date(_call, _op, args, _rho);
+            }
+            return do_cut_POSIXt(_call, _op, args, _rho);
         }
         let n = XLENGTH(x);
         let mut break_pts: Vec<f64> = Vec::new();
