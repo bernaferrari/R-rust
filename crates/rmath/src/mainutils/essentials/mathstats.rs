@@ -2839,6 +2839,72 @@ pub unsafe fn do_ansari_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU 2x2 `mcnemar.test(x, correct=TRUE)`.
+pub unsafe fn do_mcnemar_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || XLENGTH(x) < 4 {
+            return R_NilValue();
+        }
+        let mut correct = true;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let c = CAR(rest);
+            if TYPEOF(c) == SEXPTYPE::LGLSXP && XLENGTH(c) > 0 {
+                correct = *INTEGER(c) != 0;
+            }
+        }
+        let a12 = elt_real_safe(x, 2);
+        let a21 = elt_real_safe(x, 1);
+        let off = a12 + a21;
+        let y = if correct && (a12 - a21).abs() > 0.0 {
+            (a12 - a21).abs() - 1.0
+        } else {
+            a12 - a21
+        };
+        let stat = if off > 0.0 { y * y / off } else { 0.0 };
+        let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+        let method = if correct && (a12 - a21).abs() > 0.0 {
+            "McNemar's Chi-squared test with continuity correction"
+        } else {
+            "McNemar's Chi-squared test"
+        };
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["McNemar's chi-squared".to_string()]);
+        let parameter = Rf_ScalarReal(1.0);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["df".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        let m = CString::new(method).unwrap_or_default();
+        SET_VECTOR_ELT(result, 3, Rf_mkString(m.as_ptr()));
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 
