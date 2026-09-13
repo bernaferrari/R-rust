@@ -5055,6 +5055,7 @@ unsafe fn family_object(family: &str, link: &str) -> SEXP {
         let _r = protect(result);
         let fam = match family {
             "gaussian" => Rf_mkString(c"gaussian".as_ptr()),
+            "poisson" => Rf_mkString(c"poisson".as_ptr()),
             _ => Rf_mkString(c"binomial".as_ptr()),
         };
         let lnk = match link {
@@ -5111,6 +5112,23 @@ pub unsafe fn do_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         family_object("gaussian", &link)
     }
 }
+
+/// GNU `poisson()` family object.
+pub unsafe fn do_poisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut link = "log".to_string();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                link = elt_to_string(v, 0);
+            }
+            cell = CDR(cell);
+        }
+        family_object("poisson", &link)
+    }
+}
+
 
 /// GNU `aov(y ~ x)` — `lm` with class `c("aov","lm")`.
 pub unsafe fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

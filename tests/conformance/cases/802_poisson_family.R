@@ -1,0 +1,5 @@
+p <- poisson()
+cat(p$family, "\n", sep = "")
+cat(p$link, "\n", sep = "")
+cat(class(p), "\n", sep = "")
+cat(poisson("identity")$link, "\n", sep = "")

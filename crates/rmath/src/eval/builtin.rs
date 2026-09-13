@@ -1982,6 +1982,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_gaussian,
     },
     EvaluatedBuiltin {
+        name: "poisson",
+        handler: crate::mainutils::essentials::do_poisson,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
