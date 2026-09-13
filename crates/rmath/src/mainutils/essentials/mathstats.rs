@@ -1685,6 +1685,74 @@ pub unsafe fn do_boxplot_stats(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
+fn p_adjust_values(p: &[f64], method: &str) -> Vec<f64> {
+    let n = p.len();
+    if n <= 1 {
+        return p.to_vec();
+    }
+    match method {
+        "none" => p.to_vec(),
+        "bonferroni" => p.iter().map(|v| (n as f64 * v).min(1.0)).collect(),
+        "BH" | "fdr" => {
+            let mut o: Vec<usize> = (0..n).collect();
+            o.sort_by(|&a, &b| p[b].partial_cmp(&p[a]).unwrap_or(std::cmp::Ordering::Equal));
+            let mut adj = vec![0.0; n];
+            let mut running: f64 = 1.0;
+            for (rank_from_end, &idx) in o.iter().enumerate() {
+                let i = n - rank_from_end;
+                let val = ((n as f64 / i as f64) * p[idx]).min(1.0);
+                running = running.min(val);
+                adj[idx] = running;
+            }
+            adj
+        }
+        _ => {
+            // holm
+            let mut o: Vec<usize> = (0..n).collect();
+            o.sort_by(|&a, &b| p[a].partial_cmp(&p[b]).unwrap_or(std::cmp::Ordering::Equal));
+            let mut adj = vec![0.0; n];
+            let mut running: f64 = 0.0;
+            for (i, &idx) in o.iter().enumerate() {
+                let val = (((n - i) as f64) * p[idx]).min(1.0);
+                running = running.max(val);
+                adj[idx] = running;
+            }
+            adj
+        }
+    }
+}
+
+/// GNU `p.adjust(p, method)`.
+pub unsafe fn do_p_adjust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let mut method = "holm".to_string();
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let m = CAR(rest);
+            if TYPEOF(m) == SEXPTYPE::STRSXP && XLENGTH(m) > 0 {
+                method = elt_to_string(m, 0);
+            }
+        }
+        let n = XLENGTH(x);
+        let mut p = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            p.push(elt_real_safe(x, i));
+        }
+        let adj = p_adjust_values(&p, &method);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for (i, v) in adj.iter().enumerate() {
+            *REAL(result).add(i) = *v;
+        }
+        result
+    }
+}
+
+
 
 /// GNU `ecdf(x)` — empirical CDF as a step function.
 pub unsafe fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
