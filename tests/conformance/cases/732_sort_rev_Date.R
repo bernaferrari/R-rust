@@ -1,0 +1,5 @@
+cat(paste(as.character(sort(as.Date(c("2020-01-03", "2020-01-01")))), collapse = ","), "\n", sep = "")
+cat(class(sort(as.Date(c("2020-01-03", "2020-01-01")))), "\n", sep = "")
+cat(paste(as.character(rev(as.Date(c("2020-01-01", "2020-01-03")))), collapse = ","), "\n", sep = "")
+cat(class(rev(as.Date(c("2020-01-01", "2020-01-03")))), "\n", sep = "")
+cat(paste(class(sort(c(ISOdate(2020, 1, 3), ISOdate(2020, 1, 1)))), collapse = ","), "\n", sep = "")

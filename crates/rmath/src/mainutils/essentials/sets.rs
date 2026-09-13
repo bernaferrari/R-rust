@@ -1569,13 +1569,23 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 }
             }
         }
-        if sexp_has_class(x, "Date") {
-            set_datetime_class_from(result, x, DatetimeVectorClass::Date);
-        } else if sexp_has_class(x, "POSIXct") || sexp_has_class(x, "POSIXt") {
-            set_datetime_class_from(result, x, DatetimeVectorClass::Posixct);
-        } else if sexp_has_class(x, "difftime") {
+        restore_datetime_or_difftime_class(x, result);
+        result
+    }
+}
+
+unsafe fn restore_datetime_or_difftime_class(source: SEXP, result: SEXP) {
+    unsafe {
+        if result.is_null() || result == R_NilValue() {
+            return;
+        }
+        if sexp_has_class(source, "Date") {
+            set_datetime_class_from(result, source, DatetimeVectorClass::Date);
+        } else if sexp_has_class(source, "POSIXct") || sexp_has_class(source, "POSIXt") {
+            set_datetime_class_from(result, source, DatetimeVectorClass::Posixct);
+        } else if sexp_has_class(source, "difftime") {
             let units = crate::sexp::attrib_core::getAttrib(
-                x,
+                source,
                 crate::sexp::symbol::Rf_install(c"units".as_ptr()),
             );
             set_single_class(result, "difftime");
@@ -1587,7 +1597,6 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 );
             }
         }
-        result
     }
 }
 
@@ -1789,6 +1798,7 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     out += 1;
                 }
             }
+            restore_datetime_or_difftime_class(x, result);
             result
         } else if t == SEXPTYPE::REALSXP {
             let mut vals: Vec<f64> = Vec::with_capacity(n as usize);
@@ -1829,6 +1839,7 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     out += 1;
                 }
             }
+            restore_datetime_or_difftime_class(x, result);
             result
         } else if t == SEXPTYPE::STRSXP {
             let mut vals: Vec<SEXP> = Vec::with_capacity(n as usize);
@@ -1868,12 +1879,14 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     out += 1;
                 }
             }
+            restore_datetime_or_difftime_class(x, result);
             result
         } else {
             let result = Rf_allocVector3(t, n);
             if result.is_null() {
                 return R_NilValue();
             }
+            restore_datetime_or_difftime_class(x, result);
             result
         }
     }
@@ -1985,6 +1998,7 @@ pub unsafe fn do_rev(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
         reverse_names_attribute(x, result, n);
+        restore_datetime_or_difftime_class(x, result);
         result
     }
 }
