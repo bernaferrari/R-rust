@@ -5371,6 +5371,19 @@ pub unsafe fn do_model_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 
+/// GNU `update(object)` — re-evaluate `$call`.
+pub unsafe fn do_update(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let call = list_named_elt(obj, "call");
+        if call.is_null() || call == R_NilValue() {
+            return R_NilValue();
+        }
+        crate::eval::eval::Rf_eval(call, rho)
+    }
+}
+
+
 /// GNU `lm.influence(model, do.coef=FALSE)` — hat, deletion sigma, wt.res.
 pub unsafe fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
