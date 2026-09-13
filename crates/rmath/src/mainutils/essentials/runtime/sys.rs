@@ -1373,6 +1373,71 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if sexp_has_class(x, "POSIXct") && TYPEOF(x) == SEXPTYPE::REALSXP {
             return x;
         }
+        if sexp_has_class(x, "POSIXlt") && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 6 {
+            let sec = VECTOR_ELT(x, 0);
+            let minv = VECTOR_ELT(x, 1);
+            let hour = VECTOR_ELT(x, 2);
+            let mday = VECTOR_ELT(x, 3);
+            let mon = VECTOR_ELT(x, 4);
+            let year = VECTOR_ELT(x, 5);
+            let nlt = if TYPEOF(sec) == SEXPTYPE::REALSXP || TYPEOF(sec) == SEXPTYPE::INTSXP {
+                XLENGTH(sec)
+            } else {
+                1
+            };
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, nlt);
+            let _r = protect(result);
+            for i in 0..nlt {
+                let y = if TYPEOF(year) == SEXPTYPE::INTSXP {
+                    *INTEGER(year).add(i as usize) + 1900
+                } else {
+                    1970
+                };
+                let m = if TYPEOF(mon) == SEXPTYPE::INTSXP {
+                    *INTEGER(mon).add(i as usize) + 1
+                } else {
+                    1
+                };
+                let d = if TYPEOF(mday) == SEXPTYPE::INTSXP {
+                    *INTEGER(mday).add(i as usize)
+                } else {
+                    1
+                };
+                let h = if TYPEOF(hour) == SEXPTYPE::INTSXP {
+                    *INTEGER(hour).add(i as usize) as f64
+                } else {
+                    0.0
+                };
+                let mi = if TYPEOF(minv) == SEXPTYPE::INTSXP {
+                    *INTEGER(minv).add(i as usize) as f64
+                } else {
+                    0.0
+                };
+                let s = if TYPEOF(sec) == SEXPTYPE::REALSXP {
+                    *REAL(sec).add(i as usize)
+                } else if TYPEOF(sec) == SEXPTYPE::INTSXP {
+                    *INTEGER(sec).add(i as usize) as f64
+                } else {
+                    0.0
+                };
+                let days = parse_iso_date_days(&format!("{y:04}-{m:02}-{d:02}")).unwrap_or(0.0);
+                *REAL(result).add(i as usize) = days * 86_400.0 + h * 3600.0 + mi * 60.0 + s;
+            }
+            let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
+            let tz = if tz_arg.is_null() || tz_arg == R_NilValue() || XLENGTH(tz_arg) == 0 {
+                "UTC".to_string()
+            } else {
+                let value = elt_to_string(tz_arg, 0);
+                if value.is_empty() {
+                    "UTC".to_string()
+                } else {
+                    value
+                }
+            };
+            set_posixct_class(result, &tz);
+            return result;
+        }
+
 
         let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
         let tz = if tz_arg.is_null() || tz_arg == R_NilValue() || XLENGTH(tz_arg) == 0 {
