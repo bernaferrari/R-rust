@@ -579,3 +579,32 @@ pub unsafe fn do_ccf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 
+/// GNU `ar(..., aic=FALSE, order.max=1)` Yule-Walker.
+pub unsafe fn do_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let a = do_acf(_call, _op, args, rho);
+        let _a = protect(a);
+        let acfv = VECTOR_ELT(a, 0);
+        let phi = if XLENGTH(acfv) >= 2 {
+            *REAL(acfv).add(1)
+        } else {
+            0.0
+        };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(phi));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(1));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["ar".to_string(), "order".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"ar".as_ptr()),
+        );
+        result
+    }
+}
+
+
