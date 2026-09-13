@@ -215,6 +215,22 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if !class.is_null()
+            && class != R_NilValue()
+            && TYPEOF(class) == SEXPTYPE::STRSXP
+            && XLENGTH(class) > 0
+        {
+            let s = STRING_ELT(class, 0);
+            if !s.is_null()
+                && std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy() == "lm"
+            {
+                return crate::mainutils::essentials::do_summary_lm(_call, _op, args, _rho);
+            }
+        }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
 

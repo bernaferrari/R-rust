@@ -587,6 +587,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "predict.lm",
+        handler: crate::mainutils::loess::do_predict_lm,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "predict.loess",
         handler: crate::mainutils::loess::do_predict_loess,
         restore_visibility_always: false,
@@ -2962,6 +2967,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "summary",
         handler: crate::mainutils::essentials::do_summary_default,
+    },
+    EvaluatedBuiltin {
+        name: "summary.lm",
+        handler: crate::mainutils::essentials::do_summary_lm,
     },
     EvaluatedBuiltin {
         name: "summary.default",
