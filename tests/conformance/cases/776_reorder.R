@@ -1,0 +1,8 @@
+x <- factor(c("b", "a", "c", "b", "a", "c"))
+y <- c(1, 10, 5, 2, 11, 6)
+r <- reorder(x, y)
+cat(paste(levels(r), collapse = ","), "\n", sep = "")
+cat(paste(as.integer(r), collapse = ","), "\n", sep = "")
+cat(paste(round(as.numeric(attr(r, "scores")), 1), collapse = ","), "\n", sep = "")
+cat(paste(names(attr(r, "scores")), collapse = ","), "\n", sep = "")
+cat(class(r), "\n", sep = "")

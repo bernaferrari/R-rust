@@ -4119,6 +4119,93 @@ pub unsafe fn do_loadings(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `reorder(x, X)` by group means.
+pub unsafe fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let xx = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() || xx.is_null() || xx == R_NilValue() {
+            return R_NilValue();
+        }
+        let levels = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        );
+        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        let nlev = XLENGTH(levels) as usize;
+        let n = XLENGTH(x) as usize;
+        let mut codes = vec![0i32; n];
+        for i in 0..n {
+            codes[i] = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                *INTEGER(x).add(i)
+            } else {
+                elt_real_safe(x, i as i64).round() as i32
+            };
+        }
+        let mut sums = vec![0.0; nlev];
+        let mut cnt = vec![0.0; nlev];
+        for i in 0..n {
+            let g = codes[i];
+            if g >= 1 && (g as usize) <= nlev {
+                sums[(g as usize) - 1] += elt_real_safe(xx, i as i64);
+                cnt[(g as usize) - 1] += 1.0;
+            }
+        }
+        let mut scores = vec![0.0; nlev];
+        let mut order: Vec<usize> = (0..nlev).collect();
+        for i in 0..nlev {
+            scores[i] = if cnt[i] > 0.0 { sums[i] / cnt[i] } else { f64::NAN };
+        }
+        order.sort_by(|&a, &b| {
+            scores[a]
+                .partial_cmp(&scores[b])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let mut new_code = vec![0i32; nlev];
+        for (new_i, &old) in order.iter().enumerate() {
+            new_code[old] = (new_i as i32) + 1;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n as i64);
+        let _r = protect(result);
+        for i in 0..n {
+            let g = codes[i];
+            *INTEGER(result).add(i) = if g >= 1 && (g as usize) <= nlev {
+                new_code[(g as usize) - 1]
+            } else {
+                NA_INTEGER
+            };
+        }
+        let new_levels = Rf_allocVector3(SEXPTYPE::STRSXP, nlev as i64);
+        let _nl = protect(new_levels);
+        for (new_i, &old) in order.iter().enumerate() {
+            SET_STRING_ELT(new_levels, new_i as i64, STRING_ELT(levels, old as i64));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+            new_levels,
+        );
+        let class = Rf_mkString(c"factor".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        let sc = Rf_allocVector3(SEXPTYPE::REALSXP, nlev as i64);
+        let _sc = protect(sc);
+        for i in 0..nlev {
+            *REAL(sc).add(i) = scores[i];
+        }
+        crate::sexp::attrib_core::setAttrib(sc, crate::sexp::attrib_core::R_NamesSymbol(), levels);
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"scores".as_ptr()), sc);
+        result
+    }
+}
+
+
 
 
 

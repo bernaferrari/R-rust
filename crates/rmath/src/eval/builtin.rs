@@ -1885,6 +1885,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_loadings,
     },
     EvaluatedBuiltin {
+        name: "reorder",
+        handler: crate::mainutils::essentials::do_reorder,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
