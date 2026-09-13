@@ -2629,6 +2629,129 @@ pub unsafe fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `mood.test(x, y)`.
+pub unsafe fn do_mood_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let xs = CAR(args);
+        let ys = CAR(CDR(args));
+        let mut x = Vec::new();
+        let mut y = Vec::new();
+        for i in 0..XLENGTH(xs) {
+            let v = elt_real_safe(xs, i);
+            if v.is_finite() {
+                x.push(v);
+            }
+        }
+        for i in 0..XLENGTH(ys) {
+            let v = elt_real_safe(ys, i);
+            if v.is_finite() {
+                y.push(v);
+            }
+        }
+        let m = x.len() as f64;
+        let n = y.len() as f64;
+        let ntot = m + n;
+        let mut z = x.clone();
+        z.extend_from_slice(&y);
+        let mut has_ties = false;
+        let mut seen = std::collections::BTreeSet::new();
+        for v in &z {
+            if !seen.insert(v.to_bits()) {
+                has_ties = true;
+                break;
+            }
+        }
+        let e = m * (ntot * ntot - 1.0) / 12.0;
+        let mut v = m * n * (ntot + 1.0) * (ntot + 2.0) * (ntot - 2.0) / 180.0;
+        let tstat = if !has_ties {
+            let ranks = rank_average(&z);
+            let mid = (ntot + 1.0) / 2.0;
+            ranks
+                .iter()
+                .take(x.len())
+                .map(|r| (r - mid) * (r - mid))
+                .sum::<f64>()
+        } else {
+            let mut u = z.clone();
+            u.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            u.dedup_by(|a, b| a.to_bits() == b.to_bits());
+            let mut a_counts = vec![0.0; u.len()];
+            let mut t_counts = vec![0.0; u.len()];
+            for xv in &x {
+                if let Some(j) = u.iter().position(|uv| uv.to_bits() == xv.to_bits()) {
+                    a_counts[j] += 1.0;
+                }
+            }
+            for zv in &z {
+                if let Some(j) = u.iter().position(|uv| uv.to_bits() == zv.to_bits()) {
+                    t_counts[j] += 1.0;
+                }
+            }
+            let mid = (ntot + 1.0) / 2.0;
+            let mut p = vec![0.0; ntot as usize];
+            let mut acc = 0.0;
+            for i in 0..(ntot as usize) {
+                let d = (i as f64 + 1.0) - mid;
+                acc += d * d;
+                p[i] = acc;
+            }
+            let mut csum = 0.0;
+            let mut p_at = Vec::new();
+            let mut cums = Vec::new();
+            for t in &t_counts {
+                csum += *t;
+                cums.push(csum);
+                p_at.push(p[(csum as usize) - 1]);
+            }
+            let mut prev = 0.0;
+            let mut tstat = 0.0;
+            let mut sum_term = 0.0;
+            for (j, t) in t_counts.iter().enumerate() {
+                let block = p_at[j] - prev;
+                prev = p_at[j];
+                tstat += a_counts[j] * block / t;
+                let cs = cums[j];
+                let inner = t * t - 4.0 + 15.0 * (ntot - 2.0 * cs + t).powi(2);
+                sum_term += t * (t * t - 1.0) * inner;
+            }
+            v -= (m * n) / (180.0 * ntot * (ntot - 1.0)) * sum_term;
+            tstat
+        };
+        let zstat = (tstat - e) / v.sqrt();
+        let p = crate::dist::normal::pnorm5_inner(zstat, 0.0, 1.0, true, false);
+        let pval = (2.0 * p.min(1.0 - p)).min(1.0);
+        let statistic = Rf_ScalarReal(zstat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["Z".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 2, Rf_mkString(c"two.sided".as_ptr()));
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"Mood two-sample test of scale".as_ptr()));
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x and y".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "p.value".to_string(),
+                "alternative".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

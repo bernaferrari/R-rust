@@ -1,0 +1,8 @@
+mt <- mood.test(1:10, 2:11)
+cat(round(as.numeric(mt$statistic), 8), "\n", sep = "")
+cat(round(mt$p.value, 8), "\n", sep = "")
+cat(mt$method, "\n", sep = "")
+mt2 <- mood.test(c(1, 2, 3, 4, 5), c(1, 2, 3, 4, 6))
+cat(round(as.numeric(mt2$statistic), 6), "\n", sep = "")
+cat(round(mt2$p.value, 6), "\n", sep = "")
+cat(class(mt), "\n", sep = "")
