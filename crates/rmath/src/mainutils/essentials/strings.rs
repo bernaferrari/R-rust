@@ -923,6 +923,106 @@ pub unsafe fn do_glob2rx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+fn adist_levenshtein(a: &str, b: &str) -> i32 {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let n = a.len();
+    let m = b.len();
+    let mut prev: Vec<i32> = (0..=m as i32).collect();
+    let mut curr = vec![0i32; m + 1];
+    for i in 1..=n {
+        curr[0] = i as i32;
+        for j in 1..=m {
+            let sub = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1)
+                .min(curr[j - 1] + 1)
+                .min(prev[j - 1] + sub);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[m]
+}
+
+/// GNU `adist(x, y)` Levenshtein distances as an integer matrix.
+pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
+            return crate::mainutils::array::allocMatrix(SEXPTYPE::INTSXP.as_c_int(), 0, 0);
+        }
+        let nx = XLENGTH(x);
+        let mut y = x;
+        let mut ignore_case = false;
+        let mut cell = CDR(args);
+        let mut positional = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if named == "ignore.case" {
+                if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
+                    ignore_case = *LOGICAL(value) == TRUE;
+                }
+            } else if named == "y"
+                || (named.is_empty()
+                    && positional == 0
+                    && TYPEOF(value) == SEXPTYPE::STRSXP)
+            {
+                y = value;
+            }
+            if named.is_empty() {
+                positional += 1;
+            }
+            cell = CDR(cell);
+        }
+        if y.is_null() || y == R_NilValue() || TYPEOF(y) != SEXPTYPE::STRSXP {
+            y = x;
+        }
+        let ny = XLENGTH(y);
+        let mat = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::INTSXP.as_c_int(),
+            nx as c_int,
+            ny as c_int,
+        );
+        let _m = protect(mat);
+        for j in 0..ny {
+            let ych = STRING_ELT(y, j);
+            let mut ys = if ych.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(ych))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            if ignore_case {
+                ys = ys.to_lowercase();
+            }
+            for i in 0..nx {
+                let xch = STRING_ELT(x, i);
+                let mut xs = if xch.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(CHAR(xch))
+                        .to_string_lossy()
+                        .into_owned()
+                };
+                if ignore_case {
+                    xs = xs.to_lowercase();
+                }
+                *INTEGER(mat).add((i + j * nx) as usize) = adist_levenshtein(&xs, &ys);
+            }
+        }
+        mat
+    }
+}
+
+
 
 
 
