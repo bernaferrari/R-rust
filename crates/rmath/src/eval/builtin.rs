@@ -1945,6 +1945,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_cooks_distance,
     },
     EvaluatedBuiltin {
+        name: "dffits",
+        handler: crate::mainutils::essentials::do_dffits,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },

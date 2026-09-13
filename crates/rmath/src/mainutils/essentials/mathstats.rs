@@ -4744,6 +4744,39 @@ pub unsafe fn do_cooks_distance(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
+/// GNU `dffits` as `e * sqrt(h) / (sigma * (1-h))`.
+pub unsafe fn do_dffits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let resid = list_named_elt(obj, "residuals");
+        let hat = list_named_elt(obj, "hat");
+        let sigma = list_named_elt(obj, "sigma");
+        if resid == R_NilValue() || hat == R_NilValue() || sigma == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid).min(XLENGTH(hat));
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let e = elt_real_safe(resid, i);
+            let h = elt_real_safe(hat, i);
+            let s = if XLENGTH(sigma) > 1 {
+                elt_real_safe(sigma, i)
+            } else {
+                elt_real_safe(sigma, 0)
+            };
+            let den = s * (1.0 - h);
+            *REAL(result).add(i as usize) = if den != 0.0 && den.is_finite() && h >= 0.0 {
+                e * h.sqrt() / den
+            } else {
+                f64::NAN
+            };
+        }
+        result
+    }
+}
+
+
 
 
 
