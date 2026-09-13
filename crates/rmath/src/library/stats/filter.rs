@@ -2019,6 +2019,42 @@ pub unsafe fn do_as_formula(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     unsafe { do_formula(call, op, args, rho) }
 }
 
+/// GNU `asOneSidedFormula(object)` — `~expr`.
+pub unsafe fn do_as_one_sided_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if inherits_formula(x) {
+            return x;
+        }
+        if TYPEOF(x) == SEXPTYPE::LANGSXP {
+            let op = CAR(x);
+            let name = if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "~" {
+                return mark_formula(x);
+            }
+        }
+        let rhs = if TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) > 0 {
+            let raw = CHAR(STRING_ELT(x, 0));
+            let lab = std::ffi::CStr::from_ptr(raw).to_string_lossy();
+            let c = std::ffi::CString::new(lab.as_ref()).unwrap_or_default();
+            crate::sexp::symbol::Rf_install(c.as_ptr())
+        } else if TYPEOF(x) == SEXPTYPE::SYMSXP {
+            x
+        } else {
+            return R_NilValue();
+        };
+        let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
+        mark_formula(Rf_lang2(tilde, rhs))
+    }
+}
+
+
 
 /// GNU `model.extract(frame, component)` — `response` or `(component)`.
 pub unsafe fn do_model_extract(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

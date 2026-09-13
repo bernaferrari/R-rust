@@ -2303,6 +2303,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_formula,
     },
     EvaluatedBuiltin {
+        name: "asOneSidedFormula",
+        handler: crate::library::stats::filter::do_as_one_sided_formula,
+    },
+    EvaluatedBuiltin {
         name: "as.formula",
         handler: crate::library::stats::filter::do_as_formula,
     },
