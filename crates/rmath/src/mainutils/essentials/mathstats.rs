@@ -5288,12 +5288,37 @@ pub unsafe fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `glm(y ~ x)` gaussian — `lm` with class `c("glm","lm")`.
+/// GNU `glm(y ~ x)` gaussian — `lm` with class `c("glm","lm")`.
 pub unsafe fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let result = do_lm(call, op, args, rho);
-        if result.is_null() || result == R_NilValue() {
-            return result;
+        let lm = do_lm(call, op, args, rho);
+        if lm.is_null() || lm == R_NilValue() {
+            return lm;
         }
+        let n = XLENGTH(lm);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
+        let _r = protect(result);
+        for i in 0..n {
+            SET_VECTOR_ELT(result, i, VECTOR_ELT(lm, i));
+        }
+        SET_VECTOR_ELT(result, n, family_object("gaussian", "identity"));
+        let old_names = crate::sexp::attrib_core::getAttrib(
+            lm,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n + 1);
+        let _nm = protect(names);
+        for i in 0..n {
+            if TYPEOF(old_names) == SEXPTYPE::STRSXP && i < XLENGTH(old_names) {
+                SET_STRING_ELT(names, i, STRING_ELT(old_names, i));
+            }
+        }
+        SET_STRING_ELT(names, n, Rf_mkChar(c"family".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _cl = protect(class);
         SET_STRING_ELT(class, 0, Rf_mkChar(c"glm".as_ptr()));
@@ -5304,6 +5329,18 @@ pub unsafe fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             class,
         );
         result
+    }
+}
+
+/// GNU `family(object)` — extract `$family`.
+pub unsafe fn do_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let v = list_named_elt(CAR(args), "family");
+        if v == R_NilValue() {
+            R_NilValue()
+        } else {
+            v
+        }
     }
 }
 
