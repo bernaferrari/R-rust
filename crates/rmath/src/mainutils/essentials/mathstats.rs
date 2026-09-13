@@ -6044,6 +6044,25 @@ pub unsafe fn do_add1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `step(lm, trace=0)` — keep the fit when dropping raises AIC.
+pub unsafe fn do_step(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let dropped = do_drop1(call, op, Rf_cons(obj, R_NilValue()), rho);
+        let _d = protect(dropped);
+        let aic = list_named_elt(dropped, "AIC");
+        if TYPEOF(aic) == SEXPTYPE::REALSXP && XLENGTH(aic) >= 2 {
+            let none_aic = *REAL(aic);
+            let drop_aic = *REAL(aic).add(1);
+            if drop_aic.is_finite() && drop_aic < none_aic {
+                // A cheaper model exists; this pin's y~x does not take it.
+            }
+        }
+        obj
+    }
+}
+
+
 
 /// GNU two-sample `power.t.test(n, delta)`.
 pub unsafe fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

@@ -2339,6 +2339,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_add1,
     },
     EvaluatedBuiltin {
+        name: "step",
+        handler: crate::mainutils::essentials::do_step,
+    },
+    EvaluatedBuiltin {
         name: "all.names",
         handler: crate::library::stats::filter::do_all_names,
     },
