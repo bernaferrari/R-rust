@@ -1381,6 +1381,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_validEnc,
     },
     EvaluatedBuiltin {
+        name: "gettext",
+        handler: crate::mainutils::essentials::do_gettext,
+    },
+    EvaluatedBuiltin {
+        name: "ngettext",
+        handler: crate::mainutils::essentials::do_ngettext,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },

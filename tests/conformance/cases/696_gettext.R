@@ -1,0 +1,5 @@
+cat(gettext("hello"), "\n", sep = "")
+cat(ngettext(1, "apple", "apples"), "\n", sep = "")
+cat(ngettext(2, "apple", "apples"), "\n", sep = "")
+cat(ngettext(0, "apple", "apples"), "\n", sep = "")
+cat(paste(gettext(c("a", "b")), collapse = ","), "\n", sep = "")

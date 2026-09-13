@@ -1651,6 +1651,51 @@ pub unsafe fn do_validEnc(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `gettext(...)` without catalogs is identity.
+pub unsafe fn do_gettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            return x;
+        }
+        x
+    }
+}
+
+/// GNU `ngettext(n, msg1, msg2)` without catalogs.
+pub unsafe fn do_ngettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_s = CAR(args);
+        let n = if TYPEOF(n_s) == SEXPTYPE::INTSXP && XLENGTH(n_s) > 0 {
+            *INTEGER(n_s)
+        } else if TYPEOF(n_s) == SEXPTYPE::REALSXP && XLENGTH(n_s) > 0 {
+            *REAL(n_s) as i32
+        } else {
+            0
+        };
+        let msg1 = CAR(CDR(args));
+        let msg2 = CAR(CDR(CDR(args)));
+        let pick = if n == 1 { msg1 } else { msg2 };
+        if pick.is_null() || pick == R_NilValue() {
+            return Rf_mkString(c"".as_ptr());
+        }
+        if TYPEOF(pick) == SEXPTYPE::STRSXP && XLENGTH(pick) == 1 {
+            return pick;
+        }
+        if TYPEOF(pick) == SEXPTYPE::STRSXP && XLENGTH(pick) > 0 {
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            let _o = protect(out);
+            SET_STRING_ELT(out, 0, STRING_ELT(pick, 0));
+            return out;
+        }
+        pick
+    }
+}
+
+
 
 
 
