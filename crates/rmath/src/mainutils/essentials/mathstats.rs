@@ -4554,6 +4554,73 @@ pub unsafe fn do_variable_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
     unsafe { crate::mainutils::essentials::do_colnames(call, op, args, rho) }
 }
 
+/// GNU `confint(object)` from `$coefficients` and `$vcov`.
+pub unsafe fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let mut level = 0.95;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "level" {
+                let v = elt_real_safe(CAR(cell), 0);
+                if v.is_finite() && v > 0.0 && v < 1.0 {
+                    level = v;
+                }
+            }
+            cell = CDR(cell);
+        }
+        let cf = list_named_elt(obj, "coefficients");
+        let vcov = list_named_elt(obj, "vcov");
+        if cf == R_NilValue() || vcov == R_NilValue() {
+            return R_NilValue();
+        }
+        let p = XLENGTH(cf) as usize;
+        if p == 0 {
+            return R_NilValue();
+        }
+        let a = (1.0 - level) / 2.0;
+        let zlo = crate::dist::normal::qnorm5_inner(a, 0.0, 1.0, true, false);
+        let zhi = crate::dist::normal::qnorm5_inner(1.0 - a, 0.0, 1.0, true, false);
+        let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
+        let _r = protect(result);
+        for i in 0..p {
+            let est = elt_real_safe(cf, i as i64);
+            let var = elt_real_safe(vcov, (i + i * p) as i64);
+            let se = var.max(0.0).sqrt();
+            *REAL(result).add(i) = est + se * zlo;
+            *REAL(result).add(i + p) = est + se * zhi;
+        }
+        let rn = crate::sexp::attrib_core::getAttrib(cf, crate::sexp::attrib_core::R_NamesSymbol());
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _cn = protect(cn);
+        let lo_pct = format!("{} %", (100.0 * a * 10.0).round() / 10.0);
+        let hi_pct = format!("{} %", (100.0 * (1.0 - a) * 10.0).round() / 10.0);
+        let lo_c = std::ffi::CString::new(lo_pct).unwrap_or_default();
+        let hi_c = std::ffi::CString::new(hi_pct).unwrap_or_default();
+        SET_STRING_ELT(cn, 0, Rf_mkChar(lo_c.as_ptr()));
+        SET_STRING_ELT(cn, 1, Rf_mkChar(hi_c.as_ptr()));
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, if rn != R_NilValue() { rn } else { R_NilValue() });
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        result
+    }
+}
+
+
 
 
 

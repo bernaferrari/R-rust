@@ -1921,6 +1921,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_variable_names,
     },
     EvaluatedBuiltin {
+        name: "confint",
+        handler: crate::mainutils::essentials::do_confint,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
