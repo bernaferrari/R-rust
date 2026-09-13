@@ -1585,6 +1585,73 @@ pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+fn utf8_bytes_valid(s: SEXP) -> bool {
+    unsafe {
+        if s.is_null() {
+            return true;
+        }
+        let p = CHAR(s);
+        if p.is_null() {
+            return true;
+        }
+        let bytes = std::ffi::CStr::from_ptr(p).to_bytes();
+        std::str::from_utf8(bytes).is_ok()
+    }
+}
+
+/// GNU `validUTF8(x)`.
+pub unsafe fn do_validUTF8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid 'x' argument",
+            );
+        }
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            *LOGICAL(out).add(i as usize) = if utf8_bytes_valid(STRING_ELT(x, i)) {
+                TRUE
+            } else {
+                FALSE
+            };
+        }
+        out
+    }
+}
+
+/// GNU `validEnc(x)`.
+pub unsafe fn do_validEnc(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid 'x' argument",
+            );
+        }
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let p = STRING_ELT(x, i);
+            let ok = if crate::sexp::accessors::IS_BYTES(p) != 0
+                || crate::sexp::accessors::IS_LATIN1(p) != 0
+            {
+                true
+            } else {
+                utf8_bytes_valid(p)
+            };
+            *LOGICAL(out).add(i as usize) = if ok { TRUE } else { FALSE };
+        }
+        out
+    }
+}
+
+
 
 
 

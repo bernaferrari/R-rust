@@ -1,0 +1,5 @@
+cat(validUTF8("abc"), "\n", sep = "")
+cat(paste(validUTF8(c("abc", NA)), collapse = ","), "\n", sep = "")
+cat(validEnc("abc"), "\n", sep = "")
+cat(paste(validEnc(c("abc", NA)), collapse = ","), "\n", sep = "")
+cat(validUTF8(intToUtf8(233L)), "\n", sep = "")
