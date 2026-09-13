@@ -3486,6 +3486,163 @@ pub unsafe fn do_pairwise_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
     }
 }
 
+fn wilcox_two_asymp(x: &[f64], y: &[f64]) -> f64 {
+    let nx = x.len() as f64;
+    let ny = y.len() as f64;
+    if nx < 1.0 || ny < 1.0 {
+        return f64::NAN;
+    }
+    let mut vals: Vec<(f64, u8)> = x.iter().map(|v| (*v, 0u8)).collect();
+    vals.extend(y.iter().map(|v| (*v, 1u8)));
+    vals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let n = vals.len();
+    let mut ranks = vec![0.0; n];
+    let mut i = 0;
+    let mut nties3 = 0.0;
+    while i < n {
+        let mut j = i + 1;
+        while j < n && vals[j].0 == vals[i].0 {
+            j += 1;
+        }
+        let r = (i + 1 + j) as f64 / 2.0;
+        let u = (j - i) as f64;
+        nties3 += u * u * u - u;
+        for k in i..j {
+            ranks[k] = r;
+        }
+        i = j;
+    }
+    let mut wx = 0.0;
+    for (k, (_, which)) in vals.iter().enumerate() {
+        if *which == 0 {
+            wx += ranks[k];
+        }
+    }
+    let w = wx - nx * (nx + 1.0) / 2.0;
+    let nxy = nx + ny;
+    let sigma = ((nx * ny / 12.0) * ((nxy + 1.0) - nties3 / (nxy * (nxy - 1.0)))).sqrt();
+    let mut z = w - nx * ny / 2.0;
+    if z != 0.0 {
+        z -= z.signum() * 0.5;
+    }
+    z /= sigma;
+    let p = crate::dist::normal::pnorm5_inner(z, 0.0, 1.0, true, false);
+    (2.0 * p.min(1.0 - p)).min(1.0)
+}
+
+/// GNU `pairwise.wilcox.test(x, g)` asymptotic with continuity.
+pub unsafe fn do_pairwise_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let g = CAR(CDR(args));
+        let mut method = "holm".to_string();
+        let mut cell = CDR(CDR(args));
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "p.adjust.method" || name.is_empty() {
+                let v = CAR(cell);
+                if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                    method = elt_to_string(v, 0);
+                }
+            }
+            cell = CDR(cell);
+        }
+        if x.is_null() || x == R_NilValue() || g.is_null() || g == R_NilValue() {
+            return R_NilValue();
+        }
+        let n0 = XLENGTH(x).min(XLENGTH(g));
+        let mut pairs: Vec<(i32, f64)> = Vec::new();
+        for i in 0..n0 {
+            let gi = elt_real_safe(g, i);
+            let xi = elt_real_safe(x, i);
+            if gi.is_finite() && xi.is_finite() {
+                pairs.push((gi.round() as i32, xi));
+            }
+        }
+        let mut levels: Vec<i32> = pairs.iter().map(|p| p.0).collect();
+        levels.sort_unstable();
+        levels.dedup();
+        let k = levels.len();
+        if k < 2 {
+            return R_NilValue();
+        }
+        let groups: Vec<Vec<f64>> = levels
+            .iter()
+            .map(|lev| {
+                pairs
+                    .iter()
+                    .filter(|p| p.0 == *lev)
+                    .map(|p| p.1)
+                    .collect()
+            })
+            .collect();
+        let mut raw = Vec::new();
+        for i in 1..k {
+            for j in 0..i {
+                raw.push(wilcox_two_asymp(&groups[j], &groups[i]));
+            }
+        }
+        let adj = p_adjust_values(&raw, &method);
+        let mdim = k - 1;
+        let pmat = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::REALSXP.as_c_int(),
+            mdim as i32,
+            mdim as i32,
+        );
+        let _pm = protect(pmat);
+        for idx in 0..(mdim * mdim) {
+            *REAL(pmat).add(idx) = NA_REAL;
+        }
+        let mut t = 0usize;
+        for j in 0..mdim {
+            for i in 0..mdim {
+                if i >= j {
+                    *REAL(pmat).add(i + j * mdim) = adj[t];
+                    t += 1;
+                }
+            }
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(
+            result,
+            0,
+            Rf_mkString(c"Wilcoxon rank sum test with continuity correction".as_ptr()),
+        );
+        SET_VECTOR_ELT(result, 1, pmat);
+        let meth = if method == "none" {
+            Rf_mkString(c"none".as_ptr())
+        } else {
+            Rf_mkString(c"holm".as_ptr())
+        };
+        SET_VECTOR_ELT(result, 2, meth);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "method".to_string(),
+                "p.value".to_string(),
+                "p.adjust.method".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"pairwise.htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 fn invert3(a: [[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
     let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
