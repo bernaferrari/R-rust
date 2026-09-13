@@ -121,6 +121,9 @@ pub unsafe fn do_xtfrm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         let x = CAR(args);
+        if sexp_has_class(x, "Date") {
+            return do_xtfrm_Date(_call, _op, args, _rho);
+        }
         match TYPEOF(x) {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::LGLSXP => x,
             t if t == SEXPTYPE::STRSXP => {

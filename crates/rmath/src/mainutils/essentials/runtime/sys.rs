@@ -1903,6 +1903,35 @@ pub unsafe fn do_is_numeric_Date(
     unsafe { Rf_ScalarLogical(FALSE) }
 }
 
+/// GNU `xtfrm.Date(x)` is `as.numeric(x)`.
+pub unsafe fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            *REAL(result).add(i as usize) = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    v as f64
+                }
+            } else {
+                NA_REAL
+            };
+        }
+        result
+    }
+}
+
+
 /// GNU `diff.Date(x)`.
 pub unsafe fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

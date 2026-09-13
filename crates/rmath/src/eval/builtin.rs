@@ -837,6 +837,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_xtfrm,
     },
     EvaluatedBuiltin {
+        name: "xtfrm.Date",
+        handler: crate::mainutils::essentials::do_xtfrm_Date,
+    },
+    EvaluatedBuiltin {
         name: "@<-",
         handler: crate::mainutils::essentials::do_at_set,
     },
