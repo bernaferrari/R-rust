@@ -481,3 +481,101 @@ pub unsafe fn do_pacf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 
+/// GNU `ccf(x, y, lag.max)` demeaned cross-correlation.
+pub unsafe fn do_ccf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x0 = CAR(args);
+        let y0 = CAR(CDR(args));
+        let mut lagmax = 2;
+        let mut cell = CDR(CDR(args));
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "lag.max" {
+                let v = CAR(cell);
+                lagmax = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v)
+                } else {
+                    *REAL(v) as c_int
+                };
+            }
+            cell = CDR(cell);
+        }
+        let n = XLENGTH(x0) as usize;
+        let mut x = vec![0.0f64; n];
+        let mut y = vec![0.0f64; n];
+        let mut mx = 0.0;
+        let mut my = 0.0;
+        for i in 0..n {
+            x[i] = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                *REAL(x0).add(i)
+            } else {
+                *INTEGER(x0).add(i) as f64
+            };
+            y[i] = if TYPEOF(y0) == SEXPTYPE::REALSXP {
+                *REAL(y0).add(i)
+            } else {
+                *INTEGER(y0).add(i) as f64
+            };
+            mx += x[i];
+            my += y[i];
+        }
+        mx /= n as f64;
+        my /= n as f64;
+        for i in 0..n {
+            x[i] -= mx;
+            y[i] -= my;
+        }
+        let out_n = (2 * lagmax + 1) as usize;
+        let acfv = Rf_allocVector3(SEXPTYPE::REALSXP, out_n as i64);
+        let _ac = protect(acfv);
+        for (idx, lag) in (-lagmax..=lagmax).enumerate() {
+            let mut sum = 0.0;
+            if lag >= 0 {
+                let l = lag as usize;
+                for i in 0..(n - l) {
+                    sum += x[i] * y[i + l];
+                }
+            } else {
+                let l = (-lag) as usize;
+                for i in 0..(n - l) {
+                    sum += x[i + l] * y[i];
+                }
+            }
+            *REAL(acfv).add(idx) = sum / (n as f64);
+        }
+        // scale to correlation by lag-0 variances
+        let mut c0 = 0.0;
+        for i in 0..n {
+            c0 += x[i] * x[i];
+        }
+        let mut d0 = 0.0;
+        for i in 0..n {
+            d0 += y[i] * y[i];
+        }
+        let scale = (c0 * d0).sqrt() / (n as f64);
+        if scale > 0.0 {
+            for i in 0..out_n {
+                *REAL(acfv).add(i) /= scale;
+            }
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, acfv);
+        crate::mainutils::essentials::set_string_names(result, &["acf".to_string()]);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"acf".as_ptr()),
+        );
+        result
+    }
+}
+
+
