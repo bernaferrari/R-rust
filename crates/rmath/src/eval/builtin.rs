@@ -1437,6 +1437,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_localeToCharset,
     },
     EvaluatedBuiltin {
+        name: "iconv",
+        handler: crate::mainutils::essentials::do_iconv,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
