@@ -2015,6 +2015,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ssgompertz,
     },
     EvaluatedBuiltin {
+        name: "SSbiexp",
+        handler: crate::mainutils::essentials::do_ssbiexp,
+    },
+    EvaluatedBuiltin {
         name: "lm.fit",
         handler: crate::mainutils::essentials::do_lm_fit,
     },

@@ -5877,6 +5877,27 @@ pub unsafe fn do_ssgompertz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `SSbiexp(input, A1, lrc1, A2, lrc2)` — biexponential decay.
+pub unsafe fn do_ssbiexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let input = CAR(args);
+        let a1 = elt_real_safe(CAR(CDR(args)), 0);
+        let lrc1 = elt_real_safe(CAR(CDR(CDR(args))), 0);
+        let a2 = elt_real_safe(CAR(CDR(CDR(CDR(args)))), 0);
+        let lrc2 = elt_real_safe(CAR(CDR(CDR(CDR(CDR(args))))), 0);
+        let n = XLENGTH(input);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let x = elt_real_safe(input, i);
+            *REAL(result).add(i as usize) =
+                a1 * (-lrc1.exp() * x).exp() + a2 * (-lrc2.exp() * x).exp();
+        }
+        result
+    }
+}
+
+
 
 
 
