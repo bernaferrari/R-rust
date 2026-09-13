@@ -1,0 +1,6 @@
+x <- split(as.Date(c("2020-01-01", "2020-01-02")), c("a", "b"))
+cat(class(x$a), "\n", sep = "")
+cat(as.character(x$a), "\n", sep = "")
+cat(class(x$b), "\n", sep = "")
+cat(as.character(x$b), "\n", sep = "")
+cat(paste(names(x), collapse = ","), "\n", sep = "")

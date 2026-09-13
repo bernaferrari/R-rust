@@ -3612,6 +3612,7 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for (dst, &src) in indices.iter().enumerate() {
                 copy_matrix_element(sub, dst as R_xlen_t, x, src);
             }
+            restore_datetime_or_difftime_class(x, sub);
             if have_x_names {
                 let names = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
                 let _group_names_guard = protect(names);

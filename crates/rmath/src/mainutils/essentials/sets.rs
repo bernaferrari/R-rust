@@ -1574,7 +1574,7 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-unsafe fn restore_datetime_or_difftime_class(source: SEXP, result: SEXP) {
+pub(crate) unsafe fn restore_datetime_or_difftime_class(source: SEXP, result: SEXP) {
     unsafe {
         if result.is_null() || result == R_NilValue() {
             return;
