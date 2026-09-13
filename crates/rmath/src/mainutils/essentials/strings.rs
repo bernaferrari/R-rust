@@ -1268,6 +1268,143 @@ pub unsafe fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `rawShift(x, n)`.
+pub unsafe fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "argument 'x' must be a raw vector",
+            );
+        }
+        let mut shift = 0i32;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let n = CAR(rest);
+            if TYPEOF(n) == SEXPTYPE::INTSXP && XLENGTH(n) > 0 {
+                shift = *INTEGER(n);
+            } else if TYPEOF(n) == SEXPTYPE::REALSXP && XLENGTH(n) > 0 {
+                shift = *REAL(n) as i32;
+            }
+        }
+        if shift < -8 || shift > 8 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "argument 'n' must be a small integer",
+            );
+        }
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
+        let _o = protect(out);
+        for i in 0..n as usize {
+            let v = *RAW(x).add(i);
+            *RAW(out).add(i) = if shift > 0 {
+                v << shift
+            } else if shift < 0 {
+                v >> (-shift)
+            } else {
+                v
+            };
+        }
+        out
+    }
+}
+
+/// GNU `packBits(x, type)`.
+pub unsafe fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::RAWSXP, 0);
+        }
+        let mut type_raw = true;
+        let mut type_int = false;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let t = CAR(rest);
+            if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
+                let ch = STRING_ELT(t, 0);
+                if !ch.is_null() {
+                    let s = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy();
+                    if s == "integer" {
+                        type_raw = false;
+                        type_int = true;
+                    } else if s == "double" {
+                        type_raw = false;
+                        type_int = false;
+                    }
+                }
+            }
+        }
+        let len = XLENGTH(x);
+        let fac = if type_raw {
+            8
+        } else if type_int {
+            32
+        } else {
+            64
+        };
+        if len % fac != 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "argument 'x' must be a multiple of 8 long",
+            );
+        }
+        let slen = len / fac;
+        if type_raw {
+            let out = Rf_allocVector3(SEXPTYPE::RAWSXP, slen);
+            let _o = protect(out);
+            for i in 0..slen {
+                let mut btmp: u8 = 0;
+                for k in (0..8).rev() {
+                    btmp <<= 1;
+                    let bit = packbits_bit(x, 8 * i + k);
+                    btmp |= bit;
+                }
+                *RAW(out).add(i as usize) = btmp;
+            }
+            out
+        } else if type_int {
+            let out = Rf_allocVector3(SEXPTYPE::INTSXP, slen);
+            let _o = protect(out);
+            for i in 0..slen {
+                let mut itmp: u32 = 0;
+                for k in (0..32).rev() {
+                    itmp <<= 1;
+                    itmp |= packbits_bit(x, 32 * i + k) as u32;
+                }
+                *INTEGER(out).add(i as usize) = itmp as i32;
+            }
+            out
+        } else {
+            let out = Rf_allocVector3(SEXPTYPE::REALSXP, slen);
+            let _o = protect(out);
+            for i in 0..slen {
+                let mut bits: u64 = 0;
+                for b in 0..64 {
+                    bits |= (packbits_bit(x, 64 * i + b) as u64) << b;
+                }
+                *REAL(out).add(i as usize) = f64::from_bits(bits);
+            }
+            out
+        }
+    }
+}
+
+unsafe fn packbits_bit(x: SEXP, idx: i64) -> u8 {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::RAWSXP => *RAW(x).add(idx as usize) & 1,
+            t if t == SEXPTYPE::LGLSXP => (*LOGICAL(x).add(idx as usize) & 1) as u8,
+            t if t == SEXPTYPE::INTSXP => (*INTEGER(x).add(idx as usize) & 1) as u8,
+            _ => 0,
+        }
+    }
+}
+
+
 
 
 

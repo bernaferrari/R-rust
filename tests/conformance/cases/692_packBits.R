@@ -1,0 +1,8 @@
+cat(as.integer(packBits(c(TRUE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE))), "\n", sep = "")
+cat(paste(as.integer(packBits(intToBits(1L))), collapse = ","), "\n", sep = "")
+cat(packBits(intToBits(1L), type = "integer"), "\n", sep = "")
+cat(as.integer(rawShift(as.raw(1), 1)), "\n", sep = "")
+cat(as.integer(rawShift(as.raw(128), 1)), "\n", sep = "")
+cat(as.integer(rawShift(as.raw(2), -1)), "\n", sep = "")
+cat(paste(as.integer(rawShift(as.raw(c(1, 2)), 2)), collapse = ","), "\n", sep = "")
+cat(as.integer(rawShift(as.raw(255), 1)), "\n", sep = "")

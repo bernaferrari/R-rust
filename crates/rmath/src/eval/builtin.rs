@@ -1349,6 +1349,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_rawToBits,
     },
     EvaluatedBuiltin {
+        name: "packBits",
+        handler: crate::mainutils::essentials::do_packBits,
+    },
+    EvaluatedBuiltin {
+        name: "rawShift",
+        handler: crate::mainutils::essentials::do_rawShift,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
