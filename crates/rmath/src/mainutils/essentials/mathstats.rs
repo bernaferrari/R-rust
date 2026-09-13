@@ -4620,6 +4620,19 @@ pub unsafe fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `vcov(object)` — extract `$vcov`.
+pub unsafe fn do_vcov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let v = list_named_elt(CAR(args), "vcov");
+        if v == R_NilValue() {
+            R_NilValue()
+        } else {
+            v
+        }
+    }
+}
+
+
 
 
 
