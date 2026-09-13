@@ -2280,6 +2280,15 @@ pub unsafe fn do_diff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        if sexp_has_class(x, "Date") {
+            return do_diff_Date(_call, _op, args, _rho);
+        }
+        if sexp_has_class(x, "POSIXlt")
+            || sexp_has_class(x, "POSIXct")
+            || sexp_has_class(x, "POSIXt")
+        {
+            return do_diff_POSIXt(_call, _op, args, _rho);
+        }
         let lag = if lag_arg.is_null() || lag_arg == R_NilValue() {
             1
         } else {
