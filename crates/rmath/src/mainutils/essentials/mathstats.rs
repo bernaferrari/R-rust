@@ -5059,6 +5059,8 @@ unsafe fn family_object(family: &str, link: &str) -> SEXP {
             "Gamma" => Rf_mkString(c"Gamma".as_ptr()),
             "inverse.gaussian" => Rf_mkString(c"inverse.gaussian".as_ptr()),
             "quasi" => Rf_mkString(c"quasi".as_ptr()),
+            "quasibinomial" => Rf_mkString(c"quasibinomial".as_ptr()),
+            "quasipoisson" => Rf_mkString(c"quasipoisson".as_ptr()),
             _ => Rf_mkString(c"binomial".as_ptr()),
         };
         let lnk = match link {
@@ -5192,6 +5194,39 @@ pub unsafe fn do_quasi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         family_object("quasi", &link)
     }
 }
+
+/// GNU `quasibinomial()` family object.
+pub unsafe fn do_quasibinomial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut link = "logit".to_string();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                link = elt_to_string(v, 0);
+            }
+            cell = CDR(cell);
+        }
+        family_object("quasibinomial", &link)
+    }
+}
+
+/// GNU `quasipoisson()` family object.
+pub unsafe fn do_quasipoisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut link = "log".to_string();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                link = elt_to_string(v, 0);
+            }
+            cell = CDR(cell);
+        }
+        family_object("quasipoisson", &link)
+    }
+}
+
 
 
 

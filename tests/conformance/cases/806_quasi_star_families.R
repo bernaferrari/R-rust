@@ -1,0 +1,7 @@
+cat(quasibinomial()$family, "\n", sep = "")
+cat(quasibinomial()$link, "\n", sep = "")
+cat(quasipoisson()$family, "\n", sep = "")
+cat(quasipoisson()$link, "\n", sep = "")
+cat(class(quasibinomial()), "\n", sep = "")
+cat(quasibinomial("probit")$link, "\n", sep = "")
+cat(quasipoisson("identity")$link, "\n", sep = "")

@@ -1998,6 +1998,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_quasi,
     },
     EvaluatedBuiltin {
+        name: "quasibinomial",
+        handler: crate::mainutils::essentials::do_quasibinomial,
+    },
+    EvaluatedBuiltin {
+        name: "quasipoisson",
+        handler: crate::mainutils::essentials::do_quasipoisson,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
