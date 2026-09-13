@@ -2165,6 +2165,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::datetime::do_strptime,
     },
     EvaluatedBuiltin {
+        name: "as.POSIXlt",
+        handler: crate::mainutils::datetime::do_as_POSIXlt,
+    },
+    EvaluatedBuiltin {
         name: "pmin",
         handler: crate::mainutils::essentials::do_pmin,
     },

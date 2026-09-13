@@ -1437,6 +1437,86 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
     }
 }
 
+/// GNU `as.POSIXlt(x, tz="")`.
+pub unsafe fn do_as_POSIXlt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return x;
+        }
+        if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+            return x;
+        }
+        let mut tz = Rf_mkString(c"".as_ptr());
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let t = CAR(rest);
+            if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
+                tz = t;
+            }
+        }
+        let _tz = protect(tz);
+        let (text, fmt) = if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let ch = if XLENGTH(x) > 0 {
+                STRING_ELT(x, 0)
+            } else {
+                std::ptr::null_mut()
+            };
+            let sample = if ch.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let fmt = if sample.contains(' ') {
+                "%Y-%m-%d %H:%M:%S"
+            } else {
+                "%Y-%m-%d"
+            };
+            (x, fmt)
+        } else if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+            let formatted = crate::mainutils::essentials::do_format_Date(
+                call,
+                op,
+                Rf_cons(x, R_NilValue()),
+                env,
+            );
+            (formatted, "%Y-%m-%d")
+        } else if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0 {
+            let fmt_s = Rf_mkString(c"%Y-%m-%d %H:%M:%S".as_ptr());
+            let _f = protect(fmt_s);
+            let formatted = crate::mainutils::essentials::do_strftime(
+                call,
+                op,
+                Rf_cons(x, Rf_cons(fmt_s, R_NilValue())),
+                env,
+            );
+            (formatted, "%Y-%m-%d %H:%M:%S")
+        } else {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "do not know how to convert 'x' to class \"POSIXlt\"",
+            );
+        };
+        let _text = protect(text);
+        let fmt_s = Rf_mkString(std::ffi::CString::new(fmt).unwrap_or_default().as_ptr());
+        let _fmt = protect(fmt_s);
+        do_strptime(
+            call,
+            op,
+            Rf_cons(text, Rf_cons(fmt_s, Rf_cons(tz, R_NilValue()))),
+            env,
+        )
+    }
+}
+
+
 /// Build a CString from an owned string (helper for the code above).
 fn mk_char_str(s: &str) -> CString {
     CString::new(s).unwrap_or_default()

@@ -1,0 +1,6 @@
+cat(as.POSIXlt("2020-01-01")$year, "\n", sep = "")
+cat(as.POSIXlt("2020-01-01")$mon, "\n", sep = "")
+cat(as.POSIXlt("2020-01-01")$mday, "\n", sep = "")
+cat(as.POSIXlt(as.Date("2020-01-01"))$year, "\n", sep = "")
+cat(as.POSIXlt("2020-01-01 12:30:00")$hour, "\n", sep = "")
+cat(as.POSIXlt("2020-01-01 12:30:00")$min, "\n", sep = "")
