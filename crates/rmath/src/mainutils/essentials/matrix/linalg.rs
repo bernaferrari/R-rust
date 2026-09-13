@@ -310,6 +310,23 @@ pub unsafe fn do_norm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `rcond(x, norm)` — `La_dgecon`. Default norm `"O"`.
+pub unsafe fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let typ = CAR(CDR(args));
+        let typ = if typ.is_null() || typ == R_NilValue() || TYPEOF(typ) != SEXPTYPE::STRSXP {
+            let s = Rf_mkString(c"O".as_ptr());
+            let _s = protect(s);
+            s
+        } else {
+            typ
+        };
+        crate::modules::lapack::lapack_impl::La_dgecon(x, typ)
+    }
+}
+
+
 
 
 // ---------------------------------------------------------------------------

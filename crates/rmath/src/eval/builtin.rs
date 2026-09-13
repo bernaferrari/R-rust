@@ -3206,6 +3206,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_norm,
     },
     EvaluatedBuiltin {
+        name: "rcond",
+        handler: crate::mainutils::essentials::do_rcond,
+    },
+    EvaluatedBuiltin {
         name: "max.col",
         handler: crate::mainutils::array::do_maxcol,
     },
