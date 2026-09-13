@@ -224,11 +224,16 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
             && TYPEOF(class) == SEXPTYPE::STRSXP
             && XLENGTH(class) > 0
         {
-            let s = STRING_ELT(class, 0);
-            if !s.is_null()
-                && std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy() == "lm"
-            {
-                return crate::mainutils::essentials::do_summary_lm(_call, _op, args, _rho);
+            let ncl = XLENGTH(class);
+            for i in 0..ncl {
+                let s = STRING_ELT(class, i);
+                if s.is_null() {
+                    continue;
+                }
+                let name = std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy();
+                if name == "lm" || name == "aov" {
+                    return crate::mainutils::essentials::do_summary_lm(_call, _op, args, _rho);
+                }
             }
         }
         let t = TYPEOF(x);
