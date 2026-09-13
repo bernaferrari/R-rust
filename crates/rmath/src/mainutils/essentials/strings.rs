@@ -557,6 +557,30 @@ pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe { do_case_convert(args, false) }
 }
 
+/// GNU `casefold(x, upper=FALSE)`.
+pub unsafe fn do_casefold(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut upper = false;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let u = CAR(rest);
+            if !u.is_null() && u != R_NilValue() {
+                if TYPEOF(u) == SEXPTYPE::LGLSXP && XLENGTH(u) > 0 {
+                    upper = *LOGICAL(u) == TRUE;
+                } else if TYPEOF(u) == SEXPTYPE::INTSXP && XLENGTH(u) > 0 {
+                    upper = *INTEGER(u) != 0 && *INTEGER(u) != NA_INTEGER;
+                }
+            }
+        }
+        if upper {
+            do_toupper(call, op, args, rho)
+        } else {
+            do_tolower(call, op, args, rho)
+        }
+    }
+}
+
+
 unsafe fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
     unsafe {
         let x = CAR(args);
