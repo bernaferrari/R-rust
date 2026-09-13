@@ -354,6 +354,56 @@ pub unsafe fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     }
 }
 
+/// GNU `svd(x)` — singular values via `La_svd`.
+pub unsafe fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || XLENGTH(dim) < 2
+        {
+            return R_NilValue();
+        }
+        let n = *INTEGER(dim) as i32;
+        let p = *INTEGER(dim).add(1) as i32;
+        if n <= 0 || p <= 0 {
+            return R_NilValue();
+        }
+        let min_np = if n < p { n } else { p };
+        let jobu = Rf_mkString(c"A".as_ptr());
+        let _j = protect(jobu);
+        let s = Rf_allocVector3(SEXPTYPE::REALSXP, min_np as i64);
+        let _s = protect(s);
+        let u = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n, n);
+        let _u = protect(u);
+        let vt = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p, p);
+        let _vt = protect(vt);
+        for i in 0..(n as usize * n as usize) {
+            *REAL(u).add(i) = 0.0;
+        }
+        for i in 0..(p as usize * p as usize) {
+            *REAL(vt).add(i) = 0.0;
+        }
+        let la = crate::modules::lapack::lapack_impl::La_svd(jobu, x, s, u, vt);
+        let _la = protect(la);
+        let v = crate::mainutils::array::do_transpose(call, op, Rf_cons(vt, R_NilValue()), rho);
+        let _v = protect(v);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, s);
+        SET_VECTOR_ELT(result, 1, u);
+        SET_VECTOR_ELT(result, 2, v);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["d".to_string(), "u".to_string(), "v".to_string()],
+        );
+        result
+    }
+}
+
+
 
 
 

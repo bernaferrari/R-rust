@@ -3218,6 +3218,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_kappa,
     },
     EvaluatedBuiltin {
+        name: "svd",
+        handler: crate::mainutils::essentials::do_svd,
+    },
+    EvaluatedBuiltin {
         name: "max.col",
         handler: crate::mainutils::array::do_maxcol,
     },
