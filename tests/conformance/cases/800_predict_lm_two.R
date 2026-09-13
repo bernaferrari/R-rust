@@ -1,0 +1,6 @@
+y <- c(1, 2, 2, 4, 5, 6)
+x1 <- c(1, 2, 3, 4, 5, 6)
+x2 <- c(1, 1, 2, 2, 3, 3)
+fit <- lm(y ~ x1 + x2)
+pr <- predict(fit, newdata = data.frame(x1 = c(0, 7), x2 = c(1, 3)))
+cat(paste(round(as.numeric(pr), 4), collapse = ","), "\n", sep = "")
