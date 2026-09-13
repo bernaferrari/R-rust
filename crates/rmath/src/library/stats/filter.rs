@@ -1068,6 +1068,53 @@ pub unsafe fn do_is_tskernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+unsafe fn ts_start_freq(x: SEXP) -> (f64, f64) {
+    unsafe {
+        let tsp = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
+        );
+        if !tsp.is_null() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 3 {
+            (*REAL(tsp), *REAL(tsp).add(2))
+        } else {
+            (1.0, 1.0)
+        }
+    }
+}
+
+/// GNU `cycle(ts)`.
+pub unsafe fn do_cycle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x);
+        let (start, freq) = ts_start_freq(x);
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _a = protect(ans);
+        let start_cycle = ((start - 1.0) * freq).round();
+        for i in 0..n as usize {
+            let cyc = (start_cycle + i as f64).rem_euclid(freq) + 1.0;
+            *REAL(ans).add(i) = cyc;
+        }
+        ans
+    }
+}
+
+/// GNU `time(ts)`.
+pub unsafe fn do_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x);
+        let (start, freq) = ts_start_freq(x);
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _a = protect(ans);
+        for i in 0..n as usize {
+            *REAL(ans).add(i) = start + i as f64 / freq;
+        }
+        ans
+    }
+}
+
+
 
 
 

@@ -1665,6 +1665,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_is_tskernel,
     },
     EvaluatedBuiltin {
+        name: "cycle",
+        handler: crate::library::stats::filter::do_cycle,
+    },
+    EvaluatedBuiltin {
+        name: "time",
+        handler: crate::library::stats::filter::do_time,
+    },
+    EvaluatedBuiltin {
         name: "HoltWinters",
         handler: crate::library::stats::holtwinters::do_HoltWinters,
     },
