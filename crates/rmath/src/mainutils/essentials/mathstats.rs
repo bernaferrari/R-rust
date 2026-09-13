@@ -3153,6 +3153,103 @@ pub unsafe fn do_quade_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU 2x2xK `mantelhaen.test(x)` (asymptotic, two-sided).
+pub unsafe fn do_mantelhaen_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || XLENGTH(dim) < 3
+        {
+            return R_NilValue();
+        }
+        let i = *INTEGER(dim) as usize;
+        let j = *INTEGER(dim).add(1) as usize;
+        let k = *INTEGER(dim).add(2) as usize;
+        if i != 2 || j != 2 || k < 1 {
+            return R_NilValue();
+        }
+        let mut delta = 0.0;
+        let mut varsum = 0.0;
+        let mut s_diag = 0.0;
+        let mut s_offd = 0.0;
+        for s in 0..k {
+            let a = elt_real_safe(x, (s * 4) as i64);
+            let b = elt_real_safe(x, (s * 4 + 1) as i64);
+            let c = elt_real_safe(x, (s * 4 + 2) as i64);
+            let d = elt_real_safe(x, (s * 4 + 3) as i64);
+            let n = a + b + c + d;
+            if n <= 1.0 {
+                continue;
+            }
+            let sx1 = a + c;
+            let sx2 = b + d;
+            let sy1 = a + b;
+            let sy2 = c + d;
+            delta += a - sx1 * sy1 / n;
+            varsum += sx1 * sx2 * sy1 * sy2 / (n * n * (n - 1.0));
+            s_diag += a * d / n;
+            s_offd += c * b / n;
+        }
+        let yates = if delta.abs() >= 0.5 { 0.5 } else { 0.0 };
+        let stat = if varsum > 0.0 {
+            let num = delta.abs() - yates;
+            num * num / varsum
+        } else {
+            0.0
+        };
+        let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+        let estimate = if s_offd > 0.0 { s_diag / s_offd } else { f64::INFINITY };
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["Mantel-Haenszel X-squared".to_string()]);
+        let parameter = Rf_ScalarReal(1.0);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["df".to_string()]);
+        let est = Rf_ScalarReal(estimate);
+        let _es = protect(est);
+        set_string_names(est, &["common odds ratio".to_string()]);
+        let method_s = if yates > 0.0 {
+            Rf_mkString(c"Mantel-Haenszel chi-squared test with continuity correction".as_ptr())
+        } else {
+            Rf_mkString(c"Mantel-Haenszel chi-squared test without continuity correction".as_ptr())
+        };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, est);
+        SET_VECTOR_ELT(result, 4, method_s);
+        SET_VECTOR_ELT(result, 5, Rf_mkString(c"x".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "estimate".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 /// GNU two-sample `power.t.test(n, delta)`.

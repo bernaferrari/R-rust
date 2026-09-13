@@ -1,0 +1,8 @@
+x <- array(c(1, 2, 3, 4, 2, 3, 4, 5), dim = c(2, 2, 2))
+mh <- mantelhaen.test(x)
+cat(round(as.numeric(mh$statistic), 6), "\n", sep = "")
+cat(as.numeric(mh$parameter), "\n", sep = "")
+cat(round(mh$p.value, 6), "\n", sep = "")
+cat(round(as.numeric(mh$estimate), 6), "\n", sep = "")
+cat(mh$method, "\n", sep = "")
+cat(class(mh), "\n", sep = "")
