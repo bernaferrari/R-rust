@@ -203,7 +203,7 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             cnames.push(format!("s{i}"));
         }
         crate::mainutils::essentials::set_string_names(coef, &cnames);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, fitted);
         SET_VECTOR_ELT(result, 1, crate::sexp::constructors::Rf_ScalarReal(alpha));
@@ -211,6 +211,7 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         SET_VECTOR_ELT(result, 3, crate::sexp::constructors::Rf_ScalarReal(gamma));
         SET_VECTOR_ELT(result, 4, crate::sexp::constructors::Rf_ScalarReal(sse));
         SET_VECTOR_ELT(result, 5, coef);
+        SET_VECTOR_ELT(result, 6, x0);
         crate::mainutils::essentials::set_string_names(
             result,
             &[
@@ -220,6 +221,7 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 "gamma".to_string(),
                 "SSE".to_string(),
                 "coefficients".to_string(),
+                "x".to_string(),
             ],
         );
         crate::sexp::attrib_core::setAttrib(
