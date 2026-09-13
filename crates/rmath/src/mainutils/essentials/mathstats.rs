@@ -7034,6 +7034,26 @@ pub unsafe fn do_as_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             crate::sexp::symbol::Rf_install(c"Size".as_ptr()),
             Rf_ScalarInteger(n as c_int),
         );
+        let dn = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP {
+            let mut labs = R_NilValue();
+            if XLENGTH(dn) >= 1 {
+                labs = VECTOR_ELT(dn, 0);
+            }
+            if (labs.is_null() || labs == R_NilValue()) && XLENGTH(dn) >= 2 {
+                labs = VECTOR_ELT(dn, 1);
+            }
+            if !labs.is_null() && labs != R_NilValue() && TYPEOF(labs) == SEXPTYPE::STRSXP {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::symbol::Rf_install(c"Labels".as_ptr()),
+                    labs,
+                );
+            }
+        }
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),
