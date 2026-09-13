@@ -34,7 +34,7 @@ pub(crate) mod lowess;
 mod mar;
 mod massdist;
 mod monospl;
-mod optim;
+pub(crate) mod optim;
 mod permdist;
 mod ppsum;
 mod prho;

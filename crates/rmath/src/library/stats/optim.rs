@@ -1107,3 +1107,56 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         ans
     }
 }
+
+pub unsafe fn do_optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let par = CAR(args);
+        let fn_sexp = CAR(CDR(args));
+        let n = XLENGTH(par);
+        if n == 1 {
+            let x0 = if TYPEOF(par) == SEXPTYPE::REALSXP {
+                *REAL(par)
+            } else {
+                *INTEGER(par) as f64
+            };
+            let eval = |x: f64| -> f64 {
+                let xv = Rf_ScalarReal(x);
+                let _xv = protect(xv);
+                let call = Rf_lang2(fn_sexp, xv);
+                let _c = protect(call);
+                let v = crate::eval::eval::Rf_eval(call, rho);
+                if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v)
+                } else {
+                    *INTEGER(v) as f64
+                }
+            };
+            let mut lo = x0 - 10.0 * x0.abs() - 1.0;
+            let mut hi = x0 + 10.0 * x0.abs() + 1.0;
+            for _ in 0..80 {
+                let m1 = lo + (hi - lo) / 3.0;
+                let m2 = hi - (hi - lo) / 3.0;
+                if eval(m1) < eval(m2) {
+                    hi = m2;
+                } else {
+                    lo = m1;
+                }
+            }
+            let root = 0.5 * (lo + hi);
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _r = protect(result);
+            SET_VECTOR_ELT(result, 0, Rf_ScalarReal(root));
+            SET_VECTOR_ELT(result, 1, Rf_ScalarReal(eval(root)));
+            crate::mainutils::essentials::set_string_names(
+                result,
+                &["par".to_string(), "value".to_string()],
+            );
+            return result;
+        }
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "optim currently supports one-dimensional par only",
+        );
+    }
+}
+
