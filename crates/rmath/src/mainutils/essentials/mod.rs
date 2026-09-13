@@ -122,6 +122,21 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         (*letters_upper_cell).data.listsxp.tagval = Rf_install(c"LETTERS".as_ptr());
         chain = letters_upper_cell;
 
+        let padjust_methods = static_string_vector(&[
+            "holm",
+            "hochberg",
+            "hommel",
+            "bonferroni",
+            "BH",
+            "BY",
+            "fdr",
+            "none",
+        ]);
+        let _padjust_guard = protect(padjust_methods);
+        let padjust_cell = Rf_cons(padjust_methods, chain);
+        (*padjust_cell).data.listsxp.tagval = Rf_install(c"p.adjust.methods".as_ptr());
+        chain = padjust_cell;
+
         let version_value = do_R_version(
             std::ptr::null_mut(),
             std::ptr::null_mut(),
