@@ -1857,6 +1857,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_power_t_test,
     },
     EvaluatedBuiltin {
+        name: "power.prop.test",
+        handler: crate::mainutils::essentials::do_power_prop_test,
+    },
+    EvaluatedBuiltin {
         name: "stem",
         handler: crate::library::graphics::stem::do_stem,
     },

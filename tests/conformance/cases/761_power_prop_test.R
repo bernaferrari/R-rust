@@ -1,0 +1,8 @@
+pw <- power.prop.test(n = 100, p1 = 0.5, p2 = 0.6)
+cat(pw$n, "\n", sep = "")
+cat(pw$p1, "\n", sep = "")
+cat(pw$p2, "\n", sep = "")
+cat(pw$sig.level, "\n", sep = "")
+cat(round(pw$power, 6), "\n", sep = "")
+cat(pw$method, "\n", sep = "")
+cat(class(pw), "\n", sep = "")
