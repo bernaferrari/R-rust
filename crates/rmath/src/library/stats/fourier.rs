@@ -668,6 +668,25 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
     }
 }
 
+/// GNU `nextn(n)` factors 2,3,5.
+pub unsafe fn do_nextn(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        let f = if CDR(args).is_null() || CDR(args) == crate::sexp::globals::R_NilValue() {
+            let fac = Rf_allocVector(SEXPTYPE::INTSXP.as_c_int(), 3);
+            let _f = protect(fac);
+            *INTEGER(fac) = 2;
+            *INTEGER(fac).add(1) = 3;
+            *INTEGER(fac).add(2) = 5;
+            fac
+        } else {
+            CAR(CDR(args))
+        };
+        nextn(n, f)
+    }
+}
+
+
 /// GNU `spec.pgram` raw periodogram, no taper/detrend.
 pub unsafe fn do_spec_pgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
