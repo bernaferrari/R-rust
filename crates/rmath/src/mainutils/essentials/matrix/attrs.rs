@@ -583,6 +583,16 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
                 return result;
             }
+            if lookup_name == "file_ext" || lookup_name == "file_path_sans_ext" {
+                let probe = crate::eval::primitive::make_primitive_binding(
+                    &lookup_name,
+                    SEXPTYPE::BUILTINSXP,
+                );
+                if !probe.is_null() && probe != R_NilValue() {
+                    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                    return probe;
+                }
+            }
             std::panic::panic_any(RError {
                 message: format!("object '{lookup_name}' not found in tools namespace"),
             });

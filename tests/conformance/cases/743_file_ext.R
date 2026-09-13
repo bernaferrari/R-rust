@@ -1,0 +1,5 @@
+cat(tools::file_ext("a.R"), "\n", sep = "")
+cat(tools::file_ext("a.tar.gz"), "\n", sep = "")
+cat(tools::file_path_sans_ext("a.R"), "\n", sep = "")
+cat(tools::file_path_sans_ext("/tmp/a.R"), "\n", sep = "")
+cat(tools::file_ext("noext"), "\n", sep = "")

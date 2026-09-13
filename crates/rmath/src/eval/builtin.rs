@@ -1321,6 +1321,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_nchar,
     },
     EvaluatedBuiltin {
+        name: "file_ext",
+        handler: crate::mainutils::essentials::do_file_ext,
+    },
+    EvaluatedBuiltin {
+        name: "file_path_sans_ext",
+        handler: crate::mainutils::essentials::do_file_path_sans_ext,
+    },
+    EvaluatedBuiltin {
         name: "substr",
         handler: crate::mainutils::essentials::do_substr,
     },
