@@ -902,6 +902,78 @@ pub unsafe fn do_ARMAtoMA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `acf2AR(acf)` successive Yule-Walker AR fits.
+pub unsafe fn do_acf2AR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let acf = CAR(args);
+        let acf = if TYPEOF(acf) == SEXPTYPE::REALSXP {
+            acf
+        } else {
+            coerceVector(acf, SEXPTYPE::REALSXP.as_c_int())
+        };
+        let _acf = protect(acf);
+        let n = XLENGTH(acf) as usize;
+        if n < 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "acf must have at least two lags",
+            );
+        }
+        let p = n - 1;
+        let mut rho = vec![0.0f64; n];
+        for i in 0..n {
+            rho[i] = *REAL(acf).add(i);
+        }
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, p as i32);
+        let _m = protect(mat);
+        for i in 0..(p * p) {
+            *REAL(mat).add(i) = 0.0;
+        }
+        let mut phi_prev = vec![0.0f64; p];
+        for k in 1..=p {
+            let mut num = rho[k];
+            let mut den = 1.0;
+            for j in 1..k {
+                num -= phi_prev[j - 1] * rho[k - j];
+                den -= phi_prev[j - 1] * rho[j];
+            }
+            let phikk = if den.abs() < 1e-15 { 0.0 } else { num / den };
+            let mut phi = vec![0.0f64; k];
+            for j in 1..k {
+                phi[j - 1] = phi_prev[j - 1] - phikk * phi_prev[k - j - 1];
+            }
+            phi[k - 1] = phikk;
+            for j in 0..k {
+                *REAL(mat).add((k - 1) + j * p) = phi[j];
+            }
+            for j in 0..k {
+                phi_prev[j] = phi[j];
+            }
+        }
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, p as i64);
+        let _rn = protect(rn);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, p as i64);
+        let _cn = protect(cn);
+        for i in 0..p {
+            let rlab = format!("ar({})\0", i + 1);
+            let clab = format!("{}\0", i + 1);
+            SET_STRING_ELT(rn, i as i64, Rf_mkChar(rlab.as_ptr() as *const _));
+            SET_STRING_ELT(cn, i as i64, Rf_mkChar(clab.as_ptr() as *const _));
+        }
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        mat
+    }
+}
+
+
 
 
 
