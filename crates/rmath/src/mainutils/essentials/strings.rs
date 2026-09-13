@@ -1122,9 +1122,6 @@ fn abbreviate_drop_spaces(mut s: Vec<u8>, minlen: usize) -> String {
             if s[i].is_ascii_whitespace() {
                 s.remove(i);
             }
-            if s.len() <= minlen {
-                break;
-            }
             i -= 1;
         }
     }
