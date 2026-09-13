@@ -1218,6 +1218,57 @@ pub unsafe fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `intToBits(x)`: 32 LSB-first raw bits per integer.
+pub unsafe fn do_intToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let out = Rf_allocVector3(SEXPTYPE::RAWSXP, n * 32);
+        let _o = protect(out);
+        for i in 0..n {
+            let v = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                *INTEGER(x).add(i as usize) as u32
+            } else if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize) as i32 as u32
+            } else if TYPEOF(x) == SEXPTYPE::LGLSXP {
+                *LOGICAL(x).add(i as usize) as u32
+            } else {
+                0
+            };
+            for b in 0..32 {
+                *RAW(out).add((i as usize) * 32 + b) = ((v >> b) & 1) as u8;
+            }
+        }
+        out
+    }
+}
+
+/// GNU `rawToBits(x)`: 8 LSB-first raw bits per byte.
+pub unsafe fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let out = Rf_allocVector3(SEXPTYPE::RAWSXP, n * 8);
+        let _o = protect(out);
+        for i in 0..n {
+            let v = *RAW(x).add(i as usize);
+            for b in 0..8 {
+                *RAW(out).add((i as usize) * 8 + b) = (v >> b) & 1;
+            }
+        }
+        out
+    }
+}
+
+
 
 
 

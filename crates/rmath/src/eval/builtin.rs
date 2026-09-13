@@ -1341,6 +1341,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_abbreviate,
     },
     EvaluatedBuiltin {
+        name: "intToBits",
+        handler: crate::mainutils::essentials::do_intToBits,
+    },
+    EvaluatedBuiltin {
+        name: "rawToBits",
+        handler: crate::mainutils::essentials::do_rawToBits,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },

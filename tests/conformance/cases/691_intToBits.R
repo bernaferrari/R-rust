@@ -1,0 +1,7 @@
+cat(paste(as.integer(intToBits(1L)[1:8]), collapse = ","), "\n", sep = "")
+cat(length(intToBits(1L)), "\n", sep = "")
+cat(paste(as.integer(intToBits(c(1L, 2L))[1:8]), collapse = ","), "\n", sep = "")
+cat(length(intToBits(c(1L, 2L))), "\n", sep = "")
+cat(paste(as.integer(rawToBits(as.raw(1))), collapse = ","), "\n", sep = "")
+cat(paste(as.integer(rawToBits(as.raw(3))[1:4]), collapse = ","), "\n", sep = "")
+cat(as.integer(intToBits(NA_integer_)[32]), "\n", sep = "")
