@@ -1912,6 +1912,105 @@ pub unsafe fn do_nclass_sturges(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
+fn nclass_numeric_copy(x: SEXP) -> Vec<f64> {
+    unsafe {
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let mut v = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let val = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    f64::NAN
+                } else {
+                    iv as f64
+                }
+            } else {
+                f64::NAN
+            };
+            if val.is_finite() {
+                v.push(val);
+            }
+        }
+        v
+    }
+}
+
+fn nclass_sample_var(x: &[f64]) -> f64 {
+    let n = x.len();
+    if n < 2 {
+        return 0.0;
+    }
+    let mean = x.iter().sum::<f64>() / n as f64;
+    x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n as f64 - 1.0)
+}
+
+fn nclass_range(x: &[f64]) -> f64 {
+    if x.is_empty() {
+        return 0.0;
+    }
+    let min = x.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = x.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    max - min
+}
+
+fn nclass_iqr(mut x: Vec<f64>) -> f64 {
+    if x.is_empty() {
+        return 0.0;
+    }
+    x.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = x.len();
+    // GNU quantile type 7: (n-1)*p + 1
+    let q = |p: f64| -> f64 {
+        let h = (n as f64 - 1.0) * p + 1.0;
+        let lo = h.floor().clamp(1.0, n as f64) as usize;
+        let hi = h.ceil().clamp(1.0, n as f64) as usize;
+        let a = x[lo - 1];
+        let b = x[hi - 1];
+        a + (h - lo as f64) * (b - a)
+    };
+    q(0.75) - q(0.25)
+}
+
+/// GNU `nclass.scott(x)`.
+pub unsafe fn do_nclass_scott(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = nclass_numeric_copy(CAR(args));
+        let n = x.len() as f64;
+        let h = 3.5 * nclass_sample_var(&x).sqrt() * n.powf(-1.0 / 3.0);
+        let bins = if h > 0.0 {
+            (nclass_range(&x) / h).ceil().max(1.0)
+        } else {
+            1.0
+        };
+        Rf_ScalarReal(bins)
+    }
+}
+
+/// GNU `nclass.FD(x)`.
+pub unsafe fn do_nclass_fd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = nclass_numeric_copy(CAR(args));
+        let n = x.len() as f64;
+        let mut h = 2.0 * nclass_iqr(x.clone());
+        if h == 0.0 {
+            h = 3.5 * nclass_sample_var(&x).sqrt();
+        }
+        let bins = if h > 0.0 {
+            (nclass_range(&x) / h * n.powf(1.0 / 3.0)).ceil()
+        } else {
+            1.0
+        };
+        Rf_ScalarReal(bins)
+    }
+}
+
+
 
 
 

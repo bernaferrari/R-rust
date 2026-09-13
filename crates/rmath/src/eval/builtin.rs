@@ -1405,6 +1405,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_nclass_sturges,
     },
     EvaluatedBuiltin {
+        name: "nclass.scott",
+        handler: crate::mainutils::essentials::do_nclass_scott,
+    },
+    EvaluatedBuiltin {
+        name: "nclass.FD",
+        handler: crate::mainutils::essentials::do_nclass_fd,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
