@@ -326,6 +326,19 @@ pub unsafe fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `kappa(z, method="direct")` — `1/rcond(z)`.
+pub unsafe fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let rc = do_rcond(call, op, Rf_cons(CAR(args), R_NilValue()), rho);
+        if rc.is_null() || rc == R_NilValue() || TYPEOF(rc) != SEXPTYPE::REALSXP {
+            return R_NilValue();
+        }
+        let v = *REAL(rc);
+        Rf_ScalarReal(if v == 0.0 { f64::INFINITY } else { 1.0 / v })
+    }
+}
+
+
 
 
 
