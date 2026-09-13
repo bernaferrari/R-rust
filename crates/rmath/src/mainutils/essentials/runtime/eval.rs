@@ -514,3 +514,39 @@ pub unsafe fn do_D(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `deriv(~expr, name)` as an evaluable expression.
+pub unsafe fn do_deriv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut expr = CAR(args);
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP && d_symbol_name(CAR(expr)) == "~" {
+            expr = CAR(CDR(expr));
+        }
+        if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
+            expr = VECTOR_ELT(expr, 0);
+        }
+        let name_s = CAR(CDR(args));
+        let var = if TYPEOF(name_s) == SEXPTYPE::STRSXP {
+            CStr::from_ptr(CHAR(STRING_ELT(name_s, 0)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            d_symbol_name(name_s)
+        };
+        let d = d_diff(expr, &var);
+        let _d = protect(d);
+        let e_txt = crate::mainutils::deparse::deparse1line(expr, false);
+        let _et = protect(e_txt);
+        let d_txt = crate::mainutils::deparse::deparse1line(d, false);
+        let _dt = protect(d_txt);
+        let e_s = CStr::from_ptr(CHAR(STRING_ELT(e_txt, 0)))
+            .to_string_lossy();
+        let d_s = CStr::from_ptr(CHAR(STRING_ELT(d_txt, 0)))
+            .to_string_lossy();
+        let src = format!(
+            "{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; .value }}"
+        );
+        parse_source_expression_vector(&src)
+    }
+}
+
+
