@@ -1506,6 +1506,12 @@ pub unsafe fn do_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe { CAR(args) }
 }
 
+/// GNU default `getCall(x)` via $call.
+pub unsafe fn do_getCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "call") }
+}
+
+
 
 
 
