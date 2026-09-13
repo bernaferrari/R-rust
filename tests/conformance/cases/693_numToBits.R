@@ -1,0 +1,6 @@
+cat(length(numToBits(1)), "\n", sep = "")
+cat(paste(numToInts(1), collapse = ","), "\n", sep = "")
+cat(paste(numToInts(c(1, 2)), collapse = ","), "\n", sep = "")
+cat(packBits(numToBits(1), type = "double"), "\n", sep = "")
+cat(sprintf("%.15g", packBits(numToBits(pi), type = "double")), "\n", sep = "")
+cat(paste(as.integer(numToBits(1)[53:64]), collapse = ","), "\n", sep = "")

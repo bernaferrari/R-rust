@@ -1357,6 +1357,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_rawShift,
     },
     EvaluatedBuiltin {
+        name: "numToInts",
+        handler: crate::mainutils::essentials::do_numToInts,
+    },
+    EvaluatedBuiltin {
+        name: "numToBits",
+        handler: crate::mainutils::essentials::do_numToBits,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },

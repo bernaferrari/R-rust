@@ -1404,6 +1404,73 @@ unsafe fn packbits_bit(x: SEXP, idx: i64) -> u8 {
     }
 }
 
+/// GNU `numToInts(x)`: two little-endian ints per double.
+pub unsafe fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let out = Rf_allocVector3(SEXPTYPE::INTSXP, n * 2);
+        let _o = protect(out);
+        for i in 0..n {
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
+            } else {
+                0.0
+            };
+            let bits = v.to_bits();
+            *INTEGER(out).add((i as usize) * 2) = bits as u32 as i32;
+            *INTEGER(out).add((i as usize) * 2 + 1) = (bits >> 32) as u32 as i32;
+        }
+        out
+    }
+}
+
+/// GNU `numToBits(x)`: 64 LSB-first raw bits per double.
+pub unsafe fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let out = Rf_allocVector3(SEXPTYPE::RAWSXP, n * 64);
+        let _o = protect(out);
+        for i in 0..n {
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let iv = *INTEGER(x).add(i as usize);
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
+            } else {
+                0.0
+            };
+            let mut bits = v.to_bits();
+            for b in 0..64 {
+                *RAW(out).add((i as usize) * 64 + b) = (bits & 1) as u8;
+                bits >>= 1;
+            }
+        }
+        out
+    }
+}
+
+
 
 
 
