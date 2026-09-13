@@ -2059,66 +2059,47 @@ pub unsafe fn do_get_all_vars(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     unsafe { do_model_frame(call, op, args, rho) }
 }
 
-fn collect_lang_names(expr: SEXP, out: &mut Vec<String>, functions: bool, unique: bool) {
+fn pack_allnames_args(expr: SEXP, functions: bool) -> SEXP {
     unsafe {
-        if expr.is_null() || expr == R_NilValue() {
-            return;
-        }
-        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
-                .to_string_lossy()
-                .into_owned();
-            let is_op = matches!(
-                name.as_str(),
-                "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
-            );
-            if functions || !is_op {
-                if !unique || !out.iter().any(|s| s == &name) {
-                    out.push(name);
-                }
-            }
-            return;
-        }
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP {
-            collect_lang_names(CAR(expr), out, functions, unique);
-            let mut cell = CDR(expr);
-            while !cell.is_null() && cell != R_NilValue() {
-                collect_lang_names(CAR(cell), out, functions, unique);
-                cell = CDR(cell);
-            }
-        }
+        let unique = Rf_ScalarLogical(1);
+        let maxn = Rf_ScalarInteger(-1);
+        let funs = Rf_ScalarLogical(if functions { 1 } else { 0 });
+        let a1 = Rf_cons(unique, R_NilValue());
+        let _a1 = protect(a1);
+        let a2 = Rf_cons(maxn, a1);
+        let _a2 = protect(a2);
+        let a3 = Rf_cons(funs, a2);
+        let _a3 = protect(a3);
+        let a4 = Rf_cons(expr, a3);
+        let _a4 = protect(a4);
+        a4
     }
 }
 
-fn names_to_strsexp(names: &[String]) -> SEXP {
+/// GNU `all.vars(expr)` — `.Internal(all.names(..., functions=FALSE))`.
+pub unsafe fn do_all_vars(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
-        let _o = protect(out);
-        for (i, name) in names.iter().enumerate() {
-            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
-        }
-        out
+        crate::mainutils::list::do_allnames(
+            call,
+            std::ptr::null_mut(),
+            pack_allnames_args(CAR(args), false),
+            rho,
+        )
     }
 }
 
-/// GNU `all.vars(expr)` — symbols, not operators.
-pub unsafe fn do_all_vars(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `all.names(expr)` — `.Internal(all.names(..., functions=TRUE))`.
+pub unsafe fn do_all_names(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let mut names = Vec::new();
-        collect_lang_names(CAR(args), &mut names, false, true);
-        names_to_strsexp(&names)
+        crate::mainutils::list::do_allnames(
+            call,
+            std::ptr::null_mut(),
+            pack_allnames_args(CAR(args), true),
+            rho,
+        )
     }
 }
 
-/// GNU `all.names(expr)` — operators and symbols.
-pub unsafe fn do_all_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut names = Vec::new();
-        collect_lang_names(CAR(args), &mut names, true, true);
-        names_to_strsexp(&names)
-    }
-}
 
 
 
@@ -2170,6 +2151,11 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             form,
             crate::sexp::symbol::Rf_install(c"response".as_ptr()),
             Rf_ScalarInteger(response),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            form,
+            crate::sexp::symbol::Rf_install(c"intercept".as_ptr()),
+            Rf_ScalarInteger(1),
         );
         form
     }
