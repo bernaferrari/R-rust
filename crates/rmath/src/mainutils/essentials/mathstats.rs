@@ -7926,6 +7926,120 @@ pub unsafe fn do_factanal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `medpolish(x)` — additive median polish.
+pub unsafe fn do_medpolish(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (nr, nc) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            return R_NilValue();
+        };
+        if nr == 0 || nc == 0 {
+            return R_NilValue();
+        }
+        let mut z = vec![0.0; nr * nc];
+        for j in 0..nc {
+            for i in 0..nr {
+                z[i + j * nr] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i + j * nr)
+                } else {
+                    *INTEGER(x).add(i + j * nr) as f64
+                };
+            }
+        }
+        let mut overall = 0.0;
+        let mut row = vec![0.0; nr];
+        let mut col = vec![0.0; nc];
+        let mut oldsum = 0.0;
+        for _ in 0..10 {
+            for i in 0..nr {
+                let mut vals = Vec::with_capacity(nc);
+                for j in 0..nc {
+                    vals.push(z[i + j * nr]);
+                }
+                let d = median_of(&vals);
+                row[i] += d;
+                for j in 0..nc {
+                    z[i + j * nr] -= d;
+                }
+            }
+            let dc = median_of(&col);
+            for c in col.iter_mut() {
+                *c -= dc;
+            }
+            overall += dc;
+            for j in 0..nc {
+                let mut vals = Vec::with_capacity(nr);
+                for i in 0..nr {
+                    vals.push(z[i + j * nr]);
+                }
+                let d = median_of(&vals);
+                col[j] += d;
+                for i in 0..nr {
+                    z[i + j * nr] -= d;
+                }
+            }
+            let dr = median_of(&row);
+            for r in row.iter_mut() {
+                *r -= dr;
+            }
+            overall += dr;
+            let newsum: f64 = z.iter().map(|v| v.abs()).sum();
+            if newsum == 0.0 || (newsum - oldsum).abs() < 0.01 * newsum {
+                break;
+            }
+            oldsum = newsum;
+        }
+        let ov = Rf_ScalarReal(overall);
+        let _ov = protect(ov);
+        let rv = Rf_allocVector3(SEXPTYPE::REALSXP, nr as i64);
+        let _rv = protect(rv);
+        for i in 0..nr {
+            *REAL(rv).add(i) = row[i];
+        }
+        let cv = Rf_allocVector3(SEXPTYPE::REALSXP, nc as i64);
+        let _cv = protect(cv);
+        for j in 0..nc {
+            *REAL(cv).add(j) = col[j];
+        }
+        let resid = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), nr as i32, nc as i32);
+        let _rs = protect(resid);
+        for i in 0..(nr * nc) {
+            *REAL(resid).add(i) = z[i];
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, ov);
+        SET_VECTOR_ELT(result, 1, rv);
+        SET_VECTOR_ELT(result, 2, cv);
+        SET_VECTOR_ELT(result, 3, resid);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "overall".to_string(),
+                "row".to_string(),
+                "col".to_string(),
+                "residuals".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"medpolish".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 /// GNU `wilcox.test(x, y)` two-sample rank-sum.
 pub unsafe fn do_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

@@ -2135,6 +2135,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_cancor,
     },
     EvaluatedBuiltin {
+        name: "medpolish",
+        handler: crate::mainutils::essentials::do_medpolish,
+    },
+    EvaluatedBuiltin {
         name: "isoreg",
         handler: crate::library::stats::isoreg::do_isoreg,
     },

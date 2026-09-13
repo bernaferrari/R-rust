@@ -1,0 +1,6 @@
+x <- matrix(c(1, 2, 3, 4, 5, 6, 7, 8, 10), 3, 3)
+m <- medpolish(x, trace.iter = FALSE)
+cat(m$overall, "\n", sep = "")
+cat(paste(round(m$row, 4), collapse = ","), "\n", sep = "")
+cat(paste(round(m$col, 4), collapse = ","), "\n", sep = "")
+cat(paste(round(as.vector(m$residuals), 4), collapse = ","), "\n", sep = "")
