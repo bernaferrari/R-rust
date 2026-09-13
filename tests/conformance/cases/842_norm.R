@@ -1,0 +1,6 @@
+m <- matrix(c(1, 2, 3, 4), 2, 2)
+cat(norm(m, "1"), "\n", sep = "")
+cat(norm(m, "I"), "\n", sep = "")
+cat(round(norm(m, "F"), 4), "\n", sep = "")
+cat(norm(m, "M"), "\n", sep = "")
+cat(norm(m, "O"), "\n", sep = "")

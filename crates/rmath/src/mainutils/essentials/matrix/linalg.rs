@@ -294,6 +294,23 @@ pub unsafe fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `norm(x, type)` — `La_dlange`. Default type `"O"`.
+pub unsafe fn do_norm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let typ = CAR(CDR(args));
+        let typ = if typ.is_null() || typ == R_NilValue() || TYPEOF(typ) != SEXPTYPE::STRSXP {
+            let s = Rf_mkString(c"O".as_ptr());
+            let _s = protect(s);
+            s
+        } else {
+            typ
+        };
+        crate::modules::lapack::lapack_impl::La_dlange(x, typ)
+    }
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Matrix helpers

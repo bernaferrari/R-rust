@@ -3202,6 +3202,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_chol2inv,
     },
     EvaluatedBuiltin {
+        name: "norm",
+        handler: crate::mainutils::essentials::do_norm,
+    },
+    EvaluatedBuiltin {
         name: "max.col",
         handler: crate::mainutils::array::do_maxcol,
     },
