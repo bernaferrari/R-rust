@@ -2391,6 +2391,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_contr_sum,
     },
     EvaluatedBuiltin {
+        name: "contr.poly",
+        handler: crate::library::stats::filter::do_contr_poly,
+    },
+    EvaluatedBuiltin {
         name: "contr.helmert",
         handler: crate::library::stats::filter::do_contr_helmert,
     },

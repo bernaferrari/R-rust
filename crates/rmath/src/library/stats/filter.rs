@@ -2773,6 +2773,65 @@ pub unsafe fn do_contr_helmert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
+/// GNU `contr.poly(n)` — orthonormal polynomials on scores `1:n`.
+pub unsafe fn do_contr_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_s = CAR(args);
+        let n = if TYPEOF(n_s) == SEXPTYPE::INTSXP {
+            *INTEGER(n_s)
+        } else {
+            *REAL(n_s) as c_int
+        } as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let scores: Vec<f64> = (1..=n).map(|i| i as f64).collect();
+        let mean = scores.iter().sum::<f64>() / n as f64;
+        let y: Vec<f64> = scores.iter().map(|s| s - mean).collect();
+        let mut cols: Vec<Vec<f64>> = (0..n)
+            .map(|k| y.iter().map(|v| v.powi(k as i32)).collect())
+            .collect();
+        for j in 0..n {
+            for i in 0..j {
+                let dot: f64 = cols[j].iter().zip(&cols[i]).map(|(a, b)| a * b).sum();
+                let nrm: f64 = cols[i].iter().map(|a| a * a).sum();
+                if nrm > 0.0 {
+                    let c = dot / nrm;
+                    for k in 0..n {
+                        cols[j][k] -= c * cols[i][k];
+                    }
+                }
+            }
+            let nrm = cols[j].iter().map(|a| a * a).sum::<f64>().sqrt();
+            if nrm > 0.0 {
+                for k in 0..n {
+                    cols[j][k] /= nrm;
+                }
+            }
+            // GNU QR keeps the first nonzero entry of each contrast matching
+            // the sign of the raw monomial (linear starts negative).
+            if let Some(&first) = cols[j].iter().find(|v| v.abs() > 1e-12)
+                && first > 0.0
+                && j == 1
+            {
+                for k in 0..n {
+                    cols[j][k] = -cols[j][k];
+                }
+            }
+        }
+        let nc = n - 1;
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, nc as i32);
+        let _m = protect(mat);
+        for j in 0..nc {
+            for i in 0..n {
+                *REAL(mat).add(i + j * n) = cols[j + 1][i];
+            }
+        }
+        mat
+    }
+}
+
+
 /// GNU `contr.SAS(n)` is treatment with last level as base.
 pub unsafe fn do_contr_sas(
     call: SEXP,
