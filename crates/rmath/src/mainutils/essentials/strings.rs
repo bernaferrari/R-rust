@@ -1100,6 +1100,116 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+fn aregexec_match(pat: &str, text: &str, maxd: i32) -> Option<(i32, i32)> {
+    let t: Vec<char> = text.chars().collect();
+    let n = t.len();
+    let plen = pat.chars().count() as i32;
+    for start in 0..=n {
+        for delta in 0..=maxd {
+            for &len in &[plen, plen - delta, plen + delta] {
+                if len < 0 {
+                    continue;
+                }
+                let len = len as usize;
+                if start + len > n {
+                    continue;
+                }
+                let sub: String = t[start..start + len].iter().collect();
+                if adist_levenshtein(pat, &sub) <= maxd {
+                    return Some(((start + 1) as i32, len as i32));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// GNU `aregexec(pattern, text, max.distance)` for literal patterns.
+pub unsafe fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let pat = CAR(args);
+        let text = CAR(CDR(args));
+        let mut maxd = 0.1;
+        let mut cell = CDR(CDR(args));
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "max.distance" || name.is_empty() {
+                let v = CAR(cell);
+                if !v.is_null() && v != R_NilValue() && XLENGTH(v) > 0 {
+                    maxd = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                        *REAL(v)
+                    } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+                        *INTEGER(v) as f64
+                    } else {
+                        maxd
+                    };
+                }
+            }
+            cell = CDR(cell);
+        }
+        if pat.is_null() || pat == R_NilValue() || text.is_null() || text == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        }
+        let pstr = if TYPEOF(pat) == SEXPTYPE::STRSXP && XLENGTH(pat) > 0 {
+            let ch = STRING_ELT(pat, 0);
+            if ch.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        } else {
+            String::new()
+        };
+        let max_int = if maxd >= 1.0 {
+            maxd.floor() as i32
+        } else {
+            (maxd * pstr.chars().count() as f64).floor() as i32
+        };
+        let n = if TYPEOF(text) == SEXPTYPE::STRSXP {
+            XLENGTH(text)
+        } else {
+            0
+        };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let _r = protect(result);
+        let ml_sym = Rf_install(c"match.length".as_ptr());
+        for i in 0..n {
+            let ch = STRING_ELT(text, i);
+            let txt = if ch.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+            let _e = protect(elt);
+            let ml = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+            let _m = protect(ml);
+            if let Some((start, len)) = aregexec_match(&pstr, &txt, max_int) {
+                *INTEGER(elt) = start;
+                *INTEGER(ml) = len;
+            } else {
+                *INTEGER(elt) = -1;
+                *INTEGER(ml) = -1;
+            }
+            crate::sexp::attrib_core::setAttrib(elt, ml_sym, ml);
+            SET_VECTOR_ELT(result, i, elt);
+        }
+        result
+    }
+}
+
+
 fn abbreviate_first_char(s: &[u8], i: usize) -> bool {
     i > 0 && s[i - 1].is_ascii_whitespace()
 }

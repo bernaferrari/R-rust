@@ -1,0 +1,7 @@
+ae <- aregexec("aa", c("aa", "ab", "bb"), max.distance = 1)
+cat(as.integer(ae[[1]]), "\n", sep = "")
+cat(attr(ae[[1]], "match.length"), "\n", sep = "")
+cat(as.integer(ae[[2]]), "\n", sep = "")
+cat(attr(ae[[2]], "match.length"), "\n", sep = "")
+cat(as.integer(ae[[3]]), "\n", sep = "")
+cat(attr(ae[[3]], "match.length"), "\n", sep = "")
