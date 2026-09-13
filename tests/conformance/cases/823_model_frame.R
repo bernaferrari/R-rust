@@ -1,0 +1,5 @@
+mf <- model.frame(y ~ x, list(y = 1:3, x = 4:6))
+cat(paste(mf$y, collapse = ","), "\n", sep = "")
+cat(paste(mf$x, collapse = ","), "\n", sep = "")
+cat(paste(names(mf), collapse = ","), "\n", sep = "")
+cat(class(mf), "\n", sep = "")

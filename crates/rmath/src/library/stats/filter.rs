@@ -1755,6 +1755,79 @@ pub unsafe fn do_alias(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() {
+            return;
+        }
+        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
+                .to_string_lossy()
+                .into_owned();
+            if !matches!(
+                name.as_str(),
+                "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
+            ) {
+                if !out.iter().any(|s| s == &name) {
+                    out.push(name);
+                }
+            }
+            return;
+        }
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP {
+            let mut cell = CDR(expr);
+            while !cell.is_null() && cell != R_NilValue() {
+                collect_formula_symbols(CAR(cell), out);
+                cell = CDR(cell);
+            }
+        }
+    }
+}
+
+/// GNU `model.frame(formula, data)` — columns named in the formula.
+pub unsafe fn do_model_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let form = CAR(args);
+        let data = CAR(CDR(args));
+        if form.is_null() || form == R_NilValue() {
+            return R_NilValue();
+        }
+        let mut names = Vec::new();
+        collect_formula_symbols(form, &mut names);
+        if names.is_empty() {
+            return R_NilValue();
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as i64);
+        let _r = protect(result);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
+        let _on = protect(out_names);
+        for (i, name) in names.iter().enumerate() {
+            let col = if !data.is_null() && data != R_NilValue() {
+                named_list_elt(data, name)
+            } else {
+                R_NilValue()
+            };
+            SET_VECTOR_ELT(result, i as i64, col);
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(out_names, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            out_names,
+        );
+        let class = Rf_mkString(c"data.frame".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 
