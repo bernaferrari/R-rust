@@ -1827,6 +1827,21 @@ pub unsafe fn do_model_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `model.response(data)` — first column of a model frame.
+pub unsafe fn do_model_response(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let data = CAR(args);
+        if data.is_null() || data == R_NilValue() || TYPEOF(data) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        if XLENGTH(data) <= 0 {
+            return R_NilValue();
+        }
+        VECTOR_ELT(data, 0)
+    }
+}
+
+
 
 
 
