@@ -1813,6 +1813,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_chisq_test,
     },
     EvaluatedBuiltin {
+        name: "prop.test",
+        handler: crate::mainutils::essentials::do_prop_test,
+    },
+    EvaluatedBuiltin {
         name: "stem",
         handler: crate::library::graphics::stem::do_stem,
     },

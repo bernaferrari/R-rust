@@ -1,0 +1,8 @@
+pt <- prop.test(5, 10)
+cat(as.numeric(pt$statistic), "\n", sep = "")
+cat(as.numeric(pt$parameter), "\n", sep = "")
+cat(pt$p.value, "\n", sep = "")
+cat(as.numeric(pt$estimate), "\n", sep = "")
+cat(paste(round(pt$conf.int, 6), collapse = ","), "\n", sep = "")
+cat(pt$method, "\n", sep = "")
+cat(class(pt), "\n", sep = "")

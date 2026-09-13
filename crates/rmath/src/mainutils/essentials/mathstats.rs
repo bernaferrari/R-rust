@@ -2028,6 +2028,106 @@ pub unsafe fn do_chisq_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU one-sample `prop.test(x, n)`.
+pub unsafe fn do_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = elt_real_safe(CAR(args), 0);
+        let n = elt_real_safe(CAR(CDR(args)), 0);
+        let p0 = 0.5;
+        let estimate = x / n;
+        let yates = (0.5_f64).min((x - n * p0).abs());
+        let e_s = n * p0;
+        let e_f = n * (1.0 - p0);
+        let stat = {
+            let a = (x - e_s).abs() - yates;
+            let b = ((n - x) - e_f).abs() - yates;
+            a * a / e_s + b * b / e_f
+        };
+        let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+        let z = crate::dist::normal::qnorm5_inner(0.975, 0.0, 1.0, true, false);
+        let z22n = z * z / (2.0 * n);
+        let pc_u = estimate + yates / n;
+        let pc_l = estimate - yates / n;
+        let p_u = if pc_u >= 1.0 {
+            1.0
+        } else {
+            (pc_u
+                + z22n
+                + z * (pc_u * (1.0 - pc_u) / n + z22n / (2.0 * n)).sqrt())
+                / (1.0 + 2.0 * z22n)
+        };
+        let p_l = if pc_l <= 0.0 {
+            0.0
+        } else {
+            (pc_l
+                + z22n
+                - z * (pc_l * (1.0 - pc_l) / n + z22n / (2.0 * n)).sqrt())
+                / (1.0 + 2.0 * z22n)
+        };
+        let method = if yates > 0.0 {
+            "1-sample proportions test with continuity correction"
+        } else {
+            "1-sample proportions test without continuity correction"
+        };
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["X-squared".to_string()]);
+        let parameter = Rf_ScalarReal(1.0);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["df".to_string()]);
+        let est = Rf_ScalarReal(estimate);
+        let _es = protect(est);
+        set_string_names(est, &["p".to_string()]);
+        let null_value = Rf_ScalarReal(p0);
+        let _nv = protect(null_value);
+        set_string_names(null_value, &["p".to_string()]);
+        let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _cf = protect(conf);
+        *REAL(conf) = p_l.max(0.0);
+        *REAL(conf).add(1) = p_u.min(1.0);
+        crate::sexp::attrib_core::setAttrib(
+            conf,
+            crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
+            Rf_ScalarReal(0.95),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 9);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, est);
+        SET_VECTOR_ELT(result, 4, null_value);
+        SET_VECTOR_ELT(result, 5, conf);
+        SET_VECTOR_ELT(result, 6, Rf_mkString(c"two.sided".as_ptr()));
+        let m = CString::new(method).unwrap_or_default();
+        SET_VECTOR_ELT(result, 7, Rf_mkString(m.as_ptr()));
+        SET_VECTOR_ELT(result, 8, Rf_mkString(c"x out of n".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "estimate".to_string(),
+                "null.value".to_string(),
+                "conf.int".to_string(),
+                "alternative".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 
