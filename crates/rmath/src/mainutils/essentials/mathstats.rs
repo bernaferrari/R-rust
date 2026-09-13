@@ -5859,6 +5859,25 @@ pub unsafe fn do_ssmicmen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `SSgompertz(input, Asym, b2, b3)` — Gompertz growth.
+pub unsafe fn do_ssgompertz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let input = CAR(args);
+        let asym = elt_real_safe(CAR(CDR(args)), 0);
+        let b2 = elt_real_safe(CAR(CDR(CDR(args))), 0);
+        let b3 = elt_real_safe(CAR(CDR(CDR(CDR(args)))), 0);
+        let n = XLENGTH(input);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let x = elt_real_safe(input, i);
+            *REAL(result).add(i as usize) = asym * (-b2 * b3.powf(x)).exp();
+        }
+        result
+    }
+}
+
+
 
 
 
