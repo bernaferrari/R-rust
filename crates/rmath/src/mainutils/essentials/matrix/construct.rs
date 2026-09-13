@@ -960,6 +960,46 @@ pub unsafe fn do_as_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `embed(x, dimension)`.
+pub unsafe fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let d_arg = CAR(CDR(args));
+        let dimension = if TYPEOF(d_arg) == SEXPTYPE::INTSXP {
+            *INTEGER(d_arg) as isize
+        } else {
+            *REAL(d_arg) as isize
+        };
+        let n = XLENGTH(x) as isize;
+        if dimension < 1 || dimension > n {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "wrong embedding dimension",
+            );
+        }
+        let nrow = n - dimension + 1;
+        let ans = crate::mainutils::array::allocMatrix(
+            TYPEOF(x),
+            nrow as i32,
+            dimension as i32,
+        );
+        let _a = protect(ans);
+        for col in 0..dimension {
+            let src0 = dimension - 1 - col;
+            for row in 0..nrow {
+                let src = (src0 + row) as usize;
+                let dst = (row + col * nrow) as usize;
+                if TYPEOF(x) == SEXPTYPE::INTSXP {
+                    *INTEGER(ans).add(dst) = *INTEGER(x).add(src);
+                } else {
+                    *REAL(ans).add(dst) = *REAL(x).add(src);
+                }
+            }
+        }
+        ans
+    }
+}
+
 #[cfg(test)]
 mod data_matrix_tests {
     use crate::sexp::ffi::TRUE;
