@@ -1749,6 +1749,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_terms,
     },
     EvaluatedBuiltin {
+        name: "offset",
+        handler: crate::library::stats::filter::do_offset,
+    },
+    EvaluatedBuiltin {
         name: "window",
         handler: crate::library::stats::filter::do_window,
     },

@@ -1501,6 +1501,12 @@ pub unsafe fn do_terms(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { named_list_elt(CAR(args), "terms") }
 }
 
+/// GNU `offset(object)` is identity.
+pub unsafe fn do_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(args) }
+}
+
+
 
 
 
