@@ -190,13 +190,27 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         *INTEGER(dim) = nfit as c_int;
         *INTEGER(dim).add(1) = 4;
         crate::sexp::attrib_core::setAttrib(fitted, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let ncoef = 2 + period as i64;
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, ncoef);
+        let _cf = protect(coef);
+        *REAL(coef) = a;
+        *REAL(coef).add(1) = b;
+        for i in 0..period as usize {
+            *REAL(coef).add(2 + i) = s[i];
+        }
+        let mut cnames = vec!["a".to_string(), "b".to_string()];
+        for i in 1..=period {
+            cnames.push(format!("s{i}"));
+        }
+        crate::mainutils::essentials::set_string_names(coef, &cnames);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, fitted);
         SET_VECTOR_ELT(result, 1, crate::sexp::constructors::Rf_ScalarReal(alpha));
         SET_VECTOR_ELT(result, 2, crate::sexp::constructors::Rf_ScalarReal(beta));
         SET_VECTOR_ELT(result, 3, crate::sexp::constructors::Rf_ScalarReal(gamma));
         SET_VECTOR_ELT(result, 4, crate::sexp::constructors::Rf_ScalarReal(sse));
+        SET_VECTOR_ELT(result, 5, coef);
         crate::mainutils::essentials::set_string_names(
             result,
             &[
@@ -205,6 +219,7 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 "beta".to_string(),
                 "gamma".to_string(),
                 "SSE".to_string(),
+                "coefficients".to_string(),
             ],
         );
         crate::sexp::attrib_core::setAttrib(
