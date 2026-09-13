@@ -1470,6 +1470,122 @@ pub unsafe fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `utf8ToInt(x)`: UTF-8 code points of a length-1 string.
+pub unsafe fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null()
+            || x == R_NilValue()
+            || TYPEOF(x) != SEXPTYPE::STRSXP
+            || XLENGTH(x) == 0
+        {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "argument must be a character vector of length 1",
+            );
+        }
+        let ch = STRING_ELT(x, 0);
+        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            return Rf_ScalarInteger(NA_INTEGER);
+        }
+        let raw = std::ffi::CStr::from_ptr(CHAR(ch))
+            .to_string_lossy();
+        if raw.contains('\u{FFFD}') && !std::str::from_utf8(raw.as_bytes()).is_ok() {
+            return Rf_ScalarInteger(NA_INTEGER);
+        }
+        let cps: Vec<i32> = raw.chars().map(|c| c as u32 as i32).collect();
+        let out = Rf_allocVector3(SEXPTYPE::INTSXP, cps.len() as i64);
+        let _o = protect(out);
+        for (i, cp) in cps.iter().enumerate() {
+            *INTEGER(out).add(i) = *cp;
+        }
+        out
+    }
+}
+
+/// GNU `intToUtf8(x, multiple=FALSE)`.
+pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let mut multiple = false;
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let m = CAR(rest);
+            if TYPEOF(m) == SEXPTYPE::LGLSXP && XLENGTH(m) > 0 {
+                multiple = *LOGICAL(m) == TRUE;
+            }
+        }
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let code = |i: i64| -> i32 {
+            if TYPEOF(x) == SEXPTYPE::INTSXP {
+                *INTEGER(x).add(i as usize)
+            } else if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize) as i32
+            } else {
+                NA_INTEGER
+            }
+        };
+        let valid = |cp: i32| -> Option<char> {
+            if cp == NA_INTEGER || cp < 0 || (0xD800..=0xDFFF).contains(&cp) || cp > 0x10FFFF {
+                None
+            } else if cp == 0 {
+                Some('\0')
+            } else {
+                char::from_u32(cp as u32)
+            }
+        };
+        if multiple {
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _o = protect(out);
+            for i in 0..n {
+                match valid(code(i)) {
+                    Some('\0') => {
+                        SET_STRING_ELT(out, i, Rf_mkChar(c"".as_ptr()));
+                    }
+                    Some(ch) => {
+                        let mut buf = [0u8; 8];
+                        let encoded = ch.encode_utf8(&mut buf);
+                        let c = CString::new(encoded.as_bytes())
+                            .unwrap_or_else(|_| CString::new("").unwrap());
+                        SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+                    }
+                    None => {
+                        SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+                    }
+                }
+            }
+            out
+        } else {
+            let mut s = String::new();
+            let mut have_na = false;
+            for i in 0..n {
+                match valid(code(i)) {
+                    Some('\0') => {}
+                    Some(ch) => s.push(ch),
+                    None => {
+                        have_na = true;
+                        break;
+                    }
+                }
+            }
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            let _o = protect(out);
+            if have_na {
+                SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+            } else {
+                let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
+                SET_STRING_ELT(out, 0, Rf_mkChar(c.as_ptr()));
+            }
+            out
+        }
+    }
+}
+
+
 
 
 

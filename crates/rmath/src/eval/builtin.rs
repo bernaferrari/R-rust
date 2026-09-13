@@ -1365,6 +1365,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_numToBits,
     },
     EvaluatedBuiltin {
+        name: "utf8ToInt",
+        handler: crate::mainutils::essentials::do_utf8ToInt,
+    },
+    EvaluatedBuiltin {
+        name: "intToUtf8",
+        handler: crate::mainutils::essentials::do_intToUtf8,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },

@@ -1,0 +1,6 @@
+cat(paste(utf8ToInt("abc"), collapse = ","), "\n", sep = "")
+cat(utf8ToInt(intToUtf8(233L)), "\n", sep = "")
+cat(intToUtf8(65:67), "\n", sep = "")
+cat(intToUtf8(c(97L, 98L, 99L)), "\n", sep = "")
+cat(paste(intToUtf8(c(65L, 66L), multiple = TRUE), collapse = ","), "\n", sep = "")
+cat(length(utf8ToInt("")), "\n", sep = "")
