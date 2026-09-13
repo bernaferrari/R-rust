@@ -338,11 +338,7 @@ unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
                             base,
                         );
                     }
-                    let nm1 = if n == n.trunc() && n.abs() < 1e9 {
-                        Rf_ScalarInteger((n - 1.0) as i32)
-                    } else {
-                        Rf_ScalarReal(n - 1.0)
-                    };
+                    let nm1 = Rf_ScalarReal(n - 1.0);
                     let pow = crate::sexp::constructors::Rf_lang3(
                         Rf_install(c"^".as_ptr()),
                         base,
@@ -359,16 +355,42 @@ unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
         if name == "+" || name == "-" {
             let a = d_diff(CAR(CDR(expr)), var);
             let b = d_diff(CAR(CDR(CDR(expr))), var);
+            if let Some(bv) = d_numeric(b) {
+                if bv == 0.0 {
+                    return a;
+                }
+            }
+            if name == "+" {
+                if let Some(av) = d_numeric(a) {
+                    if av == 0.0 {
+                        return b;
+                    }
+                }
+            }
             return crate::sexp::constructors::Rf_lang3(op, a, b);
         }
         if name == "*" {
             let a = CAR(CDR(expr));
             let b = CAR(CDR(CDR(expr)));
             if d_numeric(a).is_some() {
-                return crate::sexp::constructors::Rf_lang3(op, a, d_diff(b, var));
+                let db = d_diff(b, var);
+                if d_numeric(db) == Some(1.0) {
+                    return a;
+                }
+                if d_numeric(db) == Some(0.0) {
+                    return Rf_ScalarInteger(0);
+                }
+                return crate::sexp::constructors::Rf_lang3(op, a, db);
             }
             if d_numeric(b).is_some() {
-                return crate::sexp::constructors::Rf_lang3(op, d_diff(a, var), b);
+                let da = d_diff(a, var);
+                if d_numeric(da) == Some(1.0) {
+                    return b;
+                }
+                if d_numeric(da) == Some(0.0) {
+                    return Rf_ScalarInteger(0);
+                }
+                return crate::sexp::constructors::Rf_lang3(op, da, b);
             }
         }
         if name == "sin" {
