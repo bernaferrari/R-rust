@@ -1,0 +1,6 @@
+y1 <- c(1, 2, 3, 4, 5, 6)
+y2 <- c(2, 3, 2, 5, 6, 7)
+g <- factor(c("a", "a", "a", "b", "b", "b"))
+m <- manova(cbind(y1, y2) ~ g)
+cat(paste(class(m), collapse = ","), "\n", sep = "")
+cat(paste(round(as.vector(coef(m)), 4), collapse = ","), "\n", sep = "")

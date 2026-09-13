@@ -5599,6 +5599,95 @@ pub unsafe fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `manova(cbind(y1,y2) ~ g)` — two-group treatment coefficients.
+pub unsafe fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let form = CAR(args);
+        if form.is_null() || form == R_NilValue() || TYPEOF(form) != SEXPTYPE::LANGSXP {
+            return R_NilValue();
+        }
+        let lhs = CADR(form);
+        let rhs_cell = CDR(CDR(form));
+        if rhs_cell.is_null() || rhs_cell == R_NilValue() {
+            return R_NilValue();
+        }
+        let g_expr = CAR(rhs_cell);
+        let y = crate::eval::eval::Rf_eval(lhs, rho);
+        let g = crate::eval::eval::Rf_eval(g_expr, rho);
+        let _y = protect(y);
+        let _g = protect(g);
+        let dim = crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_DimSymbol());
+        let (nr, nc) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            (XLENGTH(y) as usize, 1)
+        };
+        if nr == 0 || nc == 0 || TYPEOF(g) != SEXPTYPE::INTSXP {
+            return R_NilValue();
+        }
+        let ng = XLENGTH(g) as usize;
+        let n = nr.min(ng);
+        let mut sum1 = vec![0.0; nc];
+        let mut sum2 = vec![0.0; nc];
+        let mut n1 = 0.0;
+        let mut n2 = 0.0;
+        for i in 0..n {
+            let code = *INTEGER(g).add(i);
+            for j in 0..nc {
+                let v = if TYPEOF(y) == SEXPTYPE::REALSXP {
+                    *REAL(y).add(i + j * nr)
+                } else {
+                    *INTEGER(y).add(i + j * nr) as f64
+                };
+                if code <= 1 {
+                    sum1[j] += v;
+                    if j == 0 {
+                        n1 += 1.0;
+                    }
+                } else {
+                    sum2[j] += v;
+                    if j == 0 {
+                        n2 += 1.0;
+                    }
+                }
+            }
+        }
+        if n1 <= 0.0 || n2 <= 0.0 {
+            return R_NilValue();
+        }
+        let coef = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, nc as i32);
+        let _c = protect(coef);
+        for j in 0..nc {
+            let m1 = sum1[j] / n1;
+            let m2 = sum2[j] / n2;
+            *REAL(coef).add(j * 2) = m1;
+            *REAL(coef).add(1 + j * 2) = m2 - m1;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        crate::mainutils::essentials::set_string_names(result, &["coefficients".to_string()]);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
+        let _cl = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"manova".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"maov".as_ptr()));
+        SET_STRING_ELT(class, 2, Rf_mkChar(c"aov".as_ptr()));
+        SET_STRING_ELT(class, 3, Rf_mkChar(c"mlm".as_ptr()));
+        SET_STRING_ELT(class, 4, Rf_mkChar(c"lm".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 /// GNU `TukeyHSD(aov)` — pairwise studentized-range intervals for one grouping factor.
 pub unsafe fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
