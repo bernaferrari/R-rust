@@ -1857,6 +1857,108 @@ pub unsafe fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+fn binom_two_sided_p(x: f64, n: f64, p: f64) -> f64 {
+    let dobs = crate::dist::binomial::dbinom_inner(x, n, p, false);
+    let mut s = 0.0;
+    let mut k = 0.0;
+    while k <= n + 0.5 {
+        let dk = crate::dist::binomial::dbinom_inner(k, n, p, false);
+        if dk <= dobs * (1.0 + 1e-7) {
+            s += dk;
+        }
+        k += 1.0;
+    }
+    s.min(1.0)
+}
+
+/// GNU `binom.test(x, n, p=0.5)`.
+pub unsafe fn do_binom_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = elt_real_safe(CAR(args), 0).round();
+        let n_arg = CAR(CDR(args));
+        let n = if n_arg.is_null() || n_arg == R_NilValue() {
+            x
+        } else {
+            elt_real_safe(n_arg, 0).round()
+        };
+        let mut p0 = 0.5;
+        let rest = CDR(CDR(args));
+        if !rest.is_null() && rest != R_NilValue() {
+            let p_s = CAR(rest);
+            if !p_s.is_null() && p_s != R_NilValue() && TYPEOF(p_s) != SEXPTYPE::STRSXP {
+                p0 = elt_real_safe(p_s, 0);
+            }
+        }
+        let pval = binom_two_sided_p(x, n, p0);
+        let alpha = 0.025;
+        let lo = if x == 0.0 {
+            0.0
+        } else {
+            crate::dist::beta::qbeta_inner(alpha, x, n - x + 1.0, true, false)
+        };
+        let hi = if x == n {
+            1.0
+        } else {
+            crate::dist::beta::qbeta_inner(1.0 - alpha, x + 1.0, n - x, true, false)
+        };
+        let statistic = Rf_ScalarReal(x);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["number of successes".to_string()]);
+        let parameter = Rf_ScalarReal(n);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["number of trials".to_string()]);
+        let estimate = Rf_ScalarReal(x / n);
+        let _es = protect(estimate);
+        set_string_names(estimate, &["probability of success".to_string()]);
+        let null_value = Rf_ScalarReal(p0);
+        let _nv = protect(null_value);
+        set_string_names(null_value, &["probability of success".to_string()]);
+        let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _cf = protect(conf);
+        *REAL(conf) = lo;
+        *REAL(conf).add(1) = hi;
+        crate::sexp::attrib_core::setAttrib(
+            conf,
+            crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
+            Rf_ScalarReal(0.95),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 9);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, conf);
+        SET_VECTOR_ELT(result, 4, estimate);
+        SET_VECTOR_ELT(result, 5, null_value);
+        SET_VECTOR_ELT(result, 6, Rf_mkString(c"two.sided".as_ptr()));
+        SET_VECTOR_ELT(result, 7, Rf_mkString(c"Exact binomial test".as_ptr()));
+        SET_VECTOR_ELT(result, 8, Rf_mkString(c"x and n".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "conf.int".to_string(),
+                "estimate".to_string(),
+                "null.value".to_string(),
+                "alternative".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 /// GNU `ecdf(x)` — empirical CDF as a step function.

@@ -1805,6 +1805,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_t_test,
     },
     EvaluatedBuiltin {
+        name: "binom.test",
+        handler: crate::mainutils::essentials::do_binom_test,
+    },
+    EvaluatedBuiltin {
         name: "stem",
         handler: crate::library::graphics::stem::do_stem,
     },

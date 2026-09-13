@@ -1,0 +1,8 @@
+bt <- binom.test(5, 10)
+cat(as.numeric(bt$statistic), "\n", sep = "")
+cat(as.numeric(bt$parameter), "\n", sep = "")
+cat(bt$p.value, "\n", sep = "")
+cat(as.numeric(bt$estimate), "\n", sep = "")
+cat(paste(round(bt$conf.int, 6), collapse = ","), "\n", sep = "")
+cat(bt$method, "\n", sep = "")
+cat(class(bt), "\n", sep = "")
