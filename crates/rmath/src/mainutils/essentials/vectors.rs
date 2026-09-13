@@ -131,8 +131,16 @@ unsafe fn bind_pairlist_cell_name(x: SEXP, i: R_xlen_t) -> SEXP {
 ///
 /// Coercion rules: STRSXP > CPLXSXP > REALSXP > INTSXP > LGLSXP.
 /// If any arg is STRSXP, result is STRSXP.
-pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let first = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(args)
+        };
+        if crate::mainutils::objects::inherits2(first, c"POSIXlt".as_ptr()) != 0 {
+            return do_c_POSIXlt(call, op, args, rho);
+        }
         let datetime_class = leading_datetime_class(args);
         // First pass: determine result type and total length
         let mut result_type = SEXPTYPE::NILSXP.as_c_int();

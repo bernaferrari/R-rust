@@ -1113,6 +1113,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_c_POSIXct,
     },
     EvaluatedBuiltin {
+        name: "c.POSIXlt",
+        handler: crate::mainutils::essentials::do_c_POSIXlt,
+    },
+    EvaluatedBuiltin {
         name: "logical",
         handler: crate::mainutils::essentials::do_logical_constructor,
     },

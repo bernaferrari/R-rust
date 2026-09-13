@@ -1,0 +1,6 @@
+x <- c.POSIXlt(as.POSIXlt(ISOdate(2020, 1, 1)), as.POSIXlt(ISOdate(2020, 1, 3)))
+cat(paste(class(x), collapse = ","), "\n", sep = "")
+cat(paste(as.numeric(as.POSIXct(x)), collapse = ","), "\n", sep = "")
+y <- c(as.POSIXlt(ISOdate(2020, 1, 1)), as.POSIXlt(ISOdate(2020, 1, 3)))
+cat(paste(class(y), collapse = ","), "\n", sep = "")
+cat(paste(as.numeric(as.POSIXct(y)), collapse = ","), "\n", sep = "")

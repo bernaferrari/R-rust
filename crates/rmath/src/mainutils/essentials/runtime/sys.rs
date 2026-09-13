@@ -1847,6 +1847,49 @@ pub unsafe fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `c.POSIXlt(...)`.
+pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut converted = R_NilValue();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = crate::eval::eval::Rf_eval(CAR(cell), rho);
+            let tag = TAG(cell);
+            let skip = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    == "recursive"
+            } else {
+                false
+            };
+            if !skip {
+                let ct = if crate::mainutils::objects::inherits2(v, c"POSIXct".as_ptr()) != 0 {
+                    v
+                } else {
+                    do_as_POSIXct(call, op, Rf_cons(v, R_NilValue()), rho)
+                };
+                let node = Rf_cons(ct, converted);
+                SETTAG(node, tag);
+                converted = node;
+            }
+            cell = CDR(cell);
+        }
+        let mut rev = R_NilValue();
+        let mut c = converted;
+        while !c.is_null() && c != R_NilValue() {
+            let node = Rf_cons(CAR(c), rev);
+            SETTAG(node, TAG(c));
+            rev = node;
+            c = CDR(c);
+        }
+        let _a = protect(rev);
+        let ct = do_c_POSIXct(call, op, rev, rho);
+        let _ct = protect(ct);
+        crate::mainutils::datetime::do_as_POSIXlt(call, op, Rf_cons(ct, R_NilValue()), rho)
+    }
+}
+
+
 /// GNU `is.numeric.Date` / `is.numeric.POSIXt`.
 pub unsafe fn do_is_numeric_Date(
     _call: SEXP,
