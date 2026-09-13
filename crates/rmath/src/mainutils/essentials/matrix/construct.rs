@@ -832,6 +832,50 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `isSymmetric(object)` — square matrix equals its transpose.
+pub unsafe fn do_is_symmetric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_ScalarLogical(FALSE);
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || XLENGTH(dim) < 2
+        {
+            return Rf_ScalarLogical(FALSE);
+        }
+        let n = *INTEGER(dim) as usize;
+        let nc = *INTEGER(dim).add(1) as usize;
+        if n != nc {
+            return Rf_ScalarLogical(FALSE);
+        }
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i + j * n)
+                } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                    *INTEGER(x).add(i + j * n) as f64
+                } else {
+                    return Rf_ScalarLogical(FALSE);
+                };
+                let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(j + i * n)
+                } else {
+                    *INTEGER(x).add(j + i * n) as f64
+                };
+                if (a - b).abs() > 1e-10 {
+                    return Rf_ScalarLogical(FALSE);
+                }
+            }
+        }
+        Rf_ScalarLogical(TRUE)
+    }
+}
+
+
 unsafe fn data_matrix_row_names(frame: SEXP, rownames_force: SEXP) -> SEXP {
     unsafe {
         let force = if rownames_force.is_null() || rownames_force == R_NilValue() {

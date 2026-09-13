@@ -4091,6 +4091,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_matrix,
     },
     EvaluatedBuiltin {
+        name: "isSymmetric",
+        handler: crate::mainutils::essentials::do_is_symmetric,
+    },
+    EvaluatedBuiltin {
         name: "data.matrix",
         handler: crate::mainutils::essentials::do_data_matrix,
     },
