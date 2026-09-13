@@ -399,6 +399,22 @@ unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
                 return crate::sexp::constructors::Rf_lang2(Rf_install(c"cos".as_ptr()), arg);
             }
         }
+        if name == "exp" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                return crate::sexp::constructors::Rf_lang2(Rf_install(c"exp".as_ptr()), arg);
+            }
+        }
+        if name == "log" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                return crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"/".as_ptr()),
+                    Rf_ScalarReal(1.0),
+                    arg,
+                );
+            }
+        }
         Rf_ScalarInteger(0)
     }
 }
