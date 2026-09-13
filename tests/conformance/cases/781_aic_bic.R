@@ -1,0 +1,5 @@
+ll <- structure(-10, class = "logLik", df = 3, nobs = 20)
+cat(AIC(ll), "\n", sep = "")
+cat(round(BIC(ll), 4), "\n", sep = "")
+cat(as.numeric(logLik(ll)), "\n", sep = "")
+cat(attr(logLik(ll), "df"), "\n", sep = "")

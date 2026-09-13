@@ -1893,6 +1893,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_oneway_test,
     },
     EvaluatedBuiltin {
+        name: "AIC",
+        handler: crate::mainutils::essentials::do_aic,
+    },
+    EvaluatedBuiltin {
+        name: "BIC",
+        handler: crate::mainutils::essentials::do_bic,
+    },
+    EvaluatedBuiltin {
+        name: "logLik",
+        handler: crate::mainutils::essentials::do_loglik,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },

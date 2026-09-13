@@ -4371,6 +4371,77 @@ pub unsafe fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
     }
 }
 
+fn loglik_numeric(x: SEXP) -> f64 {
+    unsafe { elt_real_safe(x, 0) }
+}
+
+fn loglik_df(x: SEXP) -> f64 {
+    unsafe {
+        let df = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"df".as_ptr()));
+        if !df.is_null() && df != R_NilValue() {
+            elt_real_safe(df, 0)
+        } else {
+            0.0
+        }
+    }
+}
+
+fn loglik_nobs(x: SEXP) -> f64 {
+    unsafe {
+        let n = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"nobs".as_ptr()));
+        if !n.is_null() && n != R_NilValue() {
+            elt_real_safe(n, 0)
+        } else {
+            0.0
+        }
+    }
+}
+
+/// GNU `AIC(object, k=2)` for a `logLik`.
+pub unsafe fn do_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let mut k = 2.0;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "k" || name.is_empty() {
+                let v = CAR(cell);
+                if !v.is_null() && v != R_NilValue() {
+                    let kv = elt_real_safe(v, 0);
+                    if kv.is_finite() {
+                        k = kv;
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
+        Rf_ScalarReal(-2.0 * loglik_numeric(x) + k * loglik_df(x))
+    }
+}
+
+/// GNU `BIC(object)` for a `logLik`.
+pub unsafe fn do_bic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = loglik_nobs(x);
+        Rf_ScalarReal(-2.0 * loglik_numeric(x) + loglik_df(x) * n.ln())
+    }
+}
+
+/// GNU `logLik` identity for an already-tagged logLik.
+pub unsafe fn do_loglik(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(args) }
+}
+
+
 
 
 
