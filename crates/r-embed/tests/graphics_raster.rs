@@ -12,26 +12,21 @@ struct DecodedPng {
 impl DecodedPng {
     fn matching(&self, predicate: impl Fn([u8; 4]) -> bool) -> usize {
         self.rgba
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .copied()
+            .chunks_exact(4)
+            .map(|pixel| pixel.try_into().unwrap())
             .filter(|pixel| predicate(*pixel))
             .count()
     }
 
     fn bounds(&self, predicate: impl Fn([u8; 4]) -> bool) -> Option<(u32, u32, u32, u32)> {
-        let mut points =
-            self.rgba
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .enumerate()
-                .filter_map(|(index, pixel)| {
-                    let pixel = *pixel;
-                    predicate(pixel)
-                        .then_some((index as u32 % self.width, index as u32 / self.width))
-                });
+        let mut points = self
+            .rgba
+            .chunks_exact(4)
+            .enumerate()
+            .filter_map(|(index, pixel)| {
+                let pixel = pixel.try_into().unwrap();
+                predicate(pixel).then_some((index as u32 % self.width, index as u32 / self.width))
+            });
         let first = points.next()?;
         let mut bounds = (first.0, first.1, first.0, first.1);
         for (x, y) in points {
@@ -69,8 +64,8 @@ fn assert_quadrant(
     let mut count = 0;
     let mut sum_x = 0u64;
     let mut sum_y = 0u64;
-    for (index, pixel) in image.rgba.as_chunks::<4>().0.iter().enumerate() {
-        if predicate(*pixel) {
+    for (index, pixel) in image.rgba.chunks_exact(4).enumerate() {
+        if predicate(pixel.try_into().unwrap()) {
             let x = index as u32 % image.width;
             let y = index as u32 / image.width;
             count += 1;
@@ -97,9 +92,7 @@ fn decode_png(png_bytes: &[u8]) -> DecodedPng {
     let rgba = match info.color_type {
         png::ColorType::Rgba => bytes.to_vec(),
         png::ColorType::Rgb => bytes
-            .as_chunks::<3>()
-            .0
-            .iter()
+            .chunks_exact(3)
             .flat_map(|rgb| [rgb[0], rgb[1], rgb[2], 255])
             .collect(),
         other => panic!("unexpected png color type: {other:?}"),

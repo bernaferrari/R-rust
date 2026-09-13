@@ -1747,6 +1747,7 @@ pub unsafe fn do_bitwShiftR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     unsafe { bitwiseShiftR(CAR(args), CADR(args)) }
 }
 
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

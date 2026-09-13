@@ -784,12 +784,12 @@ pub unsafe fn do_convolve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+
+
 /// GNU `spec.pgram` raw periodogram, no taper/detrend.
 pub unsafe fn do_spec_pgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{
-            CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH,
-        };
+        use crate::sexp::accessors::{CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
         use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkString};
         use crate::sexp::protect::protect;
         let x = CAR(args);
@@ -848,3 +848,5 @@ pub unsafe fn do_spectrum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
     }
 }
+
+

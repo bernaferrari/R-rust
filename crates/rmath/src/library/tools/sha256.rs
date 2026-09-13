@@ -104,7 +104,7 @@ fn sha256_process_block(buffer: &[u8], ctx: &mut Sha256Ctx) {
     }
 
     // Process all bytes in the buffer with 64 bytes in each round
-    for block in buffer.as_chunks::<64>().0 {
+    for block in buffer.chunks_exact(64) {
         let mut w: [u32; 64] = [0; 64];
         let a_save = a;
         let b_save = b;

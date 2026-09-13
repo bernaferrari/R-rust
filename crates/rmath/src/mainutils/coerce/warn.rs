@@ -327,6 +327,7 @@ impl Drop for CoercionWarningCallGuard {
     }
 }
 
+
 // ---------------------------------------------------------------------------
 
 /// Issue coercion warnings based on the warning flags.
@@ -345,7 +346,7 @@ pub unsafe fn CoercionWarning(warn: c_int) {
                 );
             } else {
                 crate::mainutils::errors::Rf_warning(
-                    b"NAs introduced by coercion\0".as_ptr() as *const core::ffi::c_char
+                    b"NAs introduced by coercion\0".as_ptr() as *const core::ffi::c_char,
                 );
             }
         }

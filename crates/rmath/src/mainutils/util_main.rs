@@ -1748,7 +1748,7 @@ mod tests {
                 TRUE,
                 0,
             );
-            assert_eq!(val.to_bits(), R_NA_REAL.to_bits());
+            assert!(val.to_bits() == R_NA_REAL.to_bits());
         }
     }
 

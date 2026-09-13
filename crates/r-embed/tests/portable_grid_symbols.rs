@@ -6,9 +6,7 @@ fn ink(bytes: &[u8]) -> usize {
     let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
     let info = reader.next_frame(&mut pixels).unwrap();
     pixels[..info.buffer_size()]
-        .as_chunks::<4>()
-        .0
-        .iter()
+        .chunks_exact(4)
         .filter(|p| p[0] < 128 || p[1] < 128 || p[2] < 128)
         .count()
 }

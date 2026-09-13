@@ -1,8 +1,8 @@
 //! Holt-Winters filtering algorithm.
 //! Port of r-source/src/library/stats/src/HoltWinters.c
 
-use crate::sexp::ffi::SEXP;
 use core::ffi::{c_double, c_int, c_void};
+use crate::sexp::ffi::SEXP;
 
 /// Holt-Winters filtering.
 ///
@@ -117,7 +117,10 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let x0 = CAR(args);
         let n = XLENGTH(x0) as c_int;
         let tsp = crate::sexp::attrib_core::getAttrib(x0, Rf_install(c"tsp".as_ptr()));
-        let period = if !tsp.is_null() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 3 {
+        let period = if !tsp.is_null()
+            && TYPEOF(tsp) == SEXPTYPE::REALSXP
+            && XLENGTH(tsp) >= 3
+        {
             *REAL(tsp).add(2) as c_int
         } else {
             12
@@ -231,3 +234,4 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         result
     }
 }
+

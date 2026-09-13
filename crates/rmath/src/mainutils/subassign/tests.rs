@@ -226,7 +226,12 @@ mod tests {
             let args = Rf_cons(x, Rf_cons(idx, Rf_cons(y, R_NilValue())));
             let _args_guard = protect(args);
 
-            let result = do_subassign_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            let result = do_subassign_dflt(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                args,
+                ptr::null_mut(),
+            );
             let _result_guard = protect(result);
 
             assert!(!result.is_null());

@@ -468,7 +468,7 @@ fn fill_polygon_pixels(device: &mut GEDeviceDesc, points: &[(c_int, c_int)], col
             }
         }
         crossings.sort_unstable();
-        for pair in crossings.as_chunks::<2>().0 {
+        for pair in crossings.chunks_exact(2) {
             let left = clamp_endpoint(pair[0], device.pixel_width);
             let right = clamp_endpoint(pair[1], device.pixel_width);
             for x in left.min(right)..=left.max(right) {

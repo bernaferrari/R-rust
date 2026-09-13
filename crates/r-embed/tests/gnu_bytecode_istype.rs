@@ -129,10 +129,7 @@ fn imported_gnu_istype_opcodes_match_type_object_and_factor_edges() {
         "[1] TRUE"
     );
     assert_eq!(
-        session
-            .eval("identical(f(quote(x)), FALSE)")
-            .unwrap()
-            .trim(),
+        session.eval("identical(f(quote(x)), FALSE)").unwrap().trim(),
         "[1] TRUE"
     );
 
@@ -165,10 +162,7 @@ fn imported_gnu_istype_opcodes_match_type_object_and_factor_edges() {
         "[1] TRUE"
     );
     assert_eq!(
-        session
-            .eval("identical(f(factor(1)), TRUE)")
-            .unwrap()
-            .trim(),
+        session.eval("identical(f(factor(1)), TRUE)").unwrap().trim(),
         "[1] TRUE"
     );
 }
@@ -216,7 +210,10 @@ fn malformed_istype_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
+    let loaded = session.eval(&format!(
+        "f <- unserialize({})",
+        raw_expression(&malformed)
+    ));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

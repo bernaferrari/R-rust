@@ -105,8 +105,7 @@ unsafe fn apply(args: SEXP, job: Job) -> SEXP {
         let k_arg;
         match job {
             Job::Fitted => {
-                let matched =
-                    match_args(args, [b"qr".as_slice(), b"y".as_slice(), b"k".as_slice()]);
+                let matched = match_args(args, [b"qr".as_slice(), b"y".as_slice(), b"k".as_slice()]);
                 q = matched[0].unwrap_or_else(|| err("argument 'qr' is missing, with no default"));
                 y = matched[1].unwrap_or_else(|| err("argument 'y' is missing, with no default"));
                 k_arg = matched[2];
@@ -254,8 +253,12 @@ unsafe fn apply(args: SEXP, job: Job) -> SEXP {
         let _qy_tail = protect(qy_tail);
         let qy_args = Rf_cons(q, qy_tail);
         let _qy_args = protect(qy_args);
-        let fitted =
-            crate::mainutils::qr_apply::do_qr_qy(R_NilValue(), R_NilValue(), qy_args, R_NilValue());
+        let fitted = crate::mainutils::qr_apply::do_qr_qy(
+            R_NilValue(),
+            R_NilValue(),
+            qy_args,
+            R_NilValue(),
+        );
         let _fitted = protect(fitted);
         match job {
             Job::Fitted => {

@@ -86,7 +86,7 @@ impl VelloRenderer {
         let mut image = Pixmap::new(self.width, self.height);
         self.context.flush();
         self.context.render(&mut image, &mut self.resources);
-        for p in image.data_as_u8_slice_mut().as_chunks_mut::<4>().0 {
+        for p in image.data_as_u8_slice_mut().chunks_exact_mut(4) {
             if p[3] > 0 && p[3] < 255 {
                 for j in 0..3 {
                     p[j] = ((u32::from(p[j]) * 255 + u32::from(p[3]) / 2) / u32::from(p[3]))
@@ -196,9 +196,7 @@ impl RenderPlot for VelloRenderer {
         use vello_cpu::peniko::{ImageQuality, ImageSampler};
         let pixels = image
             .pixels()
-            .as_chunks::<4>()
-            .0
-            .iter()
+            .chunks_exact(4)
             .map(|p| {
                 let premultiply = |v: u8| ((u16::from(v) * u16::from(p[3]) + 127) / 255) as u8;
                 PremulRgba8 {
@@ -351,9 +349,7 @@ mod tests {
         let both = render(FontFace::BoldItalic);
         let ink = |pixels: &[u8]| {
             pixels
-                .as_chunks::<4>()
-                .0
-                .iter()
+                .chunks_exact(4)
                 .map(|p| u64::from(255 - p[0]))
                 .sum::<u64>()
         };
@@ -459,10 +455,8 @@ mod tests {
         assert!(
             renderer
                 .pixels()
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .any(|rgba| *rgba != [255, 255, 255, 255])
+                .chunks_exact(4)
+                .any(|rgba| rgba != [255, 255, 255, 255])
         );
     }
     #[test]

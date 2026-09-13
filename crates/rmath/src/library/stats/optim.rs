@@ -1156,3 +1156,4 @@ pub unsafe fn do_optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         optim(call, op, internal, rho)
     }
 }
+

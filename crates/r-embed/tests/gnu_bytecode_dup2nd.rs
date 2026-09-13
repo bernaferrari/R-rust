@@ -78,9 +78,7 @@ fn imported_gnu_dup2nd_assigns_through_dollar_subset() {
     );
     assert_eq!(
         session
-            .eval(
-                "g<-unserialize(serialize(f,NULL)); identical(g(list(a=c(1L,2L)), 5L)$a, c(5L,2L))"
-            )
+            .eval("g<-unserialize(serialize(f,NULL)); identical(g(list(a=c(1L,2L)), 5L)$a, c(5L,2L))")
             .unwrap()
             .trim(),
         "[1] TRUE"
@@ -121,7 +119,10 @@ fn malformed_dup2nd_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
+    let loaded = session.eval(&format!(
+        "f <- unserialize({})",
+        raw_expression(&malformed)
+    ));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

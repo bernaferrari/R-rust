@@ -248,18 +248,17 @@ unsafe fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
         if n == 0 {
             return R_NilValue();
         }
-        let names =
-            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
+        let names = crate::sexp::attrib_core::getAttrib(
+            value,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
         let _names_guard = crate::sexp::protect::protect(names);
         let pargs = crate::sexp::constructors::Rf_allocList(n);
         let _pargs_guard = crate::sexp::protect::protect(pargs);
         let mut current = pargs;
         for i in 0..n {
             crate::sexp::accessors::SETCAR(current, VECTOR_ELT(value, i as i64));
-            if names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && (i as i64) < XLENGTH(names)
-            {
+            if names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP && (i as i64) < XLENGTH(names) {
                 let name_elt = STRING_ELT(names, i as i64);
                 if !name_elt.is_null() && name_elt != R_NilValue() {
                     let c = CHAR(name_elt);

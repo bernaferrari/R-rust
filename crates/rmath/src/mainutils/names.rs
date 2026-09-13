@@ -5151,6 +5151,7 @@ pub unsafe fn getPRIMNAME(object: SEXP) -> *const c_char {
 #[cfg(test)]
 mod tests {
     use crate::sexp::accessors::*;
+    use crate::sexp::constructors::*;
     use crate::sexp::session::RSession;
 
     use super::*;

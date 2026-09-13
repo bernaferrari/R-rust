@@ -213,7 +213,8 @@ fn recover_loop_jump(
     match payload.downcast::<crate::sexp::context::RSignal>() {
         Ok(signal) => {
             let is_break = matches!(*signal, crate::sexp::context::RSignal::Break);
-            let is_loop_signal = is_break || matches!(*signal, crate::sexp::context::RSignal::Next);
+            let is_loop_signal =
+                is_break || matches!(*signal, crate::sexp::context::RSignal::Next);
             if !is_loop_signal {
                 std::panic::panic_any(*signal);
             }
@@ -370,7 +371,10 @@ unsafe fn fixup_scalar_logical(value: SEXP, call: SEXP, arg: &str, op: &str) -> 
             return crate::sexp::accessors::SCALAR_LVAL(value);
         }
         if !gnu_is_number(value) {
-            crate::mainutils::coerce::errorcall(call, &format!("invalid {arg} type in 'x {op} y'"));
+            crate::mainutils::coerce::errorcall(
+                call,
+                &format!("invalid {arg} type in 'x {op} y'"),
+            );
         }
         crate::mainutils::coerce::asLogical2(value, 1, call)
     }
@@ -400,7 +404,8 @@ unsafe fn eval_gnu_istype(opcode: c_int, value: SEXP) -> SEXP {
     unsafe {
         use super::bytecode::{
             GNU_OP_ISCHARACTER, GNU_OP_ISCOMPLEX, GNU_OP_ISDOUBLE, GNU_OP_ISINTEGER,
-            GNU_OP_ISLOGICAL, GNU_OP_ISNULL, GNU_OP_ISNUMERIC, GNU_OP_ISOBJECT, GNU_OP_ISSYMBOL,
+            GNU_OP_ISLOGICAL, GNU_OP_ISNULL, GNU_OP_ISNUMERIC, GNU_OP_ISOBJECT,
+            GNU_OP_ISSYMBOL,
         };
         let test = match opcode {
             GNU_OP_ISNULL => TYPEOF(value) == SEXPTYPE::NILSXP,
@@ -431,10 +436,7 @@ unsafe fn eval_gnu_istype(opcode: c_int, value: SEXP) -> SEXP {
 /// GNU DOLLAR matches eval.c: dispatch `$` on objects, else R_subset3_dflt.
 unsafe fn eval_gnu_dollar(call: SEXP, symbol: SEXP, x: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if crate::sexp::accessors::OBJECT(x) != 0
-            && !call.is_null()
-            && TYPEOF(call) == SEXPTYPE::LANGSXP
-        {
+        if crate::sexp::accessors::OBJECT(x) != 0 && !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
             let ncall = crate::mainutils::duplicate::duplicate(call);
             let _ncall = crate::sexp::protect::protect(ncall);
             let name = crate::sexp::constructors::Rf_ScalarString(PRINTNAME(symbol));
@@ -451,7 +453,8 @@ unsafe fn eval_gnu_dollar(call: SEXP, symbol: SEXP, x: SEXP, rho: SEXP) -> SEXP 
                 crate::sexp::accessors::SETCAR(field_cell, name);
             }
             let mut value = R_NilValue();
-            if super::missing::tryDispatch(c"$".as_ptr() as *mut _, ncall, x, rho, &mut value) != 0
+            if super::missing::tryDispatch(c"$".as_ptr() as *mut _, ncall, x, rho, &mut value)
+                != 0
             {
                 return value;
             }
@@ -466,10 +469,7 @@ unsafe fn eval_gnu_dollargets(call: SEXP, symbol: SEXP, mut x: SEXP, rhs: SEXP, 
         if crate::sexp::accessors::NAMED(x) > 1 {
             x = crate::mainutils::duplicate::shallow_duplicate(x);
         }
-        if crate::sexp::accessors::OBJECT(x) != 0
-            && !call.is_null()
-            && TYPEOF(call) == SEXPTYPE::LANGSXP
-        {
+        if crate::sexp::accessors::OBJECT(x) != 0 && !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
             let ncall = crate::mainutils::duplicate::duplicate(call);
             let _ncall = crate::sexp::protect::protect(ncall);
             let name = crate::sexp::constructors::Rf_ScalarString(PRINTNAME(symbol));
@@ -852,6 +852,7 @@ unsafe fn eval_gnu_logic(
     }
 }
 
+
 /// GNU SETTER_CALL matches eval.c: replace the first call argument with lhs,
 /// append rhs tagged `value`, and apply the replacement function.
 unsafe fn eval_gnu_setter_call(
@@ -1156,8 +1157,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     if val == FALSE || val == NA_LOGICAL {
                         let index = stack.depth() - 1;
-                        let result =
-                            with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(val));
+                        let result = with_stack_rooted(&stack, R_NilValue(), || {
+                            Rf_ScalarLogical(val)
+                        });
                         stack.set(index, result);
                     }
                     super::runtime::set_visible(TRUE);
@@ -1189,8 +1191,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     if val != FALSE {
                         let index = stack.depth() - 1;
-                        let result =
-                            with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(val));
+                        let result = with_stack_rooted(&stack, R_NilValue(), || {
+                            Rf_ScalarLogical(val)
+                        });
                         stack.set(index, result);
                     }
                     super::runtime::set_visible(TRUE);
@@ -1300,7 +1303,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     // GNU pushes the bcprot offset; record the protected
                     // slot index for DECLNKSTK to release.
                     let marker = with_stack_rooted(&stack, value, || {
-                        crate::sexp::constructors::Rf_ScalarInteger(stack.depth() as c_int - 1)
+                        crate::sexp::constructors::Rf_ScalarInteger(
+                            stack.depth() as c_int - 1,
+                        )
                     });
                     stack.push(marker);
                 }
@@ -1336,22 +1341,25 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             // On-demand primitives resolve through the
                             // internal function table like do_internal.
                             let pname = crate::sexp::accessors::PRINTNAME(symbol);
-                            let name =
-                                std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname));
-                            let idx = crate::mainutils::names::StrToInternal(name.as_ptr());
+                            let name = std::ffi::CStr::from_ptr(
+                                crate::sexp::accessors::CHAR(pname),
+                            );
+                            let idx =
+                                crate::mainutils::names::StrToInternal(name.as_ptr());
                             if idx != crate::sexp::ffi::NA_INTEGER {
-                                let entry = &crate::mainutils::names::R_FunTab[idx as usize];
+                                let entry =
+                                    &crate::mainutils::names::R_FunTab[idx as usize];
                                 if (entry.eval % 100) / 10 != 0 {
-                                    internal =
-                                        crate::mainutils::dstruct::mkPRIMSXP(idx, entry.eval % 10);
+                                    internal = crate::mainutils::dstruct::mkPRIMSXP(
+                                        idx,
+                                        entry.eval % 10,
+                                    );
                                 }
                             }
                         }
                         internal
                     });
-                    if value.is_null()
-                        || value == R_NilValue()
-                        || TYPEOF(value) != SEXPTYPE::BUILTINSXP
+                    if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::BUILTINSXP
                     {
                         let name = crate::sexp::accessors::PRINTNAME(symbol);
                         let text = if name.is_null() || name == R_NilValue() {
@@ -1360,7 +1368,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name))
                                 .to_string_lossy()
                         };
-                        bc_error(format!("there is no .Internal function '{text}'"));
+                        bc_error(format!(
+                            "there is no .Internal function '{text}'"
+                        ));
                     }
                     gnu_call_frames.push(GnuCallFrame {
                         marker: stack.depth(),
@@ -1403,7 +1413,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if LENGTH(fb) > 2 {
                         let srcref = VECTOR_ELT(fb, 2);
                         if srcref != R_NilValue() && !srcref.is_null() {
-                            let srcref_symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
+                            let srcref_symbol = crate::sexp::symbol::Rf_install(
+                                c"srcref".as_ptr(),
+                            );
                             crate::attrib_core::setAttrib(value, srcref_symbol, srcref);
                         }
                     }
@@ -1411,7 +1423,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     stack.push(value);
                 }
                 super::bytecode::GNU_OP_DODOTS => {
-                    let Some(marker) = gnu_call_frames.last().map(|frame| frame.marker) else {
+                    let Some(marker) = gnu_call_frames.last().map(|frame| frame.marker)
+                    else {
                         bc_error("GNU DODOTS has no active call frame");
                     };
                     if gnu_call_frames.last().is_some_and(|frame| frame.raw_args) {
@@ -1424,7 +1437,10 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let ftype = TYPEOF(fun);
                     if ftype != SEXPTYPE::SPECIALSXP {
                         let h = with_stack_rooted(&stack, fun, || {
-                            crate::sexp::envir::R_findVar(crate::sexp::symbol::R_DotsSymbol(), rho)
+                            crate::sexp::envir::R_findVar(
+                                crate::sexp::symbol::R_DotsSymbol(),
+                                rho,
+                            )
                         });
                         if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
                             let mut cell = h;
@@ -1467,7 +1483,10 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let result = with_stack_rooted(&stack, call, || {
                         // GNU getPrimitive resolves the special from the
                         // primitive table, ignoring shadowing.
-                        let fun = crate::sexp::envir::findFun(symbol, super::runtime::base_env());
+                        let fun = crate::sexp::envir::findFun(
+                            symbol,
+                            super::runtime::base_env(),
+                        );
                         if fun == R_UnboundValue() || TYPEOF(fun) != SEXPTYPE::SPECIALSXP {
                             bc_error("GNU CALLSPECIAL symbol did not resolve to a special");
                         }
@@ -1503,7 +1522,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             }
                             value
                         } else {
-                            let lookup_env = if opcode == super::bytecode::GNU_OP_GETBUILTIN {
+                            let lookup_env = if opcode == super::bytecode::GNU_OP_GETBUILTIN
+                            {
                                 super::runtime::base_env()
                             } else if opcode == super::bytecode::GNU_OP_GETGLOBFUN {
                                 crate::sexp::globals::R_GlobalEnv()
@@ -1658,80 +1678,77 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             "GNU CALL expression constant {call_index} is not a language object"
                         ));
                     }
-                    let result =
-                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            with_stack_rooted(&stack, call_expr, || {
-                                let fun = stack.at(marker);
-                                let mut args = R_NilValue();
-                                let mut argument_roots = Vec::new();
-                                let _tag_roots = frame
-                                    .tags
-                                    .iter()
-                                    .map(|(_, tag)| crate::sexp::protect::protect(*tag))
-                                    .collect::<Vec<_>>();
-                                for index in (marker + 1..depth).rev() {
-                                    args = Rf_cons(stack.at(index), args);
-                                    argument_roots.push(crate::sexp::protect::protect(args));
-                                    if let Some((_, tag)) =
-                                        frame.tags.iter().find(|(slot, _)| *slot == index)
-                                    {
-                                        crate::sexp::accessors::SETTAG(args, *tag);
-                                    }
-                                }
-                                use crate::sexp::object::Sexp;
-                                let call = Sexp::from_raw_unchecked(call_expr);
-                                let env = Sexp::from_raw_unchecked(rho);
-                                let function = Sexp::from_raw_unchecked(fun);
-                                if builtin_only && TYPEOF(fun) != SEXPTYPE::BUILTINSXP {
-                                    bc_error("GNU CALLBUILTIN frame does not contain a builtin");
-                                }
-                                let result = match TYPEOF(fun) {
-                                    kind if kind == SEXPTYPE::CLOSXP => {
-                                        super::apply::apply_closure_safe(
-                                            function,
-                                            call,
-                                            Sexp::from_raw_unchecked(args),
-                                            env,
-                                        )
-                                    }
-                                    kind if kind == SEXPTYPE::SPECIALSXP => {
-                                        super::apply::apply_special_safe(
-                                            function,
-                                            call,
-                                            Sexp::from_raw_unchecked(CDR(call_expr)),
-                                            env,
-                                        )
-                                    }
-                                    kind if kind == SEXPTYPE::BUILTINSXP => {
-                                        let raw_args = if !builtin_only
-                                            && super::apply::builtin_requires_raw_args(
-                                                Sexp::from_raw_unchecked(fun),
-                                                call.clone(),
-                                            ) {
-                                            CDR(call_expr)
-                                        } else {
-                                            args
-                                        };
-                                        super::apply::apply_builtin_safe(
-                                            function,
-                                            call,
-                                            Sexp::from_raw_unchecked(raw_args),
-                                            env,
-                                        )
-                                    }
-                                    _ => unreachable!(),
-                                };
-                                result.unwrap_or_else(|error| bc_error(error)).as_raw()
-                            })
-                        })) {
-                            Ok(value) => value,
-                            Err(payload) => {
-                                let jump = recover_loop_jump(payload, &loop_stack);
-                                pc = apply_loop_jump(&mut stack, &mut for_loops, jump) as usize;
-                                super::runtime::set_visible(FALSE);
-                                continue;
+                    let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    with_stack_rooted(&stack, call_expr, || {
+                        let fun = stack.at(marker);
+                        let mut args = R_NilValue();
+                        let mut argument_roots = Vec::new();
+                        let _tag_roots = frame
+                            .tags
+                            .iter()
+                            .map(|(_, tag)| crate::sexp::protect::protect(*tag))
+                            .collect::<Vec<_>>();
+                        for index in (marker + 1..depth).rev() {
+                            args = Rf_cons(stack.at(index), args);
+                            argument_roots.push(crate::sexp::protect::protect(args));
+                            if let Some((_, tag)) =
+                                frame.tags.iter().find(|(slot, _)| *slot == index)
+                            {
+                                crate::sexp::accessors::SETTAG(args, *tag);
                             }
+                        }
+                        use crate::sexp::object::Sexp;
+                        let call = Sexp::from_raw_unchecked(call_expr);
+                        let env = Sexp::from_raw_unchecked(rho);
+                        let function = Sexp::from_raw_unchecked(fun);
+                        if builtin_only && TYPEOF(fun) != SEXPTYPE::BUILTINSXP {
+                            bc_error("GNU CALLBUILTIN frame does not contain a builtin");
+                        }
+                        let result = match TYPEOF(fun) {
+                            kind if kind == SEXPTYPE::CLOSXP => super::apply::apply_closure_safe(
+                                function,
+                                call,
+                                Sexp::from_raw_unchecked(args),
+                                env,
+                            ),
+                            kind if kind == SEXPTYPE::SPECIALSXP => {
+                                super::apply::apply_special_safe(
+                                    function,
+                                    call,
+                                    Sexp::from_raw_unchecked(CDR(call_expr)),
+                                    env,
+                                )
+                            }
+                            kind if kind == SEXPTYPE::BUILTINSXP => {
+                                let raw_args = if !builtin_only
+                                    && super::apply::builtin_requires_raw_args(
+                                        Sexp::from_raw_unchecked(fun),
+                                        call.clone(),
+                                    ) {
+                                    CDR(call_expr)
+                                } else {
+                                    args
+                                };
+                                super::apply::apply_builtin_safe(
+                                    function,
+                                    call,
+                                    Sexp::from_raw_unchecked(raw_args),
+                                    env,
+                                )
+                            }
+                            _ => unreachable!(),
                         };
+                        result.unwrap_or_else(|error| bc_error(error)).as_raw()
+                    })
+                    })) {
+                        Ok(value) => value,
+                        Err(payload) => {
+                            let jump = recover_loop_jump(payload, &loop_stack);
+                            pc = apply_loop_jump(&mut stack, &mut for_loops, jump) as usize;
+                            super::runtime::set_visible(FALSE);
+                            continue;
+                        }
+                    };
                     stack.set_depth(marker);
                     stack.push(result);
                 }
@@ -1934,9 +1951,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     }
                     pc += 2;
                     let names = [
-                        "floor", "ceiling", "sign", "expm1", "log1p", "cos", "sin", "tan", "acos",
-                        "asin", "atan", "cosh", "sinh", "tanh", "acosh", "asinh", "atanh",
-                        "lgamma", "gamma", "digamma", "trigamma", "cospi", "sinpi", "tanpi",
+                        "floor", "ceiling", "sign", "expm1", "log1p", "cos", "sin", "tan",
+                        "acos", "asin", "atan", "cosh", "sinh", "tanh", "acosh", "asinh",
+                        "atanh", "lgamma", "gamma", "digamma", "trigamma", "cospi", "sinpi", "tanpi",
                     ];
                     let Some(name) = names.get(math_index as usize).copied() else {
                         bc_error(format!("GNU MATH1 function index {math_index} is invalid"));
@@ -2072,14 +2089,15 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             // helper's asReal only reads INT/REAL/LGL, so
                             // non-numeric args are coerced first. Factors stay
                             // intact so do_colon can still take cross_colon.
-                            let (lhs_arg, rhs_arg) =
-                                if crate::mainutils::essentials::sexp_has_class(lhs, "factor")
-                                    && crate::mainutils::essentials::sexp_has_class(rhs, "factor")
-                                {
-                                    (lhs, rhs)
-                                } else {
-                                    (gnu_colon_numeric_arg(lhs), gnu_colon_numeric_arg(rhs))
-                                };
+                            let (lhs_arg, rhs_arg) = if crate::mainutils::essentials::sexp_has_class(
+                                lhs, "factor",
+                            ) && crate::mainutils::essentials::sexp_has_class(
+                                rhs, "factor",
+                            ) {
+                                (lhs, rhs)
+                            } else {
+                                (gnu_colon_numeric_arg(lhs), gnu_colon_numeric_arg(rhs))
+                            };
                             let tail = Rf_cons(rhs_arg, R_NilValue());
                             let _tail = crate::sexp::protect::protect(tail);
                             let args = Rf_cons(lhs_arg, tail);
@@ -2135,8 +2153,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         ));
                     }
                     let x = stack_pop_checked(&mut stack, "GNU DOLLAR");
-                    let result =
-                        with_stack_rooted(&stack, x, || eval_gnu_dollar(call, symbol, x, rho));
+                    let result = with_stack_rooted(&stack, x, || {
+                        eval_gnu_dollar(call, symbol, x, rho)
+                    });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
                 }
@@ -2251,7 +2270,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     with_stack_rooted(&stack, value, || setVar(symbol, value, ENCLOS(rho)));
                     super::runtime::set_visible(FALSE);
                 }
-                super::bytecode::GNU_OP_STARTSUBSET | super::bytecode::GNU_OP_STARTSUBSET2 => {
+                super::bytecode::GNU_OP_STARTSUBSET
+                | super::bytecode::GNU_OP_STARTSUBSET2 => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
                     pc += 2;
@@ -2292,7 +2312,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     }
                     stack.push(R_MissingArg());
                 }
-                super::bytecode::GNU_OP_DFLTSUBSET | super::bytecode::GNU_OP_DFLTSUBSET2 => {
+                super::bytecode::GNU_OP_DFLTSUBSET
+                | super::bytecode::GNU_OP_DFLTSUBSET2 => {
                     let frame = gnu_call_frames.pop().unwrap_or_else(|| {
                         bc_error("GNU DFLTSUBSET has no active STARTSUBSET frame")
                     });
@@ -2393,7 +2414,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         });
                     }
                 }
-                super::bytecode::GNU_OP_DFLTSUBASSIGN | super::bytecode::GNU_OP_DFLTSUBASSIGN2 => {
+                super::bytecode::GNU_OP_DFLTSUBASSIGN
+                | super::bytecode::GNU_OP_DFLTSUBASSIGN2 => {
                     let frame = gnu_call_frames.pop().unwrap_or_else(|| {
                         bc_error("GNU DFLTSUBASSIGN has no active STARTSUBASSIGN frame")
                     });
@@ -2578,7 +2600,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_MATSUBASSIGN | super::bytecode::GNU_OP_MATSUBASSIGN2 => {
+                super::bytecode::GNU_OP_MATSUBASSIGN
+                | super::bytecode::GNU_OP_MATSUBASSIGN2 => {
                     let call_index = words[pc] as usize;
                     pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
@@ -2599,7 +2622,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_SUBASSIGN_N | super::bytecode::GNU_OP_SUBASSIGN2_N => {
+                super::bytecode::GNU_OP_SUBASSIGN_N
+                | super::bytecode::GNU_OP_SUBASSIGN2_N => {
                     let call_index = words[pc] as usize;
                     let rank = words[pc + 1];
                     pc += 2;
@@ -2636,8 +2660,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 | super::bytecode::GNU_OP_ISOBJECT
                 | super::bytecode::GNU_OP_ISNUMERIC => {
                     let value = stack_pop_checked(&mut stack, "GNU is-type opcode");
-                    let result =
-                        with_stack_rooted(&stack, value, || eval_gnu_istype(opcode, value));
+                    let result = with_stack_rooted(&stack, value, || {
+                        eval_gnu_istype(opcode, value)
+                    });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
                 }
@@ -2645,9 +2670,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let call_index = words[pc] as usize;
                     let vexpr_index = words[pc + 1] as usize;
                     pc += 2;
-                    let frame = gnu_call_frames
-                        .pop()
-                        .unwrap_or_else(|| bc_error("GNU SETTER_CALL has no active GETFUN call"));
+                    let frame = gnu_call_frames.pop().unwrap_or_else(|| {
+                        bc_error("GNU SETTER_CALL has no active GETFUN call")
+                    });
                     if frame.raw_args {
                         bc_error("GNU SETTER_CALL requires a GETFUN call frame");
                     }
@@ -2701,9 +2726,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_GETTER_CALL => {
                     let call_index = words[pc] as usize;
                     pc += 1;
-                    let frame = gnu_call_frames
-                        .pop()
-                        .unwrap_or_else(|| bc_error("GNU GETTER_CALL has no active GETFUN call"));
+                    let frame = gnu_call_frames.pop().unwrap_or_else(|| {
+                        bc_error("GNU GETTER_CALL has no active GETFUN call")
+                    });
                     if frame.raw_args {
                         bc_error("GNU GETTER_CALL requires a GETFUN call frame");
                     }

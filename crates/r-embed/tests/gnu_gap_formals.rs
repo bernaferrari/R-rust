@@ -49,8 +49,7 @@ fn formals_gets_on_primitive_uses_gnu_error() {
         .eval("formals(sum) <- alist(x=)")
         .expect_err("formals<- on a primitive");
     assert!(
-        err.to_string()
-            .contains("use of NULL environment is defunct"),
+        err.to_string().contains("use of NULL environment is defunct"),
         "{err}"
     );
     assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");

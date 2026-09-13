@@ -189,8 +189,8 @@ impl BytecodeCompiler {
                 // (PUSHCONSTARG semantics).
                 for cell in &arg_cells {
                     let argument = CAR(*cell);
-                    let lazy_ok =
-                        local_fun && !matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
+                    let lazy_ok = local_fun
+                        && !matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
                     if lazy_ok {
                         let idx = self.add_const(argument);
                         self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
@@ -235,8 +235,11 @@ impl BytecodeCompiler {
             // Compile through a scratch closure so the nested body shares
             // the BCODESXP pipeline, then store formals/body in the
             // constant vector MAKECLOSURE consumes.
-            let scratch =
-                crate::mainutils::dstruct::mkCLOSXP(CAR(formals_cell), CAR(body_cell), R_BaseEnv());
+            let scratch = crate::mainutils::dstruct::mkCLOSXP(
+                CAR(formals_cell),
+                CAR(body_cell),
+                R_BaseEnv(),
+            );
             if scratch.is_null() {
                 return false;
             }
@@ -330,6 +333,7 @@ impl BytecodeCompiler {
             true
         }
     }
+
 
     /// `<<-`: compile the value, then store into the enclosing frame via
     /// OP_SETVAR2 (eval.c SETVAR2 semantics; the value stays on the stack).

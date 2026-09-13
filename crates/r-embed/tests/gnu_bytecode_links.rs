@@ -11,11 +11,7 @@ use r_embed::RSession;
 fn raw_expression(bytes: &[u8]) -> String {
     format!(
         "as.raw(c({}))",
-        bytes
-            .iter()
-            .map(u8::to_string)
-            .collect::<Vec<_>>()
-            .join(",")
+        bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
     )
 }
 

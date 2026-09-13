@@ -22,5 +22,5 @@ r-device-android-headless = { path = "../r-device-android-headless" }
 png = "0.18.1"  # for encoding captured native rasters from real R graphics devices to PNG
 
 [dev-dependencies]
-pollster = "1.0"
+pollster = "0.4"
 tempfile = "3"

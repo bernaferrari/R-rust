@@ -43,7 +43,10 @@ fn imported_gnu_subset_n_matches_vector_list_and_object_edges() {
         include_bytes!("fixtures/gnu-bytecode-subset/subset.rds"),
     );
     assert_eq!(
-        session.eval("identical(f(1:3, 2L), 2L)").unwrap().trim(),
+        session
+            .eval("identical(f(1:3, 2L), 2L)")
+            .unwrap()
+            .trim(),
         "[1] TRUE"
     );
     assert_eq!(
@@ -165,9 +168,7 @@ fn mutated_gnu_subassign_instruction_runs_over_retained_source() {
     let original = include_bytes!("fixtures/gnu-bytecode-subset/subassign.rds");
     // GETVAR v; STARTASSIGN x; STARTSUBASSIGN_N; GETVAR_MISSOK i=6; VECSUBASSIGN.
     // Flip the index symbol 6 -> 2 (x). Retained source still assigns x[i].
-    let words = [
-        12, 20, 1, 61, 2, 105, 4, 12, 92, 6, 86, 4, 62, 2, 4, 20, 2, 1,
-    ];
+    let words = [12, 20, 1, 61, 2, 105, 4, 12, 92, 6, 86, 4, 62, 2, 4, 20, 2, 1];
     let offset = unique_stream_offset(original, &words);
     let mut changed = original.to_vec();
     // const 1 is v, so the mutated stream does x[v] <- v.
@@ -199,7 +200,10 @@ fn malformed_subset_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
+    let loaded = session.eval(&format!(
+        "f <- unserialize({})",
+        raw_expression(&malformed)
+    ));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

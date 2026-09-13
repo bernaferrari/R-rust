@@ -18,17 +18,13 @@ fn r_scene_survives_session_close_and_renders_on_gpu() {
         let mut rgba = vec![0; reader.output_buffer_size().unwrap()];
         reader.next_frame(&mut rgba).unwrap();
         assert!(
-            rgba.as_chunks::<4>()
-                .0
-                .iter()
+            rgba.chunks_exact(4)
                 .filter(|p| p[0] < 100 && p[1] < 100 && p[2] < 100)
                 .count()
                 > 300
         );
         assert!(
-            rgba.as_chunks::<4>()
-                .0
-                .iter()
+            rgba.chunks_exact(4)
                 .filter(|p| p[0] > 180 && p[1] < 100 && p[2] < 100)
                 .count()
                 > 50
@@ -36,9 +32,7 @@ fn r_scene_survives_session_close_and_renders_on_gpu() {
         let grid_pixels = gpu.render_rgba(&grid).await.unwrap();
         assert!(
             grid_pixels
-                .as_chunks::<4>()
-                .0
-                .iter()
+                .chunks_exact(4)
                 .filter(|p| p[2] > 200 && p[0] < 30 && p[1] < 30)
                 .count()
                 > 10_000

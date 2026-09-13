@@ -11,11 +11,7 @@ use r_embed::RSession;
 fn raw_expression(bytes: &[u8]) -> String {
     format!(
         "as.raw(c({}))",
-        bytes
-            .iter()
-            .map(u8::to_string)
-            .collect::<Vec<_>>()
-            .join(",")
+        bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
     )
 }
 
@@ -70,7 +66,10 @@ fn imported_gnu_makeclosure_returned_closure_matches_gnu() {
         include_bytes!("fixtures/gnu-gap-makeclosure/nested-return.rds"),
     );
     assert_eq!(
-        session.eval("g <- f(); identical(g(4), 5)").unwrap().trim(),
+        session
+            .eval("g <- f(); identical(g(4), 5)")
+            .unwrap()
+            .trim(),
         "[1] TRUE"
     );
 }

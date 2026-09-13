@@ -827,7 +827,7 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.clone().set_integer_elt(0, 42));
-        assert_eq!(sexp.clone().set_integer_elt(5, 99), false);
+        assert!(sexp.clone().set_integer_elt(5, 99) == false);
         assert_eq!(sexp.integer_elt(0), Some(42));
     }
 
@@ -837,7 +837,7 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.clone().set_real_elt(0, 3.14));
-        assert_eq!(sexp.clone().set_real_elt(5, 99.0), false);
+        assert!(sexp.clone().set_real_elt(5, 99.0) == false);
         assert_eq!(sexp.real_elt(0), Some(3.14));
     }
 
@@ -847,7 +847,7 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.clone().set_raw_elt(0, 0xFF));
-        assert_eq!(sexp.clone().set_raw_elt(5, 0xAA), false);
+        assert!(sexp.clone().set_raw_elt(5, 0xAA) == false);
         assert_eq!(sexp.raw_elt(0), Some(0xFF));
     }
 
@@ -1327,7 +1327,7 @@ mod tests {
         assert!(sexp.clone().car().is_some());
         assert!(sexp.clone().cdr().is_some());
         assert!(sexp.clone().tag().is_some());
-        assert_eq!(some(sexp.clone().car()).is_symbol(), false);
+        assert!(some(sexp.clone().car()).is_symbol() == false);
         assert!(some(sexp.tag()).is_symbol());
     }
 
@@ -1439,17 +1439,17 @@ mod tests {
         let logical = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 2)));
 
         assert!(real.clone().integer_elt(0).is_none());
-        assert_eq!(real.clone().set_integer_elt(0, 1), false);
+        assert!(real.clone().set_integer_elt(0, 1) == false);
         assert!(real.clone().as_integer_slice().is_none());
         assert!(real.iter_integer().next().is_none());
 
         assert!(int.clone().real_elt(0).is_none());
-        assert_eq!(int.clone().set_real_elt(0, 1.0), false);
+        assert!(int.clone().set_real_elt(0, 1.0) == false);
         assert!(int.clone().as_real_slice().is_none());
         assert!(int.iter_real().next().is_none());
 
         assert!(logical.clone().integer_elt(0).is_none());
-        assert_eq!(logical.clone().set_integer_elt(0, 1), false);
+        assert!(logical.clone().set_integer_elt(0, 1) == false);
         assert!(logical.clone().as_integer_slice().is_none());
         assert_eq!(logical.as_logical_slice(), Some(&[0, 0][..]));
     }
@@ -1579,6 +1579,6 @@ mod tests {
         let clos = arena.alloc_node(SEXPTYPE::CLOSXP);
         let sexp7 = some(Sexp::from_raw(clos));
         assert!(sexp7.is_function());
-        assert_eq!(sexp.is_function(), false);
+        assert!(sexp.is_function() == false);
     }
 }

@@ -70,9 +70,7 @@ fn imported_gnu_matsubassign_matches_matrix_drop_and_object_edges() {
     );
     assert_eq!(
         session
-            .eval(
-                "m<-matrix(1:6,2,3); identical(f(m, 2L, 3L, 8L), matrix(c(1L,2L,3L,4L,5L,8L),2,3))"
-            )
+            .eval("m<-matrix(1:6,2,3); identical(f(m, 2L, 3L, 8L), matrix(c(1L,2L,3L,4L,5L,8L),2,3))")
             .unwrap()
             .trim(),
         "[1] TRUE"
@@ -98,9 +96,7 @@ fn mutated_gnu_matsubassign_instruction_runs_over_retained_source() {
     let original = include_bytes!("fixtures/gnu-bytecode-matsubassign/matsubassign-const.rds");
     // GETVAR v; STARTASSIGN x; STARTSUBASSIGN_N; LDCONST 1L; LDCONST 2L; MATSUBASSIGN.
     // Flip the first LDCONST pool index 6 -> 7 so retained x[1L,2L] becomes x[2L,2L].
-    let words = [
-        12, 20, 1, 61, 2, 105, 4, 14, 16, 6, 16, 7, 87, 4, 62, 2, 4, 20, 2, 1,
-    ];
+    let words = [12, 20, 1, 61, 2, 105, 4, 14, 16, 6, 16, 7, 87, 4, 62, 2, 4, 20, 2, 1];
     let offset = unique_stream_offset(original, &words);
     let mut changed = original.to_vec();
     changed[offset + 9 * 4..offset + 10 * 4].copy_from_slice(&7_i32.to_be_bytes());
@@ -120,9 +116,7 @@ fn mutated_gnu_matsubassign_instruction_runs_over_retained_source() {
 #[test]
 fn malformed_matsubassign_empty_stack_fails_before_source_fallback() {
     let original = include_bytes!("fixtures/gnu-bytecode-matsubassign/matsubassign-const.rds");
-    let words = [
-        12, 20, 1, 61, 2, 105, 4, 14, 16, 6, 16, 7, 87, 4, 62, 2, 4, 20, 2, 1,
-    ];
+    let words = [12, 20, 1, 61, 2, 105, 4, 14, 16, 6, 16, 7, 87, 4, 62, 2, 4, 20, 2, 1];
     let offset = unique_stream_offset(original, &words);
     let mut malformed = original.to_vec();
     // Keep the 20-int code vector length: version, MATSUBASSIGN, RETURN, padding.
@@ -135,7 +129,10 @@ fn malformed_matsubassign_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
+    let loaded = session.eval(&format!(
+        "f <- unserialize({})",
+        raw_expression(&malformed)
+    ));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

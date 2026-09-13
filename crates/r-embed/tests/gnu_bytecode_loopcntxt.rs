@@ -11,11 +11,7 @@ use r_embed::RSession;
 fn raw_expression(bytes: &[u8]) -> String {
     format!(
         "as.raw(c({}))",
-        bytes
-            .iter()
-            .map(u8::to_string)
-            .collect::<Vec<_>>()
-            .join(",")
+        bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
     )
 }
 
@@ -49,7 +45,10 @@ fn imported_gnu_eval_repeat_loop_context_returns_value() {
         include_bytes!("fixtures/gnu-bytecode-loopcntxt/eval-repeat.rds"),
     );
     assert_eq!(
-        session.eval("identical(f(42L), 42L)").unwrap().trim(),
+        session
+            .eval("identical(f(42L), 42L)")
+            .unwrap()
+            .trim(),
         "[1] TRUE"
     );
 }

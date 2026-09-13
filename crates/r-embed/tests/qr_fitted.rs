@@ -21,13 +21,9 @@ fn qr_fitted_resid_handle_matrix_y() {
 #[test]
 fn qr_fitted_resid_reject_row_mismatch_and_lapack() {
     let mut session = RSession::new().unwrap();
-    let error = session
-        .eval("qr.fitted(qr(matrix(1:6,3,2)), 1:2)")
-        .unwrap_err();
+    let error = session.eval("qr.fitted(qr(matrix(1:6,3,2)), 1:2)").unwrap_err();
     assert!(error.to_string().contains("same number of rows"), "{error}");
-    let error = session
-        .eval("qr.fitted(qr(matrix(1:6,3,2), LAPACK=TRUE), 1:3)")
-        .unwrap_err();
+    let error = session.eval("qr.fitted(qr(matrix(1:6,3,2), LAPACK=TRUE), 1:3)").unwrap_err();
     assert!(error.to_string().contains("LAPACK"), "{error}");
     assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
 }

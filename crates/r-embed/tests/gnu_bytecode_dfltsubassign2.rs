@@ -99,7 +99,10 @@ fn malformed_startsubassign2_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
+    let loaded = session.eval(&format!(
+        "f <- unserialize({})",
+        raw_expression(&malformed)
+    ));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

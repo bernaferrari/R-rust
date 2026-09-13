@@ -57,7 +57,13 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         if method != R_NilValue() {
-            return crate::mainutils::objects::applyMethod(call, method, args, env, R_NilValue());
+            return crate::mainutils::objects::applyMethod(
+                call,
+                method,
+                args,
+                env,
+                R_NilValue(),
+            );
         }
 
         do_c_dflt(call, op, args, env)

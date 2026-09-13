@@ -703,7 +703,11 @@ pub unsafe fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 *REAL(x).add(i as usize)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                 let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                if v == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    v as f64
+                }
             } else {
                 NA_REAL
             };
@@ -729,6 +733,7 @@ pub unsafe fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         result
     }
 }
+
 
 /// R's `cummin(x)` — cumulative minimum.
 pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

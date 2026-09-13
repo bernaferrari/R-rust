@@ -179,12 +179,7 @@ unsafe extern "C" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
 }
 
 /// GNU `uniroot(f, interval)`.
-pub unsafe fn do_uniroot(
-    _call: crate::sexp::ffi::SEXP,
-    _op: crate::sexp::ffi::SEXP,
-    args: crate::sexp::ffi::SEXP,
-    rho: crate::sexp::ffi::SEXP,
-) -> crate::sexp::ffi::SEXP {
+pub unsafe fn do_uniroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
         use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
@@ -231,12 +226,7 @@ pub unsafe fn do_uniroot(
 }
 
 /// GNU `optimize(f, interval)` golden-section min.
-pub unsafe fn do_optimize(
-    _call: crate::sexp::ffi::SEXP,
-    _op: crate::sexp::ffi::SEXP,
-    args: crate::sexp::ffi::SEXP,
-    rho: crate::sexp::ffi::SEXP,
-) -> crate::sexp::ffi::SEXP {
+pub unsafe fn do_optimize(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF};
         use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
@@ -298,9 +288,7 @@ pub unsafe fn do_nlm(
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     unsafe {
-        use crate::sexp::accessors::{
-            CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
-        };
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, VECTOR_ELT, XLENGTH};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
@@ -370,3 +358,7 @@ pub unsafe fn do_nlminb(
         result
     }
 }
+
+
+
+

@@ -5,7 +5,7 @@ graphics behavior. It is not a wrapper around an installed GNU R process.
 
 This repository includes pinned upstream GNU R tests under
 `tests/upstream-r/vendor` for source comparison, conformance, and attribution.
-GNU R is distributed under the GNU General Public License; see `LICENSE` and the
+GNU R is distributed under the GNU General Public License; see `COPYING` and the
 upstream notices preserved in the source files. Translated or behaviorally
 derived Rust modules should keep their upstream source anchors in
 `docs/upstream-port-map.tsv`.

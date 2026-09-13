@@ -43,10 +43,8 @@ impl DecodedPng {
 
     fn pixels_matching(&self, matches: impl Fn(&[u8]) -> bool) -> usize {
         self.rgba
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .filter(|rgba| matches(rgba.as_slice()) && rgba[3] > 0)
+            .chunks_exact(4)
+            .filter(|rgba| matches(rgba) && rgba[3] > 0)
             .count()
     }
 }
@@ -60,9 +58,7 @@ fn decode_png_rgba(png_bytes: &[u8]) -> DecodedPng {
     let rgba = match info.color_type {
         png::ColorType::Rgba => bytes.to_vec(),
         png::ColorType::Rgb => bytes
-            .as_chunks::<3>()
-            .0
-            .iter()
+            .chunks_exact(3)
             .flat_map(|rgb| [rgb[0], rgb[1], rgb[2], 255])
             .collect(),
         other => panic!("unexpected png color type: {other:?}"),

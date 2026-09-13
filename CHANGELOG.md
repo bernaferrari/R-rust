@@ -18,8 +18,7 @@ compatibility claims are defined by the maintained docs and executable checks.
   integration under `examples/android-compose`. Archived historical audits
   and plans, and kept generated output under `target/`.
 - Standardized the GPL license text for GitHub discovery and included the
-  license text in release bundles. Keep a single root `LICENSE`; drop the
-  duplicate `COPYING` and `docs/license-provenance.md`.
+  license texts in release bundles.
 
 ### Numerical fidelity fixes (2026-08-29)
 

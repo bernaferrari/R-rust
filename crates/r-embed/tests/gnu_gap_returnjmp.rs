@@ -9,11 +9,7 @@ use r_embed::RSession;
 fn raw_expression(bytes: &[u8]) -> String {
     format!(
         "as.raw(c({}))",
-        bytes
-            .iter()
-            .map(u8::to_string)
-            .collect::<Vec<_>>()
-            .join(",")
+        bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
     )
 }
 
@@ -201,8 +197,5 @@ fn imported_gnu_returnjmp_from_repeat_matches_gnu() {
         &mut session,
         include_bytes!("fixtures/gnu-gap-returnjmp/returnjmp-repeat.rds"),
     );
-    assert_eq!(
-        session.eval("identical(f(7L), 7L)").unwrap().trim(),
-        "[1] TRUE"
-    );
+    assert_eq!(session.eval("identical(f(7L), 7L)").unwrap().trim(), "[1] TRUE");
 }

@@ -669,7 +669,11 @@ pub unsafe fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 *REAL(x).add(i as usize)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
                 let iv = *INTEGER(x).add(i as usize);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
             } else {
                 NA_REAL
             };
@@ -701,6 +705,7 @@ pub unsafe fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         result
     }
 }
+
 
 fn difftime_seconds(x: SEXP) -> f64 {
     unsafe {
@@ -743,7 +748,10 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             } else {
                 String::new()
             };
-            if named == "units" && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+            if named == "units"
+                && TYPEOF(value) == SEXPTYPE::STRSXP
+                && XLENGTH(value) > 0
+            {
                 let ch = STRING_ELT(value, 0);
                 if !ch.is_null() {
                     units = std::ffi::CStr::from_ptr(CHAR(ch))
@@ -809,7 +817,10 @@ pub unsafe fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             } else {
                 String::new()
             };
-            if named == "units" && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+            if named == "units"
+                && TYPEOF(value) == SEXPTYPE::STRSXP
+                && XLENGTH(value) > 0
+            {
                 let ch = STRING_ELT(value, 0);
                 if !ch.is_null() {
                     units = std::ffi::CStr::from_ptr(CHAR(ch))
@@ -833,7 +844,11 @@ pub unsafe fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 *REAL(tim).add(i as usize)
             } else if TYPEOF(tim) == SEXPTYPE::INTSXP {
                 let iv = *INTEGER(tim).add(i as usize);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
             } else {
                 NA_REAL
             };
@@ -860,6 +875,7 @@ pub unsafe fn do_units(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+
 fn iso_arg_num(x: SEXP, default: f64) -> f64 {
     unsafe {
         if x.is_null() || x == R_NilValue() {
@@ -869,24 +885,25 @@ fn iso_arg_num(x: SEXP, default: f64) -> f64 {
             *REAL(x)
         } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
             let v = *INTEGER(x);
-            if v == NA_INTEGER { default } else { v as f64 }
+            if v == NA_INTEGER {
+                default
+            } else {
+                v as f64
+            }
         } else {
             default
         }
     }
 }
 
-unsafe fn iso_posixct(
-    year: f64,
-    month: f64,
-    day: f64,
-    hour: f64,
-    min: f64,
-    sec: f64,
-    tz: &str,
-) -> SEXP {
+unsafe fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, tz: &str) -> SEXP {
     unsafe {
-        let stamp = format!("{:04}-{:02}-{:02}", year as i32, month as i32, day as i32);
+        let stamp = format!(
+            "{:04}-{:02}-{:02}",
+            year as i32,
+            month as i32,
+            day as i32
+        );
         let days = crate::mainutils::essentials::parse_iso_date_days(&stamp).unwrap_or(f64::NAN);
         let seconds = days * 86_400.0 + hour * 3600.0 + min * 60.0 + sec;
         let result = Rf_ScalarReal(seconds);
@@ -906,7 +923,7 @@ pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let min = iso_arg_num(CAR(CDR(CDR(CDR(CDR(args))))), 0.0);
         let sec = iso_arg_num(CAR(CDR(CDR(CDR(CDR(CDR(args)))))), 0.0);
         let mut tz = String::new();
-        let cell = CDR(CDR(CDR(CDR(CDR(CDR(args))))));
+        let mut cell = CDR(CDR(CDR(CDR(CDR(CDR(args))))));
         if !cell.is_null() && cell != R_NilValue() {
             let t = CAR(cell);
             if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
@@ -982,7 +999,11 @@ fn unix_secs_to_utc(secs: i64) -> crate::tzone_strftime::stm {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
-    let yday = if m > 2 { doy - 59 } else { doy + 306 };
+    let yday = if m > 2 {
+        doy - 59
+    } else {
+        doy + 306
+    };
     crate::tzone_strftime::stm {
         tm_sec: (sod % 60) as i32,
         tm_min: ((sod / 60) % 60) as i32,
@@ -1043,7 +1064,8 @@ pub unsafe fn do_strftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             };
             let formatted = if secs.is_finite() {
                 let tm = unix_secs_to_utc(secs as i64);
-                crate::tzone_strftime::strftime_safe(&fmt, &tm).unwrap_or_default()
+                crate::tzone_strftime::strftime_safe(&fmt, &tm)
+                    .unwrap_or_default()
             } else {
                 String::new()
             };
@@ -1055,7 +1077,12 @@ pub unsafe fn do_strftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `format.Date(x, format="%Y-%m-%d")`.
-pub unsafe fn do_format_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_format_Date(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut fmt = "%Y-%m-%d".to_string();
@@ -1081,7 +1108,12 @@ pub unsafe fn do_format_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// GNU `as.character.Date(x)`.
-pub unsafe fn do_as_character_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_as_character_Date(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe { do_format_Date(call, op, args, rho) }
 }
 
@@ -1137,9 +1169,7 @@ pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 breaks.push(b);
                 b = date_add_months(b, 1);
             }
-            breaks.push(
-                date_add_months(b, 0).max(date_add_months(breaks.last().copied().unwrap_or(b), 1)),
-            );
+            breaks.push(date_add_months(b, 0).max(date_add_months(breaks.last().copied().unwrap_or(b), 1)));
             if *breaks.last().unwrap() <= max_d {
                 breaks.push(date_add_months(*breaks.last().unwrap(), 1));
             }
@@ -1222,7 +1252,12 @@ pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `cut.POSIXt(x, breaks)` for day/week/month/year/quarter.
-pub unsafe fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_cut_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1249,6 +1284,9 @@ pub unsafe fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         do_cut_Date(call, op, Rf_cons(days, CDR(args)), rho)
     }
 }
+
+
+
 
 fn date_units_arg(args: SEXP) -> String {
     unsafe {
@@ -1288,7 +1326,11 @@ fn date_days_elt(x: SEXP, i: i64) -> f64 {
             *REAL(x).add(i as usize)
         } else if TYPEOF(x) == SEXPTYPE::INTSXP {
             let v = *INTEGER(x).add(i as usize);
-            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            if v == NA_INTEGER {
+                NA_REAL
+            } else {
+                v as f64
+            }
         } else {
             NA_REAL
         }
@@ -1299,7 +1341,8 @@ fn date_first_of_month(days: f64) -> f64 {
     let tm = unix_secs_to_utc((days * 86_400.0) as i64);
     let y = tm.tm_year + 1900;
     let m = tm.tm_mon + 1;
-    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{m:02}-01")).unwrap_or(days)
+    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{m:02}-01"))
+        .unwrap_or(days)
 }
 
 fn date_first_of_quarter(days: f64) -> f64 {
@@ -1309,6 +1352,7 @@ fn date_first_of_quarter(days: f64) -> f64 {
     crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{qmon:02}-01"))
         .unwrap_or(days)
 }
+
 
 fn date_first_of_year(days: f64) -> f64 {
     let tm = unix_secs_to_utc((days * 86_400.0) as i64);
@@ -1328,7 +1372,8 @@ fn date_add_months(days: f64, add: i32) -> f64 {
         m += 12;
         y -= 1;
     }
-    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{m:02}-01")).unwrap_or(days)
+    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{m:02}-01"))
+        .unwrap_or(days)
 }
 
 /// GNU `trunc.Date(x, units)`.
@@ -1378,11 +1423,19 @@ pub unsafe fn do_round_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             } else if units.starts_with("month") {
                 let lo = date_first_of_month(days);
                 let hi = date_add_months(lo, 1);
-                if (hi - days) <= (days - lo) { hi } else { lo }
+                if (hi - days) <= (days - lo) {
+                    hi
+                } else {
+                    lo
+                }
             } else if units.starts_with("year") {
                 let lo = date_first_of_year(days);
                 let hi = date_first_of_year(lo + 370.0);
-                if (hi - days) <= (days - lo) { hi } else { lo }
+                if (hi - days) <= (days - lo) {
+                    hi
+                } else {
+                    lo
+                }
             } else {
                 days.round()
             };
@@ -1392,6 +1445,10 @@ pub unsafe fn do_round_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         result
     }
 }
+
+
+
+
 
 /// R's `as.POSIXct(x, tz, origin)` — coerce simple UTC inputs to POSIXct.
 pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1467,6 +1524,7 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             set_posixct_class(result, &tz);
             return result;
         }
+
 
         let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
         let tz = if tz_arg.is_null() || tz_arg == R_NilValue() || XLENGTH(tz_arg) == 0 {
@@ -1549,7 +1607,12 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `mean.Date(x)`.
-pub unsafe fn do_mean_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_mean_Date(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         let m = crate::eval::arithmetic::do_mean(call, op, args, rho);
         let _m = protect(m);
@@ -1559,7 +1622,12 @@ pub unsafe fn do_mean_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `mean.POSIXct(x)`.
-pub unsafe fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_mean_POSIXct(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         let x = CAR(args);
         let tz = crate::sexp::attrib_core::getAttrib(
@@ -1567,8 +1635,7 @@ pub unsafe fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
             crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
         );
         let mut tz_s = "UTC".to_string();
-        if !tz.is_null() && tz != R_NilValue() && TYPEOF(tz) == SEXPTYPE::STRSXP && XLENGTH(tz) > 0
-        {
+        if !tz.is_null() && tz != R_NilValue() && TYPEOF(tz) == SEXPTYPE::STRSXP && XLENGTH(tz) > 0 {
             let ch = STRING_ELT(tz, 0);
             if !ch.is_null() {
                 tz_s = std::ffi::CStr::from_ptr(CHAR(ch))
@@ -1584,7 +1651,12 @@ pub unsafe fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 /// GNU `mean.POSIXlt(x)`.
-pub unsafe fn do_mean_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_mean_POSIXlt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         let x = CAR(args);
         let ct = do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho);
@@ -1595,6 +1667,7 @@ pub unsafe fn do_mean_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     }
 }
 
+
 /// GNU `diff.POSIXt(x)`.
 pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1603,7 +1676,12 @@ pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
         let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
-            do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
+            do_as_POSIXct(
+                _call,
+                _op,
+                Rf_cons(x, R_NilValue()),
+                _rho,
+            )
         } else {
             x
         };
@@ -1728,7 +1806,12 @@ pub unsafe fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `round.POSIXt(x, units)`.
-pub unsafe fn do_round_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_round_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1801,8 +1884,7 @@ pub unsafe fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
         );
         let mut tz_s = String::new();
-        if !tz.is_null() && tz != R_NilValue() && TYPEOF(tz) == SEXPTYPE::STRSXP && XLENGTH(tz) > 0
-        {
+        if !tz.is_null() && tz != R_NilValue() && TYPEOF(tz) == SEXPTYPE::STRSXP && XLENGTH(tz) > 0 {
             let ch = STRING_ELT(tz, 0);
             if !ch.is_null() {
                 tz_s = std::ffi::CStr::from_ptr(CHAR(ch))
@@ -1831,7 +1913,9 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             let _v = protect(v);
             let tag = TAG(cell);
             let skip = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy() == "recursive"
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    == "recursive"
             } else {
                 false
             };
@@ -1864,8 +1948,14 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
+
 /// GNU `is.numeric.Date` / `is.numeric.POSIXt`.
-pub unsafe fn do_is_numeric_Date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_is_numeric_Date(
+    _call: SEXP,
+    _op: SEXP,
+    _args: SEXP,
+    _rho: SEXP,
+) -> SEXP {
     unsafe { Rf_ScalarLogical(FALSE) }
 }
 
@@ -1884,7 +1974,11 @@ pub unsafe fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 *REAL(x).add(i as usize)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
                 let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                if v == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    v as f64
+                }
             } else {
                 NA_REAL
             };
@@ -1892,6 +1986,7 @@ pub unsafe fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         result
     }
 }
+
 
 /// GNU `diff.Date(x)`.
 pub unsafe fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1948,6 +2043,14 @@ pub unsafe fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         result
     }
 }
+
+
+
+
+
+
+
+
 
 /// R's `Sys.Date()` — current date as REALSXP (days since epoch).
 pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

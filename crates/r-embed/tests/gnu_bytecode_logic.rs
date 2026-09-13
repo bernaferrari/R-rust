@@ -83,10 +83,7 @@ fn imported_gnu_and_or_preserve_na_short_circuit_and_visibility() {
         "non-numeric second operand must fail when evaluated"
     );
     assert_eq!(
-        session
-            .eval("identical(f(FALSE,'y'),FALSE)")
-            .unwrap()
-            .trim(),
+        session.eval("identical(f(FALSE,'y'),FALSE)").unwrap().trim(),
         "[1] TRUE"
     );
 

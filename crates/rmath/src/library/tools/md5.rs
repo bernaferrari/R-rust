@@ -126,7 +126,7 @@ fn md5_process_block(buffer: &[u8], ctx: &mut Md5Ctx) {
         ctx.total[1] += 1;
     }
 
-    for block in buffer.as_chunks::<64>().0 {
+    for block in buffer.chunks_exact(64) {
         let mut correct_words: [md5_uint32; 16] = [0; 16];
         let a_save = a;
         let b_save = b;

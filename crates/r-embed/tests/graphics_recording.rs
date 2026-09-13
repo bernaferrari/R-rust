@@ -12,10 +12,8 @@ struct DecodedPng {
 impl DecodedPng {
     fn pixels_matching(&self, matches: impl Fn(&[u8]) -> bool) -> usize {
         self.rgba
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .filter(|pixel| matches(pixel.as_slice()) && pixel[3] > 0)
+            .chunks_exact(4)
+            .filter(|pixel| matches(pixel) && pixel[3] > 0)
             .count()
     }
 }
@@ -29,9 +27,7 @@ fn decode_png(png_bytes: &[u8]) -> DecodedPng {
     let rgba = match info.color_type {
         png::ColorType::Rgba => bytes.to_vec(),
         png::ColorType::Rgb => bytes
-            .as_chunks::<3>()
-            .0
-            .iter()
+            .chunks_exact(3)
             .flat_map(|rgb| [rgb[0], rgb[1], rgb[2], 255])
             .collect(),
         other => panic!("unexpected png color type: {other:?}"),

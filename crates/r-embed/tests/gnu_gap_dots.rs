@@ -8,11 +8,7 @@ use r_embed::RSession;
 fn raw_expression(bytes: &[u8]) -> String {
     format!(
         "as.raw(c({}))",
-        bytes
-            .iter()
-            .map(u8::to_string)
-            .collect::<Vec<_>>()
-            .join(",")
+        bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
     )
 }
 
@@ -92,10 +88,7 @@ fn imported_gnu_ddval_reads_first_dot() {
         &mut session,
         include_bytes!("fixtures/gnu-gap-dots/ddval1.rds"),
     );
-    assert_eq!(
-        session.eval("identical(f(10), 10)").unwrap().trim(),
-        "[1] TRUE"
-    );
+    assert_eq!(session.eval("identical(f(10), 10)").unwrap().trim(), "[1] TRUE");
     let err = eval_err(&mut session, "f()");
     assert!(
         err.contains("the ... list contains fewer than 1 element"),
@@ -110,10 +103,7 @@ fn imported_gnu_ddval_second_dot_matches_gnu() {
         &mut session,
         include_bytes!("fixtures/gnu-gap-dots/ddval2.rds"),
     );
-    assert_eq!(
-        session.eval("identical(f(1, 9), 9)").unwrap().trim(),
-        "[1] TRUE"
-    );
+    assert_eq!(session.eval("identical(f(1, 9), 9)").unwrap().trim(), "[1] TRUE");
     let err = eval_err(&mut session, "f(1)");
     assert!(
         err.contains("the ... list contains fewer than 2 elements"),
@@ -133,3 +123,4 @@ fn list_dots_forwards_without_ddval() {
         "[1] TRUE"
     );
 }
+

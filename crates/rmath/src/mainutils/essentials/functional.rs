@@ -1592,6 +1592,7 @@ unsafe fn set_int_dim(x: SEXP, dims: &[c_int]) {
     }
 }
 
+
 unsafe fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
     unsafe {
         let nxn = crate::attrib_core::getAttrib(x, crate::attrib_core::R_NamesSymbol());
@@ -2014,8 +2015,10 @@ pub unsafe fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if cols.len() == 1 && TYPEOF(cols[0]) == SEXPTYPE::VECSXP {
             let lst = cols[0];
             let n = XLENGTH(lst);
-            let nm =
-                crate::sexp::attrib_core::getAttrib(lst, crate::sexp::attrib_core::R_NamesSymbol());
+            let nm = crate::sexp::attrib_core::getAttrib(
+                lst,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
             cols = (0..n).map(|i| VECTOR_ELT(lst, i)).collect();
             names = (0..n)
                 .map(|i| {
@@ -2059,8 +2062,10 @@ pub unsafe fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 x = crate::mainutils::essentials::do_factor(_call, _op, fargs, _rho);
             }
             let expanded = expand_grid_column(x, nx, rep_fac, orep, total);
-            let levels =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
+            let levels = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_LevelsSymbol(),
+            );
             if !levels.is_null() && levels != R_NilValue() {
                 crate::sexp::attrib_core::setAttrib(
                     expanded,
@@ -2068,8 +2073,10 @@ pub unsafe fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     levels,
                 );
             }
-            let class =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+            let class = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            );
             if !class.is_null() && class != R_NilValue() {
                 crate::sexp::attrib_core::setAttrib(
                     expanded,
@@ -2166,8 +2173,10 @@ pub unsafe fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut names: Vec<String> = Vec::new();
         if TYPEOF(x) == SEXPTYPE::VECSXP {
             let n = XLENGTH(x);
-            let nm =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let nm = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
             for i in 0..n {
                 let col = VECTOR_ELT(x, i);
                 let dim = crate::sexp::attrib_core::getAttrib(
@@ -2178,7 +2187,9 @@ pub unsafe fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     continue;
                 }
                 cols.push(col);
-                let name = if !nm.is_null() && nm != R_NilValue() && TYPEOF(nm) == SEXPTYPE::STRSXP
+                let name = if !nm.is_null()
+                    && nm != R_NilValue()
+                    && TYPEOF(nm) == SEXPTYPE::STRSXP
                 {
                     elt_to_string(nm, i)
                 } else {
@@ -2199,14 +2210,11 @@ pub unsafe fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             );
         }
         let mut total: i64 = 0;
-        let lens: Vec<i64> = cols
-            .iter()
-            .map(|c| {
-                let n = XLENGTH(*c);
-                total += n;
-                n
-            })
-            .collect();
+        let lens: Vec<i64> = cols.iter().map(|c| {
+            let n = XLENGTH(*c);
+            total += n;
+            n
+        }).collect();
         let values_ty = TYPEOF(cols[0]);
         let values = Rf_allocVector3(values_ty, total);
         let _values = protect(values);
@@ -2251,6 +2259,7 @@ pub unsafe fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+
 /// GNU `unstack` for a stacked values/ind data.frame.
 pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -2261,8 +2270,10 @@ pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 "'form' must be a two-sided formula",
             );
         }
-        let names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
         let mut values = R_NilValue();
         let mut ind = R_NilValue();
         if TYPEOF(names) == SEXPTYPE::STRSXP {
@@ -2282,14 +2293,15 @@ pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             );
         }
         let n = XLENGTH(values);
-        let levels =
-            crate::sexp::attrib_core::getAttrib(ind, crate::sexp::attrib_core::R_LevelsSymbol());
-        let nlev =
-            if !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP {
-                XLENGTH(levels)
-            } else {
-                0
-            };
+        let levels = crate::sexp::attrib_core::getAttrib(
+            ind,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        );
+        let nlev = if !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP {
+            XLENGTH(levels)
+        } else {
+            0
+        };
         if nlev == 0 {
             crate::mainutils::errors::errorcall_str(
                 unsafe { crate::mainutils::errors::R_getCurrentCall() },
@@ -2326,6 +2338,7 @@ pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+
 /// GNU `merge` inner join on intersecting column names.
 pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -2337,10 +2350,14 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "'by' must specify one or more columns as numbers, names or logical",
             );
         }
-        let xnames =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        let ynames =
-            crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_NamesSymbol());
+        let xnames = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let ynames = crate::sexp::attrib_core::getAttrib(
+            y,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
         let mut by: Vec<String> = Vec::new();
         let mut x_by: Vec<usize> = Vec::new();
         let mut y_by: Vec<usize> = Vec::new();
@@ -2362,16 +2379,8 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "'by' must specify one or more columns as numbers, names or logical",
             );
         }
-        let nx = if XLENGTH(x) > 0 {
-            XLENGTH(VECTOR_ELT(x, 0))
-        } else {
-            0
-        };
-        let ny = if XLENGTH(y) > 0 {
-            XLENGTH(VECTOR_ELT(y, 0))
-        } else {
-            0
-        };
+        let nx = if XLENGTH(x) > 0 { XLENGTH(VECTOR_ELT(x, 0)) } else { 0 };
+        let ny = if XLENGTH(y) > 0 { XLENGTH(VECTOR_ELT(y, 0)) } else { 0 };
         let mut pairs: Vec<(i64, i64)> = Vec::new();
         for i in 0..nx {
             for j in 0..ny {
@@ -2450,12 +2459,15 @@ unsafe fn merge_keys_equal(a: SEXP, i: i64, b: SEXP, j: i64) -> bool {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
                 *INTEGER(a).add(i as usize) == *INTEGER(b).add(j as usize)
             }
-            t if t == SEXPTYPE::REALSXP => *REAL(a).add(i as usize) == *REAL(b).add(j as usize),
+            t if t == SEXPTYPE::REALSXP => {
+                *REAL(a).add(i as usize) == *REAL(b).add(j as usize)
+            }
             t if t == SEXPTYPE::STRSXP => STRING_ELT(a, i) == STRING_ELT(b, j),
             _ => format_grid_elt(a, i) == format_grid_elt(b, j),
         }
     }
 }
+
 
 pub(crate) unsafe fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
     unsafe {
@@ -3669,6 +3681,7 @@ pub unsafe fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         result
     }
 }
+
 
 unsafe fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
     unsafe {

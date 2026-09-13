@@ -545,7 +545,8 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
             .clone()
             .try_tag()
             .clone()
-            .is_ok_and(|tag| symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()))
+            .ok()
+            .is_some_and(|tag| symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()))
         {
             if binding_is_locked_raw(rho.clone().as_raw(), symbol.clone().as_raw()) {
                 binding_error("cannot change value of locked binding");

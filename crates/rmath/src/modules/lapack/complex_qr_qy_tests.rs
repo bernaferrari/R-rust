@@ -3,9 +3,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::lapack_impl::qr_qy_cmplx;
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol};
-use crate::sexp::accessors::{
-    COMPLEX, INTEGER, SET_ATTRIB, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG,
-};
+use crate::sexp::accessors::{COMPLEX, INTEGER, SET_ATTRIB, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG};
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_cons, Rf_mkChar};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -54,21 +52,9 @@ unsafe fn make_qr(qr: SEXP, qraux: SEXP) -> SEXP {
         SET_VECTOR_ELT(obj, 2, qraux);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _names = protect(names);
-        SET_STRING_ELT(
-            names,
-            0,
-            Rf_mkChar(b"qr\0".as_ptr() as *const std::os::raw::c_char),
-        );
-        SET_STRING_ELT(
-            names,
-            1,
-            Rf_mkChar(b"rank\0".as_ptr() as *const std::os::raw::c_char),
-        );
-        SET_STRING_ELT(
-            names,
-            2,
-            Rf_mkChar(b"qraux\0".as_ptr() as *const std::os::raw::c_char),
-        );
+        SET_STRING_ELT(names, 0, Rf_mkChar(b"qr\0".as_ptr() as *const std::os::raw::c_char));
+        SET_STRING_ELT(names, 1, Rf_mkChar(b"rank\0".as_ptr() as *const std::os::raw::c_char));
+        SET_STRING_ELT(names, 2, Rf_mkChar(b"qraux\0".as_ptr() as *const std::os::raw::c_char));
         SET_ATTRIB(obj, {
             let attrs = Rf_cons(names, R_NilValue());
             SETTAG(attrs, R_NamesSymbol());
@@ -91,7 +77,10 @@ fn complex_qr_qy_rejects_malformed_dims_and_payload() {
     let session = RSession::new();
     session.with_active(|| unsafe {
         let qr = make_qr(
-            make_matrix(&[2, 2], &[(1.0, 0.0), (0.0, 0.0), (0.0, 0.0), (1.0, 0.0)]),
+            make_matrix(
+                &[2, 2],
+                &[(1.0, 0.0), (0.0, 0.0), (0.0, 0.0), (1.0, 0.0)],
+            ),
             make_complex_vector(&[(0.0, 0.0), (0.0, 0.0)]),
         );
         let _qr = protect(qr);
@@ -130,7 +119,10 @@ fn complex_qr_qy_reserves_caller_scratch_before_allocation_and_recovers() {
     let (qr, y, trans) = session.with_active(|| unsafe {
         (
             make_qr(
-                make_matrix(&[2, 2], &[(1.0, 0.0), (0.0, 0.0), (0.0, 0.0), (1.0, 0.0)]),
+                make_matrix(
+                    &[2, 2],
+                    &[(1.0, 0.0), (0.0, 0.0), (0.0, 0.0), (1.0, 0.0)],
+                ),
                 make_complex_vector(&[(0.0, 0.0), (0.0, 0.0)]),
             ),
             make_matrix(&[2, 1], &[(3.0, 0.0), (4.0, 0.0)]),
@@ -163,3 +155,4 @@ fn complex_qr_qy_reserves_caller_scratch_before_allocation_and_recovers() {
         assert!(((*COMPLEX(ans).add(1)).i).abs() < 1e-10);
     });
 }
+

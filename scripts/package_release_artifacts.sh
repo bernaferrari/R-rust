@@ -80,10 +80,11 @@ if [[ ! -f "$android_so" ]]; then
 fi
 cp -f "$android_so" "$BUNDLE_DIR/android/jniLibs/arm64-v8a/libr_uniffi.so"
 
-cp -f README.md CHANGELOG.md NOTICE.md LICENSE "$BUNDLE_DIR/"
+cp -f README.md CHANGELOG.md NOTICE.md LICENSE COPYING "$BUNDLE_DIR/"
 cp -f oracle/r-oracle.json "$BUNDLE_DIR/oracle/"
 cp -f \
     docs/android-embedding-api.md \
+    docs/license-provenance.md \
     docs/loess-and-portable-graphics.md \
     docs/conformance.md \
     docs/performance.md \
@@ -116,6 +117,8 @@ if [[ "$CHECK" -eq 1 ]]; then
         "$BUNDLE_DIR/CHANGELOG.md"
         "$BUNDLE_DIR/NOTICE.md"
         "$BUNDLE_DIR/LICENSE"
+        "$BUNDLE_DIR/COPYING"
+        "$BUNDLE_DIR/docs/license-provenance.md"
         "$BUNDLE_DIR/oracle/r-oracle.json"
         "$BUNDLE_DIR/docs/release-packaging.md"
         "$BUNDLE_DIR/docs/upstream-port-map.tsv"

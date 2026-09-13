@@ -607,7 +607,7 @@ impl GpuRenderer {
             }
         }
         buffer.unmap();
-        for p in rgba.as_chunks_mut::<4>().0 {
+        for p in rgba.chunks_exact_mut(4) {
             if p[3] > 0 && p[3] < 255 {
                 for j in 0..3 {
                     p[j] = ((u32::from(p[j]) * 255 + u32::from(p[3]) / 2) / u32::from(p[3]))
@@ -837,15 +837,7 @@ mod tests {
                 },
             );
             let pixels = gpu.render_rgba(&scene).await.unwrap();
-            assert!(
-                pixels
-                    .as_chunks::<4>()
-                    .0
-                    .iter()
-                    .filter(|p| p[3] > 0)
-                    .count()
-                    > 40
-            );
+            assert!(pixels.chunks_exact(4).filter(|p| p[3] > 0).count() > 40);
             assert_eq!(&pixels[..4], &[0, 0, 0, 0]);
         });
     }

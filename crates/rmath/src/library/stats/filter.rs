@@ -236,6 +236,7 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+
 /* recursive filtering */
 pub unsafe fn rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
     unsafe {
@@ -479,6 +480,7 @@ pub unsafe fn do_pacf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+
 /// GNU `ccf(x, y, lag.max)` demeaned cross-correlation.
 pub unsafe fn do_ccf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -576,6 +578,7 @@ pub unsafe fn do_ccf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+
 /// GNU `ar(..., aic=FALSE, order.max=1)` Yule-Walker.
 pub unsafe fn do_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -651,6 +654,7 @@ pub unsafe fn do_spec_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
+
 /// GNU additive `decompose(ts)` via centered moving average.
 pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -660,7 +664,10 @@ pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             x0,
             crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
         );
-        let freq = if !tsp.is_null() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 3 {
+        let freq = if !tsp.is_null()
+            && TYPEOF(tsp) == SEXPTYPE::REALSXP
+            && XLENGTH(tsp) >= 3
+        {
             *REAL(tsp).add(2) as usize
         } else {
             1
@@ -684,7 +691,7 @@ pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let trend_s = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _t = protect(trend_s);
         for i in 0..n {
-            if i < half || i + half >= n {
+            if i < half || i + half >= n || (even && i + half >= n) {
                 *REAL(trend_s).add(i) = NA_REAL;
                 continue;
             }
@@ -841,7 +848,8 @@ pub unsafe fn do_ARMAacf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 *REAL(ans).add(2) = phi2 + phi * *REAL(ans).add(1);
             }
             for i in 3..n as usize {
-                *REAL(ans).add(i) = phi * *REAL(ans).add(i - 1) + phi2 * *REAL(ans).add(i - 2);
+                *REAL(ans).add(i) =
+                    phi * *REAL(ans).add(i - 1) + phi2 * *REAL(ans).add(i - 2);
             }
         } else {
             let mut acc = 1.0;
@@ -920,8 +928,7 @@ pub unsafe fn do_acf2AR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         for i in 0..n {
             rho[i] = *REAL(acf).add(i);
         }
-        let mat =
-            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, p as i32);
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, p as i32);
         let _m = protect(mat);
         for i in 0..(p * p) {
             *REAL(mat).add(i) = 0.0;
@@ -961,7 +968,11 @@ pub unsafe fn do_acf2AR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, rn);
         SET_VECTOR_ELT(dn, 1, cn);
-        crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
         mat
     }
 }
@@ -1043,8 +1054,10 @@ pub unsafe fn do_kernapply(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 pub unsafe fn do_is_tskernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let class =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
         let mut ok = false;
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(class) {
@@ -1122,11 +1135,7 @@ pub unsafe fn do_as_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         *REAL(tsp) = 1.0;
         *REAL(tsp).add(1) = n as f64;
         *REAL(tsp).add(2) = 1.0;
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
-            tsp,
-        );
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::Rf_install(c"tsp".as_ptr()), tsp);
         crate::sexp::attrib_core::setAttrib(
             x,
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -1290,8 +1299,10 @@ pub unsafe fn do_end(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_is_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let class =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
         let mut ok = false;
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(class) {
@@ -1421,8 +1432,10 @@ unsafe fn named_list_elt(x: SEXP, name: &str) -> SEXP {
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             return R_NilValue();
         }
-        let names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
         if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
@@ -1558,7 +1571,11 @@ pub unsafe fn do_contr_treatment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, rn);
         SET_VECTOR_ELT(dn, 1, cn);
-        crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
         mat
     }
 }
@@ -1598,7 +1615,11 @@ pub unsafe fn do_contr_sum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, rn);
         SET_VECTOR_ELT(dn, 1, R_NilValue());
-        crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
         mat
     }
 }
@@ -1640,13 +1661,22 @@ pub unsafe fn do_contr_helmert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, rn);
         SET_VECTOR_ELT(dn, 1, R_NilValue());
-        crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
         mat
     }
 }
 
 /// GNU `contr.SAS(n)` is treatment with last level as base.
-pub unsafe fn do_contr_sas(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_contr_sas(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         let n_s = CAR(args);
         let n = if TYPEOF(n_s) == SEXPTYPE::INTSXP {
@@ -1663,12 +1693,21 @@ pub unsafe fn do_contr_sas(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `contrasts(factor)` default treatment coding.
-pub unsafe fn do_contrasts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_contrasts(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let levels =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
-        let n = if !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP
+        let levels = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        );
+        let n = if !levels.is_null()
+            && levels != R_NilValue()
+            && TYPEOF(levels) == SEXPTYPE::STRSXP
         {
             XLENGTH(levels) as c_int
         } else {
@@ -1701,7 +1740,11 @@ pub unsafe fn do_contrasts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, rn);
         SET_VECTOR_ELT(dn, 1, cn);
-        crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
         mat
     }
 }
@@ -1710,7 +1753,8 @@ pub unsafe fn do_contrasts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 pub unsafe fn do_C(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let object = crate::mainutils::duplicate::Rf_duplicate(CAR(args));
-        let ordered = crate::mainutils::objects::inherits2(object, c"ordered".as_ptr()) != FALSE;
+        let ordered =
+            crate::mainutils::objects::inherits2(object, c"ordered".as_ptr()) != FALSE;
         let (kind, name) = if ordered {
             (c"contr.poly".as_ptr(), c"ordered".as_ptr())
         } else {
@@ -1733,3 +1777,25 @@ pub unsafe fn do_C(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         object
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

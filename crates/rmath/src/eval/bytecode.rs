@@ -365,7 +365,8 @@ fn gnu_for_step_from_start_target(code: &[c_int], target: usize) -> Result<usize
         Some(GNU_OP_STEPFOR) => Ok(target),
         Some(GNU_OP_STARTLOOPCNTXT) => {
             let isfor = code.get(target + 1).copied().unwrap_or(-1);
-            let after = target + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_STARTLOOPCNTXT as usize] as usize;
+            let after =
+                target + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_STARTLOOPCNTXT as usize] as usize;
             if isfor != 1 || code.get(after) != Some(&GNU_OP_GOTO) {
                 return Err(format!(
                     "GNU STARTFOR entry target {target} is not a STEPFOR instruction"
@@ -419,39 +420,15 @@ fn validate_gnu_adapter_impl(
         let opcode = code[pc];
         pc += 1;
         match opcode {
-            GNU_OP_RETURN
-            | GNU_OP_INVISIBLE
-            | GNU_OP_LDNULL
-            | GNU_OP_LDTRUE
-            | GNU_OP_LDFALSE
-            | GNU_OP_POP
-            | GNU_OP_ENDFOR
-            | GNU_OP_PUSHNULLARG
-            | GNU_OP_PUSHTRUEARG
-            | GNU_OP_PUSHFALSEARG
-            | GNU_OP_PUSHARG
-            | GNU_OP_CHECKFUN
-            | GNU_OP_DUP
-            | GNU_OP_PRINTVALUE
-            | GNU_OP_SETLOOPVAL
-            | GNU_OP_DOTSERR
-            | GNU_OP_ISNULL
-            | GNU_OP_ISLOGICAL
-            | GNU_OP_ISINTEGER
-            | GNU_OP_ISDOUBLE
-            | GNU_OP_ISCOMPLEX
-            | GNU_OP_ISCHARACTER
-            | GNU_OP_ISSYMBOL
-            | GNU_OP_ISOBJECT
-            | GNU_OP_ISNUMERIC
-            | GNU_OP_DOMISSING
-            | GNU_OP_DFLTSUBSET
-            | GNU_OP_DFLTSUBASSIGN
-            | GNU_OP_DFLTSUBASSIGN2
-            | GNU_OP_DFLTSUBSET2
-            | GNU_OP_SWAP
-            | GNU_OP_DUP2ND
-            | GNU_OP_RETURNJMP => {}
+            GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
+            | GNU_OP_POP | GNU_OP_ENDFOR | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG
+            | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG | GNU_OP_CHECKFUN | GNU_OP_DUP
+            | GNU_OP_PRINTVALUE | GNU_OP_SETLOOPVAL | GNU_OP_DOTSERR
+            | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
+            | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
+            | GNU_OP_ISNUMERIC | GNU_OP_DOMISSING | GNU_OP_DFLTSUBSET
+            | GNU_OP_DFLTSUBASSIGN | GNU_OP_DFLTSUBASSIGN2 | GNU_OP_DFLTSUBSET2 | GNU_OP_SWAP
+            | GNU_OP_DUP2ND | GNU_OP_RETURNJMP => {}
             GNU_OP_STARTLOOPCNTXT => {
                 let isfor = code[pc];
                 let target = code[pc + 1];
@@ -471,7 +448,9 @@ fn validate_gnu_adapter_impl(
             GNU_OP_ENDLOOPCNTXT => {
                 let isfor = code[pc];
                 if isfor != 0 && isfor != 1 {
-                    return Err(format!("GNU ENDLOOPCNTXT isfor flag {isfor} is not 0 or 1"));
+                    return Err(format!(
+                        "GNU ENDLOOPCNTXT isfor flag {isfor} is not 0 or 1"
+                    ));
                 }
             }
             GNU_OP_STARTASSIGN | GNU_OP_ENDASSIGN => {
@@ -543,13 +522,8 @@ fn validate_gnu_adapter_impl(
                     }
                 }
             }
-            GNU_OP_STARTSUBSET
-            | GNU_OP_STARTSUBSET2
-            | GNU_OP_STARTSUBSET_N
-            | GNU_OP_STARTSUBSET2_N
-            | GNU_OP_STARTSUBASSIGN_N
-            | GNU_OP_STARTSUBASSIGN2_N
-            | GNU_OP_STARTSUBASSIGN
+            GNU_OP_STARTSUBSET | GNU_OP_STARTSUBSET2 | GNU_OP_STARTSUBSET_N | GNU_OP_STARTSUBSET2_N
+            | GNU_OP_STARTSUBASSIGN_N | GNU_OP_STARTSUBASSIGN2_N | GNU_OP_STARTSUBASSIGN
             | GNU_OP_STARTSUBASSIGN2 => {
                 let call_index = code[pc];
                 let target = code[pc + 1];
@@ -630,43 +604,15 @@ fn validate_gnu_adapter_impl(
                     return Err(format!("GNU {name} rank {rank} is negative"));
                 }
             }
-            GNU_OP_LDCONST
-            | GNU_OP_GETVAR
-            | GNU_OP_GETVAR_MISSOK
-            | GNU_OP_DDVAL
-            | GNU_OP_DDVAL_MISSOK
-            | GNU_OP_GETFUN
-            | GNU_OP_GETBUILTIN
-            | GNU_OP_GETINTLBUILTIN
-            | GNU_OP_GETGLOBFUN
-            | GNU_OP_GETSYMFUN
-            | GNU_OP_MAKEPROM
-            | GNU_OP_PUSHCONSTARG
-            | GNU_OP_UMINUS
-            | GNU_OP_UPLUS
-            | GNU_OP_ADD
-            | GNU_OP_SUB
-            | GNU_OP_MUL
-            | GNU_OP_DIV
-            | GNU_OP_EXPT
-            | GNU_OP_EQ
-            | GNU_OP_NE
-            | GNU_OP_LT
-            | GNU_OP_LE
-            | GNU_OP_GE
-            | GNU_OP_GT
-            | GNU_OP_AND
-            | GNU_OP_OR
-            | GNU_OP_NOT
-            | GNU_OP_SQRT
-            | GNU_OP_EXP
-            | GNU_OP_LOG
-            | GNU_OP_LOGBASE
-            | GNU_OP_SETVAR
-            | GNU_OP_SETVAR2
-            | GNU_OP_COLON
-            | GNU_OP_SEQALONG
-            | GNU_OP_SEQLEN => {
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_DDVAL
+            | GNU_OP_DDVAL_MISSOK | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
+            | GNU_OP_GETINTLBUILTIN | GNU_OP_GETGLOBFUN | GNU_OP_GETSYMFUN
+            | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
+            | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
+            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND | GNU_OP_OR
+            | GNU_OP_NOT | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_LOG | GNU_OP_LOGBASE
+            | GNU_OP_SETVAR | GNU_OP_SETVAR2
+            | GNU_OP_COLON | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -866,8 +812,8 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
             }
-            GNU_OP_DODOTS | GNU_OP_VISIBLE | GNU_OP_INCLNK | GNU_OP_DECLNK | GNU_OP_INCLNKSTK
-            | GNU_OP_DECLNKSTK => {}
+            GNU_OP_DODOTS | GNU_OP_VISIBLE | GNU_OP_INCLNK | GNU_OP_DECLNK
+            | GNU_OP_INCLNKSTK | GNU_OP_DECLNKSTK => {}
             GNU_OP_DECLNK_N => {
                 let count = code[pc];
                 if count < 0 {
@@ -1298,7 +1244,12 @@ fn validate_gnu_adapter_impl(
                 let step_pc = gnu_for_step_from_start_target(code, raw_target)?;
                 let mut entered = loop_stack;
                 entered.push(step_pc);
-                pending.push((raw_target, depth, entered, call_stack.clone()));
+                pending.push((
+                    raw_target,
+                    depth,
+                    entered,
+                    call_stack.clone(),
+                ));
             }
             GNU_OP_STEPFOR => {
                 if loop_stack.last() != Some(&instruction_pc) {
@@ -1363,10 +1314,11 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
-            GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT | GNU_OP_LOG
-            | GNU_OP_MATH1 | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER
-            | GNU_OP_ISDOUBLE | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL
-            | GNU_OP_ISOBJECT | GNU_OP_ISNUMERIC | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
+            GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT
+            | GNU_OP_LOG | GNU_OP_MATH1
+            | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
+            | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
+            | GNU_OP_ISNUMERIC | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
                 if depth < 1 {
                     return Err(format!(
                         "GNU unary opcode {opcode} at instruction {instruction_pc} has empty stack"
@@ -1374,16 +1326,10 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth, loop_stack, call_stack.clone()));
             }
-            GNU_OP_GETFUN
-            | GNU_OP_GETBUILTIN
-            | GNU_OP_GETINTLBUILTIN
-            | GNU_OP_GETGLOBFUN
-            | GNU_OP_GETSYMFUN
-            | GNU_OP_MAKEPROM
-            | GNU_OP_PUSHCONSTARG
-            | GNU_OP_PUSHNULLARG
-            | GNU_OP_PUSHTRUEARG
-            | GNU_OP_PUSHFALSEARG => {
+            GNU_OP_GETFUN | GNU_OP_GETBUILTIN | GNU_OP_GETINTLBUILTIN
+            | GNU_OP_GETGLOBFUN | GNU_OP_GETSYMFUN
+            | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG
+            | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG | GNU_OP_PUSHFALSEARG => {
                 if depth >= 64 {
                     return Err("GNU bytecode exceeds bounded stack limit".into());
                 }
@@ -3147,9 +3093,7 @@ mod tests {
                 .unwrap_err()
                 .contains("empty stack")
         );
-        assert!(
-            validate_gnu_adapter_stream(&[12, 20, 0, 61, 1, 23, 2, 35, 98, 3, 1, 1], 3).is_err()
-        );
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 61, 1, 23, 2, 35, 98, 3, 1, 1], 3).is_err());
     }
 
     #[test]

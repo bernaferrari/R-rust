@@ -215,8 +215,10 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let class =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
         if !class.is_null()
             && class != R_NilValue()
             && TYPEOF(class) == SEXPTYPE::STRSXP

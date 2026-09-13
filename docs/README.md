@@ -28,6 +28,7 @@ reviews remain available in Git history.
 - [Platform release matrix](platform-release-matrix.md)
 - [Artifact packaging](release-packaging.md)
 - [Upstream source map](upstream-port-map.md)
+- [License and provenance](license-provenance.md)
 
 The `.tsv` inventories beside these documents are inputs to automated checks.
 They are maintained data, not disposable reports.

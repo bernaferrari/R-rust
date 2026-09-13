@@ -43,7 +43,9 @@ fn imported_gnu_dotserr_uses_gnu_message() {
         &mut session,
         include_bytes!("fixtures/gnu-bytecode-dotserr/dotserr.rds"),
     );
-    let err = session.eval("f()").expect_err("misplaced ... must error");
+    let err = session
+        .eval("f()")
+        .expect_err("misplaced ... must error");
     let text = err.to_string();
     assert!(
         text.contains("'...' used in an incorrect context"),
@@ -63,7 +65,10 @@ fn mutated_gnu_dotserr_runs_the_stream_not_the_source() {
     changed[offset + 4..offset + 8].copy_from_slice(&1_i32.to_be_bytes());
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&changed)));
+    let loaded = session.eval(&format!(
+        "f <- unserialize({})",
+        raw_expression(&changed)
+    ));
     if let Err(err) = loaded {
         assert!(
             err.to_string().contains("RETURN") || err.to_string().contains("stack"),

@@ -3,11 +3,7 @@ use r_embed::RSession;
 fn raw_expression(bytes: &[u8]) -> String {
     format!(
         "as.raw(c({}))",
-        bytes
-            .iter()
-            .map(u8::to_string)
-            .collect::<Vec<_>>()
-            .join(",")
+        bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
     )
 }
 
@@ -18,20 +14,13 @@ fn load(session: &mut RSession, bytes: &[u8]) {
 }
 
 fn unique_stream_offset(bytes: &[u8], words: &[i32]) -> usize {
-    let encoded = words
-        .iter()
-        .flat_map(|word| word.to_be_bytes())
-        .collect::<Vec<_>>();
+    let encoded = words.iter().flat_map(|word| word.to_be_bytes()).collect::<Vec<_>>();
     let offsets = bytes
         .windows(encoded.len())
         .enumerate()
         .filter_map(|(offset, candidate)| (candidate == encoded).then_some(offset))
         .collect::<Vec<_>>();
-    assert_eq!(
-        offsets.len(),
-        1,
-        "fixture must contain one exact instruction stream"
-    );
+    assert_eq!(offsets.len(), 1, "fixture must contain one exact instruction stream");
     offsets[0]
 }
 
@@ -43,10 +32,7 @@ fn imported_gnu_matsubset2_extracts_matrix_element() {
         include_bytes!("fixtures/gnu-bytecode-matsubset2/matsubset2.rds"),
     );
     assert_eq!(
-        session
-            .eval("m<-matrix(1:6,2,3); identical(f(m), 1L)")
-            .unwrap()
-            .trim(),
+        session.eval("m<-matrix(1:6,2,3); identical(f(m), 1L)").unwrap().trim(),
         "[1] TRUE"
     );
     assert_eq!(

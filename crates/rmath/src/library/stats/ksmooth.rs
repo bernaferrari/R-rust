@@ -284,6 +284,7 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::BDRksmooth;
