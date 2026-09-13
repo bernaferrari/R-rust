@@ -4813,17 +4813,163 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let first = CAR(args);
         let mut y = first;
-        let mut x = CAR(CDR(args));
+        let mut preds: Vec<(String, SEXP)> = Vec::new();
         if !first.is_null() && first != R_NilValue() && TYPEOF(first) == SEXPTYPE::LANGSXP {
             let lhs = CADR(first);
             let rhs = CAR(CDR(CDR(first)));
             if !lhs.is_null() && lhs != R_NilValue() {
                 y = crate::eval::eval::Rf_eval(lhs, rho);
             }
-            if !rhs.is_null() && rhs != R_NilValue() {
-                x = crate::eval::eval::Rf_eval(rhs, rho);
+            fn collect_plus(expr: SEXP, out: &mut Vec<SEXP>) {
+                unsafe {
+                    if expr.is_null() || expr == R_NilValue() {
+                        return;
+                    }
+                    if TYPEOF(expr) == SEXPTYPE::LANGSXP {
+                        let op = CAR(expr);
+                        let name = if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
+                            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
+                                .to_string_lossy()
+                                .into_owned()
+                        } else {
+                            String::new()
+                        };
+                        if name == "+" {
+                            collect_plus(CADR(expr), out);
+                            collect_plus(CAR(CDR(CDR(expr))), out);
+                            return;
+                        }
+                    }
+                    out.push(expr);
+                }
             }
+            let mut terms = Vec::new();
+            collect_plus(rhs, &mut terms);
+            for term in terms {
+                let name = if TYPEOF(term) == SEXPTYPE::SYMSXP {
+                    std::ffi::CStr::from_ptr(CHAR(PRINTNAME(term)))
+                        .to_string_lossy()
+                        .into_owned()
+                } else {
+                    "x".to_string()
+                };
+                let val = crate::eval::eval::Rf_eval(term, rho);
+                preds.push((name, val));
+            }
+        } else {
+            let x = CAR(CDR(args));
+            preds.push(("x".to_string(), x));
         }
+        if y.is_null() || y == R_NilValue() || preds.is_empty() {
+            return R_NilValue();
+        }
+        if preds.len() >= 2 {
+            let x1 = preds[0].1;
+            let x2 = preds[1].1;
+            if x1.is_null() || x1 == R_NilValue() || x2.is_null() || x2 == R_NilValue() {
+                return R_NilValue();
+            }
+            let n = XLENGTH(y).min(XLENGTH(x1)).min(XLENGTH(x2)) as usize;
+            if n < 3 {
+                return R_NilValue();
+            }
+            let mut ys = vec![0.0; n];
+            let mut a = vec![0.0; n];
+            let mut b = vec![0.0; n];
+            for i in 0..n {
+                ys[i] = elt_real_safe(y, i as i64);
+                a[i] = elt_real_safe(x1, i as i64);
+                b[i] = elt_real_safe(x2, i as i64);
+            }
+            let mut xtx = [[0.0; 3]; 3];
+            let mut xty = [0.0; 3];
+            for i in 0..n {
+                let row = [1.0, a[i], b[i]];
+                for p in 0..3 {
+                    xty[p] += row[p] * ys[i];
+                    for q in 0..3 {
+                        xtx[p][q] += row[p] * row[q];
+                    }
+                }
+            }
+            let Some(inv) = invert3(xtx) else {
+                return R_NilValue();
+            };
+            let mut beta = [0.0; 3];
+            for i in 0..3 {
+                beta[i] = inv[i][0] * xty[0] + inv[i][1] * xty[1] + inv[i][2] * xty[2];
+            }
+            let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+            let _c = protect(coef);
+            *REAL(coef) = beta[0];
+            *REAL(coef).add(1) = beta[1];
+            *REAL(coef).add(2) = beta[2];
+            set_string_names(
+                coef,
+                &[
+                    "(Intercept)".to_string(),
+                    preds[0].0.clone(),
+                    preds[1].0.clone(),
+                ],
+            );
+            let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+            let _f = protect(fitted);
+            let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+            let _e = protect(resid);
+            let hats = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+            let _h = protect(hats);
+            let mut sse = 0.0;
+            for i in 0..n {
+                let row = [1.0, a[i], b[i]];
+                let fit = beta[0] * row[0] + beta[1] * row[1] + beta[2] * row[2];
+                let e = ys[i] - fit;
+                *REAL(fitted).add(i) = fit;
+                *REAL(resid).add(i) = e;
+                sse += e * e;
+                let mut tmp = [0.0; 3];
+                for p in 0..3 {
+                    tmp[p] = inv[p][0] * row[0] + inv[p][1] * row[1] + inv[p][2] * row[2];
+                }
+                *REAL(hats).add(i) = row[0] * tmp[0] + row[1] * tmp[1] + row[2] * tmp[2];
+            }
+            let df = (n as i64) - 3;
+            let sigma = if df > 0 {
+                (sse / df as f64).sqrt()
+            } else {
+                f64::NAN
+            };
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
+            let _r = protect(result);
+            SET_VECTOR_ELT(result, 0, coef);
+            SET_VECTOR_ELT(result, 1, resid);
+            SET_VECTOR_ELT(result, 2, fitted);
+            SET_VECTOR_ELT(result, 3, Rf_ScalarInteger(3));
+            SET_VECTOR_ELT(result, 4, Rf_ScalarInteger(df as i32));
+            SET_VECTOR_ELT(result, 5, Rf_ScalarReal(sigma));
+            SET_VECTOR_ELT(result, 6, hats);
+            crate::mainutils::essentials::set_string_names(
+                result,
+                &[
+                    "coefficients".to_string(),
+                    "residuals".to_string(),
+                    "fitted.values".to_string(),
+                    "rank".to_string(),
+                    "df.residual".to_string(),
+                    "sigma".to_string(),
+                    "hat".to_string(),
+                ],
+            );
+            let class = Rf_mkString(c"lm".as_ptr());
+            let _cl = protect(class);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+            return result;
+        }
+        let x = preds[0].1;
+        let xname = preds[0].0.clone();
         if y.is_null() || y == R_NilValue() || x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
@@ -4857,7 +5003,7 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _c = protect(coef);
         *REAL(coef) = b0;
         *REAL(coef).add(1) = b1;
-        set_string_names(coef, &["(Intercept)".to_string(), "x".to_string()]);
+        set_string_names(coef, &["(Intercept)".to_string(), xname]);
         let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _f = protect(fitted);
         let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
