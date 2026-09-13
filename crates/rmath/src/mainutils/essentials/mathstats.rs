@@ -5823,6 +5823,26 @@ pub unsafe fn do_sslogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `SSasymp(input, Asym, R0, lrc)` — asymptotic exponential.
+pub unsafe fn do_ssasymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let input = CAR(args);
+        let asym = elt_real_safe(CAR(CDR(args)), 0);
+        let r0 = elt_real_safe(CAR(CDR(CDR(args))), 0);
+        let lrc = elt_real_safe(CAR(CDR(CDR(CDR(args)))), 0);
+        let rc = lrc.exp();
+        let n = XLENGTH(input);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let x = elt_real_safe(input, i);
+            *REAL(result).add(i as usize) = asym + (r0 - asym) * (-rc * x).exp();
+        }
+        result
+    }
+}
+
+
 
 
 unsafe fn family_object(family: &str, link: &str) -> SEXP {
