@@ -1,0 +1,7 @@
+f <- C(factor(c("a", "b")))
+cat(paste(as.character(f), collapse = ","), "\n", sep = "")
+cat(attr(f, "contrasts"), "\n", sep = "")
+cat(names(attr(f, "contrasts")), "\n", sep = "")
+o <- C(ordered(c("a", "b")))
+cat(attr(o, "contrasts"), "\n", sep = "")
+cat(names(attr(o, "contrasts")), "\n", sep = "")

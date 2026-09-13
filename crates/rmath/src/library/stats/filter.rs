@@ -1749,6 +1749,36 @@ pub unsafe fn do_contrasts(
     }
 }
 
+/// GNU `C(factor)` attaches the default contrast name.
+pub unsafe fn do_C(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let object = crate::mainutils::duplicate::Rf_duplicate(CAR(args));
+        let ordered =
+            crate::mainutils::objects::inherits2(object, c"ordered".as_ptr()) != FALSE;
+        let (kind, name) = if ordered {
+            (c"contr.poly".as_ptr(), c"ordered".as_ptr())
+        } else {
+            (c"contr.treatment".as_ptr(), c"unordered".as_ptr())
+        };
+        let contr = Rf_mkString(kind);
+        let _c = protect(contr);
+        let names = Rf_mkString(name);
+        let _n = protect(names);
+        crate::sexp::attrib_core::setAttrib(
+            contr,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            object,
+            crate::sexp::symbol::Rf_install(c"contrasts".as_ptr()),
+            contr,
+        );
+        object
+    }
+}
+
+
 
 
 

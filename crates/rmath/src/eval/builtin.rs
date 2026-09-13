@@ -1777,6 +1777,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_contrasts,
     },
     EvaluatedBuiltin {
+        name: "C",
+        handler: crate::library::stats::filter::do_C,
+    },
+    EvaluatedBuiltin {
         name: "window",
         handler: crate::library::stats::filter::do_window,
     },
