@@ -1773,6 +1773,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_contr_sas,
     },
     EvaluatedBuiltin {
+        name: "contrasts",
+        handler: crate::library::stats::filter::do_contrasts,
+    },
+    EvaluatedBuiltin {
         name: "window",
         handler: crate::library::stats::filter::do_window,
     },

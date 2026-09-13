@@ -1692,6 +1692,64 @@ pub unsafe fn do_contr_sas(
     }
 }
 
+/// GNU `contrasts(factor)` default treatment coding.
+pub unsafe fn do_contrasts(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let levels = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        );
+        let n = if !levels.is_null()
+            && levels != R_NilValue()
+            && TYPEOF(levels) == SEXPTYPE::STRSXP
+        {
+            XLENGTH(levels) as c_int
+        } else {
+            0
+        };
+        if n < 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "contrasts apply only to factors with 2 or more levels",
+            );
+        }
+        let n_s = Rf_ScalarInteger(n);
+        let _ns = protect(n_s);
+        let targs = Rf_cons(n_s, R_NilValue());
+        let _ta = protect(targs);
+        let mat = do_contr_treatment(call, op, targs, rho);
+        let _m = protect(mat);
+        let nc = n - 1;
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, n as i64);
+        let _rn = protect(rn);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, nc as i64);
+        let _cn = protect(cn);
+        for i in 0..n as i64 {
+            SET_STRING_ELT(rn, i, STRING_ELT(levels, i));
+        }
+        for i in 0..nc as i64 {
+            SET_STRING_ELT(cn, i, STRING_ELT(levels, i + 1));
+        }
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        mat
+    }
+}
+
+
 
 
 
