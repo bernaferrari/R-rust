@@ -1563,6 +1563,87 @@ pub unsafe fn do_mean_POSIXct(
     }
 }
 
+/// GNU `diff.POSIXt(x)`.
+pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+            do_as_POSIXct(
+                _call,
+                _op,
+                Rf_cons(x, R_NilValue()),
+                _rho,
+            )
+        } else {
+            x
+        };
+        let _x = protect(x);
+        let n = XLENGTH(x);
+        if n < 2 {
+            let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            let _e = protect(empty);
+            set_single_class(empty, "difftime");
+            crate::sexp::attrib_core::setAttrib(
+                empty,
+                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                Rf_mkString(c"secs".as_ptr()),
+            );
+            return empty;
+        }
+        let mut z = Vec::with_capacity((n - 1) as usize);
+        for i in 0..(n - 1) {
+            let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                0.0
+            };
+            let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add((i + 1) as usize)
+            } else {
+                0.0
+            };
+            z.push(b - a);
+        }
+        let zz = z
+            .iter()
+            .copied()
+            .filter(|v| v.is_finite())
+            .map(|v| v.abs())
+            .fold(f64::INFINITY, f64::min);
+        let units = if !zz.is_finite() || zz < 60.0 {
+            "secs"
+        } else if zz < 3600.0 {
+            "mins"
+        } else if zz < 86400.0 {
+            "hours"
+        } else {
+            "days"
+        };
+        let scale = match units {
+            "mins" => 60.0,
+            "hours" => 3600.0,
+            "days" => 86_400.0,
+            _ => 1.0,
+        };
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, z.len() as i64);
+        let _r = protect(result);
+        for (i, v) in z.iter().enumerate() {
+            *REAL(result).add(i) = *v / scale;
+        }
+        set_single_class(result, "difftime");
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+            Rf_mkString(CString::new(units).unwrap_or_default().as_ptr()),
+        );
+        result
+    }
+}
+
+
 
 /// R's `Sys.Date()` — current date as REALSXP (days since epoch).
 pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

@@ -2217,6 +2217,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_mean_POSIXct,
     },
     EvaluatedBuiltin {
+        name: "diff.POSIXt",
+        handler: crate::mainutils::essentials::do_diff_POSIXt,
+    },
+    EvaluatedBuiltin {
         name: "pmin",
         handler: crate::mainutils::essentials::do_pmin,
     },
