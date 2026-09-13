@@ -1869,6 +1869,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_pairwise_t_test,
     },
     EvaluatedBuiltin {
+        name: "PP.test",
+        handler: crate::mainutils::essentials::do_pp_test,
+    },
+    EvaluatedBuiltin {
         name: "power.t.test",
         handler: crate::mainutils::essentials::do_power_t_test,
     },

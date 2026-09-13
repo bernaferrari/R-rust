@@ -1,0 +1,7 @@
+x <- c(1, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21)
+pp <- PP.test(x)
+cat(round(as.numeric(pp$statistic), 4), "\n", sep = "")
+cat(as.numeric(pp$parameter), "\n", sep = "")
+cat(pp$p.value, "\n", sep = "")
+cat(pp$method, "\n", sep = "")
+cat(class(pp), "\n", sep = "")

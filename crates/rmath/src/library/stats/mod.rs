@@ -36,7 +36,7 @@ mod massdist;
 mod monospl;
 pub(crate) mod optim;
 mod permdist;
-mod ppsum;
+pub(crate) mod ppsum;
 mod prho;
 pub(crate) mod random;
 mod rcont;

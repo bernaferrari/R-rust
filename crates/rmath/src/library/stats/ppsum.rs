@@ -17,7 +17,7 @@ unsafe fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
     unsafe { crate::main::coerce::coerceVector(x, sexptype.into()) }
 }
 
-fn r_pp_sum(u: &[c_double], l: c_int) -> c_double {
+pub(crate) fn r_pp_sum(u: &[c_double], l: c_int) -> c_double {
     let mut tmp1 = 0.0;
     if l > 0 {
         let lag_denominator = l as c_double + 1.0;

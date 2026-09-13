@@ -3374,6 +3374,171 @@ pub unsafe fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+fn invert3(a: [[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
+    let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
+        - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+        + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+    if !det.is_finite() || det.abs() < 1e-14 {
+        return None;
+    }
+    let mut inv = [[0.0; 3]; 3];
+    inv[0][0] = (a[1][1] * a[2][2] - a[1][2] * a[2][1]) / det;
+    inv[0][1] = (a[0][2] * a[2][1] - a[0][1] * a[2][2]) / det;
+    inv[0][2] = (a[0][1] * a[1][2] - a[0][2] * a[1][1]) / det;
+    inv[1][0] = (a[1][2] * a[2][0] - a[1][0] * a[2][2]) / det;
+    inv[1][1] = (a[0][0] * a[2][2] - a[0][2] * a[2][0]) / det;
+    inv[1][2] = (a[0][2] * a[1][0] - a[0][0] * a[1][2]) / det;
+    inv[2][0] = (a[1][0] * a[2][1] - a[1][1] * a[2][0]) / det;
+    inv[2][1] = (a[0][1] * a[2][0] - a[0][0] * a[2][1]) / det;
+    inv[2][2] = (a[0][0] * a[1][1] - a[0][1] * a[1][0]) / det;
+    Some(inv)
+}
+
+fn approx_rule2(xs: &[f64], ys: &[f64], x: f64) -> f64 {
+    if xs.is_empty() {
+        return f64::NAN;
+    }
+    if x <= xs[0] {
+        return ys[0];
+    }
+    let last = xs.len() - 1;
+    if x >= xs[last] {
+        return ys[last];
+    }
+    for i in 0..last {
+        if x <= xs[i + 1] {
+            let t = (x - xs[i]) / (xs[i + 1] - xs[i]);
+            return ys[i] + t * (ys[i + 1] - ys[i]);
+        }
+    }
+    ys[last]
+}
+
+/// GNU `PP.test(x)` Phillips-Perron unit-root test.
+pub unsafe fn do_pp_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || XLENGTH(x) < 4 {
+            return R_NilValue();
+        }
+        let n0 = XLENGTH(x) as usize;
+        let mut xs = Vec::with_capacity(n0);
+        for i in 0..n0 {
+            xs.push(elt_real_safe(x, i as i64));
+        }
+        let n = n0 - 1;
+        let mut xtx = [[0.0; 3]; 3];
+        let mut xty = [0.0; 3];
+        let mut yt1s = Vec::with_capacity(n);
+        let mut yts = Vec::with_capacity(n);
+        for i in 0..n {
+            let yt = xs[i + 1];
+            let yt1 = xs[i];
+            let u = (i as f64 + 1.0) - (n as f64) / 2.0;
+            let row = [1.0, u, yt1];
+            yts.push(yt);
+            yt1s.push(yt1);
+            for a in 0..3 {
+                xty[a] += row[a] * yt;
+                for b in 0..3 {
+                    xtx[a][b] += row[a] * row[b];
+                }
+            }
+        }
+        let Some(inv) = invert3(xtx) else {
+            return R_NilValue();
+        };
+        let mut beta = [0.0; 3];
+        for i in 0..3 {
+            beta[i] = inv[i][0] * xty[0] + inv[i][1] * xty[1] + inv[i][2] * xty[2];
+        }
+        let mut resid = vec![0.0; n];
+        let mut sse = 0.0;
+        for i in 0..n {
+            let u = (i as f64 + 1.0) - (n as f64) / 2.0;
+            let fit = beta[0] + beta[1] * u + beta[2] * yt1s[i];
+            let e = yts[i] - fit;
+            resid[i] = e;
+            sse += e * e;
+        }
+        let sigma2 = sse / ((n - 3) as f64);
+        let se = (sigma2 * inv[2][2]).sqrt();
+        let tstat = (beta[2] - 1.0) / se;
+        let ssqru = sse / (n as f64);
+        let l = (4.0 * (n as f64 / 100.0).powf(0.25)).trunc() as i32;
+        let ssqrtl = ssqru + crate::library::stats::ppsum::r_pp_sum(&resid, l);
+        let n_f = n as f64;
+        let n2 = n_f * n_f;
+        let mut sum_yt1_2 = 0.0;
+        let mut sum_yt1_t = 0.0;
+        let mut sum_yt1 = 0.0;
+        for i in 0..n {
+            let t = (i as f64) + 1.0;
+            sum_yt1_2 += yt1s[i] * yt1s[i];
+            sum_yt1_t += yt1s[i] * t;
+            sum_yt1 += yt1s[i];
+        }
+        let trm1 = n2 * (n2 - 1.0) * sum_yt1_2 / 12.0;
+        let trm2 = n_f * sum_yt1_t * sum_yt1_t;
+        let trm3 = n_f * (n_f + 1.0) * sum_yt1_t * sum_yt1;
+        let trm4 = (n_f * (n_f + 1.0) * (2.0 * n_f + 1.0) * sum_yt1 * sum_yt1) / 6.0;
+        let dx = trm1 - trm2 + trm3 - trm4;
+        let stat = ssqru.sqrt() / ssqrtl.sqrt() * tstat
+            - (n_f * n_f * n_f) / (4.0 * 3.0_f64.sqrt() * dx.sqrt() * ssqrtl.sqrt())
+                * (ssqrtl - ssqru);
+        let table_t = [25.0, 50.0, 100.0, 250.0, 500.0, 1e5];
+        let table = [
+            [4.38, 4.15, 4.04, 3.99, 3.98, 3.96],
+            [3.95, 3.80, 3.73, 3.69, 3.68, 3.66],
+            [3.60, 3.50, 3.45, 3.43, 3.42, 3.41],
+            [3.24, 3.18, 3.15, 3.13, 3.13, 3.12],
+            [1.14, 1.19, 1.22, 1.23, 1.24, 1.25],
+            [0.80, 0.87, 0.90, 0.92, 0.93, 0.94],
+            [0.50, 0.58, 0.62, 0.64, 0.65, 0.66],
+            [0.15, 0.24, 0.28, 0.31, 0.32, 0.33],
+        ];
+        let tablep = [0.01, 0.025, 0.05, 0.1, 0.9, 0.95, 0.975, 0.99];
+        let mut tableipl = [0.0; 8];
+        for i in 0..8 {
+            let col: Vec<f64> = table[i].iter().map(|v| -v).collect();
+            tableipl[i] = approx_rule2(&table_t, &col, n_f);
+        }
+        let pval = approx_rule2(&tableipl, &tablep, stat);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["Dickey-Fuller".to_string()]);
+        let parameter = Rf_ScalarReal(l as f64);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["Truncation lag parameter".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"Phillips-Perron Unit Root Test".as_ptr()));
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 
