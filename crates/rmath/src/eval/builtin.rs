@@ -2253,10 +2253,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_diff_POSIXt,
     },
     EvaluatedBuiltin {
-        name: "diff.POSIXlt",
-        handler: crate::mainutils::essentials::do_diff_POSIXt,
-    },
-    EvaluatedBuiltin {
         name: "diff.Date",
         handler: crate::mainutils::essentials::do_diff_Date,
     },
