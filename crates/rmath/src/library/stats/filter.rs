@@ -2272,6 +2272,64 @@ pub unsafe fn do_drop_terms(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 }
 
+fn term_label_strings(obj: SEXP) -> Vec<String> {
+    unsafe {
+        let labs = crate::sexp::attrib_core::getAttrib(
+            obj,
+            crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
+        );
+        let mut out = Vec::new();
+        if labs.is_null() || labs == R_NilValue() || TYPEOF(labs) != SEXPTYPE::STRSXP {
+            return out;
+        }
+        for i in 0..XLENGTH(labs) {
+            let raw = CHAR(STRING_ELT(labs, i));
+            if raw.is_null() {
+                continue;
+            }
+            out.push(std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned());
+        }
+        out
+    }
+}
+
+/// GNU `drop.scope(terms1)` — `term.labels` that can be dropped.
+pub unsafe fn do_drop_scope(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let t1 = do_terms(call, op, args, rho);
+        let labels = term_label_strings(t1);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, labels.len() as i64);
+        let _o = protect(out);
+        for (i, name) in labels.iter().enumerate() {
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+/// GNU `add.scope(terms1, terms2)` — labels in 2 not in 1.
+pub unsafe fn do_add_scope(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let t1 = do_terms(call, op, Rf_cons(CAR(args), R_NilValue()), rho);
+        let t2 = do_terms(call, op, Rf_cons(CAR(CDR(args)), R_NilValue()), rho);
+        let a = term_label_strings(t1);
+        let b = term_label_strings(t2);
+        let extra: Vec<String> = b
+            .into_iter()
+            .filter(|s| !a.iter().any(|t| t == s))
+            .collect();
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, extra.len() as i64);
+        let _o = protect(out);
+        for (i, name) in extra.iter().enumerate() {
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+
 
 
 /// GNU `offset(object)` is identity.

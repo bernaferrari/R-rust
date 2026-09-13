@@ -2323,6 +2323,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_drop_terms,
     },
     EvaluatedBuiltin {
+        name: "drop.scope",
+        handler: crate::library::stats::filter::do_drop_scope,
+    },
+    EvaluatedBuiltin {
+        name: "add.scope",
+        handler: crate::library::stats::filter::do_add_scope,
+    },
+    EvaluatedBuiltin {
         name: "all.names",
         handler: crate::library::stats::filter::do_all_names,
     },
