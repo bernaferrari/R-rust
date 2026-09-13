@@ -1,0 +1,6 @@
+d <- contr.helmert(3)
+cat(paste(sprintf("%.0f", as.vector(d)), collapse = ","), "\n", sep = "")
+cat(paste(dim(d), collapse = ","), "\n", sep = "")
+e <- contr.SAS(3)
+cat(paste(sprintf("%.0f", as.vector(e)), collapse = ","), "\n", sep = "")
+cat(paste(colnames(e), collapse = ","), "\n", sep = "")
