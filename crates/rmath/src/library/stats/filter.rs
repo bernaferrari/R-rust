@@ -704,6 +704,8 @@ pub unsafe fn do_arima_sim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
         let mut n = 0i32;
         let mut n_start = 1i32;
+        let mut innov = std::ptr::null_mut();
+        let mut start_innov = std::ptr::null_mut();
         let mut cell = CDR(args);
         let mut pos = 1usize;
         while !cell.is_null() && cell != R_NilValue() {
@@ -722,6 +724,10 @@ pub unsafe fn do_arima_sim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 } else {
                     *REAL(val) as i32
                 };
+            } else if name == "innov" {
+                innov = val;
+            } else if name == "start.innov" {
+                start_innov = val;
             } else if name == "n" || (name.is_empty() && pos == 1) {
                 n = if TYPEOF(val) == SEXPTYPE::INTSXP {
                     *INTEGER(val)
@@ -738,26 +744,54 @@ pub unsafe fn do_arima_sim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         if n_start < 0 {
             n_start = 0;
         }
-        let ntot = n + n_start;
-        let narg = Rf_ScalarInteger(ntot);
-        let _na = protect(narg);
-        let rargs = Rf_cons(narg, R_NilValue());
-        let _ra = protect(rargs);
-        let e = crate::library::stats::random::do_rnorm_r(call, op, rargs, rho);
-        let _e = protect(e);
-        let m = XLENGTH(e) as usize;
-        if m == 0 {
-            return R_NilValue();
-        }
-        let mut y = vec![0.0; m];
-        y[0] = if TYPEOF(e) == SEXPTYPE::REALSXP {
-            *REAL(e)
+        let ntot = (n + n_start) as usize;
+        let mut e = vec![0.0; ntot];
+        let have_explicit = !innov.is_null() && innov != R_NilValue();
+        if have_explicit {
+            let ns = n_start as usize;
+            if !start_innov.is_null() && start_innov != R_NilValue() {
+                for i in 0..ns {
+                    e[i] = if TYPEOF(start_innov) == SEXPTYPE::REALSXP {
+                        *REAL(start_innov).add(i.min((XLENGTH(start_innov) as usize).saturating_sub(1)))
+                    } else if TYPEOF(start_innov) == SEXPTYPE::INTSXP {
+                        *INTEGER(start_innov)
+                            .add(i.min((XLENGTH(start_innov) as usize).saturating_sub(1)))
+                            as f64
+                    } else {
+                        0.0
+                    };
+                }
+            }
+            let ni = XLENGTH(innov) as usize;
+            for i in 0..(n as usize) {
+                let src = i.min(ni.saturating_sub(1));
+                e[ns + i] = if TYPEOF(innov) == SEXPTYPE::REALSXP {
+                    *REAL(innov).add(src)
+                } else if TYPEOF(innov) == SEXPTYPE::INTSXP {
+                    *INTEGER(innov).add(src) as f64
+                } else {
+                    0.0
+                };
+            }
         } else {
-            0.0
-        };
-        for i in 1..m {
-            let ei = *REAL(e).add(i);
-            y[i] = ei + phi * y[i - 1];
+            let narg = Rf_ScalarInteger(ntot as i32);
+            let _na = protect(narg);
+            let rargs = Rf_cons(narg, R_NilValue());
+            let _ra = protect(rargs);
+            let ev = crate::library::stats::random::do_rnorm_r(call, op, rargs, rho);
+            let _ev = protect(ev);
+            let m = XLENGTH(ev) as usize;
+            for i in 0..ntot.min(m) {
+                e[i] = *REAL(ev).add(i);
+            }
+        }
+        let m = e.len();
+        let mut y = vec![0.0; m];
+        if m > 0 {
+            y[0] = e[0];
+            for i in 1..m {
+                y[i] = e[i] + phi * y[i - 1];
+            }
         }
         let out_n = n as usize;
         let drop = n_start as usize;
