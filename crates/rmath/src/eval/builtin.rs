@@ -1849,6 +1849,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_mcnemar_test,
     },
     EvaluatedBuiltin {
+        name: "fisher.test",
+        handler: crate::mainutils::essentials::do_fisher_test,
+    },
+    EvaluatedBuiltin {
         name: "stem",
         handler: crate::library::graphics::stem::do_stem,
     },

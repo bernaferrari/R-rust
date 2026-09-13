@@ -2904,6 +2904,66 @@ pub unsafe fn do_mcnemar_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU 2x2 `fisher.test(x)`.
+pub unsafe fn do_fisher_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let tab = CAR(args);
+        if tab.is_null() || tab == R_NilValue() || XLENGTH(tab) < 4 {
+            return R_NilValue();
+        }
+        let a11 = elt_real_safe(tab, 0);
+        let a21 = elt_real_safe(tab, 1);
+        let a12 = elt_real_safe(tab, 2);
+        let a22 = elt_real_safe(tab, 3);
+        let m = a11 + a21;
+        let n = a12 + a22;
+        let k = a11 + a12;
+        let x = a11;
+        let lo = 0.0_f64.max(k - n);
+        let hi = k.min(m);
+        let dobs = crate::dist::hypergeometric::dhyper_inner(x, m, n, k, false);
+        let mut pval = 0.0;
+        let mut t = lo;
+        while t <= hi + 0.5 {
+            let dt = crate::dist::hypergeometric::dhyper_inner(t, m, n, k, false);
+            if dt <= dobs * (1.0 + 1e-7) {
+                pval += dt;
+            }
+            t += 1.0;
+        }
+        pval = pval.min(1.0);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(pval));
+        let nv = Rf_ScalarReal(1.0);
+        let _nv = protect(nv);
+        set_string_names(nv, &["odds ratio".to_string()]);
+        SET_VECTOR_ELT(result, 1, nv);
+        SET_VECTOR_ELT(result, 2, Rf_mkString(c"two.sided".as_ptr()));
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"Fisher's Exact Test for Count Data".as_ptr()));
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "p.value".to_string(),
+                "null.value".to_string(),
+                "alternative".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

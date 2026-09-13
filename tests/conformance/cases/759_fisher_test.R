@@ -1,0 +1,7 @@
+x <- matrix(c(1, 9, 11, 3), 2)
+ft <- fisher.test(x)
+cat(sprintf("%.6e", ft$p.value), "\n", sep = "")
+cat(ft$method, "\n", sep = "")
+cat(class(ft), "\n", sep = "")
+x2 <- matrix(1:4, 2)
+cat(fisher.test(x2)$p.value, "\n", sep = "")
