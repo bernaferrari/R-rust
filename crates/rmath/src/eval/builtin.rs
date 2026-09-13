@@ -1097,6 +1097,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_c,
     },
     EvaluatedBuiltin {
+        name: "c.Date",
+        handler: crate::mainutils::essentials::do_c_Date,
+    },
+    EvaluatedBuiltin {
+        name: "c.POSIXct",
+        handler: crate::mainutils::essentials::do_c_POSIXct,
+    },
+    EvaluatedBuiltin {
         name: "logical",
         handler: crate::mainutils::essentials::do_logical_constructor,
     },
@@ -2230,7 +2238,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "seq.POSIXt",
-        handler: crate::mainutils::essentials::do_seq_POSIXt,
+        handler: crate::mainutils::seq::do_seq,
     },
     EvaluatedBuiltin {
         name: "pmin",
