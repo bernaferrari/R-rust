@@ -453,6 +453,44 @@ unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
                 );
             }
         }
+        if name == "asin" || name == "acos" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                let x2 = crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"^".as_ptr()),
+                    arg,
+                    Rf_ScalarReal(2.0),
+                );
+                let inner = crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"-".as_ptr()),
+                    Rf_ScalarReal(1.0),
+                    x2,
+                );
+                let s = crate::sexp::constructors::Rf_lang2(Rf_install(c"sqrt".as_ptr()), inner);
+                let rec = crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"/".as_ptr()),
+                    Rf_ScalarReal(1.0),
+                    s,
+                );
+                return if name == "acos" {
+                    crate::sexp::constructors::Rf_lang2(Rf_install(c"-".as_ptr()), rec)
+                } else {
+                    rec
+                };
+            }
+        }
+        if name == "sinh" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                return crate::sexp::constructors::Rf_lang2(Rf_install(c"cosh".as_ptr()), arg);
+            }
+        }
+        if name == "cosh" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                return crate::sexp::constructors::Rf_lang2(Rf_install(c"sinh".as_ptr()), arg);
+            }
+        }
         Rf_ScalarInteger(0)
     }
 }

@@ -1,0 +1,4 @@
+1/sqrt(1 - x^2)
+-(1/sqrt(1 - x^2))
+cosh(x)
+sinh(x)
