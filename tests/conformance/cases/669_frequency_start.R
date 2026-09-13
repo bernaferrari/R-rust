@@ -1,0 +1,5 @@
+x <- ts(1:8, frequency = 4)
+cat(frequency(x), "\n", sep = "")
+cat(paste(start(x), collapse = ","), "\n", sep = "")
+cat(paste(end(x), collapse = ","), "\n", sep = "")
+cat(deltat(x), "\n", sep = "")

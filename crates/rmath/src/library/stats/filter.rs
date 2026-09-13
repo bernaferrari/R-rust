@@ -1231,6 +1231,67 @@ pub unsafe fn do_lag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `frequency(ts)`.
+pub unsafe fn do_frequency(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let (_s, freq) = ts_start_freq(CAR(args));
+        Rf_ScalarReal(freq)
+    }
+}
+
+/// GNU `deltat(ts)`.
+pub unsafe fn do_deltat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let (_s, freq) = ts_start_freq(CAR(args));
+        Rf_ScalarReal(1.0 / freq)
+    }
+}
+
+unsafe fn time_to_ycyc(t: f64, freq: f64) -> (f64, f64) {
+    let mut year = t.floor();
+    let mut cyc = ((t - year) * freq).round() + 1.0;
+    if cyc > freq {
+        year += 1.0;
+        cyc = 1.0;
+    }
+    if cyc < 1.0 {
+        year -= 1.0;
+        cyc = freq;
+    }
+    (year, cyc)
+}
+
+/// GNU `start(ts)` as c(year, cycle).
+pub unsafe fn do_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let (start, freq) = ts_start_freq(x);
+        let (y, c) = time_to_ycyc(start, freq);
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _a = protect(ans);
+        *REAL(ans) = y;
+        *REAL(ans).add(1) = c;
+        ans
+    }
+}
+
+/// GNU `end(ts)` as c(year, cycle).
+pub unsafe fn do_end(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x);
+        let (start, freq) = ts_start_freq(x);
+        let t = start + (n as f64 - 1.0) / freq;
+        let (y, c) = time_to_ycyc(t, freq);
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _a = protect(ans);
+        *REAL(ans) = y;
+        *REAL(ans).add(1) = c;
+        ans
+    }
+}
+
+
 
 
 
