@@ -1105,6 +1105,115 @@ pub unsafe fn do_kalman_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
+fn local_level_lik(y: &[f64], q: f64, r: f64) -> (f64, f64) {
+    if q < 0.0 || r < 0.0 || (q == 0.0 && r == 0.0) {
+        return (f64::INFINITY, f64::NAN);
+    }
+    let n = y.len();
+    let mut a = y[0];
+    let mut p = 1e7;
+    let mut s2 = 0.0;
+    let mut sumlog = 0.0;
+    let mut nlik = 0.0;
+    for (i, &yi) in y.iter().enumerate() {
+        let resid = yi - a;
+        let f = p + r;
+        if f > 0.0 {
+            if i > 0 {
+                s2 += resid * resid / f;
+                sumlog += f.ln();
+                nlik += 1.0;
+            }
+            let k = p / f;
+            a += k * resid;
+            p -= k * k * f;
+        }
+        p += q;
+    }
+    if nlik < 1.0 || s2 <= 0.0 {
+        return (f64::INFINITY, f64::NAN);
+    }
+    let s2m = s2 / nlik;
+    (0.5 * (s2m.ln() + sumlog / nlik), s2m)
+}
+
+/// GNU `StructTS(x, type="level")` — local-level variance MLE.
+pub unsafe fn do_struct_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let mut y = vec![0.0; n];
+        for i in 0..n {
+            y[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+        }
+        let mean = y.iter().sum::<f64>() / n as f64;
+        let vx = y.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n as f64 - 1.0);
+        let mut cands = vec![0.0, 1.0, vx];
+        if n >= 2 {
+            let mut md = 0.0;
+            let mut vd = 0.0;
+            for i in 1..n {
+                let d = y[i] - y[i - 1];
+                md += d;
+                vd += d * d;
+            }
+            md /= (n - 1) as f64;
+            vd = vd / (n - 1) as f64 - md * md;
+            cands.push(md.abs());
+            cands.push(md * md);
+            cands.push(vd.max(0.0));
+        }
+        for k in -4..=0 {
+            cands.push(vx * 10f64.powi(k));
+        }
+        let mut best_q = 0.0;
+        let mut best_r = vx;
+        let mut best_lik = f64::INFINITY;
+        let mut best_scale = f64::INFINITY;
+        for &q in &cands {
+            for &r in &cands {
+                let (lik, s2m) = local_level_lik(&y, q, r);
+                let scale = (s2m - 1.0).abs();
+                if lik < best_lik - 1e-10 || (lik < best_lik + 1e-10 && scale < best_scale) {
+                    best_lik = lik;
+                    best_scale = scale;
+                    best_q = q;
+                    best_r = r;
+                }
+            }
+        }
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _c = protect(coef);
+        *REAL(coef) = best_q;
+        *REAL(coef).add(1) = best_r;
+        crate::mainutils::essentials::set_string_names(
+            coef,
+            &["level".to_string(), "epsilon".to_string()],
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        crate::mainutils::essentials::set_string_names(result, &["coef".to_string()]);
+        let class = Rf_mkString(c"StructTS".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
+
 
 
 

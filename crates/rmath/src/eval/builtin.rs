@@ -2475,6 +2475,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_kalman_smooth,
     },
     EvaluatedBuiltin {
+        name: "StructTS",
+        handler: crate::library::stats::filter::do_struct_ts,
+    },
+    EvaluatedBuiltin {
         name: "wilcox.test",
         handler: crate::mainutils::essentials::do_wilcox_test,
     },
