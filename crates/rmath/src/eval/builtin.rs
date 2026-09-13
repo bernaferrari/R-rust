@@ -1725,6 +1725,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_resid,
     },
     EvaluatedBuiltin {
+        name: "deviance",
+        handler: crate::library::stats::filter::do_deviance,
+    },
+    EvaluatedBuiltin {
+        name: "df.residual",
+        handler: crate::library::stats::filter::do_df_residual,
+    },
+    EvaluatedBuiltin {
+        name: "nobs",
+        handler: crate::library::stats::filter::do_nobs,
+    },
+    EvaluatedBuiltin {
         name: "window",
         handler: crate::library::stats::filter::do_window,
     },

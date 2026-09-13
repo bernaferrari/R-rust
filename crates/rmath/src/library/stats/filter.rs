@@ -1464,6 +1464,29 @@ pub unsafe fn do_resid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { named_list_elt(CAR(args), "residuals") }
 }
 
+/// GNU default `deviance(object)`.
+pub unsafe fn do_deviance(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "deviance") }
+}
+
+/// GNU default `df.residual(object)`.
+pub unsafe fn do_df_residual(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "df.residual") }
+}
+
+/// GNU default `nobs(object)` via $nobs then $n.obs.
+pub unsafe fn do_nobs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = named_list_elt(x, "nobs");
+        if !n.is_null() && n != R_NilValue() {
+            return n;
+        }
+        named_list_elt(x, "n.obs")
+    }
+}
+
+
 
 
 
