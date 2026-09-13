@@ -5227,6 +5227,41 @@ pub unsafe fn do_quasipoisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `make.link(link)` — name + class `link-glm`.
+pub unsafe fn do_make_link(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut link = "identity".to_string();
+        let v = CAR(args);
+        if !v.is_null() && v != R_NilValue() && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+            link = elt_to_string(v, 0);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        let name = match link.as_str() {
+            "logit" => Rf_mkString(c"logit".as_ptr()),
+            "probit" => Rf_mkString(c"probit".as_ptr()),
+            "log" => Rf_mkString(c"log".as_ptr()),
+            "inverse" => Rf_mkString(c"inverse".as_ptr()),
+            "1/mu^2" => Rf_mkString(c"1/mu^2".as_ptr()),
+            "cloglog" => Rf_mkString(c"cloglog".as_ptr()),
+            "cauchit" => Rf_mkString(c"cauchit".as_ptr()),
+            "sqrt" => Rf_mkString(c"sqrt".as_ptr()),
+            _ => Rf_mkString(c"identity".as_ptr()),
+        };
+        SET_VECTOR_ELT(result, 0, name);
+        crate::mainutils::essentials::set_string_names(result, &["name".to_string()]);
+        let class = Rf_mkString(c"link-glm".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

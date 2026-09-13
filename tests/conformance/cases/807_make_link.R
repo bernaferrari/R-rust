@@ -1,0 +1,7 @@
+cat(make.link("logit")$name, "\n", sep = "")
+cat(class(make.link("logit")), "\n", sep = "")
+cat(make.link("log")$name, "\n", sep = "")
+cat(make.link("identity")$name, "\n", sep = "")
+cat(make.link("inverse")$name, "\n", sep = "")
+cat(make.link("1/mu^2")$name, "\n", sep = "")
+cat(make.link("probit")$name, "\n", sep = "")

@@ -1,0 +1,7 @@
+logit
+link-glm
+log
+identity
+inverse
+1/mu^2
+probit

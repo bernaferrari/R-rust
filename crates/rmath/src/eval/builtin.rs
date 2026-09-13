@@ -2006,6 +2006,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_quasipoisson,
     },
     EvaluatedBuiltin {
+        name: "make.link",
+        handler: crate::mainutils::essentials::do_make_link,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
