@@ -1,0 +1,6 @@
+a <- ts(1:4, start = 1)
+b <- ts(c(10, 20, 30), start = 2)
+u <- ts.union(a, b)
+cat(paste(as.vector(u), collapse = ","), "\n", sep = "")
+i <- ts.intersect(a, b)
+cat(paste(as.vector(i), collapse = ","), "\n", sep = "")

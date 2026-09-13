@@ -4755,6 +4755,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ts,
     },
     EvaluatedBuiltin {
+        name: "ts.union",
+        handler: crate::mainutils::essentials::do_ts_union,
+    },
+    EvaluatedBuiltin {
+        name: "ts.intersect",
+        handler: crate::mainutils::essentials::do_ts_intersect,
+    },
+    EvaluatedBuiltin {
         name: "nrow",
         handler: crate::mainutils::essentials::do_nrow,
     },
