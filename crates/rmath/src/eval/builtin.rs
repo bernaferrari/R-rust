@@ -1957,6 +1957,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_lm,
     },
     EvaluatedBuiltin {
+        name: "covratio",
+        handler: crate::mainutils::essentials::do_covratio,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },

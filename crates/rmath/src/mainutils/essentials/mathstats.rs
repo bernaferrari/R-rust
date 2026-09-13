@@ -4876,7 +4876,19 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             f64::NAN
         };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
+        let hats = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _h = protect(hats);
+        let meanx = sx / nf;
+        let sxxc = xs.iter().map(|v| (v - meanx) * (v - meanx)).sum::<f64>();
+        for i in 0..n {
+            let h = if sxxc > 0.0 {
+                1.0 / nf + (xs[i] - meanx) * (xs[i] - meanx) / sxxc
+            } else {
+                1.0 / nf
+            };
+            *REAL(hats).add(i) = h;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, coef);
         SET_VECTOR_ELT(result, 1, resid);
@@ -4884,6 +4896,7 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         SET_VECTOR_ELT(result, 3, Rf_ScalarInteger(2));
         SET_VECTOR_ELT(result, 4, Rf_ScalarInteger(df as i32));
         SET_VECTOR_ELT(result, 5, Rf_ScalarReal(sigma));
+        SET_VECTOR_ELT(result, 6, hats);
         crate::mainutils::essentials::set_string_names(
             result,
             &[
@@ -4893,6 +4906,7 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 "rank".to_string(),
                 "df.residual".to_string(),
                 "sigma".to_string(),
+                "hat".to_string(),
             ],
         );
         let class = Rf_mkString(c"lm".as_ptr());
@@ -4905,6 +4919,54 @@ pub unsafe fn do_lm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         result
     }
 }
+
+/// GNU `covratio(lm)`.
+pub unsafe fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let resid = list_named_elt(obj, "residuals");
+        let hat = list_named_elt(obj, "hat");
+        let sigma = list_named_elt(obj, "sigma");
+        let rank = list_named_elt(obj, "rank");
+        if resid == R_NilValue() || hat == R_NilValue() || sigma == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid).min(XLENGTH(hat));
+        let p = if rank == R_NilValue() {
+            2.0
+        } else {
+            elt_real_safe(rank, 0)
+        };
+        let s = elt_real_safe(sigma, 0);
+        let sse = s * s * (n as f64 - p);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let e = elt_real_safe(resid, i);
+            let h = elt_real_safe(hat, i);
+            let omh = 1.0 - h;
+            let infl_s2 = if omh > 0.0 && n as f64 - p - 1.0 > 0.0 {
+                (sse - e * e / omh) / (n as f64 - p - 1.0)
+            } else {
+                f64::NAN
+            };
+            let infl_s = infl_s2.max(0.0).sqrt();
+            let estar = if infl_s > 0.0 && omh > 0.0 {
+                e / (infl_s * omh.sqrt())
+            } else {
+                f64::NAN
+            };
+            let inner = (n as f64 - p - 1.0 + estar * estar) / (n as f64 - p);
+            *REAL(result).add(i as usize) = if omh > 0.0 && inner.is_finite() {
+                1.0 / (omh * inner.powf(p))
+            } else {
+                f64::NAN
+            };
+        }
+        result
+    }
+}
+
 
 
 
