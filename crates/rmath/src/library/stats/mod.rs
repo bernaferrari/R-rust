@@ -16,7 +16,7 @@ pub(crate) mod fexact;
 pub(crate) mod fft;
 pub(crate) mod filter;
 pub(crate) mod fourier;
-mod hclust_utils;
+pub(crate) mod hclust_utils;
 pub(crate) mod holtwinters;
 mod influence;
 mod init;

@@ -141,3 +141,156 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
 
     ans
 }
+
+unsafe fn list_elt(list: SEXP, name: &str) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH};
+        use crate::sexp::globals::R_NilValue;
+        if list.is_null() || list == R_NilValue() || TYPEOF(list) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            list,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        for i in 0..XLENGTH(names) {
+            let s = STRING_ELT(names, i);
+            if s.is_null() {
+                continue;
+            }
+            let raw = crate::sexp::accessors::CHAR(s);
+            if raw.is_null() {
+                continue;
+            }
+            if std::ffi::CStr::from_ptr(raw).to_string_lossy() == name {
+                return VECTOR_ELT(list, i);
+            }
+        }
+        R_NilValue()
+    }
+}
+
+/// GNU `cutree(tree, k)` / `cutree(tree, h)`.
+pub unsafe fn do_cutree(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{
+            CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TAG, TYPEOF, XLENGTH,
+        };
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_ScalarInteger};
+        use crate::sexp::ffi::NA_REAL;
+        use crate::sexp::globals::R_NilValue;
+        use crate::sexp::accessors::PRINTNAME;
+        use crate::sexp::accessors::CHAR;
+
+        let mut tree = R_NilValue();
+        let mut k = NA_REAL;
+        let mut h = NA_REAL;
+        let mut have_k = false;
+        let mut have_h = false;
+        let mut cell = args;
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            match name.as_str() {
+                "tree" => tree = v,
+                "k" => {
+                    if !v.is_null() && v != R_NilValue() {
+                        k = if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                            *INTEGER(v) as f64
+                        } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                            *REAL(v)
+                        } else {
+                            NA_REAL
+                        };
+                        have_k = k.is_finite();
+                    }
+                }
+                "h" => {
+                    if !v.is_null() && v != R_NilValue() {
+                        h = if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                            *REAL(v)
+                        } else if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                            *INTEGER(v) as f64
+                        } else {
+                            NA_REAL
+                        };
+                        have_h = h.is_finite();
+                    }
+                }
+                _ if name.is_empty() => {
+                    if pos == 0 {
+                        tree = v;
+                    } else if pos == 1 && !have_k && !have_h {
+                        if !v.is_null() && v != R_NilValue() {
+                            k = if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                                *INTEGER(v) as f64
+                            } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                                *REAL(v)
+                            } else {
+                                NA_REAL
+                            };
+                            have_k = k.is_finite();
+                        }
+                    }
+                    pos += 1;
+                }
+                _ => {}
+            }
+            cell = CDR(cell);
+        }
+        let merge = list_elt(tree, "merge");
+        if merge.is_null() || merge == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = crate::main::util_main::nrows(merge as *const std::ffi::c_void) + 1;
+        let mut which_k = if have_k { k.round() as i32 } else { 0 };
+        if !have_k && have_h {
+            let height = list_elt(tree, "height");
+            let nmerge = n - 1;
+            let mut first = nmerge + 1; // Inf
+            if !height.is_null() && height != R_NilValue() {
+                for i in 0..nmerge {
+                    let hi = if TYPEOF(height) == SEXPTYPE::REALSXP {
+                        *REAL(height).add(i as usize)
+                    } else {
+                        *INTEGER(height).add(i as usize) as f64
+                    };
+                    if hi > h {
+                        first = i + 1;
+                        break;
+                    }
+                }
+            }
+            which_k = n + 1 - first;
+        }
+        if which_k < 1 {
+            which_k = 1;
+        }
+        if which_k > n {
+            which_k = n;
+        }
+        let ksexp = Rf_ScalarInteger(which_k);
+        let _ks = protect_sexp(ksexp);
+        let ans = cutree(merge, ksexp);
+        let _ans = protect_sexp(ans);
+        let out = Rf_allocVector3(SEXPTYPE::INTSXP, n as i64);
+        let _o = protect_sexp(out);
+        for i in 0..n {
+            *INTEGER(out).add(i as usize) = *INTEGER(ans).add(i as usize);
+        }
+        let _ = SET_VECTOR_ELT;
+        out
+    }
+}
+
