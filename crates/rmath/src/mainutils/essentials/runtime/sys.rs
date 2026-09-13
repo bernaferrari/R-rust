@@ -653,6 +653,98 @@ pub unsafe fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 
+fn difftime_seconds(x: SEXP) -> f64 {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return f64::NAN;
+        }
+        let v = if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > 0 {
+            *REAL(x)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
+            let iv = *INTEGER(x);
+            if iv == NA_INTEGER {
+                return f64::NAN;
+            }
+            iv as f64
+        } else {
+            return f64::NAN;
+        };
+        if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+            v * 86_400.0
+        } else {
+            v
+        }
+    }
+}
+
+/// GNU `difftime(time1, time2, units="auto")`.
+pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let time1 = CAR(args);
+        let time2 = CAR(CDR(args));
+        let mut units = "auto".to_string();
+        let mut cell = CDR(CDR(args));
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if named == "units"
+                && TYPEOF(value) == SEXPTYPE::STRSXP
+                && XLENGTH(value) > 0
+            {
+                let ch = STRING_ELT(value, 0);
+                if !ch.is_null() {
+                    units = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+            cell = CDR(cell);
+        }
+        let z = difftime_seconds(time1) - difftime_seconds(time2);
+        if units == "auto" {
+            let zz = z.abs();
+            units = if !zz.is_finite() || zz < 60.0 {
+                "secs".to_string()
+            } else if zz < 3600.0 {
+                "mins".to_string()
+            } else if zz < 86400.0 {
+                "hours".to_string()
+            } else {
+                "days".to_string()
+            };
+        }
+        let scaled = match units.as_str() {
+            "mins" => z / 60.0,
+            "hours" => z / 3600.0,
+            "days" => z / 86_400.0,
+            "weeks" => z / (7.0 * 86_400.0),
+            _ => z,
+        };
+        let result = Rf_ScalarReal(scaled);
+        let _r = protect(result);
+        set_single_class(result, "difftime");
+        let u = Rf_mkString(
+            std::ffi::CString::new(units.as_str())
+                .unwrap_or_default()
+                .as_ptr(),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+            u,
+        );
+        result
+    }
+}
+
+
 /// R's `as.POSIXct(x, tz, origin)` — coerce simple UTC inputs to POSIXct.
 pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

@@ -1,0 +1,5 @@
+cat(as.numeric(difftime(as.Date("2020-01-02"), as.Date("2020-01-01"))), "\n", sep = "")
+cat(attr(difftime(as.Date("2020-01-02"), as.Date("2020-01-01")), "units"), "\n", sep = "")
+cat(as.numeric(difftime(as.Date("2020-01-03"), as.Date("2020-01-01"), units = "days")), "\n", sep = "")
+cat(as.numeric(difftime(as.Date("2020-01-02"), as.Date("2020-01-01"), units = "hours")), "\n", sep = "")
+cat(class(difftime(as.Date("2020-01-02"), as.Date("2020-01-01"))), "\n", sep = "")
