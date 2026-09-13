@@ -2059,6 +2059,68 @@ pub unsafe fn do_get_all_vars(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     unsafe { do_model_frame(call, op, args, rho) }
 }
 
+fn collect_lang_names(expr: SEXP, out: &mut Vec<String>, functions: bool, unique: bool) {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() {
+            return;
+        }
+        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
+                .to_string_lossy()
+                .into_owned();
+            let is_op = matches!(
+                name.as_str(),
+                "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
+            );
+            if functions || !is_op {
+                if !unique || !out.iter().any(|s| s == &name) {
+                    out.push(name);
+                }
+            }
+            return;
+        }
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP {
+            collect_lang_names(CAR(expr), out, functions, unique);
+            let mut cell = CDR(expr);
+            while !cell.is_null() && cell != R_NilValue() {
+                collect_lang_names(CAR(cell), out, functions, unique);
+                cell = CDR(cell);
+            }
+        }
+    }
+}
+
+fn names_to_strsexp(names: &[String]) -> SEXP {
+    unsafe {
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
+        let _o = protect(out);
+        for (i, name) in names.iter().enumerate() {
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+/// GNU `all.vars(expr)` — symbols, not operators.
+pub unsafe fn do_all_vars(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut names = Vec::new();
+        collect_lang_names(CAR(args), &mut names, false, true);
+        names_to_strsexp(&names)
+    }
+}
+
+/// GNU `all.names(expr)` — operators and symbols.
+pub unsafe fn do_all_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut names = Vec::new();
+        collect_lang_names(CAR(args), &mut names, true, true);
+        names_to_strsexp(&names)
+    }
+}
+
+
 
 
 

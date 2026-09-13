@@ -2311,6 +2311,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_get_all_vars,
     },
     EvaluatedBuiltin {
+        name: "all.vars",
+        handler: crate::library::stats::filter::do_all_vars,
+    },
+    EvaluatedBuiltin {
+        name: "all.names",
+        handler: crate::library::stats::filter::do_all_names,
+    },
+    EvaluatedBuiltin {
         name: "as.formula",
         handler: crate::library::stats::filter::do_as_formula,
     },
