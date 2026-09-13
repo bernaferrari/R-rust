@@ -1643,6 +1643,64 @@ pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `trunc.POSIXt(x, units)`.
+pub unsafe fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return x;
+        }
+        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+            do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
+        } else {
+            x
+        };
+        let _x = protect(x);
+        let mut units = "secs".to_string();
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let u = CAR(rest);
+            if TYPEOF(u) == SEXPTYPE::STRSXP && XLENGTH(u) > 0 {
+                let ch = STRING_ELT(u, 0);
+                if !ch.is_null() {
+                    units = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+        }
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let secs = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                0.0
+            };
+            let out = if !secs.is_finite() {
+                secs
+            } else if units.starts_with("min") {
+                (secs / 60.0).floor() * 60.0
+            } else if units.starts_with("hour") {
+                (secs / 3600.0).floor() * 3600.0
+            } else if units.starts_with("day") {
+                (secs / 86_400.0).floor() * 86_400.0
+            } else if units.starts_with("month") {
+                date_first_of_month((secs / 86_400.0).floor()) * 86_400.0
+            } else if units.starts_with("year") {
+                date_first_of_year((secs / 86_400.0).floor()) * 86_400.0
+            } else {
+                secs.floor()
+            };
+            *REAL(result).add(i as usize) = out;
+        }
+        set_posixct_class(result, "GMT");
+        result
+    }
+}
+
+
 
 
 /// R's `Sys.Date()` — current date as REALSXP (days since epoch).

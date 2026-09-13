@@ -1,0 +1,5 @@
+x <- as.POSIXlt("2020-01-15 12:30:45", tz = "GMT")
+cat(as.numeric(as.POSIXct(trunc.POSIXt(x, "days"), tz = "GMT")), "\n", sep = "")
+cat(format.POSIXct(as.POSIXct(trunc.POSIXt(x, "hours"), tz = "GMT"), "%Y-%m-%d %H:%M:%S"), "\n", sep = "")
+cat(format.POSIXct(as.POSIXct(trunc.POSIXt(x, "mins"), tz = "GMT"), "%Y-%m-%d %H:%M:%S"), "\n", sep = "")
+cat(format.POSIXct(as.POSIXct(trunc.POSIXt(x, "days"), tz = "GMT"), "%Y-%m-%d"), "\n", sep = "")

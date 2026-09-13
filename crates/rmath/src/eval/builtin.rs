@@ -2221,6 +2221,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_diff_POSIXt,
     },
     EvaluatedBuiltin {
+        name: "trunc.POSIXt",
+        handler: crate::mainutils::essentials::do_trunc_POSIXt,
+    },
+    EvaluatedBuiltin {
         name: "pmin",
         handler: crate::mainutils::essentials::do_pmin,
     },
