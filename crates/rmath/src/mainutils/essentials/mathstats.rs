@@ -4205,6 +4205,173 @@ pub unsafe fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `oneway.test(x ~ g)` / `oneway.test(x, g)`.
+pub unsafe fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let first = CAR(args);
+        let mut x = first;
+        let mut g = CAR(CDR(args));
+        let mut var_equal = false;
+        if !first.is_null() && first != R_NilValue() && TYPEOF(first) == SEXPTYPE::LANGSXP {
+            let lhs = CADR(first);
+            let rhs = CAR(CDR(CDR(first)));
+            if !lhs.is_null() && lhs != R_NilValue() {
+                x = crate::eval::eval::Rf_eval(lhs, rho);
+            }
+            if !rhs.is_null() && rhs != R_NilValue() {
+                g = crate::eval::eval::Rf_eval(rhs, rho);
+            }
+        }
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "var.equal" {
+                let v = CAR(cell);
+                if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 {
+                    var_equal = *LOGICAL(v) == TRUE;
+                } else if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                    var_equal = *INTEGER(v) != 0;
+                }
+            }
+            cell = CDR(cell);
+        }
+        if x.is_null() || x == R_NilValue() || g.is_null() || g == R_NilValue() {
+            return R_NilValue();
+        }
+        let n0 = XLENGTH(x).min(XLENGTH(g));
+        let mut pairs: Vec<(i32, f64)> = Vec::new();
+        for i in 0..n0 {
+            let gi = elt_real_safe(g, i);
+            let xi = elt_real_safe(x, i);
+            if gi.is_finite() && xi.is_finite() {
+                pairs.push((gi.round() as i32, xi));
+            }
+        }
+        let mut levels: Vec<i32> = pairs.iter().map(|p| p.0).collect();
+        levels.sort_unstable();
+        levels.dedup();
+        let k = levels.len();
+        if k < 2 {
+            return R_NilValue();
+        }
+        let mut ns = vec![0.0; k];
+        let mut means = vec![0.0; k];
+        let mut vars = vec![0.0; k];
+        let mut all = Vec::new();
+        for (li, &lev) in levels.iter().enumerate() {
+            let vs: Vec<f64> = pairs
+                .iter()
+                .filter(|p| p.0 == lev)
+                .map(|p| p.1)
+                .collect();
+            let n = vs.len() as f64;
+            ns[li] = n;
+            let m = vs.iter().sum::<f64>() / n;
+            means[li] = m;
+            vars[li] = vs.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / (n - 1.0);
+            all.extend(vs);
+        }
+        let (stat, df1, df2, method) = if var_equal {
+            let n = all.len() as f64;
+            let grand = all.iter().sum::<f64>() / n;
+            let ssb: f64 = ns
+                .iter()
+                .zip(means.iter())
+                .map(|(ni, mi)| ni * (mi - grand) * (mi - grand))
+                .sum();
+            let ssw: f64 = ns
+                .iter()
+                .zip(vars.iter())
+                .map(|(ni, vi)| (ni - 1.0) * vi)
+                .sum();
+            let df1 = (k - 1) as f64;
+            let df2 = n - k as f64;
+            let stat = (ssb / df1) / (ssw / df2);
+            (stat, df1, df2, "One-way analysis of means")
+        } else {
+            let w: Vec<f64> = ns.iter().zip(vars.iter()).map(|(n, v)| n / v).collect();
+            let sum_w: f64 = w.iter().sum();
+            let m = w
+                .iter()
+                .zip(means.iter())
+                .map(|(wi, mi)| wi * mi)
+                .sum::<f64>()
+                / sum_w;
+            let tmp: f64 = w
+                .iter()
+                .zip(ns.iter())
+                .map(|(wi, ni)| {
+                    let t = 1.0 - wi / sum_w;
+                    t * t / (ni - 1.0)
+                })
+                .sum::<f64>()
+                / ((k * k - 1) as f64);
+            let stat = w
+                .iter()
+                .zip(means.iter())
+                .map(|(wi, mi)| wi * (mi - m) * (mi - m))
+                .sum::<f64>()
+                / ((k as f64 - 1.0) * (1.0 + 2.0 * (k as f64 - 2.0) * tmp));
+            let df1 = (k - 1) as f64;
+            let df2 = 1.0 / (3.0 * tmp);
+            (
+                stat,
+                df1,
+                df2,
+                "One-way analysis of means (not assuming equal variances)",
+            )
+        };
+        let pval = crate::dist::f_dist::pf_inner(stat, df1, df2, false, false);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["F".to_string()]);
+        let parameter = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _pa = protect(parameter);
+        *REAL(parameter) = df1;
+        *REAL(parameter).add(1) = df2;
+        set_string_names(parameter, &["num df".to_string(), "denom df".to_string()]);
+        let method_s = if var_equal {
+            Rf_mkString(c"One-way analysis of means".as_ptr())
+        } else {
+            Rf_mkString(c"One-way analysis of means (not assuming equal variances)".as_ptr())
+        };
+        let _ = method;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, method_s);
+        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x and g".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

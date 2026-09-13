@@ -1889,6 +1889,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_reorder,
     },
     EvaluatedBuiltin {
+        name: "oneway.test",
+        handler: crate::mainutils::essentials::do_oneway_test,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
