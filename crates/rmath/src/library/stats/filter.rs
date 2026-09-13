@@ -1474,7 +1474,7 @@ pub unsafe fn do_df_residual(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     unsafe { named_list_elt(CAR(args), "df.residual") }
 }
 
-/// GNU `nobs` — `$nobs`, `$n.obs`, else `NROW(residuals)`.
+/// GNU `nobs` — `$nobs`/`$n.obs`, else `nobs.lm`: `sum(weights != 0)` or `NROW(residuals)`.
 pub unsafe fn do_nobs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -1485,6 +1485,27 @@ pub unsafe fn do_nobs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let n = named_list_elt(x, "n.obs");
         if !n.is_null() && n != R_NilValue() {
             return n;
+        }
+        let w = named_list_elt(x, "weights");
+        if !w.is_null() && w != R_NilValue() {
+            let mut nz = 0i32;
+            let nw = XLENGTH(w);
+            if TYPEOF(w) == SEXPTYPE::REALSXP {
+                for i in 0..nw {
+                    let v = *REAL(w).add(i as usize);
+                    if v != 0.0 && !v.is_nan() {
+                        nz += 1;
+                    }
+                }
+            } else if TYPEOF(w) == SEXPTYPE::INTSXP || TYPEOF(w) == SEXPTYPE::LGLSXP {
+                for i in 0..nw {
+                    let v = *INTEGER(w).add(i as usize);
+                    if v != 0 && v != NA_INTEGER {
+                        nz += 1;
+                    }
+                }
+            }
+            return Rf_ScalarInteger(nz);
         }
         let r = named_list_elt(x, "residuals");
         if !r.is_null() && r != R_NilValue() {
