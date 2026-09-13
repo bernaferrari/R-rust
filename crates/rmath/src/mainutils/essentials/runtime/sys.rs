@@ -1519,6 +1519,51 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `mean.Date(x)`.
+pub unsafe fn do_mean_Date(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let m = crate::eval::arithmetic::do_mean(call, op, args, rho);
+        let _m = protect(m);
+        set_single_class(m, "Date");
+        m
+    }
+}
+
+/// GNU `mean.POSIXct(x)`.
+pub unsafe fn do_mean_POSIXct(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let tz = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+        );
+        let mut tz_s = "UTC".to_string();
+        if !tz.is_null() && tz != R_NilValue() && TYPEOF(tz) == SEXPTYPE::STRSXP && XLENGTH(tz) > 0 {
+            let ch = STRING_ELT(tz, 0);
+            if !ch.is_null() {
+                tz_s = std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned();
+            }
+        }
+        let m = crate::eval::arithmetic::do_mean(call, op, args, rho);
+        let _m = protect(m);
+        set_posixct_class(m, &tz_s);
+        m
+    }
+}
+
+
 /// R's `Sys.Date()` — current date as REALSXP (days since epoch).
 pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

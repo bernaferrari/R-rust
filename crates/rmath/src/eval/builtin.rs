@@ -2209,6 +2209,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::datetime::do_as_character_POSIXt,
     },
     EvaluatedBuiltin {
+        name: "mean.Date",
+        handler: crate::mainutils::essentials::do_mean_Date,
+    },
+    EvaluatedBuiltin {
+        name: "mean.POSIXct",
+        handler: crate::mainutils::essentials::do_mean_POSIXct,
+    },
+    EvaluatedBuiltin {
         name: "pmin",
         handler: crate::mainutils::essentials::do_pmin,
     },
