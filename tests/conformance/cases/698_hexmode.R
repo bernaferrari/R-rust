@@ -1,0 +1,6 @@
+cat(typeof(as.hexmode(255L)), "\n", sep = "")
+cat(class(as.hexmode(255L)), "\n", sep = "")
+cat(format(as.hexmode(255L)), "\n", sep = "")
+cat(format(as.octmode(8L)), "\n", sep = "")
+cat(paste(format(as.hexmode(c(10L, 255L))), collapse = ","), "\n", sep = "")
+cat(format(as.hexmode(255)), "\n", sep = "")

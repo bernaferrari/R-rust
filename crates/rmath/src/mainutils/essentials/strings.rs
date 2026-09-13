@@ -1764,6 +1764,141 @@ pub unsafe fn do_bindtextdomain(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
+fn as_mode_integer(x: SEXP, base: i32) -> Option<SEXP> {
+    unsafe {
+        if TYPEOF(x) == SEXPTYPE::INTSXP {
+            return Some(x);
+        }
+        if TYPEOF(x) == SEXPTYPE::REALSXP {
+            let n = XLENGTH(x);
+            let out = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+            let _o = protect(out);
+            for i in 0..n {
+                let v = *REAL(x).add(i as usize);
+                if v.is_nan() {
+                    *INTEGER(out).add(i as usize) = NA_INTEGER;
+                } else if v == v.trunc() && v >= i32::MIN as f64 && v <= i32::MAX as f64 {
+                    *INTEGER(out).add(i as usize) = v as i32;
+                } else {
+                    return None;
+                }
+            }
+            return Some(out);
+        }
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let n = XLENGTH(x);
+            let out = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+            let _o = protect(out);
+            for i in 0..n {
+                let ch = STRING_ELT(x, i);
+                if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                    *INTEGER(out).add(i as usize) = NA_INTEGER;
+                    continue;
+                }
+                let s = std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy();
+                match i32::from_str_radix(s.trim(), base as u32) {
+                    Ok(v) if v >= 0 => *INTEGER(out).add(i as usize) = v,
+                    _ => return None,
+                }
+            }
+            return Some(out);
+        }
+        None
+    }
+}
+
+unsafe fn set_mode_class(x: SEXP, class: &str) -> SEXP {
+    unsafe {
+        let dup = crate::mainutils::duplicate::Rf_duplicate(x);
+        let _d = protect(dup);
+        let cstr = CString::new(class).unwrap_or_else(|_| CString::new("").unwrap());
+        crate::sexp::attrib_core::setAttrib(
+            dup,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(cstr.as_ptr()),
+        );
+        dup
+    }
+}
+
+/// GNU `as.hexmode(x)`.
+pub unsafe fn do_as_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {
+            return x;
+        }
+        match as_mode_integer(x, 16) {
+            Some(v) => set_mode_class(v, "hexmode"),
+            None => crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'x' cannot be coerced to class \"hexmode\"",
+            ),
+        }
+    }
+}
+
+/// GNU `as.octmode(x)`.
+pub unsafe fn do_as_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if crate::mainutils::objects::inherits2(x, c"octmode".as_ptr()) != FALSE {
+            return x;
+        }
+        match as_mode_integer(x, 8) {
+            Some(v) => set_mode_class(v, "octmode"),
+            None => crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'x' cannot be coerced to class \"octmode\"",
+            ),
+        }
+    }
+}
+
+fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
+    unsafe {
+        let n = if TYPEOF(x) == SEXPTYPE::INTSXP {
+            XLENGTH(x)
+        } else {
+            0
+        };
+        let mut texts = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let v = *INTEGER(x).add(i as usize);
+            let s = if v == NA_INTEGER {
+                "NA".to_string()
+            } else if hex {
+                format!("{v:x}")
+            } else {
+                format!("{v:o}")
+            };
+            texts.push(s);
+        }
+        if n > 1 {
+            let width = texts
+                .iter()
+                .filter(|s| s.as_str() != "NA")
+                .map(|s| s.len())
+                .max()
+                .unwrap_or(0);
+            for s in &mut texts {
+                if s.as_str() != "NA" {
+                    *s = format!("{s:0>width$}");
+                }
+            }
+        }
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for (i, s) in texts.iter().enumerate() {
+            let c = CString::new(s.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+
 
 
 
@@ -2387,6 +2522,12 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             crate::mainutils::essentials::apply_s3_closure_method("format", _call, args, _rho)
         {
             return result;
+        }
+        if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {
+            return format_mode_ints(x, true);
+        }
+        if crate::mainutils::objects::inherits2(x, c"octmode".as_ptr()) != FALSE {
+            return format_mode_ints(x, false);
         }
         // format.default: environments render as their display form
         // ("<environment: 0x...>"); closures deparse. These types have no

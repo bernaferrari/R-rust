@@ -1393,6 +1393,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_bindtextdomain,
     },
     EvaluatedBuiltin {
+        name: "as.hexmode",
+        handler: crate::mainutils::essentials::do_as_hexmode,
+    },
+    EvaluatedBuiltin {
+        name: "as.octmode",
+        handler: crate::mainutils::essentials::do_as_octmode,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
