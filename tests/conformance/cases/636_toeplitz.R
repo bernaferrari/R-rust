@@ -1,0 +1,5 @@
+d <- toeplitz(1:3)
+cat(paste(d[, 1], collapse = ","), "\n", sep = "")
+cat(paste(d[, 2], collapse = ","), "\n", sep = "")
+cat(paste(d[, 3], collapse = ","), "\n", sep = "")
+cat(paste(dim(d), collapse = ","), "\n", sep = "")

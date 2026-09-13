@@ -1000,6 +1000,35 @@ pub unsafe fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `toeplitz(x)` symmetric Toeplitz matrix.
+pub unsafe fn do_toeplitz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x) as isize;
+        if n < 1 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'x' is not a vector of adequate length",
+            );
+        }
+        let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), n as i32, n as i32);
+        let _a = protect(ans);
+        for col in 0..n {
+            for row in 0..n {
+                let k = (row - col).unsigned_abs() as usize;
+                let dst = (row + col * n) as usize;
+                if TYPEOF(x) == SEXPTYPE::INTSXP {
+                    *INTEGER(ans).add(dst) = *INTEGER(x).add(k);
+                } else {
+                    *REAL(ans).add(dst) = *REAL(x).add(k);
+                }
+            }
+        }
+        ans
+    }
+}
+
+
 #[cfg(test)]
 mod data_matrix_tests {
     use crate::sexp::ffi::TRUE;
