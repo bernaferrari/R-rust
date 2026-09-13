@@ -685,6 +685,93 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `arima.sim(list(ar=phi), n, n.start=)` — AR(1) via rnorm + recursive filter.
+pub unsafe fn do_arima_sim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let model = CAR(args);
+        let mut phi = 0.0;
+        if TYPEOF(model) == SEXPTYPE::VECSXP {
+            let ar = named_list_elt(model, "ar");
+            if !ar.is_null() && ar != R_NilValue() {
+                phi = if TYPEOF(ar) == SEXPTYPE::REALSXP {
+                    *REAL(ar)
+                } else if TYPEOF(ar) == SEXPTYPE::INTSXP {
+                    *INTEGER(ar) as f64
+                } else {
+                    0.0
+                };
+            }
+        }
+        let mut n = 0i32;
+        let mut n_start = 1i32;
+        let mut cell = CDR(args);
+        let mut pos = 1usize;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = CAR(cell);
+            if name == "n.start" {
+                n_start = if TYPEOF(val) == SEXPTYPE::INTSXP {
+                    *INTEGER(val)
+                } else {
+                    *REAL(val) as i32
+                };
+            } else if name == "n" || (name.is_empty() && pos == 1) {
+                n = if TYPEOF(val) == SEXPTYPE::INTSXP {
+                    *INTEGER(val)
+                } else {
+                    *REAL(val) as i32
+                };
+            }
+            pos += 1;
+            cell = CDR(cell);
+        }
+        if n <= 0 {
+            return R_NilValue();
+        }
+        if n_start < 0 {
+            n_start = 0;
+        }
+        let ntot = n + n_start;
+        let narg = Rf_ScalarInteger(ntot);
+        let _na = protect(narg);
+        let rargs = Rf_cons(narg, R_NilValue());
+        let _ra = protect(rargs);
+        let e = crate::library::stats::random::do_rnorm_r(call, op, rargs, rho);
+        let _e = protect(e);
+        let m = XLENGTH(e) as usize;
+        if m == 0 {
+            return R_NilValue();
+        }
+        let mut y = vec![0.0; m];
+        y[0] = if TYPEOF(e) == SEXPTYPE::REALSXP {
+            *REAL(e)
+        } else {
+            0.0
+        };
+        for i in 1..m {
+            let ei = *REAL(e).add(i);
+            y[i] = ei + phi * y[i - 1];
+        }
+        let out_n = n as usize;
+        let drop = n_start as usize;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, out_n as i64);
+        let _r = protect(result);
+        for i in 0..out_n {
+            let src = drop + i;
+            *REAL(result).add(i) = if src < m { y[src] } else { 0.0 };
+        }
+        result
+    }
+}
+
+
 
 /// GNU `spec.taper(x, p=0.1)` — cosine taper on each end.
 pub unsafe fn do_spec_taper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

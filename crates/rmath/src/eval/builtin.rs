@@ -2447,6 +2447,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_wilcox_test,
     },
     EvaluatedBuiltin {
+        name: "arima.sim",
+        handler: crate::library::stats::filter::do_arima_sim,
+    },
+    EvaluatedBuiltin {
         name: "arima",
         handler: crate::library::stats::filter::do_arima,
     },
