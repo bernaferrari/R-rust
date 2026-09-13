@@ -3001,6 +3001,105 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+fn substring_chars(text: &str, start: i32, end: i32) -> String {
+    if start < 1 || end < start {
+        return String::new();
+    }
+    text.chars()
+        .skip((start - 1) as usize)
+        .take((end - start + 1) as usize)
+        .collect()
+}
+
+/// GNU `regmatches(x, m)` for invert = FALSE.
+pub unsafe fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let m = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() || m.is_null() || m == R_NilValue() {
+            return R_NilValue();
+        }
+        let ml_sym = crate::sexp::symbol::Rf_install(c"match.length".as_ptr());
+        if TYPEOF(m) == SEXPTYPE::VECSXP {
+            let n = XLENGTH(m);
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+            let _r = protect(result);
+            for i in 0..n {
+                let starts = VECTOR_ELT(m, i);
+                let lengths = crate::sexp::attrib_core::getAttrib(starts, ml_sym);
+                let text = elt_to_string(x, i);
+                let ns = if starts.is_null() || starts == R_NilValue() {
+                    0
+                } else {
+                    XLENGTH(starts)
+                };
+                let mut parts: Vec<String> = Vec::new();
+                for j in 0..ns {
+                    let so = if TYPEOF(starts) == SEXPTYPE::INTSXP {
+                        *INTEGER(starts).add(j as usize)
+                    } else {
+                        -1
+                    };
+                    if so <= 0 {
+                        continue;
+                    }
+                    let ml = if !lengths.is_null()
+                        && lengths != R_NilValue()
+                        && TYPEOF(lengths) == SEXPTYPE::INTSXP
+                        && XLENGTH(lengths) > j
+                    {
+                        *INTEGER(lengths).add(j as usize)
+                    } else {
+                        0
+                    };
+                    parts.push(substring_chars(&text, so, so + ml - 1));
+                }
+                let elt = Rf_allocVector3(SEXPTYPE::STRSXP, parts.len() as i64);
+                let _e = protect(elt);
+                for (j, p) in parts.iter().enumerate() {
+                    let c = CString::new(p.as_str()).unwrap_or_default();
+                    SET_STRING_ELT(elt, j as i64, Rf_mkChar(c.as_ptr()));
+                }
+                SET_VECTOR_ELT(result, i, elt);
+            }
+            result
+        } else {
+            let n = XLENGTH(m);
+            let lengths = crate::sexp::attrib_core::getAttrib(m, ml_sym);
+            let mut parts: Vec<String> = Vec::new();
+            for i in 0..n {
+                let so = if TYPEOF(m) == SEXPTYPE::INTSXP {
+                    *INTEGER(m).add(i as usize)
+                } else {
+                    -1
+                };
+                if so <= 0 {
+                    continue;
+                }
+                let ml = if !lengths.is_null()
+                    && lengths != R_NilValue()
+                    && TYPEOF(lengths) == SEXPTYPE::INTSXP
+                    && XLENGTH(lengths) > i
+                {
+                    *INTEGER(lengths).add(i as usize)
+                } else {
+                    0
+                };
+                let text = elt_to_string(x, i);
+                parts.push(substring_chars(&text, so, so + ml - 1));
+            }
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, parts.len() as i64);
+            let _r = protect(result);
+            for (j, p) in parts.iter().enumerate() {
+                let c = CString::new(p.as_str()).unwrap_or_default();
+                SET_STRING_ELT(result, j as i64, Rf_mkChar(c.as_ptr()));
+            }
+            result
+        }
+    }
+}
+
+
 /// Attach capture.start / capture.length / capture.names attrs to one
 /// gregexpr element: n_match x capture_count column-major matrices with
 /// dimnames list(NULL, names) — the shape grep.c's do_gregexpr builds per
