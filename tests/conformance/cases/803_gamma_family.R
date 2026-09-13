@@ -1,0 +1,6 @@
+g <- Gamma()
+cat(g$family, "\n", sep = "")
+cat(g$link, "\n", sep = "")
+cat(class(g), "\n", sep = "")
+cat(Gamma("log")$link, "\n", sep = "")
+cat(Gamma("identity")$link, "\n", sep = "")

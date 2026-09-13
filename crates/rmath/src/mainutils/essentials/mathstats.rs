@@ -5056,12 +5056,14 @@ unsafe fn family_object(family: &str, link: &str) -> SEXP {
         let fam = match family {
             "gaussian" => Rf_mkString(c"gaussian".as_ptr()),
             "poisson" => Rf_mkString(c"poisson".as_ptr()),
+            "Gamma" => Rf_mkString(c"Gamma".as_ptr()),
             _ => Rf_mkString(c"binomial".as_ptr()),
         };
         let lnk = match link {
             "identity" => Rf_mkString(c"identity".as_ptr()),
             "probit" => Rf_mkString(c"probit".as_ptr()),
             "log" => Rf_mkString(c"log".as_ptr()),
+            "inverse" => Rf_mkString(c"inverse".as_ptr()),
             _ => Rf_mkString(c"logit".as_ptr()),
         };
         SET_VECTOR_ELT(result, 0, fam);
@@ -5128,6 +5130,23 @@ pub unsafe fn do_poisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         family_object("poisson", &link)
     }
 }
+
+/// GNU `Gamma()` family object.
+pub unsafe fn do_gamma_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut link = "inverse".to_string();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                link = elt_to_string(v, 0);
+            }
+            cell = CDR(cell);
+        }
+        family_object("Gamma", &link)
+    }
+}
+
 
 
 /// GNU `aov(y ~ x)` — `lm` with class `c("aov","lm")`.
