@@ -580,6 +580,63 @@ pub unsafe fn do_casefold(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `.Internal(make.unique(names, sep))`.
+pub unsafe fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let names = CAR(args);
+        if names.is_null() || names == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let n = XLENGTH(names);
+        let mut sep = ".".to_string();
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let s = CAR(rest);
+            if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) > 0 {
+                let ch = STRING_ELT(s, 0);
+                if !ch.is_null() {
+                    sep = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+        }
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        let mut seen = std::collections::HashSet::<String>::new();
+        for i in 0..n {
+            let ch = if TYPEOF(names) == SEXPTYPE::STRSXP {
+                STRING_ELT(names, i)
+            } else {
+                std::ptr::null_mut()
+            };
+            let base = if ch.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let unique = if seen.insert(base.clone()) {
+                base
+            } else {
+                let mut k = 1u32;
+                loop {
+                    let cand = format!("{base}{sep}{k}");
+                    if seen.insert(cand.clone()) {
+                        break cand;
+                    }
+                    k += 1;
+                }
+            };
+            let c = CString::new(unique).unwrap_or_else(|_| CString::new("").unwrap());
+            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+
 
 unsafe fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
     unsafe {

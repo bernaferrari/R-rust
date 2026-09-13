@@ -1321,6 +1321,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_casefold,
     },
     EvaluatedBuiltin {
+        name: "make.unique",
+        handler: crate::mainutils::essentials::do_make_unique,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
