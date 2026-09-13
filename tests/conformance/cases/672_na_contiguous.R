@@ -1,0 +1,6 @@
+d <- na.contiguous(c(1, 2, NA, 4, 5, 6))
+cat(paste(d, collapse = ","), "\n", sep = "")
+cat(paste(attr(d, "na.action"), collapse = ","), "\n", sep = "")
+e <- na.contiguous(c(NA, 1, 2, 3, NA, 4))
+cat(paste(e, collapse = ","), "\n", sep = "")
+cat(paste(attr(e, "na.action"), collapse = ","), "\n", sep = "")

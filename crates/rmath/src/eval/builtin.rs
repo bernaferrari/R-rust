@@ -1681,6 +1681,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_is_ts,
     },
     EvaluatedBuiltin {
+        name: "na.contiguous",
+        handler: crate::library::stats::filter::do_na_contiguous,
+    },
+    EvaluatedBuiltin {
         name: "window",
         handler: crate::library::stats::filter::do_window,
     },

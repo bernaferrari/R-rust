@@ -1317,6 +1317,76 @@ pub unsafe fn do_is_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `na.contiguous(x)` longest non-NA run.
+pub unsafe fn do_na_contiguous(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x) as usize;
+        let is_int = TYPEOF(x) == SEXPTYPE::INTSXP;
+        let na_at = |i: usize| -> bool {
+            if is_int {
+                *INTEGER(x).add(i) == NA_INTEGER
+            } else {
+                let v = *REAL(x).add(i);
+                v.is_nan()
+            }
+        };
+        let mut best_lo = 0usize;
+        let mut best_len = 0usize;
+        let mut i = 0;
+        while i < n {
+            if na_at(i) {
+                i += 1;
+                continue;
+            }
+            let lo = i;
+            while i < n && !na_at(i) {
+                i += 1;
+            }
+            let len = i - lo;
+            if len > best_len {
+                best_lo = lo;
+                best_len = len;
+            }
+        }
+        let ans = if is_int {
+            Rf_allocVector3(SEXPTYPE::INTSXP, best_len as i64)
+        } else {
+            Rf_allocVector3(SEXPTYPE::REALSXP, best_len as i64)
+        };
+        let _a = protect(ans);
+        for j in 0..best_len {
+            if is_int {
+                *INTEGER(ans).add(j) = *INTEGER(x).add(best_lo + j);
+            } else {
+                *REAL(ans).add(j) = *REAL(x).add(best_lo + j);
+            }
+        }
+        let omit_n = n - best_len;
+        let omit = Rf_allocVector3(SEXPTYPE::INTSXP, omit_n as i64);
+        let _o = protect(omit);
+        let mut k = 0usize;
+        for j in 0..n {
+            if j < best_lo || j >= best_lo + best_len {
+                *INTEGER(omit).add(k) = (j + 1) as c_int;
+                k += 1;
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(
+            omit,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"omit".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::symbol::Rf_install(c"na.action".as_ptr()),
+            omit,
+        );
+        ans
+    }
+}
+
+
 
 
 
