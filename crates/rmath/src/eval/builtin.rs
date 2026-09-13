@@ -1877,6 +1877,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_varimax,
     },
     EvaluatedBuiltin {
+        name: "promax",
+        handler: crate::mainutils::essentials::do_promax,
+    },
+    EvaluatedBuiltin {
         name: "power.t.test",
         handler: crate::mainutils::essentials::do_power_t_test,
     },

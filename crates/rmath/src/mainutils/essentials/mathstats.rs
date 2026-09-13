@@ -3593,6 +3593,64 @@ fn svd2_uvt(b00: f64, b10: f64, b01: f64, b11: f64) -> ([[f64; 2]; 2], f64) {
     ([[t00, t01], [t10, t11]], s1 + s2)
 }
 
+fn varimax_2col(x: &[f64], p: usize) -> (Vec<f64>, [[f64; 2]; 2]) {
+    let mut work = vec![0.0; p * 2];
+    let mut sc = vec![1.0; p];
+    for i in 0..p {
+        let a = x[i];
+        let b = x[i + p];
+        sc[i] = (a * a + b * b).sqrt();
+        if sc[i] > 0.0 {
+            work[i] = a / sc[i];
+            work[i + p] = b / sc[i];
+        } else {
+            work[i] = a;
+            work[i + p] = b;
+        }
+    }
+    let mut tt = [[1.0, 0.0], [0.0, 1.0]];
+    let mut d = 0.0;
+    let pf = p as f64;
+    for _ in 0..1000 {
+        let z = matmul_p2(&work, tt, p);
+        let mut c1 = 0.0;
+        let mut c2 = 0.0;
+        for i in 0..p {
+            c1 += z[i] * z[i];
+            c2 += z[i + p] * z[i + p];
+        }
+        c1 /= pf;
+        c2 /= pf;
+        let mut b00 = 0.0;
+        let mut b10 = 0.0;
+        let mut b01 = 0.0;
+        let mut b11 = 0.0;
+        for i in 0..p {
+            let z1 = z[i];
+            let z2 = z[i + p];
+            let w1 = z1 * z1 * z1 - z1 * c1;
+            let w2 = z2 * z2 * z2 - z2 * c2;
+            b00 += work[i] * w1;
+            b10 += work[i + p] * w1;
+            b01 += work[i] * w2;
+            b11 += work[i + p] * w2;
+        }
+        let (new_tt, dn) = svd2_uvt(b00, b10, b01, b11);
+        let dpast = d;
+        d = dn;
+        tt = new_tt;
+        if d < dpast * (1.0 + 1e-5) {
+            break;
+        }
+    }
+    let mut z = matmul_p2(&work, tt, p);
+    for i in 0..p {
+        z[i] *= sc[i];
+        z[i + p] *= sc[i];
+    }
+    (z, tt)
+}
+
 /// GNU 2-column `varimax(x)`.
 pub unsafe fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -3613,60 +3671,11 @@ pub unsafe fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if nc != 2 || p < 2 {
             return R_NilValue();
         }
-        let mut work = vec![0.0; p * 2];
-        let mut sc = vec![1.0; p];
-        for i in 0..p {
-            let a = elt_real_safe(x, i as i64);
-            let b = elt_real_safe(x, (i + p) as i64);
-            sc[i] = (a * a + b * b).sqrt();
-            if sc[i] > 0.0 {
-                work[i] = a / sc[i];
-                work[i + p] = b / sc[i];
-            } else {
-                work[i] = a;
-                work[i + p] = b;
-            }
+        let mut raw = vec![0.0; p * 2];
+        for i in 0..(p * 2) {
+            raw[i] = elt_real_safe(x, i as i64);
         }
-        let mut tt = [[1.0, 0.0], [0.0, 1.0]];
-        let mut d = 0.0;
-        let pf = p as f64;
-        for _ in 0..1000 {
-            let z = matmul_p2(&work, tt, p);
-            let mut c1 = 0.0;
-            let mut c2 = 0.0;
-            for i in 0..p {
-                c1 += z[i] * z[i];
-                c2 += z[i + p] * z[i + p];
-            }
-            c1 /= pf;
-            c2 /= pf;
-            let mut b00 = 0.0;
-            let mut b10 = 0.0;
-            let mut b01 = 0.0;
-            let mut b11 = 0.0;
-            for i in 0..p {
-                let z1 = z[i];
-                let z2 = z[i + p];
-                let w1 = z1 * z1 * z1 - z1 * c1;
-                let w2 = z2 * z2 * z2 - z2 * c2;
-                b00 += work[i] * w1;
-                b10 += work[i + p] * w1;
-                b01 += work[i] * w2;
-                b11 += work[i + p] * w2;
-            }
-            let (new_tt, dn) = svd2_uvt(b00, b10, b01, b11);
-            let dpast = d;
-            d = dn;
-            tt = new_tt;
-            if d < dpast * (1.0 + 1e-5) {
-                break;
-            }
-        }
-        let mut z = matmul_p2(&work, tt, p);
-        for i in 0..p {
-            z[i] *= sc[i];
-            z[i + p] *= sc[i];
-        }
+        let (z, tt) = varimax_2col(&raw, p);
         let loadings = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
         let _ld = protect(loadings);
         for i in 0..(p * 2) {
@@ -3696,6 +3705,119 @@ pub unsafe fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         result
     }
 }
+
+fn invert2(a00: f64, a10: f64, a01: f64, a11: f64) -> Option<(f64, f64, f64, f64)> {
+    let det = a00 * a11 - a01 * a10;
+    if !det.is_finite() || det.abs() < 1e-18 {
+        return None;
+    }
+    Some((a11 / det, -a10 / det, -a01 / det, a00 / det))
+}
+
+/// GNU 2-column `promax(x, m=4)`.
+pub unsafe fn do_promax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (p, nc) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            return R_NilValue();
+        };
+        if nc != 2 || p < 2 {
+            return R_NilValue();
+        }
+        let mut raw = vec![0.0; p * 2];
+        for i in 0..(p * 2) {
+            raw[i] = elt_real_safe(x, i as i64);
+        }
+        let (vx, vrot) = varimax_2col(&raw, p);
+        // Q = x * |x|^3  (m=4)
+        let mut q = vec![0.0; p * 2];
+        for i in 0..(p * 2) {
+            q[i] = vx[i] * vx[i].abs().powi(3);
+        }
+        // U = (X'X)^{-1} X'Q
+        let mut xtx = [0.0; 4];
+        let mut xtq = [0.0; 4];
+        for i in 0..p {
+            let x1 = vx[i];
+            let x2 = vx[i + p];
+            let q1 = q[i];
+            let q2 = q[i + p];
+            xtx[0] += x1 * x1;
+            xtx[1] += x2 * x1;
+            xtx[2] += x1 * x2;
+            xtx[3] += x2 * x2;
+            xtq[0] += x1 * q1;
+            xtq[1] += x2 * q1;
+            xtq[2] += x1 * q2;
+            xtq[3] += x2 * q2;
+        }
+        let Some(inv) = invert2(xtx[0], xtx[1], xtx[2], xtx[3]) else {
+            return R_NilValue();
+        };
+        // U column-major
+        let u00 = inv.0 * xtq[0] + inv.2 * xtq[1];
+        let u10 = inv.1 * xtq[0] + inv.3 * xtq[1];
+        let u01 = inv.0 * xtq[2] + inv.2 * xtq[3];
+        let u11 = inv.1 * xtq[2] + inv.3 * xtq[3];
+        // d = diag(solve(t(U) U))
+        let tuu00 = u00 * u00 + u10 * u10;
+        let tuu10 = u00 * u01 + u10 * u11;
+        let tuu01 = tuu10;
+        let tuu11 = u01 * u01 + u11 * u11;
+        let Some(itu) = invert2(tuu00, tuu10, tuu01, tuu11) else {
+            return R_NilValue();
+        };
+        let s0 = itu.0.max(0.0).sqrt();
+        let s1 = itu.3.max(0.0).sqrt();
+        let u00s = u00 * s0;
+        let u10s = u10 * s0;
+        let u01s = u01 * s1;
+        let u11s = u11 * s1;
+        let z = matmul_p2(&vx, [[u00s, u01s], [u10s, u11s]], p);
+        let r00 = vrot[0][0] * u00s + vrot[0][1] * u10s;
+        let r01 = vrot[0][0] * u01s + vrot[0][1] * u11s;
+        let r10 = vrot[1][0] * u00s + vrot[1][1] * u10s;
+        let r11 = vrot[1][0] * u01s + vrot[1][1] * u11s;
+        let loadings = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
+        let _ld = protect(loadings);
+        for i in 0..(p * 2) {
+            *REAL(loadings).add(i) = z[i];
+        }
+        let class = Rf_mkString(c"loadings".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            loadings,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        let rot = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
+        let _rt = protect(rot);
+        *REAL(rot) = r00;
+        *REAL(rot).add(1) = r10;
+        *REAL(rot).add(2) = r01;
+        *REAL(rot).add(3) = r11;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, loadings);
+        SET_VECTOR_ELT(result, 1, rot);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["loadings".to_string(), "rotmat".to_string()],
+        );
+        result
+    }
+}
+
 
 
 
