@@ -607,6 +607,85 @@ pub unsafe fn do_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+fn css_ar1(y: &[f64]) -> (f64, f64, f64) {
+    let n = y.len();
+    if n < 3 {
+        return (0.0, 0.0, f64::NAN);
+    }
+    let mut best_phi = 0.0;
+    let mut best_mu = 0.0;
+    let mut best_rss = f64::INFINITY;
+    for k in 0..=400 {
+        let phi = -0.99 + 1.98 * (k as f64) / 400.0;
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for t in 1..n {
+            num += y[t] - phi * y[t - 1];
+            den += 1.0 - phi;
+        }
+        let mu = if den.abs() > 1e-12 {
+            num / den
+        } else {
+            y.iter().sum::<f64>() / n as f64
+        };
+        let mut rss = 0.0;
+        for t in 1..n {
+            let e = y[t] - mu - phi * (y[t - 1] - mu);
+            rss += e * e;
+        }
+        if rss < best_rss {
+            best_rss = rss;
+            best_phi = phi;
+            best_mu = mu;
+        }
+    }
+    let sigma2 = best_rss / (n - 1) as f64;
+    (best_phi, best_mu, sigma2)
+}
+
+/// GNU `arima(x, order=c(1,0,0), method="CSS")` — AR(1) with intercept.
+pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x) as usize;
+        if n < 3 {
+            return R_NilValue();
+        }
+        let mut y = vec![0.0; n];
+        for i in 0..n {
+            y[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+        }
+        let (phi, mu, sigma2) = css_ar1(&y);
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _c = protect(coef);
+        *REAL(coef) = phi;
+        *REAL(coef).add(1) = mu;
+        crate::mainutils::essentials::set_string_names(
+            coef,
+            &["ar1".to_string(), "intercept".to_string()],
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(sigma2));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["coef".to_string(), "sigma2".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"Arima".as_ptr()),
+        );
+        result
+    }
+}
+
+
 /// GNU `spec.ar(x)` AR(1) spectral density.
 pub unsafe fn do_spec_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -1887,9 +1966,16 @@ unsafe fn named_list_elt(x: SEXP, name: &str) -> SEXP {
     }
 }
 
-/// GNU default `coef(object)`.
+/// GNU `coef(object)` — `$coefficients`, else `$coef`.
 pub unsafe fn do_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { named_list_elt(CAR(args), "coefficients") }
+    unsafe {
+        let x = CAR(args);
+        let v = named_list_elt(x, "coefficients");
+        if !v.is_null() && v != R_NilValue() {
+            return v;
+        }
+        named_list_elt(x, "coef")
+    }
 }
 
 /// GNU default `fitted(object)`.

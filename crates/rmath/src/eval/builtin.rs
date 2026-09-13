@@ -2443,6 +2443,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_wilcox_test,
     },
     EvaluatedBuiltin {
+        name: "arima",
+        handler: crate::library::stats::filter::do_arima,
+    },
+    EvaluatedBuiltin {
         name: "ks.test",
         handler: crate::mainutils::essentials::do_ks_test,
     },
