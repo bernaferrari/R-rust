@@ -751,12 +751,14 @@ pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         for k in 0..freq {
             *REAL(figure).add(k) = fig[k];
         }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
         let _res = protect(result);
         SET_VECTOR_ELT(result, 0, seasonal);
         SET_VECTOR_ELT(result, 1, trend_s);
         SET_VECTOR_ELT(result, 2, random);
         SET_VECTOR_ELT(result, 3, figure);
+        SET_VECTOR_ELT(result, 4, x0);
+        SET_VECTOR_ELT(result, 5, Rf_mkString(c"additive".as_ptr()));
         crate::mainutils::essentials::set_string_names(
             result,
             &[
@@ -764,6 +766,8 @@ pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 "trend".to_string(),
                 "random".to_string(),
                 "figure".to_string(),
+                "x".to_string(),
+                "type".to_string(),
             ],
         );
         crate::sexp::attrib_core::setAttrib(
