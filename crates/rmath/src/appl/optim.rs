@@ -304,8 +304,8 @@ pub unsafe fn nmmin(
         let n1_usize = n1 as usize;
         let c = n + 2; // index for centroid (1-based)
 
-        // P[n+1][n+1] matrix: first n rows are parameters, last row is function values
-        let mut p: Vec<Vec<f64>> = vec![vec![0.0f64; n1_usize]; n1_usize];
+        // P[n+1][n+2]: n+1 vertices plus a centroid column at 1-based index n+2.
+        let mut p: Vec<Vec<f64>> = vec![vec![0.0f64; (n + 2) as usize]; n1_usize];
 
         *fail = 0;
         let mut f = fminfn(n as std::os::raw::c_int, bvec, ex);

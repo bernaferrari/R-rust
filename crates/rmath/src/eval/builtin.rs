@@ -1677,6 +1677,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::optim::do_optim,
     },
     EvaluatedBuiltin {
+        name: "integrate",
+        handler: crate::library::stats::integrate::do_integrate,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

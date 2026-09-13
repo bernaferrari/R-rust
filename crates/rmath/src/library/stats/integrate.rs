@@ -353,3 +353,44 @@ pub unsafe fn call_dqagi(args: SEXP) -> SEXP {
         build_integrate_result(result, abserr, last, ier)
     }
 }
+
+/// GNU `integrate(f, lower, upper)`.
+pub unsafe fn do_integrate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let f = CAR(args);
+        let lower = CAR(CDR(args));
+        let upper = CAR(CDR(CDR(args)));
+        let epsabs = Rf_ScalarReal(1.49e-8);
+        let _ea = protect(epsabs);
+        let epsrel = Rf_ScalarReal(1.49e-8);
+        let _er = protect(epsrel);
+        let limit = Rf_ScalarInteger(100);
+        let _lim = protect(limit);
+        let internal = Rf_cons(
+            R_NilValue(),
+            Rf_cons(
+                f,
+                Rf_cons(
+                    rho,
+                    Rf_cons(
+                        lower,
+                        Rf_cons(
+                            upper,
+                            Rf_cons(epsabs, Rf_cons(epsrel, Rf_cons(limit, R_NilValue()))),
+                        ),
+                    ),
+                ),
+            ),
+        );
+        let _i = protect(internal);
+        let ans = call_dqags(internal);
+        let _a = protect(ans);
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"integrate".as_ptr()),
+        );
+        ans
+    }
+}
+
