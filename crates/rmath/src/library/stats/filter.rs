@@ -1474,7 +1474,7 @@ pub unsafe fn do_df_residual(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     unsafe { named_list_elt(CAR(args), "df.residual") }
 }
 
-/// GNU default `nobs(object)` via $nobs then $n.obs.
+/// GNU `nobs` — `$nobs`, `$n.obs`, else `NROW(residuals)`.
 pub unsafe fn do_nobs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -1482,7 +1482,15 @@ pub unsafe fn do_nobs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !n.is_null() && n != R_NilValue() {
             return n;
         }
-        named_list_elt(x, "n.obs")
+        let n = named_list_elt(x, "n.obs");
+        if !n.is_null() && n != R_NilValue() {
+            return n;
+        }
+        let r = named_list_elt(x, "residuals");
+        if !r.is_null() && r != R_NilValue() {
+            return Rf_ScalarInteger(XLENGTH(r) as i32);
+        }
+        R_NilValue()
     }
 }
 
