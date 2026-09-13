@@ -3122,6 +3122,88 @@ pub unsafe fn do_power_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+/// GNU balanced one-way `power.anova.test`.
+pub unsafe fn do_power_anova_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut groups = NA_REAL;
+        let mut n = NA_REAL;
+        let mut between_var = NA_REAL;
+        let mut within_var = NA_REAL;
+        let mut sig_level = 0.05;
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = if !v.is_null() && v != R_NilValue() {
+                elt_real_safe(v, 0)
+            } else {
+                NA_REAL
+            };
+            match name.as_str() {
+                "groups" => groups = val,
+                "n" => n = val,
+                "between.var" => between_var = val,
+                "within.var" => within_var = val,
+                "sig.level" => {
+                    if val.is_finite() {
+                        sig_level = val;
+                    }
+                }
+                _ => {}
+            }
+            cell = CDR(cell);
+        }
+        let df1 = groups - 1.0;
+        let df2 = (n - 1.0) * groups;
+        let lambda = df1 * n * (between_var / within_var);
+        let crit = crate::dist::f_dist::qf_inner(sig_level, df1, df2, false, false);
+        let power = crate::dist::nf_dist::pnf_inner(crit, df1, df2, lambda, false, false);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(groups));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(n));
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(between_var));
+        SET_VECTOR_ELT(result, 3, Rf_ScalarReal(within_var));
+        SET_VECTOR_ELT(result, 4, Rf_ScalarReal(sig_level));
+        SET_VECTOR_ELT(result, 5, Rf_ScalarReal(power));
+        SET_VECTOR_ELT(result, 6, Rf_mkString(c"n is number in each group".as_ptr()));
+        SET_VECTOR_ELT(
+            result,
+            7,
+            Rf_mkString(c"Balanced one-way analysis of variance power calculation".as_ptr()),
+        );
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "groups".to_string(),
+                "n".to_string(),
+                "between.var".to_string(),
+                "within.var".to_string(),
+                "sig.level".to_string(),
+                "power".to_string(),
+                "note".to_string(),
+                "method".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"power.htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 fn dist_compact(d: &[f64], i: usize, j: usize, n: usize) -> f64 {
     if i == j {
         return 0.0;

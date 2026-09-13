@@ -148,6 +148,7 @@ fn pnbeta_raw(x: f64, o_x: f64, a: f64, b: f64, ncp: f64) -> f64 {
     let mut sumq = 1.0 - q;
     let mut ans = q * temp;
     let mut ax: f64;
+    let mut q_cur = q;
 
     // recurse over subsequent terms until convergence
     let mut j = floor(x0);
@@ -156,9 +157,9 @@ fn pnbeta_raw(x: f64, o_x: f64, a: f64, b: f64, ncp: f64) -> f64 {
         j += 1.0;
         temp -= gx;
         gx *= x * (a + b + j - 1.0) / (a + j);
-        let q_new = q * c / j;
-        sumq -= q_new;
-        ax = temp * q_new;
+        q_cur *= c / j;
+        sumq -= q_cur;
+        ax = temp * q_cur;
         ans += ax;
         errbd = (temp - gx) * sumq;
 
