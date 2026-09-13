@@ -2327,6 +2327,88 @@ pub unsafe fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `bartlett.test(x, g)`.
+pub unsafe fn do_bartlett_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let g = CAR(CDR(args));
+        let n0 = XLENGTH(x);
+        let mut groups: std::collections::BTreeMap<i32, Vec<f64>> =
+            std::collections::BTreeMap::new();
+        for i in 0..n0 {
+            let v = elt_real_safe(x, i);
+            if !v.is_finite() {
+                continue;
+            }
+            let gi = if g.is_null() || g == R_NilValue() {
+                1
+            } else if TYPEOF(g) == SEXPTYPE::INTSXP || TYPEOF(g) == SEXPTYPE::LGLSXP {
+                *INTEGER(g).add((i as usize) % XLENGTH(g) as usize)
+            } else if TYPEOF(g) == SEXPTYPE::REALSXP {
+                *REAL(g).add((i as usize) % XLENGTH(g) as usize) as i32
+            } else {
+                1
+            };
+            groups.entry(gi).or_default().push(v);
+        }
+        let k = groups.len();
+        let mut ns: Vec<f64> = Vec::new();
+        let mut vs: Vec<f64> = Vec::new();
+        for vals in groups.values() {
+            if vals.len() < 2 {
+                continue;
+            }
+            ns.push((vals.len() - 1) as f64);
+            vs.push(sample_var(vals));
+        }
+        let n_total: f64 = ns.iter().sum();
+        let v_total = ns.iter().zip(vs.iter()).map(|(n, v)| n * v).sum::<f64>() / n_total;
+        let num = n_total * v_total.ln() - ns.iter().zip(vs.iter()).map(|(n, v)| n * v.ln()).sum::<f64>();
+        let den = 1.0
+            + (ns.iter().map(|n| 1.0 / n).sum::<f64>() - 1.0 / n_total)
+                / (3.0 * (k as f64 - 1.0));
+        let stat = num / den;
+        let df = (k as f64) - 1.0;
+        let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["Bartlett's K-squared".to_string()]);
+        let parameter = Rf_ScalarReal(df);
+        let _pa = protect(parameter);
+        set_string_names(parameter, &["df".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"x and g".as_ptr()));
+        SET_VECTOR_ELT(
+            result,
+            4,
+            Rf_mkString(c"Bartlett test of homogeneity of variances".as_ptr()),
+        );
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "data.name".to_string(),
+                "method".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

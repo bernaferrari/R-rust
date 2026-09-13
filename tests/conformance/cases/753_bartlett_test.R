@@ -1,0 +1,6 @@
+bt <- bartlett.test(1:10, gl(2, 5))
+cat(round(as.numeric(bt$statistic), 8), "\n", sep = "")
+cat(as.numeric(bt$parameter), "\n", sep = "")
+cat(round(bt$p.value, 8), "\n", sep = "")
+cat(bt$method, "\n", sep = "")
+cat(class(bt), "\n", sep = "")
