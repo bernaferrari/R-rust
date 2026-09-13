@@ -2229,6 +2229,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_round_POSIXt,
     },
     EvaluatedBuiltin {
+        name: "seq.POSIXt",
+        handler: crate::mainutils::essentials::do_seq_POSIXt,
+    },
+    EvaluatedBuiltin {
         name: "pmin",
         handler: crate::mainutils::essentials::do_pmin,
     },

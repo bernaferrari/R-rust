@@ -1760,6 +1760,83 @@ pub unsafe fn do_round_POSIXt(
     }
 }
 
+fn seq_posix_by_seconds(by: &str) -> Option<f64> {
+    let parts: Vec<&str> = by.split_whitespace().collect();
+    if parts.is_empty() || parts.len() > 2 {
+        return None;
+    }
+    let (mult, unit) = if parts.len() == 2 {
+        (parts[0].parse::<f64>().ok()?, parts[1])
+    } else {
+        (1.0, parts[0])
+    };
+    let unit = unit.trim_end_matches('s');
+    let base = match unit {
+        "sec" => 1.0,
+        "min" => 60.0,
+        "hour" => 3600.0,
+        "day" => 86_400.0,
+        "week" => 7.0 * 86_400.0,
+        _ => return None,
+    };
+    Some(mult * base)
+}
+
+/// GNU `seq.POSIXt(from, to, by, length.out)`.
+pub unsafe fn do_seq_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let mut new_args = R_NilValue();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let mut value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if (named == "by" || named.is_empty())
+                && TYPEOF(value) == SEXPTYPE::STRSXP
+                && XLENGTH(value) > 0
+            {
+                let ch = STRING_ELT(value, 0);
+                if !ch.is_null() {
+                    let s = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy();
+                    if let Some(secs) = seq_posix_by_seconds(&s) {
+                        value = Rf_ScalarReal(secs);
+                    }
+                }
+            }
+            let node = Rf_cons(value, new_args);
+            if !tag.is_null() && tag != R_NilValue() {
+                SETTAG(node, tag);
+            }
+            new_args = node;
+            cell = CDR(cell);
+        }
+        // cons prepends; reverse
+        let mut rev = R_NilValue();
+        let mut c = new_args;
+        while !c.is_null() && c != R_NilValue() {
+            let node = Rf_cons(CAR(c), rev);
+            SETTAG(node, TAG(c));
+            rev = node;
+            c = CDR(c);
+        }
+        let _a = protect(rev);
+        crate::mainutils::seq::do_seq(call, op, rev, rho)
+    }
+}
+
+
 
 
 
