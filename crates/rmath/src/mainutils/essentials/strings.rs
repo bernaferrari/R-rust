@@ -2010,6 +2010,48 @@ pub unsafe fn do_nclass_fd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `bw.nrd0(x)`.
+pub unsafe fn do_bw_nrd0(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = nclass_numeric_copy(CAR(args));
+        if x.len() < 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "need at least 2 data points",
+            );
+        }
+        let hi = nclass_sample_var(&x).sqrt();
+        let mut lo = hi.min(nclass_iqr(x.clone()) / 1.34);
+        if lo == 0.0 {
+            lo = hi;
+        }
+        if lo == 0.0 {
+            lo = x[0].abs();
+        }
+        if lo == 0.0 {
+            lo = 1.0;
+        }
+        Rf_ScalarReal(0.9 * lo * (x.len() as f64).powf(-0.2))
+    }
+}
+
+/// GNU `bw.nrd(x)`.
+pub unsafe fn do_bw_nrd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = nclass_numeric_copy(CAR(args));
+        if x.len() < 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "need at least 2 data points",
+            );
+        }
+        let h = nclass_iqr(x.clone()) / 1.34;
+        let sd = nclass_sample_var(&x).sqrt();
+        Rf_ScalarReal(1.06 * sd.min(h) * (x.len() as f64).powf(-0.2))
+    }
+}
+
+
 
 
 
