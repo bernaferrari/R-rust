@@ -1913,6 +1913,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_extract_aic,
     },
     EvaluatedBuiltin {
+        name: "case.names",
+        handler: crate::mainutils::essentials::do_case_names,
+    },
+    EvaluatedBuiltin {
+        name: "variable.names",
+        handler: crate::mainutils::essentials::do_variable_names,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },

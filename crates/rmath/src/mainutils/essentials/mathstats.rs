@@ -4544,6 +4544,17 @@ pub unsafe fn do_extract_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
 
 
+/// GNU `case.names(object)` — rownames.
+pub unsafe fn do_case_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::essentials::do_rownames(call, op, args, rho) }
+}
+
+/// GNU `variable.names(object)` — colnames.
+pub unsafe fn do_variable_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::essentials::do_colnames(call, op, args, rho) }
+}
+
+
 
 
 
