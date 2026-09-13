@@ -1159,6 +1159,28 @@ pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 b = date_first_of_year(b + 370.0);
             }
             breaks.push(date_first_of_year(b + 370.0));
+        } else if units.starts_with("quarter") {
+            let mut b = date_first_of_quarter(min_d);
+            while b <= max_d {
+                breaks.push(b);
+                b = date_add_months(b, 3);
+            }
+            if breaks.is_empty() {
+                breaks.push(b);
+            }
+            let last = *breaks.last().unwrap();
+            if last <= max_d {
+                breaks.push(date_add_months(last, 3));
+            } else if breaks.len() < 2 {
+                breaks.push(date_add_months(last, 3));
+            }
+        } else if units.starts_with("day") {
+            let mut b = min_d.floor();
+            while b <= max_d {
+                breaks.push(b);
+                b += 1.0;
+            }
+            breaks.push(b);
         } else {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
@@ -1266,6 +1288,15 @@ fn date_first_of_month(days: f64) -> f64 {
     crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{m:02}-01"))
         .unwrap_or(days)
 }
+
+fn date_first_of_quarter(days: f64) -> f64 {
+    let tm = unix_secs_to_utc((days * 86_400.0) as i64);
+    let y = tm.tm_year + 1900;
+    let qmon = (tm.tm_mon / 3) * 3 + 1;
+    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{qmon:02}-01"))
+        .unwrap_or(days)
+}
+
 
 fn date_first_of_year(days: f64) -> f64 {
     let tm = unix_secs_to_utc((days * 86_400.0) as i64);
