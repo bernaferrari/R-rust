@@ -1060,6 +1060,28 @@ pub unsafe fn do_as_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             }
             return result;
         }
+        if class_contains(x, "hexmode") {
+            let n = XLENGTH(x);
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _p = protect(result);
+            for i in 0..n {
+                let value = *INTEGER(x).add(i as usize);
+                let text = if value == NA_INTEGER {
+                    None
+                } else {
+                    Some(format!("{:x}", value))
+                };
+                let charsxp = text
+                    .and_then(|text| CString::new(text).ok())
+                    .map(|text| Rf_mkChar(text.as_ptr()))
+                    .unwrap_or_else(|| crate::sexp::globals::R_NaString());
+                SET_STRING_ELT(result, i, charsxp);
+            }
+            return result;
+        }
         if class_contains(x, "POSIXct") && TYPEOF(x) == SEXPTYPE::REALSXP {
             let n = XLENGTH(x);
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);

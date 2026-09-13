@@ -1437,6 +1437,22 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_hexmode,
     },
     EvaluatedBuiltin {
+        name: "format.hexmode",
+        handler: crate::mainutils::essentials::do_format_hexmode,
+    },
+    EvaluatedBuiltin {
+        name: "as.character.hexmode",
+        handler: crate::mainutils::essentials::do_format_hexmode,
+    },
+    EvaluatedBuiltin {
+        name: "format.octmode",
+        handler: crate::mainutils::essentials::do_format_octmode,
+    },
+    EvaluatedBuiltin {
+        name: "as.character.octmode",
+        handler: crate::mainutils::essentials::do_format_octmode,
+    },
+    EvaluatedBuiltin {
         name: "as.octmode",
         handler: crate::mainutils::essentials::do_as_octmode,
     },

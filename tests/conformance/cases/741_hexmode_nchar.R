@@ -1,0 +1,7 @@
+cat(as.character(as.hexmode(255)), "\n", sep = "")
+cat(paste(as.character(as.hexmode(c(10, 255))), collapse = ","), "\n", sep = "")
+cat(format.hexmode(as.hexmode(255)), "\n", sep = "")
+cat(as.character(as.octmode(8)), "\n", sep = "")
+cat(is.na(nchar(NA_character_)), "\n", sep = "")
+cat(is.na(nchar(NA)), "\n", sep = "")
+cat(is.na(nchar(NA_real_)), "\n", sep = "")

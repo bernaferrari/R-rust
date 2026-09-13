@@ -34,6 +34,18 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
+        let x = if TYPEOF(x) != SEXPTYPE::STRSXP {
+            let coerced = crate::mainutils::essentials::do_as_character(
+                _call,
+                _op,
+                Rf_cons(x, R_NilValue()),
+                _rho,
+            );
+            let _c = protect(coerced);
+            coerced
+        } else {
+            x
+        };
         let mut nchar_type = NcharKind::Chars;
         let mut cell = CDR(args);
         let mut positional = 0;
@@ -1897,6 +1909,27 @@ fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
         out
     }
 }
+
+/// GNU `format.hexmode` / `as.character.hexmode`.
+pub unsafe fn do_format_hexmode(
+    _call: SEXP,
+    _op: SEXP,
+    args: SEXP,
+    _rho: SEXP,
+) -> SEXP {
+    unsafe { format_mode_ints(CAR(args), true) }
+}
+
+/// GNU `format.octmode` / `as.character.octmode`.
+pub unsafe fn do_format_octmode(
+    _call: SEXP,
+    _op: SEXP,
+    args: SEXP,
+    _rho: SEXP,
+) -> SEXP {
+    unsafe { format_mode_ints(CAR(args), false) }
+}
+
 
 /// GNU `nclass.Sturges(x)` is ceiling(log2(length(x)) + 1).
 pub unsafe fn do_nclass_sturges(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
