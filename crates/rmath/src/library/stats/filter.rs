@@ -1943,10 +1943,65 @@ pub unsafe fn do_weights(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe { named_list_elt(CAR(args), "weights") }
 }
 
-/// GNU `formula(object)` — `$formula`, else `$call` formula.
+fn mark_formula(x: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return x;
+        }
+        let class = Rf_mkString(c"formula".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        x
+    }
+}
+
+fn parse_formula_text(s: SEXP) -> SEXP {
+    unsafe {
+        let mut status: std::os::raw::c_int = 0;
+        let parsed = crate::mainutils::gram_main::R_ParseVector(s, -1, &mut status, R_NilValue());
+        if status != 1 || parsed.is_null() || parsed == R_NilValue() || XLENGTH(parsed) < 1 {
+            return R_NilValue();
+        }
+        mark_formula(VECTOR_ELT(parsed, 0))
+    }
+}
+
+fn inherits_formula(x: SEXP) -> bool {
+    unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        for i in 0..XLENGTH(class) {
+            let raw = CHAR(STRING_ELT(class, i));
+            if !raw.is_null() && std::ffi::CStr::from_ptr(raw).to_bytes() == b"formula" {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// GNU `formula(object)` — character, language, `$formula`, or `$call`.
 pub unsafe fn do_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
+        if inherits_formula(x) {
+            return x;
+        }
+        if TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) > 0 {
+            return parse_formula_text(x);
+        }
+        if TYPEOF(x) == SEXPTYPE::LANGSXP {
+            return mark_formula(x);
+        }
         let f = named_list_elt(x, "formula");
         if !f.is_null() && f != R_NilValue() {
             return f;
@@ -1958,6 +2013,12 @@ pub unsafe fn do_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         R_NilValue()
     }
 }
+
+/// GNU `as.formula(object)`.
+pub unsafe fn do_as_formula(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_formula(call, op, args, rho) }
+}
+
 
 /// GNU default `terms(object)` via $terms.
 pub unsafe fn do_terms(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

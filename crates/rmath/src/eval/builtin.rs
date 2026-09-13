@@ -2298,6 +2298,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_formula,
     },
     EvaluatedBuiltin {
+        name: "as.formula",
+        handler: crate::library::stats::filter::do_as_formula,
+    },
+    EvaluatedBuiltin {
         name: "terms",
         handler: crate::library::stats::filter::do_terms,
     },
