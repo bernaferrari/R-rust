@@ -1063,6 +1063,119 @@ pub unsafe fn do_as_character_Date(
     unsafe { do_format_Date(call, op, args, rho) }
 }
 
+fn date_level_string(days: f64) -> String {
+    let tm = unix_secs_to_utc((days * 86_400.0) as i64);
+    crate::tzone_strftime::strftime_safe("%Y-%m-%d", &tm).unwrap_or_default()
+}
+
+/// GNU `cut.Date(x, breaks)` for week/month/year.
+pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(x);
+        let mut days: Vec<f64> = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            days.push(date_days_elt(x, i));
+        }
+        let mut units = "days".to_string();
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            let b = CAR(rest);
+            if TYPEOF(b) == SEXPTYPE::STRSXP && XLENGTH(b) > 0 {
+                let ch = STRING_ELT(b, 0);
+                if !ch.is_null() {
+                    units = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+        }
+        let finite: Vec<f64> = days.iter().copied().filter(|d| d.is_finite()).collect();
+        if finite.is_empty() {
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+        let min_d = finite.iter().copied().fold(f64::INFINITY, f64::min);
+        let max_d = finite.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let mut breaks: Vec<f64> = Vec::new();
+        if units.starts_with("week") {
+            let w = ((min_d as i64 + 4).rem_euclid(7)) as i32;
+            let off = if w == 0 { 6 } else { w - 1 };
+            let mut b = min_d as i64 - off as i64;
+            while (b as f64) <= max_d {
+                breaks.push(b as f64);
+                b += 7;
+            }
+            breaks.push(b as f64);
+        } else if units.starts_with("month") {
+            let mut b = date_first_of_month(min_d);
+            while b <= max_d {
+                breaks.push(b);
+                b = date_add_months(b, 1);
+            }
+            breaks.push(date_add_months(b, 0).max(date_add_months(breaks.last().copied().unwrap_or(b), 1)));
+            if *breaks.last().unwrap() <= max_d {
+                breaks.push(date_add_months(*breaks.last().unwrap(), 1));
+            }
+        } else if units.starts_with("year") {
+            let mut b = date_first_of_year(min_d);
+            while b <= max_d {
+                breaks.push(b);
+                b = date_first_of_year(b + 370.0);
+            }
+            breaks.push(date_first_of_year(b + 370.0));
+        } else {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid specification of 'breaks'",
+            );
+        }
+        if breaks.len() < 2 {
+            breaks.push(max_d + 1.0);
+        }
+        let nlev = breaks.len() - 1;
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let _r = protect(result);
+        for i in 0..n as usize {
+            let d = days[i];
+            let code = if !d.is_finite() {
+                NA_INTEGER
+            } else {
+                let mut c = NA_INTEGER;
+                for k in 0..nlev {
+                    if d >= breaks[k] && d < breaks[k + 1] {
+                        c = (k as i32) + 1;
+                        break;
+                    }
+                }
+                c
+            };
+            *INTEGER(result).add(i) = code;
+        }
+        let levels_vec = Rf_allocVector3(SEXPTYPE::STRSXP, nlev as i64);
+        let _l = protect(levels_vec);
+        for k in 0..nlev {
+            let s = date_level_string(breaks[k]);
+            let c = CString::new(s).unwrap_or_default();
+            SET_STRING_ELT(levels_vec, k as i64, Rf_mkChar(c.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+            levels_vec,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"factor".as_ptr()),
+        );
+        result
+    }
+}
+
+
 
 fn date_units_arg(args: SEXP) -> String {
     unsafe {
