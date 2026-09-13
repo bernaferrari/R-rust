@@ -2381,6 +2381,42 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+const ICONVLIST: &[&str] = &[
+    "ASCII",
+    "BIG5",
+    "CP1252",
+    "EUC-JP",
+    "EUC-KR",
+    "GB18030",
+    "GBK",
+    "ISO-8859-1",
+    "ISO8859-1",
+    "LATIN1",
+    "SHIFT_JIS",
+    "US-ASCII",
+    "UTF-16",
+    "UTF-16BE",
+    "UTF-16LE",
+    "UTF-32",
+    "UTF-8",
+];
+
+/// GNU `iconvlist()`.
+pub unsafe fn do_iconvlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let _ = args;
+        let n = ICONVLIST.len() as i64;
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for (i, name) in ICONVLIST.iter().enumerate() {
+            let c = CString::new(*name).unwrap_or_else(|_| CString::new("").unwrap());
+            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        out
+    }
+}
+
+
 
 
 
