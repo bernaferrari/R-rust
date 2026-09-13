@@ -676,6 +676,65 @@ pub unsafe fn do_iqr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `quantile(x, probs)` type 7.
+pub unsafe fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let mut probs = vec![0.0, 0.25, 0.5, 0.75, 1.0];
+        let probs_arg = arg_by_name_or_position(args, &["probs"], 1);
+        if !probs_arg.is_null()
+            && probs_arg != R_NilValue()
+            && (TYPEOF(probs_arg) == SEXPTYPE::REALSXP || TYPEOF(probs_arg) == SEXPTYPE::INTSXP)
+            && XLENGTH(probs_arg) > 0
+        {
+            probs.clear();
+            for i in 0..XLENGTH(probs_arg) {
+                probs.push(elt_real_safe(probs_arg, i));
+            }
+        }
+        let n = XLENGTH(x);
+        let t = TYPEOF(x);
+        let mut vals = Vec::new();
+        for i in 0..n {
+            let val = if t == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    v as f64
+                }
+            } else {
+                NA_REAL
+            };
+            if val.to_bits() != R_NA_BIT_PATTERN && !val.is_nan() {
+                vals.push(val);
+            }
+        }
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, probs.len() as i64);
+        let _r = protect(result);
+        let mut names = Vec::with_capacity(probs.len());
+        for (i, p) in probs.iter().copied().enumerate() {
+            *REAL(result).add(i) = quantile_type7(&vals, p);
+            let pct = p * 100.0;
+            let name = if (pct - pct.round()).abs() < 1e-10 {
+                format!("{}%", pct.round() as i32)
+            } else {
+                format!("{pct}%")
+            };
+            names.push(name);
+        }
+        set_string_names(result, &names);
+        result
+    }
+}
+
+
 /// R's `cummin(x)` — cumulative minimum.
 pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

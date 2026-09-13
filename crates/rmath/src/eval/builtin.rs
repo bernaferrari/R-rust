@@ -4053,6 +4053,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_iqr,
     },
     EvaluatedBuiltin {
+        name: "quantile",
+        handler: crate::mainutils::essentials::do_quantile,
+    },
+    EvaluatedBuiltin {
         name: "cummin",
         handler: crate::mainutils::essentials::do_cummin,
     },
