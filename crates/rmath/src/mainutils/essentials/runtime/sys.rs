@@ -1854,6 +1854,7 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             let v = crate::eval::eval::Rf_eval(CAR(cell), rho);
+            let _v = protect(v);
             let tag = TAG(cell);
             let skip = if !tag.is_null() && tag != R_NilValue() {
                 std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
@@ -1863,14 +1864,16 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 false
             };
             if !skip {
-                let ct = if crate::mainutils::objects::inherits2(v, c"POSIXct".as_ptr()) != 0 {
+                let ct = if sexp_has_class(v, "POSIXct") && TYPEOF(v) == SEXPTYPE::REALSXP {
                     v
                 } else {
                     do_as_POSIXct(call, op, Rf_cons(v, R_NilValue()), rho)
                 };
+                let _ct_one = protect(ct);
                 let node = Rf_cons(ct, converted);
                 SETTAG(node, tag);
                 converted = node;
+                let _converted = protect(converted);
             }
             cell = CDR(cell);
         }

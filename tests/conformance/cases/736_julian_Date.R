@@ -1,0 +1,5 @@
+j <- julian.Date(as.Date("2020-01-01"))
+cat(as.numeric(j), "\n", sep = "")
+cat(class(j), "\n", sep = "")
+cat(as.character(attr(j, "origin")), "\n", sep = "")
+cat(as.numeric(julian(as.Date("2020-01-01"))), "\n", sep = "")

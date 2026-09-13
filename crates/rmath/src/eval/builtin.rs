@@ -1473,6 +1473,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_julian,
     },
     EvaluatedBuiltin {
+        name: "julian.Date",
+        handler: crate::mainutils::essentials::do_julian,
+    },
+    EvaluatedBuiltin {
         name: "iconvlist",
         handler: crate::mainutils::essentials::do_iconvlist,
     },

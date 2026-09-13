@@ -38,12 +38,6 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 for i in 0..classlen {
                     let class_str = translateChar(STRING_ELT(classlist, i as R_xlen_t));
                     let s = std::ffi::CStr::from_ptr(class_str).to_str().unwrap_or("");
-                    if s == "POSIXlt" {
-                        return crate::mainutils::essentials::do_c_POSIXlt(
-                            call, op, args, env,
-                        );
-                    }
-                    let s = std::ffi::CStr::from_ptr(class_str).to_str().unwrap_or("");
                     let method_name = format!("c.{}\0", s);
                     let sym =
                         crate::sexp::symbol::Rf_install(method_name.as_ptr() as *const c_char);
@@ -70,14 +64,6 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 env,
                 R_NilValue(),
             );
-        }
-        let first = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            crate::eval::eval::Rf_eval(CAR(args), env)
-        };
-        if crate::mainutils::objects::inherits2(first, c"POSIXlt".as_ptr()) != 0 {
-            return crate::mainutils::essentials::do_c_POSIXlt(call, op, args, env);
         }
 
         do_c_dflt(call, op, args, env)
