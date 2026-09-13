@@ -2054,6 +2054,12 @@ pub unsafe fn do_as_one_sided_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: 
     }
 }
 
+/// GNU `get_all_vars(formula, data)` — formula columns from `data`.
+pub unsafe fn do_get_all_vars(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_model_frame(call, op, args, rho) }
+}
+
+
 
 
 /// GNU `model.extract(frame, component)` — `response` or `(component)`.
