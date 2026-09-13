@@ -3249,6 +3249,132 @@ pub unsafe fn do_mantelhaen_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+/// GNU `pairwise.t.test(x, g)` with pooled SD.
+pub unsafe fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let g = CAR(CDR(args));
+        let mut method = "holm".to_string();
+        let mut cell = CDR(CDR(args));
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "p.adjust.method" || name.is_empty() {
+                let v = CAR(cell);
+                if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                    method = elt_to_string(v, 0);
+                }
+            }
+            cell = CDR(cell);
+        }
+        if x.is_null() || x == R_NilValue() || g.is_null() || g == R_NilValue() {
+            return R_NilValue();
+        }
+        let n0 = XLENGTH(x).min(XLENGTH(g));
+        let mut pairs: Vec<(i32, f64)> = Vec::new();
+        for i in 0..n0 {
+            let gi = elt_real_safe(g, i);
+            let xi = elt_real_safe(x, i);
+            if gi.is_finite() && xi.is_finite() {
+                pairs.push((gi.round() as i32, xi));
+            }
+        }
+        let mut levels: Vec<i32> = pairs.iter().map(|p| p.0).collect();
+        levels.sort_unstable();
+        levels.dedup();
+        let k = levels.len();
+        if k < 2 {
+            return R_NilValue();
+        }
+        let mut means = vec![0.0; k];
+        let mut vars = vec![0.0; k];
+        let mut ns = vec![0.0; k];
+        for (li, &lev) in levels.iter().enumerate() {
+            let vs: Vec<f64> = pairs
+                .iter()
+                .filter(|p| p.0 == lev)
+                .map(|p| p.1)
+                .collect();
+            let n = vs.len() as f64;
+            ns[li] = n;
+            let m = vs.iter().sum::<f64>() / n;
+            means[li] = m;
+            vars[li] = vs.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / (n - 1.0);
+        }
+        let total_df: f64 = ns.iter().map(|n| n - 1.0).sum();
+        let pooled = (ns
+            .iter()
+            .zip(vars.iter())
+            .map(|(n, v)| v * (n - 1.0))
+            .sum::<f64>()
+            / total_df)
+            .sqrt();
+        let mut raw = Vec::new();
+        for i in 1..k {
+            for j in 0..i {
+                let se = pooled * (1.0 / ns[i] + 1.0 / ns[j]).sqrt();
+                let t = (means[i] - means[j]) / se;
+                let p = 2.0 * crate::dist::t_dist::pt_inner(-t.abs(), total_df, true, false);
+                raw.push(p);
+            }
+        }
+        let adj = p_adjust_values(&raw, &method);
+        // lower-tri including diag of (k-1) x (k-1), column-major
+        let mdim = k - 1;
+        let pmat = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::REALSXP.as_c_int(),
+            mdim as i32,
+            mdim as i32,
+        );
+        let _pm = protect(pmat);
+        for idx in 0..(mdim * mdim) {
+            *REAL(pmat).add(idx) = NA_REAL;
+        }
+        let mut t = 0usize;
+        for j in 0..mdim {
+            for i in 0..mdim {
+                if i >= j {
+                    *REAL(pmat).add(i + j * mdim) = adj[t];
+                    t += 1;
+                }
+            }
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_mkString(c"t tests with pooled SD".as_ptr()));
+        SET_VECTOR_ELT(result, 1, pmat);
+        let meth = if method == "none" {
+            Rf_mkString(c"none".as_ptr())
+        } else {
+            Rf_mkString(c"holm".as_ptr())
+        };
+        SET_VECTOR_ELT(result, 2, meth);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "method".to_string(),
+                "p.value".to_string(),
+                "p.adjust.method".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"pairwise.htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

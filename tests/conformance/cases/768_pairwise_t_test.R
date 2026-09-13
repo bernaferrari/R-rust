@@ -1,0 +1,7 @@
+x <- c(1, 2, 3, 4, 5, 6, 7, 8, 10)
+g <- factor(rep(1:3, each = 3))
+pw <- pairwise.t.test(x, g, p.adjust.method = "holm")
+cat(paste(round(as.vector(pw$p.value), 6), collapse = ","), "\n", sep = "")
+cat(pw$method, "\n", sep = "")
+cat(pw$p.adjust.method, "\n", sep = "")
+cat(class(pw), "\n", sep = "")
