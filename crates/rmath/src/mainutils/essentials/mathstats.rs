@@ -4441,6 +4441,61 @@ pub unsafe fn do_loglik(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe { CAR(args) }
 }
 
+unsafe fn list_named_elt(list: SEXP, name: &str) -> SEXP {
+    unsafe {
+        if list.is_null() || list == R_NilValue() || TYPEOF(list) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            list,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        for i in 0..XLENGTH(names) {
+            let s = STRING_ELT(names, i);
+            if s.is_null() {
+                continue;
+            }
+            let raw = CHAR(s);
+            if raw.is_null() {
+                continue;
+            }
+            if std::ffi::CStr::from_ptr(raw).to_string_lossy() == name {
+                return VECTOR_ELT(list, i);
+            }
+        }
+        R_NilValue()
+    }
+}
+
+/// GNU `sigma(object)` for a list with deviance, nobs, coefficients.
+pub unsafe fn do_sigma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dev = list_named_elt(x, "deviance");
+        let nobs = list_named_elt(x, "nobs");
+        let coef = list_named_elt(x, "coefficients");
+        if dev == R_NilValue() || nobs == R_NilValue() {
+            return R_NilValue();
+        }
+        let d = elt_real_safe(dev, 0);
+        let n = elt_real_safe(nobs, 0);
+        let p = if coef == R_NilValue() {
+            0.0
+        } else {
+            XLENGTH(coef) as f64
+        };
+        let den = n - p;
+        if den <= 0.0 {
+            return Rf_ScalarReal(f64::NAN);
+        }
+        Rf_ScalarReal((d / den).sqrt())
+    }
+}
+
+
 
 
 

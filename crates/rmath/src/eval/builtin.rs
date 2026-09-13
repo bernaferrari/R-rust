@@ -1905,6 +1905,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_loglik,
     },
     EvaluatedBuiltin {
+        name: "sigma",
+        handler: crate::mainutils::essentials::do_sigma,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
