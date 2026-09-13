@@ -1,0 +1,4 @@
+gamma(x) * digamma(x)
+digamma(x)
+1/(1 + x)
+Function 'atanh' is not in the derivatives table

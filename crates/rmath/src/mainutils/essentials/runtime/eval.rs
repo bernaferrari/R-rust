@@ -527,6 +527,63 @@ unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
                 );
             }
         }
+        if name == "gamma" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                let g = crate::sexp::constructors::Rf_lang2(Rf_install(c"gamma".as_ptr()), arg);
+                let dg = crate::sexp::constructors::Rf_lang2(Rf_install(c"digamma".as_ptr()), arg);
+                return crate::sexp::constructors::Rf_lang3(Rf_install(c"*".as_ptr()), g, dg);
+            }
+        }
+        if name == "lgamma" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                return crate::sexp::constructors::Rf_lang2(Rf_install(c"digamma".as_ptr()), arg);
+            }
+        }
+        if name == "digamma" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                return crate::sexp::constructors::Rf_lang2(Rf_install(c"trigamma".as_ptr()), arg);
+            }
+        }
+        if name == "trigamma" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                return crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"psigamma".as_ptr()),
+                    arg,
+                    Rf_ScalarInteger(2),
+                );
+            }
+        }
+        if name == "expm1" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                return crate::sexp::constructors::Rf_lang2(Rf_install(c"exp".as_ptr()), arg);
+            }
+        }
+        if name == "log1p" {
+            let arg = CAR(CDR(expr));
+            if d_symbol_name(arg) == var {
+                let den = crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"+".as_ptr()),
+                    Rf_ScalarReal(1.0),
+                    arg,
+                );
+                return crate::sexp::constructors::Rf_lang3(
+                    Rf_install(c"/".as_ptr()),
+                    Rf_ScalarReal(1.0),
+                    den,
+                );
+            }
+        }
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP && !name.is_empty() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                &format!("Function '{name}' is not in the derivatives table"),
+            );
+        }
         Rf_ScalarInteger(0)
     }
 }
