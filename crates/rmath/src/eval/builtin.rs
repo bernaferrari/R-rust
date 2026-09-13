@@ -2467,6 +2467,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_kalman_run,
     },
     EvaluatedBuiltin {
+        name: "KalmanForecast",
+        handler: crate::library::stats::filter::do_kalman_forecast,
+    },
+    EvaluatedBuiltin {
         name: "wilcox.test",
         handler: crate::mainutils::essentials::do_wilcox_test,
     },

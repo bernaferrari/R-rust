@@ -992,6 +992,43 @@ pub unsafe fn do_kalman_run(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `KalmanForecast(n.ahead, mod)` — iterate predict from `a` and `P`.
+pub unsafe fn do_kalman_forecast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_ahead = elt_real_or(CAR(args), 0.0).round() as usize;
+        let model = CAR(CDR(args));
+        if n_ahead == 0 || model.is_null() || model == R_NilValue() {
+            return R_NilValue();
+        }
+        let z = elt_real_or(named_list_elt(model, "Z"), 1.0);
+        let mut a = elt_real_or(named_list_elt(model, "a"), 0.0);
+        let t = elt_real_or(named_list_elt(model, "T"), 0.0);
+        let v = elt_real_or(named_list_elt(model, "V"), 1.0);
+        let h = elt_real_or(named_list_elt(model, "h"), 0.0);
+        let mut p = elt_real_or(named_list_elt(model, "P"), 0.0);
+        let pred = Rf_allocVector3(SEXPTYPE::REALSXP, n_ahead as i64);
+        let _p = protect(pred);
+        let var = Rf_allocVector3(SEXPTYPE::REALSXP, n_ahead as i64);
+        let _va = protect(var);
+        for i in 0..n_ahead {
+            a = t * a;
+            p = t * p * t + v;
+            *REAL(pred).add(i) = z * a;
+            *REAL(var).add(i) = z * z * p + h;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, pred);
+        SET_VECTOR_ELT(result, 1, var);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["pred".to_string(), "var".to_string()],
+        );
+        result
+    }
+}
+
+
 
 
 
