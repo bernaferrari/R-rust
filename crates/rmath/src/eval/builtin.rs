@@ -2214,6 +2214,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_na_fail,
     },
     EvaluatedBuiltin {
+        name: "labels",
+        handler: crate::library::stats::filter::do_labels,
+    },
+    EvaluatedBuiltin {
+        name: "na.action",
+        handler: crate::library::stats::filter::do_na_action,
+    },
+    EvaluatedBuiltin {
         name: "coef",
         handler: crate::library::stats::filter::do_coef,
     },

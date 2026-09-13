@@ -1427,6 +1427,50 @@ pub unsafe fn do_na_fail(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `labels.default` — names, else `as.character(seq_along(x))`.
+pub unsafe fn do_labels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == XLENGTH(x)
+        {
+            return names;
+        }
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let s = std::ffi::CString::new((i + 1).to_string()).unwrap_or_default();
+            SET_STRING_ELT(out, i, Rf_mkChar(s.as_ptr()));
+        }
+        out
+    }
+}
+
+/// GNU `na.action` — `$na.action` or `attr(, "na.action")`.
+pub unsafe fn do_na_action(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if TYPEOF(x) == SEXPTYPE::VECSXP {
+            let v = named_list_elt(x, "na.action");
+            if !v.is_null() && v != R_NilValue() {
+                return v;
+            }
+        }
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::Rf_install(c"na.action".as_ptr()))
+    }
+}
+
+
 unsafe fn named_list_elt(x: SEXP, name: &str) -> SEXP {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::VECSXP {
