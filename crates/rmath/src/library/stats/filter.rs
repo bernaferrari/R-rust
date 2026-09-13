@@ -1475,6 +1475,89 @@ pub unsafe fn do_model_weights(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     unsafe { named_list_elt(CAR(args), "(weights)") }
 }
 
+/// GNU `model.matrix(~x)` — intercept plus one numeric column.
+pub unsafe fn do_model_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let form = CAR(args);
+        if form.is_null() || form == R_NilValue() || TYPEOF(form) != SEXPTYPE::LANGSXP {
+            return R_NilValue();
+        }
+        let rhs_cell = CDR(CDR(form));
+        let rhs = if rhs_cell.is_null() || rhs_cell == R_NilValue() {
+            CADR(form)
+        } else {
+            CAR(rhs_cell)
+        };
+        if rhs.is_null() || rhs == R_NilValue() {
+            return R_NilValue();
+        }
+        let xname = if TYPEOF(rhs) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(rhs)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            "x".to_string()
+        };
+        let x = crate::eval::eval::Rf_eval(rhs, rho);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(x);
+        if n <= 0 {
+            return R_NilValue();
+        }
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+        let _m = protect(mat);
+        for i in 0..n as usize {
+            *REAL(mat).add(i) = 1.0;
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let iv = *INTEGER(x).add(i);
+                if iv == NA_INTEGER {
+                    f64::NAN
+                } else {
+                    iv as f64
+                }
+            } else {
+                f64::NAN
+            };
+            *REAL(mat).add(i + n as usize) = v;
+        }
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _rn = protect(rn);
+        for i in 0..n {
+            let lab = format!("{}\0", i + 1);
+            SET_STRING_ELT(rn, i, Rf_mkChar(lab.as_ptr() as *const _));
+        }
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _cn = protect(cn);
+        SET_STRING_ELT(cn, 0, Rf_mkChar(c"(Intercept)".as_ptr()));
+        let xn = std::ffi::CString::new(xname).unwrap_or_default();
+        SET_STRING_ELT(cn, 1, Rf_mkChar(xn.as_ptr()));
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        let assign = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _as = protect(assign);
+        *INTEGER(assign) = 0;
+        *INTEGER(assign).add(1) = 1;
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::symbol::Rf_install(c"assign".as_ptr()),
+            assign,
+        );
+        mat
+    }
+}
+
+
 
 
 unsafe fn named_list_elt(x: SEXP, name: &str) -> SEXP {
