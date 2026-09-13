@@ -1453,6 +1453,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_iconvlist,
     },
     EvaluatedBuiltin {
+        name: "as.difftime",
+        handler: crate::mainutils::essentials::do_as_difftime,
+    },
+    EvaluatedBuiltin {
+        name: "units",
+        handler: crate::mainutils::essentials::do_units,
+    },
+    EvaluatedBuiltin {
         name: "difftime",
         handler: crate::mainutils::essentials::do_difftime,
     },

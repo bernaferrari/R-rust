@@ -744,6 +744,84 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `as.difftime(tim, units)`.
+pub unsafe fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let tim = CAR(args);
+        if crate::mainutils::objects::inherits2(tim, c"difftime".as_ptr()) != 0 {
+            return tim;
+        }
+        let mut units = String::new();
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if named == "units"
+                && TYPEOF(value) == SEXPTYPE::STRSXP
+                && XLENGTH(value) > 0
+            {
+                let ch = STRING_ELT(value, 0);
+                if !ch.is_null() {
+                    units = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+            cell = CDR(cell);
+        }
+        if units.is_empty() || units == "auto" {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "need explicit units for numeric conversion",
+            );
+        }
+        let n = XLENGTH(tim);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let v = if TYPEOF(tim) == SEXPTYPE::REALSXP {
+                *REAL(tim).add(i as usize)
+            } else if TYPEOF(tim) == SEXPTYPE::INTSXP {
+                let iv = *INTEGER(tim).add(i as usize);
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
+            } else {
+                NA_REAL
+            };
+            *REAL(result).add(i as usize) = v;
+        }
+        set_single_class(result, "difftime");
+        let u = Rf_mkString(CString::new(units.as_str()).unwrap_or_default().as_ptr());
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+            u,
+        );
+        result
+    }
+}
+
+/// GNU `units(x)` is attr(x, "units").
+pub unsafe fn do_units(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        crate::sexp::attrib_core::getAttrib(
+            CAR(args),
+            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+        )
+    }
+}
+
+
 fn iso_arg_num(x: SEXP, default: f64) -> f64 {
     unsafe {
         if x.is_null() || x == R_NilValue() {
