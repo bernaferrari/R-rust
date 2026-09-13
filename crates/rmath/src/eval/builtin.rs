@@ -1429,6 +1429,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_prettyNum,
     },
     EvaluatedBuiltin {
+        name: "geterrmessage",
+        handler: crate::mainutils::errors::do_geterrmessage,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
