@@ -694,18 +694,22 @@ pub unsafe fn do_convolve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let mut y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
         let _y = protect(y);
         let mut is_open = false;
+        let mut is_filter = false;
         let mut p = CDR(CDR(args));
         while !p.is_null() && p != R_NilValue() {
             let s = CAR(p);
             if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) >= 1 {
                 let t = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(s, 0)));
-                if t.to_bytes() == b"open" {
-                    is_open = true;
+                match t.to_bytes() {
+                    b"open" => is_open = true,
+                    b"filter" => is_filter = true,
+                    _ => {}
                 }
             }
             p = CDR(p);
         }
-        if is_open {
+        let n1_keep = XLENGTH(y) - 1;
+        if is_open || is_filter {
             let nx = XLENGTH(x);
             let ny = XLENGTH(y);
             let n1 = ny - 1;
@@ -765,7 +769,18 @@ pub unsafe fn do_convolve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         for i in 0..n as usize {
             *REAL(ans).add(i) = COMPLEX(inv).add(i).read().r / nf;
         }
-        ans
+        if is_filter {
+            let n1 = n1_keep as usize;
+            let out_n = n as usize - 2 * n1;
+            let trimmed = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), out_n as c_int);
+            let _tr = protect(trimmed);
+            for i in 0..out_n {
+                *REAL(trimmed).add(i) = *REAL(ans).add(n1 + i);
+            }
+            trimmed
+        } else {
+            ans
+        }
     }
 }
 
