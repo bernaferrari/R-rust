@@ -1909,6 +1909,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_sigma,
     },
     EvaluatedBuiltin {
+        name: "extractAIC",
+        handler: crate::mainutils::essentials::do_extract_aic,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },

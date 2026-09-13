@@ -4495,6 +4495,47 @@ pub unsafe fn do_sigma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `extractAIC(fit, k)` glm-style: `c(edf, aic + (k-2)*edf)`.
+pub unsafe fn do_extract_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let fit = CAR(args);
+        let mut k = 2.0;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "k" {
+                let kv = elt_real_safe(CAR(cell), 0);
+                if kv.is_finite() {
+                    k = kv;
+                }
+            }
+            cell = CDR(cell);
+        }
+        let resid = list_named_elt(fit, "residuals");
+        let dfr = list_named_elt(fit, "df.residual");
+        let aic = list_named_elt(fit, "aic");
+        if resid == R_NilValue() || dfr == R_NilValue() || aic == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid) as f64;
+        let edf = n - elt_real_safe(dfr, 0);
+        let a = elt_real_safe(aic, 0);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _r = protect(result);
+        *REAL(result) = edf;
+        *REAL(result).add(1) = a + (k - 2.0) * edf;
+        result
+    }
+}
+
+
 
 
 
