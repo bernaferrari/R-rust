@@ -2233,6 +2233,101 @@ pub unsafe fn do_cor_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+fn sample_var(x: &[f64]) -> f64 {
+    let n = x.len() as f64;
+    let m = x.iter().sum::<f64>() / n;
+    x.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / (n - 1.0)
+}
+
+/// GNU `var.test(x, y)`.
+pub unsafe fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let xs = CAR(args);
+        let ys = CAR(CDR(args));
+        let mut x = Vec::new();
+        let mut y = Vec::new();
+        for i in 0..XLENGTH(xs) {
+            let v = elt_real_safe(xs, i);
+            if v.is_finite() {
+                x.push(v);
+            }
+        }
+        for i in 0..XLENGTH(ys) {
+            let v = elt_real_safe(ys, i);
+            if v.is_finite() {
+                y.push(v);
+            }
+        }
+        let dfx = (x.len() - 1) as f64;
+        let dfy = (y.len() - 1) as f64;
+        let vx = sample_var(&x);
+        let vy = sample_var(&y);
+        let est = vx / vy;
+        let stat = est;
+        let p_lo = crate::dist::f_dist::pf_inner(stat, dfx, dfy, true, false);
+        let pval = (2.0 * p_lo.min(1.0 - p_lo)).min(1.0);
+        let lo = est / crate::dist::f_dist::qf_inner(0.975, dfx, dfy, true, false);
+        let hi = est / crate::dist::f_dist::qf_inner(0.025, dfx, dfy, true, false);
+        let statistic = Rf_ScalarReal(stat);
+        let _st = protect(statistic);
+        set_string_names(statistic, &["F".to_string()]);
+        let parameter = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _pa = protect(parameter);
+        *REAL(parameter) = dfx;
+        *REAL(parameter).add(1) = dfy;
+        set_string_names(parameter, &["num df".to_string(), "denom df".to_string()]);
+        let estimate = Rf_ScalarReal(est);
+        let _es = protect(estimate);
+        set_string_names(estimate, &["ratio of variances".to_string()]);
+        let null_value = Rf_ScalarReal(1.0);
+        let _nv = protect(null_value);
+        set_string_names(null_value, &["ratio of variances".to_string()]);
+        let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _cf = protect(conf);
+        *REAL(conf) = lo;
+        *REAL(conf).add(1) = hi;
+        crate::sexp::attrib_core::setAttrib(
+            conf,
+            crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
+            Rf_ScalarReal(0.95),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 9);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, statistic);
+        SET_VECTOR_ELT(result, 1, parameter);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+        SET_VECTOR_ELT(result, 3, conf);
+        SET_VECTOR_ELT(result, 4, estimate);
+        SET_VECTOR_ELT(result, 5, null_value);
+        SET_VECTOR_ELT(result, 6, Rf_mkString(c"two.sided".as_ptr()));
+        SET_VECTOR_ELT(result, 7, Rf_mkString(c"F test to compare two variances".as_ptr()));
+        SET_VECTOR_ELT(result, 8, Rf_mkString(c"x and y".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "statistic".to_string(),
+                "parameter".to_string(),
+                "p.value".to_string(),
+                "conf.int".to_string(),
+                "estimate".to_string(),
+                "null.value".to_string(),
+                "alternative".to_string(),
+                "method".to_string(),
+                "data.name".to_string(),
+            ],
+        );
+        let class = Rf_mkString(c"htest".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

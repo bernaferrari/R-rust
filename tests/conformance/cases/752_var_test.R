@@ -1,0 +1,8 @@
+vt <- var.test(1:10, 2:11)
+cat(as.numeric(vt$statistic), "\n", sep = "")
+cat(paste(as.numeric(vt$parameter), collapse = ","), "\n", sep = "")
+cat(round(vt$p.value, 10), "\n", sep = "")
+cat(as.numeric(vt$estimate), "\n", sep = "")
+cat(paste(round(vt$conf.int, 6), collapse = ","), "\n", sep = "")
+cat(vt$method, "\n", sep = "")
+cat(class(vt), "\n", sep = "")
