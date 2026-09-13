@@ -1486,6 +1486,22 @@ pub unsafe fn do_nobs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU default `weights(object)`.
+pub unsafe fn do_weights(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "weights") }
+}
+
+/// GNU default `formula(object)` via $formula.
+pub unsafe fn do_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "formula") }
+}
+
+/// GNU default `terms(object)` via $terms.
+pub unsafe fn do_terms(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { named_list_elt(CAR(args), "terms") }
+}
+
+
 
 
 

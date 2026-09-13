@@ -1737,6 +1737,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_nobs,
     },
     EvaluatedBuiltin {
+        name: "weights",
+        handler: crate::library::stats::filter::do_weights,
+    },
+    EvaluatedBuiltin {
+        name: "formula",
+        handler: crate::library::stats::filter::do_formula,
+    },
+    EvaluatedBuiltin {
+        name: "terms",
+        handler: crate::library::stats::filter::do_terms,
+    },
+    EvaluatedBuiltin {
         name: "window",
         handler: crate::library::stats::filter::do_window,
     },
