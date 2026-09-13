@@ -3195,20 +3195,32 @@ pub unsafe fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-/// R rawToChar(x)
+/// GNU `rawToChar(x)` copies raw bytes, stripping trailing nuls.
 pub unsafe fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        // Upstream raw.c do_rawToChar: error() unless RAWSXP.
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP {
             std::panic::panic_any(RError {
                 message: "argument 'x' must be a raw vector".to_string(),
             });
         }
         let n = XLENGTH(x);
-        let data = (*x).gengc_next_node as *const u8;
-        let s = String::from_utf8_lossy(std::slice::from_raw_parts(data, n as usize));
-        Rf_mkString(CString::new(s.as_ref()).unwrap_or_default().as_ptr())
+        let data = RAW(x);
+        let mut last = -1i32;
+        for i in 0..n {
+            if *data.add(i as usize) != 0 {
+                last = i as i32;
+            }
+        }
+        let nc = last + 1;
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _o = protect(out);
+        let ch = crate::sexp::constructors::Rf_mkCharLen(
+            data as *const std::os::raw::c_char,
+            nc,
+        );
+        SET_STRING_ELT(out, 0, ch);
+        out
     }
 }
 
