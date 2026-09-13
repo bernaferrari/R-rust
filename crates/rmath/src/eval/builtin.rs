@@ -1937,6 +1937,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_hatvalues,
     },
     EvaluatedBuiltin {
+        name: "rstandard",
+        handler: crate::mainutils::essentials::do_rstandard,
+    },
+    EvaluatedBuiltin {
         name: "PP.test",
         handler: crate::mainutils::essentials::do_pp_test,
     },
