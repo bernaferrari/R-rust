@@ -1434,6 +1434,21 @@ pub unsafe fn do_labels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                let raw = CHAR(STRING_ELT(class, i));
+                if !raw.is_null() && std::ffi::CStr::from_ptr(raw).to_bytes() == b"dist" {
+                    return crate::sexp::attrib_core::getAttrib(
+                        x,
+                        crate::sexp::symbol::Rf_install(c"Labels".as_ptr()),
+                    );
+                }
+            }
+        }
         let names = crate::sexp::attrib_core::getAttrib(
             x,
             crate::sexp::attrib_core::R_NamesSymbol(),
