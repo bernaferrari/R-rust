@@ -1645,6 +1645,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::swilk::do_shapiro_test,
     },
     EvaluatedBuiltin {
+        name: "wilcox.test",
+        handler: crate::mainutils::essentials::do_wilcox_test,
+    },
+    EvaluatedBuiltin {
         name: "kronecker",
         handler: crate::mainutils::essentials::do_kronecker,
     },

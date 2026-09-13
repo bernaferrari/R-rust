@@ -2184,6 +2184,85 @@ pub unsafe fn do_princomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `wilcox.test(x, y)` two-sample rank-sum.
+pub unsafe fn do_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let nx = XLENGTH(x);
+        let ny = XLENGTH(y);
+        let mut vals: Vec<(f64, u8)> = Vec::new();
+        for i in 0..nx {
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                *INTEGER(x).add(i as usize) as f64
+            };
+            vals.push((v, 0));
+        }
+        for i in 0..ny {
+            let v = if TYPEOF(y) == SEXPTYPE::REALSXP {
+                *REAL(y).add(i as usize)
+            } else {
+                *INTEGER(y).add(i as usize) as f64
+            };
+            vals.push((v, 1));
+        }
+        vals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let mut ranks = vec![0.0f64; n];
+        let mut i = 0;
+        while i < n {
+            let mut j = i + 1;
+            while j < n && vals[j].0 == vals[i].0 {
+                j += 1;
+            }
+            let r = (i + 1 + j) as f64 / 2.0;
+            for k in i..j {
+                ranks[k] = r;
+            }
+            i = j;
+        }
+        let mut wx = 0.0;
+        for (k, (_, which)) in vals.iter().enumerate() {
+            if *which == 0 {
+                wx += ranks[k];
+            }
+        }
+        let stat = wx - (nx as f64) * (nx as f64 + 1.0) / 2.0;
+        let p_lo = crate::nmath::dist::wilcox::pwilcox_inner(
+            stat,
+            nx as f64,
+            ny as f64,
+            true,
+            false,
+        );
+        let p_hi = crate::nmath::dist::wilcox::pwilcox_inner(
+            stat - 1e-9,
+            nx as f64,
+            ny as f64,
+            false,
+            false,
+        );
+        let p = (2.0 * p_lo.min(p_hi)).min(1.0);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(stat));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(p));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["statistic".to_string(), "p.value".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"htest".as_ptr()),
+        );
+        result
+    }
+}
+
+
 
 
 
