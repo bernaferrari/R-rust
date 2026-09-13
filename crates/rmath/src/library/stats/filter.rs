@@ -1557,6 +1557,67 @@ pub unsafe fn do_model_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
     }
 }
 
+/// GNU `reformulate(termlabels, response=NULL)` — build a formula.
+pub unsafe fn do_reformulate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let labels = CAR(args);
+        if labels.is_null() || labels == R_NilValue() || TYPEOF(labels) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        let n = XLENGTH(labels);
+        if n <= 0 {
+            return R_NilValue();
+        }
+        let plus = crate::sexp::symbol::Rf_install(c"+".as_ptr());
+        let mut rhs = R_NilValue();
+        for i in 0..n {
+            let raw = CHAR(STRING_ELT(labels, i));
+            if raw.is_null() {
+                continue;
+            }
+            let lab = std::ffi::CStr::from_ptr(raw).to_string_lossy();
+            let term = if lab.as_ref() == "1" {
+                Rf_ScalarInteger(1)
+            } else {
+                let c = std::ffi::CString::new(lab.as_ref()).unwrap_or_default();
+                crate::sexp::symbol::Rf_install(c.as_ptr())
+            };
+            rhs = if rhs == R_NilValue() {
+                term
+            } else {
+                let node = Rf_lang3(plus, rhs, term);
+                let _n = protect(node);
+                node
+            };
+        }
+        if rhs == R_NilValue() {
+            return R_NilValue();
+        }
+        let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
+        let resp = CAR(CDR(args));
+        let form = if resp.is_null() || resp == R_NilValue() {
+            Rf_lang2(tilde, rhs)
+        } else if TYPEOF(resp) == SEXPTYPE::STRSXP && XLENGTH(resp) > 0 {
+            let raw = CHAR(STRING_ELT(resp, 0));
+            let lab = std::ffi::CStr::from_ptr(raw).to_string_lossy();
+            let c = std::ffi::CString::new(lab.as_ref()).unwrap_or_default();
+            Rf_lang3(tilde, crate::sexp::symbol::Rf_install(c.as_ptr()), rhs)
+        } else {
+            Rf_lang3(tilde, resp, rhs)
+        };
+        let _f = protect(form);
+        let class = Rf_mkString(c"formula".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            form,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        form
+    }
+}
+
+
 
 
 
