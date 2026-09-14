@@ -2523,6 +2523,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_stepfun,
     },
     EvaluatedBuiltin {
+        name: "summary.stepfun",
+        handler: crate::mainutils::essentials::do_summary_stepfun,
+    },
+    EvaluatedBuiltin {
         name: ".stepfun_apply",
         handler: crate::mainutils::essentials::do_stepfun_apply,
     },

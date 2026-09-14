@@ -9358,6 +9358,15 @@ pub unsafe fn do_dendrapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 
+/// GNU `summary.stepfun` — print helper; return `NULL` invisibly.
+pub unsafe fn do_summary_stepfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
+    }
+}
+
+
 /// GNU `simulate(lm, nsim=1)` — `fitted + rnorm(n, sd=sigma)`.
 pub unsafe fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
