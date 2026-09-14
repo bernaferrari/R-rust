@@ -2099,6 +2099,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_lm,
     },
     EvaluatedBuiltin {
+        name: "lsfit",
+        handler: crate::mainutils::essentials::do_lsfit,
+    },
+    EvaluatedBuiltin {
         name: "covratio",
         handler: crate::mainutils::essentials::do_covratio,
     },

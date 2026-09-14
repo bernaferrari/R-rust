@@ -6388,6 +6388,51 @@ pub unsafe fn do_qbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `lsfit(x, y)` — intercept + slope for a single predictor.
+pub unsafe fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let n = XLENGTH(x).min(XLENGTH(y)) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        for i in 0..n {
+            sx += elt_real_safe(x, i as i64);
+            sy += elt_real_safe(y, i as i64);
+        }
+        let nf = n as f64;
+        let mx = sx / nf;
+        let my = sy / nf;
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for i in 0..n {
+            let dx = elt_real_safe(x, i as i64) - mx;
+            let dy = elt_real_safe(y, i as i64) - my;
+            num += dx * dy;
+            den += dx * dx;
+        }
+        let b = if den > 0.0 { num / den } else { 0.0 };
+        let a = my - b * mx;
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _c = protect(coef);
+        *REAL(coef) = a;
+        *REAL(coef).add(1) = b;
+        crate::mainutils::essentials::set_string_names(
+            coef,
+            &["Intercept".to_string(), "X".to_string()],
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        crate::mainutils::essentials::set_string_names(result, &["coefficients".to_string()]);
+        result
+    }
+}
+
+
 
 
 
