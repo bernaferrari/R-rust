@@ -2340,6 +2340,89 @@ pub unsafe fn do_bw_sj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+fn pair_cnts(x: &[f64]) -> (f64, Vec<f64>) {
+    let n = x.len();
+    let xmin = x.iter().copied().fold(f64::INFINITY, f64::min);
+    let xmax = x.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let nb = 1000usize;
+    let rang = (xmax - xmin) * 1.01;
+    let dd = if rang > 0.0 { rang / nb as f64 } else { 1.0 };
+    let mut cnt = vec![0.0; nb];
+    for i in 1..n {
+        let ii = (x[i] / dd) as i32;
+        for j in 0..i {
+            let jj = (x[j] / dd) as i32;
+            let k = (ii - jj).unsigned_abs() as usize;
+            if k < nb {
+                cnt[k] += 1.0;
+            }
+        }
+    }
+    (dd, cnt)
+}
+
+fn bw_ucv_at(n: usize, dd: f64, cnt: &[f64], h: f64) -> f64 {
+    if h <= 0.0 {
+        return f64::INFINITY;
+    }
+    let nf = n as f64;
+    let mut sum = 0.0;
+    for (i, &c) in cnt.iter().enumerate() {
+        if c == 0.0 {
+            continue;
+        }
+        let mut delta = (i as f64) * dd / h;
+        delta *= delta;
+        if delta >= 1000.0 {
+            break;
+        }
+        let term = (-delta / 4.0).exp() - 8.0f64.sqrt() * (-delta / 2.0).exp();
+        sum += term * c;
+    }
+    (0.5 + sum / nf) / (nf * h * std::f64::consts::PI.sqrt())
+}
+
+/// GNU `bw.ucv(x)` — unbiased cross-validation bandwidth.
+pub unsafe fn do_bw_ucv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = nclass_numeric_copy(CAR(args));
+        let n = x.len();
+        if n < 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "need at least 2 data points",
+            );
+        }
+        let nf = n as f64;
+        let hmax = 1.144 * nclass_sample_var(&x).sqrt() * nf.powf(-0.2);
+        let mut lo = 0.1 * hmax;
+        let mut hi = hmax;
+        let (dd, cnt) = pair_cnts(&x);
+        let gr = (5.0f64.sqrt() - 1.0) / 2.0;
+        let mut x1 = hi - gr * (hi - lo);
+        let mut x2 = lo + gr * (hi - lo);
+        let mut f1 = bw_ucv_at(n, dd, &cnt, x1);
+        let mut f2 = bw_ucv_at(n, dd, &cnt, x2);
+        for _ in 0..80 {
+            if f1 < f2 {
+                hi = x2;
+                x2 = x1;
+                f2 = f1;
+                x1 = hi - gr * (hi - lo);
+                f1 = bw_ucv_at(n, dd, &cnt, x1);
+            } else {
+                lo = x1;
+                x1 = x2;
+                f1 = f2;
+                x2 = lo + gr * (hi - lo);
+                f2 = bw_ucv_at(n, dd, &cnt, x2);
+            }
+        }
+        Rf_ScalarReal(0.5 * (lo + hi))
+    }
+}
+
+
 
 
 
