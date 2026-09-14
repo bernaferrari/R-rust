@@ -5976,6 +5976,29 @@ pub unsafe fn do_ssweibull(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `SSfpl(input, A, B, xmid, scal)` — four-parameter logistic.
+pub unsafe fn do_ssfpl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let input = CAR(args);
+        let a = elt_real_safe(CAR(CDR(args)), 0);
+        let b = elt_real_safe(CAR(CDR(CDR(args))), 0);
+        let xmid = elt_real_safe(CAR(CDR(CDR(CDR(args)))), 0);
+        let scal = elt_real_safe(CAR(CDR(CDR(CDR(CDR(args))))), 0);
+        if scal == 0.0 {
+            return R_NilValue();
+        }
+        let n = XLENGTH(input);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let x = elt_real_safe(input, i);
+            *REAL(result).add(i as usize) = a + (b - a) / (1.0 + ((xmid - x) / scal).exp());
+        }
+        result
+    }
+}
+
+
 
 /// GNU `sortedXyData(x, y)` — unique x sorted, paired y.
 pub unsafe fn do_sorted_xy_data(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
