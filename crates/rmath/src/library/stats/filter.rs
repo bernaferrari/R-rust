@@ -3167,6 +3167,64 @@ pub unsafe fn do_mfclass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `.checkMFClasses(cl, m)` — NULL when named types match.
+pub unsafe fn do_check_mf_classes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let cl = CAR(args);
+        let m = CAR(CDR(args));
+        if cl.is_null()
+            || TYPEOF(cl) != SEXPTYPE::STRSXP
+            || XLENGTH(cl) == 0
+            || m.is_null()
+            || TYPEOF(m) != SEXPTYPE::VECSXP
+        {
+            return R_NilValue();
+        }
+        let cl_names = crate::sexp::attrib_core::getAttrib(
+            cl,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if cl_names.is_null() || TYPEOF(cl_names) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        let m_names = crate::sexp::attrib_core::getAttrib(
+            m,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if m_names.is_null() || TYPEOF(m_names) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        for i in 0..XLENGTH(cl) {
+            let want = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(cl, i)))
+                .to_string_lossy()
+                .into_owned();
+            let cname = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(cl_names, i)))
+                .to_string_lossy()
+                .into_owned();
+            for j in 0..XLENGTH(m_names) {
+                let mn = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(m_names, j)))
+                    .to_string_lossy()
+                    .into_owned();
+                if mn == cname {
+                    let col = VECTOR_ELT(m, j);
+                    let got = if TYPEOF(col) == SEXPTYPE::REALSXP
+                        || TYPEOF(col) == SEXPTYPE::INTSXP
+                    {
+                        "numeric"
+                    } else {
+                        "other"
+                    };
+                    if got != want {
+                        return R_NilValue();
+                    }
+                }
+            }
+        }
+        R_NilValue()
+    }
+}
+
+
 
 
 
