@@ -1975,6 +1975,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_confint,
     },
     EvaluatedBuiltin {
+        name: "confint.lm",
+        handler: crate::mainutils::essentials::do_confint_lm,
+    },
+    EvaluatedBuiltin {
         name: "vcov",
         handler: crate::mainutils::essentials::do_vcov,
     },

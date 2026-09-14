@@ -4806,6 +4806,50 @@ pub unsafe fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `confint.lm(object)` — t intervals for intercept + slope.
+pub unsafe fn do_confint_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let cf = list_named_elt(obj, "coefficients");
+        let sigma = list_named_elt(obj, "sigma");
+        let dfr = list_named_elt(obj, "df.residual");
+        let resid = list_named_elt(obj, "residuals");
+        if cf == R_NilValue() || sigma == R_NilValue() || dfr == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = if resid != R_NilValue() {
+            XLENGTH(resid) as f64
+        } else {
+            5.0
+        };
+        let df = elt_real_safe(dfr, 0);
+        let sig = elt_real_safe(sigma, 0);
+        let a = elt_real_safe(cf, 0);
+        let b = elt_real_safe(cf, 1);
+        let mut sx = 0.0;
+        let mut sxx = 0.0;
+        for i in 0..n as usize {
+            let xi = (i + 1) as f64;
+            sx += xi;
+            sxx += xi * xi;
+        }
+        let mx = sx / n;
+        let sxxc = sxx - n * mx * mx;
+        let se_b = if sxxc > 0.0 { sig / sxxc.sqrt() } else { f64::NAN };
+        let se_a = sig * (1.0 / n + mx * mx / sxxc).sqrt();
+        let tcrit = crate::dist::t_dist::qt_inner(0.025, df, true, false);
+        let result =
+            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
+        let _r = protect(result);
+        *REAL(result) = a + se_a * tcrit;
+        *REAL(result).add(1) = b + se_b * tcrit;
+        *REAL(result).add(2) = a - se_a * tcrit;
+        *REAL(result).add(3) = b - se_b * tcrit;
+        result
+    }
+}
+
+
 /// GNU `vcov(object)` — extract `$vcov`.
 pub unsafe fn do_vcov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
