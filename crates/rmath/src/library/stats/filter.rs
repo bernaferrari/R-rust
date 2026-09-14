@@ -2103,6 +2103,66 @@ pub unsafe fn do_window(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `window(x, start, end) <- value` — replace a freq-1 window.
+pub unsafe fn do_window_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let start = CAR(CDR(args));
+        let end = CAR(CDR(CDR(args)));
+        let value = CAR(CDR(CDR(CDR(args))));
+        let (t0, freq) = ts_start_freq(x);
+        let s = if TYPEOF(start) == SEXPTYPE::REALSXP {
+            *REAL(start)
+        } else {
+            *INTEGER(start) as f64
+        };
+        let e = if TYPEOF(end) == SEXPTYPE::REALSXP {
+            *REAL(end)
+        } else {
+            *INTEGER(end) as f64
+        };
+        let val = if TYPEOF(value) == SEXPTYPE::REALSXP {
+            *REAL(value)
+        } else {
+            *INTEGER(value) as f64
+        };
+        let n = XLENGTH(x) as usize;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _r = protect(result);
+        for i in 0..n {
+            let t = t0 + i as f64 / freq;
+            let src = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+            *REAL(result).add(i) = if t + 1e-9 >= s && t <= e + 1e-9 {
+                val
+            } else {
+                src
+            };
+        }
+        let tsp = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
+        );
+        if !tsp.is_null() && tsp != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
+                tsp,
+            );
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"ts".as_ptr()),
+        );
+        result
+    }
+}
+
+
 /// GNU `lag(ts, k)` shifts tsp, keeps values.
 pub unsafe fn do_lag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
