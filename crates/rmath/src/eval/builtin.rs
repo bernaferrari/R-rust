@@ -2515,6 +2515,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_formula,
     },
     EvaluatedBuiltin {
+        name: "DF2formula",
+        handler: crate::library::stats::filter::do_df2formula,
+    },
+    EvaluatedBuiltin {
         name: "asOneSidedFormula",
         handler: crate::library::stats::filter::do_as_one_sided_formula,
     },

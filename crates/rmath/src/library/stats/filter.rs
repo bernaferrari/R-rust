@@ -3024,6 +3024,34 @@ pub unsafe fn do_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `DF2formula(x)` — first name ~ second name.
+pub unsafe fn do_df2formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if names.is_null()
+            || TYPEOF(names) != SEXPTYPE::STRSXP
+            || XLENGTH(names) < 2
+        {
+            return R_NilValue();
+        }
+        let lhs = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 0)))
+            .to_string_lossy()
+            .into_owned();
+        let rhs = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 1)))
+            .to_string_lossy()
+            .into_owned();
+        let text = format!("{lhs} ~ {rhs}");
+        let s = Rf_mkString(std::ffi::CString::new(text).unwrap().as_ptr());
+        let _g = protect(s);
+        parse_formula_text(s)
+    }
+}
+
+
 /// GNU `as.formula(object)`.
 pub unsafe fn do_as_formula(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { do_formula(call, op, args, rho) }
