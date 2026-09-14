@@ -2363,6 +2363,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_kernel,
     },
     EvaluatedBuiltin {
+        name: "df.kernel",
+        handler: crate::library::stats::filter::do_df_kernel,
+    },
+    EvaluatedBuiltin {
         name: "kernapply",
         handler: crate::library::stats::filter::do_kernapply,
     },

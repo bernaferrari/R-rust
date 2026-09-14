@@ -1864,6 +1864,26 @@ pub unsafe fn do_kernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `df.kernel(k)` — equivalent degrees of freedom.
+pub unsafe fn do_df_kernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let k = CAR(args);
+        let coef = VECTOR_ELT(k, 0);
+        let m_s = VECTOR_ELT(k, 1);
+        let m = if TYPEOF(m_s) == SEXPTYPE::INTSXP {
+            *INTEGER(m_s) as usize
+        } else {
+            *REAL(m_s) as usize
+        };
+        let mut ss = (*REAL(coef)).powi(2);
+        for j in 1..=m {
+            ss += 2.0 * (*REAL(coef).add(j)).powi(2);
+        }
+        Rf_ScalarReal(if ss > 0.0 { 2.0 / ss } else { f64::NAN })
+    }
+}
+
+
 /// GNU `kernapply(x, k)` two-sided Daniell.
 pub unsafe fn do_kernapply(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
