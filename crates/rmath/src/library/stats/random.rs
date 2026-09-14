@@ -1207,6 +1207,25 @@ pub unsafe fn do_rbinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+pub unsafe fn do_rmultinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let size = CADR(args);
+        if adapter_absent(size) {
+            missing_required(call, "size");
+        }
+        let prob = CADDR(args);
+        if adapter_absent(prob) {
+            missing_required(call, "prob");
+        }
+        do_rmultinom(n, size, prob)
+    }
+}
+
+
 pub unsafe fn do_rcauchy_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = CAR(args);
