@@ -9395,6 +9395,50 @@ pub unsafe fn do_est_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 
+/// GNU `SSD(mlm)` — `crossprod(residuals)` and `$df.residual`.
+pub unsafe fn do_ssd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let resid = list_named_elt(obj, "residuals");
+        let dfr = list_named_elt(obj, "df.residual");
+        if resid == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid) as usize;
+        let mut ss = 0.0;
+        for i in 0..n {
+            let e = elt_real_safe(resid, i as i64);
+            ss += e * e;
+        }
+        let ssd = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _s = protect(ssd);
+        *REAL(ssd) = ss;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, ssd);
+        SET_VECTOR_ELT(
+            result,
+            1,
+            if dfr == R_NilValue() {
+                Rf_ScalarReal((n as f64) - 2.0)
+            } else {
+                dfr
+            },
+        );
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["SSD".to_string(), "df".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"SSD".as_ptr()),
+        );
+        result
+    }
+}
+
+
 /// GNU `simulate(lm, nsim=1)` — `fitted + rnorm(n, sd=sigma)`.
 pub unsafe fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

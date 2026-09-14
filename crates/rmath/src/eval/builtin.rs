@@ -2199,6 +2199,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_est_var,
     },
     EvaluatedBuiltin {
+        name: "SSD",
+        handler: crate::mainutils::essentials::do_ssd,
+    },
+    EvaluatedBuiltin {
         name: "selfStart",
         handler: crate::mainutils::essentials::do_self_start,
     },
