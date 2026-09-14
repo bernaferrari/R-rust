@@ -2219,6 +2219,24 @@ pub unsafe fn do_is_mts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `is.leaf(object)` — TRUE when `attr(*, "leaf")` is TRUE.
+pub unsafe fn do_is_leaf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let leaf = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"leaf".as_ptr()),
+        );
+        let ok = !leaf.is_null()
+            && leaf != R_NilValue()
+            && TYPEOF(leaf) == SEXPTYPE::LGLSXP
+            && XLENGTH(leaf) > 0
+            && *LOGICAL(leaf) == 1;
+        Rf_ScalarLogical(if ok { 1 } else { 0 })
+    }
+}
+
+
 
 /// GNU `na.contiguous(x)` longest non-NA run.
 pub unsafe fn do_na_contiguous(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
