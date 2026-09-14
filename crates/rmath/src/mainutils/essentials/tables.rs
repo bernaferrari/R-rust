@@ -703,6 +703,55 @@ pub unsafe fn do_aggregate(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `aggregate.data.frame(x, by, sum)` — one numeric column, one group.
+pub unsafe fn do_aggregate_df(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let by = CAR(CDR(args));
+        let xv = if TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) > 0 {
+            VECTOR_ELT(x, 0)
+        } else {
+            x
+        };
+        let gv = if TYPEOF(by) == SEXPTYPE::VECSXP && XLENGTH(by) > 0 {
+            VECTOR_ELT(by, 0)
+        } else {
+            by
+        };
+        let n = XLENGTH(xv).min(XLENGTH(gv)) as usize;
+        let mut keys: Vec<f64> = Vec::new();
+        let mut sums: Vec<f64> = Vec::new();
+        for i in 0..n {
+            let g = elt_real_safe(gv, i as i64);
+            let v = elt_real_safe(xv, i as i64);
+            if let Some(j) = keys.iter().position(|&k| (k - g).abs() < 1e-12) {
+                sums[j] += v;
+            } else {
+                keys.push(g);
+                sums.push(v);
+            }
+        }
+        let gcol = Rf_allocVector3(SEXPTYPE::REALSXP, keys.len() as i64);
+        let _g = protect(gcol);
+        let ycol = Rf_allocVector3(SEXPTYPE::REALSXP, sums.len() as i64);
+        let _y = protect(ycol);
+        for (i, (k, s)) in keys.iter().zip(sums.iter()).enumerate() {
+            *REAL(gcol).add(i) = *k;
+            *REAL(ycol).add(i) = *s;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, gcol);
+        SET_VECTOR_ELT(result, 1, ycol);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["x".to_string(), "y".to_string()],
+        );
+        result
+    }
+}
+
+
 #[derive(Clone, Copy)]
 pub(crate) enum AggregateSummary {
     Mean,

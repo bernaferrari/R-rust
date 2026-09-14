@@ -4291,6 +4291,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_aggregate,
     },
     EvaluatedBuiltin {
+        name: "aggregate.data.frame",
+        handler: crate::mainutils::essentials::do_aggregate_df,
+    },
+    EvaluatedBuiltin {
         name: "aggregate.ts",
         handler: crate::library::stats::filter::do_aggregate_ts,
     },
