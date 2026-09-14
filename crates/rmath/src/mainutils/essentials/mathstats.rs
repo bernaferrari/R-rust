@@ -6209,6 +6209,82 @@ pub unsafe fn do_mahalanobis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `cov.wt(x)` — unbiased 2-column covariance and center.
+pub unsafe fn do_cov_wt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (n, p) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            return R_NilValue();
+        };
+        if p != 2 || n < 2 {
+            return R_NilValue();
+        }
+        let mut m0 = 0.0;
+        let mut m1 = 0.0;
+        for i in 0..n {
+            m0 += elt_real_safe(x, i as i64);
+            m1 += if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i + n)
+            } else {
+                *INTEGER(x).add(i + n) as f64
+            };
+        }
+        let nf = n as f64;
+        m0 /= nf;
+        m1 /= nf;
+        let mut s00 = 0.0;
+        let mut s01 = 0.0;
+        let mut s11 = 0.0;
+        for i in 0..n {
+            let d0 = elt_real_safe(x, i as i64) - m0;
+            let d1 = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i + n)
+            } else {
+                *INTEGER(x).add(i + n) as f64
+            } - m1;
+            s00 += d0 * d0;
+            s01 += d0 * d1;
+            s11 += d1 * d1;
+        }
+        let den = nf - 1.0;
+        s00 /= den;
+        s01 /= den;
+        s11 /= den;
+        let cov = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
+        let _c = protect(cov);
+        *REAL(cov) = s00;
+        *REAL(cov).add(1) = s01;
+        *REAL(cov).add(2) = s01;
+        *REAL(cov).add(3) = s11;
+        let center = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _ce = protect(center);
+        *REAL(center) = m0;
+        *REAL(center).add(1) = m1;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, cov);
+        SET_VECTOR_ELT(result, 1, center);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarInteger(n as i32));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "cov".to_string(),
+                "center".to_string(),
+                "n.obs".to_string(),
+            ],
+        );
+        result
+    }
+}
+
+
 
 
 

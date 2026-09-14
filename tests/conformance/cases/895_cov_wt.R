@@ -1,0 +1,5 @@
+x <- cbind(c(1, 2, 3), c(2, 3, 5))
+w <- cov.wt(x)
+cat(paste(round(as.vector(w$cov), 4), collapse = ","), "\n", sep = "")
+cat(paste(round(w$center, 4), collapse = ","), "\n", sep = "")
+cat(w$n.obs, "\n", sep = "")
