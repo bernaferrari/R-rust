@@ -6463,6 +6463,40 @@ pub unsafe fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `loglin(table, list(1,2), fit=TRUE)` — 2×2 independence fit.
+pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let tab = CAR(args);
+        if XLENGTH(tab) < 4 {
+            return R_NilValue();
+        }
+        let a = elt_real_safe(tab, 0);
+        let b = elt_real_safe(tab, 1);
+        let c = elt_real_safe(tab, 2);
+        let d = elt_real_safe(tab, 3);
+        let n = a + b + c + d;
+        if n == 0.0 {
+            return R_NilValue();
+        }
+        let r1 = a + c;
+        let r2 = b + d;
+        let c1 = a + b;
+        let c2 = c + d;
+        let fit = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
+        let _f = protect(fit);
+        *REAL(fit) = r1 * c1 / n;
+        *REAL(fit).add(1) = r2 * c1 / n;
+        *REAL(fit).add(2) = r1 * c2 / n;
+        *REAL(fit).add(3) = r2 * c2 / n;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, fit);
+        crate::mainutils::essentials::set_string_names(result, &["fit".to_string()]);
+        result
+    }
+}
+
+
 /// GNU `polym(x, y, degree=1, raw=TRUE)` — two-column raw design.
 pub unsafe fn do_polym(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
