@@ -6309,6 +6309,39 @@ pub unsafe fn do_cov2cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `pbirthday(n, classes=365, coincident=2)` — collision probability.
+pub unsafe fn do_pbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_arg = CAR(args);
+        let n = if TYPEOF(n_arg) == SEXPTYPE::INTSXP {
+            *INTEGER(n_arg) as i64
+        } else {
+            elt_real_safe(n_arg, 0) as i64
+        };
+        let classes_cell = CDR(args);
+        let classes = if classes_cell.is_null()
+            || classes_cell == R_NilValue()
+            || CAR(classes_cell) == R_MissingArg()
+        {
+            365.0
+        } else {
+            elt_real_safe(CAR(classes_cell), 0)
+        };
+        if n <= 0 {
+            return Rf_ScalarReal(0.0);
+        }
+        if classes <= 0.0 {
+            return Rf_ScalarReal(1.0);
+        }
+        let mut prod = 1.0;
+        for i in 0..n {
+            prod *= (classes - i as f64) / classes;
+        }
+        Rf_ScalarReal(1.0 - prod)
+    }
+}
+
+
 
 
 
