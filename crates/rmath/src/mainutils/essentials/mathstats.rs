@@ -9169,6 +9169,64 @@ pub unsafe fn do_as_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe { CAR(args) }
 }
 
+fn class_contains(x: SEXP, name: &str) -> bool {
+    unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        for i in 0..XLENGTH(class) {
+            let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i)))
+                .to_string_lossy();
+            if s == name {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// GNU `as.dendrogram(hclust)` — leaf order with class `dendrogram`.
+pub unsafe fn do_as_dendrogram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        if class_contains(obj, "dendrogram") {
+            return obj;
+        }
+        let order = list_named_elt(obj, "order");
+        if order == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(order);
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let _r = protect(result);
+        for i in 0..n as usize {
+            *INTEGER(result).add(i) = elt_real_safe(order, i as i64) as i32;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"dendrogram".as_ptr()),
+        );
+        result
+    }
+}
+
+/// GNU `order.dendrogram(x)` — leaf order as a vector.
+pub unsafe fn do_order_dendrogram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if !class_contains(x, "dendrogram") {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'order.dendrogram' requires a dendrogram",
+            );
+        }
+        x
+    }
+}
+
+
 
 /// GNU `cophenetic(hclust)` — height of the first common ancestor.
 pub unsafe fn do_cophenetic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

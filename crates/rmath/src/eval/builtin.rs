@@ -2303,6 +2303,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_hclust,
     },
     EvaluatedBuiltin {
+        name: "as.dendrogram",
+        handler: crate::mainutils::essentials::do_as_dendrogram,
+    },
+    EvaluatedBuiltin {
+        name: "order.dendrogram",
+        handler: crate::mainutils::essentials::do_order_dendrogram,
+    },
+    EvaluatedBuiltin {
         name: "cutree",
         handler: crate::library::stats::hclust_utils::do_cutree,
     },
