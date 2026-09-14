@@ -2107,6 +2107,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_poly,
     },
     EvaluatedBuiltin {
+        name: "smoothEnds",
+        handler: crate::mainutils::essentials::do_smooth_ends,
+    },
+    EvaluatedBuiltin {
         name: "covratio",
         handler: crate::mainutils::essentials::do_covratio,
     },

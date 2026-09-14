@@ -6463,6 +6463,44 @@ pub unsafe fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+fn med3(a: f64, b: f64, c: f64) -> f64 {
+    let mut m = b;
+    if a < b {
+        if c < b {
+            m = if a >= c { a } else { c };
+        }
+    } else if c > b {
+        m = if a <= c { a } else { c };
+    }
+    m
+}
+
+/// GNU `smoothEnds(y, k=3)` — Tukey's end-point smoother.
+pub unsafe fn do_smooth_ends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let y = CAR(args);
+        let n = XLENGTH(y) as usize;
+        if n < 3 {
+            return y;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _r = protect(result);
+        for i in 0..n {
+            *REAL(result).add(i) = elt_real_safe(y, i as i64);
+        }
+        let y1 = *REAL(result);
+        let sm2 = *REAL(result).add(1);
+        let sm3 = *REAL(result).add(2);
+        *REAL(result) = med3(y1, sm2, sm2 - 2.0 * (sm3 - sm2));
+        let yn = *REAL(result).add(n - 1);
+        let sm_n1 = *REAL(result).add(n - 2);
+        let sm_n2 = *REAL(result).add(n - 3);
+        *REAL(result).add(n - 1) = med3(yn, sm_n1, sm_n1 - 2.0 * (sm_n2 - sm_n1));
+        result
+    }
+}
+
+
 
 
 
