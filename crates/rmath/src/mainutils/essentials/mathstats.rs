@@ -6952,6 +6952,28 @@ pub unsafe fn do_power(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `Pair(x, y)` — two-column matrix with class `Pair`.
+pub unsafe fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let n = XLENGTH(x).min(XLENGTH(y)) as usize;
+        let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+        let _r = protect(result);
+        for i in 0..n {
+            *REAL(result).add(i) = elt_real_safe(x, i as i64);
+            *REAL(result).add(i + n) = elt_real_safe(y, i as i64);
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"Pair".as_ptr()),
+        );
+        result
+    }
+}
+
+
 
 
 
