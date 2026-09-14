@@ -864,3 +864,145 @@ unsafe fn restore_excluded_fit(fit: &[f64], action: SEXP) -> SEXP {
         restored
     }
 }
+
+/// GNU `loess.smooth(x, y, span, degree, evaluation)` — interpolate on a grid.
+pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(x).min(XLENGTH(y)) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let mut span = 2.0 / 3.0;
+        let mut degree: usize = 1;
+        let mut evaluation: usize = 50;
+        let mut cell = CDR(CDR(args));
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let v = CAR(cell);
+            if name == "span" {
+                let s = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v)
+                } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v) as f64
+                } else {
+                    span
+                };
+                if s.is_finite() && s > 0.0 {
+                    span = s;
+                }
+            } else if name == "degree" {
+                let d = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v) as usize
+                } else {
+                    *REAL(v) as usize
+                };
+                if d <= 2 {
+                    degree = d;
+                }
+            } else if name == "evaluation" {
+                let e = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v) as usize
+                } else {
+                    *REAL(v) as usize
+                };
+                if e >= 2 {
+                    evaluation = e;
+                }
+            }
+            cell = CDR(cell);
+        }
+        let mut xs = Vec::with_capacity(n);
+        let mut ys = Vec::with_capacity(n);
+        for i in 0..n {
+            let xv = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+            let yv = if TYPEOF(y) == SEXPTYPE::REALSXP {
+                *REAL(y).add(i)
+            } else {
+                *INTEGER(y).add(i) as f64
+            };
+            if xv.is_finite() && yv.is_finite() {
+                xs.push(xv);
+                ys.push(yv);
+            }
+        }
+        if xs.len() < 2 {
+            return R_NilValue();
+        }
+        let xmin = xs.iter().copied().fold(f64::INFINITY, f64::min);
+        let xmax = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let rows: Vec<Vec<f64>> = xs.iter().map(|v| vec![*v]).collect();
+        let weights = vec![1.0; xs.len()];
+        let config = Config {
+            span,
+            degree,
+            normalize: false,
+            parametric: vec![false],
+            drop_square: vec![false],
+            interpolate: true,
+            cell: 0.2,
+            iterations: 1,
+            exact: false,
+            approximate_trace: false,
+        };
+        let model = match Model::fit_with_execution(
+            rows,
+            ys,
+            weights,
+            config,
+            &Execution::new(&check_execution),
+        ) {
+            Ok(m) => m,
+            Err(_) => return R_NilValue(),
+        };
+        let mut grid = Vec::with_capacity(evaluation);
+        let mut queries = Vec::with_capacity(evaluation);
+        for i in 0..evaluation {
+            let t = if evaluation == 1 {
+                xmin
+            } else {
+                xmin + (xmax - xmin) * (i as f64) / ((evaluation - 1) as f64)
+            };
+            grid.push(t);
+            queries.push(vec![t]);
+        }
+        let pred = match model.predict_with_execution(&queries, false, &Execution::new(&check_execution))
+        {
+            Ok((fit, _)) => fit,
+            Err(_) => return R_NilValue(),
+        };
+        let xout = Rf_allocVector3(SEXPTYPE::REALSXP, evaluation as i64);
+        let _xo = protect(xout);
+        let yout = Rf_allocVector3(SEXPTYPE::REALSXP, evaluation as i64);
+        let _yo = protect(yout);
+        for i in 0..evaluation {
+            *REAL(xout).add(i) = grid[i];
+            *REAL(yout).add(i) = pred.get(i).copied().unwrap_or(f64::NAN);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, xout);
+        SET_VECTOR_ELT(result, 1, yout);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["x".to_string(), "y".to_string()],
+        );
+        result
+    }
+}
+
