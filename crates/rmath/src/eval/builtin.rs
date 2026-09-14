@@ -2207,6 +2207,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ppoints,
     },
     EvaluatedBuiltin {
+        name: "qqnorm",
+        handler: crate::mainutils::essentials::do_qqnorm,
+    },
+    EvaluatedBuiltin {
         name: ".ecdf_apply",
         handler: crate::mainutils::essentials::do_ecdf_apply,
     },

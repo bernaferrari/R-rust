@@ -6126,6 +6126,37 @@ pub unsafe fn do_ppoints(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `qqnorm(y, plot.it=FALSE)` — normal theoretical quantiles vs sorted y.
+pub unsafe fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let y = CAR(args);
+        let n = XLENGTH(y) as usize;
+        if n == 0 {
+            return R_NilValue();
+        }
+        let mut ys: Vec<f64> = (0..n).map(|i| elt_real_safe(y, i as i64)).collect();
+        ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let a = if n <= 10 { 3.0 / 8.0 } else { 0.5 };
+        let den = n as f64 + 1.0 - 2.0 * a;
+        let xv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _x = protect(xv);
+        let yv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _y = protect(yv);
+        for i in 0..n {
+            let p = ((i as f64 + 1.0) - a) / den;
+            *REAL(xv).add(i) = crate::dist::normal::qnorm5_inner(p, 0.0, 1.0, true, false);
+            *REAL(yv).add(i) = ys[i];
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, xv);
+        SET_VECTOR_ELT(result, 1, yv);
+        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
+        result
+    }
+}
+
+
 
 
 
