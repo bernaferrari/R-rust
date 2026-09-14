@@ -4139,6 +4139,13 @@ pub unsafe fn do_contrasts(
 ) -> SEXP {
     unsafe {
         let x = CAR(args);
+        let stored = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"contrasts".as_ptr()),
+        );
+        if !stored.is_null() && stored != R_NilValue() {
+            return stored;
+        }
         let levels = crate::sexp::attrib_core::getAttrib(
             x,
             crate::sexp::attrib_core::R_LevelsSymbol(),
@@ -4186,6 +4193,21 @@ pub unsafe fn do_contrasts(
         mat
     }
 }
+
+/// GNU `contrasts(x) <- value` — store the contrast matrix.
+pub unsafe fn do_contrasts_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let val = CAR(CDR(args));
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"contrasts".as_ptr()),
+            val,
+        );
+        x
+    }
+}
+
 
 /// GNU `C(factor)` attaches the default contrast name.
 pub unsafe fn do_C(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
