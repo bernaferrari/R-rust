@@ -1511,6 +1511,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_bw_ucv,
     },
     EvaluatedBuiltin {
+        name: "bw.bcv",
+        handler: crate::mainutils::essentials::do_bw_bcv,
+    },
+    EvaluatedBuiltin {
         name: "formatC",
         handler: crate::mainutils::essentials::do_formatC,
     },

@@ -2422,6 +2422,68 @@ pub unsafe fn do_bw_ucv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+fn bw_bcv_at(n: usize, dd: f64, cnt: &[f64], h: f64) -> f64 {
+    if h <= 0.0 {
+        return f64::INFINITY;
+    }
+    let nf = n as f64;
+    let mut sum = 0.0;
+    for (i, &c) in cnt.iter().enumerate() {
+        if c == 0.0 {
+            continue;
+        }
+        let mut delta = (i as f64) * dd / h;
+        delta *= delta;
+        if delta >= 1000.0 {
+            break;
+        }
+        let term = (-delta / 4.0).exp() * (delta * delta - 12.0 * delta + 12.0);
+        sum += term * c;
+    }
+    (1.0 + sum / (32.0 * nf)) / (2.0 * nf * h * std::f64::consts::PI.sqrt())
+}
+
+/// GNU `bw.bcv(x)` — biased cross-validation bandwidth.
+pub unsafe fn do_bw_bcv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = nclass_numeric_copy(CAR(args));
+        let n = x.len();
+        if n < 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "need at least 2 data points",
+            );
+        }
+        let nf = n as f64;
+        let hmax = 1.144 * nclass_sample_var(&x).sqrt() * nf.powf(-0.2);
+        let mut lo = 0.1 * hmax;
+        let mut hi = hmax;
+        let (dd, cnt) = pair_cnts(&x);
+        let gr = (5.0f64.sqrt() - 1.0) / 2.0;
+        let mut x1 = hi - gr * (hi - lo);
+        let mut x2 = lo + gr * (hi - lo);
+        let mut f1 = bw_bcv_at(n, dd, &cnt, x1);
+        let mut f2 = bw_bcv_at(n, dd, &cnt, x2);
+        for _ in 0..80 {
+            if f1 < f2 {
+                hi = x2;
+                x2 = x1;
+                f2 = f1;
+                x1 = hi - gr * (hi - lo);
+                f1 = bw_bcv_at(n, dd, &cnt, x1);
+            } else {
+                lo = x1;
+                x1 = x2;
+                f1 = f2;
+                x2 = lo + gr * (hi - lo);
+                f2 = bw_bcv_at(n, dd, &cnt, x2);
+            }
+        }
+        Rf_ScalarReal(0.5 * (lo + hi))
+    }
+}
+
+
 
 
 
