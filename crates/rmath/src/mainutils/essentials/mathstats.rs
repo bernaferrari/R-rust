@@ -9304,6 +9304,30 @@ pub unsafe fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `selfStart(model, initial, parameters)` — `pnames` + class.
+pub unsafe fn do_self_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let model = CAR(args);
+        let parameters = CAR(CDR(CDR(args)));
+        crate::sexp::attrib_core::setAttrib(
+            model,
+            crate::sexp::symbol::Rf_install(c"pnames".as_ptr()),
+            if parameters.is_null() {
+                R_NilValue()
+            } else {
+                parameters
+            },
+        );
+        crate::sexp::attrib_core::setAttrib(
+            model,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"selfStart".as_ptr()),
+        );
+        model
+    }
+}
+
+
 
 
 
