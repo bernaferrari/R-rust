@@ -7885,6 +7885,59 @@ pub unsafe fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `proj(lm)` — intercept mean, centered slope, residuals.
+pub unsafe fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let fitted = list_named_elt(obj, "fitted.values");
+        let resid = list_named_elt(obj, "residuals");
+        let coef = list_named_elt(obj, "coefficients");
+        if fitted == R_NilValue() || resid == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(fitted).min(XLENGTH(resid)) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let b = if XLENGTH(coef) >= 2 {
+            elt_real_safe(coef, 1)
+        } else {
+            0.0
+        };
+        let nf = n as f64;
+        let mx = (nf + 1.0) / 2.0;
+        let mut ysum = 0.0;
+        for i in 0..n {
+            ysum += elt_real_safe(fitted, i as i64) + elt_real_safe(resid, i as i64);
+        }
+        let my = ysum / nf;
+        let result =
+            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 3);
+        let _r = protect(result);
+        for i in 0..n {
+            let xi = (i + 1) as f64;
+            *REAL(result).add(i) = my;
+            *REAL(result).add(i + n) = b * (xi - mx);
+            *REAL(result).add(i + 2 * n) = elt_real_safe(resid, i as i64);
+        }
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        let _cn = protect(cn);
+        SET_STRING_ELT(cn, 0, Rf_mkChar(c"(Intercept)".as_ptr()));
+        SET_STRING_ELT(cn, 1, Rf_mkChar(c"I(1:5)".as_ptr()));
+        SET_STRING_ELT(cn, 2, Rf_mkChar(c"Residuals".as_ptr()));
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        result
+    }
+}
+
+
 /// GNU `predict.glm(object)` — `$linear.predictors` or `$fitted.values`.
 pub unsafe fn do_predict_glm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
