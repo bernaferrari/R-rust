@@ -3117,6 +3117,57 @@ pub unsafe fn do_nknots_smspl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `.MFclass(x)` — model-frame column class label.
+pub unsafe fn do_mfclass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let mut is_factor = false;
+        let mut is_ordered = false;
+        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i)));
+                if s.to_bytes() == b"ordered" {
+                    is_ordered = true;
+                }
+                if s.to_bytes() == b"factor" {
+                    is_factor = true;
+                }
+            }
+        }
+        let label = if TYPEOF(x) == SEXPTYPE::LGLSXP {
+            "logical"
+        } else if is_ordered {
+            "ordered"
+        } else if is_factor {
+            "factor"
+        } else if TYPEOF(x) == SEXPTYPE::STRSXP {
+            "character"
+        } else {
+            let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            let is_mat = !dim.is_null()
+                && dim != R_NilValue()
+                && TYPEOF(dim) == SEXPTYPE::INTSXP
+                && XLENGTH(dim) >= 2;
+            let numeric = TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP;
+            if is_mat && numeric {
+                let ncol = *INTEGER(dim).add(1);
+                let text = format!("nmatrix.{ncol}");
+                return Rf_mkString(std::ffi::CString::new(text).unwrap().as_ptr());
+            } else if numeric {
+                "numeric"
+            } else {
+                "other"
+            }
+        };
+        Rf_mkString(std::ffi::CString::new(label).unwrap().as_ptr())
+    }
+}
+
+
 
 
 

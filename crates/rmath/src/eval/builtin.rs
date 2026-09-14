@@ -2371,6 +2371,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_kernel,
     },
     EvaluatedBuiltin {
+        name: ".MFclass",
+        handler: crate::library::stats::filter::do_mfclass,
+    },
+    EvaluatedBuiltin {
         name: ".nknots.smspl",
         handler: crate::library::stats::filter::do_nknots_smspl,
     },
