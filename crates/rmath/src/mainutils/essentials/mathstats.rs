@@ -4898,6 +4898,39 @@ pub unsafe fn do_vcov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `dummy.coef(object)` — `as.list(coef)` when there are no factors.
+pub unsafe fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let cf = list_named_elt(obj, "coefficients");
+        if cf == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(cf);
+        let names = crate::sexp::attrib_core::getAttrib(
+            cf,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let _r = protect(result);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _on = protect(out_names);
+        for i in 0..n {
+            SET_VECTOR_ELT(result, i, Rf_ScalarReal(elt_real_safe(cf, i)));
+            if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && i < XLENGTH(names) {
+                SET_STRING_ELT(out_names, i, STRING_ELT(names, i));
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            out_names,
+        );
+        result
+    }
+}
+
+
 /// GNU `hat(x)` leverages for intercept + x.
 pub unsafe fn do_hat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

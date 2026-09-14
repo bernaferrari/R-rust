@@ -1987,6 +1987,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_vcov_lm,
     },
     EvaluatedBuiltin {
+        name: "dummy.coef",
+        handler: crate::mainutils::essentials::do_dummy_coef,
+    },
+    EvaluatedBuiltin {
+        name: "dummy.coef.lm",
+        handler: crate::mainutils::essentials::do_dummy_coef,
+    },
+    EvaluatedBuiltin {
         name: "hat",
         handler: crate::mainutils::essentials::do_hat,
     },
