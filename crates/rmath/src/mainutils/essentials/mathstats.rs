@@ -5755,6 +5755,58 @@ pub unsafe fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `nls.control(maxiter=50, tol=1e-5, minFactor=1/1024)`.
+pub unsafe fn do_nls_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut maxiter = 50.0;
+        let mut tol = 1e-5;
+        let mut min_factor = 1.0 / 1024.0;
+        let mut cell = args;
+        let mut pos = 0usize;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let v = CAR(cell);
+            if name == "maxiter" || (name.is_empty() && pos == 0) {
+                if !v.is_null() && v != R_NilValue() {
+                    maxiter = elt_real_safe(v, 0);
+                }
+            } else if name == "tol" || (name.is_empty() && pos == 1) {
+                if !v.is_null() && v != R_NilValue() {
+                    tol = elt_real_safe(v, 0);
+                }
+            } else if name == "minFactor" || (name.is_empty() && pos == 2) {
+                if !v.is_null() && v != R_NilValue() {
+                    min_factor = elt_real_safe(v, 0);
+                }
+            }
+            pos += 1;
+            cell = CDR(cell);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(maxiter));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(tol));
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(min_factor));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "maxiter".to_string(),
+                "tol".to_string(),
+                "minFactor".to_string(),
+            ],
+        );
+        result
+    }
+}
+
+
 
 
 /// GNU `nls(y ~ expr, start=)` — one-parameter Gauss–Newton.

@@ -1,0 +1,7 @@
+c <- nls.control()
+cat(c$maxiter, "\n", sep = "")
+cat(c$tol * 1e5, "\n", sep = "")
+cat(round(c$minFactor * 1024, 4), "\n", sep = "")
+c2 <- nls.control(maxiter = 20, tol = 1e-4)
+cat(c2$maxiter, "\n", sep = "")
+cat(c2$tol * 1e4, "\n", sep = "")
