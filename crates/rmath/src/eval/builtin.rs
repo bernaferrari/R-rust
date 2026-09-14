@@ -1843,6 +1843,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_p_adjust,
     },
     EvaluatedBuiltin {
+        name: "pairwise.table",
+        handler: crate::mainutils::essentials::do_pairwise_table,
+    },
+    EvaluatedBuiltin {
         name: "t.test",
         handler: crate::mainutils::essentials::do_t_test,
     },

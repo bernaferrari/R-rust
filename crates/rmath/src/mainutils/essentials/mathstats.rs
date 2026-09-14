@@ -7975,6 +7975,70 @@ pub unsafe fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `pairwise.table(compare.levels, level.names, p.adjust.method)`.
+pub unsafe fn do_pairwise_table(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let compare = CAR(args);
+        let names = CAR(CDR(args));
+        if compare.is_null() || compare == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = if names.is_null() || names == R_NilValue() {
+            0
+        } else {
+            XLENGTH(names) as usize
+        };
+        if n < 2 {
+            return R_NilValue();
+        }
+        let nr = n - 1;
+        let nc = n - 1;
+        let result =
+            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), nr as i32, nc as i32);
+        let _r = protect(result);
+        for j in 0..nc {
+            let j_level = (j + 1) as i32;
+            for i in 0..nr {
+                let i_level = (i + 2) as i32;
+                let idx = i + j * nr;
+                if i_level > j_level {
+                    let call = crate::sexp::constructors::Rf_lang3(
+                        compare,
+                        Rf_ScalarInteger(i_level),
+                        Rf_ScalarInteger(j_level),
+                    );
+                    let _c = protect(call);
+                    let val = crate::eval::eval::Rf_eval(call, rho);
+                    *REAL(result).add(idx) = elt_real_safe(val, 0);
+                } else {
+                    *REAL(result).add(idx) = NA_REAL;
+                }
+            }
+        }
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, nr as i64);
+        let _rn = protect(rn);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, nc as i64);
+        let _cn = protect(cn);
+        for i in 0..nr {
+            SET_STRING_ELT(rn, i as i64, STRING_ELT(names, (i + 1) as i64));
+        }
+        for j in 0..nc {
+            SET_STRING_ELT(cn, j as i64, STRING_ELT(names, j as i64));
+        }
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        result
+    }
+}
+
+
 
 
 /// GNU `predict.glm(object)` — `$linear.predictors` or `$fitted.values`.
