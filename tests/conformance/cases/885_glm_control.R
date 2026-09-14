@@ -1,0 +1,8 @@
+c <- glm.control()
+cat(c$epsilon * 1e8, "\n", sep = "")
+cat(c$maxit, "\n", sep = "")
+cat(as.integer(c$trace), "\n", sep = "")
+c2 <- glm.control(epsilon = 1e-6, maxit = 10, trace = TRUE)
+cat(c2$epsilon * 1e6, "\n", sep = "")
+cat(c2$maxit, "\n", sep = "")
+cat(as.integer(c2$trace), "\n", sep = "")

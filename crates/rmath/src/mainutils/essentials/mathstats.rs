@@ -5704,6 +5704,58 @@ pub unsafe fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `glm.control(epsilon=1e-8, maxit=25, trace=FALSE)`.
+pub unsafe fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut epsilon = 1e-8;
+        let mut maxit = 25.0;
+        let mut trace = 0;
+        let mut cell = args;
+        let mut pos = 0usize;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let v = CAR(cell);
+            if name == "epsilon" || (name.is_empty() && pos == 0) {
+                if !v.is_null() && v != R_NilValue() {
+                    epsilon = elt_real_safe(v, 0);
+                }
+            } else if name == "maxit" || (name.is_empty() && pos == 1) {
+                if !v.is_null() && v != R_NilValue() {
+                    maxit = elt_real_safe(v, 0);
+                }
+            } else if name == "trace" || (name.is_empty() && pos == 2) {
+                if TYPEOF(v) == SEXPTYPE::LGLSXP {
+                    trace = *LOGICAL(v);
+                }
+            }
+            pos += 1;
+            cell = CDR(cell);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(epsilon));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(maxit));
+        SET_VECTOR_ELT(result, 2, Rf_ScalarLogical(trace));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "epsilon".to_string(),
+                "maxit".to_string(),
+                "trace".to_string(),
+            ],
+        );
+        result
+    }
+}
+
+
 
 /// GNU `nls(y ~ expr, start=)` — one-parameter Gauss–Newton.
 pub unsafe fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
