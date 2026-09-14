@@ -2187,6 +2187,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_proj,
     },
     EvaluatedBuiltin {
+        name: "qqplot",
+        handler: crate::mainutils::essentials::do_qqplot,
+    },
+    EvaluatedBuiltin {
         name: "binomial",
         handler: crate::mainutils::essentials::do_binomial,
     },

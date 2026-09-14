@@ -7937,6 +7937,45 @@ pub unsafe fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `qqplot(x, y, plot.it=FALSE)` — sorted pairs.
+pub unsafe fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
+            return R_NilValue();
+        }
+        let nx = XLENGTH(x) as usize;
+        let ny = XLENGTH(y) as usize;
+        if nx == 0 || ny == 0 {
+            return R_NilValue();
+        }
+        let mut xs: Vec<f64> = (0..nx).map(|i| elt_real_safe(x, i as i64)).collect();
+        let mut ys: Vec<f64> = (0..ny).map(|i| elt_real_safe(y, i as i64)).collect();
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = nx.min(ny);
+        let xo = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _x = protect(xo);
+        let yo = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _y = protect(yo);
+        for i in 0..n {
+            *REAL(xo).add(i) = xs[i];
+            *REAL(yo).add(i) = ys[i];
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, xo);
+        SET_VECTOR_ELT(result, 1, yo);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["x".to_string(), "y".to_string()],
+        );
+        result
+    }
+}
+
+
 
 /// GNU `predict.glm(object)` — `$linear.predictors` or `$fitted.values`.
 pub unsafe fn do_predict_glm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
