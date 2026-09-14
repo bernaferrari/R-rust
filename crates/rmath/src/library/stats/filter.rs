@@ -3087,6 +3087,37 @@ pub unsafe fn do_replications(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `.nknots.smspl(n)` — default smooth.spline knot count.
+pub unsafe fn do_nknots_smspl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_s = CAR(args);
+        let n = if TYPEOF(n_s) == SEXPTYPE::INTSXP {
+            *INTEGER(n_s)
+        } else {
+            *REAL(n_s) as i32
+        };
+        if n < 50 {
+            return Rf_ScalarInteger(n);
+        }
+        let nf = n as f64;
+        let a1 = 50f64.log2();
+        let a2 = 100f64.log2();
+        let a3 = 140f64.log2();
+        let a4 = 200f64.log2();
+        let knots = if n < 200 {
+            2f64.powf(a1 + (a2 - a1) * (nf - 50.0) / 150.0)
+        } else if n < 800 {
+            2f64.powf(a2 + (a3 - a2) * (nf - 200.0) / 600.0)
+        } else if n < 3200 {
+            2f64.powf(a3 + (a4 - a3) * (nf - 800.0) / 2400.0)
+        } else {
+            200.0 + (nf - 3200.0).powf(0.2)
+        };
+        Rf_ScalarInteger(knots.trunc() as i32)
+    }
+}
+
+
 
 
 /// GNU `as.formula(object)`.

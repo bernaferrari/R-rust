@@ -2367,6 +2367,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_kernel,
     },
     EvaluatedBuiltin {
+        name: ".nknots.smspl",
+        handler: crate::library::stats::filter::do_nknots_smspl,
+    },
+    EvaluatedBuiltin {
         name: "df.kernel",
         handler: crate::library::stats::filter::do_df_kernel,
     },
