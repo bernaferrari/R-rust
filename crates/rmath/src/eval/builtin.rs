@@ -2007,6 +2007,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_influence_measures,
     },
     EvaluatedBuiltin {
+        name: "effects",
+        handler: crate::mainutils::essentials::do_effects,
+    },
+    EvaluatedBuiltin {
         name: "rstandard",
         handler: crate::mainutils::essentials::do_rstandard,
     },

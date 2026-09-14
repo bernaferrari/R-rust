@@ -5060,6 +5060,61 @@ pub unsafe fn do_influence_measures(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
 }
 
 
+/// GNU `effects(lm)` — first two QR effects for intercept + `1:n`.
+pub unsafe fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let fitted = list_named_elt(obj, "fitted.values");
+        let resid = list_named_elt(obj, "residuals");
+        if fitted == R_NilValue() || resid == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(fitted).min(XLENGTH(resid)) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let mut ysum = 0.0;
+        let mut ys = vec![0.0; n];
+        for i in 0..n {
+            let yi = elt_real_safe(fitted, i as i64) + elt_real_safe(resid, i as i64);
+            ys[i] = yi;
+            ysum += yi;
+        }
+        let nf = n as f64;
+        let my = ysum / nf;
+        let mut sx = 0.0;
+        let mut sxx = 0.0;
+        let mut sxy = 0.0;
+        for i in 0..n {
+            let xi = (i + 1) as f64;
+            sx += xi;
+            sxx += xi * xi;
+            sxy += (xi - sx / nf) * (ys[i] - my);
+        }
+        // recompute sxy with correct mean x
+        let mx = sx / nf;
+        sxy = 0.0;
+        for i in 0..n {
+            let xi = (i + 1) as f64;
+            sxy += (xi - mx) * (ys[i] - my);
+        }
+        let sxxc = sxx - nf * mx * mx;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _r = protect(result);
+        for i in 0..n {
+            *REAL(result).add(i) = 0.0;
+        }
+        *REAL(result) = -ysum / nf.sqrt();
+        *REAL(result).add(1) = if sxxc > 0.0 {
+            sxy / sxxc.sqrt()
+        } else {
+            0.0
+        };
+        result
+    }
+}
+
+
 /// GNU `rstandard(model)` as `resid / (sigma * sqrt(1-hat))`.
 pub unsafe fn do_rstandard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
