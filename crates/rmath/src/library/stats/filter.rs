@@ -607,6 +607,53 @@ pub unsafe fn do_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `ar.burg(..., aic=FALSE, order.max=1)` — Burg AR(1).
+pub unsafe fn do_ar_burg(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let mut y = vec![0.0; n];
+        let mut mean = 0.0;
+        for i in 0..n {
+            y[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+            mean += y[i];
+        }
+        mean /= n as f64;
+        for yi in &mut y {
+            *yi -= mean;
+        }
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for t in 0..n - 1 {
+            num += 2.0 * y[t + 1] * y[t];
+            den += y[t + 1] * y[t + 1] + y[t] * y[t];
+        }
+        let phi = if den > 0.0 { num / den } else { 0.0 };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(phi));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(1));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["ar".to_string(), "order".to_string()],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"ar".as_ptr()),
+        );
+        result
+    }
+}
+
+
 fn css_ar1(y: &[f64]) -> (f64, f64, f64) {
     let n = y.len();
     if n < 3 {
