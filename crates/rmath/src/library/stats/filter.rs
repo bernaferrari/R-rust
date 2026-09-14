@@ -2954,6 +2954,24 @@ fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
             return;
         }
         if TYPEOF(expr) == SEXPTYPE::LANGSXP {
+            let op = CAR(expr);
+            if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
+                    .to_string_lossy()
+                    .into_owned();
+                if name == ":" {
+                    let mut parts = Vec::new();
+                    collect_formula_symbols(CADR(expr), &mut parts);
+                    collect_formula_symbols(CADDR(expr), &mut parts);
+                    if !parts.is_empty() {
+                        let joined = parts.join(":");
+                        if !out.iter().any(|s| s == &joined) {
+                            out.push(joined);
+                        }
+                    }
+                    return;
+                }
+            }
             let mut cell = CDR(expr);
             while !cell.is_null() && cell != R_NilValue() {
                 collect_formula_symbols(CAR(cell), out);
@@ -3775,9 +3793,134 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
             lab,
         );
+        let mut vars = Vec::new();
+        for lab in &labels {
+            for part in lab.split(':') {
+                if !vars.iter().any(|s| s == part) {
+                    vars.push(part.to_string());
+                }
+            }
+        }
+        let nrows = vars.len() + if response > 0 { 1 } else { 0 };
+        let ncols = labels.len();
+        if ncols > 0 && nrows > 0 {
+            let fac = crate::mainutils::array::allocMatrix(
+                SEXPTYPE::INTSXP.as_c_int(),
+                nrows as i32,
+                ncols as i32,
+            );
+            let _f = protect(fac);
+            for i in 0..nrows * ncols {
+                *INTEGER(fac).add(i) = 0;
+            }
+            let row0 = if response > 0 { 1 } else { 0 };
+            for (j, lab) in labels.iter().enumerate() {
+                let parts: Vec<&str> = lab.split(':').collect();
+                for (i, var) in vars.iter().enumerate() {
+                    if parts.iter().any(|p| *p == var) {
+                        *INTEGER(fac).add(row0 + i + j * nrows) = 1;
+                    }
+                }
+            }
+            let rn = Rf_allocVector3(SEXPTYPE::STRSXP, nrows as i64);
+            let _rn = protect(rn);
+            let mut r = 0;
+            if response > 0 {
+                SET_STRING_ELT(rn, 0, Rf_mkChar(c"y".as_ptr()));
+                r = 1;
+            }
+            for var in &vars {
+                let c = std::ffi::CString::new(var.as_str()).unwrap_or_default();
+                SET_STRING_ELT(rn, r, Rf_mkChar(c.as_ptr()));
+                r += 1;
+            }
+            let cn = Rf_allocVector3(SEXPTYPE::STRSXP, ncols as i64);
+            let _cn = protect(cn);
+            for (j, lab) in labels.iter().enumerate() {
+                let c = std::ffi::CString::new(lab.as_str()).unwrap_or_default();
+                SET_STRING_ELT(cn, j as i64, Rf_mkChar(c.as_ptr()));
+            }
+            let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _dn = protect(dn);
+            SET_VECTOR_ELT(dn, 0, rn);
+            SET_VECTOR_ELT(dn, 1, cn);
+            crate::sexp::attrib_core::setAttrib(
+                fac,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dn,
+            );
+            crate::sexp::attrib_core::setAttrib(
+                form,
+                crate::sexp::symbol::Rf_install(c"factors".as_ptr()),
+                fac,
+            );
+        }
         form
     }
 }
+
+fn matrix_colnames(x: SEXP) -> Vec<String> {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Vec::new();
+        }
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let mut out = Vec::new();
+            for i in 0..XLENGTH(x) {
+                out.push(
+                    std::ffi::CStr::from_ptr(CHAR(STRING_ELT(x, i)))
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+            return out;
+        }
+        let labs = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
+        );
+        if !labs.is_null() && labs != R_NilValue() && TYPEOF(labs) == SEXPTYPE::STRSXP {
+            return matrix_colnames(labs);
+        }
+        let dn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+        if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+            return matrix_colnames(VECTOR_ELT(dn, 1));
+        }
+        Vec::new()
+    }
+}
+
+/// GNU `factor.scope(factor, scope)` — add terms not already in the model.
+pub unsafe fn do_factor_scope(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let factor = CAR(args);
+        let scope = CAR(CDR(args));
+        let add = named_list_elt(scope, "add");
+        let have = matrix_colnames(factor);
+        let extra: Vec<String> = matrix_colnames(add)
+            .into_iter()
+            .filter(|n| !have.iter().any(|h| h == n))
+            .collect();
+        let add_out = Rf_allocVector3(SEXPTYPE::STRSXP, extra.len() as i64);
+        let _a = protect(add_out);
+        for (i, name) in extra.iter().enumerate() {
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(add_out, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        let drop_out = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        let _d = protect(drop_out);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, drop_out);
+        SET_VECTOR_ELT(result, 1, add_out);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["drop".to_string(), "add".to_string()],
+        );
+        result
+    }
+}
+
 
 /// GNU `terms(object)` — `$terms`, or a formula as `c("terms","formula")`.
 pub unsafe fn do_terms(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

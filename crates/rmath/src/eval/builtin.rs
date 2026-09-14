@@ -2699,6 +2699,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_terms,
     },
     EvaluatedBuiltin {
+        name: "factor.scope",
+        handler: crate::library::stats::filter::do_factor_scope,
+    },
+    EvaluatedBuiltin {
         name: "offset",
         handler: crate::library::stats::filter::do_offset,
     },
