@@ -7885,6 +7885,19 @@ pub unsafe fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `predict.glm(object)` — `$linear.predictors` or `$fitted.values`.
+pub unsafe fn do_predict_glm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let lp = list_named_elt(obj, "linear.predictors");
+        if lp != R_NilValue() {
+            return lp;
+        }
+        list_named_elt(obj, "fitted.values")
+    }
+}
+
+
 /// GNU `family(object)` — extract `$family`.
 pub unsafe fn do_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

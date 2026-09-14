@@ -2179,6 +2179,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_glm,
     },
     EvaluatedBuiltin {
+        name: "predict.glm",
+        handler: crate::mainutils::essentials::do_predict_glm,
+    },
+    EvaluatedBuiltin {
         name: "binomial",
         handler: crate::mainutils::essentials::do_binomial,
     },
