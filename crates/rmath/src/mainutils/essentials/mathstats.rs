@@ -6853,6 +6853,45 @@ pub unsafe fn do_ls_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `ls.print(ls.out, print.it=FALSE)` — coefficient estimates.
+pub unsafe fn do_ls_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let coef = list_named_elt(obj, "coefficients");
+        if coef == R_NilValue() {
+            return R_NilValue();
+        }
+        let p = XLENGTH(coef);
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 1);
+        let _m = protect(mat);
+        for i in 0..p as usize {
+            *REAL(mat).add(i) = elt_real_safe(coef, i as i64);
+        }
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _cn = protect(cn);
+        SET_STRING_ELT(cn, 0, Rf_mkChar(c"Estimate".as_ptr()));
+        let rn = crate::sexp::attrib_core::getAttrib(coef, crate::sexp::attrib_core::R_NamesSymbol());
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        let tables = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _tb = protect(tables);
+        SET_VECTOR_ELT(tables, 0, mat);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, tables);
+        crate::mainutils::essentials::set_string_names(result, &["coef.table".to_string()]);
+        result
+    }
+}
+
+
 
 /// GNU `weighted.mean(x, w)` — `sum(x*w)/sum(w)`.
 pub unsafe fn do_weighted_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

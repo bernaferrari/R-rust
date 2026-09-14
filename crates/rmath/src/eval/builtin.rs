@@ -2143,6 +2143,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ls_diag,
     },
     EvaluatedBuiltin {
+        name: "ls.print",
+        handler: crate::mainutils::essentials::do_ls_print,
+    },
+    EvaluatedBuiltin {
         name: ".lm.fit",
         handler: crate::mainutils::essentials::do_lm_fit,
     },
