@@ -2195,6 +2195,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_self_start,
     },
     EvaluatedBuiltin {
+        name: "stat.anova",
+        handler: crate::mainutils::essentials::do_stat_anova,
+    },
+    EvaluatedBuiltin {
         name: "proj",
         handler: crate::mainutils::essentials::do_proj,
     },

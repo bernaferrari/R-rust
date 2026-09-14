@@ -9327,6 +9327,137 @@ pub unsafe fn do_self_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+fn col_names_of(x: SEXP) -> Vec<String> {
+    unsafe {
+        let dn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+        if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+            let cn = VECTOR_ELT(dn, 1);
+            if TYPEOF(cn) == SEXPTYPE::STRSXP {
+                return (0..XLENGTH(cn))
+                    .map(|i| {
+                        std::ffi::CStr::from_ptr(CHAR(STRING_ELT(cn, i)))
+                            .to_string_lossy()
+                            .into_owned()
+                    })
+                    .collect();
+            }
+        }
+        let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if TYPEOF(names) == SEXPTYPE::STRSXP {
+            return (0..XLENGTH(names))
+                .map(|i| {
+                    std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .collect();
+        }
+        Vec::new()
+    }
+}
+
+/// GNU `stat.anova(table, test="Chisq", scale)` — add `Pr(>Chi)`.
+pub unsafe fn do_stat_anova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let table = CAR(args);
+        let mut scale = 1.0;
+        let mut cell = CDR(args);
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "scale" || (name.is_empty() && pos == 1) {
+                let v = elt_real_safe(CAR(cell), 0);
+                if v.is_finite() && v > 0.0 {
+                    scale = v;
+                }
+            }
+            pos += 1;
+            cell = CDR(cell);
+        }
+        let names = col_names_of(table);
+        let df_col = names.iter().position(|s| s == "Df");
+        let dev_col = names
+            .iter()
+            .position(|s| s == "Deviance" || s == "Sum of Sq");
+        let (Some(df_i), Some(dev_i)) = (df_col, dev_col) else {
+            return table;
+        };
+        let (nr, nc, get) = if TYPEOF(table) == SEXPTYPE::VECSXP {
+            let nc = XLENGTH(table) as usize;
+            let nr = if nc > 0 {
+                XLENGTH(VECTOR_ELT(table, 0)) as usize
+            } else {
+                0
+            };
+            let get = Box::new(move |r: usize, c: usize| -> f64 {
+                elt_real_safe(VECTOR_ELT(table, c as i64), r as i64)
+            }) as Box<dyn Fn(usize, usize) -> f64>;
+            (nr, nc, get)
+        } else {
+            let dim = crate::sexp::attrib_core::getAttrib(table, crate::sexp::attrib_core::R_DimSymbol());
+            let (nr, nc) = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
+                (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            } else {
+                (XLENGTH(table) as usize, 1usize)
+            };
+            let get = Box::new(move |r: usize, c: usize| -> f64 {
+                elt_real_safe(table, (r + c * nr) as i64)
+            }) as Box<dyn Fn(usize, usize) -> f64>;
+            (nr, nc, get)
+        };
+        if nr == 0 {
+            return table;
+        }
+        let result =
+            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), nr as i32, (nc + 1) as i32);
+        let _r = protect(result);
+        for c in 0..nc {
+            for r in 0..nr {
+                *REAL(result).add(r + c * nr) = get(r, c);
+            }
+        }
+        for r in 0..nr {
+            let df = get(r, df_i);
+            let dev = get(r, dev_i);
+            let p = if !df.is_finite() || df == 0.0 || !dev.is_finite() {
+                NA_REAL
+            } else {
+                let vals = dev / scale * df.signum();
+                if !vals.is_finite() || vals < 0.0 {
+                    NA_REAL
+                } else {
+                    crate::dist::chisq::pchisq_inner(vals, df.abs(), false, false)
+                }
+            };
+            *REAL(result).add(r + nc * nr) = p;
+        }
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, (nc + 1) as i64);
+        let _cn = protect(cn);
+        for (i, name) in names.iter().enumerate() {
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(cn, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        SET_STRING_ELT(cn, nc as i64, Rf_mkChar(c"Pr(>Chi)".as_ptr()));
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        result
+    }
+}
+
+
 
 
 
