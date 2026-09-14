@@ -276,3 +276,31 @@ pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
         ans
     }
 }
+
+pub unsafe fn do_rWishart_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if n.is_null() || n == R_NilValue() || n == crate::sexp::globals::R_MissingArg() {
+            crate::main::errors::errorcall_str(
+                call,
+                "argument \"n\" is missing, with no default",
+            );
+        }
+        let nu = CADR(args);
+        if nu.is_null() || nu == R_NilValue() || nu == crate::sexp::globals::R_MissingArg() {
+            crate::main::errors::errorcall_str(
+                call,
+                "argument \"df\" is missing, with no default",
+            );
+        }
+        let scal = CADDR(args);
+        if scal.is_null() || scal == R_NilValue() || scal == crate::sexp::globals::R_MissingArg() {
+            crate::main::errors::errorcall_str(
+                call,
+                "argument \"Sigma\" is missing, with no default",
+            );
+        }
+        rWishart(n, nu, scal)
+    }
+}
+

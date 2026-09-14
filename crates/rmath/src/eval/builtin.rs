@@ -1663,6 +1663,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::random::do_r2dtable_r,
     },
     EvaluatedBuiltin {
+        name: "rWishart",
+        handler: crate::library::stats::rwishart::do_rWishart_r,
+    },
+    EvaluatedBuiltin {
         name: "rcauchy",
         handler: crate::library::stats::random::do_rcauchy_r,
     },

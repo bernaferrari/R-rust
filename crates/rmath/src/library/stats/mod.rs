@@ -40,7 +40,7 @@ pub(crate) mod ppsum;
 mod prho;
 pub(crate) mod random;
 mod rcont;
-mod rwishart;
+pub(crate) mod rwishart;
 mod sbart;
 pub(crate) mod smooth;
 pub(crate) mod splines;
