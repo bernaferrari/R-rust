@@ -6432,6 +6432,38 @@ pub unsafe fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `poly(x, 1, simple=TRUE)` — centered unit-norm linear term.
+pub unsafe fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = XLENGTH(x) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let mut mean = 0.0;
+        for i in 0..n {
+            mean += elt_real_safe(x, i as i64);
+        }
+        mean /= n as f64;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _r = protect(result);
+        let mut ss = 0.0;
+        for i in 0..n {
+            let v = elt_real_safe(x, i as i64) - mean;
+            *REAL(result).add(i) = v;
+            ss += v * v;
+        }
+        let s = ss.sqrt();
+        if s > 0.0 {
+            for i in 0..n {
+                *REAL(result).add(i) /= s;
+            }
+        }
+        result
+    }
+}
+
+
 
 
 
