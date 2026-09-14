@@ -2643,6 +2643,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_contrasts,
     },
     EvaluatedBuiltin {
+        name: "psmirnov",
+        handler: crate::mainutils::essentials::do_psmirnov,
+    },
+    EvaluatedBuiltin {
         name: "C",
         handler: crate::library::stats::filter::do_C,
     },

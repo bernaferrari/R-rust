@@ -6496,6 +6496,47 @@ pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+fn pkolmogorov_two_limit(x: f64) -> f64 {
+    if !x.is_finite() || x <= 0.0 {
+        return 0.0;
+    }
+    let mut s = 0.0;
+    for k in 1..=80 {
+        let kf = k as f64;
+        let term = (-2.0 * kf * kf * x * x).exp();
+        if k % 2 == 1 {
+            s += term;
+        } else {
+            s -= term;
+        }
+        if term < 1e-16 {
+            break;
+        }
+    }
+    (1.0 - 2.0 * s).clamp(0.0, 1.0)
+}
+
+/// GNU `psmirnov(q, sizes, exact=FALSE)` — two-sided Kolmogorov limit.
+pub unsafe fn do_psmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let q = elt_real_safe(CAR(args), 0);
+        let sizes = CAR(CDR(args));
+        let n1 = elt_real_safe(sizes, 0);
+        let n2 = if XLENGTH(sizes) > 1 {
+            elt_real_safe(sizes, 1)
+        } else {
+            n1
+        };
+        let n = if n1 + n2 > 0.0 {
+            n1 * n2 / (n1 + n2)
+        } else {
+            0.0
+        };
+        Rf_ScalarReal(pkolmogorov_two_limit(n.sqrt() * q))
+    }
+}
+
+
 
 /// GNU `polym(x, y, degree=1, raw=TRUE)` — two-column raw design.
 pub unsafe fn do_polym(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
