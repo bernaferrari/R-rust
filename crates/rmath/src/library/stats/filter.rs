@@ -3051,6 +3051,43 @@ pub unsafe fn do_df2formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `replications(~ a, data)` — balanced one-factor count.
+pub unsafe fn do_replications(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let data = CAR(CDR(args));
+        if data.is_null() || data == R_NilValue() {
+            return R_NilValue();
+        }
+        let col = if TYPEOF(data) == SEXPTYPE::VECSXP && XLENGTH(data) > 0 {
+            VECTOR_ELT(data, 0)
+        } else {
+            data
+        };
+        let n = XLENGTH(col) as usize;
+        if n == 0 {
+            return Rf_ScalarInteger(0);
+        }
+        let first = if TYPEOF(col) == SEXPTYPE::INTSXP {
+            *INTEGER(col) as f64
+        } else {
+            *REAL(col)
+        };
+        let mut count = 0i32;
+        for i in 0..n {
+            let v = if TYPEOF(col) == SEXPTYPE::INTSXP {
+                *INTEGER(col).add(i) as f64
+            } else {
+                *REAL(col).add(i)
+            };
+            if (v - first).abs() < 1e-12 {
+                count += 1;
+            }
+        }
+        Rf_ScalarInteger(count)
+    }
+}
+
+
 
 /// GNU `as.formula(object)`.
 pub unsafe fn do_as_formula(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
