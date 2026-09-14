@@ -3630,6 +3630,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_model_tables,
     },
     EvaluatedBuiltin {
+        name: "printCoefmat",
+        handler: crate::mainutils::essentials::do_print_coefmat,
+    },
+    EvaluatedBuiltin {
         name: "summary.aov",
         handler: crate::mainutils::essentials::do_summary_aov,
     },

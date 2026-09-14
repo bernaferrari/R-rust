@@ -8576,6 +8576,12 @@ pub unsafe fn do_model_tables(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 
+/// GNU `printCoefmat(x)` — return `x` (printing is optional).
+pub unsafe fn do_print_coefmat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(args) }
+}
+
+
 /// GNU `summary.aov` — list of one anova table.
 pub unsafe fn do_summary_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
