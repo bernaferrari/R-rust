@@ -2682,6 +2682,74 @@ pub unsafe fn do_model_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
     }
 }
 
+/// GNU `model.matrix.default(y ~ x, data)` — intercept plus `x`.
+pub unsafe fn do_model_matrix_default(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let data = CAR(CDR(args));
+        if data.is_null() || data == R_NilValue() || TYPEOF(data) != SEXPTYPE::VECSXP {
+            return do_model_matrix(call, op, args, rho);
+        }
+        let form = CAR(args);
+        let rhs_cell = if TYPEOF(form) == SEXPTYPE::LANGSXP {
+            CDR(CDR(form))
+        } else {
+            std::ptr::null_mut()
+        };
+        let rhs = if rhs_cell.is_null() || rhs_cell == R_NilValue() {
+            if TYPEOF(form) == SEXPTYPE::LANGSXP {
+                CADR(form)
+            } else {
+                std::ptr::null_mut()
+            }
+        } else {
+            CAR(rhs_cell)
+        };
+        let xname = if !rhs.is_null() && TYPEOF(rhs) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(rhs)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            "x".to_string()
+        };
+        let names = crate::sexp::attrib_core::getAttrib(
+            data,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let mut col = R_NilValue();
+        if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(names) {
+                let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
+                    .to_string_lossy();
+                if nm == xname {
+                    col = VECTOR_ELT(data, i);
+                    break;
+                }
+            }
+        }
+        if col.is_null() || col == R_NilValue() {
+            return do_model_matrix(call, op, args, rho);
+        }
+        let n = XLENGTH(col);
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+        let _m = protect(mat);
+        for i in 0..n as usize {
+            *REAL(mat).add(i) = 1.0;
+            *REAL(mat).add(i + n as usize) = if TYPEOF(col) == SEXPTYPE::REALSXP {
+                *REAL(col).add(i)
+            } else {
+                *INTEGER(col).add(i) as f64
+            };
+        }
+        mat
+    }
+}
+
+
 /// GNU `reformulate(termlabels, response=NULL)` — build a formula.
 pub unsafe fn do_reformulate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
