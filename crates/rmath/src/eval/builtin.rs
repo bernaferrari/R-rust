@@ -2555,6 +2555,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_model_frame,
     },
     EvaluatedBuiltin {
+        name: "expand.model.frame",
+        handler: crate::library::stats::filter::do_expand_model_frame,
+    },
+    EvaluatedBuiltin {
         name: "model.response",
         handler: crate::library::stats::filter::do_model_response,
     },

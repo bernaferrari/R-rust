@@ -3006,6 +3006,56 @@ pub unsafe fn do_model_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `expand.model.frame(model, extras)` — add extras to the model frame.
+pub unsafe fn do_expand_model_frame(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let model = CAR(args);
+        let extras = CAR(CDR(args));
+        let mcall = named_list_elt(model, "call");
+        if mcall.is_null() || mcall == R_NilValue() || TYPEOF(mcall) != SEXPTYPE::LANGSXP {
+            return R_NilValue();
+        }
+        let form = CADR(mcall);
+        if form.is_null() || form == R_NilValue() {
+            return R_NilValue();
+        }
+        let uargs = Rf_cons(extras, R_NilValue());
+        let _u1 = protect(uargs);
+        let uargs = Rf_cons(form, uargs);
+        let _u2 = protect(uargs);
+        let updated = do_update_formula(call, op, uargs, rho);
+        let _u = protect(updated);
+        let mut names = Vec::new();
+        collect_formula_symbols(updated, &mut names);
+        if names.is_empty() {
+            return R_NilValue();
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as i64);
+        let _r = protect(result);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
+        let _on = protect(out_names);
+        for (i, name) in names.iter().enumerate() {
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            let sym = crate::sexp::symbol::Rf_install(c.as_ptr());
+            let col = crate::eval::eval::Rf_eval(sym, rho);
+            SET_VECTOR_ELT(result, i as i64, col);
+            SET_STRING_ELT(out_names, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            out_names,
+        );
+        result
+    }
+}
+
+
 /// GNU `model.response(data)` — first column of a model frame.
 pub unsafe fn do_model_response(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -3156,6 +3206,12 @@ pub unsafe fn do_update_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         let y = CADR(old);
         let x = CADDR(old);
         let rhs = CADR(new);
+        let plus = crate::sexp::symbol::Rf_install(c"+".as_ptr());
+        let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
+        if !rhs.is_null() && TYPEOF(rhs) == SEXPTYPE::SYMSXP {
+            let new_rhs = crate::sexp::constructors::Rf_lang3(plus, x, rhs);
+            return mark_formula(crate::sexp::constructors::Rf_lang3(tilde, y, new_rhs));
+        }
         if rhs.is_null() || TYPEOF(rhs) != SEXPTYPE::LANGSXP {
             return old;
         }
@@ -3182,8 +3238,6 @@ pub unsafe fn do_update_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         if left_name != "." {
             return old;
         }
-        let plus = crate::sexp::symbol::Rf_install(c"+".as_ptr());
-        let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
         let new_rhs = crate::sexp::constructors::Rf_lang3(plus, x, z);
         mark_formula(crate::sexp::constructors::Rf_lang3(tilde, y, new_rhs))
     }
