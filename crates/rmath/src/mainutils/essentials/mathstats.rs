@@ -5114,6 +5114,51 @@ pub unsafe fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `numericDeriv(expr, theta)` — one-parameter forward difference.
+pub unsafe fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = CAR(args);
+        let theta = CAR(CDR(args));
+        if expr.is_null() || expr == R_NilValue() {
+            return R_NilValue();
+        }
+        let name = if TYPEOF(theta) == SEXPTYPE::STRSXP && XLENGTH(theta) >= 1 {
+            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(theta, 0)))
+                .to_string_lossy()
+                .into_owned()
+        } else if TYPEOF(theta) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(theta)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            return R_NilValue();
+        };
+        let cname = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+        let sym = crate::sexp::symbol::Rf_install(cname.as_ptr());
+        let val = crate::eval::eval::Rf_eval(expr, rho);
+        let _v = protect(val);
+        let x0 = crate::eval::eval::Rf_eval(sym, rho);
+        let x = elt_real_safe(x0, 0);
+        let eps = f64::EPSILON.sqrt();
+        let bumped = Rf_ScalarReal(x + eps);
+        let _b = protect(bumped);
+        crate::sexp::envir::setVar(sym, bumped, rho);
+        let val2 = crate::eval::eval::Rf_eval(expr, rho);
+        crate::sexp::envir::setVar(sym, x0, rho);
+        let g = (elt_real_safe(val2, 0) - elt_real_safe(val, 0)) / eps;
+        let grad = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _g = protect(grad);
+        *REAL(grad) = g;
+        crate::sexp::attrib_core::setAttrib(
+            val,
+            crate::sexp::symbol::Rf_install(c"gradient".as_ptr()),
+            grad,
+        );
+        val
+    }
+}
+
+
 
 /// GNU `rstandard(model)` as `resid / (sigma * sqrt(1-hat))`.
 pub unsafe fn do_rstandard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

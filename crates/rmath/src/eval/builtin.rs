@@ -2011,6 +2011,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_effects,
     },
     EvaluatedBuiltin {
+        name: "numericDeriv",
+        handler: crate::mainutils::essentials::do_numeric_deriv,
+    },
+    EvaluatedBuiltin {
         name: "rstandard",
         handler: crate::mainutils::essentials::do_rstandard,
     },
