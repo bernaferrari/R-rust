@@ -1883,6 +1883,27 @@ pub unsafe fn do_df_kernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `bandwidth.kernel(k)` — equivalent bandwidth.
+pub unsafe fn do_bandwidth_kernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let k = CAR(args);
+        let coef = VECTOR_ELT(k, 0);
+        let m_s = VECTOR_ELT(k, 1);
+        let m = if TYPEOF(m_s) == SEXPTYPE::INTSXP {
+            *INTEGER(m_s) as usize
+        } else {
+            *REAL(m_s) as usize
+        };
+        let mut s = *REAL(coef) / 12.0;
+        for i in 1..=m {
+            let w = *REAL(coef).add(i);
+            s += 2.0 * (1.0 / 12.0 + (i as f64) * (i as f64)) * w;
+        }
+        Rf_ScalarReal(s.max(0.0).sqrt())
+    }
+}
+
+
 
 /// GNU `kernapply(x, k)` two-sided Daniell.
 pub unsafe fn do_kernapply(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

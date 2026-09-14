@@ -2367,6 +2367,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_df_kernel,
     },
     EvaluatedBuiltin {
+        name: "bandwidth.kernel",
+        handler: crate::library::stats::filter::do_bandwidth_kernel,
+    },
+    EvaluatedBuiltin {
         name: "kernapply",
         handler: crate::library::stats::filter::do_kernapply,
     },
