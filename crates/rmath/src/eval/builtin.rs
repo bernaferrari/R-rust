@@ -2647,6 +2647,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_psmirnov,
     },
     EvaluatedBuiltin {
+        name: "qsmirnov",
+        handler: crate::mainutils::essentials::do_qsmirnov,
+    },
+    EvaluatedBuiltin {
         name: "C",
         handler: crate::library::stats::filter::do_C,
     },

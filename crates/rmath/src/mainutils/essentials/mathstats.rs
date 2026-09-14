@@ -6537,6 +6537,35 @@ pub unsafe fn do_psmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 
+/// GNU `qsmirnov(p, sizes, exact=FALSE)` — smallest D with psmirnov >= p.
+pub unsafe fn do_qsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let p = elt_real_safe(CAR(args), 0);
+        let sizes = CAR(CDR(args));
+        let n1 = elt_real_safe(sizes, 0);
+        let n2 = if XLENGTH(sizes) > 1 {
+            elt_real_safe(sizes, 1)
+        } else {
+            n1
+        };
+        if n1 <= 0.0 || n2 <= 0.0 || !(0.0..=1.0).contains(&p) {
+            return Rf_ScalarReal(f64::NAN);
+        }
+        let n = n1 * n2 / (n1 + n2);
+        let steps = n1.max(n2) as i32;
+        let mut q = 1.0;
+        for k in 0..=steps {
+            let cand = k as f64 / steps as f64;
+            if pkolmogorov_two_limit(n.sqrt() * cand) >= p {
+                q = cand;
+                break;
+            }
+        }
+        Rf_ScalarReal(q)
+    }
+}
+
+
 
 /// GNU `polym(x, y, degree=1, raw=TRUE)` — two-column raw design.
 pub unsafe fn do_polym(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
