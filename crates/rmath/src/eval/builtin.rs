@@ -2619,6 +2619,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_resid,
     },
     EvaluatedBuiltin {
+        name: "residuals.glm",
+        handler: crate::library::stats::filter::do_resid,
+    },
+    EvaluatedBuiltin {
         name: "residuals",
         handler: crate::library::stats::filter::do_resid,
     },
