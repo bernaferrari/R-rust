@@ -1197,10 +1197,19 @@ pub unsafe fn do_struct_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             coef,
             &["level".to_string(), "epsilon".to_string()],
         );
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let data = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _d = protect(data);
+        for i in 0..n {
+            *REAL(data).add(i) = y[i];
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, coef);
-        crate::mainutils::essentials::set_string_names(result, &["coef".to_string()]);
+        SET_VECTOR_ELT(result, 1, data);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["coef".to_string(), "data".to_string()],
+        );
         let class = Rf_mkString(c"StructTS".as_ptr());
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
@@ -1211,6 +1220,72 @@ pub unsafe fn do_struct_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         result
     }
 }
+
+/// GNU `tsSmooth(StructTS)` — Kalman smooth of the fitted local level.
+pub unsafe fn do_ts_smooth(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let data = named_list_elt(obj, "data");
+        let coef = named_list_elt(obj, "coef");
+        if data == R_NilValue() || coef == R_NilValue() || XLENGTH(data) == 0 {
+            return R_NilValue();
+        }
+        let q = elt_real_or(coef, 0.0);
+        let r = if XLENGTH(coef) > 1 {
+            *REAL(coef).add(1)
+        } else {
+            elt_real_or(coef, 0.0)
+        };
+        let a0 = *REAL(data);
+        let p0 = if r > 0.0 { 1e4 * r } else { 1e4 };
+        let z = Rf_ScalarReal(1.0);
+        let _z = protect(z);
+        let a = Rf_ScalarReal(a0);
+        let _a = protect(a);
+        let p = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _p = protect(p);
+        *REAL(p) = 0.0;
+        let t = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _t = protect(t);
+        *REAL(t) = 1.0;
+        let v = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _v = protect(v);
+        *REAL(v) = q;
+        let h = Rf_ScalarReal(r);
+        let _h = protect(h);
+        let pn = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+        let _pn = protect(pn);
+        *REAL(pn) = p0;
+        let model = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
+        let _m = protect(model);
+        SET_VECTOR_ELT(model, 0, z);
+        SET_VECTOR_ELT(model, 1, a);
+        SET_VECTOR_ELT(model, 2, p);
+        SET_VECTOR_ELT(model, 3, t);
+        SET_VECTOR_ELT(model, 4, v);
+        SET_VECTOR_ELT(model, 5, h);
+        SET_VECTOR_ELT(model, 6, pn);
+        crate::mainutils::essentials::set_string_names(
+            model,
+            &[
+                "Z".to_string(),
+                "a".to_string(),
+                "P".to_string(),
+                "T".to_string(),
+                "V".to_string(),
+                "h".to_string(),
+                "Pn".to_string(),
+            ],
+        );
+        let ks_args = Rf_cons(data, Rf_cons(model, R_NilValue()));
+        let _ka = protect(ks_args);
+        let ks = do_kalman_smooth(call, op, ks_args, rho);
+        let _ks = protect(ks);
+        named_list_elt(ks, "smooth")
+    }
+}
+
+
 
 
 

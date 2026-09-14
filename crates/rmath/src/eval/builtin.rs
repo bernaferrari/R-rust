@@ -2479,6 +2479,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_as_formula,
     },
     EvaluatedBuiltin {
+        name: "tsSmooth",
+        handler: crate::library::stats::filter::do_ts_smooth,
+    },
+    EvaluatedBuiltin {
         name: "terms",
         handler: crate::library::stats::filter::do_terms,
     },
