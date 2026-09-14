@@ -9335,11 +9335,21 @@ pub unsafe fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `selfStart(model, initial, parameters)` — `pnames` + class.
+/// GNU `selfStart(model, initial, parameters)` — `pnames` + `initial` + class.
 pub unsafe fn do_self_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let model = CAR(args);
+        let initial = CAR(CDR(args));
         let parameters = CAR(CDR(CDR(args)));
+        crate::sexp::attrib_core::setAttrib(
+            model,
+            crate::sexp::symbol::Rf_install(c"initial".as_ptr()),
+            if initial.is_null() {
+                R_NilValue()
+            } else {
+                initial
+            },
+        );
         crate::sexp::attrib_core::setAttrib(
             model,
             crate::sexp::symbol::Rf_install(c"pnames".as_ptr()),
@@ -9355,6 +9365,23 @@ pub unsafe fn do_self_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             Rf_mkString(c"selfStart".as_ptr()),
         );
         model
+    }
+}
+
+/// GNU `getInitial(object, data)` — call `attr(object,"initial")`.
+pub unsafe fn do_get_initial(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let ini = crate::sexp::attrib_core::getAttrib(
+            obj,
+            crate::sexp::symbol::Rf_install(c"initial".as_ptr()),
+        );
+        if ini.is_null() || ini == R_NilValue() {
+            return R_NilValue();
+        }
+        let call = crate::sexp::constructors::Rf_lang2(ini, R_NilValue());
+        let _c = protect(call);
+        crate::eval::eval::Rf_eval(call, rho)
     }
 }
 
