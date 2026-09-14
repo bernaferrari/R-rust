@@ -4806,6 +4806,55 @@ pub unsafe fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `confint.default(object)` — Wald z from `$vcov` or `vcov.lm`.
+pub unsafe fn do_confint_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let mut vcov = list_named_elt(obj, "vcov");
+        if vcov == R_NilValue() {
+            vcov = do_vcov_lm(call, op, args, rho);
+        }
+        if vcov == R_NilValue() {
+            return R_NilValue();
+        }
+        let _v = protect(vcov);
+        let rest = Rf_cons(vcov, R_NilValue());
+        let _r = protect(rest);
+        SETTAG(rest, crate::sexp::symbol::Rf_install(c"vcov".as_ptr()));
+        let wrapped = Rf_cons(obj, rest);
+        let _w = protect(wrapped);
+        // stash vcov on a shallow copy so do_confint can read $vcov
+        let names = crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_NamesSymbol());
+        let n = if TYPEOF(obj) == SEXPTYPE::VECSXP {
+            XLENGTH(obj)
+        } else {
+            0
+        };
+        let copy = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
+        let _c = protect(copy);
+        for i in 0..n {
+            SET_VECTOR_ELT(copy, i, VECTOR_ELT(obj, i));
+        }
+        SET_VECTOR_ELT(copy, n, vcov);
+        let mut nms: Vec<String> = Vec::new();
+        if TYPEOF(names) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(names) {
+                nms.push(
+                    std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+        nms.push("vcov".to_string());
+        crate::mainutils::essentials::set_string_names(copy, &nms);
+        let cargs = Rf_cons(copy, CDR(args));
+        let _ca = protect(cargs);
+        do_confint(call, op, cargs, rho)
+    }
+}
+
+
 /// GNU `confint.lm(object)` — t intervals for intercept + slope.
 pub unsafe fn do_confint_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
