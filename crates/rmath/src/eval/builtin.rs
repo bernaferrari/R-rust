@@ -2743,6 +2743,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_toeplitz,
     },
     EvaluatedBuiltin {
+        name: "toeplitz2",
+        handler: crate::mainutils::essentials::do_toeplitz2,
+    },
+    EvaluatedBuiltin {
         name: "diffinv",
         handler: crate::mainutils::essentials::do_diffinv,
     },

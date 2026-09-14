@@ -1128,6 +1128,47 @@ pub unsafe fn do_toeplitz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `toeplitz2(x, nrow)` — banded Toeplitz, ncol = length(x)+1-nrow.
+pub unsafe fn do_toeplitz2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let nx = XLENGTH(x) as isize;
+        let nrow_cell = CDR(args);
+        let nrow = if nrow_cell.is_null()
+            || nrow_cell == R_NilValue()
+            || CAR(nrow_cell) == crate::sexp::globals::R_MissingArg()
+        {
+            nx
+        } else {
+            let nr = CAR(nrow_cell);
+            if TYPEOF(nr) == SEXPTYPE::INTSXP {
+                *INTEGER(nr) as isize
+            } else {
+                *REAL(nr) as isize
+            }
+        };
+        let ncol = nx + 1 - nrow;
+        if nrow < 1 || ncol < 1 || nrow + ncol - 1 > nx {
+            return R_NilValue();
+        }
+        let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), nrow as i32, ncol as i32);
+        let _a = protect(ans);
+        for col in 0..ncol {
+            for row in 0..nrow {
+                let k = (ncol - col + row - 1) as usize;
+                let dst = (row + col * nrow) as usize;
+                if TYPEOF(x) == SEXPTYPE::INTSXP {
+                    *INTEGER(ans).add(dst) = *INTEGER(x).add(k);
+                } else {
+                    *REAL(ans).add(dst) = *REAL(x).add(k);
+                }
+            }
+        }
+        ans
+    }
+}
+
+
 /// GNU `diffinv(x, xi=0)`.
 pub unsafe fn do_diffinv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
