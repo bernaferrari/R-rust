@@ -2189,6 +2189,37 @@ pub unsafe fn do_is_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `is.mts(x)` — ts matrix with class `mts`.
+pub unsafe fn do_is_mts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let mut has_ts = false;
+        let mut has_mts = false;
+        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i)));
+                if s.to_bytes() == b"ts" {
+                    has_ts = true;
+                }
+                if s.to_bytes() == b"mts" {
+                    has_mts = true;
+                }
+            }
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let is_mat = !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2;
+        Rf_ScalarLogical(if has_ts && has_mts && is_mat { 1 } else { 0 })
+    }
+}
+
+
 /// GNU `na.contiguous(x)` longest non-NA run.
 pub unsafe fn do_na_contiguous(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

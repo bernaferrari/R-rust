@@ -2387,6 +2387,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_is_ts,
     },
     EvaluatedBuiltin {
+        name: "is.mts",
+        handler: crate::library::stats::filter::do_is_mts,
+    },
+    EvaluatedBuiltin {
         name: "na.contiguous",
         handler: crate::library::stats::filter::do_na_contiguous,
     },
