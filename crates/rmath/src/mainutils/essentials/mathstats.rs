@@ -9164,6 +9164,12 @@ fn dist_compact_set(d: &mut [f64], i: usize, j: usize, n: usize, val: f64) {
     d[idx + (b - a - 1)] = val;
 }
 
+/// GNU `as.hclust(x)` — identity for `hclust` objects.
+pub unsafe fn do_as_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(args) }
+}
+
+
 /// GNU `cophenetic(hclust)` — height of the first common ancestor.
 pub unsafe fn do_cophenetic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
