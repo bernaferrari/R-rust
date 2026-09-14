@@ -8763,6 +8763,70 @@ pub unsafe fn do_stepfun_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
 }
 
 
+/// GNU `splinefunH(x, y, m)` — cubic Hermite interpolant.
+pub unsafe fn do_splinefun_h(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let m = CAR(CDR(CDR(args)));
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
+        let _env = protect(env);
+        crate::sexp::envir::defineVar(Rf_install(c"x".as_ptr()), x, env);
+        crate::sexp::envir::defineVar(Rf_install(c"y".as_ptr()), y, env);
+        crate::sexp::envir::defineVar(Rf_install(c"m".as_ptr()), m, env);
+        let vsym = Rf_install(c"v".as_ptr());
+        let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
+        SETTAG(formals, vsym);
+        let body = crate::sexp::constructors::Rf_lang2(Rf_install(c".splinefunH_apply".as_ptr()), vsym);
+        crate::mainutils::dstruct::mkCLOSXP(formals, body, env)
+    }
+}
+
+/// Evaluate cubic Hermite at `v`.
+pub unsafe fn do_splinefun_h_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let v = CAR(args);
+        let env = crate::sexp::accessors::ENCLOS(rho);
+        let x = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"x".as_ptr()));
+        let y = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"y".as_ptr()));
+        let m = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"m".as_ptr()));
+        let n = XLENGTH(x) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let nv = XLENGTH(v) as usize;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
+        let _r = protect(result);
+        for j in 0..nv {
+            let t0 = elt_real_safe(v, j as i64);
+            let mut i = 0usize;
+            while i + 1 < n && elt_real_safe(x, (i + 1) as i64) <= t0 {
+                i += 1;
+            }
+            if i + 1 >= n {
+                i = n - 2;
+            }
+            let x0 = elt_real_safe(x, i as i64);
+            let x1 = elt_real_safe(x, (i + 1) as i64);
+            let h = x1 - x0;
+            let t = if h != 0.0 { (t0 - x0) / h } else { 0.0 };
+            let t2 = t * t;
+            let t3 = t2 * t;
+            let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+            let h10 = t3 - 2.0 * t2 + t;
+            let h01 = -2.0 * t3 + 3.0 * t2;
+            let h11 = t3 - t2;
+            let y0 = elt_real_safe(y, i as i64);
+            let y1 = elt_real_safe(y, (i + 1) as i64);
+            let m0 = elt_real_safe(m, i as i64);
+            let m1 = elt_real_safe(m, (i + 1) as i64);
+            *REAL(result).add(j) = h00 * y0 + h10 * h * m0 + h01 * y1 + h11 * h * m1;
+        }
+        result
+    }
+}
+
+
 /// Evaluate an ecdf closure: last y with vals <= v, else 0 / 1 at ends.
 pub unsafe fn do_ecdf_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

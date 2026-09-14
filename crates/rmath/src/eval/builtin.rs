@@ -2415,6 +2415,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_stepfun_apply,
     },
     EvaluatedBuiltin {
+        name: "splinefunH",
+        handler: crate::mainutils::essentials::do_splinefun_h,
+    },
+    EvaluatedBuiltin {
+        name: ".splinefunH_apply",
+        handler: crate::mainutils::essentials::do_splinefun_h_apply,
+    },
+    EvaluatedBuiltin {
         name: "kernapply",
         handler: crate::library::stats::filter::do_kernapply,
     },
