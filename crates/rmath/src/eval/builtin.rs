@@ -2655,6 +2655,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_ar_burg,
     },
     EvaluatedBuiltin {
+        name: "ar.ols",
+        handler: crate::library::stats::filter::do_ar_ols,
+    },
+    EvaluatedBuiltin {
         name: "spec.pgram",
         handler: crate::library::stats::fourier::do_spec_pgram,
     },
