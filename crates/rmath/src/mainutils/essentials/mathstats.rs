@@ -8502,6 +8502,31 @@ pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `summary.aov` — list of one anova table.
+pub unsafe fn do_summary_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let tab = do_anova_lm(call, op, args, rho);
+        if tab.is_null() || tab == R_NilValue() {
+            return tab;
+        }
+        let _t = protect(tab);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, tab);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _cl = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"summary.aov".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"listof".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 fn lm_n_p_rss(obj: SEXP) -> Option<(f64, f64, f64)> {
     unsafe {
         let resid = list_named_elt(obj, "residuals");

@@ -3618,6 +3618,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_summary_glm,
     },
     EvaluatedBuiltin {
+        name: "summary.aov",
+        handler: crate::mainutils::essentials::do_summary_aov,
+    },
+    EvaluatedBuiltin {
         name: "anova",
         handler: crate::mainutils::essentials::do_anova_lm,
     },
