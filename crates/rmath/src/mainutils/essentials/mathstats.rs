@@ -9367,6 +9367,34 @@ pub unsafe fn do_summary_stepfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 
+/// GNU `estVar(SSD)` — `$SSD / $df`.
+pub unsafe fn do_est_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let ssd = list_named_elt(obj, "SSD");
+        let df = list_named_elt(obj, "df");
+        if ssd == R_NilValue() || df == R_NilValue() {
+            return R_NilValue();
+        }
+        let d = elt_real_safe(df, 0);
+        if !d.is_finite() || d == 0.0 {
+            return R_NilValue();
+        }
+        let n = XLENGTH(ssd);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n as usize {
+            *REAL(result).add(i) = elt_real_safe(ssd, i as i64) / d;
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(ssd, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        }
+        result
+    }
+}
+
+
 /// GNU `simulate(lm, nsim=1)` — `fitted + rnorm(n, sd=sigma)`.
 pub unsafe fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
