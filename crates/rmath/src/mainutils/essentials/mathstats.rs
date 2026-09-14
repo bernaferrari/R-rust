@@ -6463,6 +6463,23 @@ pub unsafe fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `polym(x, y, degree=1, raw=TRUE)` — two-column raw design.
+pub unsafe fn do_polym(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let n = XLENGTH(x).min(XLENGTH(y)) as usize;
+        let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+        let _r = protect(result);
+        for i in 0..n {
+            *REAL(result).add(i) = elt_real_safe(x, i as i64);
+            *REAL(result).add(i + n) = elt_real_safe(y, i as i64);
+        }
+        result
+    }
+}
+
+
 fn med3(a: f64, b: f64, c: f64) -> f64 {
     let mut m = b;
     if a < b {
