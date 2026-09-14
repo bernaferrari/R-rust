@@ -2223,6 +2223,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_pbirthday,
     },
     EvaluatedBuiltin {
+        name: "qbirthday",
+        handler: crate::mainutils::essentials::do_qbirthday,
+    },
+    EvaluatedBuiltin {
         name: "qqnorm",
         handler: crate::mainutils::essentials::do_qqnorm,
     },

@@ -6341,6 +6341,54 @@ pub unsafe fn do_pbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+fn pbirthday_k2(n: i64, classes: f64) -> f64 {
+    if n <= 0 {
+        return 0.0;
+    }
+    if classes <= 0.0 {
+        return 1.0;
+    }
+    let mut prod = 1.0;
+    for i in 0..n {
+        prod *= (classes - i as f64) / classes;
+    }
+    1.0 - prod
+}
+
+/// GNU `qbirthday(prob=0.5, classes=365, coincident=2)` — smallest n.
+pub unsafe fn do_qbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let p_arg = CAR(args);
+        let p = if p_arg.is_null() || p_arg == R_NilValue() || p_arg == R_MissingArg() {
+            0.5
+        } else {
+            elt_real_safe(p_arg, 0)
+        };
+        let classes_cell = CDR(args);
+        let classes = if classes_cell.is_null()
+            || classes_cell == R_NilValue()
+            || CAR(classes_cell) == R_MissingArg()
+        {
+            365.0
+        } else {
+            elt_real_safe(CAR(classes_cell), 0)
+        };
+        if p <= 0.0 {
+            return Rf_ScalarInteger(1);
+        }
+        let max_n = classes.ceil() as i64 + 1;
+        if p >= 1.0 {
+            return Rf_ScalarInteger(max_n as i32);
+        }
+        let mut n = 1i64;
+        while n < max_n && pbirthday_k2(n, classes) < p {
+            n += 1;
+        }
+        Rf_ScalarInteger(n as i32)
+    }
+}
+
+
 
 
 
