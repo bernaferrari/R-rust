@@ -5934,6 +5934,29 @@ pub unsafe fn do_ssasymp_orig(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `SSfol(Dose, input, lKe, lKa, lCl)` — first-order compartment.
+pub unsafe fn do_ssfol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let dose = elt_real_safe(CAR(args), 0);
+        let input = CAR(CDR(args));
+        let lke = elt_real_safe(CAR(CDR(CDR(args))), 0);
+        let lka = elt_real_safe(CAR(CDR(CDR(CDR(args)))), 0);
+        let lcl = elt_real_safe(CAR(CDR(CDR(CDR(CDR(args))))), 0);
+        let ke = lke.exp();
+        let ka = lka.exp();
+        let scale = dose * (lke + lka - lcl).exp() / (ka - ke);
+        let n = XLENGTH(input);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let t = elt_real_safe(input, i);
+            *REAL(result).add(i as usize) = scale * ((-ke * t).exp() - (-ka * t).exp());
+        }
+        result
+    }
+}
+
+
 
 
 

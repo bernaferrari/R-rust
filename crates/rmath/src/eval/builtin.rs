@@ -2027,6 +2027,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ssasymp_orig,
     },
     EvaluatedBuiltin {
+        name: "SSfol",
+        handler: crate::mainutils::essentials::do_ssfol,
+    },
+    EvaluatedBuiltin {
         name: "lm.fit",
         handler: crate::mainutils::essentials::do_lm_fit,
     },
