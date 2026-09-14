@@ -6973,6 +6973,38 @@ pub unsafe fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `naprint(x)` — omit/exclude count, else empty string.
+pub unsafe fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let mut omit = false;
+        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i)));
+                if s.to_bytes() == b"omit" || s.to_bytes() == b"exclude" {
+                    omit = true;
+                    break;
+                }
+            }
+        }
+        if !omit {
+            return Rf_mkString(c"".as_ptr());
+        }
+        let n = XLENGTH(x);
+        let msg = if n == 1 {
+            "1 observation deleted due to missingness".to_string()
+        } else {
+            format!("{n} observations deleted due to missingness")
+        };
+        Rf_mkString(CString::new(msg).unwrap().as_ptr())
+    }
+}
+
+
 
 
 

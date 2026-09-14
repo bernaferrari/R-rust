@@ -2175,6 +2175,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_pair,
     },
     EvaluatedBuiltin {
+        name: "naprint",
+        handler: crate::mainutils::essentials::do_naprint,
+    },
+    EvaluatedBuiltin {
         name: "family",
         handler: crate::mainutils::essentials::do_family,
     },
