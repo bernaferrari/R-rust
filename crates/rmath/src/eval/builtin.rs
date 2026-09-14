@@ -2187,6 +2187,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_predict_glm,
     },
     EvaluatedBuiltin {
+        name: "simulate",
+        handler: crate::mainutils::essentials::do_simulate,
+    },
+    EvaluatedBuiltin {
         name: "proj",
         handler: crate::mainutils::essentials::do_proj,
     },

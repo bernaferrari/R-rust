@@ -9226,6 +9226,85 @@ pub unsafe fn do_order_dendrogram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
     }
 }
 
+/// GNU `simulate(lm, nsim=1)` — `fitted + rnorm(n, sd=sigma)`.
+pub unsafe fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let fitted = list_named_elt(obj, "fitted.values");
+        let mut sigma = list_named_elt(obj, "sigma");
+        if fitted == R_NilValue() {
+            return R_NilValue();
+        }
+        if sigma == R_NilValue() {
+            let resid = list_named_elt(obj, "residuals");
+            if resid == R_NilValue() {
+                return R_NilValue();
+            }
+            let n = XLENGTH(resid) as f64;
+            let mut ss = 0.0;
+            for i in 0..XLENGTH(resid) as usize {
+                let e = elt_real_safe(resid, i as i64);
+                ss += e * e;
+            }
+            let df = (n - 2.0).max(1.0);
+            sigma = Rf_ScalarReal((ss / df).sqrt());
+        }
+        let _sg = protect(sigma);
+        let mut nsim = 1i32;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "nsim" || name.is_empty() {
+                let v = CAR(cell);
+                let k = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    *INTEGER(v)
+                } else {
+                    elt_real_safe(v, 0) as i32
+                };
+                if k > 0 {
+                    nsim = k;
+                    if name == "nsim" {
+                        break;
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
+        let n = XLENGTH(fitted) as i32;
+        let ntot = n * nsim;
+        let rargs = Rf_cons(
+            Rf_ScalarInteger(ntot),
+            Rf_cons(Rf_ScalarReal(0.0), Rf_cons(sigma, R_NilValue())),
+        );
+        let _ra = protect(rargs);
+        let noise = crate::library::stats::random::do_rnorm_r(call, op, rargs, rho);
+        let _n = protect(noise);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, nsim as i64);
+        let _r = protect(result);
+        let mut names = Vec::new();
+        for s in 0..nsim as usize {
+            let col = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+            let _c = protect(col);
+            for i in 0..n as usize {
+                *REAL(col).add(i) =
+                    elt_real_safe(fitted, i as i64) + elt_real_safe(noise, (s * n as usize + i) as i64);
+            }
+            SET_VECTOR_ELT(result, s as i64, col);
+            names.push(format!("sim_{}", s + 1));
+        }
+        crate::mainutils::essentials::set_string_names(result, &names);
+        result
+    }
+}
+
+
 
 
 /// GNU `cophenetic(hclust)` — height of the first common ancestor.
