@@ -6102,6 +6102,31 @@ pub unsafe fn do_ssfpl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `ppoints(n, a=)` — probability points.
+pub unsafe fn do_ppoints(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_s = CAR(args);
+        let n = if XLENGTH(n_s) > 1 {
+            XLENGTH(n_s) as f64
+        } else {
+            elt_real_safe(n_s, 0)
+        };
+        if n <= 0.0 {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let ni = n.round() as i64;
+        let a = if ni <= 10 { 3.0 / 8.0 } else { 0.5 };
+        let den = n + 1.0 - 2.0 * a;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, ni);
+        let _r = protect(result);
+        for i in 0..ni {
+            *REAL(result).add(i as usize) = ((i as f64 + 1.0) - a) / den;
+        }
+        result
+    }
+}
+
+
 
 
 /// GNU `sortedXyData(x, y)` — unique x sorted, paired y.
