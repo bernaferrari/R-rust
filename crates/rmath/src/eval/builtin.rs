@@ -2031,6 +2031,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ssfol,
     },
     EvaluatedBuiltin {
+        name: "sortedXyData",
+        handler: crate::mainutils::essentials::do_sorted_xy_data,
+    },
+    EvaluatedBuiltin {
+        name: "NLSstLfAsymptote",
+        handler: crate::mainutils::essentials::do_nls_lf_asymp,
+    },
+    EvaluatedBuiltin {
+        name: "NLSstRtAsymptote",
+        handler: crate::mainutils::essentials::do_nls_rt_asymp,
+    },
+    EvaluatedBuiltin {
         name: "lm.fit",
         handler: crate::mainutils::essentials::do_lm_fit,
     },

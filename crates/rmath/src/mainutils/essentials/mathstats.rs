@@ -5956,6 +5956,91 @@ pub unsafe fn do_ssfol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `sortedXyData(x, y)` — unique x sorted, paired y.
+pub unsafe fn do_sorted_xy_data(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let xv = CAR(args);
+        let yv = CAR(CDR(args));
+        let n = XLENGTH(xv).min(XLENGTH(yv)) as usize;
+        let mut pairs: Vec<(f64, f64)> = (0..n)
+            .map(|i| (elt_real_safe(xv, i as i64), elt_real_safe(yv, i as i64)))
+            .collect();
+        pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let xout = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _x = protect(xout);
+        let yout = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _y = protect(yout);
+        for (i, (x, y)) in pairs.iter().enumerate() {
+            *REAL(xout).add(i) = *x;
+            *REAL(yout).add(i) = *y;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, xout);
+        SET_VECTOR_ELT(result, 1, yout);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["x".to_string(), "y".to_string()],
+        );
+        result
+    }
+}
+
+unsafe fn nls_xy_y(xy: SEXP) -> (Vec<f64>, bool) {
+    unsafe {
+        let y = list_named_elt(xy, "y");
+        if y != R_NilValue() && XLENGTH(y) > 0 {
+            let n = XLENGTH(y) as usize;
+            return (
+                (0..n).map(|i| elt_real_safe(y, i as i64)).collect(),
+                true,
+            );
+        }
+        (Vec::new(), false)
+    }
+}
+
+/// GNU `NLSstLfAsymptote(xy)`.
+pub unsafe fn do_nls_lf_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let (ys, ok) = nls_xy_y(CAR(args));
+        if !ok || ys.is_empty() {
+            return R_NilValue();
+        }
+        let ymin = ys.iter().copied().fold(f64::INFINITY, f64::min);
+        let ymax = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let d = ymax - ymin;
+        let first = ys[0];
+        let val = if (ymax - first).abs() < (first - ymin).abs() {
+            ymax + d / 8.0
+        } else {
+            ymin - d / 8.0
+        };
+        Rf_ScalarReal(val)
+    }
+}
+
+/// GNU `NLSstRtAsymptote(xy)`.
+pub unsafe fn do_nls_rt_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let (ys, ok) = nls_xy_y(CAR(args));
+        if !ok || ys.is_empty() {
+            return R_NilValue();
+        }
+        let ymin = ys.iter().copied().fold(f64::INFINITY, f64::min);
+        let ymax = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let d = ymax - ymin;
+        let last = *ys.last().unwrap();
+        let val = if (ymax - last).abs() < (last - ymin).abs() {
+            ymax + d / 8.0
+        } else {
+            ymin - d / 8.0
+        };
+        Rf_ScalarReal(val)
+    }
+}
+
+
 
 
 
