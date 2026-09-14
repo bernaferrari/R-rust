@@ -2379,6 +2379,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_check_mf_classes,
     },
     EvaluatedBuiltin {
+        name: ".vcov.aliased",
+        handler: crate::library::stats::filter::do_vcov_aliased,
+    },
+    EvaluatedBuiltin {
         name: ".nknots.smspl",
         handler: crate::library::stats::filter::do_nknots_smspl,
     },

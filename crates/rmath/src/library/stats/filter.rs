@@ -3224,6 +3224,49 @@ pub unsafe fn do_check_mf_classes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
     }
 }
 
+/// GNU `.vcov.aliased(aliased, vc)` — pad NA rows/cols for aliased coefs.
+pub unsafe fn do_vcov_aliased(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let aliased = CAR(args);
+        let vc = CAR(CDR(args));
+        let p = XLENGTH(aliased) as usize;
+        let mut keep: Vec<usize> = Vec::new();
+        for i in 0..p {
+            let a = if TYPEOF(aliased) == SEXPTYPE::LGLSXP {
+                *LOGICAL(aliased).add(i) != 0
+            } else if TYPEOF(aliased) == SEXPTYPE::INTSXP {
+                *INTEGER(aliased).add(i) != 0
+            } else {
+                *REAL(aliased).add(i) != 0.0
+            };
+            if !a {
+                keep.push(i);
+            }
+        }
+        if keep.len() == p {
+            return vc;
+        }
+        let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, p as i32);
+        let _r = protect(result);
+        for i in 0..p * p {
+            *REAL(result).add(i) = NA_REAL;
+        }
+        let k = keep.len();
+        for (ii, &i) in keep.iter().enumerate() {
+            for (jj, &j) in keep.iter().enumerate() {
+                let src = if TYPEOF(vc) == SEXPTYPE::REALSXP {
+                    *REAL(vc).add(ii + jj * k)
+                } else {
+                    *INTEGER(vc).add(ii + jj * k) as f64
+                };
+                *REAL(result).add(i + j * p) = src;
+            }
+        }
+        result
+    }
+}
+
+
 
 
 
