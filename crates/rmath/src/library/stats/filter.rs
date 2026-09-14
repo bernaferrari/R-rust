@@ -2103,6 +2103,62 @@ pub unsafe fn do_window(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `aggregate.ts(x, nfrequency=1, FUN=sum)` — block sums.
+pub unsafe fn do_aggregate_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let (t0, freq) = ts_start_freq(x);
+        let nfreq_s = CAR(CDR(args));
+        let nfreq = if nfreq_s.is_null()
+            || nfreq_s == R_NilValue()
+            || nfreq_s == crate::sexp::globals::R_MissingArg()
+        {
+            1.0
+        } else if TYPEOF(nfreq_s) == SEXPTYPE::REALSXP {
+            *REAL(nfreq_s)
+        } else {
+            *INTEGER(nfreq_s) as f64
+        };
+        let len = (freq / nfreq).round() as usize;
+        if len == 0 {
+            return x;
+        }
+        let n = XLENGTH(x) as usize;
+        let nout = n / len;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nout as i64);
+        let _r = protect(result);
+        for i in 0..nout {
+            let mut s = 0.0;
+            for j in 0..len {
+                let idx = i * len + j;
+                s += if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(idx)
+                } else {
+                    *INTEGER(x).add(idx) as f64
+                };
+            }
+            *REAL(result).add(i) = s;
+        }
+        let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+        let _t = protect(tsp);
+        *REAL(tsp) = t0;
+        *REAL(tsp).add(1) = t0 + (nout as f64 - 1.0) / nfreq;
+        *REAL(tsp).add(2) = nfreq;
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
+            tsp,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"ts".as_ptr()),
+        );
+        result
+    }
+}
+
+
 /// GNU `window(x, start, end) <- value` — replace a freq-1 window.
 pub unsafe fn do_window_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

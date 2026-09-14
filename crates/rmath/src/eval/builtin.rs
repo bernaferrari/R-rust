@@ -4287,6 +4287,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_aggregate,
     },
     EvaluatedBuiltin {
+        name: "aggregate.ts",
+        handler: crate::library::stats::filter::do_aggregate_ts,
+    },
+    EvaluatedBuiltin {
         name: "ave",
         handler: crate::mainutils::essentials::do_ave,
     },
