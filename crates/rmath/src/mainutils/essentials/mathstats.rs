@@ -5916,6 +5916,25 @@ pub unsafe fn do_ssasymp_off(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `SSasympOrig(input, Asym, lrc)` — asymptotic through the origin.
+pub unsafe fn do_ssasymp_orig(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let input = CAR(args);
+        let asym = elt_real_safe(CAR(CDR(args)), 0);
+        let lrc = elt_real_safe(CAR(CDR(CDR(args))), 0);
+        let rc = lrc.exp();
+        let n = XLENGTH(input);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let x = elt_real_safe(input, i);
+            *REAL(result).add(i as usize) = asym * (1.0 - (-rc * x).exp());
+        }
+        result
+    }
+}
+
+
 
 
 
