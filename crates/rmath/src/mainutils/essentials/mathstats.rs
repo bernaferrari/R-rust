@@ -8420,6 +8420,12 @@ pub unsafe fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `summary.glm` — gaussian coefficient table from `summary.lm`.
+pub unsafe fn do_summary_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_summary_lm(call, op, args, rho) }
+}
+
+
 /// GNU `anova(lm)` one-term table.
 pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
