@@ -2227,6 +2227,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_update,
     },
     EvaluatedBuiltin {
+        name: "update.default",
+        handler: crate::mainutils::essentials::do_update,
+    },
+    EvaluatedBuiltin {
         name: "update.formula",
         handler: crate::library::stats::filter::do_update_formula,
     },
