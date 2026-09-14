@@ -3183,6 +3183,51 @@ fn mark_formula(x: SEXP) -> SEXP {
     }
 }
 
+/// GNU `update.formula(y ~ x, ~ . + z)` — add a term.
+pub unsafe fn do_update_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let old = CAR(args);
+        let new = CAR(CDR(args));
+        if TYPEOF(old) != SEXPTYPE::LANGSXP || TYPEOF(new) != SEXPTYPE::LANGSXP {
+            return old;
+        }
+        let y = CADR(old);
+        let x = CADDR(old);
+        let rhs = CADR(new);
+        if rhs.is_null() || TYPEOF(rhs) != SEXPTYPE::LANGSXP {
+            return old;
+        }
+        let op = CAR(rhs);
+        let opname = if TYPEOF(op) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        };
+        if opname != "+" {
+            return old;
+        }
+        let left = CADR(rhs);
+        let z = CADDR(rhs);
+        let left_name = if TYPEOF(left) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(left)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        };
+        if left_name != "." {
+            return old;
+        }
+        let plus = crate::sexp::symbol::Rf_install(c"+".as_ptr());
+        let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
+        let new_rhs = crate::sexp::constructors::Rf_lang3(plus, x, z);
+        mark_formula(crate::sexp::constructors::Rf_lang3(tilde, y, new_rhs))
+    }
+}
+
+
 fn parse_formula_text(s: SEXP) -> SEXP {
     unsafe {
         let mut status: std::os::raw::c_int = 0;
