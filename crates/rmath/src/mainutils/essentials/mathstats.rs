@@ -6837,6 +6837,56 @@ pub unsafe fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `ppr(x, y, nterms=1)` — one-term linear projection.
+pub unsafe fn do_ppr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let n = XLENGTH(x).min(XLENGTH(y)) as usize;
+        if n < 2 {
+            return R_NilValue();
+        }
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        for i in 0..n {
+            sx += elt_real_safe(x, i as i64);
+            sy += elt_real_safe(y, i as i64);
+        }
+        let nf = n as f64;
+        let mx = sx / nf;
+        let my = sy / nf;
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for i in 0..n {
+            let dx = elt_real_safe(x, i as i64) - mx;
+            let dy = elt_real_safe(y, i as i64) - my;
+            num += dx * dy;
+            den += dx * dx;
+        }
+        let b = if den > 0.0 { num / den } else { 0.0 };
+        let a = my - b * mx;
+        let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _f = protect(fitted);
+        let mut sse = 0.0;
+        for i in 0..n {
+            let fi = a + b * elt_real_safe(x, i as i64);
+            *REAL(fitted).add(i) = fi;
+            let e = elt_real_safe(y, i as i64) - fi;
+            sse += e * e;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, fitted);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(sse));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["fitted.values".to_string(), "gofn".to_string()],
+        );
+        result
+    }
+}
+
+
 /// GNU `ls.diag(ls.out)` — leverages from `$hat` or intercept + `X`.
 pub unsafe fn do_ls_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
