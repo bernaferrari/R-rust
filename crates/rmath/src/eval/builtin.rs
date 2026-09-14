@@ -3626,6 +3626,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_summary_glm,
     },
     EvaluatedBuiltin {
+        name: "model.tables",
+        handler: crate::mainutils::essentials::do_model_tables,
+    },
+    EvaluatedBuiltin {
         name: "summary.aov",
         handler: crate::mainutils::essentials::do_summary_aov,
     },

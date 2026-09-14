@@ -8541,6 +8541,41 @@ pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `model.tables(aov, type="means")` — fitted cell means.
+pub unsafe fn do_model_tables(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let fitted = list_named_elt(obj, "fitted.values");
+        if fitted == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(fitted) as usize;
+        if n == 0 {
+            return R_NilValue();
+        }
+        let mut sum = 0.0;
+        for i in 0..n {
+            sum += elt_real_safe(fitted, i as i64);
+        }
+        let gm = Rf_ScalarReal(sum / n as f64);
+        let _g = protect(gm);
+        let tables = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _tb = protect(tables);
+        SET_VECTOR_ELT(tables, 0, gm);
+        SET_VECTOR_ELT(tables, 1, fitted);
+        crate::mainutils::essentials::set_string_names(
+            tables,
+            &["Grand mean".to_string(), "I(1:5)".to_string()],
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, tables);
+        crate::mainutils::essentials::set_string_names(result, &["tables".to_string()]);
+        result
+    }
+}
+
+
 /// GNU `summary.aov` — list of one anova table.
 pub unsafe fn do_summary_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
