@@ -4763,6 +4763,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_dwilcox,
     },
     EvaluatedBuiltin {
+        name: "weighted.mean",
+        handler: crate::mainutils::essentials::do_weighted_mean,
+    },
+    EvaluatedBuiltin {
         name: "pwilcox",
         handler: crate::mainutils::essentials::do_pwilcox,
     },

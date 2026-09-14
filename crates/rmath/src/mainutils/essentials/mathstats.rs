@@ -6432,6 +6432,28 @@ pub unsafe fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `weighted.mean(x, w)` — `sum(x*w)/sum(w)`.
+pub unsafe fn do_weighted_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let w = CAR(CDR(args));
+        let n = XLENGTH(x).min(XLENGTH(w)) as usize;
+        if n == 0 {
+            return Rf_ScalarReal(f64::NAN);
+        }
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for i in 0..n {
+            let xi = elt_real_safe(x, i as i64);
+            let wi = elt_real_safe(w, i as i64);
+            num += xi * wi;
+            den += wi;
+        }
+        Rf_ScalarReal(if den != 0.0 { num / den } else { f64::NAN })
+    }
+}
+
+
 /// GNU `poly(x, 1, simple=TRUE)` — centered unit-norm linear term.
 pub unsafe fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
