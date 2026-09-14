@@ -2547,6 +2547,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_resid,
     },
     EvaluatedBuiltin {
+        name: "weighted.residuals",
+        handler: crate::library::stats::filter::do_resid,
+    },
+    EvaluatedBuiltin {
         name: "deviance",
         handler: crate::library::stats::filter::do_deviance,
     },
