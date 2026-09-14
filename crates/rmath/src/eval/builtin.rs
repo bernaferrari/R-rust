@@ -2383,6 +2383,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_kernel,
     },
     EvaluatedBuiltin {
+        name: ".getXlevels",
+        handler: crate::library::stats::filter::do_get_xlevels,
+    },
+    EvaluatedBuiltin {
         name: ".MFclass",
         handler: crate::library::stats::filter::do_mfclass,
     },

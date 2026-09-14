@@ -3239,6 +3239,69 @@ pub unsafe fn do_nknots_smspl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `.getXlevels(Terms, m)` — factor levels from the model frame.
+pub unsafe fn do_get_xlevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let m = CAR(CDR(args));
+        if m.is_null() || TYPEOF(m) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            m,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let mut out_cols: Vec<SEXP> = Vec::new();
+        let mut out_names: Vec<String> = Vec::new();
+        for j in 0..XLENGTH(m) {
+            let col = VECTOR_ELT(m, j);
+            let class = crate::sexp::attrib_core::getAttrib(
+                col,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            );
+            let mut is_fac = false;
+            if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(class) {
+                    if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i))).to_bytes() == b"factor" {
+                        is_fac = true;
+                        break;
+                    }
+                }
+            }
+            if !is_fac {
+                continue;
+            }
+            let lev = crate::sexp::attrib_core::getAttrib(
+                col,
+                crate::sexp::symbol::Rf_install(c"levels".as_ptr()),
+            );
+            if lev.is_null() || TYPEOF(lev) != SEXPTYPE::STRSXP {
+                continue;
+            }
+            out_cols.push(lev);
+            if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && j < XLENGTH(names) {
+                out_names.push(
+                    std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, j)))
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            } else {
+                out_names.push(format!("V{}", j + 1));
+            }
+        }
+        if out_cols.is_empty() {
+            return R_NilValue();
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, out_cols.len() as i64);
+        let _r = protect(result);
+        for (i, col) in out_cols.iter().enumerate() {
+            SET_VECTOR_ELT(result, i as i64, *col);
+        }
+        crate::mainutils::essentials::set_string_names(result, &out_names);
+        result
+    }
+}
+
+
 /// GNU `.MFclass(x)` — model-frame column class label.
 pub unsafe fn do_mfclass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
