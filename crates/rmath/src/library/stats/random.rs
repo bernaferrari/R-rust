@@ -1226,6 +1226,31 @@ pub unsafe fn do_rmultinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 
+pub unsafe fn do_r2dtable_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let r = CADR(args);
+        if adapter_absent(r) {
+            missing_required(call, "r");
+        }
+        let c = CADDR(args);
+        if adapter_absent(c) {
+            missing_required(call, "c");
+        }
+        let n_i = coerceVector(n, SEXPTYPE::INTSXP.as_c_int());
+        let _n = protect(n_i);
+        let r_i = coerceVector(r, SEXPTYPE::INTSXP.as_c_int());
+        let _r = protect(r_i);
+        let c_i = coerceVector(c, SEXPTYPE::INTSXP.as_c_int());
+        let _c = protect(c_i);
+        r2dtable(n_i, r_i, c_i)
+    }
+}
+
+
 pub unsafe fn do_rcauchy_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = CAR(args);
