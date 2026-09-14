@@ -6156,6 +6156,60 @@ pub unsafe fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `mahalanobis(x, center, cov)` — squared Mahalanobis, 2 columns.
+pub unsafe fn do_mahalanobis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let center = CAR(CDR(args));
+        let cov = CAR(CDR(CDR(args)));
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (n, p) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            return R_NilValue();
+        };
+        if p != 2 || n == 0 {
+            return R_NilValue();
+        }
+        let c0 = elt_real_safe(center, 0);
+        let c1 = elt_real_safe(center, 1);
+        let a00 = elt_real_safe(cov, 0);
+        let a10 = elt_real_safe(cov, 1);
+        let a01 = if XLENGTH(cov) > 2 {
+            elt_real_safe(cov, 2)
+        } else {
+            a10
+        };
+        let a11 = if XLENGTH(cov) > 3 {
+            elt_real_safe(cov, 3)
+        } else {
+            a00
+        };
+        let Some(inv) = invert2(a00, a10, a01, a11) else {
+            return R_NilValue();
+        };
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _r = protect(result);
+        for i in 0..n {
+            let d0 = elt_real_safe(x, i as i64) - c0;
+            let d1 = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i + n)
+            } else {
+                *INTEGER(x).add(i + n) as f64
+            } - c1;
+            let t0 = inv.0 * d0 + inv.2 * d1;
+            let t1 = inv.1 * d0 + inv.3 * d1;
+            *REAL(result).add(i) = d0 * t0 + d1 * t1;
+        }
+        result
+    }
+}
+
+
 
 
 

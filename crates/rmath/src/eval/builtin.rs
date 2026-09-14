@@ -3844,6 +3844,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_cov,
     },
     EvaluatedBuiltin {
+        name: "mahalanobis",
+        handler: crate::mainutils::essentials::do_mahalanobis,
+    },
+    EvaluatedBuiltin {
         name: "cor",
         handler: crate::mainutils::essentials::do_cor,
     },
