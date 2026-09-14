@@ -6284,6 +6284,32 @@ pub unsafe fn do_cov_wt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `cov2cor(V)` — scale a 2×2 covariance to a correlation.
+pub unsafe fn do_cov2cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let v = CAR(args);
+        if XLENGTH(v) < 4 {
+            return R_NilValue();
+        }
+        let a00 = elt_real_safe(v, 0);
+        let a10 = elt_real_safe(v, 1);
+        let a01 = elt_real_safe(v, 2);
+        let a11 = elt_real_safe(v, 3);
+        let s0 = a00.max(0.0).sqrt();
+        let s1 = a11.max(0.0).sqrt();
+        let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
+        let _r = protect(result);
+        *REAL(result) = 1.0;
+        let c01 = if s0 > 0.0 && s1 > 0.0 { a01 / (s0 * s1) } else { 0.0 };
+        let c10 = if s0 > 0.0 && s1 > 0.0 { a10 / (s0 * s1) } else { 0.0 };
+        *REAL(result).add(1) = c10;
+        *REAL(result).add(2) = c01;
+        *REAL(result).add(3) = 1.0;
+        result
+    }
+}
+
+
 
 
 
