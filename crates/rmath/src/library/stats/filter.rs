@@ -2236,6 +2236,32 @@ pub unsafe fn do_is_leaf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `is.stepfun(x)` — function that inherits class `stepfun`.
+pub unsafe fn do_is_stepfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let is_fun = TYPEOF(x) == SEXPTYPE::CLOSXP
+            || TYPEOF(x) == SEXPTYPE::BUILTINSXP
+            || TYPEOF(x) == SEXPTYPE::SPECIALSXP;
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let mut has = false;
+        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i)));
+                if s.to_bytes() == b"stepfun" {
+                    has = true;
+                    break;
+                }
+            }
+        }
+        Rf_ScalarLogical(if is_fun && has { 1 } else { 0 })
+    }
+}
+
+
 
 
 /// GNU `na.contiguous(x)` longest non-NA run.
