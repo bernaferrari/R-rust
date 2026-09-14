@@ -1994,6 +1994,29 @@ pub unsafe fn do_as_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `hasTsp(x)` — ensure a `tsp` attribute, do not set class.
+pub unsafe fn do_has_tsp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let existing = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
+        );
+        if !existing.is_null() && existing != R_NilValue() {
+            return x;
+        }
+        let n = XLENGTH(x);
+        let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+        let _t = protect(tsp);
+        *REAL(tsp) = 1.0;
+        *REAL(tsp).add(1) = n as f64;
+        *REAL(tsp).add(2) = 1.0;
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::Rf_install(c"tsp".as_ptr()), tsp);
+        x
+    }
+}
+
+
 /// GNU `window(ts, start, end)`.
 pub unsafe fn do_window(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

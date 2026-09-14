@@ -4959,6 +4959,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ts,
     },
     EvaluatedBuiltin {
+        name: "hasTsp",
+        handler: crate::library::stats::filter::do_has_tsp,
+    },
+    EvaluatedBuiltin {
         name: "ts.union",
         handler: crate::mainutils::essentials::do_ts_union,
     },
