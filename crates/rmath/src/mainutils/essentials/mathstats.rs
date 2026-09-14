@@ -6910,6 +6910,49 @@ pub unsafe fn do_make_link(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `power(lambda)` — Box-Cox GLM link name.
+pub unsafe fn do_power(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let lambda = if args.is_null()
+            || args == R_NilValue()
+            || CAR(args) == R_MissingArg()
+        {
+            1.0
+        } else {
+            elt_real_safe(CAR(args), 0)
+        };
+        let name = if lambda <= 0.0 {
+            "log".to_string()
+        } else if (lambda - 1.0).abs() < 1e-12 {
+            "identity".to_string()
+        } else {
+            let r = (lambda * 1000.0).round() / 1000.0;
+            if (r - r.round()).abs() < 1e-12 {
+                format!("mu^{}", r as i64)
+            } else {
+                format!("mu^{r}")
+            }
+        };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(
+            result,
+            0,
+            Rf_mkString(CString::new(name).unwrap().as_ptr()),
+        );
+        crate::mainutils::essentials::set_string_names(result, &["name".to_string()]);
+        let class = Rf_mkString(c"link-glm".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 

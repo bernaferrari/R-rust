@@ -2167,6 +2167,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_make_link,
     },
     EvaluatedBuiltin {
+        name: "power",
+        handler: crate::mainutils::essentials::do_power,
+    },
+    EvaluatedBuiltin {
         name: "family",
         handler: crate::mainutils::essentials::do_family,
     },
