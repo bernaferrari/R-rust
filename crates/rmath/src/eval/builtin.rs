@@ -1983,6 +1983,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_vcov,
     },
     EvaluatedBuiltin {
+        name: "vcov.lm",
+        handler: crate::mainutils::essentials::do_vcov_lm,
+    },
+    EvaluatedBuiltin {
         name: "hat",
         handler: crate::mainutils::essentials::do_hat,
     },

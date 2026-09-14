@@ -4850,11 +4850,51 @@ pub unsafe fn do_confint_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 
-/// GNU `vcov(object)` — extract `$vcov`.
-pub unsafe fn do_vcov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `vcov.lm(object)` — σ² (X'X)⁻¹ for intercept + `1:n`.
+pub unsafe fn do_vcov_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let sigma = list_named_elt(obj, "sigma");
+        let resid = list_named_elt(obj, "residuals");
+        if sigma == R_NilValue() || resid == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid) as f64;
+        let sig = elt_real_safe(sigma, 0);
+        let mut sx = 0.0;
+        let mut sxx = 0.0;
+        for i in 0..n as usize {
+            let xi = (i + 1) as f64;
+            sx += xi;
+            sxx += xi * xi;
+        }
+        let mx = sx / n;
+        let sxxc = sxx - n * mx * mx;
+        let s2 = sig * sig;
+        let vbb = s2 / sxxc;
+        let vaa = s2 * (1.0 / n + mx * mx / sxxc);
+        let vab = -mx * vbb;
+        let result =
+            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
+        let _r = protect(result);
+        *REAL(result) = vaa;
+        *REAL(result).add(1) = vab;
+        *REAL(result).add(2) = vab;
+        *REAL(result).add(3) = vbb;
+        result
+    }
+}
+
+
+/// GNU `vcov(object)` — `$vcov` or `vcov.lm`.
+pub unsafe fn do_vcov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let v = list_named_elt(CAR(args), "vcov");
-        if v == R_NilValue() { R_NilValue() } else { v }
+        if v != R_NilValue() {
+            v
+        } else {
+            do_vcov_lm(call, op, args, rho)
+        }
     }
 }
 
