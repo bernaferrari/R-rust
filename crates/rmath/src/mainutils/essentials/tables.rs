@@ -226,6 +226,12 @@ pub unsafe fn do_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `write.ftable(x)` — return `x` after optional print.
+pub unsafe fn do_write_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(args) }
+}
+
+
 unsafe fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());

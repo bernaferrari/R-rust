@@ -4427,6 +4427,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ftable,
     },
     EvaluatedBuiltin {
+        name: "write.ftable",
+        handler: crate::mainutils::essentials::do_write_ftable,
+    },
+    EvaluatedBuiltin {
         name: "xtabs",
         handler: crate::mainutils::essentials::do_xtabs,
     },
