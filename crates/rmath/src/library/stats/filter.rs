@@ -2954,6 +2954,35 @@ fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
             return;
         }
         if TYPEOF(expr) == SEXPTYPE::LANGSXP {
+            let mut cell = CDR(expr);
+            while !cell.is_null() && cell != R_NilValue() {
+                collect_formula_symbols(CAR(cell), out);
+                cell = CDR(cell);
+            }
+        }
+    }
+}
+
+fn collect_term_labels(expr: SEXP, out: &mut Vec<String>) {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() {
+            return;
+        }
+        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
+                .to_string_lossy()
+                .into_owned();
+            if !matches!(
+                name.as_str(),
+                "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
+            ) {
+                if !out.iter().any(|s| s == &name) {
+                    out.push(name);
+                }
+            }
+            return;
+        }
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP {
             let op = CAR(expr);
             if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
                 let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
@@ -2974,7 +3003,7 @@ fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
             }
             let mut cell = CDR(expr);
             while !cell.is_null() && cell != R_NilValue() {
-                collect_formula_symbols(CAR(cell), out);
+                collect_term_labels(CAR(cell), out);
                 cell = CDR(cell);
             }
         }
@@ -3778,7 +3807,7 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             Rf_ScalarInteger(1),
         );
         let mut labels = Vec::new();
-        collect_formula_symbols(form, &mut labels);
+        collect_term_labels(form, &mut labels);
         if response > 0 && !labels.is_empty() {
             labels.remove(0);
         }
