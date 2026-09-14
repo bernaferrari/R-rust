@@ -226,9 +226,76 @@ pub unsafe fn do_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-/// GNU `write.ftable(x)` — return `x` after optional print.
+/// GNU `write.ftable(x, file)` — write values and return `x`.
 pub unsafe fn do_write_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) }
+    unsafe {
+        let x = CAR(args);
+        let mut file = R_NilValue();
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name == "file" || name.is_empty() {
+                file = CAR(cell);
+                if name == "file" {
+                    break;
+                }
+            }
+            cell = CDR(cell);
+        }
+        if !file.is_null() && file != R_NilValue() && TYPEOF(file) == SEXPTYPE::STRSXP && XLENGTH(file) >= 1 {
+            let path = CStr::from_ptr(CHAR(STRING_ELT(file, 0)))
+                .to_string_lossy()
+                .into_owned();
+            if !path.is_empty() {
+                let n = XLENGTH(x) as usize;
+                let mut parts = Vec::with_capacity(n);
+                for i in 0..n {
+                    parts.push(format!("{}", crate::mainutils::essentials::elt_real_safe(x, i as i64)));
+                }
+                let _ = std::fs::write(&path, parts.join(" "));
+            }
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        x
+    }
+}
+
+/// GNU `read.ftable(file)` — read values written by `write.ftable`.
+pub unsafe fn do_read_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let file = CAR(args);
+        if file.is_null() || file == R_NilValue() || TYPEOF(file) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        let path = CStr::from_ptr(CHAR(STRING_ELT(file, 0)))
+            .to_string_lossy()
+            .into_owned();
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return R_NilValue();
+        };
+        let vals: Vec<f64> = text
+            .split_whitespace()
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, vals.len() as i64);
+        let _r = protect(result);
+        for (i, v) in vals.iter().enumerate() {
+            *REAL(result).add(i) = *v;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"ftable".as_ptr()),
+        );
+        result
+    }
 }
 
 

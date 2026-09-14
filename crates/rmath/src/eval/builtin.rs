@@ -4431,6 +4431,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_addmargins,
     },
     EvaluatedBuiltin {
+        name: "read.ftable",
+        handler: crate::mainutils::essentials::do_read_ftable,
+    },
+    EvaluatedBuiltin {
         name: "ftable",
         handler: crate::mainutils::essentials::do_ftable,
     },
