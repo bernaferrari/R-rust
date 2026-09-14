@@ -2031,6 +2031,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ssfol,
     },
     EvaluatedBuiltin {
+        name: "SSweibull",
+        handler: crate::mainutils::essentials::do_ssweibull,
+    },
+    EvaluatedBuiltin {
         name: "sortedXyData",
         handler: crate::mainutils::essentials::do_sorted_xy_data,
     },
