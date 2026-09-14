@@ -2507,6 +2507,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_model_matrix_default,
     },
     EvaluatedBuiltin {
+        name: "model.matrix.lm",
+        handler: crate::library::stats::filter::do_model_matrix_lm,
+    },
+    EvaluatedBuiltin {
         name: "reformulate",
         handler: crate::library::stats::filter::do_reformulate,
     },

@@ -2750,6 +2750,30 @@ pub unsafe fn do_model_matrix_default(
 }
 
 
+/// GNU `model.matrix.lm(object)` — intercept plus `1:n` when `$x` is missing.
+pub unsafe fn do_model_matrix_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let x = named_list_elt(obj, "x");
+        if !x.is_null() && x != R_NilValue() {
+            return x;
+        }
+        let resid = named_list_elt(obj, "residuals");
+        if resid.is_null() || resid == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid) as usize;
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+        let _m = protect(mat);
+        for i in 0..n {
+            *REAL(mat).add(i) = 1.0;
+            *REAL(mat).add(i + n) = (i + 1) as f64;
+        }
+        mat
+    }
+}
+
+
 /// GNU `reformulate(termlabels, response=NULL)` — build a formula.
 pub unsafe fn do_reformulate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
