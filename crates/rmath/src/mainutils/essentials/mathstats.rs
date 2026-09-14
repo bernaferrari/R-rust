@@ -6756,13 +6756,54 @@ pub unsafe fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             coef,
             &["Intercept".to_string(), "X".to_string()],
         );
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _rs = protect(resid);
+        let hat = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _h = protect(hat);
+        let invn = 1.0 / nf;
+        for i in 0..n {
+            let xi = elt_real_safe(x, i as i64);
+            let yi = elt_real_safe(y, i as i64);
+            *REAL(resid).add(i) = yi - (a + b * xi);
+            *REAL(hat).add(i) = if den > 0.0 {
+                invn + (xi - mx) * (xi - mx) / den
+            } else {
+                invn
+            };
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, coef);
-        crate::mainutils::essentials::set_string_names(result, &["coefficients".to_string()]);
+        SET_VECTOR_ELT(result, 1, resid);
+        SET_VECTOR_ELT(result, 2, hat);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "coefficients".to_string(),
+                "residuals".to_string(),
+                "hat".to_string(),
+            ],
+        );
         result
     }
 }
+
+/// GNU `ls.diag(ls.out)` — leverages from `$hat` or intercept + `X`.
+pub unsafe fn do_ls_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let h = list_named_elt(obj, "hat");
+        if h == R_NilValue() {
+            return R_NilValue();
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, h);
+        crate::mainutils::essentials::set_string_names(result, &["hat".to_string()]);
+        result
+    }
+}
+
 
 /// GNU `weighted.mean(x, w)` — `sum(x*w)/sum(w)`.
 pub unsafe fn do_weighted_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
