@@ -3266,6 +3266,12 @@ pub unsafe fn do_vcov_aliased(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `makepredictcall(var, call)` — return `call` unchanged.
+pub unsafe fn do_makepredictcall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(CDR(args)) }
+}
+
+
 
 
 

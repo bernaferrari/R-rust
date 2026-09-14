@@ -2527,6 +2527,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_df_residual,
     },
     EvaluatedBuiltin {
+        name: "makepredictcall",
+        handler: crate::library::stats::filter::do_makepredictcall,
+    },
+    EvaluatedBuiltin {
         name: "nobs",
         handler: crate::library::stats::filter::do_nobs,
     },
