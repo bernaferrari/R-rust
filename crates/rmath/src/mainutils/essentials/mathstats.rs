@@ -4898,13 +4898,59 @@ pub unsafe fn do_vcov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `dummy.coef(object)` — `as.list(coef)` when there are no factors.
+/// GNU `dummy.coef(object)` — original coding; treatment 2-level factor.
 pub unsafe fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let cf = list_named_elt(obj, "coefficients");
         if cf == R_NilValue() {
             return R_NilValue();
+        }
+        let xl = crate::sexp::attrib_core::getAttrib(
+            obj,
+            crate::sexp::symbol::Rf_install(c"xlevels".as_ptr()),
+        );
+        if !xl.is_null()
+            && xl != R_NilValue()
+            && TYPEOF(xl) == SEXPTYPE::VECSXP
+            && XLENGTH(xl) >= 1
+            && XLENGTH(cf) >= 2
+        {
+            let lev = VECTOR_ELT(xl, 0);
+            let nlev = XLENGTH(lev);
+            if TYPEOF(lev) == SEXPTYPE::STRSXP && nlev >= 2 {
+                let fac = Rf_allocVector3(SEXPTYPE::REALSXP, nlev);
+                let _f = protect(fac);
+                *REAL(fac) = 0.0;
+                for i in 1..nlev as usize {
+                    *REAL(fac).add(i) = elt_real_safe(cf, i as i64);
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    fac,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    lev,
+                );
+                let xl_names = crate::sexp::attrib_core::getAttrib(
+                    xl,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+                let _r = protect(result);
+                SET_VECTOR_ELT(result, 0, Rf_ScalarReal(elt_real_safe(cf, 0)));
+                SET_VECTOR_ELT(result, 1, fac);
+                let on = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+                let _on = protect(on);
+                SET_STRING_ELT(on, 0, Rf_mkChar(c"(Intercept)".as_ptr()));
+                if !xl_names.is_null() && TYPEOF(xl_names) == SEXPTYPE::STRSXP {
+                    SET_STRING_ELT(on, 1, STRING_ELT(xl_names, 0));
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    on,
+                );
+                return result;
+            }
         }
         let n = XLENGTH(cf);
         let names = crate::sexp::attrib_core::getAttrib(
@@ -4929,6 +4975,7 @@ pub unsafe fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         result
     }
 }
+
 
 
 /// GNU `hat(x)` leverages for intercept + x.
@@ -5456,9 +5503,26 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let mut ys = Vec::with_capacity(n);
         let mut xs = Vec::with_capacity(n);
+        let mut x_is_factor = false;
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(class) {
+                if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i))).to_bytes() == b"factor" {
+                    x_is_factor = true;
+                    break;
+                }
+            }
+        }
         for i in 0..n {
             ys.push(elt_real_safe(y, i as i64));
-            xs.push(elt_real_safe(x, i as i64));
+            let mut xi = elt_real_safe(x, i as i64);
+            if x_is_factor {
+                xi -= 1.0;
+            }
+            xs.push(xi);
         }
         let mut sxx = 0.0;
         let mut sxy = 0.0;
@@ -5480,7 +5544,7 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _c = protect(coef);
         *REAL(coef) = b0;
         *REAL(coef).add(1) = b1;
-        set_string_names(coef, &["(Intercept)".to_string(), xname]);
+        set_string_names(coef, &["(Intercept)".to_string(), xname.clone()]);
         let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _f = protect(fitted);
         let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
@@ -5541,6 +5605,23 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::sexp::attrib_core::R_ClassSymbol(),
             class,
         );
+        if x_is_factor {
+            let lev = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::symbol::Rf_install(c"levels".as_ptr()),
+            );
+            if !lev.is_null() && TYPEOF(lev) == SEXPTYPE::STRSXP {
+                let xl = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+                let _xl = protect(xl);
+                SET_VECTOR_ELT(xl, 0, lev);
+                crate::mainutils::essentials::set_string_names(xl, &[xname.clone()]);
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::symbol::Rf_install(c"xlevels".as_ptr()),
+                    xl,
+                );
+            }
+        }
         result
     }
 }
