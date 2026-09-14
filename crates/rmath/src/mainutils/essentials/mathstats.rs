@@ -8709,6 +8709,60 @@ pub unsafe fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 
+/// GNU `stepfun(x, y)` — cadlag step function, `length(y)=length(x)+1`.
+pub unsafe fn do_stepfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        let n = XLENGTH(x);
+        if n < 1 || XLENGTH(y) != n + 1 {
+            return R_NilValue();
+        }
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
+        let _env = protect(env);
+        crate::sexp::envir::defineVar(Rf_install(c"x".as_ptr()), x, env);
+        crate::sexp::envir::defineVar(Rf_install(c"y".as_ptr()), y, env);
+        let vsym = Rf_install(c"v".as_ptr());
+        let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
+        SETTAG(formals, vsym);
+        let body = crate::sexp::constructors::Rf_lang2(Rf_install(c".stepfun_apply".as_ptr()), vsym);
+        let fun = crate::mainutils::dstruct::mkCLOSXP(formals, body, env);
+        let _fun = protect(fun);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"stepfun".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"function".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(fun, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        fun
+    }
+}
+
+/// Evaluate `stepfun` at `v`.
+pub unsafe fn do_stepfun_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let v = CAR(args);
+        let env = crate::sexp::accessors::ENCLOS(rho);
+        let x = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"x".as_ptr()));
+        let y = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"y".as_ptr()));
+        if x.is_null() || y.is_null() || x == crate::sexp::globals::R_UnboundValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(x) as usize;
+        let nv = XLENGTH(v) as usize;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
+        let _r = protect(result);
+        for j in 0..nv {
+            let t = elt_real_safe(v, j as i64);
+            let mut i = 0usize;
+            while i < n && elt_real_safe(x, i as i64) <= t {
+                i += 1;
+            }
+            *REAL(result).add(j) = elt_real_safe(y, i as i64);
+        }
+        result
+    }
+}
+
+
 /// Evaluate an ecdf closure: last y with vals <= v, else 0 / 1 at ends.
 pub unsafe fn do_ecdf_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
