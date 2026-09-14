@@ -9295,6 +9295,7 @@ pub unsafe fn do_density(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             );
         }
         let mut n_user: i64 = 512;
+        let mut bw_arg: Option<f64> = None;
         let mut cell = CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
@@ -9314,13 +9315,21 @@ pub unsafe fn do_density(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 } else {
                     512
                 };
+            } else if name == "bw" {
+                let v = CAR(cell);
+                if TYPEOF(v) == SEXPTYPE::REALSXP || TYPEOF(v) == SEXPTYPE::INTSXP {
+                    let b = elt_real_safe(v, 0);
+                    if b.is_finite() && b > 0.0 {
+                        bw_arg = Some(b);
+                    }
+                }
             }
             cell = CDR(cell);
         }
         if n_user < 1 {
             n_user = 512;
         }
-        let bw = bw_nrd0(&xs);
+        let bw = bw_arg.unwrap_or_else(|| bw_nrd0(&xs));
         let xmin = xs.iter().copied().fold(f64::INFINITY, f64::min);
         let xmax = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let from = xmin - 3.0 * bw;

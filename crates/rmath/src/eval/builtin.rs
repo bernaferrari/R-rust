@@ -2323,6 +2323,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_density,
     },
     EvaluatedBuiltin {
+        name: "density.default",
+        handler: crate::mainutils::essentials::do_density,
+    },
+    EvaluatedBuiltin {
         name: "smooth",
         handler: crate::library::stats::smooth::do_smooth,
     },
