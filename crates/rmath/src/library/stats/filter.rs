@@ -2260,6 +2260,12 @@ pub unsafe fn do_is_mts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+
+/// GNU `as.stepfun(x)` — identity when `is.stepfun(x)`.
+pub unsafe fn do_as_stepfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(args) }
+}
+
 /// GNU `is.leaf(object)` — TRUE when `attr(*, "leaf")` is TRUE.
 pub unsafe fn do_is_leaf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

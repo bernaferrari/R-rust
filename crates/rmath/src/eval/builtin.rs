@@ -2403,6 +2403,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_bandwidth_kernel,
     },
     EvaluatedBuiltin {
+        name: "as.stepfun",
+        handler: crate::library::stats::filter::do_as_stepfun,
+    },
+    EvaluatedBuiltin {
         name: "kernapply",
         handler: crate::library::stats::filter::do_kernapply,
     },
