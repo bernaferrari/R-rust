@@ -9337,6 +9337,27 @@ pub unsafe fn do_order_dendrogram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
     }
 }
 
+/// GNU `dendrapply(X, FUN)` — apply `FUN` to a dendrogram (leaf vector).
+pub unsafe fn do_dendrapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let fun = CAR(CDR(args));
+        if !class_contains(x, "dendrogram") {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'X' is not a dendrogram",
+            );
+        }
+        if fun.is_null() || fun == R_NilValue() {
+            return x;
+        }
+        let call = crate::sexp::constructors::Rf_lang2(fun, x);
+        let _c = protect(call);
+        crate::eval::eval::Rf_eval(call, rho)
+    }
+}
+
+
 /// GNU `simulate(lm, nsim=1)` — `fitted + rnorm(n, sd=sigma)`.
 pub unsafe fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

@@ -2311,6 +2311,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_power_prop_test,
     },
     EvaluatedBuiltin {
+        name: "dendrapply",
+        handler: crate::mainutils::essentials::do_dendrapply,
+    },
+    EvaluatedBuiltin {
         name: "power.anova.test",
         handler: crate::mainutils::essentials::do_power_anova_test,
     },
