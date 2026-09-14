@@ -2887,6 +2887,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::optim::do_optim,
     },
     EvaluatedBuiltin {
+        name: "optimHess",
+        handler: crate::library::stats::optim::do_optim_hess,
+    },
+    EvaluatedBuiltin {
         name: "integrate",
         handler: crate::library::stats::integrate::do_integrate,
     },

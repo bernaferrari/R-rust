@@ -1157,3 +1157,46 @@ pub unsafe fn do_optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `optimHess(par, fn)` — numerical Hessian with `ndeps=0.001`.
+pub unsafe fn do_optim_hess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let par = CAR(args);
+        let fn_sexp = CAR(CDR(args));
+        let npar = XLENGTH(par) as i32;
+        if npar < 1 {
+            return R_NilValue();
+        }
+        let parscale = Rf_allocVector3(SEXPTYPE::REALSXP, npar as i64);
+        let _ps = protect(parscale);
+        let ndeps = Rf_allocVector3(SEXPTYPE::REALSXP, npar as i64);
+        let _nd = protect(ndeps);
+        for i in 0..npar as usize {
+            *REAL(parscale).add(i) = 1.0;
+            *REAL(ndeps).add(i) = 0.001;
+        }
+        let options = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _o = protect(options);
+        SET_VECTOR_ELT(options, 0, Rf_ScalarReal(1.0));
+        SET_VECTOR_ELT(options, 1, parscale);
+        SET_VECTOR_ELT(options, 2, ndeps);
+        crate::mainutils::essentials::set_string_names(
+            options,
+            &[
+                "fnscale".to_string(),
+                "parscale".to_string(),
+                "ndeps".to_string(),
+            ],
+        );
+        let internal = Rf_cons(
+            R_NilValue(),
+            Rf_cons(
+                par,
+                Rf_cons(fn_sexp, Rf_cons(R_NilValue(), Rf_cons(options, R_NilValue()))),
+            ),
+        );
+        let _i = protect(internal);
+        optimhess(call, op, internal, rho)
+    }
+}
+
+
