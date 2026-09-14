@@ -8690,6 +8690,25 @@ pub unsafe fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `knots(Fn)` — unique x of an ecdf/stepfun.
+pub unsafe fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let fun = CAR(args);
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+            return R_NilValue();
+        }
+        let env = crate::sexp::accessors::CLOENV(fun);
+        for name in [c"x", c"vals"] {
+            let v = crate::sexp::envir::R_findVarInFrame(env, Rf_install(name.as_ptr()));
+            if !v.is_null() && v != R_NilValue() && v != crate::sexp::globals::R_UnboundValue() {
+                return v;
+            }
+        }
+        R_NilValue()
+    }
+}
+
+
 /// Evaluate an ecdf closure: last y with vals <= v, else 0 / 1 at ends.
 pub unsafe fn do_ecdf_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
