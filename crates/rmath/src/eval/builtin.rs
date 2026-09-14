@@ -2019,6 +2019,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ssbiexp,
     },
     EvaluatedBuiltin {
+        name: "SSasympOff",
+        handler: crate::mainutils::essentials::do_ssasymp_off,
+    },
+    EvaluatedBuiltin {
         name: "lm.fit",
         handler: crate::mainutils::essentials::do_lm_fit,
     },
