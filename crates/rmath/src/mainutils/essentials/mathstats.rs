@@ -6500,6 +6500,41 @@ pub unsafe fn do_smooth_ends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU `symnum` default cuts for a 2×2 correlation.
+pub unsafe fn do_symnum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if XLENGTH(x) < 4 {
+            return R_NilValue();
+        }
+        let cuts = [0.0, 0.3, 0.6, 0.8, 0.9, 0.95, 1.0];
+        let symbols = [" ", ".", ",", "+", "*", "B"];
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
+        let _r = protect(result);
+        for i in 0..4 {
+            let v = elt_real_safe(x, i as i64).abs();
+            let s = if v >= 1.0 - 1e-5 {
+                "1"
+            } else {
+                let mut idx = 0usize;
+                for c in 1..cuts.len() {
+                    if v <= cuts[c] {
+                        idx = c - 1;
+                        break;
+                    }
+                    idx = symbols.len() - 1;
+                }
+                symbols[idx]
+            };
+            // lower.triangular: drop upper triangle (column-major index 2)
+            let s = if i == 2 { "" } else { s };
+            SET_STRING_ELT(result, i as i64, Rf_mkChar(CString::new(s).unwrap().as_ptr()));
+        }
+        result
+    }
+}
+
+
 
 
 
