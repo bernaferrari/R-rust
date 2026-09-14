@@ -5026,6 +5026,40 @@ pub unsafe fn do_hatvalues(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
     }
 }
 
+/// GNU `influence.measures(model)` — `infmat[,"hat"]` from `$hat`.
+pub unsafe fn do_influence_measures(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let h = list_named_elt(obj, "hat");
+        if h == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(h);
+        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 1);
+        let _m = protect(mat);
+        for i in 0..n as usize {
+            *REAL(mat).add(i) = elt_real_safe(h, i as i64);
+        }
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _cn = protect(cn);
+        SET_STRING_ELT(cn, 0, Rf_mkChar(c"hat".as_ptr()));
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, mat);
+        crate::mainutils::essentials::set_string_names(result, &["infmat".to_string()]);
+        result
+    }
+}
+
+
 /// GNU `rstandard(model)` as `resid / (sigma * sqrt(1-hat))`.
 pub unsafe fn do_rstandard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
