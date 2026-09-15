@@ -699,6 +699,106 @@ pub unsafe fn do_ar_ols(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `ar.mle` — univariate MLE via CSS AR(1).
+pub unsafe fn do_ar_mle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dim = getAttrib(x, R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) > 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "MLE only implemented for univariate series",
+            );
+        }
+        if x.is_null() || x == R_NilValue() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'x' must be numeric",
+            );
+        }
+        if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'x' must be numeric",
+            );
+        }
+        let n = XLENGTH(x) as usize;
+        let mut y = vec![0.0; n];
+        for i in 0..n {
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                let iv = *INTEGER(x).add(i);
+                if iv == NA_INTEGER {
+                    crate::mainutils::errors::errorcall_str(
+                        crate::mainutils::errors::R_getCurrentCall(),
+                        "missing values in object",
+                    );
+                }
+                iv as f64
+            };
+            if v.is_nan() {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "missing values in object",
+                );
+            }
+            y[i] = v;
+        }
+        let mut order_max: Option<i32> = None;
+        let mut a = CDR(args);
+        while !a.is_null() && a != R_NilValue() {
+            let tag = TAG(a);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned();
+                if name == "order.max" {
+                    order_max = Some(asInteger(CAR(a)));
+                }
+            }
+            a = CDR(a);
+        }
+        if let Some(om) = order_max {
+            if om < 0 {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "'order.max' must be >= 0",
+                );
+            }
+            if om as usize >= n {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "'order.max' must be < 'n.used'",
+                );
+            }
+        }
+        let (phi, mu, _sigma2) = css_ar1(&y);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_ScalarInteger(1));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(phi));
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(mu));
+        SET_VECTOR_ELT(result, 3, Rf_mkString(c"MLE".as_ptr()));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "order".to_string(),
+                "ar".to_string(),
+                "x.mean".to_string(),
+                "method".to_string(),
+            ],
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"ar".as_ptr()),
+        );
+        result
+    }
+}
+
+
 
 
 fn css_ar1(y: &[f64]) -> (f64, f64, f64) {

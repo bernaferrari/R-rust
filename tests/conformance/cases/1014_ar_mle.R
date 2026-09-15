@@ -1,0 +1,8 @@
+cat(tryCatch(ar.mle(cbind(1:5, 1:5)), error = function(e) conditionMessage(e)), "\n", sep = "")
+cat(tryCatch(ar.mle(c(1, NA)), error = function(e) conditionMessage(e)), "\n", sep = "")
+cat(tryCatch(ar.mle("a"), error = function(e) conditionMessage(e)), "\n", sep = "")
+cat(tryCatch(ar.mle(1:10, order.max = -1), error = function(e) conditionMessage(e)), "\n", sep = "")
+cat(tryCatch(ar.mle(1:3, aic = FALSE, order.max = 5), error = function(e) conditionMessage(e)), "\n", sep = "")
+f <- ar.mle(1:20, aic = FALSE, order.max = 1)
+cat(f$order, "\n", sep = "")
+cat(f$method, "\n", sep = "")

@@ -1,0 +1,7 @@
+MLE only implemented for univariate series
+missing values in object
+'x' must be numeric
+'order.max' must be >= 0
+'order.max' must be < 'n.used'
+1
+MLE
