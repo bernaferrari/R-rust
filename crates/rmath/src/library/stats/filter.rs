@@ -1439,6 +1439,30 @@ fn css_ar_no_mean(y: &[f64], p: usize) -> (Vec<f64>, f64) {
     (phi, s2)
 }
 
+fn css_ar_mean(y: &[f64], p: usize) -> (Vec<f64>, f64, f64) {
+    let ncond = p;
+    if p == 0 || y.len() <= ncond {
+        return (vec![0.0; p], 0.0, f64::NAN);
+    }
+    let mut phi = vec![0.0; p];
+    let mut ic = y.iter().sum::<f64>() / y.len() as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        for i in 0..p {
+            phi[i] = golden_min(-0.99, 0.99, 80, |t| {
+                let mut trial = phi.clone();
+                trial[i] = t;
+                arma_css(y, &trial, &[], ic, ncond)
+            });
+        }
+        ic = golden_min(lo_ic, hi_ic, 80, |m| arma_css(y, &phi, &[], m, ncond));
+    }
+    let s2 = arma_css(y, &phi, &[], ic, ncond);
+    (phi, ic, s2)
+}
+
+
 
 
 /// GNU `arima` — AR(0..2)/MA(1), CSS or ML, optional difference.
@@ -1629,6 +1653,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ar1".to_string(), "ma1".to_string(), "intercept".to_string()],
                 s2,
             )
+        } else if p >= 2 && p <= 5 && q <= 0 && !no_mean && sar_p <= 0 && sar_q <= 0 {
+            let (phi, mu, s2) = css_ar_mean(&y, p as usize);
+            let mut names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
+            names.push("intercept".to_string());
+            let mut values = phi;
+            values.push(mu);
+            (values, names, s2)
         } else if p == 2 && q <= 0 && d <= 0 {
             let (p1, p2, mu, s2) = css_ar2(&y);
             (
