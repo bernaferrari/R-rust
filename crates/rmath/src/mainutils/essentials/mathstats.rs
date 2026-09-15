@@ -8414,6 +8414,66 @@ pub unsafe fn do_qr_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// GNU `se.contrast(aov, list(g1, g2))` — two-group `sqrt(MSE*(1/n1+1/n2))`.
+pub unsafe fn do_se_contrast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let contr = CAR(CDR(args));
+        let resid = list_named_elt(obj, "residuals");
+        if resid == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(resid) as usize;
+        if n < 3 {
+            return R_NilValue();
+        }
+        let dfr = list_named_elt(obj, "df.residual");
+        let df = if dfr == R_NilValue() {
+            (n as f64) - 2.0
+        } else {
+            elt_real_safe(dfr, 0)
+        };
+        let mut sse = 0.0;
+        for i in 0..n {
+            let e = elt_real_safe(resid, i as i64);
+            sse += e * e;
+        }
+        let mse = if df > 0.0 { sse / df } else { f64::NAN };
+        let (g1, g2) = if TYPEOF(contr) == SEXPTYPE::VECSXP && XLENGTH(contr) >= 2 {
+            (VECTOR_ELT(contr, 0), VECTOR_ELT(contr, 1))
+        } else if TYPEOF(contr) == SEXPTYPE::LISTSXP {
+            (CAR(contr), CAR(CDR(contr)))
+        } else {
+            return Rf_ScalarReal(mse.sqrt());
+        };
+        let mut n1 = 0.0;
+        let mut n2 = 0.0;
+        for i in 0..n {
+            let a = if TYPEOF(g1) == SEXPTYPE::LGLSXP {
+                *LOGICAL(g1).add(i.min(XLENGTH(g1) as usize - 1))
+            } else {
+                elt_real_safe(g1, i as i64) as i32
+            };
+            let b = if TYPEOF(g2) == SEXPTYPE::LGLSXP {
+                *LOGICAL(g2).add(i.min(XLENGTH(g2) as usize - 1))
+            } else {
+                elt_real_safe(g2, i as i64) as i32
+            };
+            if a != 0 {
+                n1 += 1.0;
+            }
+            if b != 0 {
+                n2 += 1.0;
+            }
+        }
+        if n1 <= 0.0 || n2 <= 0.0 {
+            return R_NilValue();
+        }
+        Rf_ScalarReal((mse * (1.0 / n1 + 1.0 / n2)).sqrt())
+    }
+}
+
+
 
 
 /// GNU `covratio(lm)`.

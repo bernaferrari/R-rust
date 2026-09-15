@@ -2207,6 +2207,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_est_var,
     },
     EvaluatedBuiltin {
+        name: "se.contrast",
+        handler: crate::mainutils::essentials::do_se_contrast,
+    },
+    EvaluatedBuiltin {
         name: "mauchly.test",
         handler: crate::mainutils::essentials::do_mauchly_test,
     },
