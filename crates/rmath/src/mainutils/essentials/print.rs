@@ -231,6 +231,9 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
                     continue;
                 }
                 let name = std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy();
+                if name == "manova" || name == "maov" {
+                    return crate::mainutils::essentials::do_summary_manova(_call, _op, args, _rho);
+                }
                 if name == "lm" || name == "aov" {
                     return crate::mainutils::essentials::do_summary_lm(_call, _op, args, _rho);
                 }
