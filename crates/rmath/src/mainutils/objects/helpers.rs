@@ -297,17 +297,61 @@ pub(crate) unsafe fn R_data_class2(x: SEXP) -> SEXP {
         if x.is_null() {
             return R_NilValue();
         }
-        if IS_S4_OBJECT(x) != FALSE {
-            // S4 objects: for now, use the class attribute directly.
-            // A full implementation would call extends() via the methods package.
-            let class_val = getAttrib(x, R_ClassSymbol());
-            if class_val.is_null() || class_val == R_NilValue() {
-                // Try implicit class
-                return R_data_class(x);
-            }
+        let class_val = getAttrib(x, R_ClassSymbol());
+        if !class_val.is_null() && class_val != R_NilValue() && XLENGTH(class_val) > 0 {
             return class_val;
         }
-        R_data_class(x)
+        implicit_s3_class(x)
+    }
+}
+
+/// GNU `Type2DefaultClass` implicit S3 classes for unclassed objects.
+unsafe fn implicit_s3_class(x: SEXP) -> SEXP {
+    unsafe {
+        let dim = getAttrib(x, crate::eval::attrib_core::R_DimSymbol());
+        let nd = if dim.is_null() || dim == R_NilValue() {
+            0
+        } else {
+            XLENGTH(dim)
+        };
+        let t = TYPEOF(x);
+        let (type_name, extra_numeric) = if t == SEXPTYPE::REALSXP {
+            (c"double", true)
+        } else if t == SEXPTYPE::INTSXP {
+            (c"integer", true)
+        } else if t == SEXPTYPE::LGLSXP {
+            (c"logical", false)
+        } else if t == SEXPTYPE::CPLXSXP {
+            (c"complex", false)
+        } else if t == SEXPTYPE::STRSXP {
+            (c"character", false)
+        } else if t == SEXPTYPE::RAWSXP {
+            (c"raw", false)
+        } else if t == SEXPTYPE::VECSXP {
+            (c"list", false)
+        } else if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP {
+            (c"function", false)
+        } else if t == SEXPTYPE::SYMSXP {
+            (c"name", false)
+        } else {
+            return R_data_class(x);
+        };
+        let mut names: Vec<&std::ffi::CStr> = Vec::new();
+        if nd == 2 {
+            names.push(c"matrix");
+            names.push(c"array");
+        } else if nd > 0 {
+            names.push(c"array");
+        }
+        names.push(type_name);
+        if extra_numeric {
+            names.push(c"numeric");
+        }
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
+        for (i, name) in names.iter().enumerate() {
+            SET_STRING_ELT(result, i as i64, Rf_mkChar(name.as_ptr()));
+        }
+        result
     }
 }
 

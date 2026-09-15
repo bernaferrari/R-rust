@@ -617,6 +617,21 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "preplot",
+        handler: crate::mainutils::essentials::do_preplot,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "profile",
+        handler: crate::mainutils::essentials::do_profile,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "tsdiag",
+        handler: crate::mainutils::essentials::do_tsdiag,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "Filter",
         handler: crate::mainutils::essentials::do_filter,
         restore_visibility_always: false,

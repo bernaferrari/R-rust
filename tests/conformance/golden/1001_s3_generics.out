@@ -1,0 +1,3 @@
+no applicable method for 'preplot' applied to an object of class "c('double', 'numeric')"
+no applicable method for 'profile' applied to an object of class "c('double', 'numeric')"
+no applicable method for 'tsdiag' applied to an object of class "c('double', 'numeric')"

@@ -3807,6 +3807,46 @@ pub unsafe fn do_plot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         )
     }
 }
+
+/// GNU `preplot(object, ...)` — `UseMethod("preplot")`.
+pub unsafe fn do_preplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "preplot",
+            "function(object, ...) UseMethod('preplot')",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
+/// GNU `profile(fitted, ...)` — `UseMethod("profile")`.
+pub unsafe fn do_profile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "profile",
+            "function(fitted, ...) UseMethod('profile')",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
+/// GNU `tsdiag(object, gof.lag, ...)` — `UseMethod("tsdiag")`.
+pub unsafe fn do_tsdiag(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "tsdiag",
+            "function(object, gof.lag, ...) UseMethod('tsdiag')",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
 pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
     unsafe {

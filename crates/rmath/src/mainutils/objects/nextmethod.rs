@@ -109,14 +109,23 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
         }
 
         let mut class_str = String::new();
-        for i in 0..nclass {
-            if i > 0 {
-                class_str.push_str(", ");
-            }
-            let cs = translateChar(STRING_ELT(klass, i as R_xlen_t));
+        if nclass == 1 {
+            let cs = translateChar(STRING_ELT(klass, 0));
             if !cs.is_null() {
                 class_str.push_str(&std::ffi::CStr::from_ptr(cs).to_string_lossy());
             }
+        } else {
+            class_str.push_str("c('");
+            for i in 0..nclass {
+                if i > 0 {
+                    class_str.push_str("', '");
+                }
+                let cs = translateChar(STRING_ELT(klass, i as R_xlen_t));
+                if !cs.is_null() {
+                    class_str.push_str(&std::ffi::CStr::from_ptr(cs).to_string_lossy());
+                }
+            }
+            class_str.push_str("')");
         }
 
         let msg = format!(
