@@ -632,6 +632,16 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "biplot",
+        handler: crate::mainutils::essentials::do_biplot,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "screeplot",
+        handler: crate::mainutils::essentials::do_screeplot,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "Filter",
         handler: crate::mainutils::essentials::do_filter,
         restore_visibility_always: false,
@@ -1808,6 +1818,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "plot.default",
         handler: crate::mainutils::essentials::do_plot_default,
+    },
+    EvaluatedBuiltin {
+        name: "biplot.default",
+        handler: crate::mainutils::essentials::do_biplot_default,
+    },
+    EvaluatedBuiltin {
+        name: "screeplot.default",
+        handler: crate::mainutils::essentials::do_screeplot_default,
     },
     EvaluatedBuiltin {
         name: "mapply",

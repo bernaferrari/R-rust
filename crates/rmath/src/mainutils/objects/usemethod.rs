@@ -365,12 +365,32 @@ pub(crate) unsafe fn lookup_s3_method_symbol(
 
         let method = lookup_s3_method_in_attached_tables(method_symbol, rho);
         if isFunction(method) != FALSE {
-            method
-        } else {
-            R_UnboundValue()
+            return method;
         }
+
+        // Eval builtins are not copied into session frames; exists()/eval
+        // materialize them on demand. UseMethod must see the same table.
+        if !method_symbol.is_null() {
+            let pname = PRINTNAME(method_symbol);
+            if !pname.is_null() {
+                let name = CStr::from_ptr(CHAR(pname)).to_string_lossy();
+                if name.ends_with(".default")
+                    && crate::eval::builtin::has_builtin_handler(name.as_ref())
+                {
+                    let primitive = crate::eval::primitive::make_primitive_binding(
+                        name.as_ref(),
+                        SEXPTYPE::BUILTINSXP,
+                    );
+                    if isFunction(primitive) != FALSE {
+                        return primitive;
+                    }
+                }
+            }
+        }
+        R_UnboundValue()
     }
 }
+
 
 pub(crate) unsafe fn lookup_s3_method_for_class(
     generic: &str,

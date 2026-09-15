@@ -3847,6 +3847,63 @@ pub unsafe fn do_tsdiag(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `biplot(x, ...)` — `UseMethod("biplot")`.
+pub unsafe fn do_biplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "biplot",
+            "function(x, ...) UseMethod('biplot')",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
+/// GNU `screeplot(x, ...)` — `UseMethod("screeplot")`.
+pub unsafe fn do_screeplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "screeplot",
+            "function(x, ...) UseMethod('screeplot')",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
+
+/// GNU `biplot.default(x, y, ...)` — requires `y`.
+pub unsafe fn do_biplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let y = CAR(CDR(args));
+        if y.is_null() || y == R_NilValue() || y == crate::sexp::globals::R_MissingArg() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "argument \"y\" is missing, with no default",
+            );
+        }
+        R_NilValue()
+    }
+}
+
+/// GNU `screeplot.default(x)` — reads `x$sdev`.
+pub unsafe fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dollar = crate::sexp::constructors::Rf_lang3(
+            crate::sexp::symbol::Rf_install(c"$".as_ptr()),
+            x,
+            crate::sexp::symbol::Rf_install(c"sdev".as_ptr()),
+        );
+        let _d = protect(dollar);
+        crate::eval::eval::Rf_eval(dollar, rho);
+        R_NilValue()
+    }
+}
+
+
 pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
     unsafe {
