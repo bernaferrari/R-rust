@@ -990,6 +990,85 @@ fn css_ma1(y: &[f64]) -> (f64, f64, f64) {
     (th, ic, s2)
 }
 
+fn ma1_ml_nll(y: &[f64], th: f64, mu: f64) -> f64 {
+    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
+    let z = [1.0, 0.0];
+    let a0 = [0.0, 0.0];
+    let t = [0.0, 0.0, 1.0, 0.0];
+    let v = [1.0, th, th, th * th];
+    let pn = [1.0 + th * th, th, th, th * th];
+    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
+}
+
+fn exact_ma1_ml(y: &[f64]) -> (f64, f64, f64) {
+    let n = y.len();
+    if n < 2 {
+        return (0.0, 0.0, f64::NAN);
+    }
+    let mut th = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        th = golden_min(-0.99, 0.99, 80, |t| ma1_ml_nll(y, t, ic));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| ma1_ml_nll(y, th, m));
+    }
+    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
+    let z = [1.0, 0.0];
+    let a0 = [0.0, 0.0];
+    let t = [0.0, 0.0, 1.0, 0.0];
+    let v = [1.0, th, th, th * th];
+    let pn = [1.0 + th * th, th, th, th * th];
+    // Re-run Kalman for concentrated sigma2 = ssq/nu.
+    let nll = kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
+    let _ = nll;
+    let s2 = ma1_ml_sigma2(&yd, th);
+    (th, ic, s2)
+}
+
+fn ma1_ml_sigma2(yd: &[f64], th: f64) -> f64 {
+    let mut a = [0.0, 0.0];
+    let mut p = [1.0 + th * th, th, th, th * th];
+    let mut pnew = p;
+    let t = [0.0, 0.0, 1.0, 0.0];
+    let v = [1.0, th, th, th * th];
+    let mut ssq = 0.0;
+    let mut nu = 0.0;
+    for (l, &yi) in yd.iter().enumerate() {
+        let anew = [t[0] * a[0] + t[2] * a[1], t[1] * a[0] + t[3] * a[1]];
+        if l > 0 {
+            let tp00 = t[0] * p[0] + t[2] * p[1];
+            let tp01 = t[0] * p[2] + t[2] * p[3];
+            let tp10 = t[1] * p[0] + t[3] * p[1];
+            let tp11 = t[1] * p[2] + t[3] * p[3];
+            pnew[0] = v[0] + tp00 * t[0] + tp01 * t[2];
+            pnew[1] = v[1] + tp10 * t[0] + tp11 * t[2];
+            pnew[2] = v[2] + tp00 * t[1] + tp01 * t[3];
+            pnew[3] = v[3] + tp10 * t[1] + tp11 * t[3];
+        }
+        let resid = yi - anew[0];
+        let m0 = pnew[0];
+        let m1 = pnew[1];
+        let gain = m0;
+        if gain > 0.0 {
+            ssq += resid * resid / gain;
+            nu += 1.0;
+            a[0] = anew[0] + m0 * resid / gain;
+            a[1] = anew[1] + m1 * resid / gain;
+            p[0] = pnew[0] - m0 * m0 / gain;
+            p[1] = pnew[1] - m1 * m0 / gain;
+            p[2] = pnew[2] - m0 * m1 / gain;
+            p[3] = pnew[3] - m1 * m1 / gain;
+        }
+    }
+    if nu < 1.0 {
+        f64::NAN
+    } else {
+        ssq / nu
+    }
+}
+
+
 fn css_arma11(y: &[f64]) -> (f64, f64, f64, f64) {
     let n = y.len();
     if n < 3 {
@@ -1770,6 +1849,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let (mu, s2) = css_ar0(&y);
                 (vec![mu], vec!["intercept".to_string()], s2)
             }
+        } else if p <= 0 && q == 1 && !no_mean && !css {
+            let (th, mu, s2) = exact_ma1_ml(&y);
+            (
+                vec![th, mu],
+                vec!["ma1".to_string(), "intercept".to_string()],
+                s2,
+            )
         } else if p <= 0 && q == 1 && d <= 0 && !no_mean {
             let (th, mu, s2) = css_ma1(&y);
             (
