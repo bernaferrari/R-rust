@@ -990,6 +990,26 @@ fn css_ma1(y: &[f64]) -> (f64, f64, f64) {
     (th, ic, s2)
 }
 
+fn css_arma11(y: &[f64]) -> (f64, f64, f64, f64) {
+    let n = y.len();
+    if n < 3 {
+        return (0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut phi = 0.0;
+    let mut th = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        phi = golden_min(-0.99, 0.99, 80, |p| arma_css(y, &[p], &[th], ic, 1));
+        th = golden_min(-0.99, 0.99, 80, |t| arma_css(y, &[phi], &[t], ic, 1));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| arma_css(y, &[phi], &[th], m, 1));
+    }
+    let s2 = arma_css(y, &[phi], &[th], ic, 1);
+    (phi, th, ic, s2)
+}
+
+
 fn difference_series(y: &[f64], d: i32) -> Vec<f64> {
     let mut out = y.to_vec();
     for _ in 0..d.max(0) {
@@ -1109,6 +1129,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![th, mu],
                 vec!["ma1".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p == 1 && q == 1 && d <= 0 {
+            let (phi, th, mu, s2) = css_arma11(&y);
+            (
+                vec![phi, th, mu],
+                vec!["ar1".to_string(), "ma1".to_string(), "intercept".to_string()],
                 s2,
             )
         } else if p == 2 && q <= 0 && d <= 0 {
