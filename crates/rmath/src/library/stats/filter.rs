@@ -699,7 +699,76 @@ pub unsafe fn do_ar_ols(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-/// GNU `ar.mle` — univariate MLE via CSS AR(1).
+
+/// Exact AR(1) Gaussian ML: SSE(φ,μ)=Σ_{t≥2}(x_t−μ−φ(x_{t−1}−μ))²+(1−φ²)(x_1−μ)².
+fn exact_ar1_ml(y: &[f64]) -> (f64, f64, f64) {
+    let n = y.len();
+    if n < 2 {
+        return (0.0, 0.0, f64::NAN);
+    }
+    let n_f = n as f64;
+    let profile_mu = |phi: f64| -> f64 {
+        if (phi - 1.0).abs() < 1e-15 {
+            return y.iter().sum::<f64>() / n_f;
+        }
+        let den = n_f + phi * (2.0 - n_f);
+        if den.abs() < 1e-18 {
+            return y.iter().sum::<f64>() / n_f;
+        }
+        let mut num = (1.0 + phi) * y[0];
+        for t in 1..n {
+            num += y[t] - phi * y[t - 1];
+        }
+        num / den
+    };
+    let sse = |phi: f64, mu: f64| -> f64 {
+        let mut s = (1.0 - phi * phi) * (y[0] - mu) * (y[0] - mu);
+        for t in 1..n {
+            let e = y[t] - mu - phi * (y[t - 1] - mu);
+            s += e * e;
+        }
+        s
+    };
+    let nll = |phi: f64| -> f64 {
+        if !phi.is_finite() || phi.abs() >= 1.0 {
+            return f64::INFINITY;
+        }
+        let mu = profile_mu(phi);
+        let s = sse(phi, mu);
+        if !s.is_finite() || s <= 0.0 {
+            return f64::INFINITY;
+        }
+        n_f * (s / n_f).ln() - (1.0 - phi * phi).ln()
+    };
+    let mut lo = -0.999999;
+    let mut hi = 0.999999;
+    let gr = (5.0_f64.sqrt() - 1.0) / 2.0;
+    let mut c = hi - gr * (hi - lo);
+    let mut d = lo + gr * (hi - lo);
+    let mut fc = nll(c);
+    let mut fd = nll(d);
+    for _ in 0..200 {
+        if fc < fd {
+            hi = d;
+            d = c;
+            fd = fc;
+            c = hi - gr * (hi - lo);
+            fc = nll(c);
+        } else {
+            lo = c;
+            c = d;
+            fc = fd;
+            d = lo + gr * (hi - lo);
+            fd = nll(d);
+        }
+    }
+    let phi = 0.5 * (lo + hi);
+    let mu = profile_mu(phi);
+    let sigma2 = sse(phi, mu) / n_f;
+    (phi, mu, sigma2)
+}
+
+/// GNU `ar.mle` — univariate exact AR(1) Gaussian ML.
 pub unsafe fn do_ar_mle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -773,7 +842,7 @@ pub unsafe fn do_ar_mle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 );
             }
         }
-        let (phi, mu, _sigma2) = css_ar1(&y);
+        let (phi, mu, _sigma2) = exact_ar1_ml(&y);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, Rf_ScalarInteger(1));

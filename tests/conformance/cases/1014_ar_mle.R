@@ -6,3 +6,5 @@ cat(tryCatch(ar.mle(1:3, aic = FALSE, order.max = 5), error = function(e) condit
 f <- ar.mle(1:20, aic = FALSE, order.max = 1)
 cat(f$order, "\n", sep = "")
 cat(f$method, "\n", sep = "")
+cat(sprintf("%.6f", f$ar), "\n", sep = "")
+cat(sprintf("%.1f", f$x.mean), "\n", sep = "")
