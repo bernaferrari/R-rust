@@ -7098,6 +7098,121 @@ pub unsafe fn do_qsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU `rsmirnov(n, sizes)` — two-sample Smirnov statistic via `rcont2`.
+pub unsafe fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = elt_real_safe(CAR(args), 0).floor() as i32;
+        if n <= 0 {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let sizes = CAR(CDR(args));
+        let nx = elt_real_safe(sizes, 0).floor() as i32;
+        let ny = if !sizes.is_null() && sizes != R_NilValue() && XLENGTH(sizes) > 1 {
+            elt_real_safe(sizes, 1).floor() as i32
+        } else {
+            nx
+        };
+        if nx < 1 || ny < 1 {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let rest = CDR(CDR(args));
+        let z = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(rest)
+        };
+        let two_cell = if rest.is_null() || rest == R_NilValue() {
+            std::ptr::null_mut()
+        } else {
+            CDR(rest)
+        };
+        let two_sided = if two_cell.is_null() || two_cell == R_NilValue() {
+            true
+        } else {
+            let t = CAR(two_cell);
+            t.is_null() || t == R_NilValue() || elt_real_safe(t, 0) != 0.0
+        };
+        let nrowt: Vec<i32> = if z.is_null() || z == R_NilValue() {
+            vec![1; (nx + ny) as usize]
+        } else {
+            smirnov_row_totals(z)
+        };
+        if nrowt.is_empty() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let nrow = nrowt.len() as i32;
+        let ncolt = [nx, ny];
+        let ntotal = nx + ny;
+        let mut fact = vec![0.0_f64; (ntotal + 1) as usize];
+        fact[0] = 0.0;
+        if ntotal >= 1 {
+            fact[1] = 0.0;
+        }
+        for i in 2..=ntotal {
+            fact[i as usize] = fact[(i - 1) as usize] + (i as f64).ln();
+        }
+        let mut observed = vec![0_i32; (nrow * 2) as usize];
+        let mut jwork = vec![0_i32; 2];
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _r = protect(result);
+        crate::main::random::GetRNGstate();
+        for iter in 0..n {
+            crate::library::stats::rcont::rcont2(
+                nrow,
+                2,
+                nrowt.as_ptr(),
+                ncolt.as_ptr(),
+                ntotal,
+                fact.as_ptr(),
+                jwork.as_mut_ptr(),
+                observed.as_mut_ptr(),
+            );
+            let mut s = 0.0;
+            let mut cs0 = 0_i32;
+            let mut cs1 = 0_i32;
+            for j in 0..nrow as usize {
+                cs0 += observed[j];
+                cs1 += observed[nrow as usize + j];
+                let mut diff = (cs0 as f64) / (nx as f64) - (cs1 as f64) / (ny as f64);
+                if two_sided {
+                    diff = diff.abs();
+                }
+                if diff > s {
+                    s = diff;
+                }
+            }
+            *REAL(result).add(iter as usize) = s;
+        }
+        crate::main::random::PutRNGstate();
+        result
+    }
+}
+
+unsafe fn smirnov_row_totals(z: SEXP) -> Vec<i32> {
+    unsafe {
+        let n = XLENGTH(z) as usize;
+        let mut vals = Vec::with_capacity(n);
+        for i in 0..n {
+            vals.push(elt_real_safe(z, i as i64));
+        }
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < vals.len() {
+            let v = vals[i];
+            let mut c = 1;
+            i += 1;
+            while i < vals.len() && vals[i] == v {
+                c += 1;
+                i += 1;
+            }
+            out.push(c);
+        }
+        out
+    }
+}
+
+
 
 
 /// GNU `polym(x, y, degree=1, raw=TRUE)` — two-column raw design.

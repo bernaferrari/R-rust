@@ -39,7 +39,7 @@ mod permdist;
 pub(crate) mod ppsum;
 mod prho;
 pub(crate) mod random;
-mod rcont;
+pub(crate) mod rcont;
 pub(crate) mod rwishart;
 mod sbart;
 pub(crate) mod smooth;
