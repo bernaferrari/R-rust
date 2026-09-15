@@ -1463,48 +1463,111 @@ fn struct_ts_type(args: SEXP) -> String {
     }
 }
 
+
+/// GNU `KalmanLike` for state dim `p`. Matrices are column-major.
+fn kalman_like_nd(
+    y: &[f64],
+    z: &[f64],
+    a0: &[f64],
+    p0: &[f64],
+    t: &[f64],
+    v: &[f64],
+    h: f64,
+    s_up: i32,
+) -> f64 {
+    let n = y.len();
+    let p = a0.len();
+    if n == 0 || p == 0 || z.len() != p || p0.len() != p * p || t.len() != p * p || v.len() != p * p
+    {
+        return f64::INFINITY;
+    }
+    let mut a = a0.to_vec();
+    let mut pmat = p0.to_vec();
+    let mut pnew = p0.to_vec();
+    let mut anew = vec![0.0; p];
+    let mut mm = vec![0.0; p * p];
+    let mut m = vec![0.0; p];
+    let mut ssq = 0.0;
+    let mut sumlog = 0.0;
+    let mut nu = 0.0;
+    for l in 0..n {
+        for i in 0..p {
+            let mut tmp = 0.0;
+            for k in 0..p {
+                tmp += t[i + p * k] * a[k];
+            }
+            anew[i] = tmp;
+        }
+        if (l as i32) > s_up {
+            for i in 0..p {
+                for j in 0..p {
+                    let mut tmp = 0.0;
+                    for k in 0..p {
+                        tmp += t[i + p * k] * pmat[k + p * j];
+                    }
+                    mm[i + p * j] = tmp;
+                }
+            }
+            for i in 0..p {
+                for j in 0..p {
+                    let mut tmp = v[i + p * j];
+                    for k in 0..p {
+                        tmp += mm[i + p * k] * t[j + p * k];
+                    }
+                    pnew[i + p * j] = tmp;
+                }
+            }
+        }
+        let mut resid = y[l];
+        for i in 0..p {
+            resid -= z[i] * anew[i];
+        }
+        let mut gain = h;
+        for i in 0..p {
+            let mut tmp = 0.0;
+            for j in 0..p {
+                tmp += pnew[i + j * p] * z[j];
+            }
+            m[i] = tmp;
+            gain += z[i] * tmp;
+        }
+        if !(gain > 0.0) {
+            return f64::INFINITY;
+        }
+        ssq += resid * resid / gain;
+        sumlog += gain.ln();
+        nu += 1.0;
+        for i in 0..p {
+            a[i] = anew[i] + m[i] * resid / gain;
+        }
+        for i in 0..p {
+            for j in 0..p {
+                pmat[i + j * p] = pnew[i + j * p] - m[i] * m[j] / gain;
+            }
+        }
+    }
+    if nu < 1.0 {
+        return f64::INFINITY;
+    }
+    0.5 * (ssq / nu + sumlog / nu)
+}
+
 /// GNU KalmanLike for local linear trend (p=2). `P[] <- 1e6*vx`.
 fn kalman_trend_like(y: &[f64], rel: [f64; 3], vx: f64) -> f64 {
-    if rel.iter().all(|v| *v <= 0.0) {
+    if y.is_empty() || rel.iter().all(|v| *v <= 0.0) {
         return 1000.0;
     }
     let ql = rel[0].max(0.0) * vx;
     let qs = rel[1].max(0.0) * vx;
     let h = rel[2].max(0.0) * vx;
-    let n = y.len();
-    let mut a = [y[0], 0.0];
     let p0 = 1e6 * vx;
-    let mut p = [[p0, p0], [p0, p0]];
-    let mut ssq = 0.0;
-    let mut sumlog = 0.0;
-    let nu = n as f64;
-    for &yi in y {
-        let anew = [a[0] + a[1], a[1]];
-        let tp00 = p[0][0] + p[1][0];
-        let tp01 = p[0][1] + p[1][1];
-        let tp10 = p[1][0];
-        let tp11 = p[1][1];
-        let pnew = [
-            [tp00 + tp01 + ql, tp01],
-            [tp10 + tp11, tp11 + qs],
-        ];
-        // Z = [1,0]; M = Pnew @ Z = first column
-        let m = [pnew[0][0], pnew[1][0]];
-        let gain = h + m[0];
-        if !(gain > 0.0) {
-            return f64::INFINITY;
-        }
-        let resid = yi - anew[0];
-        ssq += resid * resid / gain;
-        sumlog += gain.ln();
-        a[0] = anew[0] + m[0] * resid / gain;
-        a[1] = anew[1] + m[1] * resid / gain;
-        p[0][0] = pnew[0][0] - m[0] * m[0] / gain;
-        p[0][1] = pnew[0][1] - m[0] * m[1] / gain;
-        p[1][0] = pnew[1][0] - m[1] * m[0] / gain;
-        p[1][1] = pnew[1][1] - m[1] * m[1] / gain;
-    }
-    0.5 * (ssq / nu + sumlog / nu)
+    // T = matrix(c(1,0,1,1), 2, 2) column-major.
+    let t = [1.0, 0.0, 1.0, 1.0];
+    let v = [ql, 0.0, 0.0, qs];
+    let z = [1.0, 0.0];
+    let a0 = [y[0], 0.0];
+    let pmat = [p0, p0, p0, p0];
+    kalman_like_nd(y, &z, &a0, &pmat, &t, &v, h, -1)
 }
 
 fn optimize_trend_rel(y: &[f64], vx: f64) -> [f64; 3] {
@@ -1567,6 +1630,113 @@ fn optimize_trend_rel(y: &[f64], vx: f64) -> [f64; 3] {
     best_rel
 }
 
+fn series_frequency(x: SEXP) -> i32 {
+    unsafe {
+        let tsp = getAttrib(x, crate::sexp::symbol::Rf_install(c"tsp".as_ptr()));
+        if !tsp.is_null()
+            && tsp != R_NilValue()
+            && TYPEOF(tsp) == SEXPTYPE::REALSXP
+            && XLENGTH(tsp) >= 3
+        {
+            return (*REAL(tsp).add(2)).round() as i32;
+        }
+        1
+    }
+}
+
+fn kalman_bsm_like(y: &[f64], rel: [f64; 4], vx: f64, nf: usize) -> f64 {
+    if y.is_empty() || nf < 2 || rel.iter().all(|v| *v <= 0.0) {
+        return 1000.0;
+    }
+    let p = nf + 1;
+    let mut t = vec![0.0; p * p];
+    t[0] = 1.0;
+    t[p] = 1.0;
+    t[1 + p] = 1.0;
+    for j in 2..p {
+        t[2 + p * j] = -1.0;
+    }
+    if nf >= 3 {
+        for k in 2..nf {
+            t[(k + 1) + p * k] = 1.0;
+        }
+    }
+    let mut z = vec![0.0; p];
+    z[0] = 1.0;
+    z[2] = 1.0;
+    let mut a0 = vec![0.0; p];
+    a0[0] = y[0];
+    let p0v = 1e6 * vx;
+    let pmat = vec![p0v; p * p];
+    let mut v = vec![0.0; p * p];
+    v[0] = rel[0].max(0.0) * vx;
+    v[1 + p] = rel[1].max(0.0) * vx;
+    v[2 + 2 * p] = rel[2].max(0.0) * vx;
+    let h = rel[3].max(0.0) * vx;
+    kalman_like_nd(y, &z, &a0, &pmat, &t, &v, h, -1)
+}
+
+fn optimize_bsm_rel(y: &[f64], vx: f64, nf: usize) -> [f64; 4] {
+    let starts = [
+        [1.0, 1.0, 1.0, 1.0],
+        [1.0, 0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, 0.0],
+    ];
+    let mut best_rel = [1.0, 1.0, 1.0, 1.0];
+    let mut best_v = f64::INFINITY;
+    for start in starts {
+        let mut rel = start;
+        for _ in 0..8 {
+            for i in 0..4 {
+                let nll = |logv: f64| {
+                    let mut r = rel;
+                    r[i] = 10f64.powf(logv);
+                    kalman_bsm_like(y, r, vx, nf)
+                };
+                let mut lo = -8.0;
+                let mut hi = 4.0;
+                let gr = (5.0_f64.sqrt() - 1.0) / 2.0;
+                let mut c = hi - gr * (hi - lo);
+                let mut d = lo + gr * (hi - lo);
+                let mut fc = nll(c);
+                let mut fd = nll(d);
+                for _ in 0..50 {
+                    if fc < fd {
+                        hi = d;
+                        d = c;
+                        fd = fc;
+                        c = hi - gr * (hi - lo);
+                        fc = nll(c);
+                    } else {
+                        lo = c;
+                        c = d;
+                        fc = fd;
+                        d = lo + gr * (hi - lo);
+                        fd = nll(d);
+                    }
+                }
+                let mut cand = rel;
+                cand[i] = 10f64.powf(0.5 * (lo + hi));
+                let mut zero = rel;
+                zero[i] = 0.0;
+                let v1 = kalman_bsm_like(y, cand, vx, nf);
+                let v0 = kalman_bsm_like(y, zero, vx, nf);
+                rel = if v0 <= v1 { zero } else { cand };
+            }
+        }
+        let v = kalman_bsm_like(y, rel, vx, nf);
+        if v < best_v {
+            best_v = v;
+            best_rel = rel;
+        }
+    }
+    best_rel
+}
+
+
 
 /// GNU `StructTS(x, type=)` — local-level or local-linear-trend MLE.
 pub unsafe fn do_struct_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1577,7 +1747,7 @@ pub unsafe fn do_struct_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return R_NilValue();
         }
         let typ = struct_ts_type(args);
-        if typ == "BSM" {
+        if typ == "BSM" && series_frequency(x) < 2 {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
                 "frequency must be a positive integer >= 2 for BSM",
@@ -1590,6 +1760,49 @@ pub unsafe fn do_struct_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             } else {
                 *INTEGER(x).add(i) as f64
             };
+        }
+        if typ == "BSM" {
+            let nf = series_frequency(x) as usize;
+            let mean = y.iter().sum::<f64>() / n as f64;
+            let var = y.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>()
+                / (n as f64 - 1.0);
+            let vx = var / 100.0;
+            let rel = optimize_bsm_rel(&y, vx, nf);
+            let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
+            let _c = protect(coef);
+            for i in 0..4 {
+                *REAL(coef).add(i) = (rel[i] * vx).max(0.0);
+            }
+            crate::mainutils::essentials::set_string_names(
+                coef,
+                &[
+                    "level".to_string(),
+                    "slope".to_string(),
+                    "seas".to_string(),
+                    "epsilon".to_string(),
+                ],
+            );
+            let data = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+            let _d = protect(data);
+            for i in 0..n {
+                *REAL(data).add(i) = y[i];
+            }
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _r = protect(result);
+            SET_VECTOR_ELT(result, 0, coef);
+            SET_VECTOR_ELT(result, 1, data);
+            crate::mainutils::essentials::set_string_names(
+                result,
+                &["coef".to_string(), "data".to_string()],
+            );
+            let class = Rf_mkString(c"StructTS".as_ptr());
+            let _cl = protect(class);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+            return result;
         }
         if typ == "trend" {
             let mean = y.iter().sum::<f64>() / n as f64;

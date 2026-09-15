@@ -1,0 +1,5 @@
+s <- StructTS(ts(c(1, 3, 2, 4, 2, 5, 3, 6, 3, 6, 4, 8), frequency = 4), type = "BSM")
+cat(paste(round(as.numeric(s$coef), 4), collapse = ","), "\n", sep = "")
+s2 <- StructTS(ts(rep(c(1, 2, 3, 2), 4), frequency = 4), type = "BSM")
+cat(paste(round(as.numeric(s2$coef), 4), collapse = ","), "\n", sep = "")
+cat(tryCatch(StructTS(ts(1:10), type = "BSM"), error = function(e) conditionMessage(e)), "\n", sep = "")
