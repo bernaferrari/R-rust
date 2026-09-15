@@ -1846,6 +1846,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_scatter_smooth,
     },
     EvaluatedBuiltin {
+        name: "interaction.plot",
+        handler: crate::mainutils::essentials::do_interaction_plot,
+    },
+    EvaluatedBuiltin {
+        name: "lag.plot",
+        handler: crate::mainutils::essentials::do_lag_plot,
+    },
+    EvaluatedBuiltin {
+        name: "eff.aovlist",
+        handler: crate::mainutils::essentials::do_eff_aovlist,
+    },
+    EvaluatedBuiltin {
         name: "mapply",
         handler: crate::mainutils::mapply::do_mapply,
     },

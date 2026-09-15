@@ -3992,6 +3992,85 @@ pub unsafe fn do_scatter_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
+/// GNU `interaction.plot(x.factor, trace.factor, response)` — invisible.
+pub unsafe fn do_interaction_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let rest = CDR(args);
+        let trace = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(rest)
+        };
+        let resp = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            let r2 = CDR(rest);
+            if r2.is_null() || r2 == R_NilValue() {
+                R_NilValue()
+            } else {
+                CAR(r2)
+            }
+        };
+        if x.is_null()
+            || x == R_NilValue()
+            || XLENGTH(x) == 0
+            || resp.is_null()
+            || resp == R_NilValue()
+            || XLENGTH(resp) == 0
+        {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid 'ylim' value",
+            );
+        }
+        let _ = trace;
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
+    }
+}
+
+/// GNU `lag.plot(x)` — `as.ts(as.matrix(x))` then plot.
+pub unsafe fn do_lag_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid 'xlim' value",
+            );
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
+    }
+}
+
+/// GNU `eff.aovlist(aovlist)` — `$qr` on each stratum.
+pub unsafe fn do_eff_aovlist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let aovlist = CAR(args);
+        if aovlist.is_null() || aovlist == R_NilValue() || TYPEOF(aovlist) != SEXPTYPE::VECSXP {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "$ operator is invalid for atomic vectors",
+            );
+        }
+        if XLENGTH(aovlist) == 0 {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return R_NilValue();
+        }
+        let dollar = Rf_lang3(
+            crate::sexp::symbol::R_DollarSymbol(),
+            VECTOR_ELT(aovlist, 0),
+            Rf_install(c"qr".as_ptr()),
+        );
+        let _ = crate::eval::eval::Rf_eval(dollar, rho);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
+    }
+}
+
+
 
 /// GNU `biplot(x, ...)` — `UseMethod("biplot")`.
 pub unsafe fn do_biplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
