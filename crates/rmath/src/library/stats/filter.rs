@@ -1424,6 +1424,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut sar_d = 0i32;
         let mut sar_q = 0i32;
         let mut period = 0i32;
+        let mut include_mean = true;
         let mut a = CDR(args);
         while !a.is_null() && a != R_NilValue() {
             let tag = TAG(a);
@@ -1466,6 +1467,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     sar_d = ival(ord, 1);
                     sar_q = ival(ord, 2);
                     period = ival(per, 0);
+                } else if name == "include.mean" {
+                    include_mean = asBool(v);
                 }
             }
             a = CDR(a);
@@ -1477,6 +1480,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             y = seasonal_difference(&y, period as usize, sar_d);
         }
         let differenced = d > 0 || sar_d > 0;
+        let no_mean = differenced || !include_mean;
         let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) =
             if p <= 0 && q <= 0 && !differenced && sar_p == 1 && sar_q == 1 && period >= 2 {
             let (sar, sma, mu, s2) = css_sar1_sma1(&y, period as usize);
@@ -1539,7 +1543,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let (mu, s2) = css_ar0(&y);
                 (vec![mu], vec!["intercept".to_string()], s2)
             }
-        } else if p <= 0 && q == 1 && d <= 0 {
+        } else if p <= 0 && q == 1 && d <= 0 && !no_mean {
             let (th, mu, s2) = css_ma1(&y);
             (
                 vec![th, mu],
@@ -1577,7 +1581,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 ],
                 s2,
             )
-        } else if p == 1 && q == 1 && d <= 0 {
+        } else if p == 1 && q == 1 && d <= 0 && !no_mean {
             let (phi, th, mu, s2) = css_arma11(&y);
             (
                 vec![phi, th, mu],
@@ -1591,17 +1595,17 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ar1".to_string(), "ar2".to_string(), "intercept".to_string()],
                 s2,
             )
-        } else if differenced && p == 1 && q == 1 {
+        } else if no_mean && p == 1 && q == 1 {
             let (ar, ma, s2) = css_arma11_no_mean(&y);
             (
                 vec![ar, ma],
                 vec!["ar1".to_string(), "ma1".to_string()],
                 s2,
             )
-        } else if differenced && p <= 0 && q == 1 {
+        } else if no_mean && p <= 0 && q == 1 {
             let (th, s2) = css_ma1_no_mean(&y);
             (vec![th], vec!["ma1".to_string()], s2)
-        } else if differenced && q <= 0 && p > 0 {
+        } else if no_mean && q <= 0 && p > 0 {
             let (phi, s2) = css_ar_no_mean(&y, p as usize);
             let names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
             (phi, names, s2)
