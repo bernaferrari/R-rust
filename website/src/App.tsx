@@ -624,7 +624,6 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
           <a href={github}>
             Source <ArrowUpRight size={12} />
           </a>
-
         </div>
         <nav className="footer-sitemap" aria-label="Site map">
           {(Object.keys(pages) as Page[]).map((key) => (

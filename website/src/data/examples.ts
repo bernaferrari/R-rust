@@ -295,7 +295,8 @@ abline(h = 0, col = "#c8d4cb", lty = 2)`,
     id: "orbit-lines",
     title: "Measure an area by chance",
     category: "Simulation",
-    description: "Random darts estimate the area under a curve. Count the hits, then change the function.",
+    description:
+      "Random darts estimate the area under a curve. Count the hits, then change the function.",
     mode: "plot",
     color: "#538e7d",
     code: `# Monte Carlo integration under a Gaussian-shaped curve
@@ -338,7 +339,8 @@ text(18, 49, "Expected trend", col = "#d58c62")`,
     id: "dice-counts",
     title: "Drop a needle, discover pi",
     category: "Simulation",
-    description: "Buffon’s experiment turns random angles and parallel lines into another estimate of pi.",
+    description:
+      "Buffon’s experiment turns random angles and parallel lines into another estimate of pi.",
     mode: "plot",
     color: "#538e7d",
     code: `# Buffon's needle: length 0.75, parallel lines one unit apart

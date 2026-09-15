@@ -81,6 +81,12 @@ describe("paid R drafting boundary", () => {
     expect((await s.handler(s.request())).status).toBe(502)
   })
   it("stays disabled without all deployment configuration", async () => {
-    expect((await configuredDraftHandler({})(new Request("https://rove.test/api/draft"))).status).toBe(503)
+    expect(
+      (
+        await configuredDraftHandler({})(
+          new Request("https://rove.test/api/draft")
+        )
+      ).status
+    ).toBe(503)
   })
 })

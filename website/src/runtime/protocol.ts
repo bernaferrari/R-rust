@@ -22,4 +22,9 @@ export type RuntimeResponse =
   | { id: number; ok: false; error: string; fatal?: boolean }
 
 export type RuntimeStatus =
-  "idle" | "loading" | "running" | "ready" | "error" | "reset"
+  | "idle"
+  | "loading"
+  | "running"
+  | "ready"
+  | "error"
+  | "reset"
