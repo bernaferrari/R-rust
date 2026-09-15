@@ -990,8 +990,58 @@ fn css_ma1(y: &[f64]) -> (f64, f64, f64) {
     (th, ic, s2)
 }
 
+fn difference_series(y: &[f64], d: i32) -> Vec<f64> {
+    let mut out = y.to_vec();
+    for _ in 0..d.max(0) {
+        if out.len() < 2 {
+            return out;
+        }
+        out = out.windows(2).map(|w| w[1] - w[0]).collect();
+    }
+    out
+}
 
-/// GNU `arima` — AR(0)/AR(1)/MA(1), CSS or ML.
+fn css_ar2(y: &[f64]) -> (f64, f64, f64, f64) {
+    let n = y.len();
+    if n < 4 {
+        return (0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut p1 = 0.0;
+    let mut p2 = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        p1 = golden_min(-0.99, 0.99, 80, |t| arma_css(y, &[t, p2], &[], ic, 2));
+        p2 = golden_min(-0.99, 0.99, 80, |t| arma_css(y, &[p1, t], &[], ic, 2));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| arma_css(y, &[p1, p2], &[], m, 2));
+    }
+    let s2 = arma_css(y, &[p1, p2], &[], ic, 2);
+    (p1, p2, ic, s2)
+}
+
+fn css_ar_no_mean(y: &[f64], p: usize) -> (Vec<f64>, f64) {
+    let ncond = p;
+    if y.len() <= ncond {
+        return (vec![0.0; p], f64::NAN);
+    }
+    let mut phi = vec![0.0; p];
+    for _ in 0..25 {
+        for i in 0..p {
+            phi[i] = golden_min(-0.99, 0.99, 80, |t| {
+                let mut trial = phi.clone();
+                trial[i] = t;
+                arma_css(y, &trial, &[], 0.0, ncond)
+            });
+        }
+    }
+    let s2 = arma_css(y, &phi, &[], 0.0, ncond);
+    (phi, s2)
+}
+
+
+
+/// GNU `arima` — AR(0..2)/MA(1), CSS or ML, optional difference.
 pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -1009,6 +1059,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let mut css = false;
         let mut p = 1i32;
+        let mut d = 0i32;
         let mut q = 0i32;
         let mut a = CDR(args);
         while !a.is_null() && a != R_NilValue() {
@@ -1032,21 +1083,45 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         }
                     };
                     p = elt(0);
+                    d = elt(1);
                     q = elt(2);
                 }
             }
             a = CDR(a);
         }
+        if d > 0 {
+            y = difference_series(&y, d);
+        }
         let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) = if p <= 0 && q <= 0 {
-            let (mu, s2) = css_ar0(&y);
-            (vec![mu], vec!["intercept".to_string()], s2)
-        } else if p <= 0 && q == 1 {
+            if d > 0 {
+                let s2 = if y.is_empty() {
+                    f64::NAN
+                } else {
+                    y.iter().map(|v| v * v).sum::<f64>() / y.len() as f64
+                };
+                (vec![], vec![], s2)
+            } else {
+                let (mu, s2) = css_ar0(&y);
+                (vec![mu], vec!["intercept".to_string()], s2)
+            }
+        } else if p <= 0 && q == 1 && d <= 0 {
             let (th, mu, s2) = css_ma1(&y);
             (
                 vec![th, mu],
                 vec!["ma1".to_string(), "intercept".to_string()],
                 s2,
             )
+        } else if p == 2 && q <= 0 && d <= 0 {
+            let (p1, p2, mu, s2) = css_ar2(&y);
+            (
+                vec![p1, p2, mu],
+                vec!["ar1".to_string(), "ar2".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if d > 0 && q <= 0 && p > 0 {
+            let (phi, s2) = css_ar_no_mean(&y, p as usize);
+            let names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
+            (phi, names, s2)
         } else {
             let (phi, mu, s2) = if css {
                 css_ar1(&y)
