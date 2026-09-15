@@ -9445,6 +9445,100 @@ fn dist_compact_set(d: &mut [f64], i: usize, j: usize, n: usize, val: f64) {
     d[idx + (b - a - 1)] = val;
 }
 
+/// GNU `mauchly.test(SSD)` — default T=I, Sigma=I sphericity.
+pub unsafe fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let ssd = list_named_elt(obj, "SSD");
+        let dfr = list_named_elt(obj, "df");
+        if ssd == R_NilValue() || dfr == R_NilValue() {
+            return R_NilValue();
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(ssd, crate::sexp::attrib_core::R_DimSymbol());
+        let p = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
+            *INTEGER(dim).add(1) as usize
+        } else {
+            let n = XLENGTH(ssd) as usize;
+            (n as f64).sqrt().round() as usize
+        };
+        if p == 0 {
+            return R_NilValue();
+        }
+        let mut u = vec![0.0; p * p];
+        for j in 0..p {
+            for i in 0..p {
+                u[i + j * p] = elt_real_safe(ssd, (i + j * p) as i64);
+            }
+        }
+        let mut tr = 0.0;
+        for i in 0..p {
+            tr += u[i + i * p];
+        }
+        let mut a = u.clone();
+        let mut det = 1.0;
+        for k in 0..p {
+            let mut piv = a[k + k * p];
+            if piv.abs() < 1e-15 {
+                let mut sw = None;
+                for i in (k + 1)..p {
+                    if a[i + k * p].abs() > 1e-15 {
+                        sw = Some(i);
+                        break;
+                    }
+                }
+                if let Some(i) = sw {
+                    for j in 0..p {
+                        a.swap(k + j * p, i + j * p);
+                    }
+                    det = -det;
+                    piv = a[k + k * p];
+                } else {
+                    det = 0.0;
+                    break;
+                }
+            }
+            det *= piv;
+            for i in (k + 1)..p {
+                let f = a[i + k * p] / piv;
+                for j in k..p {
+                    a[i + j * p] -= f * a[k + j * p];
+                }
+            }
+        }
+        let pf = p as f64;
+        let n = elt_real_safe(dfr, 0);
+        let logw = if det > 0.0 && tr > 0.0 {
+            det.ln() - pf * (tr / pf).ln()
+        } else {
+            f64::NEG_INFINITY
+        };
+        let w = logw.exp();
+        let rho = 1.0 - (2.0 * pf * pf + pf + 2.0) / (6.0 * pf * n);
+        let w2 = (pf + 2.0)
+            * (pf - 1.0)
+            * (pf - 2.0)
+            * (2.0 * pf * pf * pf + 6.0 * pf * pf + 3.0 * pf + 2.0)
+            / (288.0 * (n * pf * rho).powi(2));
+        let z = -n * rho * logw;
+        let fdf = pf * (pf + 1.0) / 2.0 - 1.0;
+        let pr1 = crate::dist::chisq::pchisq_inner(z, fdf, false, false);
+        let pr2 = crate::dist::chisq::pchisq_inner(z, fdf + 4.0, false, false);
+        let pval = pr1 + w2 * (pr2 - pr1);
+        let stat = Rf_ScalarReal(w);
+        let _s = protect(stat);
+        crate::mainutils::essentials::set_string_names(stat, &["W".to_string()]);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, stat);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(pval));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["statistic".to_string(), "p.value".to_string()],
+        );
+        result
+    }
+}
+
 /// GNU `as.hclust(x)` — identity for `hclust` objects.
 pub unsafe fn do_as_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { CAR(args) }
