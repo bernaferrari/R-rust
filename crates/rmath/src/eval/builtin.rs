@@ -2771,6 +2771,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_arima0_diag,
     },
     EvaluatedBuiltin {
+        name: "plclust",
+        handler: crate::library::stats::filter::do_plclust,
+    },
+    EvaluatedBuiltin {
         name: "drop.terms",
         handler: crate::library::stats::filter::do_drop_terms,
     },

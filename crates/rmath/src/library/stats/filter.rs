@@ -803,6 +803,15 @@ pub unsafe fn do_arima0_diag(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
     );
 }
 
+/// GNU `plclust(...)` — `.Defunct("plot")`.
+pub unsafe fn do_plclust(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::mainutils::errors::errorcall_str(
+        crate::mainutils::errors::R_getCurrentCall(),
+        "'plclust' is defunct.\nUse 'plot' instead.\nSee help(\"Defunct\")",
+    );
+}
+
+
 
 
 /// GNU `arima.sim(list(ar=phi), n, n.start=)` — AR(1) via rnorm + recursive filter.

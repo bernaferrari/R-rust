@@ -1,0 +1,3 @@
+'plclust' is defunct.
+Use 'plot' instead.
+See help("Defunct")
