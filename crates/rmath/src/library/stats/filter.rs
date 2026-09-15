@@ -1401,24 +1401,6 @@ fn seasonal_difference(y: &[f64], period: usize, d: i32) -> Vec<f64> {
 }
 
 
-fn css_ar2(y: &[f64]) -> (f64, f64, f64, f64) {
-    let n = y.len();
-    if n < 4 {
-        return (0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut p1 = 0.0;
-    let mut p2 = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        p1 = golden_min(-0.99, 0.99, 80, |t| arma_css(y, &[t, p2], &[], ic, 2));
-        p2 = golden_min(-0.99, 0.99, 80, |t| arma_css(y, &[p1, t], &[], ic, 2));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| arma_css(y, &[p1, p2], &[], m, 2));
-    }
-    let s2 = arma_css(y, &[p1, p2], &[], ic, 2);
-    (p1, p2, ic, s2)
-}
 
 fn css_ar_no_mean(y: &[f64], p: usize) -> (Vec<f64>, f64) {
     let ncond = p;
@@ -1687,13 +1669,6 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut values = phi;
             values.push(mu);
             (values, names, s2)
-        } else if p == 2 && q <= 0 && d <= 0 {
-            let (p1, p2, mu, s2) = css_ar2(&y);
-            (
-                vec![p1, p2, mu],
-                vec!["ar1".to_string(), "ar2".to_string(), "intercept".to_string()],
-                s2,
-            )
         } else if no_mean && p == 1 && q == 1 {
             let (ar, ma, s2) = css_arma11_no_mean(&y);
             (
