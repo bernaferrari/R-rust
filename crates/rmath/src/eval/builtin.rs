@@ -647,6 +647,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "monthplot",
+        handler: crate::mainutils::essentials::do_monthplot,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "Filter",
         handler: crate::mainutils::essentials::do_filter,
         restore_visibility_always: false,
@@ -1831,6 +1836,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "screeplot.default",
         handler: crate::mainutils::essentials::do_screeplot_default,
+    },
+    EvaluatedBuiltin {
+        name: "monthplot.default",
+        handler: crate::mainutils::essentials::do_monthplot_default,
+    },
+    EvaluatedBuiltin {
+        name: "scatter.smooth",
+        handler: crate::mainutils::essentials::do_scatter_smooth,
     },
     EvaluatedBuiltin {
         name: "mapply",

@@ -3909,6 +3909,90 @@ pub unsafe fn do_power_free1way_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 }
 
 
+/// GNU `monthplot(x, ...)` — `UseMethod("monthplot")`.
+pub unsafe fn do_monthplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "monthplot",
+            "function(x, ...) UseMethod('monthplot')",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
+/// GNU `monthplot.default(x)` — `range(x)` becomes `ylim`.
+pub unsafe fn do_monthplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let mut lo = f64::INFINITY;
+        let mut hi = f64::NEG_INFINITY;
+        let mut any = false;
+        for i in 0..n {
+            let v = elt_real_safe(x, i);
+            if v.is_finite() {
+                any = true;
+                if v < lo {
+                    lo = v;
+                }
+                if v > hi {
+                    hi = v;
+                }
+            }
+        }
+        if !any || !lo.is_finite() || !hi.is_finite() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid 'ylim' value",
+            );
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
+    }
+}
+
+/// GNU `scatter.smooth(x, y)` — `seq(min(x), max(x), length.out=)`.
+pub unsafe fn do_scatter_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let mut lo = f64::INFINITY;
+        let mut hi = f64::NEG_INFINITY;
+        let mut any = false;
+        for i in 0..n {
+            let v = elt_real_safe(x, i);
+            if v.is_finite() {
+                any = true;
+                if v < lo {
+                    lo = v;
+                }
+                if v > hi {
+                    hi = v;
+                }
+            }
+        }
+        if !any || !lo.is_finite() || !hi.is_finite() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'from' must be a finite number",
+            );
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
+    }
+}
+
+
 /// GNU `biplot(x, ...)` — `UseMethod("biplot")`.
 pub unsafe fn do_biplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
