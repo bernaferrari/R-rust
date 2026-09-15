@@ -63,7 +63,6 @@ export function RConsole() {
   const viewport = useRef<HTMLDivElement>(null)
   const followOutput = useRef(true)
   // TanStack owns row measurement; Message Scroller owns the surrounding viewport controls.
-  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => viewport.current,
@@ -84,7 +83,6 @@ export function RConsole() {
     const ownedUrls = urls.current
     return () => {
       // This counter invalidates pending promises when the session unmounts.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
       generation.current++
       runtime.current?.dispose()
       ownedUrls.forEach(URL.revokeObjectURL)

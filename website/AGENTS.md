@@ -1,6 +1,6 @@
 # Website Agent Instructions
 
-After changing website code, run `pnpm run lint:oxlint` and
+After changing website code, run `pnpm run lint` and
 `pnpm run format:oxfmt:check`.
 
 `@shadcn/lint` is registered in Oxlint, but no design-system rules are enabled

@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- Registry component also re-exports its companion hooks. */
 import * as React from "react"
 import {
   MessageScroller as MessageScrollerPrimitive,
