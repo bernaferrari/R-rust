@@ -1,0 +1,6 @@
+x <- c(1, 3, 2, 5, 4, 7, 6, 9, 8, 11)
+a0 <- arima(x, order = c(0, 0, 0), method = "CSS")
+cat(sprintf("%.4f", as.numeric(a0$coef)), "\n", sep = "")
+cat(sprintf("%.2f", a0$sigma2), "\n", sep = "")
+a1 <- arima(x, order = c(0, 0, 1), method = "CSS")
+cat(paste(round(as.numeric(a1$coef), 4), collapse = ","), "\n", sep = "")

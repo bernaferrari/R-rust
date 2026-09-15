@@ -906,12 +906,97 @@ fn css_ar1(y: &[f64]) -> (f64, f64, f64) {
     (best_phi, best_mu, sigma2)
 }
 
-/// GNU `arima(x, order=c(1,0,0))` — CSS or exact AR(1) ML.
+fn golden_min(mut lo: f64, mut hi: f64, steps: usize, mut f: impl FnMut(f64) -> f64) -> f64 {
+    let gr = (5.0_f64.sqrt() - 1.0) / 2.0;
+    let mut c = hi - gr * (hi - lo);
+    let mut d = lo + gr * (hi - lo);
+    let mut fc = f(c);
+    let mut fd = f(d);
+    for _ in 0..steps {
+        if fc < fd {
+            hi = d;
+            d = c;
+            fd = fc;
+            c = hi - gr * (hi - lo);
+            fc = f(c);
+        } else {
+            lo = c;
+            c = d;
+            fc = fd;
+            d = lo + gr * (hi - lo);
+            fd = f(d);
+        }
+    }
+    0.5 * (lo + hi)
+}
+
+/// GNU `ARIMA_CSS` for no seasonal difference.
+fn arma_css(y: &[f64], phi: &[f64], theta: &[f64], intercept: f64, ncond: usize) -> f64 {
+    let n = y.len();
+    if ncond >= n {
+        return f64::INFINITY;
+    }
+    let mut resid = vec![0.0; n];
+    let mut ssq = 0.0;
+    let mut nu = 0.0;
+    for l in ncond..n {
+        let mut tmp = y[l] - intercept;
+        for (j, &pj) in phi.iter().enumerate() {
+            if l >= j + 1 {
+                tmp -= pj * (y[l - j - 1] - intercept);
+            }
+        }
+        let maxq = (l - ncond).min(theta.len());
+        for j in 0..maxq {
+            tmp -= theta[j] * resid[l - j - 1];
+        }
+        resid[l] = tmp;
+        if tmp.is_finite() {
+            ssq += tmp * tmp;
+            nu += 1.0;
+        }
+    }
+    if nu < 1.0 {
+        f64::INFINITY
+    } else {
+        ssq / nu
+    }
+}
+
+fn css_ar0(y: &[f64]) -> (f64, f64) {
+    let n = y.len() as f64;
+    if n < 1.0 {
+        return (0.0, f64::NAN);
+    }
+    let mu = y.iter().sum::<f64>() / n;
+    let s2 = y.iter().map(|v| (v - mu) * (v - mu)).sum::<f64>() / n;
+    (mu, s2)
+}
+
+fn css_ma1(y: &[f64]) -> (f64, f64, f64) {
+    let n = y.len();
+    if n < 2 {
+        return (0.0, 0.0, f64::NAN);
+    }
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    let mut th = 0.0;
+    for _ in 0..20 {
+        th = golden_min(-0.99, 0.99, 80, |t| arma_css(y, &[], &[t], ic, 0));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| arma_css(y, &[], &[th], m, 0));
+    }
+    let s2 = arma_css(y, &[], &[th], ic, 0);
+    (th, ic, s2)
+}
+
+
+/// GNU `arima` — AR(0)/AR(1)/MA(1), CSS or ML.
 pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = XLENGTH(x) as usize;
-        if n < 3 {
+        if n < 1 {
             return R_NilValue();
         }
         let mut y = vec![0.0; n];
@@ -923,36 +1008,63 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             };
         }
         let mut css = false;
+        let mut p = 1i32;
+        let mut q = 0i32;
         let mut a = CDR(args);
         while !a.is_null() && a != R_NilValue() {
             let tag = TAG(a);
             if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
                 let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
                     .to_string_lossy();
+                let v = CAR(a);
                 if name == "method" {
-                    let v = CAR(a);
                     if !v.is_null() && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
                         let m = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0)))
                             .to_string_lossy();
                         css = m == "CSS";
                     }
+                } else if name == "order" && !v.is_null() && XLENGTH(v) >= 3 {
+                    let elt = |i: i64| {
+                        if TYPEOF(v) == SEXPTYPE::INTSXP {
+                            *INTEGER(v).add(i as usize) as i32
+                        } else {
+                            *REAL(v).add(i as usize) as i32
+                        }
+                    };
+                    p = elt(0);
+                    q = elt(2);
                 }
             }
             a = CDR(a);
         }
-        let (phi, mu, sigma2) = if css {
-            css_ar1(&y)
+        let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) = if p <= 0 && q <= 0 {
+            let (mu, s2) = css_ar0(&y);
+            (vec![mu], vec!["intercept".to_string()], s2)
+        } else if p <= 0 && q == 1 {
+            let (th, mu, s2) = css_ma1(&y);
+            (
+                vec![th, mu],
+                vec!["ma1".to_string(), "intercept".to_string()],
+                s2,
+            )
         } else {
-            exact_ar1_ml(&y)
+            let (phi, mu, s2) = if css {
+                css_ar1(&y)
+            } else {
+                exact_ar1_ml(&y)
+            };
+            (
+                vec![phi, mu],
+                vec!["ar1".to_string(), "intercept".to_string()],
+                s2,
+            )
         };
-        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as i64);
         let _c = protect(coef);
-        *REAL(coef) = phi;
-        *REAL(coef).add(1) = mu;
-        crate::mainutils::essentials::set_string_names(
-            coef,
-            &["ar1".to_string(), "intercept".to_string()],
-        );
+        for (i, v) in values.iter().enumerate() {
+            *REAL(coef).add(i) = *v;
+        }
+        crate::mainutils::essentials::set_string_names(coef, &names);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, coef);
