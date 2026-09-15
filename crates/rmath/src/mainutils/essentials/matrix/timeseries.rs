@@ -273,9 +273,21 @@ unsafe fn series_tsp(x: SEXP) -> (f64, f64, f64) {
 unsafe fn cbind_ts(args: SEXP, union: bool) -> SEXP {
     unsafe {
         let a = CAR(args);
-        let b = CAR(CDR(args));
-        if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
+        let rest = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            CDR(args)
+        };
+        let b = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(rest)
+        };
+        if a.is_null() || a == R_NilValue() {
             return R_NilValue();
+        }
+        if b.is_null() || b == R_NilValue() {
+            return a;
         }
         let (sa, ea, fa) = series_tsp(a);
         let (sb, eb, fb) = series_tsp(b);
