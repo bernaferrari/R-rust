@@ -1278,6 +1278,42 @@ fn css_sar1_sma1(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
     (sar, sma, ic, s2)
 }
 
+fn css_ma2(y: &[f64]) -> (f64, f64, f64, f64) {
+    let n = y.len();
+    if n < 3 {
+        return (0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut t1 = 0.0;
+    let mut t2 = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        t1 = golden_min(-0.99, 0.99, 80, |a| arma_css(y, &[], &[a, t2], ic, 0));
+        t2 = golden_min(-0.99, 0.99, 80, |a| arma_css(y, &[], &[t1, a], ic, 0));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| arma_css(y, &[], &[t1, t2], m, 0));
+    }
+    let s2 = arma_css(y, &[], &[t1, t2], ic, 0);
+    (t1, t2, ic, s2)
+}
+
+fn css_arma11_no_mean(y: &[f64]) -> (f64, f64, f64) {
+    let n = y.len();
+    if n < 3 {
+        return (0.0, 0.0, f64::NAN);
+    }
+    let mut ar = 0.0;
+    let mut ma = 0.0;
+    let ncond = 1usize;
+    for _ in 0..25 {
+        ar = golden_min(-0.99, 0.99, 80, |a| arma_css(y, &[a], &[ma], 0.0, ncond));
+        ma = golden_min(-0.99, 0.99, 80, |t| arma_css(y, &[ar], &[t], 0.0, ncond));
+    }
+    let s2 = arma_css(y, &[ar], &[ma], 0.0, ncond);
+    (ar, ma, s2)
+}
+
+
 
 
 
@@ -1500,6 +1536,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ma1".to_string(), "intercept".to_string()],
                 s2,
             )
+        } else if p <= 0 && q == 2 && !differenced {
+            let (t1, t2, mu, s2) = css_ma2(&y);
+            (
+                vec![t1, t2, mu],
+                vec!["ma1".to_string(), "ma2".to_string(), "intercept".to_string()],
+                s2,
+            )
         } else if p == 1 && q == 1 && !differenced && sar_p == 1 && period >= 2 {
             let (ar, ma, sar, mu, s2) = css_arma11_sar1(&y, period as usize);
             (
@@ -1536,6 +1579,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![p1, p2, mu],
                 vec!["ar1".to_string(), "ar2".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if differenced && p == 1 && q == 1 {
+            let (ar, ma, s2) = css_arma11_no_mean(&y);
+            (
+                vec![ar, ma],
+                vec!["ar1".to_string(), "ma1".to_string()],
                 s2,
             )
         } else if differenced && q <= 0 && p > 0 {
