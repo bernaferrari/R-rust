@@ -2115,6 +2115,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_nls_rt_asymp,
     },
     EvaluatedBuiltin {
+        name: "NLSstAsymptotic",
+        handler: crate::mainutils::essentials::do_nls_asymptotic,
+    },
+    EvaluatedBuiltin {
         name: "NLSstClosestX",
         handler: crate::mainutils::essentials::do_nls_closest_x,
     },

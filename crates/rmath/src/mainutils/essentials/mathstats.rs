@@ -7285,6 +7285,126 @@ pub unsafe fn do_nls_rt_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+fn nls_xy_x(xy: SEXP) -> Vec<f64> {
+    unsafe {
+        let x = list_named_elt(xy, "x");
+        if x == R_NilValue() {
+            return Vec::new();
+        }
+        (0..XLENGTH(x) as usize)
+            .map(|i| elt_real_safe(x, i as i64))
+            .collect()
+    }
+}
+
+fn nls_asymp_ols(xs: &[f64], ys: &[f64], lrc: f64) -> (f64, f64, f64) {
+    let n = xs.len();
+    if n < 2 || !lrc.is_finite() {
+        return (0.0, 0.0, f64::INFINITY);
+    }
+    let rate = (-lrc.exp()).exp(); // unused; z = 1-exp(-exp(lrc)*x)
+    let _ = rate;
+    let mut zs = vec![0.0; n];
+    for i in 0..n {
+        zs[i] = 1.0 - (-lrc.exp() * xs[i]).exp();
+    }
+    let nf = n as f64;
+    let my = ys.iter().sum::<f64>() / nf;
+    let mz = zs.iter().sum::<f64>() / nf;
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for i in 0..n {
+        let dz = zs[i] - mz;
+        num += dz * (ys[i] - my);
+        den += dz * dz;
+    }
+    let b1 = if den > 0.0 { num / den } else { 0.0 };
+    let b0 = my - b1 * mz;
+    let mut sse = 0.0;
+    for i in 0..n {
+        let e = ys[i] - (b0 + b1 * zs[i]);
+        sse += e * e;
+    }
+    (b0, b1, sse)
+}
+
+/// GNU `NLSstAsymptotic(xy)` — `b0 + b1*(1-exp(-exp(lrc)*x))`.
+pub unsafe fn do_nls_asymptotic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let xy = CAR(args);
+        let xs = nls_xy_x(xy);
+        let (ys, ok) = nls_xy_y(xy);
+        if !ok || xs.len() < 2 || ys.len() != xs.len() {
+            return R_NilValue();
+        }
+        let rt = elt_real_safe(do_nls_rt_asymp(_call, _op, args, _rho), 0);
+        let mut slx = 0.0;
+        let mut sly = 0.0;
+        let mut nlm = 0.0;
+        for i in 0..xs.len() {
+            let ly = (ys[i] - rt).abs().ln();
+            if ly.is_finite() {
+                slx += xs[i];
+                sly += ly;
+                nlm += 1.0;
+            }
+        }
+        let mut lrc0 = -1.0;
+        if nlm >= 2.0 {
+            let mx = slx / nlm;
+            let my = sly / nlm;
+            let mut num = 0.0;
+            let mut den = 0.0;
+            for i in 0..xs.len() {
+                let ly = (ys[i] - rt).abs().ln();
+                if ly.is_finite() {
+                    let dx = xs[i] - mx;
+                    num += dx * (ly - my);
+                    den += dx * dx;
+                }
+            }
+            let slope = if den > 0.0 { num / den } else { 0.0 };
+            if slope < 0.0 {
+                lrc0 = (-slope).ln();
+            }
+        }
+        let mut best_lrc = lrc0;
+        let mut best = nls_asymp_ols(&xs, &ys, lrc0);
+        let mut lo = lrc0 - 3.0;
+        let mut hi = lrc0 + 3.0;
+        for _ in 0..40 {
+            let m1 = lo + (hi - lo) / 3.0;
+            let m2 = hi - (hi - lo) / 3.0;
+            let a1 = nls_asymp_ols(&xs, &ys, m1);
+            let a2 = nls_asymp_ols(&xs, &ys, m2);
+            if a1.2 < a2.2 {
+                hi = m2;
+                if a1.2 < best.2 {
+                    best = a1;
+                    best_lrc = m1;
+                }
+            } else {
+                lo = m1;
+                if a2.2 < best.2 {
+                    best = a2;
+                    best_lrc = m2;
+                }
+            }
+        }
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+        let _r = protect(result);
+        *REAL(result) = best.0;
+        *REAL(result).add(1) = best.1;
+        *REAL(result).add(2) = best_lrc;
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["b0".to_string(), "b1".to_string(), "lrc".to_string()],
+        );
+        result
+    }
+}
+
+
 /// GNU `NLSstClosestX(xy, yval)` — interpolate x at a target y.
 pub unsafe fn do_nls_closest_x(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
