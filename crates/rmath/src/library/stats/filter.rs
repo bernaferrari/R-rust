@@ -1313,6 +1313,16 @@ fn css_arma11_no_mean(y: &[f64]) -> (f64, f64, f64) {
     (ar, ma, s2)
 }
 
+fn css_ma1_no_mean(y: &[f64]) -> (f64, f64) {
+    if y.len() < 2 {
+        return (0.0, f64::NAN);
+    }
+    let th = golden_min(-0.99, 0.99, 80, |t| arma_css(y, &[], &[t], 0.0, 0));
+    let s2 = arma_css(y, &[], &[th], 0.0, 0);
+    (th, s2)
+}
+
+
 
 
 
@@ -1588,6 +1598,9 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ar1".to_string(), "ma1".to_string()],
                 s2,
             )
+        } else if differenced && p <= 0 && q == 1 {
+            let (th, s2) = css_ma1_no_mean(&y);
+            (vec![th], vec!["ma1".to_string()], s2)
         } else if differenced && q <= 0 && p > 0 {
             let (phi, s2) = css_ar_no_mean(&y, p as usize);
             let names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
