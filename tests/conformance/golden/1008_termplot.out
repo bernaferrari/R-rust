@@ -1,0 +1,5 @@
+1,2,3,4,5
+-1.98,-0.99,0,0.99,1.98
+3.02
+x
+no applicable method for 'predict' applied to an object of class "c('double', 'numeric')"

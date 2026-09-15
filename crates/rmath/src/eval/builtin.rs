@@ -2460,6 +2460,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_qqline,
     },
     EvaluatedBuiltin {
+        name: "termplot",
+        handler: crate::mainutils::essentials::do_termplot,
+    },
+    EvaluatedBuiltin {
         name: ".ecdf_apply",
         handler: crate::mainutils::essentials::do_ecdf_apply,
     },

@@ -8962,6 +8962,82 @@ pub unsafe fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `termplot(lm, plot=FALSE)` — one-term centered effects.
+pub unsafe fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let coef = list_named_elt(obj, "coefficients");
+        let fitted = list_named_elt(obj, "fitted.values");
+        if coef == R_NilValue() || XLENGTH(coef) < 2 || fitted == R_NilValue() {
+            let pc = crate::sexp::constructors::Rf_lang2(Rf_install(c"predict".as_ptr()), obj);
+            let _pc = protect(pc);
+            return crate::eval::eval::Rf_eval(pc, rho);
+        }
+        let b0 = elt_real_safe(coef, 0);
+        let b1 = elt_real_safe(coef, 1);
+        let n = XLENGTH(fitted) as usize;
+        if n == 0 || b1 == 0.0 {
+            return R_NilValue();
+        }
+        let mut xs = Vec::with_capacity(n);
+        let mut sum = 0.0;
+        for i in 0..n {
+            let x = (elt_real_safe(fitted, i as i64) - b0) / b1;
+            xs.push(x);
+            sum += x;
+        }
+        let meanx = sum / n as f64;
+        let xv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _x = protect(xv);
+        let yv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _y = protect(yv);
+        for i in 0..n {
+            *REAL(xv).add(i) = xs[i];
+            *REAL(yv).add(i) = b1 * (xs[i] - meanx);
+        }
+        crate::mainutils::essentials::set_string_names(xv, &[]);
+        let df = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _df = protect(df);
+        SET_VECTOR_ELT(df, 0, xv);
+        SET_VECTOR_ELT(df, 1, yv);
+        crate::mainutils::essentials::set_string_names(df, &["x".to_string(), "y".to_string()]);
+        let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _rn = protect(rn);
+        *INTEGER(rn) = NA_INTEGER;
+        *INTEGER(rn).add(1) = -(n as i32);
+        crate::sexp::attrib_core::setAttrib(
+            df,
+            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+            rn,
+        );
+        let dfc = Rf_mkString(c"data.frame".as_ptr());
+        let _dc = protect(dfc);
+        crate::sexp::attrib_core::setAttrib(df, crate::sexp::attrib_core::R_ClassSymbol(), dfc);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, df);
+        let cnames = crate::sexp::attrib_core::getAttrib(
+            coef,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let tname = if TYPEOF(cnames) == SEXPTYPE::STRSXP && XLENGTH(cnames) >= 2 {
+            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(cnames, 1)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            "x".to_string()
+        };
+        crate::mainutils::essentials::set_string_names(result, &[tname]);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(c"constant".as_ptr()),
+            Rf_ScalarReal(b0 + b1 * meanx),
+        );
+        result
+    }
+}
+
+
 /// GNU `summary(lm)` coefficient table and fit stats.
 pub unsafe fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
