@@ -3903,6 +3903,31 @@ pub unsafe fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
     }
 }
 
+/// GNU `plot.spec.coherency(x)` — reads `x$spec`.
+pub unsafe fn do_plot_spec_coherency(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { spec_plot_read_spec(args, rho) }
+}
+
+/// GNU `plot.spec.phase(x)` — reads `x$spec`.
+pub unsafe fn do_plot_spec_phase(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { spec_plot_read_spec(args, rho) }
+}
+
+unsafe fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dollar = Rf_lang3(
+            Rf_install(c"$".as_ptr()),
+            x,
+            Rf_install(c"spec".as_ptr()),
+        );
+        let _d = protect(dollar);
+        crate::eval::eval::Rf_eval(dollar, rho);
+        R_NilValue()
+    }
+}
+
+
 
 pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]

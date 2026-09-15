@@ -2420,6 +2420,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_plot_ecdf,
     },
     EvaluatedBuiltin {
+        name: "plot.spec.coherency",
+        handler: crate::mainutils::essentials::do_plot_spec_coherency,
+    },
+    EvaluatedBuiltin {
+        name: "plot.spec.phase",
+        handler: crate::mainutils::essentials::do_plot_spec_phase,
+    },
+    EvaluatedBuiltin {
         name: "ppplot",
         handler: crate::mainutils::essentials::do_ppplot,
     },
