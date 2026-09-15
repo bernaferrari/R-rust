@@ -6537,6 +6537,41 @@ pub unsafe fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `qqline(y)` — type-7 quartile line then `abline`.
+pub unsafe fn do_qqline(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let y = CAR(args);
+        let n = if y.is_null() || y == R_NilValue() {
+            0
+        } else {
+            XLENGTH(y)
+        };
+        let mut vals = Vec::new();
+        for i in 0..n {
+            let v = elt_real_safe(y, i);
+            if v.is_finite() {
+                vals.push(v);
+            }
+        }
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let y1 = quantile_type7(&vals, 0.25);
+        let y2 = quantile_type7(&vals, 0.75);
+        let x1 = crate::dist::normal::qnorm5_inner(0.25, 0.0, 1.0, true, false);
+        let x2 = crate::dist::normal::qnorm5_inner(0.75, 0.0, 1.0, true, false);
+        let slope = (y2 - y1) / (x2 - x1);
+        let int = y1 - slope * x1;
+
+        let ab = crate::sexp::constructors::Rf_lang3(
+            Rf_install(c"abline".as_ptr()),
+            Rf_ScalarReal(int),
+            Rf_ScalarReal(slope),
+        );
+        let _ab = protect(ab);
+        crate::eval::eval::Rf_eval(ab, rho)
+    }
+}
+
+
 /// GNU `mahalanobis(x, center, cov)` — squared Mahalanobis, 2 columns.
 pub unsafe fn do_mahalanobis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
