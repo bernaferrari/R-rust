@@ -906,7 +906,7 @@ fn css_ar1(y: &[f64]) -> (f64, f64, f64) {
     (best_phi, best_mu, sigma2)
 }
 
-/// GNU `arima(x, order=c(1,0,0), method="CSS")` — AR(1) with intercept.
+/// GNU `arima(x, order=c(1,0,0))` — CSS or exact AR(1) ML.
 pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -922,7 +922,29 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *INTEGER(x).add(i) as f64
             };
         }
-        let (phi, mu, sigma2) = css_ar1(&y);
+        let mut css = false;
+        let mut a = CDR(args);
+        while !a.is_null() && a != R_NilValue() {
+            let tag = TAG(a);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy();
+                if name == "method" {
+                    let v = CAR(a);
+                    if !v.is_null() && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                        let m = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0)))
+                            .to_string_lossy();
+                        css = m == "CSS";
+                    }
+                }
+            }
+            a = CDR(a);
+        }
+        let (phi, mu, sigma2) = if css {
+            css_ar1(&y)
+        } else {
+            exact_ar1_ml(&y)
+        };
         let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _c = protect(coef);
         *REAL(coef) = phi;
@@ -1465,6 +1487,8 @@ fn struct_ts_type(args: SEXP) -> String {
 
 
 /// GNU `KalmanLike` for state dim `p`. Matrices are column-major.
+/// `s_up` gates the P prediction (`l > UP`); likelihood still includes
+/// every non-NA observation, matching `arima.c`.
 fn kalman_like_nd(
     y: &[f64],
     z: &[f64],
@@ -1517,6 +1541,11 @@ fn kalman_like_nd(
                     pnew[i + p * j] = tmp;
                 }
             }
+        }
+        if y[l].is_nan() {
+            a.copy_from_slice(&anew);
+            pmat.copy_from_slice(&pnew);
+            continue;
         }
         let mut resid = y[l];
         for i in 0..p {
