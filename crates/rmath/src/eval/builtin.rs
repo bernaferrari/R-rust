@@ -2464,6 +2464,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_termplot,
     },
     EvaluatedBuiltin {
+        name: "cpgram",
+        handler: crate::mainutils::essentials::do_cpgram,
+    },
+    EvaluatedBuiltin {
         name: ".ecdf_apply",
         handler: crate::mainutils::essentials::do_ecdf_apply,
     },
