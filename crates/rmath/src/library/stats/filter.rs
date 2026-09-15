@@ -2030,7 +2030,19 @@ pub unsafe fn do_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_as_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'ts' object must have one or more observations",
+            );
+        }
         let n = XLENGTH(x);
+        if n == 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'ts' object must have one or more observations",
+            );
+        }
         let existing = crate::sexp::attrib_core::getAttrib(
             x,
             crate::sexp::symbol::Rf_install(c"tsp".as_ptr()),
@@ -2052,6 +2064,31 @@ pub unsafe fn do_as_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         x
     }
 }
+
+/// GNU `plot.ts(x)` — `as.ts(x)` then plot.
+pub unsafe fn do_plot_ts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let as_args = Rf_cons(x, R_NilValue());
+        let _aa = protect(as_args);
+        let _ = do_as_ts(call, op, as_args, rho);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
+    }
+}
+
+/// GNU `ts.plot(...)` — `ts.union(...)` then `plot.ts`.
+pub unsafe fn do_ts_plot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let sers = crate::mainutils::essentials::do_ts_union(call, op, args, rho);
+        let _s = protect(sers);
+        let plot_args = Rf_cons(sers, R_NilValue());
+        let _pa = protect(plot_args);
+        do_plot_ts(call, op, plot_args, rho)
+    }
+}
+
+
 
 /// GNU `hasTsp(x)` — ensure a `tsp` attribute, do not set class.
 pub unsafe fn do_has_tsp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

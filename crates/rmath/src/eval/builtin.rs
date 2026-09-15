@@ -2660,6 +2660,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_as_ts,
     },
     EvaluatedBuiltin {
+        name: "plot.ts",
+        handler: crate::library::stats::filter::do_plot_ts,
+    },
+    EvaluatedBuiltin {
+        name: "ts.plot",
+        handler: crate::library::stats::filter::do_ts_plot,
+    },
+    EvaluatedBuiltin {
         name: "is.ts",
         handler: crate::library::stats::filter::do_is_ts,
     },
