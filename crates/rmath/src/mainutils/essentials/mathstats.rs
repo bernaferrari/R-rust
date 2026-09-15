@@ -7986,7 +7986,7 @@ pub unsafe fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `manova(cbind(y1,y2) ~ g)` — two-group treatment coefficients.
+/// GNU `manova(cbind(y1,y2) ~ g)` — two-group coefficients and residuals.
 pub unsafe fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let form = CAR(args);
@@ -8018,6 +8018,7 @@ pub unsafe fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let ng = XLENGTH(g) as usize;
         let n = nr.min(ng);
+        let mut ys = vec![0.0; n * nc];
         let mut sum1 = vec![0.0; nc];
         let mut sum2 = vec![0.0; nc];
         let mut n1 = 0.0;
@@ -8030,6 +8031,7 @@ pub unsafe fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 } else {
                     *INTEGER(y).add(i + j * nr) as f64
                 };
+                ys[i + j * n] = v;
                 if code <= 1 {
                     sum1[j] += v;
                     if j == 0 {
@@ -8048,16 +8050,32 @@ pub unsafe fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let coef = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, nc as i32);
         let _c = protect(coef);
+        let resid = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, nc as i32);
+        let _rs = protect(resid);
         for j in 0..nc {
             let m1 = sum1[j] / n1;
             let m2 = sum2[j] / n2;
             *REAL(coef).add(j * 2) = m1;
             *REAL(coef).add(1 + j * 2) = m2 - m1;
+            for i in 0..n {
+                let code = *INTEGER(g).add(i);
+                let m = if code <= 1 { m1 } else { m2 };
+                *REAL(resid).add(i + j * n) = ys[i + j * n] - m;
+            }
         }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, coef);
-        crate::mainutils::essentials::set_string_names(result, &["coefficients".to_string()]);
+        SET_VECTOR_ELT(result, 1, resid);
+        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(n1));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "coefficients".to_string(),
+                "residuals".to_string(),
+                "n1".to_string(),
+            ],
+        );
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
         let _cl = protect(class);
         SET_STRING_ELT(class, 0, Rf_mkChar(c"manova".as_ptr()));
@@ -8065,6 +8083,125 @@ pub unsafe fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         SET_STRING_ELT(class, 2, Rf_mkChar(c"aov".as_ptr()));
         SET_STRING_ELT(class, 3, Rf_mkChar(c"mlm".as_ptr()));
         SET_STRING_ELT(class, 4, Rf_mkChar(c"lm".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+/// GNU `summary.manova` — two-response Pillai trace for two groups.
+pub unsafe fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        if obj.is_null() || obj == R_NilValue() || TYPEOF(obj) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        let coef = list_named_elt(obj, "coefficients");
+        let resid = list_named_elt(obj, "residuals");
+        let n1 = elt_real_safe(list_named_elt(obj, "n1"), 0);
+        if coef.is_null() || resid.is_null() || coef == R_NilValue() || resid == R_NilValue() {
+            return R_NilValue();
+        }
+        let rdim = crate::sexp::attrib_core::getAttrib(resid, crate::sexp::attrib_core::R_DimSymbol());
+        if rdim.is_null() || rdim == R_NilValue() || XLENGTH(rdim) < 2 {
+            return R_NilValue();
+        }
+        let n = *INTEGER(rdim) as usize;
+        let p = *INTEGER(rdim).add(1) as usize;
+        if p != 2 || n < 3 {
+            return R_NilValue();
+        }
+        let n2 = n as f64 - n1;
+        if n1 <= 0.0 || n2 <= 0.0 {
+            return R_NilValue();
+        }
+        let d0 = *REAL(coef).add(1);
+        let d1 = *REAL(coef).add(3);
+        let scale = n1 * n2 / (n as f64);
+        let h11 = scale * d0 * d0;
+        let h12 = scale * d0 * d1;
+        let h22 = scale * d1 * d1;
+        let mut e11 = 0.0;
+        let mut e12 = 0.0;
+        let mut e22 = 0.0;
+        for i in 0..n {
+            let r0 = *REAL(resid).add(i);
+            let r1 = *REAL(resid).add(i + n);
+            e11 += r0 * r0;
+            e12 += r0 * r1;
+            e22 += r1 * r1;
+        }
+        let det = e11 * e22 - e12 * e12;
+        if det.abs() < 1e-15 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "residuals have rank 1 < 2",
+            );
+        }
+        let i11 = e22 / det;
+        let i12 = -e12 / det;
+        let i22 = e11 / det;
+        let a11 = i11 * h11 + i12 * h12;
+        let a12 = i11 * h12 + i12 * h22;
+        let a21 = i12 * h11 + i22 * h12;
+        let a22 = i12 * h12 + i22 * h22;
+        let tr = a11 + a22;
+        let det_a = a11 * a22 - a12 * a21;
+        let disc = (tr * tr - 4.0 * det_a).max(0.0).sqrt();
+        let l1 = 0.5 * (tr + disc);
+        let l2 = 0.5 * (tr - disc);
+        let v = l1 / (1.0 + l1) + l2 / (1.0 + l2);
+        let q: f64 = 1.0;
+        let df_res = n as f64 - 2.0;
+        let s = q.min(p as f64);
+        let nn = 0.5 * (df_res - p as f64 - 1.0);
+        let m = 0.5 * ((p as f64 - q).abs() - 1.0);
+        let tmp1 = 2.0 * m + s + 1.0;
+        let tmp2 = 2.0 * nn + s + 1.0;
+        let fstat = (tmp2 / tmp1 * v) / (s - v);
+        let num_df = s * tmp1;
+        let den_df = s * tmp2;
+        let pval = crate::dist::f_dist::pf_inner(fstat, num_df, den_df, false, false);
+        let stats = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 6);
+        let _st = protect(stats);
+        *REAL(stats) = 1.0;
+        *REAL(stats).add(1) = df_res;
+        *REAL(stats).add(2) = v;
+        *REAL(stats).add(3) = f64::NAN;
+        *REAL(stats).add(4) = fstat;
+        *REAL(stats).add(5) = f64::NAN;
+        *REAL(stats).add(6) = num_df;
+        *REAL(stats).add(7) = f64::NAN;
+        *REAL(stats).add(8) = den_df;
+        *REAL(stats).add(9) = f64::NAN;
+        *REAL(stats).add(10) = pval;
+        *REAL(stats).add(11) = f64::NAN;
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _rn = protect(rn);
+        SET_STRING_ELT(rn, 0, Rf_mkChar(c"g".as_ptr()));
+        SET_STRING_ELT(rn, 1, Rf_mkChar(c"Residuals".as_ptr()));
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 6);
+        let _cn = protect(cn);
+        SET_STRING_ELT(cn, 0, Rf_mkChar(c"Df".as_ptr()));
+        SET_STRING_ELT(cn, 1, Rf_mkChar(c"Pillai".as_ptr()));
+        SET_STRING_ELT(cn, 2, Rf_mkChar(c"approx F".as_ptr()));
+        SET_STRING_ELT(cn, 3, Rf_mkChar(c"num Df".as_ptr()));
+        SET_STRING_ELT(cn, 4, Rf_mkChar(c"den Df".as_ptr()));
+        SET_STRING_ELT(cn, 5, Rf_mkChar(c"Pr(>F)".as_ptr()));
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(stats, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, stats);
+        crate::mainutils::essentials::set_string_names(result, &["stats".to_string()]);
+        let class = Rf_mkString(c"summary.manova".as_ptr());
+        let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),
