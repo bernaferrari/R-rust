@@ -7098,39 +7098,80 @@ pub unsafe fn do_qsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-/// GNU `rsmirnov(n, sizes)` — two-sample Smirnov statistic via `rcont2`.
+/// GNU `rsmirnov(n, sizes, z=NULL, alternative=...)` via `C_Smirnov_sim`.
 pub unsafe fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = elt_real_safe(CAR(args), 0).floor() as i32;
-        if n <= 0 {
+        let n_arg = CAR(args);
+        if n_arg.is_null() || n_arg == R_NilValue() || XLENGTH(n_arg) == 0 {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let n = elt_real_safe(n_arg, 0).floor() as i32;
+        if n == 0 {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        if n < 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid arguments",
+            );
         }
         let sizes = CAR(CDR(args));
-        let nx = elt_real_safe(sizes, 0).floor() as i32;
-        let ny = if !sizes.is_null() && sizes != R_NilValue() && XLENGTH(sizes) > 1 {
-            elt_real_safe(sizes, 1).floor() as i32
-        } else {
-            nx
-        };
-        if nx < 1 || ny < 1 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        if sizes.is_null() || sizes == R_NilValue() || XLENGTH(sizes) != 2 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "argument 'sizes' must be a vector of length 2",
+            );
         }
-        let rest = CDR(CDR(args));
-        let z = if rest.is_null() || rest == R_NilValue() {
-            R_NilValue()
+        let nx = elt_real_safe(sizes, 0).floor() as i32;
+        let ny = elt_real_safe(sizes, 1).floor() as i32;
+        if nx < 1 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "not enough 'x' data",
+            );
+        }
+        if ny < 1 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "not enough 'y' data",
+            );
+        }
+        let mut z = R_NilValue();
+        let mut alternative = "two.sided";
+        let mut cell = CDR(CDR(args));
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = CAR(cell);
+            if name == "alternative" {
+                alternative = smirnov_alternative(val);
+            } else if name == "z" {
+                z = val;
+            } else if name.is_empty() {
+                if pos == 0 {
+                    z = val;
+                } else if pos == 1 {
+                    alternative = smirnov_alternative(val);
+                }
+                pos += 1;
+            }
+            cell = CDR(cell);
+        }
+        if z == crate::sexp::globals::R_MissingArg() {
+            z = R_NilValue();
+        }
+        let two_sided = alternative == "two.sided";
+        let (c0, c1) = if alternative == "less" {
+            (ny, nx)
         } else {
-            CAR(rest)
-        };
-        let two_cell = if rest.is_null() || rest == R_NilValue() {
-            std::ptr::null_mut()
-        } else {
-            CDR(rest)
-        };
-        let two_sided = if two_cell.is_null() || two_cell == R_NilValue() {
-            true
-        } else {
-            let t = CAR(two_cell);
-            t.is_null() || t == R_NilValue() || elt_real_safe(t, 0) != 0.0
+            (nx, ny)
         };
         let nrowt: Vec<i32> = if z.is_null() || z == R_NilValue() {
             vec![1; (nx + ny) as usize]
@@ -7141,7 +7182,7 @@ pub unsafe fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
         let nrow = nrowt.len() as i32;
-        let ncolt = [nx, ny];
+        let ncolt = [c0, c1];
         let ntotal = nx + ny;
         let mut fact = vec![0.0_f64; (ntotal + 1) as usize];
         fact[0] = 0.0;
@@ -7173,7 +7214,7 @@ pub unsafe fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             for j in 0..nrow as usize {
                 cs0 += observed[j];
                 cs1 += observed[nrow as usize + j];
-                let mut diff = (cs0 as f64) / (nx as f64) - (cs1 as f64) / (ny as f64);
+                let mut diff = (cs0 as f64) / (c0 as f64) - (cs1 as f64) / (c1 as f64);
                 if two_sided {
                     diff = diff.abs();
                 }
@@ -7187,6 +7228,29 @@ pub unsafe fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         result
     }
 }
+
+unsafe fn smirnov_alternative(arg: SEXP) -> &'static str {
+    unsafe {
+        if arg.is_null()
+            || arg == R_NilValue()
+            || TYPEOF(arg) != SEXPTYPE::STRSXP
+            || XLENGTH(arg) < 1
+        {
+            return "two.sided";
+        }
+        let s = CStr::from_ptr(CHAR(STRING_ELT(arg, 0)))
+            .to_string_lossy()
+            .into_owned();
+        if s.starts_with('l') {
+            "less"
+        } else if s.starts_with('g') {
+            "greater"
+        } else {
+            "two.sided"
+        }
+    }
+}
+
 
 unsafe fn smirnov_row_totals(z: SEXP) -> Vec<i32> {
     unsafe {
