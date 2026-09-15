@@ -1462,6 +1462,33 @@ fn css_ar_mean(y: &[f64], p: usize) -> (Vec<f64>, f64, f64) {
     (phi, ic, s2)
 }
 
+fn css_ar1_sar1_no_mean(y: &[f64], period: usize) -> (f64, f64, f64) {
+    let ncond = 1 + period;
+    if period < 2 || y.len() <= ncond {
+        return (0.0, 0.0, f64::NAN);
+    }
+    let mut ar = 0.0;
+    let mut sar = 0.0;
+    let expand = |ar: f64, sar: f64| -> Vec<f64> {
+        let mut phi = vec![0.0; period + 1];
+        phi[0] = ar;
+        phi[period - 1] = sar;
+        phi[period] = -ar * sar;
+        phi
+    };
+    for _ in 0..25 {
+        ar = golden_min(-0.99, 0.99, 80, |a| {
+            arma_css(y, &expand(a, sar), &[], 0.0, ncond)
+        });
+        sar = golden_min(-0.99, 0.99, 80, |s| {
+            arma_css(y, &expand(ar, s), &[], 0.0, ncond)
+        });
+    }
+    let s2 = arma_css(y, &expand(ar, sar), &[], 0.0, ncond);
+    (ar, sar, s2)
+}
+
+
 
 
 
@@ -1689,6 +1716,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![t1, t2],
                 vec!["ma1".to_string(), "ma2".to_string()],
+                s2,
+            )
+        } else if no_mean && p == 1 && q <= 0 && sar_p == 1 && period >= 2 {
+            let (ar, sar, s2) = css_ar1_sar1_no_mean(&y, period as usize);
+            (
+                vec![ar, sar],
+                vec!["ar1".to_string(), "sar1".to_string()],
                 s2,
             )
         } else if no_mean && q <= 0 && p > 0 {
