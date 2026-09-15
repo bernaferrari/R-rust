@@ -10040,6 +10040,74 @@ pub unsafe fn do_order_dendrogram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
     }
 }
 
+/// GNU `heatmap(x)` — row/column leaf order from `hclust(dist())`.
+pub unsafe fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || XLENGTH(dim) < 2
+        {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'x' must be a numeric matrix",
+            );
+        }
+        let nr = *INTEGER(dim) as i32;
+        let nc = *INTEGER(dim).add(1) as i32;
+        if nr <= 1 || nc <= 1 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'x' must have at least 2 rows and 2 columns",
+            );
+        }
+        let dist_sym = Rf_install(c"dist".as_ptr());
+        let hclust_sym = Rf_install(c"hclust".as_ptr());
+        let t_sym = Rf_install(c"t".as_ptr());
+        let crow = crate::sexp::constructors::Rf_lang2(dist_sym, x);
+        let _crow = protect(crow);
+        let drow = crate::eval::eval::Rf_eval(crow, rho);
+        let _dr = protect(drow);
+        let hrowc = crate::sexp::constructors::Rf_lang2(hclust_sym, drow);
+        let _hrowc = protect(hrowc);
+        let hcrow = crate::eval::eval::Rf_eval(hrowc, rho);
+        let _hr = protect(hcrow);
+        let tc = crate::sexp::constructors::Rf_lang2(t_sym, x);
+        let _tc = protect(tc);
+        let xt = crate::eval::eval::Rf_eval(tc, rho);
+        let _xt = protect(xt);
+        let ccol = crate::sexp::constructors::Rf_lang2(dist_sym, xt);
+        let _ccol = protect(ccol);
+        let dcol = crate::eval::eval::Rf_eval(ccol, rho);
+        let _dc = protect(dcol);
+        let hcolc = crate::sexp::constructors::Rf_lang2(hclust_sym, dcol);
+        let _hcolc = protect(hcolc);
+        let hccol = crate::eval::eval::Rf_eval(hcolc, rho);
+        let _hc = protect(hccol);
+        let row_ind = list_named_elt(hcrow, "order");
+        let col_ind = list_named_elt(hccol, "order");
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, row_ind);
+        SET_VECTOR_ELT(result, 1, col_ind);
+        SET_VECTOR_ELT(result, 2, R_NilValue());
+        SET_VECTOR_ELT(result, 3, R_NilValue());
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "rowInd".to_string(),
+                "colInd".to_string(),
+                "Rowv".to_string(),
+                "Colv".to_string(),
+            ],
+        );
+        result
+    }
+}
+
+
 /// GNU `dendrapply(X, FUN)` — apply `FUN` to a dendrogram (leaf vector).
 pub unsafe fn do_dendrapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -11204,35 +11272,51 @@ unsafe fn matrix_real(x: SEXP, i: i64) -> f64 {
     }
 }
 
-/// GNU `dist(x)` Euclidean for a numeric vector.
+/// GNU `dist(x)` — Euclidean; matrices are row observations.
 pub unsafe fn do_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let n = XLENGTH(x);
-        let len = n * (n - 1) / 2;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, len);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (nobs, ncols) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            (XLENGTH(x) as usize, 1)
+        };
+        if nobs == 0 {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let len = nobs * (nobs - 1) / 2;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, len as i64);
         let _r = protect(result);
         let mut k = 0usize;
-        for i in 0..n {
-            for j in (i + 1)..n {
-                let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    *REAL(x).add(i as usize)
-                } else {
-                    *INTEGER(x).add(i as usize) as f64
-                };
-                let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    *REAL(x).add(j as usize)
-                } else {
-                    *INTEGER(x).add(j as usize) as f64
-                };
-                *REAL(result).add(k) = (a - b).abs();
+        for i in 0..nobs {
+            for j in (i + 1)..nobs {
+                let mut s = 0.0;
+                for c in 0..ncols {
+                    let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                        *REAL(x).add(i + c * nobs)
+                    } else {
+                        *INTEGER(x).add(i + c * nobs) as f64
+                    };
+                    let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                        *REAL(x).add(j + c * nobs)
+                    } else {
+                        *INTEGER(x).add(j + c * nobs) as f64
+                    };
+                    s += (a - b) * (a - b);
+                }
+                *REAL(result).add(k) = s.sqrt();
                 k += 1;
             }
         }
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(c"Size".as_ptr()),
-            Rf_ScalarInteger(n as c_int),
+            Rf_ScalarInteger(nobs as c_int),
         );
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -11247,6 +11331,7 @@ pub unsafe fn do_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         result
     }
 }
+
 
 /// GNU `as.dist(m)` — lower triangle of a square matrix, or pass through `dist`.
 pub unsafe fn do_as_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
