@@ -2412,6 +2412,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_knots,
     },
     EvaluatedBuiltin {
+        name: "plot.stepfun",
+        handler: crate::mainutils::essentials::do_plot_stepfun,
+    },
+    EvaluatedBuiltin {
+        name: "plot.ecdf",
+        handler: crate::mainutils::essentials::do_plot_ecdf,
+    },
+    EvaluatedBuiltin {
         name: "ppplot",
         handler: crate::mainutils::essentials::do_ppplot,
     },

@@ -10562,6 +10562,76 @@ pub unsafe fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `plot.stepfun(x)` — knot/height coordinates (no device).
+pub unsafe fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let fun = CAR(args);
+        if fun.is_null() || fun == R_NilValue() {
+            return R_NilValue();
+        }
+        let kn = do_knots(call, op, args, rho);
+        let _k = protect(kn);
+        if kn.is_null() || kn == R_NilValue() || XLENGTH(kn) < 1 {
+            return R_NilValue();
+        }
+        let n = XLENGTH(kn) as usize;
+        let mut xval = Vec::with_capacity(n);
+        for i in 0..n {
+            xval.push(elt_real_safe(kn, i as i64));
+        }
+        let rx0 = xval[0];
+        let rx1 = xval[n - 1];
+        let span = rx1 - rx0;
+        let med = if n >= 2 {
+            let mut diffs: Vec<f64> = xval.windows(2).map(|w| w[1] - w[0]).collect();
+            diffs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let m = diffs.len();
+            if m % 2 == 1 {
+                diffs[m / 2]
+            } else {
+                (diffs[m / 2 - 1] + diffs[m / 2]) / 2.0
+            }
+        } else {
+            rx0.abs() / 16.0
+        };
+        let dr = (0.08 * span).max(med);
+        let mut ti = Vec::with_capacity(n + 2);
+        ti.push(rx0 - 2.0 * dr);
+        ti.extend_from_slice(&xval);
+        ti.push(rx1 + 2.0 * dr);
+        let nt = ti.len();
+        let tvec = Rf_allocVector3(SEXPTYPE::REALSXP, nt as i64);
+        let _t = protect(tvec);
+        for (i, v) in ti.iter().enumerate() {
+            *REAL(tvec).add(i) = *v;
+        }
+        let mids = Rf_allocVector3(SEXPTYPE::REALSXP, (nt - 1) as i64);
+        let _m = protect(mids);
+        for i in 0..nt - 1 {
+            *REAL(mids).add(i) = 0.5 * (ti[i] + ti[i + 1]);
+        }
+        let ev = crate::sexp::constructors::Rf_lang2(fun, mids);
+        let _e = protect(ev);
+        let yv = crate::eval::eval::Rf_eval(ev, rho);
+        let _y = protect(yv);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, tvec);
+        SET_VECTOR_ELT(result, 1, yv);
+        crate::mainutils::essentials::set_string_names(result, &["t".to_string(), "y".to_string()]);
+        result
+    }
+}
+
+/// GNU `plot.ecdf(x)` — `plot.stepfun` then `abline`; returns invisible NULL.
+pub unsafe fn do_plot_ecdf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let _ = do_plot_stepfun(call, op, args, rho);
+        R_NilValue()
+    }
+}
+
+
 /// GNU `ppplot(x, y, plot.it=FALSE)` — P-P stepfun from two ecdfs.
 pub unsafe fn do_ppplot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
