@@ -2396,6 +2396,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_heatmap,
     },
     EvaluatedBuiltin {
+        name: "rect.hclust",
+        handler: crate::mainutils::essentials::do_rect_hclust,
+    },
+    EvaluatedBuiltin {
         name: "cutree",
         handler: crate::library::stats::hclust_utils::do_cutree,
     },

@@ -10107,6 +10107,65 @@ pub unsafe fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `rect.hclust(tree, k=, h=)` — cluster boxes; validates `k`/`h`.
+pub unsafe fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let tree = CAR(args);
+        let mut k_arg = R_NilValue();
+        let mut h_arg = R_NilValue();
+        let mut cell = CDR(args);
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = CAR(cell);
+            if name == "k" || (name.is_empty() && pos == 0) {
+                k_arg = val;
+            }
+            if name == "h" || (name.is_empty() && pos == 3) {
+                h_arg = val;
+            }
+            if name.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
+        }
+        let k_set = !k_arg.is_null() && k_arg != R_NilValue() && k_arg != R_MissingArg();
+        let h_set = !h_arg.is_null() && h_arg != R_NilValue() && h_arg != R_MissingArg();
+        if k_set == h_set {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "specify exactly one of 'k' and 'h'",
+            );
+        }
+        let height = list_named_elt(tree, "height");
+        let nh = if height.is_null() || height == R_NilValue() {
+            0
+        } else {
+            XLENGTH(height)
+        };
+        let k = if k_set {
+            elt_real_safe(k_arg, 0).floor() as i32
+        } else {
+            0
+        };
+        if k_set && (k < 2 || k as i64 > nh) {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                &format!("k must be between 2 and {nh}"),
+            );
+        }
+        R_NilValue()
+    }
+}
+
+
 
 /// GNU `dendrapply(X, FUN)` — apply `FUN` to a dendrogram (leaf vector).
 pub unsafe fn do_dendrapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
