@@ -795,6 +795,15 @@ pub unsafe fn do_arima0(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `arima0.diag(...)` — `.Defunct()`.
+pub unsafe fn do_arima0_diag(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::mainutils::errors::errorcall_str(
+        crate::mainutils::errors::R_getCurrentCall(),
+        "'arima0.diag' is defunct.\nSee help(\"Defunct\")",
+    );
+}
+
+
 
 /// GNU `arima.sim(list(ar=phi), n, n.start=)` — AR(1) via rnorm + recursive filter.
 pub unsafe fn do_arima_sim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

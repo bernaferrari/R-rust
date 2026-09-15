@@ -2767,6 +2767,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_arima0,
     },
     EvaluatedBuiltin {
+        name: "arima0.diag",
+        handler: crate::library::stats::filter::do_arima0_diag,
+    },
+    EvaluatedBuiltin {
         name: "drop.terms",
         handler: crate::library::stats::filter::do_drop_terms,
     },
