@@ -1054,6 +1054,40 @@ fn css_sma1(y: &[f64], period: usize) -> (f64, f64, f64) {
     (sma, ic, s2)
 }
 
+fn css_ar1_sar1(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
+    let n = y.len();
+    let ncond = 1 + period;
+    if period < 2 || n <= ncond {
+        return (0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut ar = 0.0;
+    let mut sar = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    let expand = |ar: f64, sar: f64| -> Vec<f64> {
+        let mut phi = vec![0.0; period + 1];
+        phi[0] = ar;
+        phi[period - 1] = sar;
+        phi[period] = -ar * sar;
+        phi
+    };
+    for _ in 0..25 {
+        ar = golden_min(-0.99, 0.99, 80, |a| {
+            arma_css(y, &expand(a, sar), &[], ic, ncond)
+        });
+        sar = golden_min(-0.99, 0.99, 80, |s| {
+            arma_css(y, &expand(ar, s), &[], ic, ncond)
+        });
+        ic = golden_min(lo_ic, hi_ic, 80, |m| {
+            arma_css(y, &expand(ar, sar), &[], m, ncond)
+        });
+    }
+    let s2 = arma_css(y, &expand(ar, sar), &[], ic, ncond);
+    (ar, sar, ic, s2)
+}
+
+
 
 
 fn difference_series(y: &[f64], d: i32) -> Vec<f64> {
@@ -1191,6 +1225,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![sma, mu],
                 vec!["sma1".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p == 1 && q <= 0 && d <= 0 && sar_p == 1 && period >= 2 {
+            let (ar, sar, mu, s2) = css_ar1_sar1(&y, period as usize);
+            (
+                vec![ar, sar, mu],
+                vec!["ar1".to_string(), "sar1".to_string(), "intercept".to_string()],
                 s2,
             )
         } else if p <= 0 && q <= 0 {
