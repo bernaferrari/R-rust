@@ -10475,6 +10475,73 @@ pub unsafe fn do_ppplot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `rfree1way(n)` — two-group Control/B uniforms when `delta=0`.
+pub unsafe fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = elt_real_safe(CAR(args), 0).floor() as i32;
+        if n < 1 {
+            return R_NilValue();
+        }
+        let ntot = (2 * n) as i64;
+        let n_s = Rf_ScalarInteger(ntot as c_int);
+        let _ns = protect(n_s);
+        let a_s = Rf_ScalarReal(0.0);
+        let _as = protect(a_s);
+        let b_s = Rf_ScalarReal(1.0);
+        let _bs = protect(b_s);
+        let y = crate::library::stats::random::do_runif(n_s, a_s, b_s);
+        let _y = protect(y);
+        let groups = Rf_allocVector3(SEXPTYPE::INTSXP, ntot);
+        let _g = protect(groups);
+        for i in 0..n as usize {
+            *INTEGER(groups).add(i) = 1;
+            *INTEGER(groups).add(i + n as usize) = 2;
+        }
+        let lev = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _lv = protect(lev);
+        SET_STRING_ELT(lev, 0, Rf_mkChar(c"Control".as_ptr()));
+        SET_STRING_ELT(lev, 1, Rf_mkChar(c"B".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            groups,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+            lev,
+        );
+        let fclass = Rf_mkString(c"factor".as_ptr());
+        let _fc = protect(fclass);
+        crate::sexp::attrib_core::setAttrib(
+            groups,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            fclass,
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, groups);
+        SET_VECTOR_ELT(result, 1, y);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["groups".to_string(), "y".to_string()],
+        );
+        let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _rn = protect(rn);
+        *INTEGER(rn) = NA_INTEGER;
+        *INTEGER(rn).add(1) = -(ntot as i32);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+            rn,
+        );
+        let class = Rf_mkString(c"data.frame".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
+    }
+}
+
+
 
 
 /// GNU `stepfun(x, y)` — cadlag step function, `length(y)=length(x)+1`.
