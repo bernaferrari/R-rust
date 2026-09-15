@@ -1530,6 +1530,55 @@ fn css_arma11_sma1_no_mean(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
     (ar, ma, sma, s2)
 }
 
+fn css_arma11_sar1_sma1(y: &[f64], period: usize) -> (f64, f64, f64, f64, f64, f64) {
+    let n = y.len();
+    let ncond = 1 + period;
+    if period < 2 || n <= ncond {
+        return (0.0, 0.0, 0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut ar = 0.0;
+    let mut ma = 0.0;
+    let mut sar = 0.0;
+    let mut sma = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    let ephi = |ar: f64, sar: f64| -> Vec<f64> {
+        let mut phi = vec![0.0; period + 1];
+        phi[0] = ar;
+        phi[period - 1] = sar;
+        phi[period] = -ar * sar;
+        phi
+    };
+    let eth = |ma: f64, sma: f64| -> Vec<f64> {
+        let mut theta = vec![0.0; period + 1];
+        theta[0] = ma;
+        theta[period - 1] = sma;
+        theta[period] = ma * sma;
+        theta
+    };
+    for _ in 0..25 {
+        ar = golden_min(-0.99, 0.99, 80, |a| {
+            arma_css(y, &ephi(a, sar), &eth(ma, sma), ic, ncond)
+        });
+        ma = golden_min(-0.99, 0.99, 80, |t| {
+            arma_css(y, &ephi(ar, sar), &eth(t, sma), ic, ncond)
+        });
+        sar = golden_min(-0.99, 0.99, 80, |s| {
+            arma_css(y, &ephi(ar, s), &eth(ma, sma), ic, ncond)
+        });
+        sma = golden_min(-0.99, 0.99, 80, |s| {
+            arma_css(y, &ephi(ar, sar), &eth(ma, s), ic, ncond)
+        });
+        ic = golden_min(lo_ic, hi_ic, 80, |m| {
+            arma_css(y, &ephi(ar, sar), &eth(ma, sma), m, ncond)
+        });
+    }
+    let s2 = arma_css(y, &ephi(ar, sar), &eth(ma, sma), ic, ncond);
+    (ar, ma, sar, sma, ic, s2)
+}
+
+
 
 
 
@@ -1693,7 +1742,20 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ma1".to_string(), "ma2".to_string(), "intercept".to_string()],
                 s2,
             )
-        } else if p == 1 && q == 1 && !differenced && sar_p == 1 && period >= 2 {
+        } else if p == 1 && q == 1 && !differenced && sar_p == 1 && sar_q == 1 && period >= 2 {
+            let (ar, ma, sar, sma, mu, s2) = css_arma11_sar1_sma1(&y, period as usize);
+            (
+                vec![ar, ma, sar, sma, mu],
+                vec![
+                    "ar1".to_string(),
+                    "ma1".to_string(),
+                    "sar1".to_string(),
+                    "sma1".to_string(),
+                    "intercept".to_string(),
+                ],
+                s2,
+            )
+        } else if p == 1 && q == 1 && !differenced && sar_p == 1 && sar_q <= 0 && period >= 2 {
             let (ar, ma, sar, mu, s2) = css_arma11_sar1(&y, period as usize);
             (
                 vec![ar, ma, sar, mu],
@@ -1705,7 +1767,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 ],
                 s2,
             )
-        } else if p == 1 && q == 1 && !differenced && sar_q == 1 && period >= 2 {
+        } else if p == 1 && q == 1 && !differenced && sar_q == 1 && sar_p <= 0 && period >= 2 {
             let (ar, ma, sma, mu, s2) = css_arma11_sma1(&y, period as usize);
             (
                 vec![ar, ma, sma, mu],
