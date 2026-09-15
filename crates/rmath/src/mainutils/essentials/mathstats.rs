@@ -10425,6 +10425,57 @@ pub unsafe fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `ppplot(x, y, plot.it=FALSE)` — P-P stepfun from two ecdfs.
+pub unsafe fn do_ppplot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let y = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
+            return R_NilValue();
+        }
+        let nx = XLENGTH(x) as usize;
+        let ny = XLENGTH(y) as usize;
+        let mut xv = Vec::with_capacity(nx);
+        let mut yv = Vec::with_capacity(ny);
+        for i in 0..nx {
+            let v = elt_real_safe(x, i as i64);
+            if v.is_finite() {
+                xv.push(v);
+            }
+        }
+        for i in 0..ny {
+            let v = elt_real_safe(y, i as i64);
+            if v.is_finite() {
+                yv.push(v);
+            }
+        }
+        if xv.is_empty() || yv.is_empty() {
+            return R_NilValue();
+        }
+        let mut sy = xv.clone();
+        sy.extend_from_slice(&yv);
+        sy.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        sy.dedup();
+        let nxf = xv.len() as f64;
+        let nyf = yv.len() as f64;
+        let px = Rf_allocVector3(SEXPTYPE::REALSXP, sy.len() as i64);
+        let _px = protect(px);
+        let py = Rf_allocVector3(SEXPTYPE::REALSXP, (sy.len() + 1) as i64);
+        let _py = protect(py);
+        *REAL(py) = 0.0;
+        for (i, t) in sy.iter().enumerate() {
+            let cx = xv.iter().filter(|v| *v <= t).count() as f64 / nxf;
+            let cy = yv.iter().filter(|v| *v <= t).count() as f64 / nyf;
+            *REAL(px).add(i) = cx;
+            *REAL(py).add(i + 1) = cy;
+        }
+        let step_args = Rf_cons(px, Rf_cons(py, R_NilValue()));
+        let _sa = protect(step_args);
+        do_stepfun(call, op, step_args, rho)
+    }
+}
+
+
 
 /// GNU `stepfun(x, y)` — cadlag step function, `length(y)=length(x)+1`.
 pub unsafe fn do_stepfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

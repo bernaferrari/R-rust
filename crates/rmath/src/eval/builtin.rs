@@ -2379,6 +2379,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_knots,
     },
     EvaluatedBuiltin {
+        name: "ppplot",
+        handler: crate::mainutils::essentials::do_ppplot,
+    },
+    EvaluatedBuiltin {
         name: "ppoints",
         handler: crate::mainutils::essentials::do_ppoints,
     },

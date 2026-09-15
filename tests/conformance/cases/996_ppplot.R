@@ -1,0 +1,5 @@
+x <- c(1, 2, 2, 4)
+y <- c(1.5, 2, 3, 5)
+f <- ppplot(x, y, plot.it = FALSE)
+cat(paste(round(knots(f), 4), collapse = ","), "\n", sep = "")
+cat(paste(round(f(c(0, 0.25, 0.5, 0.75, 1)), 4), collapse = ","), "\n", sep = "")
