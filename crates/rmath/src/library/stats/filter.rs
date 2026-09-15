@@ -1261,11 +1261,11 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             a = CDR(a);
         }
-        if sar_d > 0 && period >= 2 {
-            y = seasonal_difference(&y, period as usize, sar_d);
-        }
         if d > 0 {
             y = difference_series(&y, d);
+        }
+        if sar_d > 0 && period >= 2 {
+            y = seasonal_difference(&y, period as usize, sar_d);
         }
         let differenced = d > 0 || sar_d > 0;
         let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) =
