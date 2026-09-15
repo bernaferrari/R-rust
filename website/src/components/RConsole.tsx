@@ -295,11 +295,12 @@ export function RConsole() {
                   )}
                   {entries.length > 0 && (
                     <div
-                      style={{
-                        height: virtualizer.getTotalSize(),
-                        position: "relative",
-                        width: "100%",
-                      }}
+                      className="r-chat-virtual-list"
+                      style={
+                        {
+                          "--r-chat-total-size": `${virtualizer.getTotalSize()}px`,
+                        } as React.CSSProperties
+                      }
                     >
                       {virtualizer.getVirtualItems().map((virtualItem) => {
                         const entry = entries[virtualItem.index]
@@ -307,15 +308,13 @@ export function RConsole() {
                           <div
                             data-index={virtualItem.index}
                             ref={virtualizer.measureElement}
-                            className="r-chat-turn"
+                            className="r-chat-turn r-chat-virtual-row"
                             key={entry.id}
-                            style={{
-                              position: "absolute",
-                              top: 0,
-                              left: 0,
-                              width: "100%",
-                              transform: `translateY(${virtualItem.start}px)`,
-                            }}
+                            style={
+                              {
+                                "--r-chat-item-start": `${virtualItem.start}px`,
+                              } as React.CSSProperties
+                            }
                           >
                             <Message align="end">
                               <MessageContent>

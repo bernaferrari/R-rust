@@ -19,6 +19,7 @@
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Inter Variable", sans-serif;
+  --color-link: var(--brand);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -1522,6 +1523,10 @@ footer > div a {
   resize: vertical;
   line-height: 1.7;
 }
+.ai-url-input {
+  flex: 1;
+  min-height: 0;
+}
 .ai-input:focus-visible,
 .ai-code:focus-visible,
 .ai-select:focus-visible {
@@ -2978,6 +2983,8 @@ footer { flex-wrap: wrap; }
 }
 .site-header .github-link > span, .site-header .github-link > svg:last-child:not(:first-child) { display: none; }
 .r-chat-virtual-content { display: block; }
+.r-chat-virtual-list { position: relative; width: 100%; height: var(--r-chat-total-size); }
+.r-chat-virtual-row { position: absolute; top: 0; left: 0; width: 100%; transform: translateY(var(--r-chat-item-start)); }
 .r-chat-virtual-content .r-chat-turn { margin-bottom: 0; padding-bottom: 32px; }
 @media (max-width: 600px) { .site-header { padding-inline: 16px; gap: 10px; } .site-header .wordmark { font-size: 22px; gap: 6px; } .site-header .header-actions { gap: 4px; } }
 .r-chat-composer { margin: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--background); }

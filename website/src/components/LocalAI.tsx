@@ -145,8 +145,7 @@ export function LocalAI({ onUseCode }: Props) {
           <div className="ai-row">
             <input
               id="ollama-url"
-              className="ai-input"
-              style={{ flex: 1, minHeight: 0 }}
+              className="ai-input ai-url-input"
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               disabled={busy}
