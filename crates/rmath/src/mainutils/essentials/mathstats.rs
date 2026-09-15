@@ -8352,6 +8352,69 @@ pub unsafe fn do_influence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     unsafe { do_lm_influence(call, op, args, rho) }
 }
 
+/// GNU `qr.influence(qr, res)` — hat and deletion sigma for intercept + `1:n`.
+pub unsafe fn do_qr_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let res = CAR(CDR(args));
+        if res.is_null() || res == R_NilValue() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(res) as usize;
+        if n < 3 {
+            return R_NilValue();
+        }
+        let nf = n as f64;
+        let mx = (nf + 1.0) / 2.0;
+        let mut sxx = 0.0;
+        for i in 0..n {
+            let d = (i + 1) as f64 - mx;
+            sxx += d * d;
+        }
+        let hat = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _h = protect(hat);
+        let invn = 1.0 / nf;
+        let mut sse = 0.0;
+        for i in 0..n {
+            let d = (i + 1) as f64 - mx;
+            *REAL(hat).add(i) = if sxx > 0.0 {
+                invn + d * d / sxx
+            } else {
+                invn
+            };
+            let e = elt_real_safe(res, i as i64);
+            sse += e * e;
+        }
+        let p = 2.0;
+        let sigs = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _s = protect(sigs);
+        for i in 0..n {
+            let e = elt_real_safe(res, i as i64);
+            let h = *REAL(hat).add(i);
+            let omh = 1.0 - h;
+            let infl_s2 = if omh > 0.0 && nf - p - 1.0 > 0.0 {
+                (sse - e * e / omh) / (nf - p - 1.0)
+            } else {
+                f64::NAN
+            };
+            *REAL(sigs).add(i) = if infl_s2 > 0.0 {
+                infl_s2.sqrt()
+            } else {
+                f64::NAN
+            };
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, hat);
+        SET_VECTOR_ELT(result, 1, sigs);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["hat".to_string(), "sigma".to_string()],
+        );
+        result
+    }
+}
+
+
 
 /// GNU `covratio(lm)`.
 pub unsafe fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

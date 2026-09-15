@@ -755,6 +755,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::qr::do_qr,
     },
     EvaluatedBuiltin {
+        name: "qr.influence",
+        handler: crate::mainutils::essentials::do_qr_influence,
+    },
+    EvaluatedBuiltin {
         name: "eigen",
         handler: crate::mainutils::eigen::do_eigen,
     },
