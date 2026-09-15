@@ -1435,13 +1435,153 @@ fn local_level_lik(y: &[f64], q: f64, r: f64) -> (f64, f64) {
     (0.5 * (s2m.ln() + sumlog / nlik), s2m)
 }
 
-/// GNU `StructTS(x, type="level")` — local-level variance MLE.
+fn struct_ts_type(args: SEXP) -> String {
+    unsafe {
+        let mut a = CDR(args);
+        let mut pos = 1;
+        while !a.is_null() && a != R_NilValue() {
+            let tag = TAG(a);
+            let named = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if named == "type" || (named.is_empty() && pos == 1) {
+                let v = CAR(a);
+                if !v.is_null() && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                    return std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0)))
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+            pos += 1;
+            a = CDR(a);
+        }
+        "level".to_string()
+    }
+}
+
+/// GNU KalmanLike for local linear trend (p=2). `P[] <- 1e6*vx`.
+fn kalman_trend_like(y: &[f64], rel: [f64; 3], vx: f64) -> f64 {
+    if rel.iter().all(|v| *v <= 0.0) {
+        return 1000.0;
+    }
+    let ql = rel[0].max(0.0) * vx;
+    let qs = rel[1].max(0.0) * vx;
+    let h = rel[2].max(0.0) * vx;
+    let n = y.len();
+    let mut a = [y[0], 0.0];
+    let p0 = 1e6 * vx;
+    let mut p = [[p0, p0], [p0, p0]];
+    let mut ssq = 0.0;
+    let mut sumlog = 0.0;
+    let nu = n as f64;
+    for &yi in y {
+        let anew = [a[0] + a[1], a[1]];
+        let tp00 = p[0][0] + p[1][0];
+        let tp01 = p[0][1] + p[1][1];
+        let tp10 = p[1][0];
+        let tp11 = p[1][1];
+        let pnew = [
+            [tp00 + tp01 + ql, tp01],
+            [tp10 + tp11, tp11 + qs],
+        ];
+        // Z = [1,0]; M = Pnew @ Z = first column
+        let m = [pnew[0][0], pnew[1][0]];
+        let gain = h + m[0];
+        if !(gain > 0.0) {
+            return f64::INFINITY;
+        }
+        let resid = yi - anew[0];
+        ssq += resid * resid / gain;
+        sumlog += gain.ln();
+        a[0] = anew[0] + m[0] * resid / gain;
+        a[1] = anew[1] + m[1] * resid / gain;
+        p[0][0] = pnew[0][0] - m[0] * m[0] / gain;
+        p[0][1] = pnew[0][1] - m[0] * m[1] / gain;
+        p[1][0] = pnew[1][0] - m[1] * m[0] / gain;
+        p[1][1] = pnew[1][1] - m[1] * m[1] / gain;
+    }
+    0.5 * (ssq / nu + sumlog / nu)
+}
+
+fn optimize_trend_rel(y: &[f64], vx: f64) -> [f64; 3] {
+    let starts = [
+        [1.0, 1.0, 1.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 0.15, 0.0],
+        [0.0, 0.0, 100.0],
+    ];
+    let mut best_rel = [1.0, 1.0, 1.0];
+    let mut best_v = f64::INFINITY;
+    for start in starts {
+        let mut rel = start;
+        for _ in 0..8 {
+            for i in 0..3 {
+                let nll = |logv: f64| {
+                    let mut r = rel;
+                    r[i] = 10f64.powf(logv);
+                    kalman_trend_like(y, r, vx)
+                };
+                let mut lo = -8.0;
+                let mut hi = 4.0;
+                let gr = (5.0_f64.sqrt() - 1.0) / 2.0;
+                let mut c = hi - gr * (hi - lo);
+                let mut d = lo + gr * (hi - lo);
+                let mut fc = nll(c);
+                let mut fd = nll(d);
+                for _ in 0..60 {
+                    if fc < fd {
+                        hi = d;
+                        d = c;
+                        fd = fc;
+                        c = hi - gr * (hi - lo);
+                        fc = nll(c);
+                    } else {
+                        lo = c;
+                        c = d;
+                        fc = fd;
+                        d = lo + gr * (hi - lo);
+                        fd = nll(d);
+                    }
+                }
+                let mut cand = rel;
+                cand[i] = 10f64.powf(0.5 * (lo + hi));
+                let mut zero = rel;
+                zero[i] = 0.0;
+                let v1 = kalman_trend_like(y, cand, vx);
+                let v0 = kalman_trend_like(y, zero, vx);
+                rel = if v0 <= v1 { zero } else { cand };
+            }
+        }
+        let v = kalman_trend_like(y, rel, vx);
+        if v < best_v {
+            best_v = v;
+            best_rel = rel;
+        }
+    }
+    best_rel
+}
+
+
+/// GNU `StructTS(x, type=)` — local-level or local-linear-trend MLE.
 pub unsafe fn do_struct_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = XLENGTH(x) as usize;
         if n < 2 {
             return R_NilValue();
+        }
+        let typ = struct_ts_type(args);
+        if typ == "BSM" {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "frequency must be a positive integer >= 2 for BSM",
+            );
         }
         let mut y = vec![0.0; n];
         for i in 0..n {
@@ -1450,6 +1590,47 @@ pub unsafe fn do_struct_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             } else {
                 *INTEGER(x).add(i) as f64
             };
+        }
+        if typ == "trend" {
+            let mean = y.iter().sum::<f64>() / n as f64;
+            let var = y.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>()
+                / (n as f64 - 1.0);
+            let vx = var / 100.0;
+            let rel = optimize_trend_rel(&y, vx);
+            let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+            let _c = protect(coef);
+            *REAL(coef) = (rel[0] * vx).max(0.0);
+            *REAL(coef).add(1) = (rel[1] * vx).max(0.0);
+            *REAL(coef).add(2) = (rel[2] * vx).max(0.0);
+            crate::mainutils::essentials::set_string_names(
+                coef,
+                &[
+                    "level".to_string(),
+                    "slope".to_string(),
+                    "epsilon".to_string(),
+                ],
+            );
+            let data = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+            let _d = protect(data);
+            for i in 0..n {
+                *REAL(data).add(i) = y[i];
+            }
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _r = protect(result);
+            SET_VECTOR_ELT(result, 0, coef);
+            SET_VECTOR_ELT(result, 1, data);
+            crate::mainutils::essentials::set_string_names(
+                result,
+                &["coef".to_string(), "data".to_string()],
+            );
+            let class = Rf_mkString(c"StructTS".as_ptr());
+            let _cl = protect(class);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+            return result;
         }
         let mean = y.iter().sum::<f64>() / n as f64;
         let vx = y.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n as f64 - 1.0);

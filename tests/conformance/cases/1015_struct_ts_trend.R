@@ -1,0 +1,7 @@
+s <- StructTS(ts(1:20), type = "trend")
+cat(paste(round(as.numeric(s$coef), 4), collapse = ","), "\n", sep = "")
+s2 <- StructTS(ts(c(1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2)), type = "trend")
+cat(paste(round(as.numeric(s2$coef), 4), collapse = ","), "\n", sep = "")
+s3 <- StructTS(ts(c(1, 3, 2, 6, 4, 10, 7, 15)), type = "trend")
+cat(paste(round(as.numeric(s3$coef), 4), collapse = ","), "\n", sep = "")
+cat(tryCatch(StructTS(ts(1:10), type = "BSM"), error = function(e) conditionMessage(e)), "\n", sep = "")
