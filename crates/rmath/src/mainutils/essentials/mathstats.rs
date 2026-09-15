@@ -10475,12 +10475,33 @@ pub unsafe fn do_ppplot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `rfree1way(n)` — two-group Control/B uniforms when `delta=0`.
+/// GNU `rfree1way(n, delta=0)` — two-group Control/B; logit shift on treated.
 pub unsafe fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = elt_real_safe(CAR(args), 0).floor() as i32;
         if n < 1 {
             return R_NilValue();
+        }
+        let mut delta = 0.0;
+        let mut cell = CDR(args);
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = CAR(cell);
+            if name == "delta" || (name.is_empty() && pos == 4) {
+                delta = elt_real_safe(val, 0);
+            }
+            if name.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
         }
         let ntot = (2 * n) as i64;
         let n_s = Rf_ScalarInteger(ntot as c_int);
@@ -10491,6 +10512,13 @@ pub unsafe fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let _bs = protect(b_s);
         let y = crate::library::stats::random::do_runif(n_s, a_s, b_s);
         let _y = protect(y);
+        if delta.abs() > 0.0 {
+            for i in n as usize..ntot as usize {
+                let u = *REAL(y).add(i);
+                let q = crate::dist::logistic::qlogis_inner(u, 0.0, 1.0, true, false);
+                *REAL(y).add(i) = crate::dist::logistic::plogis_inner(q + delta, 0.0, 1.0, true, false);
+            }
+        }
         let groups = Rf_allocVector3(SEXPTYPE::INTSXP, ntot);
         let _g = protect(groups);
         for i in 0..n as usize {
