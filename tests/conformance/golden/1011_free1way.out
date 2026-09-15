@@ -1,0 +1,2 @@
+no applicable method for 'free1way' applied to an object of class "NULL"
+exactly one of 'n', 'delta', 'power', and 'sig.level' must be NULL

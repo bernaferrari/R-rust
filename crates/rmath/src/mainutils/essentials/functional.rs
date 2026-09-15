@@ -3847,6 +3847,68 @@ pub unsafe fn do_tsdiag(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `free1way(y, ...)` — `UseMethod("free1way")`.
+pub unsafe fn do_free1way(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "free1way",
+            "function(y, ...) UseMethod('free1way')",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
+/// GNU `power.free1way.test` — exactly one of n/delta/power/sig.level is NULL.
+pub unsafe fn do_power_free1way_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut n_null = true;
+        let mut delta_null = true;
+        let mut power_null = true;
+        let mut sig_null = false;
+        let mut cell = args;
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = CAR(cell);
+            let is_null = val.is_null() || val == R_NilValue();
+            if name == "n" || (name.is_empty() && pos == 0) {
+                n_null = is_null;
+            } else if name == "delta" {
+                delta_null = is_null;
+            } else if name == "power" {
+                power_null = is_null;
+            } else if name == "sig.level" {
+                sig_null = is_null;
+            }
+            if name.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
+        }
+        let nnull = [n_null, delta_null, power_null, sig_null]
+            .iter()
+            .filter(|b| **b)
+            .count();
+        if nnull != 1 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "exactly one of 'n', 'delta', 'power', and 'sig.level' must be NULL",
+            );
+        }
+        R_NilValue()
+    }
+}
+
+
 /// GNU `biplot(x, ...)` — `UseMethod("biplot")`.
 pub unsafe fn do_biplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

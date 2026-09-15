@@ -294,8 +294,8 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
 /// For S3 objects, falls back to R_data_class.
 pub(crate) unsafe fn R_data_class2(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
-            return R_NilValue();
+        if x.is_null() || x == R_NilValue() {
+            return Rf_mkString(c"NULL".as_ptr());
         }
         let class_val = getAttrib(x, R_ClassSymbol());
         if !class_val.is_null() && class_val != R_NilValue() && XLENGTH(class_val) > 0 {
@@ -333,6 +333,8 @@ unsafe fn implicit_s3_class(x: SEXP) -> SEXP {
             (c"function", false)
         } else if t == SEXPTYPE::SYMSXP {
             (c"name", false)
+        } else if t == SEXPTYPE::NILSXP {
+            (c"NULL", false)
         } else {
             return R_data_class(x);
         };
