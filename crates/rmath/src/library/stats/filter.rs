@@ -1010,6 +1010,29 @@ fn css_arma11(y: &[f64]) -> (f64, f64, f64, f64) {
 }
 
 
+fn css_sar1(y: &[f64], period: usize) -> (f64, f64, f64) {
+    let n = y.len();
+    if period < 2 || n <= period {
+        return (0.0, 0.0, f64::NAN);
+    }
+    let mut phi = vec![0.0; period];
+    let mut sar = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        sar = golden_min(-0.99, 0.99, 80, |p| {
+            phi[period - 1] = p;
+            arma_css(y, &phi, &[], ic, period)
+        });
+        phi[period - 1] = sar;
+        ic = golden_min(lo_ic, hi_ic, 80, |m| arma_css(y, &phi, &[], m, period));
+    }
+    let s2 = arma_css(y, &phi, &[], ic, period);
+    (sar, ic, s2)
+}
+
+
 fn difference_series(y: &[f64], d: i32) -> Vec<f64> {
     let mut out = y.to_vec();
     for _ in 0..d.max(0) {
@@ -1081,6 +1104,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut p = 1i32;
         let mut d = 0i32;
         let mut q = 0i32;
+        let mut sar_p = 0i32;
+        let mut period = 0i32;
         let mut a = CDR(args);
         while !a.is_null() && a != R_NilValue() {
             let tag = TAG(a);
@@ -1105,6 +1130,22 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     p = elt(0);
                     d = elt(1);
                     q = elt(2);
+                } else if name == "seasonal" && !v.is_null() && TYPEOF(v) == SEXPTYPE::VECSXP {
+                    let ord = named_list_elt(v, "order");
+                    let per = named_list_elt(v, "period");
+                    let ival = |x: SEXP, i: usize| -> i32 {
+                        if x.is_null() || x == R_NilValue() || XLENGTH(x) <= i as i64 {
+                            0
+                        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                            *INTEGER(x).add(i)
+                        } else if TYPEOF(x) == SEXPTYPE::REALSXP {
+                            *REAL(x).add(i) as i32
+                        } else {
+                            0
+                        }
+                    };
+                    sar_p = ival(ord, 0);
+                    period = ival(per, 0);
                 }
             }
             a = CDR(a);
@@ -1112,7 +1153,15 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if d > 0 {
             y = difference_series(&y, d);
         }
-        let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) = if p <= 0 && q <= 0 {
+        let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) =
+            if p <= 0 && q <= 0 && d <= 0 && sar_p == 1 && period >= 2 {
+            let (sar, mu, s2) = css_sar1(&y, period as usize);
+            (
+                vec![sar, mu],
+                vec!["sar1".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p <= 0 && q <= 0 {
             if d > 0 {
                 let s2 = if y.is_empty() {
                     f64::NAN
