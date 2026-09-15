@@ -1134,6 +1134,23 @@ fn difference_series(y: &[f64], d: i32) -> Vec<f64> {
     out
 }
 
+fn seasonal_difference(y: &[f64], period: usize, d: i32) -> Vec<f64> {
+    let mut out = y.to_vec();
+    if period < 2 {
+        return out;
+    }
+    for _ in 0..d.max(0) {
+        if out.len() <= period {
+            return out;
+        }
+        out = (period..out.len())
+            .map(|i| out[i] - out[i - period])
+            .collect();
+    }
+    out
+}
+
+
 fn css_ar2(y: &[f64]) -> (f64, f64, f64, f64) {
     let n = y.len();
     if n < 4 {
@@ -1195,6 +1212,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut d = 0i32;
         let mut q = 0i32;
         let mut sar_p = 0i32;
+        let mut sar_d = 0i32;
         let mut sar_q = 0i32;
         let mut period = 0i32;
         let mut a = CDR(args);
@@ -1236,38 +1254,43 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         }
                     };
                     sar_p = ival(ord, 0);
+                    sar_d = ival(ord, 1);
                     sar_q = ival(ord, 2);
                     period = ival(per, 0);
                 }
             }
             a = CDR(a);
         }
+        if sar_d > 0 && period >= 2 {
+            y = seasonal_difference(&y, period as usize, sar_d);
+        }
         if d > 0 {
             y = difference_series(&y, d);
         }
+        let differenced = d > 0 || sar_d > 0;
         let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) =
-            if p <= 0 && q <= 0 && d <= 0 && sar_p == 1 && period >= 2 {
+            if p <= 0 && q <= 0 && !differenced && sar_p == 1 && period >= 2 {
             let (sar, mu, s2) = css_sar1(&y, period as usize);
             (
                 vec![sar, mu],
                 vec!["sar1".to_string(), "intercept".to_string()],
                 s2,
             )
-        } else if p <= 0 && q <= 0 && d <= 0 && sar_p <= 0 && sar_q == 1 && period >= 2 {
+        } else if p <= 0 && q <= 0 && !differenced && sar_p <= 0 && sar_q == 1 && period >= 2 {
             let (sma, mu, s2) = css_sma1(&y, period as usize);
             (
                 vec![sma, mu],
                 vec!["sma1".to_string(), "intercept".to_string()],
                 s2,
             )
-        } else if p == 1 && q <= 0 && d <= 0 && sar_p == 1 && period >= 2 {
+        } else if p == 1 && q <= 0 && !differenced && sar_p == 1 && period >= 2 {
             let (ar, sar, mu, s2) = css_ar1_sar1(&y, period as usize);
             (
                 vec![ar, sar, mu],
                 vec!["ar1".to_string(), "sar1".to_string(), "intercept".to_string()],
                 s2,
             )
-        } else if p <= 0 && q == 1 && d <= 0 && sar_q == 1 && period >= 2 {
+        } else if p <= 0 && q == 1 && !differenced && sar_q == 1 && period >= 2 {
             let (ma, sma, mu, s2) = css_ma1_sma1(&y, period as usize);
             (
                 vec![ma, sma, mu],
@@ -1275,7 +1298,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p <= 0 && q <= 0 {
-            if d > 0 {
+            if differenced {
                 let s2 = if y.is_empty() {
                     f64::NAN
                 } else {
@@ -1307,7 +1330,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ar1".to_string(), "ar2".to_string(), "intercept".to_string()],
                 s2,
             )
-        } else if d > 0 && q <= 0 && p > 0 {
+        } else if differenced && q <= 0 && p > 0 {
             let (phi, s2) = css_ar_no_mean(&y, p as usize);
             let names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
             (phi, names, s2)
