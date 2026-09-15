@@ -10108,7 +10108,7 @@ pub unsafe fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `rect.hclust(tree, k=, h=)` — cluster boxes; validates `k`/`h`.
-pub unsafe fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let tree = CAR(args);
         let mut k_arg = R_NilValue();
@@ -10150,18 +10150,30 @@ pub unsafe fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         } else {
             XLENGTH(height)
         };
-        let k = if k_set {
-            elt_real_safe(k_arg, 0).floor() as i32
+        let k = if h_set {
+            let h = elt_real_safe(h_arg, 0);
+            let mut found = None;
+            for i in 0..nh {
+                let hv = elt_real_safe(height, nh - 1 - i);
+                if hv < h {
+                    found = Some((i as i32) + 1);
+                    break;
+                }
+            }
+            found.unwrap_or(i32::MAX).max(2)
         } else {
-            0
+            elt_real_safe(k_arg, 0).floor() as i32
         };
-        if k_set && (k < 2 || k as i64 > nh) {
+        if k < 2 || (k as i64) > nh {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
                 &format!("k must be between 2 and {nh}"),
             );
         }
-        R_NilValue()
+        let rect_sym = Rf_install(c"rect".as_ptr());
+        let rc = crate::sexp::constructors::Rf_lang2(rect_sym, Rf_ScalarReal(0.0));
+        let _rc = protect(rc);
+        crate::eval::eval::Rf_eval(rc, rho)
     }
 }
 

@@ -2,3 +2,5 @@ specify exactly one of 'k' and 'h'
 specify exactly one of 'k' and 'h'
 k must be between 2 and 4
 k must be between 2 and 4
+plot.new has not been called yet
+plot.new has not been called yet

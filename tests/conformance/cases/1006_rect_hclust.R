@@ -3,3 +3,5 @@ cat(tryCatch(rect.hclust(1), error = function(e) conditionMessage(e)), "\n", sep
 cat(tryCatch(rect.hclust(hc), error = function(e) conditionMessage(e)), "\n", sep = "")
 cat(tryCatch(rect.hclust(hc, k = 1), error = function(e) conditionMessage(e)), "\n", sep = "")
 cat(tryCatch(rect.hclust(hc, k = 5), error = function(e) conditionMessage(e)), "\n", sep = "")
+cat(tryCatch(rect.hclust(hc, k = 2), error = function(e) conditionMessage(e)), "\n", sep = "")
+cat(tryCatch(rect.hclust(hc, h = 1.5), error = function(e) conditionMessage(e)), "\n", sep = "")
