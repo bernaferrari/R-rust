@@ -1032,6 +1032,29 @@ fn css_sar1(y: &[f64], period: usize) -> (f64, f64, f64) {
     (sar, ic, s2)
 }
 
+fn css_sma1(y: &[f64], period: usize) -> (f64, f64, f64) {
+    let n = y.len();
+    if period < 2 || n <= period {
+        return (0.0, 0.0, f64::NAN);
+    }
+    let mut theta = vec![0.0; period];
+    let mut sma = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        sma = golden_min(-0.99, 0.99, 80, |t| {
+            theta[period - 1] = t;
+            arma_css(y, &[], &theta, ic, 0)
+        });
+        theta[period - 1] = sma;
+        ic = golden_min(lo_ic, hi_ic, 80, |m| arma_css(y, &[], &theta, m, 0));
+    }
+    let s2 = arma_css(y, &[], &theta, ic, 0);
+    (sma, ic, s2)
+}
+
+
 
 fn difference_series(y: &[f64], d: i32) -> Vec<f64> {
     let mut out = y.to_vec();
@@ -1105,6 +1128,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut d = 0i32;
         let mut q = 0i32;
         let mut sar_p = 0i32;
+        let mut sar_q = 0i32;
         let mut period = 0i32;
         let mut a = CDR(args);
         while !a.is_null() && a != R_NilValue() {
@@ -1145,6 +1169,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         }
                     };
                     sar_p = ival(ord, 0);
+                    sar_q = ival(ord, 2);
                     period = ival(per, 0);
                 }
             }
@@ -1159,6 +1184,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![sar, mu],
                 vec!["sar1".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p <= 0 && q <= 0 && d <= 0 && sar_p <= 0 && sar_q == 1 && period >= 2 {
+            let (sma, mu, s2) = css_sma1(&y, period as usize);
+            (
+                vec![sma, mu],
+                vec!["sma1".to_string(), "intercept".to_string()],
                 s2,
             )
         } else if p <= 0 && q <= 0 {
