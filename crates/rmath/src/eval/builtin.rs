@@ -2891,6 +2891,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::filter::do_makeARIMA,
     },
     EvaluatedBuiltin {
+        name: "constrOptim",
+        handler: crate::library::stats::optim::do_constr_optim,
+    },
+    EvaluatedBuiltin {
         name: "KalmanLike",
         handler: crate::library::stats::filter::do_kalman_like,
     },

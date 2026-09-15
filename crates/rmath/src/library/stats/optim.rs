@@ -1157,6 +1157,260 @@ pub unsafe fn do_optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `constrOptim(theta, f, grad, ui, ci)` — log-barrier + Nelder-Mead.
+pub unsafe fn do_constr_optim(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let par = CAR(args);
+        let fn_sexp = CAR(CDR(args));
+        let mut cell = CDR(CDR(args));
+        if !cell.is_null() && cell != R_NilValue() {
+            cell = CDR(cell);
+        }
+        let ui = if cell.is_null() || cell == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(cell)
+        };
+        if !cell.is_null() && cell != R_NilValue() {
+            cell = CDR(cell);
+        }
+        let ci = if cell.is_null() || cell == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(cell)
+        };
+        let npar = XLENGTH(par) as usize;
+        if npar == 0 || fn_sexp.is_null() || fn_sexp == R_NilValue() {
+            return R_NilValue();
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(ui, crate::sexp::attrib_core::R_DimSymbol());
+        let (ncons, ui_npar) = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else if ui.is_null() || ui == R_NilValue() {
+            (0, 0)
+        } else {
+            (XLENGTH(ui) as usize, npar)
+        };
+        if ncons == 0 || ui_npar != npar || XLENGTH(ci) as usize != ncons {
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "initial value is not in the interior of the feasible region",
+            );
+        }
+        let mut theta: Vec<f64> = (0..npar).map(|i| *REAL(par).add(i)).collect();
+        let mut ui_m = vec![0.0; ncons * npar];
+        let mut ci_v = vec![0.0; ncons];
+        for j in 0..npar {
+            for i in 0..ncons {
+                ui_m[i + j * ncons] =
+                    crate::mainutils::essentials::elt_real_safe(ui, (i + j * ncons) as i64);
+            }
+        }
+        for i in 0..ncons {
+            ci_v[i] = crate::mainutils::essentials::elt_real_safe(ci, i as i64);
+        }
+        fn slack(ui_m: &[f64], ci_v: &[f64], th: &[f64], ncons: usize, npar: usize) -> Vec<f64> {
+            let mut g = vec![0.0; ncons];
+            for i in 0..ncons {
+                let mut s = 0.0;
+                for j in 0..npar {
+                    s += ui_m[i + j * ncons] * th[j];
+                }
+                g[i] = s - ci_v[i];
+            }
+            g
+        }
+        let g0 = slack(&ui_m, &ci_v, &theta, ncons, npar);
+        if g0.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "initial value is not in the interior of the feasible region",
+            );
+        }
+        unsafe fn eval_f(fn_sexp: SEXP, th: &[f64], rho: SEXP) -> f64 {
+            unsafe {
+                let tv = Rf_allocVector3(SEXPTYPE::REALSXP, th.len() as i64);
+                let _t = protect(tv);
+                for (i, v) in th.iter().enumerate() {
+                    *REAL(tv).add(i) = *v;
+                }
+                let call = Rf_lang2(fn_sexp, tv);
+                let _c = protect(call);
+                let val = crate::eval::eval::Rf_eval(call, rho);
+                crate::mainutils::essentials::elt_real_safe(val, 0)
+            }
+        }
+        fn barrier(
+            fn_sexp: SEXP,
+            th: &[f64],
+            told: &[f64],
+            ui_m: &[f64],
+            ci_v: &[f64],
+            ncons: usize,
+            npar: usize,
+            mu: f64,
+            rho: SEXP,
+        ) -> f64 {
+            let gi = slack(ui_m, ci_v, th, ncons, npar);
+            if gi.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+                return f64::NAN;
+            }
+            let gi_old = slack(ui_m, ci_v, told, ncons, npar);
+            let mut bar = 0.0;
+            for i in 0..ncons {
+                let mut uith = 0.0;
+                for j in 0..npar {
+                    uith += ui_m[i + j * ncons] * th[j];
+                }
+                bar += gi_old[i] * gi[i].ln() - uith;
+            }
+            let fval = unsafe { eval_f(fn_sexp, th, rho) };
+            if !fval.is_finite() || !bar.is_finite() {
+                return f64::NAN;
+            }
+            fval - mu * bar
+        }
+        fn nelder(
+            fn_sexp: SEXP,
+            start: &[f64],
+            told: &[f64],
+            ui_m: &[f64],
+            ci_v: &[f64],
+            ncons: usize,
+            npar: usize,
+            mu: f64,
+            rho: SEXP,
+        ) -> (Vec<f64>, f64) {
+            let n = npar;
+            let mut pts = vec![start.to_vec(); n + 1];
+            for i in 0..n {
+                let step = if start[i].abs() > 1e-8 {
+                    0.05 * start[i].abs()
+                } else {
+                    0.05
+                };
+                pts[i + 1][i] += step;
+            }
+            let mut vals: Vec<f64> = pts
+                .iter()
+                .map(|p| barrier(fn_sexp, p, told, ui_m, ci_v, ncons, npar, mu, rho))
+                .collect();
+            for _ in 0..400 {
+                let mut order: Vec<usize> = (0..=n).collect();
+                order.sort_by(|&a, &b| {
+                    vals[a]
+                        .partial_cmp(&vals[b])
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                let best = order[0];
+                let worst = order[n];
+                let sworst = order[n - 1];
+                let mut cen = vec![0.0; n];
+                for &k in &order[..n] {
+                    for j in 0..n {
+                        cen[j] += pts[k][j];
+                    }
+                }
+                for j in 0..n {
+                    cen[j] /= n as f64;
+                }
+                let mut refl = vec![0.0; n];
+                for j in 0..n {
+                    refl[j] = 2.0 * cen[j] - pts[worst][j];
+                }
+                let fr = barrier(fn_sexp, &refl, told, ui_m, ci_v, ncons, npar, mu, rho);
+                if fr.is_finite() && fr < vals[best] {
+                    let mut expn = vec![0.0; n];
+                    for j in 0..n {
+                        expn[j] = cen[j] + 2.0 * (refl[j] - cen[j]);
+                    }
+                    let fe = barrier(fn_sexp, &expn, told, ui_m, ci_v, ncons, npar, mu, rho);
+                    if fe.is_finite() && fe < fr {
+                        pts[worst] = expn;
+                        vals[worst] = fe;
+                    } else {
+                        pts[worst] = refl;
+                        vals[worst] = fr;
+                    }
+                } else if fr.is_finite() && fr < vals[sworst] {
+                    pts[worst] = refl;
+                    vals[worst] = fr;
+                } else {
+                    let dir = if fr.is_finite() && fr < vals[worst] {
+                        &refl
+                    } else {
+                        &pts[worst]
+                    };
+                    let mut contr = vec![0.0; n];
+                    for j in 0..n {
+                        contr[j] = cen[j] + 0.5 * (dir[j] - cen[j]);
+                    }
+                    let fc = barrier(fn_sexp, &contr, told, ui_m, ci_v, ncons, npar, mu, rho);
+                    if fc.is_finite() && fc < vals[worst] {
+                        pts[worst] = contr;
+                        vals[worst] = fc;
+                    } else {
+                        for i in 1..=n {
+                            for j in 0..n {
+                                pts[i][j] = pts[best][j] + 0.5 * (pts[i][j] - pts[best][j]);
+                            }
+                            vals[i] =
+                                barrier(fn_sexp, &pts[i], told, ui_m, ci_v, ncons, npar, mu, rho);
+                        }
+                    }
+                }
+                let mut span: f64 = 0.0;
+                for i in 0..=n {
+                    for j in 0..n {
+                        span = span.max((pts[i][j] - pts[best][j]).abs());
+                    }
+                }
+                if span < 1e-8 {
+                    break;
+                }
+            }
+            let mut best_i = 0;
+            for i in 1..=n {
+                if vals[i].is_finite() && (!vals[best_i].is_finite() || vals[i] < vals[best_i]) {
+                    best_i = i;
+                }
+            }
+            (pts[best_i].clone(), vals[best_i])
+        }
+        let mu = 1e-4;
+        let mut told = theta.clone();
+        let mut r_old = barrier(fn_sexp, &theta, &told, &ui_m, &ci_v, ncons, npar, mu, rho);
+        for _ in 0..40 {
+            let (nth, r) = nelder(fn_sexp, &theta, &told, &ui_m, &ci_v, ncons, npar, mu, rho);
+            if r.is_finite() && r_old.is_finite() && (r - r_old).abs() < (0.001 + r.abs()) * 1e-5 {
+                theta = nth;
+                break;
+            }
+            if r.is_finite() {
+                theta = nth;
+                r_old = r;
+            }
+            told = theta.clone();
+        }
+        let fval = eval_f(fn_sexp, &theta, rho);
+        let par_out = Rf_allocVector3(SEXPTYPE::REALSXP, npar as i64);
+        let _p = protect(par_out);
+        for (i, v) in theta.iter().enumerate() {
+            *REAL(par_out).add(i) = *v;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, par_out);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(fval));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &["par".to_string(), "value".to_string()],
+        );
+        result
+    }
+}
+
+
 /// GNU `optimHess(par, fn)` — numerical Hessian with `ndeps=0.001`.
 pub unsafe fn do_optim_hess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
