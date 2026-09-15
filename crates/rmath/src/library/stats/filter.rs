@@ -1322,6 +1322,21 @@ fn css_ma1_no_mean(y: &[f64]) -> (f64, f64) {
     (th, s2)
 }
 
+fn css_ma2_no_mean(y: &[f64]) -> (f64, f64, f64) {
+    if y.len() < 3 {
+        return (0.0, 0.0, f64::NAN);
+    }
+    let mut t1 = 0.0;
+    let mut t2 = 0.0;
+    for _ in 0..25 {
+        t1 = golden_min(-0.99, 0.99, 80, |a| arma_css(y, &[], &[a, t2], 0.0, 0));
+        t2 = golden_min(-0.99, 0.99, 80, |a| arma_css(y, &[], &[t1, a], 0.0, 0));
+    }
+    let s2 = arma_css(y, &[], &[t1, t2], 0.0, 0);
+    (t1, t2, s2)
+}
+
+
 
 
 
@@ -1550,7 +1565,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ma1".to_string(), "intercept".to_string()],
                 s2,
             )
-        } else if p <= 0 && q == 2 && !differenced {
+        } else if p <= 0 && q == 2 && !differenced && !no_mean {
             let (t1, t2, mu, s2) = css_ma2(&y);
             (
                 vec![t1, t2, mu],
@@ -1605,6 +1620,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else if no_mean && p <= 0 && q == 1 {
             let (th, s2) = css_ma1_no_mean(&y);
             (vec![th], vec!["ma1".to_string()], s2)
+        } else if no_mean && p <= 0 && q == 2 {
+            let (t1, t2, s2) = css_ma2_no_mean(&y);
+            (
+                vec![t1, t2],
+                vec!["ma1".to_string(), "ma2".to_string()],
+                s2,
+            )
         } else if no_mean && q <= 0 && p > 0 {
             let (phi, s2) = css_ar_no_mean(&y, p as usize);
             let names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
