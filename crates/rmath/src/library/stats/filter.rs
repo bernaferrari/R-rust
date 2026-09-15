@@ -1247,6 +1247,38 @@ fn css_arma11_sma1(y: &[f64], period: usize) -> (f64, f64, f64, f64, f64) {
     (ar, ma, sma, ic, s2)
 }
 
+fn css_sar1_sma1(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
+    let n = y.len();
+    if period < 2 || n <= period {
+        return (0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut sar = 0.0;
+    let mut sma = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    let ncond = period;
+    let pad = |v: f64| -> Vec<f64> {
+        let mut a = vec![0.0; period];
+        a[period - 1] = v;
+        a
+    };
+    for _ in 0..25 {
+        sar = golden_min(-0.99, 0.99, 80, |a| {
+            arma_css(y, &pad(a), &pad(sma), ic, ncond)
+        });
+        sma = golden_min(-0.99, 0.99, 80, |t| {
+            arma_css(y, &pad(sar), &pad(t), ic, ncond)
+        });
+        ic = golden_min(lo_ic, hi_ic, 80, |m| {
+            arma_css(y, &pad(sar), &pad(sma), m, ncond)
+        });
+    }
+    let s2 = arma_css(y, &pad(sar), &pad(sma), ic, ncond);
+    (sar, sma, ic, s2)
+}
+
+
 
 
 
@@ -1400,7 +1432,14 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let differenced = d > 0 || sar_d > 0;
         let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) =
-            if p <= 0 && q <= 0 && !differenced && sar_p == 1 && period >= 2 {
+            if p <= 0 && q <= 0 && !differenced && sar_p == 1 && sar_q == 1 && period >= 2 {
+            let (sar, sma, mu, s2) = css_sar1_sma1(&y, period as usize);
+            (
+                vec![sar, sma, mu],
+                vec!["sar1".to_string(), "sma1".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p <= 0 && q <= 0 && !differenced && sar_p == 1 && sar_q <= 0 && period >= 2 {
             let (sar, mu, s2) = css_sar1(&y, period as usize);
             (
                 vec![sar, mu],
