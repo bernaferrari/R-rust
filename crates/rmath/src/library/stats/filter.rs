@@ -1210,6 +1210,44 @@ fn css_arma11_sar1(y: &[f64], period: usize) -> (f64, f64, f64, f64, f64) {
     (ar, ma, sar, ic, s2)
 }
 
+fn css_arma11_sma1(y: &[f64], period: usize) -> (f64, f64, f64, f64, f64) {
+    let n = y.len();
+    let ncond = 1usize;
+    if period < 2 || n <= period + 1 {
+        return (0.0, 0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut ar = 0.0;
+    let mut ma = 0.0;
+    let mut sma = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    let expand = |ma: f64, sma: f64| -> Vec<f64> {
+        let mut theta = vec![0.0; period + 1];
+        theta[0] = ma;
+        theta[period - 1] = sma;
+        theta[period] = ma * sma;
+        theta
+    };
+    for _ in 0..25 {
+        ar = golden_min(-0.99, 0.99, 80, |a| {
+            arma_css(y, &[a], &expand(ma, sma), ic, ncond)
+        });
+        ma = golden_min(-0.99, 0.99, 80, |t| {
+            arma_css(y, &[ar], &expand(t, sma), ic, ncond)
+        });
+        sma = golden_min(-0.99, 0.99, 80, |s| {
+            arma_css(y, &[ar], &expand(ma, s), ic, ncond)
+        });
+        ic = golden_min(lo_ic, hi_ic, 80, |m| {
+            arma_css(y, &[ar], &expand(ma, sma), m, ncond)
+        });
+    }
+    let s2 = arma_css(y, &[ar], &expand(ma, sma), ic, ncond);
+    (ar, ma, sma, ic, s2)
+}
+
+
 
 
 
@@ -1431,6 +1469,18 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     "ar1".to_string(),
                     "ma1".to_string(),
                     "sar1".to_string(),
+                    "intercept".to_string(),
+                ],
+                s2,
+            )
+        } else if p == 1 && q == 1 && !differenced && sar_q == 1 && period >= 2 {
+            let (ar, ma, sma, mu, s2) = css_arma11_sma1(&y, period as usize);
+            (
+                vec![ar, ma, sma, mu],
+                vec![
+                    "ar1".to_string(),
+                    "ma1".to_string(),
+                    "sma1".to_string(),
                     "intercept".to_string(),
                 ],
                 s2,
