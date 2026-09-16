@@ -453,15 +453,18 @@ unsafe fn str_atomic_summary(x: SEXP) -> String {
             let preview = str_preview_reals_or_ints(x, 6);
             return format!("{type_name} [{}] {preview}", dims.join(", "));
         }
-        if n == 1 && t == SEXPTYPE::STRSXP {
-            return format!("{type_name} \"{}\"", elt_to_string(x, 0));
+        if n == 0 {
+            return format!("{type_name}(0)");
         }
         let preview = str_preview_reals_or_ints(x, 10);
         if preview.is_empty() {
             format!("{type_name} [1:{n}]")
+        } else if n == 1 {
+            format!("{type_name} {preview}")
         } else {
             format!("{type_name} [1:{n}] {preview}")
         }
+
 
     }
 }
@@ -470,9 +473,15 @@ unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
     unsafe {
         let n = XLENGTH(x) as usize;
         let show = n.min(max);
+        let quote = TYPEOF(x) == SEXPTYPE::STRSXP;
         let mut parts = Vec::with_capacity(show);
         for i in 0..show {
-            parts.push(elt_to_string(x, i as R_xlen_t));
+            let s = elt_to_string(x, i as R_xlen_t);
+            if quote {
+                parts.push(format!("\"{s}\""));
+            } else {
+                parts.push(s);
+            }
         }
         let mut text = parts.join(" ");
         if n > show {
