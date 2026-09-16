@@ -1471,6 +1471,59 @@ fn exact_sma1_ml(y: &[f64], period: usize) -> (f64, f64, f64) {
     (sma, ic, s2)
 }
 
+fn ma1_sma1_ss(ma: f64, sma: f64, period: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+    let r = period + 2;
+    let mut t = vec![0.0; r * r];
+    for ind in 1..r {
+        t[(ind - 1) + ind * r] = 1.0;
+    }
+    let mut rr = vec![0.0; r];
+    rr[0] = 1.0;
+    rr[1] = ma;
+    rr[period] = sma;
+    rr[period + 1] = ma * sma;
+    let mut v = vec![0.0; r * r];
+    for i in 0..r {
+        for j in 0..r {
+            v[i + j * r] = rr[i] * rr[j];
+        }
+    }
+    let pn = lyapunov_nd(&t, &v, r);
+    let mut z = vec![0.0; r];
+    z[0] = 1.0;
+    (t, v, pn, z)
+}
+
+fn ma1_sma1_ml_nll(y: &[f64], ma: f64, sma: f64, mu: f64, period: usize) -> f64 {
+    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
+    let (t, v, pn, z) = ma1_sma1_ss(ma, sma, period);
+    let a0 = vec![0.0; period + 2];
+    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
+}
+
+fn exact_ma1_sma1_ml(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
+    let n = y.len();
+    if period < 2 || n <= period + 2 {
+        return (0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut ma = 0.0;
+    let mut sma = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        ma = golden_min(-0.99, 0.99, 80, |t| ma1_sma1_ml_nll(y, t, sma, ic, period));
+        sma = golden_min(-0.99, 0.99, 80, |t| ma1_sma1_ml_nll(y, ma, t, ic, period));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| ma1_sma1_ml_nll(y, ma, sma, m, period));
+    }
+    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
+    let (t, v, pn, z) = ma1_sma1_ss(ma, sma, period);
+    let a0 = vec![0.0; period + 2];
+    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
+    (ma, sma, ic, s2)
+}
+
+
 
 
 
@@ -2236,6 +2289,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![ar, sar, mu],
                 vec!["ar1".to_string(), "sar1".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p <= 0 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
+            let (ma, sma, mu, s2) = exact_ma1_sma1_ml(&y, period as usize);
+            (
+                vec![ma, sma, mu],
+                vec!["ma1".to_string(), "sma1".to_string(), "intercept".to_string()],
                 s2,
             )
         } else if p <= 0 && q == 1 && !differenced && sar_q == 1 && period >= 2 {
