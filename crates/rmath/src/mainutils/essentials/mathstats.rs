@@ -27,10 +27,23 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `log2(x)` — log base 2 with optional explicit base override.
-pub unsafe fn do_log2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
         let x_arg = CAR(args);
         let base_arg = CAR(CDR(args));
+
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();
         }
@@ -210,10 +223,23 @@ unsafe fn copy_all_attribs(dst: SEXP, src: SEXP) {
 }
 
 /// R's `round(x, digits=0)` — round to specified decimal digits.
-pub unsafe fn do_round(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
         let x_arg = CAR(args);
         let digits_arg = CAR(CDR(args));
+
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();
         }
@@ -442,10 +468,23 @@ fn logb(x: f64) -> f64 {
 ///
 /// Wires through the faithful `fprec` port (r-source/src/nmath/fprec.c),
 /// mirroring how `do_round` routes through `fround`.
-pub unsafe fn do_signif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
         let x_arg = CAR(args);
         let digits_arg = CAR(CDR(args));
+
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();
         }
@@ -491,10 +530,23 @@ pub unsafe fn do_signif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `trunc(x, ...)` — truncate toward zero with digits support.
-pub unsafe fn do_trunc(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_trunc(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
         let x_arg = CAR(args);
         let _digits_arg = CAR(CDR(args));
+
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();
         }
@@ -13333,8 +13385,20 @@ pub unsafe fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `sign(x)` — sign of numeric vector (-1, 0, or 1).
 ///
 /// Returns REALSXP. Preserves NA and NaN.
-pub unsafe fn do_sign(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
         let x_arg = CAR(args);
         if x_arg.is_null() {
             return R_NilValue();
