@@ -1718,6 +1718,47 @@ fn exact_sar1_ml(y: &[f64], period: usize) -> (f64, f64, f64) {
     (sar, ic, s2)
 }
 
+fn ar3_ss(p1: f64, p2: f64, p3: f64) -> ([f64; 9], [f64; 9], [f64; 9]) {
+    let t = [p1, p2, p3, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    let v = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let pn = lyapunov3(&t, &v);
+    (t, v, pn)
+}
+
+fn ar3_ml_nll(y: &[f64], p1: f64, p2: f64, p3: f64, mu: f64) -> f64 {
+    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
+    let (t, v, pn) = ar3_ss(p1, p2, p3);
+    let z = [1.0, 0.0, 0.0];
+    let a0 = [0.0, 0.0, 0.0];
+    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
+}
+
+fn exact_ar3_ml(y: &[f64]) -> (f64, f64, f64, f64, f64) {
+    let n = y.len();
+    if n < 6 {
+        return (0.0, 0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut p1 = 0.0;
+    let mut p2 = 0.0;
+    let mut p3 = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        p1 = golden_min(-0.99, 0.99, 80, |a| ar3_ml_nll(y, a, p2, p3, ic));
+        p2 = golden_min(-0.99, 0.99, 80, |a| ar3_ml_nll(y, p1, a, p3, ic));
+        p3 = golden_min(-0.99, 0.99, 80, |a| ar3_ml_nll(y, p1, p2, a, ic));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| ar3_ml_nll(y, p1, p2, p3, m));
+    }
+    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
+    let (t, v, pn) = ar3_ss(p1, p2, p3);
+    let z = [1.0, 0.0, 0.0];
+    let a0 = [0.0, 0.0, 0.0];
+    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
+    (p1, p2, p3, ic, s2)
+}
+
+
 
 
 
@@ -2642,6 +2683,18 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![p1, p2, mu],
                 vec!["ar1".to_string(), "ar2".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p == 3 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
+            let (p1, p2, p3, mu, s2) = exact_ar3_ml(&y);
+            (
+                vec![p1, p2, p3, mu],
+                vec![
+                    "ar1".to_string(),
+                    "ar2".to_string(),
+                    "ar3".to_string(),
+                    "intercept".to_string(),
+                ],
                 s2,
             )
         } else if p >= 2 && p <= 5 && q <= 0 && !no_mean && sar_p <= 0 && sar_q <= 0 {
