@@ -733,6 +733,9 @@ pub unsafe fn R_cpolyroot(coef: *mut c_double, degree: c_int) -> *mut std::ffi::
 }
 
 /// GNU `polyroot(z)` via Jenkins-Traub (`R_cpolyroot`).
+///
+/// Degree is `max{i: z[i] ≠ 0}` (trailing zeros dropped). All-zero and
+/// degree-0 inputs return `complex(0)`. `LGLSXP` is integer-backed like GNU.
 pub unsafe fn do_polyroot(
     _call: crate::sexp::ffi::SEXP,
     _op: crate::sexp::ffi::SEXP,
@@ -742,41 +745,61 @@ pub unsafe fn do_polyroot(
     unsafe {
         use crate::sexp::accessors::{CAR, COMPLEX, INTEGER, REAL, TYPEOF, XLENGTH};
         use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::{Rcomplex, SEXPTYPE};
+        use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXPTYPE};
         use crate::sexp::protect::protect;
         let z = CAR(args);
-        let ncoef = XLENGTH(z);
-        if ncoef < 2 {
-            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
-        }
-        let n = ncoef as usize;
-        let degree = n - 1;
-        let mut a_re = vec![0.0f64; n];
-        let mut a_im = vec![0.0f64; n];
+        let n_in = XLENGTH(z).max(0) as usize;
+        let mut a_re = vec![0.0f64; n_in];
+        let mut a_im = vec![0.0f64; n_in];
         if TYPEOF(z) == SEXPTYPE::CPLXSXP {
             let c = COMPLEX(z);
-            for i in 0..n {
+            for i in 0..n_in {
                 a_re[i] = (*c.add(i)).r;
                 a_im[i] = (*c.add(i)).i;
             }
-        } else if TYPEOF(z) == SEXPTYPE::INTSXP {
-            let p = INTEGER(z);
-            for i in 0..n {
-                a_re[i] = *p.add(i) as f64;
-            }
-        } else {
+        } else if TYPEOF(z) == SEXPTYPE::REALSXP {
             let r = REAL(z);
-            for i in 0..n {
+            for i in 0..n_in {
                 a_re[i] = *r.add(i);
             }
-        }
-        if a_re[n - 1] == 0.0 && a_im[n - 1] == 0.0 {
+        } else if TYPEOF(z) == SEXPTYPE::INTSXP || TYPEOF(z) == SEXPTYPE::LGLSXP {
+            let p = INTEGER(z);
+            for i in 0..n_in {
+                let v = *p.add(i);
+                if v == NA_INTEGER {
+                    crate::mainutils::errors::errorcall_str(
+                        crate::mainutils::errors::R_getCurrentCall(),
+                        "invalid polynomial coefficient",
+                    );
+                }
+                a_re[i] = v as f64;
+            }
+        } else {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
-                "leading coefficient is zero",
+                "unimplemented type in 'polyroot'",
             );
         }
-        // Jenkins-Traub / Horner here want highest-degree first.
+        for i in 0..n_in {
+            if !a_re[i].is_finite() || !a_im[i].is_finite() {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "invalid polynomial coefficient",
+                );
+            }
+        }
+        let mut degree = 0usize;
+        let mut any = false;
+        for i in 0..n_in {
+            if a_re[i] != 0.0 || a_im[i] != 0.0 {
+                degree = i;
+                any = true;
+            }
+        }
+        if !any || degree < 1 {
+            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
+        }
+        let n = degree + 1;
         let mut coef = vec![0.0f64; 2 * n];
         for i in 0..n {
             coef[i] = a_re[n - 1 - i];

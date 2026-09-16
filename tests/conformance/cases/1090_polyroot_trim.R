@@ -1,0 +1,5 @@
+cat(length(polyroot(c(1, 2, 0))), "\n", sep = "")
+cat(sprintf("%.8f", Re(polyroot(c(1, 2, 0)))), "\n", sep = "")
+cat(length(polyroot(c(0, 0, 0))), "\n", sep = "")
+cat(length(polyroot(1)), "\n", sep = "")
+cat(sprintf("%.8f", Re(polyroot(c(TRUE, TRUE)))), "\n", sep = "")
