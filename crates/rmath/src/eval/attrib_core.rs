@@ -119,6 +119,10 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         if x.is_null() || which.is_null() {
             return;
         }
+        if which == R_ClassSymbol() {
+            crate::sexp::attrib_core::classgets_check(x, value);
+        }
+
 
         let attrib = ATTRIB(x);
 
@@ -239,7 +243,11 @@ pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
 pub unsafe fn R_data_class(x: SEXP) -> SEXP {
     unsafe {
         let class_val = getAttrib(x, R_ClassSymbol());
-        if class_val.is_null() || class_val == R_NilValue() {
+        if class_val.is_null()
+            || class_val == R_NilValue()
+            || TYPEOF(class_val) != SEXPTYPE::STRSXP
+        {
+
             // Return the default class based on type
             let t = TYPEOF(x);
             let name = match t {

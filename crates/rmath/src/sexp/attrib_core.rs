@@ -10,7 +10,8 @@
 
 use std::os::raw::c_int;
 
-use super::accessors::{ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, SETCDR, TAG, TYPEOF};
+use super::accessors::{ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, XLENGTH};
+
 use super::constructors::*;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
@@ -114,6 +115,10 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         if x.is_null() || which.is_null() {
             return;
         }
+        if which == R_ClassSymbol() {
+            classgets_check(x, value);
+        }
+
 
         // setAttrib(x, R_DimSymbol, val) routes through dimgets(), whose
         // first step stores the dims as integer (coerceVector(val, INTSXP)).
@@ -189,6 +194,44 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
     }
 }
 
+pub(crate) unsafe fn classgets_check(vec: SEXP, klass: SEXP) {
+
+    unsafe {
+        if klass.is_null() || klass == R_NilValue() {
+            return;
+        }
+        if TYPEOF(klass) != SEXPTYPE::STRSXP {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "attempt to set invalid 'class' attribute".to_string(),
+            });
+        }
+        if XLENGTH(klass) <= 0 {
+            return;
+        }
+        if vec.is_null() || vec == R_NilValue() {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "attempt to set an attribute on NULL".to_string(),
+            });
+        }
+        let n = XLENGTH(klass);
+        for i in 0..n {
+            let elt = STRING_ELT(klass, i);
+            if elt.is_null() {
+                continue;
+            }
+            let cs = super::accessors::CHAR(elt);
+            if !cs.is_null() && std::ffi::CStr::from_ptr(cs).to_bytes() == b"factor" {
+                if TYPEOF(vec) != SEXPTYPE::INTSXP {
+                    std::panic::panic_any(crate::sexp::context::RError {
+                        message: "adding class \"factor\" to an invalid object".to_string(),
+                    });
+                }
+            }
+        }
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // isObject — check if an object has a class attribute
 // ---------------------------------------------------------------------------
@@ -234,7 +277,11 @@ pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
 pub unsafe fn R_data_class(x: SEXP) -> SEXP {
     unsafe {
         let class_val = getAttrib(x, R_ClassSymbol());
-        if class_val.is_null() || class_val == R_NilValue() {
+        if class_val.is_null()
+            || class_val == R_NilValue()
+            || TYPEOF(class_val) != SEXPTYPE::STRSXP
+        {
+
             // Return the default class based on type
             let t = TYPEOF(x);
             let name = match t {

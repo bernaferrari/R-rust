@@ -97,6 +97,10 @@ pub(crate) unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
             R_data_class(x)
         };
         let _klass_guard = protect(klass);
+        if klass.is_null() || klass == R_NilValue() || TYPEOF(klass) != SEXPTYPE::STRSXP {
+            return Rf_ScalarLogical(FALSE);
+        }
+
 
         if isString(what) == FALSE {
             std::panic::panic_any(crate::sexp::context::RError {
