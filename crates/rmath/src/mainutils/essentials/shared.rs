@@ -2861,8 +2861,14 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         let idx = i.rem_euclid(n);
 
         if t == SEXPTYPE::REALSXP {
-            crate::sexp::output::format_real_value(*REAL(x).add(idx as usize))
+            let v = *REAL(x).add(idx as usize);
+            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                "NA".to_string()
+            } else {
+                format!("{}", v)
+            }
         } else if t == SEXPTYPE::INTSXP {
+
             let v = *INTEGER(x).add(idx as usize);
             if v == NA_INTEGER {
                 "NA".to_string()
@@ -2881,9 +2887,21 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
                 "FALSE".to_string()
             }
         } else if t == SEXPTYPE::CPLXSXP {
-            crate::sexp::output::format_complex_value(*COMPLEX(x).add(idx as usize))
+            let c = *COMPLEX(x).add(idx as usize);
+            if c.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                || c.i.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            {
+                "NA".to_string()
+            } else {
+                let imag = if c.i == 0.0 { 0.0 } else { c.i };
+                if imag.is_sign_negative() {
+                    format!("{}{}i", c.r, imag)
+                } else {
+                    format!("{}+{}i", c.r, imag)
+                }
+            }
         } else if t == SEXPTYPE::RAWSXP {
-            crate::sexp::output::format_raw_value(*RAW(x).add(idx as usize))
+            format!("{:02x}", *RAW(x).add(idx as usize))
         } else if t == SEXPTYPE::STRSXP {
 
             let charsxp = crate::sexp::accessors::STRING_ELT(x, idx);
@@ -2943,6 +2961,29 @@ pub(crate) unsafe fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
         }
     }
 }
+
+/// `cat()` rendering: GNU print digits for real/complex/raw. paste/as.character
+/// keep using `elt_to_string` (15-digit-style conversion).
+pub(crate) fn cat_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
+    unsafe {
+        let t = TYPEOF(x);
+        let n = XLENGTH(x);
+        if n <= 0 {
+            return elt_to_string(x, i);
+        }
+        let idx = i.rem_euclid(n);
+        if t == SEXPTYPE::REALSXP {
+            crate::sexp::output::format_real_value(*REAL(x).add(idx as usize))
+        } else if t == SEXPTYPE::CPLXSXP {
+            crate::sexp::output::format_complex_value(*COMPLEX(x).add(idx as usize))
+        } else if t == SEXPTYPE::RAWSXP {
+            crate::sexp::output::format_raw_value(*RAW(x).add(idx as usize))
+        } else {
+            elt_to_string(x, i)
+        }
+    }
+}
+
 
 
 pub(crate) fn is_leap_year(year: i64) -> bool {

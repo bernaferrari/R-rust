@@ -19,7 +19,8 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
-use crate::mainutils::essentials::elt_to_string;
+use crate::mainutils::essentials::{cat_elt_to_string, elt_to_string};
+
 
 // ---------------------------------------------------------------------------
 // do_paste / do_paste0 — string concatenation
@@ -155,7 +156,8 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     if !arg.is_null() && arg != R_NilValue() {
                         let n = XLENGTH(arg).max(1);
                         for i in 0..n {
-                            parts.push(elt_to_string(arg, i));
+                            parts.push(cat_elt_to_string(arg, i));
+
                         }
                     }
                 }
