@@ -404,7 +404,8 @@ fn format_integer_value(v: i32) -> String {
     }
 }
 
-fn format_real_value(v: f64) -> String {
+pub(crate) fn format_real_value(v: f64) -> String {
+
     // IEEE allows signed zeros; print them as plain 0 like stock R's
     // EncodeReal0 ("if (x == 0.0) x = 0.0").
     let v = if v == 0.0 { 0.0 } else { v };
@@ -500,18 +501,21 @@ fn format_logical_value(v: i32) -> String {
     }
 }
 
-fn format_complex_value(v: super::ffi::Rcomplex) -> String {
+pub(crate) fn format_complex_value(v: super::ffi::Rcomplex) -> String {
     if R_IsNA(v.r) || R_IsNA(v.i) {
         return "NA".to_string();
     }
+    // EncodeReal0: x == 0.0 becomes +0, so cat/print of -0i is "+0i".
+    let imag = if v.i == 0.0 { 0.0 } else { v.i };
     let real = format_real_value(v.r);
-    let imaginary = format_real_value(v.i.abs());
-    if v.i.is_sign_negative() {
+    let imaginary = format_real_value(imag.abs());
+    if imag.is_sign_negative() {
         format!("{real}-{imaginary}i")
     } else {
         format!("{real}+{imaginary}i")
     }
 }
+
 
 fn format_access_error(err: impl std::fmt::Display) -> String {
     format!("<{err}>")
@@ -541,7 +545,8 @@ fn format_complex_element(x: Sexp<'_>, i: R_xlen_t) -> String {
         .unwrap_or_else(format_access_error)
 }
 
-fn format_raw_value(v: u8) -> String {
+pub(crate) fn format_raw_value(v: u8) -> String {
+
     format!("{v:02x}")
 }
 

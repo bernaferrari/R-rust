@@ -2861,12 +2861,7 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         let idx = i.rem_euclid(n);
 
         if t == SEXPTYPE::REALSXP {
-            let v = *REAL(x).add(idx as usize);
-            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                "NA".to_string()
-            } else {
-                format!("{}", v)
-            }
+            crate::sexp::output::format_real_value(*REAL(x).add(idx as usize))
         } else if t == SEXPTYPE::INTSXP {
             let v = *INTEGER(x).add(idx as usize);
             if v == NA_INTEGER {
@@ -2886,15 +2881,11 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
                 "FALSE".to_string()
             }
         } else if t == SEXPTYPE::CPLXSXP {
-            let c = *COMPLEX(x).add(idx as usize);
-            if c.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                || c.i.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-            {
-                "NA".to_string()
-            } else {
-                format_complex_cat(c.r, c.i)
-            }
+            crate::sexp::output::format_complex_value(*COMPLEX(x).add(idx as usize))
+        } else if t == SEXPTYPE::RAWSXP {
+            crate::sexp::output::format_raw_value(*RAW(x).add(idx as usize))
         } else if t == SEXPTYPE::STRSXP {
+
             let charsxp = crate::sexp::accessors::STRING_ELT(x, idx);
             if charsxp.is_null() {
                 "NA".to_string()
@@ -2950,33 +2941,6 @@ pub(crate) unsafe fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
         } else {
             Some(CStr::from_ptr(CHAR(charsxp)).to_string_lossy().into_owned())
         }
-    }
-}
-
-fn format_complex_cat(re: f64, im: f64) -> String {
-    let re_s = format_cat_num(re);
-    if im == 0.0 || im == -0.0 {
-        format!("{re_s}+0i")
-    } else if im < 0.0 {
-        format!("{re_s}{}i", format_cat_num(im))
-    } else {
-        format!("{re_s}+{}i", format_cat_num(im))
-    }
-}
-
-fn format_cat_num(v: f64) -> String {
-    if v.is_nan() {
-        "NaN".to_string()
-    } else if v.is_infinite() {
-        if v.is_sign_negative() {
-            "-Inf".to_string()
-        } else {
-            "Inf".to_string()
-        }
-    } else if v.fract() == 0.0 && v.abs() < 1e15 {
-        format!("{v:.0}")
-    } else {
-        format!("{v}")
     }
 }
 
