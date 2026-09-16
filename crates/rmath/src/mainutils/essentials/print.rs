@@ -829,7 +829,8 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     .map(|i| elt_to_string(names, i))
                     .collect::<Vec<_>>()
                     .join(" ");
-                println!("{}", labels);
+                println!();
+                println!("{labels}");
                 let values = (0..n)
                     .map(|i| {
                         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
@@ -842,7 +843,7 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     })
                     .collect::<Vec<_>>()
                     .join(" ");
-                println!("{}", values);
+                println!("{values}");
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
                 return x;
             }

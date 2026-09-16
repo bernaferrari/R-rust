@@ -108,7 +108,14 @@ fi
 normalize_output() {
     tr -d '\r' |
         sed 's/[[:space:]]*$//' |
-        awk '{ lines[NR] = $0 } END { n = NR; while (n > 0 && lines[n] == "") n--; for (i = 1; i <= n; i++) print lines[i] }'
+        awk '
+            /^Time elapsed:/ { next }
+            { lines[++n] = $0 }
+            END {
+                while (n > 0 && lines[n] == "") n--
+                for (i = 1; i <= n; i++) print lines[i]
+            }
+        '
 }
 
 is_xfail() {
