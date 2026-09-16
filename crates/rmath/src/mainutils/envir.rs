@@ -167,7 +167,8 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         // Copy bindings from the source (list or environment)
         if isNewList(what) {
             // It's a list/vector — walk its elements
-            let names = getAttrib(what, R_NameSymbol());
+            let names = getAttrib(what, crate::sexp::attrib_core::R_NamesSymbol());
+
             let n = LENGTH(what);
             for i in 0..n {
                 let val = VECTOR_ELT(what, i as R_xlen_t);
