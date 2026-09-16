@@ -557,13 +557,13 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
             error("incorrect number of columns in matrix subscript");
         }
 
-        // Get dimension strides
         let mut strides: Vec<R_xlen_t> = Vec::with_capacity(ndim as usize);
         strides.push(1);
         for d in 0..(ndim - 1) as usize {
-            let dim_val = INTEGER_ELT(dims, ndim as c_int - 1 - d as c_int) as R_xlen_t;
+            let dim_val = INTEGER_ELT(dims, d as c_int) as R_xlen_t;
             strides.push(strides[d] * dim_val);
         }
+
 
         // Allocate result vector
         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nr);
@@ -627,13 +627,26 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
                         break;
                     }
                 } else {
-                    // Integer/real subscript
-                    let val = INTEGER_ELT(s, elt_index as c_int);
+                    let val = if s_type == SEXPTYPE::REALSXP {
+                        let rval = *REAL(s).add(elt_index as usize);
+                        if rval.is_nan() {
+                            NA_INTEGER
+                        } else if !rval.is_finite() {
+                            ECALL_OutOfBounds(_x, (d + 1) as c_int, 0, _call);
+                            NA_INTEGER
+                        } else {
+                            rval as c_int
+                        }
+                    } else {
+                        INTEGER_ELT(s, elt_index as c_int)
+                    };
                     if val == NA_INTEGER {
                         has_na = true;
                         break;
                     }
                     sub_val = val as R_xlen_t;
+
+
                     if sub_val < 0 {
                         error("negative subscripts are not allowed in matrix indexing");
                     }
@@ -647,7 +660,8 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
                         break;
                     }
                 }
-                idx += (sub_val - 1) * strides[ndim as usize - 1 - d];
+                idx += (sub_val - 1) * strides[d];
+
             }
 
             if has_na {
@@ -694,17 +708,20 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
                 let col_idx = i + j * nr as usize;
                 let elt = STRING_ELT(s, col_idx as R_xlen_t);
 
-                if elt.is_null() || elt == R_NilValue() {
-                    // NA in string subscript -> NA_INTEGER
+                if elt.is_null()
+                    || elt == R_NilValue()
+                    || elt == crate::sexp::globals::R_NaString()
+                {
                     *INTEGER(ans).add(col_idx) = NA_INTEGER;
                     continue;
                 }
 
                 let pname = CHAR(elt);
-                if pname.is_null() || *pname == 0 {
+                if pname.is_null() {
                     *INTEGER(ans).add(col_idx) = NA_INTEGER;
                     continue;
                 }
+
 
                 // Get the dimnames column for this dimension
                 let dn_col = if !dnamelist.is_null() && j < LENGTH(dnamelist) as usize {
@@ -720,9 +737,13 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
                     let target_bytes = target.to_bytes();
                     for k in 0..XLENGTH(dn_col) as usize {
                         let name_elt = STRING_ELT(dn_col, k as R_xlen_t);
-                        if name_elt.is_null() || name_elt == R_NilValue() {
+                        if name_elt.is_null()
+                            || name_elt == R_NilValue()
+                            || name_elt == crate::sexp::globals::R_NaString()
+                        {
                             continue;
                         }
+
                         let np = CHAR(name_elt);
                         if np.is_null() {
                             continue;

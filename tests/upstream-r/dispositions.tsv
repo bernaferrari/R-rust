@@ -4,7 +4,7 @@ PCRE.R	skip	rport-2gpp.1	requires the complete upstream PCRE and base-regex surf
 any-all.R	pass	-	-
 arith-true.R	pass	-	-
 arith.R	pass	-	-
-array-subset.R	skip	rport-2gpp.1	requires the complete array subsetting and assignment surface
+array-subset.R	pass	-	-
 classes-methods.R	skip	rport-2gpp.2	requires complete S3 and S4 method dispatch
 complex.R	xfail	rport-2gpp.1	outer and fft run; complex inverse trig and 0^0.5 still differ from GNU
 conditions.R	skip	rport-2gpp.1	requires the complete condition, restart, warning, and traceback surface

@@ -30,7 +30,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::eval::eval::Rf_eval;
-use crate::mainutils::subscript::{get1index, int_arraySubscript, makeSubscript};
+use crate::mainutils::subscript::{get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -908,10 +908,28 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
         }
 
         /* Protect s */
-        let _s_guard = protect(s);
+        let mut s = s;
+        let mut s_guard = protect(s);
 
-        /* Check for special matrix subscripting (skip for now -- no strmat2intmat/mat2indsub) */
-        /* This optimization requires strmat2intmat and mat2indsub which are not yet ported */
+        /* Check for special matrix subscripting. */
+        if !isNull(ATTRIB(s)) {
+            let dim = getAttrib(x, sym_Dim());
+            if isMatrix(s) && isArray(x) && ncols(s) == length_int(dim) {
+                if isString(s) {
+                    let dnames = GetArrayDimnames(x);
+                    let _dnames_guard = protect(dnames);
+                    s = strmat2intmat(s, dnames, call, x);
+                    drop(s_guard);
+                    s_guard = protect(s);
+                }
+                if TYPEOF(s) == SEXPTYPE::INTSXP || TYPEOF(s) == SEXPTYPE::REALSXP {
+                    s = mat2indsub(dim, s, call, x);
+                    drop(s_guard);
+                    s_guard = protect(s);
+                }
+            }
+        }
+
 
         /* Convert to a vector of integer subscripts in the range 1:length(x). */
         let mut stretch: R_xlen_t = 1;
