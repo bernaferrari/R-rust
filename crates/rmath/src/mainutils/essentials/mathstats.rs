@@ -13389,11 +13389,31 @@ pub unsafe fn do_sign(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Helper to apply a scalar function to a numeric vector, preserving NA/NaN.
 /// Returns REALSXP.
-unsafe fn apply_unary_scalar_fn(call: SEXP, x: SEXP, scalar_fn: impl Fn(f64) -> f64) -> SEXP {
+unsafe fn apply_unary_scalar_fn(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    scalar_fn: impl Fn(f64) -> f64,
+) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
+        let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+
         let n = XLENGTH(x);
         let t = TYPEOF(x);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
@@ -13506,24 +13526,25 @@ unsafe fn apply_binary_scalar_fn(
     }
 }
 
-pub unsafe fn do_lgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(call, CAR(args), crate::special::gamma::lgammafn) }
+pub unsafe fn do_lgamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::lgammafn) }
 }
 
 /// R's `gamma(x)` — gamma function.
-pub unsafe fn do_gamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(call, CAR(args), crate::special::gamma::gammafn) }
+pub unsafe fn do_gamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::gammafn) }
 }
 
 /// R's `digamma(x)` — digamma (psi) function.
-pub unsafe fn do_digamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(call, CAR(args), crate::special::polygamma::digamma) }
+pub unsafe fn do_digamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::digamma) }
 }
 
 /// R's `trigamma(x)` — trigamma function.
-pub unsafe fn do_trigamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(call, CAR(args), crate::special::polygamma::trigamma) }
+pub unsafe fn do_trigamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::trigamma) }
 }
+
 
 /// R's `psigamma(x, deriv)` — polygamma function (deriv-th derivative of psi).
 pub unsafe fn do_psigamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -13589,20 +13610,17 @@ pub unsafe fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `factorial(n)` — factorial n!
-pub unsafe fn do_factorial(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        apply_unary_scalar_fn(call, x, |v| crate::special::gamma::gammafn(v + 1.0))
-    }
+pub unsafe fn do_factorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, op, args, rho, |v| crate::special::gamma::gammafn(v + 1.0)) }
 }
 
 /// R's `lfactorial(n)` — log factorial.
-pub unsafe fn do_lfactorial(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_lfactorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        apply_unary_scalar_fn(call, x, |v| crate::special::gamma::lgammafn(v + 1.0))
+        apply_unary_scalar_fn(call, op, args, rho, |v| crate::special::gamma::lgammafn(v + 1.0))
     }
 }
+
 
 /// R's `besselI(x, nu)` — modified Bessel function of the first kind.
 pub unsafe fn do_besselI(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

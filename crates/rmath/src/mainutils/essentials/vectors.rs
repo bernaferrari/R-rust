@@ -133,6 +133,20 @@ unsafe fn bind_pairlist_cell_name(x: SEXP, i: R_xlen_t) -> SEXP {
 /// If any arg is STRSXP, result is STRSXP.
 pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::missing::DispatchAnyOrEval(
+            call,
+            op,
+            c"c".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            1,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let first = if args.is_null() || args == R_NilValue() {
             R_NilValue()
         } else {

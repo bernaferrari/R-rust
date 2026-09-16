@@ -324,13 +324,28 @@ pub unsafe fn do_tsp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dim(x) <- value` — replace an object's dimension attribute.
-pub unsafe fn do_dim_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_dim_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"dim<-".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let mut x = CAR(args);
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+
         // `aperm` identity returns X. `dim(newX) <-` must not clobber X.
         x = crate::mainutils::duplicate::shallow_duplicate(x);
 

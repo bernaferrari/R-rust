@@ -933,8 +933,20 @@ pub unsafe fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 
 /// R's `cummin(x)` — cumulative minimum.
-pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -994,8 +1006,20 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `cummax(x)` — cumulative maximum.
-pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_cummax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();

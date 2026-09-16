@@ -2023,12 +2023,27 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Handle `length(x)`.
-pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_length(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"length".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
+
         #[cfg(feature = "renderplot-device")]
         if crate::mainutils::essentials::sexp_has_class(x, "unit") {
             return crate::mainutils::portable_grid::unit_value_length(x);

@@ -7,26 +7,14 @@ use super::*;
 
 /// R's `crossprod(x, y)` — computes t(x) %*% y.
 /// If y is NULL, computes t(x) %*% x.
-pub unsafe fn do_crossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::array::do_matprod_kind(
-            crate::mainutils::array::MatProductKind::Cross,
-            args,
-            "crossprod",
-        )
-    }
+pub unsafe fn do_crossprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::array::do_matprod(call, op, args, rho) }
 }
 
 /// R's `tcrossprod(x, y)` — computes x %*% t(y).
 /// If y is NULL, computes x %*% t(x).
-pub unsafe fn do_tcrossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::array::do_matprod_kind(
-            crate::mainutils::array::MatProductKind::TransposedCross,
-            args,
-            "tcrossprod",
-        )
-    }
+pub unsafe fn do_tcrossprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::array::do_matprod(call, op, args, rho) }
 }
 
 /// R's `det(x)` — determinant of a square matrix (simplified via LU-like approach).

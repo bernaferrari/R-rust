@@ -103,13 +103,28 @@ pub unsafe fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 /// GNU `names(x) <- value`. Pairlists and language objects store names
 /// as cell tags (including the head of a call as `""`).
-pub unsafe fn do_names_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"names<-".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+
         let t = TYPEOF(x);
         if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
             namesgets_pairlist(x, value);
@@ -153,8 +168,22 @@ unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
 }
 
 /// R's `dimnames(x) <- value` — set matrix/array dimension names.
-pub unsafe fn do_dimnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_dimnames_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"dimnames<-".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {

@@ -1,0 +1,6 @@
+set.seed(1)
+a <- rnorm(1, 0, mean = 10)
+set.seed(1)
+b <- rnorm(1, mean = 10, sd = 0)
+stopifnot(identical(a, b))
+print(a)
