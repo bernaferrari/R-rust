@@ -574,7 +574,7 @@ pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 // S3 generics
 // ---------------------------------------------------------------------------
 
-unsafe fn matrix_column(x: SEXP, nrow: R_xlen_t, column: R_xlen_t) -> SEXP {
+pub(crate) unsafe fn matrix_column(x: SEXP, nrow: R_xlen_t, column: R_xlen_t) -> SEXP {
     unsafe {
         let ty = TYPEOF(x);
         let result = Rf_allocVector3(ty, nrow);
@@ -663,6 +663,46 @@ unsafe fn matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
     }
 }
 
+unsafe fn list_as_data_frame(x: SEXP) -> SEXP {
+    unsafe {
+        let ncol = XLENGTH(x);
+        let names_attr =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut nrow: R_xlen_t = 0;
+        for i in 0..ncol {
+            nrow = nrow.max(XLENGTH(VECTOR_ELT(x, i)));
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncol);
+        if result.is_null() {
+            return result;
+        }
+        let _result_guard = protect(result);
+        let mut names: Vec<String> = Vec::with_capacity(ncol as usize);
+        for i in 0..ncol {
+            let col = VECTOR_ELT(x, i);
+            SET_VECTOR_ELT(result, i, recycle_column_if_needed(col, nrow));
+            let name = if !names_attr.is_null()
+                && names_attr != R_NilValue()
+                && TYPEOF(names_attr) == SEXPTYPE::STRSXP
+                && i < XLENGTH(names_attr)
+            {
+                string_at_or_empty(names_attr, i)
+            } else {
+                String::new()
+            };
+            names.push(if name.is_empty() {
+                format!("V{}", i + 1)
+            } else {
+                name
+            });
+        }
+        set_string_names(result, &names);
+        set_compact_row_names(result, nrow);
+        set_data_frame_class(result);
+        result
+    }
+}
+
 /// R's `as.data.frame(x)` — convert to data.frame.
 pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -681,6 +721,9 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
             return matrix_as_data_frame(x, dim);
+        }
+        if TYPEOF(x) == SEXPTYPE::VECSXP {
+            return list_as_data_frame(x);
         }
         // Wrap in a single-element list and set class
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);

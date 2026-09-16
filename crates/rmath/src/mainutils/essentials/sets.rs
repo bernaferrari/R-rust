@@ -303,7 +303,7 @@ pub(crate) fn ordered_atomic_indices(
                 with_missing.extend(ordered_indices);
                 with_missing
             }
-            SortNaPlacement::Last => {
+            SortNaPlacement::Last | SortNaPlacement::Keep => {
                 ordered_indices.extend(missing_indices);
                 ordered_indices
             }
@@ -316,6 +316,18 @@ pub(crate) fn order_na_placement(args: SEXP, position: usize) -> SortNaPlacement
     unsafe {
         let arg = arg_by_name_or_position(args, &["na.last"], position);
         if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
+            return SortNaPlacement::Last;
+        }
+        if TYPEOF(arg) == SEXPTYPE::STRSXP {
+            let s = STRING_ELT(arg, 0);
+            if !s.is_null() {
+                let text = std::ffi::CStr::from_ptr(CHAR(s))
+                    .to_string_lossy()
+                    .to_ascii_lowercase();
+                if text.starts_with('k') {
+                    return SortNaPlacement::Keep;
+                }
+            }
             return SortNaPlacement::Last;
         }
         let raw = if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
@@ -420,7 +432,7 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     ranks[index as usize] = (nonmissing_count + offset + 1) as f64;
                 }
             }
-            SortNaPlacement::Remove => {}
+            SortNaPlacement::Remove | SortNaPlacement::Keep => {}
         }
 
         let output_len = if na_placement == SortNaPlacement::Remove {
@@ -1910,13 +1922,14 @@ pub(crate) enum SortNaPlacement {
     Remove,
     Last,
     First,
+    Keep,
 }
 
 fn sorted_len(value_count: usize, na_count: usize, na_placement: SortNaPlacement) -> usize {
     value_count
         + match na_placement {
             SortNaPlacement::Remove => 0,
-            SortNaPlacement::Last | SortNaPlacement::First => na_count,
+            SortNaPlacement::Last | SortNaPlacement::First | SortNaPlacement::Keep => na_count,
         }
 }
 

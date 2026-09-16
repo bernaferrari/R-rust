@@ -27,6 +27,12 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             current = CDR(current);
         }
+        if entries
+            .iter()
+            .any(|(arg, _, _, _)| sexp_has_class(*arg, "data.frame"))
+        {
+            return cbind_data_frames(&entries);
+        }
 
         let has_nonzero_extent = entries
             .iter()
@@ -90,8 +96,14 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         set_two_dim_attr(result, nrows, ncols);
-        if has_col_names {
-            set_bind_dimnames(result, R_NilValue(), string_vector(&col_names));
+        let row_names = first_vector_names(&entries, nrows);
+        if has_col_names || (!row_names.is_null() && row_names != R_NilValue()) {
+            let cols = if has_col_names {
+                string_vector(&col_names)
+            } else {
+                R_NilValue()
+            };
+            set_bind_dimnames(result, row_names, cols);
         }
         result
     }
@@ -377,6 +389,11 @@ pub fn bind_common_type(left: SEXPTYPE, right: SEXPTYPE) -> SEXPTYPE {
 
 pub unsafe fn bind_dims(arg: SEXP, cbind: bool) -> (R_xlen_t, R_xlen_t) {
     unsafe {
+        if sexp_has_class(arg, "data.frame") && TYPEOF(arg) == SEXPTYPE::VECSXP {
+            let nc = XLENGTH(arg);
+            let nr = super::construct::data_frame_row_count(arg);
+            return (nr, nc);
+        }
         let dim_attr =
             crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
@@ -391,6 +408,73 @@ pub unsafe fn bind_dims(arg: SEXP, cbind: bool) -> (R_xlen_t, R_xlen_t) {
         }
     }
 }
+
+unsafe fn first_vector_names(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)], nrows: R_xlen_t) -> SEXP {
+    unsafe {
+        for &(arg, arg_nrow, arg_ncol, _) in entries {
+            if arg_ncol != 1 || arg_nrow != nrows {
+                continue;
+            }
+            let names = crate::sexp::attrib_core::getAttrib(
+                arg,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == nrows
+            {
+                return names;
+            }
+        }
+        R_NilValue()
+    }
+}
+
+unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> SEXP {
+    unsafe {
+        let mut columns: Vec<SEXP> = Vec::new();
+        let mut names: Vec<String> = Vec::new();
+        let mut nrow: R_xlen_t = 0;
+        for &(arg, arg_nrow, arg_ncol, ref name) in entries {
+            if arg_nrow == 0 && arg_ncol == 0 {
+                continue;
+            }
+            nrow = nrow.max(arg_nrow);
+            if sexp_has_class(arg, "data.frame") && TYPEOF(arg) == SEXPTYPE::VECSXP {
+                let inner = crate::sexp::attrib_core::getAttrib(
+                    arg,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                for j in 0..XLENGTH(arg) {
+                    columns.push(VECTOR_ELT(arg, j));
+                    let child = string_at_or_empty(inner, j);
+                    names.push(if child.is_empty() {
+                        name.clone()
+                    } else {
+                        child
+                    });
+                }
+            } else {
+                columns.push(arg);
+                names.push(name.clone());
+            }
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
+        if result.is_null() {
+            return result;
+        }
+        let _r = protect(result);
+        for (i, col) in columns.iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, recycle_column_if_needed(*col, nrow));
+        }
+        set_string_names(result, &names);
+        set_compact_row_names(result, nrow);
+        set_data_frame_class(result);
+        result
+    }
+}
+
 
 pub unsafe fn copy_bind_value(
     dst: SEXP,

@@ -1497,7 +1497,19 @@ pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let _xrep = protect(xrep);
             let yrep = rep_each(y, nx);
             let _yrep = protect(yrep);
-            let call = Rf_lang3(fun, xrep, yrep);
+            // GNU: FUN(X, Y, ...) — extra tagged args such as sep=":".
+            let extra = CDR(CDR(CDR(args)));
+            let call = if extra.is_null() || extra == R_NilValue() {
+                Rf_lang3(fun, xrep, yrep)
+            } else {
+                let extra_dup = crate::mainutils::duplicate::shallow_duplicate(extra);
+                let _ed = protect(extra_dup);
+                let call = Rf_cons(fun, Rf_cons(xrep, Rf_cons(yrep, extra_dup)));
+                if !call.is_null() {
+                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
+                call
+            };
             let _call = protect(call);
             crate::eval::eval::Rf_eval(call, rho)
         };
@@ -2532,7 +2544,7 @@ fn repair_data_frame_names(names: &mut [String]) {
     }
 }
 
-unsafe fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
+pub(crate) unsafe fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
     unsafe {
         let len = XLENGTH(x);
         if len == target_len || target_len == 0 {
@@ -2643,6 +2655,43 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                         arg_name.clone()
                     } else {
                         format!("{arg_name}.{child_name}")
+                    });
+                }
+            } else if TYPEOF(crate::sexp::attrib_core::getAttrib(
+                value,
+                crate::sexp::attrib_core::R_DimSymbol(),
+            )) == SEXPTYPE::INTSXP
+                && XLENGTH(crate::sexp::attrib_core::getAttrib(
+                    value,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                )) == 2
+            {
+                let dim = crate::sexp::attrib_core::getAttrib(
+                    value,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                );
+                let nr = *INTEGER(dim) as R_xlen_t;
+                let nc = *INTEGER(dim).add(1) as R_xlen_t;
+                match nrow {
+                    Some(existing) if nr != existing && nr != 0 && existing != 0 => {
+                        base_error(format!(
+                            "arguments imply differing number of rows: {existing}, {nr}"
+                        ))
+                    }
+                    None => nrow = Some(nr),
+                    _ => {}
+                }
+                if nr != 0 || nc == 0 {
+                    nrow = Some(nrow.unwrap_or(nr));
+                }
+                for j in 0..nc {
+                    columns.push(super::s3::matrix_column(value, nr, j));
+                    names.push(if arg_name.is_empty() {
+                        format!("V{}", j + 1)
+                    } else if nc == 1 {
+                        arg_name.clone()
+                    } else {
+                        format!("{arg_name}.{}", j + 1)
                     });
                 }
             } else {

@@ -770,6 +770,9 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         {
             return x;
         }
+        if is_data_frame_object(x) {
+            return do_data_matrix(_call, _op, args, R_NilValue());
+        }
         let t = TYPEOF(x);
         if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Simple vector — copy and set dim attribute
@@ -971,11 +974,14 @@ pub unsafe fn do_data_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 
         let nrow = data_frame_row_count(frame);
         let ncol = XLENGTH(frame);
-        let integer_result = (0..ncol).all(|column_index| {
-            let column = VECTOR_ELT(frame, column_index);
-            TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::STRSXP
-        });
-        let result_type = if integer_result {
+        let integer_result = ncol > 0
+            && (0..ncol).all(|column_index| {
+                let column = VECTOR_ELT(frame, column_index);
+                TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::STRSXP
+            });
+        let result_type = if ncol == 0 {
+            SEXPTYPE::LGLSXP
+        } else if integer_result {
             SEXPTYPE::INTSXP
         } else {
             SEXPTYPE::REALSXP

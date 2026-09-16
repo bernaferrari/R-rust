@@ -314,9 +314,14 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                                 named = true;
                             }
                             if !named {
-                                let tag = TAG(current);
-                                if !tag.is_null() && tag != R_NilValue() && i == 0 {
-                                    SET_STRING_ELT(names, offset + i, PRINTNAME(tag));
+                                let filled = c_arg_elem_name(
+                                    TAG(current),
+                                    arg_names,
+                                    i,
+                                    n,
+                                );
+                                if !filled.is_null() && filled != R_NilValue() {
+                                    SET_STRING_ELT(names, offset + i, filled);
                                 }
                             }
                         }
@@ -429,11 +434,11 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     }
                 }
                 if has_names {
-                    let tag = TAG(current);
-                    if !tag.is_null() && tag != R_NilValue() {
-                        let printname = PRINTNAME(tag);
-                        if !printname.is_null() {
-                            SET_STRING_ELT(names, offset, printname);
+                    let arg_names = crate::sexp::attrib_core::getAttrib(arg, names_symbol);
+                    for i in 0..n {
+                        let filled = c_arg_elem_name(TAG(current), arg_names, i, n);
+                        if !filled.is_null() && filled != R_NilValue() {
+                            SET_STRING_ELT(names, offset + i, filled);
                         }
                     }
                 }
@@ -455,6 +460,56 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         result
     }
 }
+
+/// GNU bind.c `NewName`: tag, tag.elem, or tag1/tag2 when a tagged
+/// argument expands to more than one element.
+unsafe fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) -> SEXP {
+    unsafe {
+        let own = if !arg_names.is_null()
+            && arg_names != R_NilValue()
+            && TYPEOF(arg_names) == SEXPTYPE::STRSXP
+            && i < XLENGTH(arg_names)
+        {
+            let s = STRING_ELT(arg_names, i);
+            if !s.is_null() && s != R_NilValue() && *CHAR(s) != 0 {
+                Some(s)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let tag_chars = if !tag.is_null() && tag != R_NilValue() {
+            let p = PRINTNAME(tag);
+            if !p.is_null() && *CHAR(p) != 0 {
+                Some(p)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        match (tag_chars, own) {
+            (Some(t), Some(o)) => {
+                let tb = std::ffi::CStr::from_ptr(CHAR(t)).to_string_lossy();
+                let ob = std::ffi::CStr::from_ptr(CHAR(o)).to_string_lossy();
+                let combined = format!("{tb}.{ob}");
+                let cstr = CString::new(combined).unwrap_or_default();
+                Rf_mkChar(cstr.as_ptr())
+            }
+            (None, Some(o)) => o,
+            (Some(t), None) if n == 1 => t,
+            (Some(t), None) => {
+                let tb = std::ffi::CStr::from_ptr(CHAR(t)).to_string_lossy();
+                let combined = format!("{}{}", tb, i + 1);
+                let cstr = CString::new(combined).unwrap_or_default();
+                Rf_mkChar(cstr.as_ptr())
+            }
+            (None, None) => Rf_mkChar(c"".as_ptr()),
+        }
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // do_seq — generate sequences
