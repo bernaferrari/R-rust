@@ -225,6 +225,7 @@ where
         crate::eval::parser::parse_expressions(&combined, &mut (*instance).arena)
             .map_err(|err| err.to_string())
     })?;
+    crate::eval::parser::flush_literal_warnings();
     if let Some(limit) = limit {
         exprs.truncate(limit);
     }
@@ -233,9 +234,11 @@ where
 
 fn parse_one_source(source: &str) -> Result<SEXP, String> {
     crate::mainutils::source::remember_parse_context(source);
-    with_required_current_instance(|instance| unsafe {
+    let parsed = with_required_current_instance(|instance| unsafe {
         crate::eval::parser::parse(source, &mut (*instance).arena).map_err(|err| err.to_string())
-    })
+    });
+    crate::eval::parser::flush_literal_warnings();
+    parsed
 }
 
 unsafe fn exprs_to_exprsxp(exprs: Vec<SEXP>) -> SEXP {

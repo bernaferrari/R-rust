@@ -35,7 +35,7 @@ pub(crate) unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
         if R_DispatchOrEvalSP(
             call,
             op,
-            b"[\x00<-".as_ptr() as *const c_char,
+            b"[<-\0".as_ptr() as *const c_char,
             args,
             rho,
             &mut ans,
@@ -141,7 +141,7 @@ pub(crate) unsafe fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
         if R_DispatchOrEvalSP(
             call,
             op,
-            b"[[\x00<-".as_ptr() as *const c_char,
+            b"[[<-\0".as_ptr() as *const c_char,
             args,
             rho,
             &mut ans,

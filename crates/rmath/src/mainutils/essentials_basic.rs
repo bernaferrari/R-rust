@@ -1349,33 +1349,11 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             SET_VECTOR_ELT(result, 0, x);
             return result;
         }
-        if t == SEXPTYPE::CLOSXP {
-            let formals = crate::sexp::accessors::FORMALS(x);
-            let n = pairlist_len(formals) as R_xlen_t;
-            let result = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
-            let _result = protect(result);
-            let mut current = formals;
-            let mut names = Vec::new();
-            while current != R_NilValue() && !current.is_null() {
-                SET_VECTOR_ELT(result, names.len() as R_xlen_t, CAR(current));
-                names.push(tag_name(TAG(current)).unwrap_or_default());
-                current = CDR(current);
-            }
-            SET_VECTOR_ELT(
-                result,
-                n,
-                crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(x)),
-            );
-            names.push(String::new());
-            if n > 0 {
-                let names = string_vector(&names);
-                crate::eval::attrib_core::setAttrib(
-                    result,
-                    crate::eval::attrib_core::R_NamesSymbol(),
-                    names,
-                );
-            }
-            return result;
+        if t == SEXPTYPE::CLOSXP
+            || t == SEXPTYPE::BUILTINSXP
+            || t == SEXPTYPE::SPECIALSXP
+        {
+            return function_as_list(x);
         }
         if !matches!(
             SEXPTYPE(t),
@@ -1506,6 +1484,85 @@ pub unsafe fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
         let names_vec = string_vector(&names);
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
         result
+    }
+}
+
+unsafe fn function_as_list(fun: SEXP) -> SEXP {
+    unsafe {
+        let (formals, body) = if TYPEOF(fun) == SEXPTYPE::CLOSXP {
+            (
+                crate::sexp::accessors::FORMALS(fun),
+                crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(fun)),
+            )
+        } else if let Some(proto) = primitive_prototype(fun) {
+            (
+                crate::sexp::accessors::FORMALS(proto),
+                crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(proto)),
+            )
+        } else {
+            crate::mainutils::essentials::base_error(
+                "cannot coerce this type to a list".to_owned(),
+            );
+        };
+        let n = pairlist_len(formals) as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
+        let _result = protect(result);
+        let mut current = formals;
+        let mut names = Vec::new();
+        while current != R_NilValue() && !current.is_null() {
+            SET_VECTOR_ELT(result, names.len() as R_xlen_t, CAR(current));
+            names.push(tag_name(TAG(current)).unwrap_or_default());
+            current = CDR(current);
+        }
+        SET_VECTOR_ELT(result, n, body);
+        names.push(String::new());
+        if n > 0 {
+            let names = string_vector(&names);
+            crate::eval::attrib_core::setAttrib(
+                result,
+                crate::eval::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
+        result
+    }
+}
+
+unsafe fn primitive_binding_name(fun: SEXP) -> String {
+    unsafe {
+        let name = crate::eval::primitive::PRIMNAME(fun);
+        if name != "unknown" {
+            return name.to_string();
+        }
+        crate::eval::primitive::portable_primitive_name(unsafe {
+            crate::sexp::object::Sexp::from_raw_unchecked(fun)
+        })
+        .unwrap_or_else(|| name.to_string())
+    }
+}
+
+unsafe fn primitive_prototype(fun: SEXP) -> Option<SEXP> {
+    unsafe {
+        let primitive_name = primitive_binding_name(fun);
+        let primitive_symbol =
+            Rf_install(CString::new(primitive_name).unwrap_or_default().as_ptr());
+        for registry in [".GenericArgsEnv", ".ArgsEnv"] {
+            let registry_symbol = Rf_install(CString::new(registry).unwrap_or_default().as_ptr());
+            let registry_env = crate::sexp::envir::R_findVarInFrame(
+                crate::sexp::globals::R_BaseEnv(),
+                registry_symbol,
+            );
+            if registry_env == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            let prototype = crate::sexp::envir::R_findVarInFrame(registry_env, primitive_symbol);
+            if prototype != crate::sexp::globals::R_UnboundValue()
+                && TYPEOF(prototype) == SEXPTYPE::CLOSXP
+            {
+                return Some(prototype);
+            }
+        }
+        None
     }
 }
 

@@ -522,6 +522,7 @@ const GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto("as.double", &[arg("x"), arg("...")], true),
     proto("as.environment", X, true),
     proto("as.integer", &[arg("x"), arg("...")], true),
+    proto("as.list", &[arg("x"), arg("...")], true),
     proto("as.logical", &[arg("x"), arg("...")], true),
     proto("as.pairlist", &[arg("x"), arg("...")], true),
     proto("as.call", X, true),

@@ -501,6 +501,10 @@ impl Lexer {
         };
         if self.peek_char() == Some('i') {
             self.advance();
+            if self.peek_char() == Some('L') {
+                self.advance();
+                return Token::Invalid;
+            }
             return Token::Complex(v);
         }
         if self.peek_char() == Some('L') {
@@ -686,12 +690,25 @@ impl std::error::Error for ParseError {}
 /// `in "<context>"` suffix.
 const PARSE_CONTEXT_WINDOW: usize = 256;
 
+thread_local! {
+    static PENDING_LITERAL_WARNINGS: std::cell::RefCell<Vec<String>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
 /// Emit one of the literal-suffix warnings from gram.y's `NumericValue`
 /// (e.g. "non-integer value 0x1p1024L qualified with L; using numeric
-/// value").
+/// value"). Queued while the arena is lent; flush after `with_arena`.
 fn warn_literal(message: &str) {
-    if let Ok(c) = CString::new(message) {
-        unsafe { crate::main::errors::Rf_warning(c.as_ptr()) };
+    PENDING_LITERAL_WARNINGS.with(|w| w.borrow_mut().push(message.to_string()));
+}
+
+/// Fire parse-time literal warnings after the arena lend is released.
+pub fn flush_literal_warnings() {
+    let msgs = PENDING_LITERAL_WARNINGS.with(|w| std::mem::take(&mut *w.borrow_mut()));
+    for message in msgs {
+        if let Ok(c) = CString::new(message) {
+            unsafe { crate::main::errors::Rf_warning(c.as_ptr()) };
+        }
     }
 }
 

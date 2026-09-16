@@ -35,7 +35,7 @@ pub(crate) unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
         if R_DispatchOrEvalSP(
             call,
             op,
-            b"$\x00<-".as_ptr() as *const c_char,
+            b"$<-\0".as_ptr() as *const c_char,
             args,
             env,
             &mut ans,

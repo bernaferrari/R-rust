@@ -926,6 +926,7 @@ where
         };
         let torture_ticks = std::mem::take(&mut (*inst).arena.alloc_gc_torture_ticks);
         let collect_requested = std::mem::take(&mut (*inst).arena.alloc_gc_collect_requested);
+        crate::eval::parser::flush_literal_warnings();
         crate::sexp::gengc::process_deferred_alloc_gc_in(inst, torture_ticks, collect_requested);
         result
     }
