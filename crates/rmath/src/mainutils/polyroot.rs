@@ -746,10 +746,7 @@ pub unsafe fn do_polyroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::
         let z = CAR(args);
         let ncoef = XLENGTH(z);
         if ncoef < 2 {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "polyroot needs at least two coefficients",
-            );
+            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
         }
         let degree = (ncoef - 1) as usize;
         let mut a_re = vec![0.0f64; ncoef as usize];

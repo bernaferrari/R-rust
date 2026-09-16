@@ -1,0 +1,8 @@
+cat(length(polyroot(1)), "\n", sep = "")
+cat(Re(polyroot(c(1, 2))), "\n", sep = "")
+cat(paste(sprintf("%.4f", zapsmall(c(1e-12, 1, 2), digits = 4)), collapse = ","), "\n", sep = "")
+cat(paste(sprintf("%.4f", lowess(c(3, 2, 6, 3, 8, 4))$y), collapse = ","), "\n", sep = "")
+x <- c(1:5, rep(6, 10), 8, 10, 12, 14, 50)
+y <- c(18, 2, 15, 6, 10, 4, 16, 11, 7, 3, 14, 17, 20, 12, 9, 13, 1, 8, 5, 19)
+cat(paste(sprintf("%.4f", lowess(x, y, f = 0.25, iter = 0, delta = 0)$y), collapse = ","), "\n", sep = "")
+cat(paste(sprintf("%.4f", lowess(x, y, f = 0.25, iter = 0, delta = 3)$y), collapse = ","), "\n", sep = "")

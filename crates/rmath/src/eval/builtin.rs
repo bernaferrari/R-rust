@@ -4025,6 +4025,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_round,
     },
     EvaluatedBuiltin {
+        name: "zapsmall",
+        handler: crate::mainutils::essentials::do_zapsmall,
+    },
+    EvaluatedBuiltin {
         name: "signif",
         handler: crate::mainutils::essentials::do_signif,
     },

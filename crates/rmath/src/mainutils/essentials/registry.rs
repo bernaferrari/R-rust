@@ -145,6 +145,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "ceiling",
     "floor",
     "round",
+    "zapsmall",
     "trunc",
     "sqrt",
     "log",

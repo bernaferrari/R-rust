@@ -256,6 +256,83 @@ pub unsafe fn do_round(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `zapsmall(x, digits = getOption("digits"))`.
+pub unsafe fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return x;
+        }
+        let digits_arg = CAR(CDR(args));
+        let digits = if digits_arg.is_null()
+            || digits_arg == R_NilValue()
+            || digits_arg == crate::sexp::globals::R_MissingArg()
+        {
+            crate::mainutils::options::GetOptionDigits() as f64
+        } else if XLENGTH(digits_arg) == 0 {
+            crate::mainutils::errors::errorcall_str(call, "invalid 'digits'");
+        } else {
+            real_or_default(digits_arg, 7.0)
+        };
+        let n = XLENGTH(x);
+        if n == 0 {
+            return x;
+        }
+        let mut mx = 0.0f64;
+        let mut any_finite = false;
+        let t = TYPEOF(x);
+        for i in 0..n {
+            let mag = if t == SEXPTYPE::CPLXSXP {
+                let z = *COMPLEX(x).add(i as usize);
+                if z.r.is_nan() || z.i.is_nan() {
+                    continue;
+                }
+                (z.r * z.r + z.i * z.i).sqrt()
+            } else {
+                let v = if t == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i as usize)
+                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                    let iv = *INTEGER(x).add(i as usize);
+                    if iv == NA_INTEGER {
+                        continue;
+                    }
+                    iv as f64
+                } else {
+                    continue;
+                };
+                if v.is_nan() {
+                    continue;
+                }
+                v.abs()
+            };
+            any_finite = true;
+            if mag > mx {
+                mx = mag;
+            }
+        }
+        if !any_finite {
+            return x;
+        }
+        if mx > 0.0 {
+            let adj = (digits - mx.log10().trunc()).max(0.0);
+            let d = Rf_ScalarReal(adj);
+            let _d = protect(d);
+            let packed = Rf_cons(x, Rf_cons(d, R_NilValue()));
+            let _p = protect(packed);
+            do_round(call, op, packed, rho)
+        } else if t == SEXPTYPE::CPLXSXP {
+            let d = Rf_ScalarReal(digits);
+            let _d = protect(d);
+            let packed = Rf_cons(x, Rf_cons(d, R_NilValue()));
+            let _p = protect(packed);
+            do_round(call, op, packed, rho)
+        } else {
+            apply_unary_scalar_fn(call, x, |_| 0.0)
+        }
+    }
+}
+
+
 /// Port of R's `fround` (r-source/src/nmath/fround.c): round `x` to `digits`
 /// decimal digits with ties-to-even. Instead of a naive multiply-round-divide
 /// (which double-rounds when `x * 10^dig` is itself inexact), it compares the
