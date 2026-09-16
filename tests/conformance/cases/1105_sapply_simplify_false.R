@@ -1,0 +1,7 @@
+r <- sapply(c("a", "b"), function(s) paste0(s, "1"), simplify = FALSE)
+cat(is.list(r), "\n", sep = "")
+cat(paste(unlist(r), collapse = ","), "\n", sep = "")
+cat(paste(names(r), collapse = ","), "\n", sep = "")
+v <- sapply(1:2, function(i) i, simplify = FALSE)
+cat(is.list(v), "\n", sep = "")
+cat(paste(unlist(v), collapse = ","), "\n", sep = "")

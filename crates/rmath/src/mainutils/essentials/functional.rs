@@ -121,11 +121,37 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `sapply(X, FUN)` — like lapply but simplifies to vector.
+/// GNU `sapply(X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE)`.
+/// `simplify` / `USE.NAMES` are not forwarded into FUN's `...`.
 pub unsafe fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let list = do_lapply(_call, _op, args, rho);
+        let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
+        let _x = protect(x);
+        let (lapply_args, simplify, use_names) = sapply_control_args(args, x, rho);
+        let _lapply_args = protect(lapply_args);
+        let list = do_lapply(_call, _op, lapply_args, rho);
         let _list = protect(list);
+        if use_names
+            && !list.is_null()
+            && TYPEOF(list) == SEXPTYPE::VECSXP
+            && TYPEOF(x) == SEXPTYPE::STRSXP
+            && XLENGTH(x) == XLENGTH(list)
+        {
+            let names = crate::sexp::attrib_core::getAttrib(
+                list,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if names.is_null() || names == R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    list,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    x,
+                );
+            }
+        }
+        if sapply_is_false(simplify) {
+            return list;
+        }
         if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP || XLENGTH(list) == 0 {
             return list;
         }
@@ -143,11 +169,106 @@ pub unsafe fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if !atomic {
             return list;
         }
-        let sargs = Rf_cons(list, R_NilValue());
+        let higher = if sapply_is_array(simplify) {
+            TRUE
+        } else {
+            FALSE
+        };
+        let higher_s = Rf_ScalarLogical(higher);
+        let _higher = protect(higher_s);
+        let tail = Rf_cons(higher_s, R_NilValue());
+        let _tail = protect(tail);
+        SETTAG(tail, Rf_install(c"higher".as_ptr()));
+        let sargs = Rf_cons(list, tail);
         let _sargs = protect(sargs);
         do_simplify2array(_call, _op, sargs, rho)
     }
 }
+
+unsafe fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP, bool) {
+    unsafe {
+        let mut simplify = Rf_ScalarLogical(TRUE);
+        let mut _simplify_guard = None;
+        let mut use_names = true;
+        let mut lapply_args = R_NilValue();
+        let mut guards: Vec<_> = Vec::new();
+        let mut cells = Vec::new();
+        let mut current = args;
+        let mut positional = 0usize;
+        let mut x_named = false;
+        let mut fun_named = false;
+        while !current.is_null() && current != R_NilValue() {
+            match tag_name(current).as_deref() {
+                Some("X") => x_named = true,
+                Some("FUN") => fun_named = true,
+                _ => {}
+            }
+            current = CDR(current);
+        }
+        current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let named = tag_name(current);
+            let is_x =
+                named.as_deref() == Some("X") || (named.is_none() && !x_named && positional == 0);
+            let is_fun = named.as_deref() == Some("FUN")
+                || (named.is_none() && !fun_named && positional == 1);
+            let is_simplify = named.as_deref() == Some("simplify");
+            let is_use_names = named.as_deref() == Some("USE.NAMES");
+            if is_simplify {
+                simplify = crate::eval::eval::Rf_eval(CAR(current), rho);
+                _simplify_guard = Some(protect(simplify));
+            } else if is_use_names {
+                let value = crate::eval::eval::Rf_eval(CAR(current), rho);
+                if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) == 1 {
+                    use_names = *LOGICAL(value) != FALSE && *LOGICAL(value) != NA_LOGICAL;
+                }
+            } else {
+                let value = if is_x {
+                    x
+                } else if is_fun {
+                    let expr = CAR(current);
+                    if TYPEOF(expr) == SEXPTYPE::LANGSXP || TYPEOF(expr) == SEXPTYPE::PROMSXP {
+                        let fun = crate::eval::eval::Rf_eval(expr, rho);
+                        guards.push(protect(fun));
+                        fun
+                    } else {
+                        expr
+                    }
+                } else {
+                    CAR(current)
+                };
+                cells.push((value, TAG(current)));
+
+            }
+
+            if named.is_none() {
+                positional += 1;
+            }
+            current = CDR(current);
+        }
+        for (value, tag) in cells.into_iter().rev() {
+            let cell = Rf_cons(value, lapply_args);
+            guards.push(protect(cell));
+            SETTAG(cell, tag);
+            lapply_args = cell;
+        }
+        let _ = guards;
+        (lapply_args, simplify, use_names)
+    }
+}
+
+unsafe fn sapply_is_false(x: SEXP) -> bool {
+    unsafe {
+        TYPEOF(x) == SEXPTYPE::LGLSXP
+            && XLENGTH(x) == 1
+            && *LOGICAL(x) == FALSE
+    }
+}
+
+unsafe fn sapply_is_array(x: SEXP) -> bool {
+    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 && elt_to_string(x, 0) == "array" }
+}
+
 
 
 /// R's `vapply(X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE)` — apply.c's
