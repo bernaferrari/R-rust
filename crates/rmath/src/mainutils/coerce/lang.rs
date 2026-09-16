@@ -91,12 +91,25 @@ pub unsafe fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// do_ascall — convert an object to a call object.
 /// Matches C's `do_ascall()` in coerce.c line 1732.
-pub unsafe fn do_ascall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Ops".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
         let x = CAR(args);
         match TYPEOF(x) {
             t if t == SEXPTYPE::LANGSXP => x,
             t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+
                 let n = LENGTH(x);
                 if n == 0 {
                     error("invalid length 0 argument");

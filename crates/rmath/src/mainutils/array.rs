@@ -18,10 +18,12 @@ use std::os::raw::c_int;
 
 use crate::mainutils::coerce::asLogical;
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, OBJECT, PRINTNAME, RAW, REAL,
-    SET_OBJECT, SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF,
+    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, OBJECT, PRINTNAME, RAW, REAL,
+    SETTAG, SET_OBJECT, SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF,
     UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
 };
+
+
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
 };
@@ -1063,14 +1065,39 @@ pub unsafe fn do_rowscols(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `%*%`, `crossprod`, `tcrossprod` -- matrix multiplication.
 ///
 /// Ported from R's `do_matprod` in array.c (line 1250).
-/// PRIMVAL(op) == 0 for `%*%`, == 1 for `crossprod`, == 2 for `tcrossprod`.
-pub unsafe fn do_matprod(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_matprod(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let (kind, name) = match primitive_name(op).as_deref() {
             Some("crossprod") => (MatProductKind::Cross, "crossprod"),
             Some("tcrossprod") => (MatProductKind::TransposedCross, "tcrossprod"),
             _ => (MatProductKind::Matrix, "%*%"),
         };
+        let x = CAR(args);
+        let y = if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
+            R_NilValue()
+        } else {
+            CADR(args)
+        };
+        if OBJECT(x) != 0 || OBJECT(y) != 0 {
+            let mut s = args;
+            while !s.is_null() && s != R_NilValue() {
+                SETTAG(s, R_NilValue());
+                s = CDR(s);
+            }
+            let mut ans = R_NilValue();
+            if crate::eval::dispatch::DispatchGroup(
+                b"matrixOps\0".as_ptr() as *const std::os::raw::c_char,
+                call,
+                op,
+                args,
+                env,
+                &mut ans,
+            ) != 0
+            {
+                return ans;
+            }
+        }
+        let _ = env;
         do_matprod_kind(kind, args, name)
     }
 }

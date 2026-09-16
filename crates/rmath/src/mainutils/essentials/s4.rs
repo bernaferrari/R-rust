@@ -484,9 +484,12 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     .get(slot)
                     .map(|ty| s4_prototype_for_type(ty))
                     .unwrap_or_else(|| R_NilValue());
-
+                if !proto.is_null() && proto != R_NilValue() {
+                    let _proto = protect(proto);
+                }
                 slots.push((slot.clone(), proto));
             }
+
         }
 
         let n = slots.len() as R_xlen_t;

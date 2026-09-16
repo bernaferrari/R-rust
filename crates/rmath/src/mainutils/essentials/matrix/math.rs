@@ -44,8 +44,37 @@ pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-pub unsafe fn real_math1(args: SEXP, f: impl Fn(f64) -> f64) -> SEXP {
+unsafe fn dispatch_math(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Option<SEXP> {
     unsafe {
+
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            Some(dispatched)
+        } else {
+            None
+        }
+    }
+}
+
+pub unsafe fn real_math1(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    f: impl Fn(f64) -> f64,
+) -> SEXP {
+    unsafe {
+        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+            return dispatched;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -65,7 +94,11 @@ pub unsafe fn real_math1(args: SEXP, f: impl Fn(f64) -> f64) -> SEXP {
                 *REAL(x).add(i as usize)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                 let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                if v == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    v as f64
+                }
             } else {
                 NA_REAL
             };
@@ -102,45 +135,46 @@ pub fn cospi_value(x: f64) -> f64 {
     }
 }
 
+
 /// R's `expm1(x)` — accurate exp(x)-1.
-pub unsafe fn do_expm1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { real_math1(args, f64::exp_m1) }
+pub unsafe fn do_expm1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { real_math1(call, op, args, rho, f64::exp_m1) }
 }
 
 /// R's `log1p(x)` — accurate log(1+x).
-pub unsafe fn do_log1p(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { real_math1(args, f64::ln_1p) }
+pub unsafe fn do_log1p(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { real_math1(call, op, args, rho, f64::ln_1p) }
 }
 
 /// R's `acosh(x)` — inverse hyperbolic cosine.
-pub unsafe fn do_acosh(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { real_math1(args, f64::acosh) }
+pub unsafe fn do_acosh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { real_math1(call, op, args, rho, f64::acosh) }
 }
 
 /// R's `asinh(x)` — inverse hyperbolic sine.
-pub unsafe fn do_asinh(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { real_math1(args, f64::asinh) }
+pub unsafe fn do_asinh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { real_math1(call, op, args, rho, f64::asinh) }
 }
 
 /// R's `atanh(x)` — inverse hyperbolic tangent.
-pub unsafe fn do_atanh(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { real_math1(args, f64::atanh) }
+pub unsafe fn do_atanh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { real_math1(call, op, args, rho, f64::atanh) }
 }
 
 /// R's `sinpi(x)` — sin(pi*x), exact at integer arguments.
-pub unsafe fn do_sinpi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { real_math1(args, sinpi_value) }
+pub unsafe fn do_sinpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { real_math1(call, op, args, rho, sinpi_value) }
 }
 
 /// R's `cospi(x)` — cos(pi*x), exact at integer and half-integer arguments.
-pub unsafe fn do_cospi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { real_math1(args, cospi_value) }
+pub unsafe fn do_cospi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { real_math1(call, op, args, rho, cospi_value) }
 }
 
 /// R's `tanpi(x)` — tan(pi*x), based on the exact sinpi/cospi helpers.
-pub unsafe fn do_tanpi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_tanpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        real_math1(args, |x| {
+        real_math1(call, op, args, rho, |x| {
             if x.is_finite() && x.fract() == 0.0 {
                 return 0.0;
             }
@@ -164,12 +198,16 @@ pub unsafe fn do_tanpi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `sin(x)` — sine function.
-pub unsafe fn do_sin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+            return dispatched;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+
 
         let n = XLENGTH(x);
         let t = TYPEOF(x);
@@ -207,10 +245,14 @@ pub unsafe fn do_sin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `cos(x)` — cosine function.
-pub unsafe fn do_cos(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+            return dispatched;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
+
             return R_NilValue();
         }
 
@@ -250,8 +292,11 @@ pub unsafe fn do_cos(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `tan(x)` — tangent function.
-pub unsafe fn do_tan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+            return dispatched;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -293,12 +338,16 @@ pub unsafe fn do_tan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `asin(x)` — arc sine function.
-pub unsafe fn do_asin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+            return dispatched;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+
 
         let n = XLENGTH(x);
         let t = TYPEOF(x);
@@ -330,8 +379,12 @@ pub unsafe fn do_asin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `acos(x)` — arc cosine function.
-pub unsafe fn do_acos(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+            return dispatched;
+        }
+
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -367,8 +420,12 @@ pub unsafe fn do_acos(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `atan(x)` — arc tangent function.
-pub unsafe fn do_atan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+            return dispatched;
+        }
+
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
