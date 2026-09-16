@@ -133,6 +133,7 @@ unsafe fn bind_pairlist_cell_name(x: SEXP, i: R_xlen_t) -> SEXP {
 /// If any arg is STRSXP, result is STRSXP.
 pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let args = crate::mainutils::bind::R_listCompact(args, true);
         let mut ans = R_NilValue();
         if crate::eval::missing::DispatchAnyOrEval(
             call,
@@ -1072,9 +1073,39 @@ pub unsafe fn do_subset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 // Type checking: is.finite, is.infinite, is.nan, is.matrix, is.array, is.list
 // ---------------------------------------------------------------------------
 
-/// R's `is.finite(x)` — check for finite values.
-pub unsafe fn do_is_finite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+unsafe fn dispatch_is(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    generic: &[u8],
+) -> Option<SEXP> {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            generic.as_ptr() as *const std::os::raw::c_char,
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            Some(ans)
+        } else {
+            None
+        }
+    }
+}
+
+/// R's `is.finite(x)` — check for finite values.
+pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if let Some(ans) = dispatch_is(call, op, args, rho, b"is.finite\0") {
+            return ans;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
@@ -1103,8 +1134,11 @@ pub unsafe fn do_is_finite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `is.infinite(x)` — check for infinite values.
-pub unsafe fn do_is_infinite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_is_infinite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(ans) = dispatch_is(call, op, args, rho, b"is.infinite\0") {
+            return ans;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
@@ -1130,8 +1164,11 @@ pub unsafe fn do_is_infinite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `is.nan(x)` — check for NaN values (not NA).
-pub unsafe fn do_is_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(ans) = dispatch_is(call, op, args, rho, b"is.nan\0") {
+            return ans;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
@@ -1157,9 +1194,25 @@ pub unsafe fn do_is_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+
+
 /// R's `is.matrix(x)` — check if x has a dim attribute with exactly 2 dimensions.
-pub unsafe fn do_is_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_is_matrix(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"is.matrix".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
@@ -1172,8 +1225,22 @@ pub unsafe fn do_is_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `is.array(x)` — check if x has a dim attribute.
-pub unsafe fn do_is_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_is_array(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"is.array".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);

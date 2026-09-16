@@ -2642,10 +2642,27 @@ pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Handle type-checking functions: is.numeric, is.integer, is.double,
 /// is.complex, is.logical, is.character, is.null, is.raw.
-pub unsafe fn do_is_type(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_is_type(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let op_name = get_op_name(op, call);
+        if op_name == "is.numeric" {
+            let mut ans = R_NilValue();
+            if crate::eval::dispatch::DispatchOrEval(
+                call,
+                op,
+                c"is.numeric".as_ptr(),
+                args,
+                rho,
+                &mut ans,
+                0,
+                1,
+            ) != 0
+            {
+                return ans;
+            }
+        }
         let x = CAR(args);
+
         if x.is_null() || x == R_NilValue() {
             if op_name == "is.null" {
                 return Rf_ScalarLogical(TRUE);

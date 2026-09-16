@@ -77,8 +77,22 @@ pub unsafe fn do_lengths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `length(x) <- value` — resize vectors with R's missing-value fill rules.
-pub unsafe fn do_length_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"length<-".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
@@ -86,6 +100,7 @@ pub unsafe fn do_length_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 message: "cannot set length of NULL".to_string(),
             });
         }
+
         let new_len = match length_replacement_size(value) {
             Some(len) => len,
             None => {
