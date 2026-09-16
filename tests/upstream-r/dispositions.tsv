@@ -1,12 +1,12 @@
 # path	disposition	owner bead	reason
 CRANtools.R	skip	rport-2gpp.2	requires installed package metadata and CRAN repository tooling
 PCRE.R	skip	rport-2gpp.1	requires the complete upstream PCRE and base-regex surface
-any-all.R	skip	rport-2gpp.1	requires full-file evaluator parity beyond the curated any/all slice
+any-all.R	pass	-	-
 arith-true.R	pass	-	-
 arith.R	pass	-	-
 array-subset.R	skip	rport-2gpp.1	requires the complete array subsetting and assignment surface
 classes-methods.R	skip	rport-2gpp.2	requires complete S3 and S4 method dispatch
-complex.R	skip	rport-2gpp.1	requires full-file complex arithmetic and formatting parity
+complex.R	xfail	rport-2gpp.1	outer and fft run; complex inverse trig and 0^0.5 still differ from GNU
 conditions.R	skip	rport-2gpp.1	requires the complete condition, restart, warning, and traceback surface
 d-p-q-r-tests.R	skip	rport-2gpp.2	requires the complete stats distribution family and test helpers
 d-p-q-r-tst-2.R	skip	rport-2gpp.2	requires the complete stats distribution tail and log-probability surface

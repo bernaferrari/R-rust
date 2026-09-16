@@ -6,13 +6,13 @@ or a claim that tests passed on a particular commit.
 
 | Inventory | Count |
 | --- | ---: |
-| Curated ordinary fixtures | 1089 |
+| Curated ordinary fixtures | 1090 |
 | Curated error fixtures | 68 |
-| Total curated fixtures | 1157 |
+| Total curated fixtures | 1158 |
 | Whole upstream files tracked | 70 |
-| Upstream files marked pass | 5 |
-| Upstream files marked xfail | 5 |
-| Upstream files marked skip | 60 |
+| Upstream files marked pass | 6 |
+| Upstream files marked xfail | 6 |
+| Upstream files marked skip | 58 |
 | Real packages with selected probes | 7 |
 | Package probe sets marked pass | 7 |
 | Package probe sets marked partial | 0 |

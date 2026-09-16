@@ -1705,6 +1705,12 @@ unsafe fn copy_elt(src: SEXP, si: i64, dst: SEXP, di: i64) {
             t if t == SEXPTYPE::REALSXP => {
                 *REAL(dst).add(di as usize) = *REAL(src).add(si as usize);
             }
+            t if t == SEXPTYPE::CPLXSXP => {
+                *COMPLEX(dst).add(di as usize) = *COMPLEX(src).add(si as usize);
+            }
+            t if t == SEXPTYPE::RAWSXP => {
+                *RAW(dst).add(di as usize) = *RAW(src).add(si as usize);
+            }
             t if t == SEXPTYPE::STRSXP => {
                 SET_STRING_ELT(dst, di, STRING_ELT(src, si));
             }

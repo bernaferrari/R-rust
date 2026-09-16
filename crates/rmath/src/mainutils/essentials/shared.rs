@@ -2847,9 +2847,12 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         let t = TYPEOF(x);
         let n = match SEXPTYPE(t) {
             SEXPTYPE::NILSXP => 0,
-            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::STRSXP => {
-                XLENGTH(x)
-            }
+            SEXPTYPE::REALSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::LGLSXP
+            | SEXPTYPE::STRSXP
+            | SEXPTYPE::CPLXSXP
+            | SEXPTYPE::RAWSXP => XLENGTH(x),
             _ => 1,
         };
         if n == 0 {
@@ -2881,6 +2884,15 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
                 "TRUE".to_string()
             } else {
                 "FALSE".to_string()
+            }
+        } else if t == SEXPTYPE::CPLXSXP {
+            let c = *COMPLEX(x).add(idx as usize);
+            if c.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                || c.i.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            {
+                "NA".to_string()
+            } else {
+                format_complex_cat(c.r, c.i)
             }
         } else if t == SEXPTYPE::STRSXP {
             let charsxp = crate::sexp::accessors::STRING_ELT(x, idx);
@@ -2940,6 +2952,34 @@ pub(crate) unsafe fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
         }
     }
 }
+
+fn format_complex_cat(re: f64, im: f64) -> String {
+    let re_s = format_cat_num(re);
+    if im == 0.0 || im == -0.0 {
+        format!("{re_s}+0i")
+    } else if im < 0.0 {
+        format!("{re_s}{}i", format_cat_num(im))
+    } else {
+        format!("{re_s}+{}i", format_cat_num(im))
+    }
+}
+
+fn format_cat_num(v: f64) -> String {
+    if v.is_nan() {
+        "NaN".to_string()
+    } else if v.is_infinite() {
+        if v.is_sign_negative() {
+            "-Inf".to_string()
+        } else {
+            "Inf".to_string()
+        }
+    } else if v.fract() == 0.0 && v.abs() < 1e15 {
+        format!("{v:.0}")
+    } else {
+        format!("{v}")
+    }
+}
+
 
 pub(crate) fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
