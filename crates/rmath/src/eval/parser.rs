@@ -693,6 +693,8 @@ const PARSE_CONTEXT_WINDOW: usize = 256;
 thread_local! {
     static PENDING_LITERAL_WARNINGS: std::cell::RefCell<Vec<String>> =
         std::cell::RefCell::new(Vec::new());
+    static PARSED_EXPR_LITERAL_WARNINGS: std::cell::RefCell<Vec<Vec<String>>> =
+        std::cell::RefCell::new(Vec::new());
 }
 
 /// Emit one of the literal-suffix warnings from gram.y's `NumericValue`
@@ -702,9 +704,33 @@ fn warn_literal(message: &str) {
     PENDING_LITERAL_WARNINGS.with(|w| w.borrow_mut().push(message.to_string()));
 }
 
-/// Fire parse-time literal warnings after the arena lend is released.
+fn take_pending_literal_warnings() -> Vec<String> {
+    PENDING_LITERAL_WARNINGS.with(|w| std::mem::take(&mut *w.borrow_mut()))
+}
+
+fn begin_parsed_expr_warnings() {
+    PARSED_EXPR_LITERAL_WARNINGS.with(|w| w.borrow_mut().clear());
+}
+
+fn record_parsed_expr_warning_msgs(msgs: Vec<String>) {
+    PARSED_EXPR_LITERAL_WARNINGS.with(|w| w.borrow_mut().push(msgs));
+}
+
+/// Fire the parse-time literal warnings attached to top-level expression `index`.
+pub fn flush_parsed_expr_warnings(index: usize) {
+    let msgs = PARSED_EXPR_LITERAL_WARNINGS.with(|w| {
+        w.borrow_mut().get_mut(index).map(std::mem::take).unwrap_or_default()
+    });
+    for message in msgs {
+        if let Ok(c) = CString::new(message) {
+            unsafe { crate::main::errors::Rf_warning(c.as_ptr()) };
+        }
+    }
+}
+
+/// Fire leftover parse-time literal warnings after the arena lend is released.
 pub fn flush_literal_warnings() {
-    let msgs = PENDING_LITERAL_WARNINGS.with(|w| std::mem::take(&mut *w.borrow_mut()));
+    let msgs = take_pending_literal_warnings();
     for message in msgs {
         if let Ok(c) = CString::new(message) {
             unsafe { crate::main::errors::Rf_warning(c.as_ptr()) };
@@ -934,6 +960,8 @@ pub struct Parser<'arena> {
     /// newline-crossing `else` is always rejected. The interactive
     /// top-level path leaves it false (lenient group-depth gate).
     strict_newline_else: bool,
+    /// L-suffix warnings produced while tokenizing, keyed by token index.
+    token_literal_warnings: Vec<(usize, String)>,
 }
 
 impl<'arena> Parser<'arena> {
@@ -947,15 +975,18 @@ impl<'arena> Parser<'arena> {
         let mut lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         let mut spans = Vec::new();
+        let mut token_literal_warnings = Vec::new();
         let mut have_pipebind = false;
         loop {
             let tok = lexer.next_token();
             let end = lexer.pos;
-            // True token start (post-whitespace), like upstream yylloc.
             let start = lexer.last_token_start;
             let is_eof = tok == Token::Eof;
             if tok == Token::PipeBind {
                 have_pipebind = true;
+            }
+            for message in take_pending_literal_warnings() {
+                token_literal_warnings.push((tokens.len(), message));
             }
             tokens.push(tok);
             spans.push((start, end));
@@ -963,7 +994,6 @@ impl<'arena> Parser<'arena> {
                 break;
             }
         }
-        // Precompute group containment per token (see `inside_group`).
         let mut inside_group = Vec::with_capacity(tokens.len());
         let mut group_opener: Vec<Option<usize>> = Vec::with_capacity(tokens.len());
         let mut depth = 0usize;
@@ -976,8 +1006,6 @@ impl<'arena> Parser<'arena> {
                     opener_stack.push(idx);
                     depth += 1
                 }
-                // `[[` opens TWO levels (it consumes two `]`); push twice
-                // so a later `[[`-balance probe sees the doubled depth.
                 Token::LDoubleBracket => {
                     opener_stack.push(idx);
                     opener_stack.push(idx);
@@ -1001,8 +1029,10 @@ impl<'arena> Parser<'arena> {
             inside_group,
             group_opener,
             strict_newline_else: false,
+            token_literal_warnings,
         }
     }
+
 
     /// The shared placeholder node for `_`, allocated on first use.
     fn placeholder_node(&mut self) -> Result<SEXP, ParseError> {
@@ -1239,30 +1269,38 @@ impl<'arena> Parser<'arena> {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Top-level
-    // -----------------------------------------------------------------------
+
+    fn take_token_warnings(&mut self, start: usize, end: usize) -> Vec<String> {
+        let mut out = Vec::new();
+        self.token_literal_warnings.retain(|(index, message)| {
+            if *index >= start && *index < end {
+                out.push(message.clone());
+                false
+            } else {
+                true
+            }
+        });
+        out
+    }
 
     pub fn parse_top_level_expressions(&mut self) -> Result<Vec<SEXP>, ParseError> {
+        begin_parsed_expr_warnings();
         let mut exprs = Vec::new();
         loop {
             self.skip_terminators();
             if self.peek() == &Token::Eof {
                 break;
             }
+            let start = self.pos;
             let expr = self.parse_expr()?;
-            // gram.y rejects any `_` placeholder that survived the pipe
-            // rewrite: nested placeholders or `_` used outside a pipe.
             if self.expr_contains_placeholder(expr) {
                 return Err(ParseError("invalid use of pipe placeholder".to_string()));
             }
-            // gram.y's checkForPipeBind: any `=>` call that survived the
-            // pipe rewrite (i.e. `=>` anywhere but a pipe's direct RHS)
-            // is an invalid pipe bind. Armed only when the lexer saw `=>`.
             if self.have_pipebind && expr_contains_pipebind(expr) {
                 return Err(self.pipebind_position_error("invalid use of pipe bind symbol"));
             }
             exprs.push(expr);
+            record_parsed_expr_warning_msgs(self.take_token_warnings(start, self.pos));
             self.skip_terminators();
         }
 
@@ -1279,15 +1317,14 @@ impl<'arena> Parser<'arena> {
     }
 
     pub fn parse_top_level_with_spans(&mut self) -> Result<Vec<(SEXP, usize, usize)>, ParseError> {
+        begin_parsed_expr_warnings();
         let mut spans = Vec::new();
         loop {
             self.skip_terminators();
             if self.peek() == &Token::Eof {
                 break;
             }
-            // Byte span from the per-token lexer spans (self.pos is a
-            // TOKEN index): start byte = next token's start; end byte =
-            // last consumed token's end.
+            let start = self.pos;
             let tok_start = self
                 .spans
                 .get(self.pos)
@@ -1309,6 +1346,7 @@ impl<'arena> Parser<'arena> {
                 tok_start
             };
             spans.push((expr, tok_start, tok_end));
+            record_parsed_expr_warning_msgs(self.take_token_warnings(start, self.pos));
             self.skip_terminators();
         }
         Ok(spans)
@@ -2644,7 +2682,7 @@ impl<'arena> Parser<'arena> {
 
     fn parse_arg(&mut self) -> Result<(Option<String>, SEXP), ParseError> {
         match self.peek().clone() {
-            Token::Ident(name) => {
+            Token::Ident(name) | Token::Str(name) => {
                 let saved = self.pos;
                 let name = name.clone();
                 self.advance();
@@ -2658,7 +2696,6 @@ impl<'arena> Parser<'arena> {
                         };
                         Ok((Some(name), val))
                     }
-                    // Handle `name = expr` where = is assignment
                     _ => {
                         self.pos = saved;
                         let val = self.parse_expr()?;
@@ -2726,7 +2763,7 @@ mod tests {
     use super::*;
 
     use crate::sexp::accessors::{
-        CADR, CAR, CDR, CHAR, COMPLEX, PRINTNAME, STRING_ELT, TYPEOF, XLENGTH,
+        CADR, CADDR, CAR, CDR, CHAR, COMPLEX, PRINTNAME, STRING_ELT, TAG, TYPEOF, XLENGTH,
     };
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
@@ -3093,6 +3130,18 @@ mod tests {
         unsafe {
             let result = must(parse_str("f(x = 1)"));
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+        }
+    }
+
+    #[test]
+    fn test_quoted_named_arg() {
+        unsafe {
+            let result = must(parse_str(r#"c(1:2, "2" = 4)"#));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+            let named = CDR(CDR(result));
+            let tag = TAG(named);
+            assert!(!tag.is_null());
+            assert_ne!(tag, R_NilValue());
         }
     }
 

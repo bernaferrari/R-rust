@@ -803,6 +803,7 @@ impl RSession {
                 };
                 crate::mainutils::errors::set_toplevel_expr_no(index + 1);
                 result = self.eval_sexp(expr);
+                crate::eval::parser::flush_parsed_expr_warnings(index);
                 if result.is_err() {
                     // An uncaught top-level error unwinds like R's error()
                     // longjmp to the REPL top level: remaining expressions are
@@ -814,9 +815,6 @@ impl RSession {
                     break;
                 }
                 let _expr_guard = result.as_ref().ok().map(|value| {
-                    // Immortals (R_NilValue & friends) are static and
-                    // need no rooting; rooting them panics with
-                    // UnownedHandle (empty scripts surface NULL here).
                     RootedSexp::try_root(value.clone()).ok()
                 });
                 // main.c REPL loop: upstream auto-prints EVERY visible

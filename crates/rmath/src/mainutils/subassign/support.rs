@@ -647,7 +647,7 @@ pub(crate) unsafe fn NA_STRING() -> SEXP {
 
 /// R_BlankString: get the blank string.
 pub(crate) unsafe fn R_BlankString() -> SEXP {
-    unsafe { Rf_mkChar(b" \0".as_ptr() as *const c_char) }
+    unsafe { Rf_mkChar(c"".as_ptr()) }
 }
 
 /// DispatchOrEval: dispatch or evaluate a call.
