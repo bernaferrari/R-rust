@@ -1,0 +1,6 @@
+set.seed(50)
+x <- ts(cumsum(rnorm(40)))
+f <- StructTS(x, type = "level")
+cat(sprintf("%.2f", as.numeric(f$coef["level"])), "\n", sep = "")
+cat(sprintf("%.1f", as.numeric(f$coef["epsilon"])), "\n", sep = "")
+cat(paste(names(f$coef), collapse = ","), "\n", sep = "")
