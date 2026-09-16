@@ -1349,10 +1349,7 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             SET_VECTOR_ELT(result, 0, x);
             return result;
         }
-        if t == SEXPTYPE::CLOSXP
-            || t == SEXPTYPE::BUILTINSXP
-            || t == SEXPTYPE::SPECIALSXP
-        {
+        if t == SEXPTYPE::CLOSXP {
             return function_as_list(x);
         }
         if !matches!(
@@ -1429,6 +1426,21 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `as.list.function`: `c(formals(x), list(body(x)))`.
+/// Closures keep named formals plus the body; primitives are `list(NULL)`.
+pub unsafe fn do_as_list_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if TYPEOF(x) == SEXPTYPE::CLOSXP {
+            return function_as_list(x);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, R_NilValue());
+        result
+    }
+}
+
 /// R's `as.list.environment(x, all.names = FALSE, sorted = FALSE, ...)` —
 /// environment bindings as a named list. Values are read through
 /// `R_findVarInFrame` so active bindings evaluate to their current value,
@@ -1489,21 +1501,8 @@ pub unsafe fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 
 unsafe fn function_as_list(fun: SEXP) -> SEXP {
     unsafe {
-        let (formals, body) = if TYPEOF(fun) == SEXPTYPE::CLOSXP {
-            (
-                crate::sexp::accessors::FORMALS(fun),
-                crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(fun)),
-            )
-        } else if let Some(proto) = primitive_prototype(fun) {
-            (
-                crate::sexp::accessors::FORMALS(proto),
-                crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(proto)),
-            )
-        } else {
-            crate::mainutils::essentials::base_error(
-                "cannot coerce this type to a list".to_owned(),
-            );
-        };
+        let formals = crate::sexp::accessors::FORMALS(fun);
+        let body = crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(fun));
         let n = pairlist_len(formals) as R_xlen_t;
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
         let _result = protect(result);
@@ -1528,43 +1527,6 @@ unsafe fn function_as_list(fun: SEXP) -> SEXP {
     }
 }
 
-unsafe fn primitive_binding_name(fun: SEXP) -> String {
-    unsafe {
-        let name = crate::eval::primitive::PRIMNAME(fun);
-        if name != "unknown" {
-            return name.to_string();
-        }
-        crate::eval::primitive::portable_primitive_name(unsafe {
-            crate::sexp::object::Sexp::from_raw_unchecked(fun)
-        })
-        .unwrap_or_else(|| name.to_string())
-    }
-}
-
-unsafe fn primitive_prototype(fun: SEXP) -> Option<SEXP> {
-    unsafe {
-        let primitive_name = primitive_binding_name(fun);
-        let primitive_symbol =
-            Rf_install(CString::new(primitive_name).unwrap_or_default().as_ptr());
-        for registry in [".GenericArgsEnv", ".ArgsEnv"] {
-            let registry_symbol = Rf_install(CString::new(registry).unwrap_or_default().as_ptr());
-            let registry_env = crate::sexp::envir::R_findVarInFrame(
-                crate::sexp::globals::R_BaseEnv(),
-                registry_symbol,
-            );
-            if registry_env == crate::sexp::globals::R_UnboundValue() {
-                continue;
-            }
-            let prototype = crate::sexp::envir::R_findVarInFrame(registry_env, primitive_symbol);
-            if prototype != crate::sexp::globals::R_UnboundValue()
-                && TYPEOF(prototype) == SEXPTYPE::CLOSXP
-            {
-                return Some(prototype);
-            }
-        }
-        None
-    }
-}
 
 unsafe fn pairlist_len(mut list: SEXP) -> c_int {
     unsafe {

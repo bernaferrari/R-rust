@@ -1366,6 +1366,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_list,
     },
     EvaluatedBuiltin {
+        name: "as.list.default",
+        handler: crate::mainutils::essentials::do_as_list,
+    },
+    EvaluatedBuiltin {
+        name: "as.list.function",
+        handler: crate::mainutils::essentials::do_as_list_function,
+    },
+    EvaluatedBuiltin {
         name: "as.list.Date",
         handler: crate::mainutils::essentials::do_as_list,
     },

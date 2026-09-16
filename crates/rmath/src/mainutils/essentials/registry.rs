@@ -62,6 +62,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "as.logical",
     "as.pairlist",
     "as.list",
+    "as.list.default",
+    "as.list.function",
     "as.vector",
     "as.symbol",
     "as.name",

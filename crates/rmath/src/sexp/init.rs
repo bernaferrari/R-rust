@@ -125,6 +125,21 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         let _alist_guard = super::protect::protect(alist);
         defineVar(Rf_install_in_current("alist"), alist, base_env);
 
+        // GNU: as.list <- function(x, ...) UseMethod("as.list")
+        // The builtin stays as as.list.default; as.list.function is a
+        // separate method so as.list(sum) is list(NULL) and as.list(as.list)
+        // keeps the generic formals.
+        let as_list_formals = formals_from_specs(&[arg("x"), arg("...")]);
+        let _as_list_formals_guard = super::protect::protect(as_list_formals);
+        let as_list_generic = Rf_mkString(c"as.list".as_ptr());
+        let _as_list_generic_guard = super::protect::protect(as_list_generic);
+        let as_list_body = Rf_lang2(Rf_install_in_current("UseMethod"), as_list_generic);
+        let _as_list_body_guard = super::protect::protect(as_list_body);
+        let as_list_closure =
+            crate::mainutils::dstruct::mkCLOSXP(as_list_formals, as_list_body, base_env);
+        let _as_list_closure_guard = super::protect::protect(as_list_closure);
+        defineVar(Rf_install_in_current("as.list"), as_list_closure, base_env);
+
         // `%||%` <- function(x, y) if (is.null(x)) y else x
         let formals = formals_from_specs(&[arg("x"), arg("y")]);
         let _formals_guard = super::protect::protect(formals);
