@@ -649,6 +649,46 @@ fn matrix_dimnames(
     }
 }
 
+fn gnu_row_index_label(row: usize, nrow: usize) -> String {
+    let rlabw = ((nrow as f64).log10().floor() as usize) + 1 + 3;
+    format!("{:>rlabw$}", format!("[{},]", row + 1))
+}
+
+fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
+    unsafe {
+        use crate::mainutils::format::formatReal;
+        use crate::mainutils::printutils::EncodeReal;
+        use crate::sexp::accessors::REAL;
+        let data = REAL(x.clone().as_raw());
+        let mut col_fmt = Vec::with_capacity(ncol);
+        for c in 0..ncol {
+            let mut w = 0;
+            let mut d = 0;
+            let mut e = 0;
+            formatReal(
+                data.add(c * nrow),
+                nrow as R_xlen_t,
+                &mut w,
+                &mut d,
+                &mut e,
+                0,
+            );
+            col_fmt.push((w, d, e));
+        }
+        format_matrix_with(x, nrow, ncol, |r, c| {
+            let (w, d, e) = col_fmt[c];
+            let encoded = EncodeReal(*data.add(r + c * nrow), w, d, e, b'.' as _);
+            if encoded.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(encoded)
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        })
+    }
+}
+
 fn format_matrix_with<F>(x: Sexp<'_>, nrow: usize, ncol: usize, value_at: F) -> String
 where
     F: Fn(usize, usize) -> String,
@@ -660,7 +700,7 @@ where
                 .as_ref()
                 .and_then(|names| names.get(r))
                 .cloned()
-                .unwrap_or_else(|| format!("[{},]", r + 1))
+                .unwrap_or_else(|| gnu_row_index_label(r, nrow))
         })
         .collect();
     let col_labels: Vec<String> = (0..ncol)
@@ -769,9 +809,7 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
         SEXPTYPE::INTSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
             format_integer_element(x.clone(), (r + c * nrow) as i64)
         })),
-        SEXPTYPE::REALSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
-            format_real_element(x.clone(), (r + c * nrow) as i64)
-        })),
+        SEXPTYPE::REALSXP => Some(format_real_matrix_gnu(x.clone(), nrow, ncol)),
         SEXPTYPE::LGLSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
             format_logical_element(x.clone(), (r + c * nrow) as i64)
         })),

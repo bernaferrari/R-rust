@@ -147,7 +147,7 @@ pub fn cpoly_cauchy(n: usize, pot: &mut [c_double]) -> c_double {
     pot[n1] = -pot[n1];
 
     // compute upper estimate of bound
-    let mut x = ((-pot[n1]).ln() - pot[0].ln() / (n1 as c_double)).exp();
+    let mut x = (((-pot[n1]).ln() - pot[0].ln()) / (n1 as c_double)).exp();
 
     // if newton step at the origin is better, use it
     if pot[n1 - 1] != 0.0 {
@@ -361,9 +361,10 @@ impl CpolyRootState {
             if self.hr[n - 1].hypot(self.hi[n - 1])
                 <= Self::ETA * 10.0 * self.pr[n - 1].hypot(self.pi[n - 1])
             {
-                for i in (1..=nm1).rev() {
-                    self.hr[i] = self.hr[i - 1];
-                    self.hi[i] = self.hi[i - 1];
+                for i in 1..=nm1 {
+                    let j = self.nn - i;
+                    self.hr[j - 1] = self.hr[j - 2];
+                    self.hi[j - 1] = self.hi[j - 2];
                 }
                 self.hr[0] = 0.0;
                 self.hi[0] = 0.0;
@@ -374,7 +375,7 @@ impl CpolyRootState {
                     self.hr[n - 1],
                     self.hi[n - 1],
                 );
-                for i in (1..=nm1).rev() {
+                for i in 1..=nm1 {
                     let j = self.nn - i;
                     let t1 = self.hr[j - 2];
                     let t2 = self.hi[j - 2];
@@ -476,7 +477,7 @@ impl CpolyRootState {
                 return true;
             }
 
-            let mut do_l10 = false;
+            let mut skip_omp = false;
             if iter > 1 {
                 if !b && mp >= omp && relstp < 0.05 {
                     let tp = relstp.max(Self::ETA);
@@ -501,17 +502,17 @@ impl CpolyRootState {
                     }
                     omp = Self::INFIN;
                     b = true;
-                    do_l10 = true;
+                    skip_omp = true;
                 } else if mp * 0.1 > omp {
                     return false;
                 }
             }
-            omp = mp;
-
-            if !do_l10 {
-                let h_s_0 = self.calct();
-                self.nexth(h_s_0);
+            if !skip_omp {
+                omp = mp;
             }
+
+            let h_s_0 = self.calct();
+            self.nexth(h_s_0);
             let h_s_0 = self.calct();
             if !h_s_0 {
                 relstp = self.tr.hypot(self.ti) / self.sr.hypot(self.si);
@@ -540,21 +541,18 @@ impl CpolyRootState {
 
         let mut test = true;
         let mut pasd = false;
-        let mut otr = 0.0f64;
-        let mut oti = 0.0f64;
 
-        let _ = self.calct();
+        let mut h_s_0 = self.calct();
 
         for j in 1..=l2 {
-            otr = self.tr;
-            oti = self.ti;
+            let otr = self.tr;
+            let oti = self.ti;
 
-            let h_s_0_first = self.calct();
-            self.nexth(h_s_0_first);
+            self.nexth(h_s_0);
+            h_s_0 = self.calct();
             *zr = self.sr + self.tr;
             *zi = self.si + self.ti;
 
-            let h_s_0 = self.calct();
             if !h_s_0 && test && j != l2 {
                 if (self.tr - otr).hypot(self.ti - oti) >= zr.hypot(*zi) * 0.5 {
                     pasd = false;
@@ -588,7 +586,7 @@ impl CpolyRootState {
                     );
                     self.pvr = pvr;
                     self.pvi = pvi;
-                    let _ = self.calct();
+                    h_s_0 = self.calct();
                 }
             }
         }
