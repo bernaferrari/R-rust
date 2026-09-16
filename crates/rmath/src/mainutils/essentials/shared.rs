@@ -2962,11 +2962,14 @@ pub(crate) unsafe fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
             return None;
         }
         let charsxp = STRING_ELT(levels, index);
-        if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
+        if charsxp.is_null() {
             None
+        } else if charsxp == crate::sexp::globals::R_NaString() {
+            Some("NA".to_string())
         } else {
             Some(CStr::from_ptr(CHAR(charsxp)).to_string_lossy().into_owned())
         }
+
     }
 }
 

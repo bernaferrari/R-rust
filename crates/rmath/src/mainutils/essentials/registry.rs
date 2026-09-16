@@ -478,6 +478,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "setValidity",
     "isVirtualClass",
     "new",
+    "validObject",
+
     "show",
     "slotNames",
     "slot",

@@ -4139,6 +4139,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_new,
     },
     EvaluatedBuiltin {
+        name: "validObject",
+        handler: crate::mainutils::essentials::do_validObject,
+    },
+
+    EvaluatedBuiltin {
         name: "show",
         handler: crate::mainutils::essentials::do_show,
     },

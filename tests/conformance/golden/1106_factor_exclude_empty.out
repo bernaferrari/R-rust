@@ -1,6 +1,7 @@
 a|b|NA
 3
 FALSE FALSE TRUE 
+a|NA|b
 Levels: a b <NA>
 a|b
 2

@@ -97,6 +97,7 @@ pub(crate) struct ObjectsRuntimeState {
     pub(crate) quick_method_check_ptr: R_stdGen_ptr_t,
     pub(crate) deferred_default_object: SEXP,
     s4_classes: HashMap<String, S4ClassDef>,
+    s4_validity: HashMap<String, SEXP>,
 }
 
 #[derive(Clone, Default)]
@@ -106,6 +107,7 @@ pub(crate) struct S4ClassDef {
     pub virtual_class: bool,
     pub has_validity: bool,
 }
+
 
 impl Default for ObjectsRuntimeState {
     fn default() -> Self {
@@ -120,6 +122,8 @@ impl Default for ObjectsRuntimeState {
             quick_method_check_ptr: None,
             deferred_default_object: ptr::null_mut(),
             s4_classes: HashMap::new(),
+            s4_validity: HashMap::new(),
+
         }
     }
 }
@@ -189,6 +193,27 @@ pub(crate) fn set_s4_validity(name: &str) -> bool {
         true
     })
 }
+
+pub(crate) fn set_s4_validity_fn(name: &str, method: SEXP) -> bool {
+    with_objects_state(|state| {
+        if !state.s4_classes.contains_key(name) {
+            return false;
+        }
+        if !method.is_null() && method != unsafe { crate::sexp::globals::R_NilValue() } {
+            unsafe { crate::sexp::protect::R_PreserveObject(method) };
+        }
+        state.s4_validity.insert(name.to_string(), method);
+        if let Some(class_def) = state.s4_classes.get_mut(name) {
+            class_def.has_validity = true;
+        }
+        true
+    })
+}
+
+pub(crate) fn s4_validity_fn(name: &str) -> Option<SEXP> {
+    with_objects_state(|state| state.s4_validity.get(name).copied())
+}
+
 
 pub(crate) fn s4_class(name: &str) -> Option<S4ClassDef> {
     with_objects_state(|state| state.s4_classes.get(name).cloned())

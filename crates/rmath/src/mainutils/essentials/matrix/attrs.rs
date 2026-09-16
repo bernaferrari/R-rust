@@ -2,16 +2,18 @@
 use super::*;
 
 /// R's `storage.mode(x) <- value` — coerce storage while preserving attributes.
-pub unsafe fn do_storage_mode_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_storage_mode_set(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let value = CAR(CDR(args));
-        let target_type = match storage_mode_target(value) {
+        let allow_numeric = crate::eval::eval::PRIMNAME(op) == "mode<-";
+        let target_type = match storage_mode_target(value, allow_numeric) {
             Ok(target_type) => target_type,
             Err(message) => {
                 std::panic::panic_any(RError { message });
             }
         };
+
 
         if TYPEOF(x) == target_type {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
@@ -31,7 +33,7 @@ pub unsafe fn do_storage_mode_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
     }
 }
 
-pub unsafe fn storage_mode_target(value: SEXP) -> Result<c_int, String> {
+pub unsafe fn storage_mode_target(value: SEXP, allow_numeric: bool) -> Result<c_int, String> {
     unsafe {
         if value.is_null()
             || value == R_NilValue()
@@ -46,8 +48,8 @@ pub unsafe fn storage_mode_target(value: SEXP) -> Result<c_int, String> {
         match mode.as_str() {
             "logical" => Ok(SEXPTYPE::LGLSXP.as_c_int()),
             "integer" => Ok(SEXPTYPE::INTSXP.as_c_int()),
-            "double" | "numeric" => Ok(SEXPTYPE::REALSXP.as_c_int()),
-
+            "double" => Ok(SEXPTYPE::REALSXP.as_c_int()),
+            "numeric" if allow_numeric => Ok(SEXPTYPE::REALSXP.as_c_int()),
             "complex" => Ok(SEXPTYPE::CPLXSXP.as_c_int()),
             "character" => Ok(SEXPTYPE::STRSXP.as_c_int()),
             "raw" => Ok(SEXPTYPE::RAWSXP.as_c_int()),

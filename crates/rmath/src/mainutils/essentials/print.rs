@@ -990,10 +990,16 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                         if (idx as usize) < counts.len() {
                             counts[idx as usize] += 1;
                         }
-                        elt_to_string(levels, idx)
+                        let charsxp = STRING_ELT(levels, idx);
+                        if charsxp == crate::sexp::globals::R_NaString() {
+                            "<NA>".to_string()
+                        } else {
+                            elt_to_string(levels, idx)
+                        }
                     } else {
                         format!("{}", v)
                     }
+
                 } else {
                     elt_to_string(x, i)
                 };

@@ -235,8 +235,9 @@ unsafe fn brace_or_single_expressions(expr: SEXP) -> SEXP {
             return out;
         }
         if TYPEOF(expr) == SEXPTYPE::LANGSXP
-            && symbol_name(CAR(expr)).as_deref() == Some("{")
+            && CAR(expr) == crate::sexp::symbol::R_BraceSymbol()
         {
+
             let mut n = 0;
             let mut cell = CDR(expr);
             while !cell.is_null() && cell != R_NilValue() {

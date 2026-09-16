@@ -3,6 +3,8 @@ fx <- factor(x, exclude = "")
 cat(paste(levels(fx), collapse = "|"), "\n", sep = "")
 cat(nlevels(fx), "\n", sep = "")
 cat(is.na(levels(fx)), "\n")
+cat(paste(as.character(fx), collapse = "|"), "\n", sep = "")
+
 r <- capture.output(print(fx))
 cat(r[2], "\n", sep = "")
 fy <- factor(x)
