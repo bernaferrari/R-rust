@@ -197,7 +197,9 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "capture.output"
             | "cat"
             | "print"
+            | "str"
             | "warning"
+
             | "message"
             | "stopifnot"
             | "options"
