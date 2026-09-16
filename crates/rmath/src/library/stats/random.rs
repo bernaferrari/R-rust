@@ -959,6 +959,43 @@ unsafe fn arg_tag_is(cell: SEXP, name: &str) -> bool {
     }
 }
 
+/// Bind formals after `n` by exact tag, then leftover untagged positionals.
+/// `rnorm(n, sd = 0.2)` must not put `0.2` in `mean`.
+unsafe fn bind_after_n(args: SEXP, names: &[&str]) -> Vec<SEXP> {
+    unsafe {
+        let missing = R_MissingArg();
+        let mut out = vec![missing; names.len()];
+        let mut cell = CDR(args);
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let v = CAR(cell);
+            let mut tagged = false;
+            for (i, name) in names.iter().enumerate() {
+                if arg_tag_is(cell, name) {
+                    out[i] = v;
+                    tagged = true;
+                    break;
+                }
+            }
+            if !tagged {
+                let tag = TAG(cell);
+                if tag.is_null() || tag == R_NilValue() {
+                    while pos < names.len() && !adapter_absent(out[pos]) {
+                        pos += 1;
+                    }
+                    if pos < names.len() {
+                        out[pos] = v;
+                        pos += 1;
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
+        out
+    }
+}
+
+
 /// `x` or a ScalarReal(default) when the argument is absent; freshly
 /// allocated defaults are protected via `guards` for the adapter's scope.
 unsafe fn with_default(
@@ -1258,10 +1295,11 @@ pub unsafe fn do_rcauchy_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             missing_required(call, "n");
         }
         let mut guards = Vec::new();
+        let b = bind_after_n(args, &["location", "scale"]);
         do_rcauchy(
             n,
-            with_default(CADR(args), 0.0, &mut guards),
-            with_default(CADDR(args), 1.0, &mut guards),
+            with_default(b[0], 0.0, &mut guards),
+            with_default(b[1], 1.0, &mut guards),
         )
     }
 }
@@ -1354,10 +1392,11 @@ pub unsafe fn do_rlnorm_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             missing_required(call, "n");
         }
         let mut guards = Vec::new();
+        let b = bind_after_n(args, &["meanlog", "sdlog"]);
         do_rlnorm(
             n,
-            with_default(CADR(args), 0.0, &mut guards),
-            with_default(CADDR(args), 1.0, &mut guards),
+            with_default(b[0], 0.0, &mut guards),
+            with_default(b[1], 1.0, &mut guards),
         )
     }
 }
@@ -1369,10 +1408,11 @@ pub unsafe fn do_rlogis_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             missing_required(call, "n");
         }
         let mut guards = Vec::new();
+        let b = bind_after_n(args, &["location", "scale"]);
         do_rlogis(
             n,
-            with_default(CADR(args), 0.0, &mut guards),
-            with_default(CADDR(args), 1.0, &mut guards),
+            with_default(b[0], 0.0, &mut guards),
+            with_default(b[1], 1.0, &mut guards),
         )
     }
 }
@@ -1421,10 +1461,11 @@ pub unsafe fn do_rnorm_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             missing_required(call, "n");
         }
         let mut guards = Vec::new();
+        let b = bind_after_n(args, &["mean", "sd"]);
         do_rnorm(
             n,
-            with_default(CADR(args), 0.0, &mut guards),
-            with_default(CADDR(args), 1.0, &mut guards),
+            with_default(b[0], 0.0, &mut guards),
+            with_default(b[1], 1.0, &mut guards),
         )
     }
 }
@@ -1436,10 +1477,11 @@ pub unsafe fn do_runif_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             missing_required(call, "n");
         }
         let mut guards = Vec::new();
+        let b = bind_after_n(args, &["min", "max"]);
         do_runif(
             n,
-            with_default(CADR(args), 0.0, &mut guards),
-            with_default(CADDR(args), 1.0, &mut guards),
+            with_default(b[0], 0.0, &mut guards),
+            with_default(b[1], 1.0, &mut guards),
         )
     }
 }

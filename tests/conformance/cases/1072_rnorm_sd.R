@@ -1,0 +1,8 @@
+set.seed(1)
+cat(sprintf("%.6f", rnorm(1, sd = 0.2)), "\n", sep = "")
+set.seed(1)
+cat(sprintf("%.6f", rnorm(1, mean = 0, sd = 0.2)), "\n", sep = "")
+set.seed(1)
+cat(sprintf("%.6f", rnorm(1, 5, 0.1)), "\n", sep = "")
+set.seed(1)
+cat(sprintf("%.6f", runif(1, max = 0.5)), "\n", sep = "")
