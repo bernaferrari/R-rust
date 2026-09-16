@@ -1758,6 +1758,207 @@ fn exact_ar3_ml(y: &[f64]) -> (f64, f64, f64, f64, f64) {
     (p1, p2, p3, ic, s2)
 }
 
+fn poly_expand_ar(ar: &[f64], sar: &[f64], period: usize) -> Vec<f64> {
+    if sar.is_empty() {
+        return ar.to_vec();
+    }
+    let mut out = vec![0.0; ar.len() + sar.len() * period];
+    for (i, &a) in ar.iter().enumerate() {
+        out[i] = a;
+    }
+    for (j, &s) in sar.iter().enumerate() {
+        out[period * (j + 1) - 1] += s;
+        for (i, &a) in ar.iter().enumerate() {
+            out[period * (j + 1) + i] -= a * s;
+        }
+    }
+    out
+}
+
+fn poly_expand_ma(ma: &[f64], sma: &[f64], period: usize) -> Vec<f64> {
+    if sma.is_empty() {
+        return ma.to_vec();
+    }
+    let mut out = vec![0.0; ma.len() + sma.len() * period];
+    for (i, &a) in ma.iter().enumerate() {
+        out[i] = a;
+    }
+    for (j, &s) in sma.iter().enumerate() {
+        out[period * (j + 1) - 1] += s;
+        for (i, &a) in ma.iter().enumerate() {
+            out[period * (j + 1) + i] += a * s;
+        }
+    }
+    out
+}
+
+fn arima_ss_from(phi: &[f64], theta: &[f64]) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+    let r = phi.len().max(theta.len() + 1).max(1);
+    let mut t = vec![0.0; r * r];
+    for (i, &a) in phi.iter().enumerate() {
+        if i < r {
+            t[i] = a;
+        }
+    }
+    for ind in 1..r {
+        t[(ind - 1) + ind * r] = 1.0;
+    }
+    let mut rr = vec![0.0; r];
+    rr[0] = 1.0;
+    for (i, &a) in theta.iter().enumerate() {
+        if i + 1 < r {
+            rr[i + 1] = a;
+        }
+    }
+    let mut v = vec![0.0; r * r];
+    for i in 0..r {
+        for j in 0..r {
+            v[i + j * r] = rr[i] * rr[j];
+        }
+    }
+    let pn = lyapunov_nd(&t, &v, r);
+    let mut z = vec![0.0; r];
+    z[0] = 1.0;
+    (t, v, pn, z)
+}
+
+fn arima_ml_nll(
+    y: &[f64],
+    ar: &[f64],
+    ma: &[f64],
+    sar: &[f64],
+    sma: &[f64],
+    mu: f64,
+    period: usize,
+) -> f64 {
+    let phi = poly_expand_ar(ar, sar, period);
+    let theta = poly_expand_ma(ma, sma, period);
+    let (t, v, pn, z) = arima_ss_from(&phi, &theta);
+    let a0 = vec![0.0; z.len()];
+    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
+    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
+}
+
+fn exact_arima_ml(
+    y: &[f64],
+    p: usize,
+    q: usize,
+    sar_p: usize,
+    sar_q: usize,
+    period: usize,
+) -> (Vec<f64>, Vec<String>, f64) {
+    let n = y.len();
+    if n < p + q + 2 {
+        return (vec![], vec![], f64::NAN);
+    }
+    let mut ar = vec![0.0; p];
+    let mut ma = vec![0.0; q];
+    let mut sar = vec![0.0; sar_p];
+    let mut sma = vec![0.0; sar_q];
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    let ncond = p + sar_p * period.max(1);
+    let css = |ar: &[f64], ma: &[f64], sar: &[f64], sma: &[f64], mu: f64| {
+        let phi = poly_expand_ar(ar, sar, period);
+        let theta = poly_expand_ma(ma, sma, period);
+        arma_css(y, &phi, &theta, mu, ncond)
+    };
+    for _ in 0..15 {
+        for i in 0..p {
+            ar[i] = golden_min(-0.99, 0.99, 80, |a| {
+                let mut t = ar.clone();
+                t[i] = a;
+                css(&t, &ma, &sar, &sma, ic)
+            });
+        }
+        for i in 0..q {
+            ma[i] = golden_min(-0.99, 0.99, 80, |a| {
+                let mut t = ma.clone();
+                t[i] = a;
+                css(&ar, &t, &sar, &sma, ic)
+            });
+        }
+        for i in 0..sar_p {
+            sar[i] = golden_min(-0.99, 0.99, 80, |a| {
+                let mut t = sar.clone();
+                t[i] = a;
+                css(&ar, &ma, &t, &sma, ic)
+            });
+        }
+        for i in 0..sar_q {
+            sma[i] = golden_min(-0.99, 0.99, 80, |a| {
+                let mut t = sma.clone();
+                t[i] = a;
+                css(&ar, &ma, &sar, &t, ic)
+            });
+        }
+        ic = golden_min(lo_ic, hi_ic, 80, |m| css(&ar, &ma, &sar, &sma, m));
+    }
+    let nll = |ar: &[f64], ma: &[f64], sar: &[f64], sma: &[f64], mu: f64| {
+        arima_ml_nll(y, ar, ma, sar, sma, mu, period)
+    };
+    for _ in 0..25 {
+        for i in 0..p {
+            ar[i] = golden_min(-0.99, 0.99, 80, |a| {
+                let mut t = ar.clone();
+                t[i] = a;
+                nll(&t, &ma, &sar, &sma, ic)
+            });
+        }
+        for i in 0..q {
+            ma[i] = golden_min(-0.99, 0.99, 80, |a| {
+                let mut t = ma.clone();
+                t[i] = a;
+                nll(&ar, &t, &sar, &sma, ic)
+            });
+        }
+        for i in 0..sar_p {
+            sar[i] = golden_min(-0.99, 0.99, 80, |a| {
+                let mut t = sar.clone();
+                t[i] = a;
+                nll(&ar, &ma, &t, &sma, ic)
+            });
+        }
+        for i in 0..sar_q {
+            sma[i] = golden_min(-0.99, 0.99, 80, |a| {
+                let mut t = sma.clone();
+                t[i] = a;
+                nll(&ar, &ma, &sar, &t, ic)
+            });
+        }
+        ic = golden_min(lo_ic, hi_ic, 80, |m| nll(&ar, &ma, &sar, &sma, m));
+    }
+    let phi = poly_expand_ar(&ar, &sar, period);
+    let theta = poly_expand_ma(&ma, &sma, period);
+    let (t, v, pn, z) = arima_ss_from(&phi, &theta);
+    let a0 = vec![0.0; z.len()];
+    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
+    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
+    let mut values = Vec::new();
+    let mut names = Vec::new();
+    for i in 0..p {
+        values.push(ar[i]);
+        names.push(format!("ar{}", i + 1));
+    }
+    for i in 0..q {
+        values.push(ma[i]);
+        names.push(format!("ma{}", i + 1));
+    }
+    for i in 0..sar_p {
+        values.push(sar[i]);
+        names.push(format!("sar{}", i + 1));
+    }
+    for i in 0..sar_q {
+        values.push(sma[i]);
+        names.push(format!("sma{}", i + 1));
+    }
+    values.push(ic);
+    names.push("intercept".to_string());
+    (values, names, s2)
+}
+
+
 
 
 
@@ -2697,6 +2898,16 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 ],
                 s2,
             )
+        } else if !css
+            && !no_mean
+            && p >= 1
+            && p <= 3
+            && q >= 1
+            && q <= 2
+            && sar_p <= 0
+            && sar_q <= 0
+        {
+            exact_arima_ml(&y, p as usize, q as usize, 0, 0, 0)
         } else if p >= 2 && p <= 5 && q <= 0 && !no_mean && sar_p <= 0 && sar_q <= 0 {
             let (phi, mu, s2) = css_ar_mean(&y, p as usize);
             let mut names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
