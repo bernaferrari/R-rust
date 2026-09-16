@@ -435,7 +435,11 @@ pub unsafe fn dpotrf_(
     }
 }
 
-/// DPOTRI — inverse from Cholesky factor.
+/// DPOTRI — inverse from a Cholesky factor via DTRTRI + DLAUUM.
+///
+/// Stock LAPACK never reconstructs `A = UᵀU` / `LLᵀ`. Reconstruction
+/// squares a factor near `1e155` out of binary64, while `U⁻¹U⁻ᵀ` stays
+/// representable near `1e-310`. Only the `uplo` triangle is written.
 pub unsafe fn dpotri_(
     uplo: *const u8,
     n: *const core::ffi::c_int,
@@ -446,81 +450,115 @@ pub unsafe fn dpotri_(
     unsafe {
         let n = *n as usize;
         let lda = *lda as usize;
-        let uplo_byte = *uplo;
+        let upper = matches!(*uplo, b'U' | b'u');
 
         if n == 0 {
             *info = 0;
             return;
         }
 
-        // Reconstruct A from Cholesky factor, then compute inverse
-        let chol = read_mat_f64(a, n, n, lda);
-        let mut reconstructed = Mat::zeros(n, n);
-        // Stock DPOTRI (via DTRTRI/DLAUUM) reports info = i (1-based) when the
-        // i-th diagonal element of the triangular factor is exactly zero: the
-        // factor is singular and the inverse cannot be computed. Only the
-        // triangle selected by `uplo` is written on exit; the opposite triangle
-        // is left unreferenced, matching the Fortran contract.
         for i in 0..n {
-            if chol[(i, i)] == 0.0 {
+            if *a.add(i + i * lda) == 0.0 {
                 *info = (i + 1) as core::ffi::c_int;
                 return;
             }
         }
 
-        match uplo_byte {
-            b'U' | b'u' => {
-                // A = U^T U where U is upper triangle of chol
-                for i in 0..n {
-                    for j in 0..n {
-                        let mut sum = 0.0;
-                        for k in 0..n {
-                            let u_ki = if k <= i { chol[(k, i)] } else { 0.0 };
-                            let u_kj = if k <= j { chol[(k, j)] } else { 0.0 };
-                            sum += u_ki * u_kj;
-                        }
-                        reconstructed[(i, j)] = sum;
-                    }
+        let mut factor = vec![0.0f64; n * n];
+        if upper {
+            for j in 0..n {
+                for i in 0..=j {
+                    factor[i + j * n] = *a.add(i + j * lda);
                 }
             }
-            _ => {
-                // A = L L^T where L is lower triangle of chol
-                for i in 0..n {
-                    for j in 0..n {
-                        let mut sum = 0.0;
-                        for k in 0..n {
-                            let l_ik = if i >= k { chol[(i, k)] } else { 0.0 };
-                            let l_jk = if j >= k { chol[(j, k)] } else { 0.0 };
-                            sum += l_ik * l_jk;
-                        }
-                        reconstructed[(i, j)] = sum;
-                    }
+            let inv = invert_upper_tri(&factor, n);
+            let prod = multiply_upper_by_transpose(&inv, n);
+            for j in 0..n {
+                for i in 0..=j {
+                    *a.add(i + j * lda) = prod[i + j * n];
                 }
             }
-        }
-
-        // Compute inverse via LU
-        let a_inv = reconstructed.partial_piv_lu().inverse();
-
-        match uplo_byte {
-            b'U' | b'u' => {
-                for j in 0..n {
-                    for i in 0..=j {
-                        *a.add(i + j * lda) = a_inv[(i, j)];
-                    }
+        } else {
+            for j in 0..n {
+                for i in j..n {
+                    factor[i + j * n] = *a.add(i + j * lda);
                 }
             }
-            _ => {
-                for j in 0..n {
-                    for i in j..n {
-                        *a.add(i + j * lda) = a_inv[(i, j)];
-                    }
+            let inv = invert_lower_tri(&factor, n);
+            let prod = multiply_lower_transpose_by_self(&inv, n);
+            for j in 0..n {
+                for i in j..n {
+                    *a.add(i + j * lda) = prod[i + j * n];
                 }
             }
         }
         *info = 0;
     }
 }
+
+/// DTRTRI (non-unit upper): return `U⁻¹` in the upper triangle.
+fn invert_upper_tri(u: &[f64], n: usize) -> Vec<f64> {
+    let mut inv = vec![0.0f64; n * n];
+    for j in 0..n {
+        inv[j + j * n] = 1.0 / u[j + j * n];
+        for i in (0..j).rev() {
+            let mut s = 0.0;
+            for k in (i + 1)..=j {
+                s += u[i + k * n] * inv[k + j * n];
+            }
+            inv[i + j * n] = -s / u[i + i * n];
+        }
+    }
+    inv
+}
+
+/// DTRTRI (non-unit lower): return `L⁻¹` in the lower triangle.
+fn invert_lower_tri(l: &[f64], n: usize) -> Vec<f64> {
+    let mut inv = vec![0.0f64; n * n];
+    for j in 0..n {
+        inv[j + j * n] = 1.0 / l[j + j * n];
+        for i in (j + 1)..n {
+            let mut s = 0.0;
+            for k in j..i {
+                s += l[i + k * n] * inv[k + j * n];
+            }
+            inv[i + j * n] = -s / l[i + i * n];
+        }
+    }
+    inv
+}
+
+/// DLAUUM upper: `U Uᵀ` in the upper triangle.
+fn multiply_upper_by_transpose(inv: &[f64], n: usize) -> Vec<f64> {
+    let mut out = vec![0.0f64; n * n];
+    for j in 0..n {
+        for i in 0..=j {
+            let mut s = 0.0;
+            for k in j..n {
+                s += inv[i + k * n] * inv[j + k * n];
+            }
+            out[i + j * n] = s;
+        }
+    }
+    out
+}
+
+/// DLAUUM lower: `Lᵀ L` in the lower triangle.
+fn multiply_lower_transpose_by_self(inv: &[f64], n: usize) -> Vec<f64> {
+    let mut out = vec![0.0f64; n * n];
+    for j in 0..n {
+        for i in j..n {
+            let mut s = 0.0;
+            for k in i..n {
+                s += inv[k + i * n] * inv[k + j * n];
+            }
+            out[i + j * n] = s;
+        }
+    }
+    out
+}
+
+
 
 /// DPSTRF — pivoted Cholesky factorization.
 pub unsafe fn dpstrf_(

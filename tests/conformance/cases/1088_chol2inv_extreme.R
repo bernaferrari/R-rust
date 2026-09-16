@@ -1,0 +1,5 @@
+cat(sprintf("%.6e", chol2inv(matrix(1e155, 1, 1))), "\n", sep = "")
+x <- matrix(c(2, 0, 1, 2), 2, 2)
+y <- chol2inv(x)
+cat(sprintf("%.8f", y[1, 1]), "\n", sep = "")
+cat(is.finite(chol2inv(matrix(1e155, 1, 1))[1]), "\n", sep = "")

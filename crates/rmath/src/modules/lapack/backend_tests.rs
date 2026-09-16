@@ -1433,6 +1433,38 @@ fn test_dpotri_singular_factor_exact_info() {
 }
 
 #[test]
+fn test_dpotri_extreme_scale_stays_finite() {
+    // Reconstruction would square 1e155 out of binary64; U⁻¹U⁻ᵀ is 1e-310.
+    let mut a = vec![1e155];
+    let n = 1i32;
+    let mut info = 0i32;
+    let uplo = b'U';
+    unsafe {
+        backend::dpotri_(&uplo, &n, a.as_mut_ptr(), &n, &mut info);
+    }
+    assert_eq!(info, 0, "dpotri 1e155 info");
+    assert!(a[0].is_finite(), "dpotri 1e155 inverse finite");
+    assert!((a[0] - 1e-310).abs() / 1e-310 < 1e-12, "dpotri 1e155 inverse {}", a[0]);
+}
+
+#[test]
+fn test_dpotri_lower_leaves_upper_untouched() {
+    // L = [[2, *, *], [0, 2, *]] column-major: [2, 0, 9.9, 2]
+    let mut a = vec![2.0, 0.0, 9.9, 2.0];
+    let n = 2i32;
+    let mut info = 0i32;
+    let uplo = b'L';
+    unsafe {
+        backend::dpotri_(&uplo, &n, a.as_mut_ptr(), &n, &mut info);
+    }
+    assert_eq!(info, 0, "dpotri lower info");
+    assert_eq!(a[2], 9.9, "dpotri upper triangle untouched");
+    assert!((a[0] - 0.25).abs() < 1e-15, "dpotri L inverse diag {}", a[0]);
+    assert!((a[3] - 0.25).abs() < 1e-15, "dpotri L inverse diag {}", a[3]);
+}
+
+
+#[test]
 fn test_dpotri_inverse_residual() {
     let n = 4usize;
     let a_spd = make_spd(n, 950);
