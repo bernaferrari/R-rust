@@ -1243,6 +1243,141 @@ fn ar2_ml_sigma2(yd: &[f64], p1: f64, p2: f64) -> f64 {
     }
 }
 
+fn lyapunov3(t: &[f64; 9], v: &[f64; 9]) -> [f64; 9] {
+    let mut p = [0.0; 9];
+    for _ in 0..200 {
+        let mut tp = [0.0; 9];
+        for i in 0..3 {
+            for j in 0..3 {
+                let mut s = 0.0;
+                for k in 0..3 {
+                    s += t[i + k * 3] * p[k + j * 3];
+                }
+                tp[i + j * 3] = s;
+            }
+        }
+        for i in 0..3 {
+            for j in 0..3 {
+                let mut s = v[i + j * 3];
+                for m in 0..3 {
+                    s += tp[i + m * 3] * t[j + m * 3];
+                }
+                p[i + j * 3] = s;
+            }
+        }
+    }
+    p
+}
+
+fn ma2_ss(th1: f64, th2: f64) -> ([f64; 9], [f64; 9], [f64; 9]) {
+    let t = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    let v = [
+        1.0,
+        th1,
+        th2,
+        th1,
+        th1 * th1,
+        th1 * th2,
+        th2,
+        th1 * th2,
+        th2 * th2,
+    ];
+    let pn = lyapunov3(&t, &v);
+    (t, v, pn)
+}
+
+fn ma2_ml_nll(y: &[f64], th1: f64, th2: f64, mu: f64) -> f64 {
+    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
+    let (t, v, pn) = ma2_ss(th1, th2);
+    let z = [1.0, 0.0, 0.0];
+    let a0 = [0.0, 0.0, 0.0];
+    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
+}
+
+fn exact_ma2_ml(y: &[f64]) -> (f64, f64, f64, f64) {
+    let n = y.len();
+    if n < 3 {
+        return (0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut th1 = 0.0;
+    let mut th2 = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        th1 = golden_min(-0.99, 0.99, 80, |t| ma2_ml_nll(y, t, th2, ic));
+        th2 = golden_min(-0.99, 0.99, 80, |t| ma2_ml_nll(y, th1, t, ic));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| ma2_ml_nll(y, th1, th2, m));
+    }
+    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
+    let s2 = ma2_ml_sigma2(&yd, th1, th2);
+    (th1, th2, ic, s2)
+}
+
+fn ma2_ml_sigma2(yd: &[f64], th1: f64, th2: f64) -> f64 {
+    let (t, v, mut p) = ma2_ss(th1, th2);
+    let mut pnew = p;
+    let mut a = [0.0, 0.0, 0.0];
+    let mut ssq = 0.0;
+    let mut nu = 0.0;
+    for (l, &yi) in yd.iter().enumerate() {
+        let mut anew = [0.0; 3];
+        for i in 0..3 {
+            let mut tmp = 0.0;
+            for k in 0..3 {
+                tmp += t[i + k * 3] * a[k];
+            }
+            anew[i] = tmp;
+        }
+        if l > 0 {
+            let mut tp = [0.0; 9];
+            for i in 0..3 {
+                for j in 0..3 {
+                    let mut s = 0.0;
+                    for k in 0..3 {
+                        s += t[i + k * 3] * p[k + j * 3];
+                    }
+                    tp[i + j * 3] = s;
+                }
+            }
+            for i in 0..3 {
+                for j in 0..3 {
+                    let mut s = v[i + j * 3];
+                    for m in 0..3 {
+                        s += tp[i + m * 3] * t[j + m * 3];
+                    }
+                    pnew[i + j * 3] = s;
+                }
+            }
+        }
+        let resid = yi - anew[0];
+        let m0 = pnew[0];
+        let m1 = pnew[1];
+        let m2 = pnew[2];
+        let gain = m0;
+        if gain > 0.0 {
+            ssq += resid * resid / gain;
+            nu += 1.0;
+            a[0] = anew[0] + m0 * resid / gain;
+            a[1] = anew[1] + m1 * resid / gain;
+            a[2] = anew[2] + m2 * resid / gain;
+            for i in 0..3 {
+                let mi = [m0, m1, m2][i];
+                for j in 0..3 {
+                    let mj = [m0, m1, m2][j];
+                    p[i + j * 3] = pnew[i + j * 3] - mi * mj / gain;
+                }
+            }
+        }
+    }
+    if nu < 1.0 {
+        f64::NAN
+    } else {
+        ssq / nu
+    }
+}
+
+
 
 
 
@@ -2038,6 +2173,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![th, mu],
                 vec!["ma1".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p <= 0 && q == 2 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
+            let (t1, t2, mu, s2) = exact_ma2_ml(&y);
+            (
+                vec![t1, t2, mu],
+                vec!["ma1".to_string(), "ma2".to_string(), "intercept".to_string()],
                 s2,
             )
         } else if p <= 0 && q == 2 && !differenced && !no_mean {
