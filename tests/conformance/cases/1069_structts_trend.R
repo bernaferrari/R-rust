@@ -1,0 +1,7 @@
+set.seed(51)
+x <- ts(cumsum(rnorm(50)) + 0.1 * (1:50))
+f <- StructTS(x, type = "trend")
+cat(sprintf("%.2f", as.numeric(f$coef["level"])), "\n", sep = "")
+cat(sprintf("%.1f", as.numeric(f$coef["slope"])), "\n", sep = "")
+cat(sprintf("%.1f", as.numeric(f$coef["epsilon"])), "\n", sep = "")
+cat(paste(names(f$coef), collapse = ","), "\n", sep = "")
