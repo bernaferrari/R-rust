@@ -239,17 +239,23 @@ pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP
     }
 }
 
-/// GNU `ksmooth(x, y, kernel="box", bandwidth, x.points)`.
+/// GNU `ksmooth(x, y, kernel=, bandwidth=, n.points=, x.points=)`.
 pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, TAG, TYPEOF, XLENGTH};
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, STRING_ELT, TAG, TYPEOF, XLENGTH};
         use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
         use crate::sexp::globals::R_NilValue;
-        let x = CAR(args);
-        let y = CAR(CDR(args));
+        let x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
+        let _xc = protect(x);
+        let y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
+        let _yc = protect(y);
+        let nx = XLENGTH(x) as usize;
         let mut bw = 0.5;
+        let mut krn_code = 1i32;
+        let mut n_points = nx.max(100);
         let mut xp = R_NilValue();
         let mut cell = CDR(CDR(args));
+        let mut untagged = 0usize;
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
@@ -261,26 +267,115 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             } else {
                 String::new()
             };
-            if name == "bandwidth" {
-                let v = CAR(cell);
+            let v = CAR(cell);
+            let mut key = name.as_str();
+            if key.is_empty() {
+                untagged += 1;
+                key = match untagged {
+                    1 => "kernel",
+                    2 => "bandwidth",
+                    3 => "range.x",
+                    4 => "n.points",
+                    5 => "x.points",
+                    _ => "",
+                };
+            }
+            if key == "bandwidth" {
                 bw = if TYPEOF(v) == SEXPTYPE::REALSXP {
                     *REAL(v)
-                } else {
+                } else if TYPEOF(v) == SEXPTYPE::INTSXP {
                     *INTEGER(v) as f64
+                } else {
+                    bw
                 };
-            } else if name == "x.points" {
-                xp = CAR(cell);
+            } else if key == "x.points" {
+                xp = v;
+            } else if key == "n.points"
+                && !v.is_null()
+                && v != R_NilValue()
+                && XLENGTH(v) > 0
+            {
+                n_points = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    (*INTEGER(v)).max(1) as usize
+                } else {
+                    (*REAL(v) as i32).max(1) as usize
+                };
+            } else if key == "kernel" && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0)))
+                    .to_string_lossy()
+                    .to_ascii_lowercase();
+                if s.starts_with('n') {
+                    krn_code = 2;
+                }
             }
             cell = CDR(cell);
         }
         if xp.is_null() || xp == R_NilValue() {
-            xp = x;
+            let mut xmin = f64::INFINITY;
+            let mut xmax = f64::NEG_INFINITY;
+            for i in 0..nx {
+                let xi = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i)
+                } else {
+                    *INTEGER(x).add(i) as f64
+                };
+                if xi.is_finite() {
+                    xmin = xmin.min(xi);
+                    xmax = xmax.max(xi);
+                }
+            }
+            if !xmin.is_finite() || !xmax.is_finite() {
+                xmin = 0.0;
+                xmax = 1.0;
+            }
+            let grid = Rf_allocVector3(SEXPTYPE::REALSXP, n_points as i64);
+            let _g = protect(grid);
+            if n_points == 1 {
+                *REAL(grid) = xmin;
+            } else {
+                let step = (xmax - xmin) / (n_points - 1) as f64;
+                for i in 0..n_points {
+                    *REAL(grid).add(i) = xmin + step * i as f64;
+                }
+            }
+            xp = grid;
         }
-        let krn = Rf_ScalarInteger(1);
+        // GNU: order(x) before C_ksmooth.
+        let mut ord: Vec<usize> = (0..nx).collect();
+        ord.sort_by(|&i, &j| {
+            let xi = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+            let xj = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(j)
+            } else {
+                *INTEGER(x).add(j) as f64
+            };
+            xi.partial_cmp(&xj).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let xs = Rf_allocVector3(SEXPTYPE::REALSXP, nx as i64);
+        let _xs = protect(xs);
+        let ys = Rf_allocVector3(SEXPTYPE::REALSXP, nx as i64);
+        let _ys = protect(ys);
+        for (k, &i) in ord.iter().enumerate() {
+            *REAL(xs).add(k) = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else {
+                *INTEGER(x).add(i) as f64
+            };
+            *REAL(ys).add(k) = if TYPEOF(y) == SEXPTYPE::REALSXP {
+                *REAL(y).add(i)
+            } else {
+                *INTEGER(y).add(i) as f64
+            };
+        }
+        let krn = Rf_ScalarInteger(krn_code);
         let _k = protect(krn);
         let sbw = Rf_ScalarReal(bw);
         let _b = protect(sbw);
-        ksmooth(x, y, xp, krn, sbw)
+        ksmooth(xs, ys, xp, krn, sbw)
     }
 }
 
