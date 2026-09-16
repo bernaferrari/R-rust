@@ -13316,7 +13316,7 @@ pub unsafe fn do_sign(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Helper to apply a scalar function to a numeric vector, preserving NA/NaN.
 /// Returns REALSXP.
-unsafe fn apply_unary_scalar_fn(x: SEXP, scalar_fn: impl Fn(f64) -> f64) -> SEXP {
+unsafe fn apply_unary_scalar_fn(call: SEXP, x: SEXP, scalar_fn: impl Fn(f64) -> f64) -> SEXP {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -13329,6 +13329,7 @@ unsafe fn apply_unary_scalar_fn(x: SEXP, scalar_fn: impl Fn(f64) -> f64) -> SEXP
         }
         let _p = protect(result);
         let dst = REAL(result);
+        let mut naflag = false;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
                 *REAL(x).add(i as usize)
@@ -13341,8 +13342,15 @@ unsafe fn apply_unary_scalar_fn(x: SEXP, scalar_fn: impl Fn(f64) -> f64) -> SEXP
             if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 *dst.add(i as usize) = NA_REAL;
             } else {
-                *dst.add(i as usize) = scalar_fn(val);
+                let out = scalar_fn(val);
+                *dst.add(i as usize) = out;
+                if out.is_nan() && !val.is_nan() {
+                    naflag = true;
+                }
             }
+        }
+        if naflag {
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
         }
         result
     }
@@ -13350,7 +13358,12 @@ unsafe fn apply_unary_scalar_fn(x: SEXP, scalar_fn: impl Fn(f64) -> f64) -> SEXP
 
 /// Helper to apply a binary scalar function to two numeric vectors with recycling.
 /// Returns REALSXP.
-unsafe fn apply_binary_scalar_fn(x: SEXP, y: SEXP, scalar_fn: impl Fn(f64, f64) -> f64) -> SEXP {
+unsafe fn apply_binary_scalar_fn(
+    call: SEXP,
+    x: SEXP,
+    y: SEXP,
+    scalar_fn: impl Fn(f64, f64) -> f64,
+) -> SEXP {
     unsafe {
         if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
             return R_NilValue();
@@ -13376,6 +13389,7 @@ unsafe fn apply_binary_scalar_fn(x: SEXP, y: SEXP, scalar_fn: impl Fn(f64, f64) 
             return result;
         }
         let dst = REAL(result);
+        let mut naflag = false;
         for i in 0..n {
             let xi = if x_len > 0 { i % x_len } else { 0 };
             let yi = if y_len > 0 { i % y_len } else { 0 };
@@ -13400,8 +13414,15 @@ unsafe fn apply_binary_scalar_fn(x: SEXP, y: SEXP, scalar_fn: impl Fn(f64, f64) 
             {
                 *dst.add(i as usize) = NA_REAL;
             } else {
-                *dst.add(i as usize) = scalar_fn(val_x, val_y);
+                let out = scalar_fn(val_x, val_y);
+                *dst.add(i as usize) = out;
+                if out.is_nan() && !val_x.is_nan() && !val_y.is_nan() {
+                    naflag = true;
+                }
             }
+        }
+        if naflag {
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
         }
         if n == x_len {
             copy_all_attribs(result, x);
@@ -13412,47 +13433,46 @@ unsafe fn apply_binary_scalar_fn(x: SEXP, y: SEXP, scalar_fn: impl Fn(f64, f64) 
     }
 }
 
-/// R's `lgamma(x)` — log of the absolute value of the gamma function.
-pub unsafe fn do_lgamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(CAR(args), crate::special::gamma::lgammafn) }
+pub unsafe fn do_lgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, CAR(args), crate::special::gamma::lgammafn) }
 }
 
 /// R's `gamma(x)` — gamma function.
-pub unsafe fn do_gamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(CAR(args), crate::special::gamma::gammafn) }
+pub unsafe fn do_gamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, CAR(args), crate::special::gamma::gammafn) }
 }
 
 /// R's `digamma(x)` — digamma (psi) function.
-pub unsafe fn do_digamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(CAR(args), crate::special::polygamma::digamma) }
+pub unsafe fn do_digamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, CAR(args), crate::special::polygamma::digamma) }
 }
 
 /// R's `trigamma(x)` — trigamma function.
-pub unsafe fn do_trigamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(CAR(args), crate::special::polygamma::trigamma) }
+pub unsafe fn do_trigamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, CAR(args), crate::special::polygamma::trigamma) }
 }
 
 /// R's `psigamma(x, deriv)` — polygamma function (deriv-th derivative of psi).
-pub unsafe fn do_psigamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_psigamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let deriv_arg = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() || deriv_arg.is_null() || deriv_arg == R_NilValue() {
             return R_NilValue();
         }
-        apply_binary_scalar_fn(x, deriv_arg, crate::special::polygamma::psigamma)
+        apply_binary_scalar_fn(call, x, deriv_arg, crate::special::polygamma::psigamma)
     }
 }
 
 /// R's `beta(a, b)` — beta function.
-pub unsafe fn do_beta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_beta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let a = CAR(args);
         let b = CAR(CDR(args));
         if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
             return R_NilValue();
         }
-        apply_binary_scalar_fn(a, b, |x, y| {
+        apply_binary_scalar_fn(call, a, b, |x, y| {
             crate::special::gamma::gammafn(x) * crate::special::gamma::gammafn(y)
                 / crate::special::gamma::gammafn(x + y)
         })
@@ -13460,54 +13480,54 @@ pub unsafe fn do_beta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `lbeta(a, b)` — log beta function.
-pub unsafe fn do_lbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let a = CAR(args);
         let b = CAR(CDR(args));
         if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
             return R_NilValue();
         }
-        apply_binary_scalar_fn(a, b, crate::special::lbeta::lbeta)
+        apply_binary_scalar_fn(call, a, b, crate::special::lbeta::lbeta)
     }
 }
 
 /// R's `choose(n, k)` — binomial coefficient.
-pub unsafe fn do_choose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_choose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_arg = CAR(args);
         let k_arg = CAR(CDR(args));
         if n_arg.is_null() || n_arg == R_NilValue() || k_arg.is_null() || k_arg == R_NilValue() {
             return R_NilValue();
         }
-        apply_binary_scalar_fn(n_arg, k_arg, crate::special::choose::choose)
+        apply_binary_scalar_fn(call, n_arg, k_arg, crate::special::choose::choose)
     }
 }
 
 /// R's `lchoose(n, k)` — log of absolute value of binomial coefficient.
-pub unsafe fn do_lchoose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_arg = CAR(args);
         let k_arg = CAR(CDR(args));
         if n_arg.is_null() || n_arg == R_NilValue() || k_arg.is_null() || k_arg == R_NilValue() {
             return R_NilValue();
         }
-        apply_binary_scalar_fn(n_arg, k_arg, crate::special::choose::lchoose)
+        apply_binary_scalar_fn(call, n_arg, k_arg, crate::special::choose::lchoose)
     }
 }
 
 /// R's `factorial(n)` — factorial n!
-pub unsafe fn do_factorial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_factorial(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        apply_unary_scalar_fn(x, |v| crate::special::gamma::gammafn(v + 1.0))
+        apply_unary_scalar_fn(call, x, |v| crate::special::gamma::gammafn(v + 1.0))
     }
 }
 
 /// R's `lfactorial(n)` — log factorial.
-pub unsafe fn do_lfactorial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_lfactorial(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        apply_unary_scalar_fn(x, |v| crate::special::gamma::lgammafn(v + 1.0))
+        apply_unary_scalar_fn(call, x, |v| crate::special::gamma::lgammafn(v + 1.0))
     }
 }
 

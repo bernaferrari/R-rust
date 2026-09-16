@@ -1,0 +1,6 @@
+cat(withVisible(if (FALSE) 1)$visible, "\n", sep = "")
+cat(withVisible(if (TRUE) 1)$visible, "\n", sep = "")
+cat(withVisible(if (FALSE) 1 else 2)$visible, "\n", sep = "")
+invisible(log(-1))
+invisible(gamma(0:-2))
+cat("ok\n")

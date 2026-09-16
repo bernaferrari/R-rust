@@ -814,7 +814,7 @@ unsafe fn propagate_unary_vector_attributes(result: SEXP, source: SEXP, result_l
 // ---------------------------------------------------------------------------
 
 /// Apply a unary real function element-wise to a numeric vector.
-unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
+unsafe fn math1_vec(call: SEXP, sa: SEXP, f: fn(f64) -> f64) -> SEXP {
     unsafe {
         let Some(x) = NumericVector::from_raw(sa) else {
             return R_NilValue();
@@ -826,6 +826,7 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
         };
         let _result_guard = protect(result_raw);
         let mut result_mut = SexpMut::from_owned(result);
+        let mut naflag = false;
         for i in 0..n {
             poll_vector_cancellation(i);
             let value = x.clone().real_at(i);
@@ -833,14 +834,16 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
                 result_mut.set_real_elt(i, NA_REAL);
             } else {
                 let r = f(value);
-                // Preserve incoming NaN (don't replace with NA_REAL)
                 if r.is_nan() && !value.is_nan() {
-                    // Newly produced NaN from valid input → leave as NaN
+                    naflag = true;
                 }
                 result_mut.set_real_elt(i, r);
             }
         }
         let _ = result_mut.freeze();
+        if naflag {
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+        }
         propagate_unary_vector_attributes(result_raw, sa, n);
         result_raw
     }
@@ -1965,7 +1968,7 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             _ => return R_NilValue(),
         };
 
-        let result = math1_vec(x, f);
+        let result = math1_vec(call, x, f);
         if result.is_null() {
             return R_NilValue();
         }
@@ -3091,7 +3094,7 @@ mod tests {
             }
 
             expect_cancelled(|| {
-                let _ = math1_vec(x, f64::sqrt);
+                let _ = math1_vec(R_NilValue(), x, f64::sqrt);
             });
         }
     }

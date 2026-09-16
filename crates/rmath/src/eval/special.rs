@@ -402,6 +402,7 @@ unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
         } else if result == 0 {
             // FALSE
             if false_branch == R_NilValue() {
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
                 R_NilValue()
             } else {
                 Rf_eval(false_branch, rho)

@@ -1,0 +1,8 @@
+FALSE
+TRUE
+TRUE
+Warning message:
+In log(-1) : NaNs produced
+Warning message:
+In gamma(0:-2) : NaNs produced
+ok
