@@ -474,6 +474,7 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             slots.push((slot_name, arg));
             current = CDR(current);
         }
+        let mut proto_guards = Vec::new();
         for slot in &class_slots {
             if slot == ".Data" {
                 continue;
@@ -485,11 +486,10 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     .map(|ty| s4_prototype_for_type(ty))
                     .unwrap_or_else(|| R_NilValue());
                 if !proto.is_null() && proto != R_NilValue() {
-                    let _proto = protect(proto);
+                    proto_guards.push(protect(proto));
                 }
                 slots.push((slot.clone(), proto));
             }
-
         }
 
         let n = slots.len() as R_xlen_t;
@@ -509,7 +509,10 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
-        finish_s4_object(result, &class_name)
+        let finished = finish_s4_object(result, &class_name);
+        drop(proto_guards);
+        finished
+
     }
 }
 

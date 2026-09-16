@@ -95,7 +95,8 @@ pub unsafe fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
-            c"Ops".as_ptr(),
+            c"".as_ptr(),
+
             call,
             op,
             args,

@@ -404,7 +404,8 @@ pub unsafe fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
-            c"Summary".as_ptr(),
+            c"".as_ptr(),
+
             call,
             op,
             args,

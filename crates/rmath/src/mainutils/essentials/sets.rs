@@ -2175,24 +2175,13 @@ pub unsafe fn do_all(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `cumsum(x)` — cumulative sum.
-pub unsafe fn do_cumsum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut dispatched = R_NilValue();
-        if crate::eval::dispatch::DispatchGroup(
-            c"Math".as_ptr(),
-            call,
-            op,
-            args,
-            rho,
-            &mut dispatched,
-        ) != 0
-        {
-            return dispatched;
-        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+
 
         let n = XLENGTH(x);
         let t = TYPEOF(x);
@@ -2260,24 +2249,13 @@ pub unsafe fn do_cumsum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `cumprod(x)` — cumulative product.
-pub unsafe fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut dispatched = R_NilValue();
-        if crate::eval::dispatch::DispatchGroup(
-            c"Math".as_ptr(),
-            call,
-            op,
-            args,
-            rho,
-            &mut dispatched,
-        ) != 0
-        {
-            return dispatched;
-        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+
 
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
