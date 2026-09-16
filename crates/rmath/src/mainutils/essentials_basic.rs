@@ -884,7 +884,32 @@ pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 counts.push(na_count);
             }
             (labels, counts)
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+        } else if t == SEXPTYPE::LGLSXP {
+            let mut counts: BTreeMap<i32, i64> = BTreeMap::new();
+            let mut na_count = 0_i64;
+            for i in 0..XLENGTH(x) {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER {
+                    na_count += 1;
+                } else {
+                    *counts.entry(v).or_insert(0) += 1;
+                }
+            }
+            let mut labels: Vec<String> = counts
+                .keys()
+                .map(|&v| match v {
+                    0 => "FALSE".to_string(),
+                    1 => "TRUE".to_string(),
+                    _ => v.to_string(),
+                })
+                .collect();
+            let mut vals: Vec<i64> = counts.values().copied().collect();
+            if use_na.should_include(na_count) {
+                labels.push("<NA>".to_string());
+                vals.push(na_count);
+            }
+            (labels, vals)
+        } else if t == SEXPTYPE::INTSXP {
             let mut counts: BTreeMap<i32, i64> = BTreeMap::new();
             let mut na_count = 0_i64;
             for i in 0..XLENGTH(x) {
@@ -1071,10 +1096,28 @@ impl Ord for RealTableKey {
 }
 
 fn format_table_real(v: f64) -> String {
-    if v.fract() == 0.0 && v.abs() < 1e10 {
-        format!("{v:.0}")
-    } else {
-        format!("{v}")
+    unsafe {
+        use std::os::raw::c_char;
+        let digits_sym = Rf_install(b"digits\0".as_ptr() as *const c_char);
+        let saved = crate::mainutils::options::GetOption1(digits_sym);
+        let _saved = protect(saved);
+        let max = Rf_ScalarInteger(15);
+        let _max = protect(max);
+        crate::mainutils::options::R_SetOption(digits_sym, max);
+        let mut warn = 0;
+        let s = crate::mainutils::printutils::StringFromReal(v, &mut warn);
+        crate::mainutils::options::R_SetOption(digits_sym, saved);
+        if s.is_null() {
+            return format!("{v}");
+        }
+        let p = CHAR(s);
+        if p.is_null() {
+            return format!("{v}");
+        }
+        std::ffi::CStr::from_ptr(p)
+            .to_str()
+            .unwrap_or("")
+            .to_string()
     }
 }
 

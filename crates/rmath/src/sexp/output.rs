@@ -2146,6 +2146,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_matrix(x.clone()) {
                 return output;
             }
+            if let Some(output) = format_summary_default(x.clone()) {
+                return output;
+            }
             if let Some(output) = format_table(x.clone()) {
                 return output;
             }
@@ -2169,6 +2172,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 return format_with_printable_attributes("numeric(0)".to_string(), x);
             }
             if let Some(output) = format_matrix(x.clone()) {
+                return output;
+            }
+            if let Some(output) = format_summary_default(x.clone()) {
                 return output;
             }
             if let Some(output) = format_table(x.clone()) {
