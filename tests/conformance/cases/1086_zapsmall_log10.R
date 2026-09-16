@@ -1,0 +1,5 @@
+cat(paste(sprintf("%.6f", zapsmall(c(1.234567, 2), digits = 4)), collapse = ","), "\n", sep = "")
+cat(paste(sprintf("%.6f", zapsmall(c(6e-11, 1), digits = 7)), collapse = ","), "\n", sep = "")
+z <- zapsmall(c(Inf, 1), digits = 7)
+cat(is.infinite(z[1]), "\n", sep = "")
+cat(sprintf("%.6f", z[2]), "\n", sep = "")

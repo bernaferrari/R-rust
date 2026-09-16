@@ -724,7 +724,7 @@ pub unsafe fn R_cpolyroot(coef: *mut c_double, degree: c_int) -> *mut std::ffi::
         }
 
         let mut result = Vec::with_capacity(2 * deg);
-        for i in 0..deg {
+        for i in 1..=deg {
             result.push(zeror[i]);
             result.push(zeroi[i]);
         }
@@ -735,12 +735,16 @@ pub unsafe fn R_cpolyroot(coef: *mut c_double, degree: c_int) -> *mut std::ffi::
     }
 }
 
-/// GNU `polyroot(z)` via Jenkins-Traub.
-/// GNU `polyroot(z)` via companion-matrix eigenvalues.
-pub unsafe fn do_polyroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, _rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+/// GNU `polyroot(z)` via Jenkins-Traub (`R_cpolyroot`).
+pub unsafe fn do_polyroot(
+    _call: crate::sexp::ffi::SEXP,
+    _op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    _rho: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, VECTOR_ELT, XLENGTH};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_ScalarLogical};
+        use crate::sexp::accessors::{CAR, COMPLEX, INTEGER, REAL, TYPEOF, XLENGTH};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{Rcomplex, SEXPTYPE};
         use crate::sexp::protect::protect;
         let z = CAR(args);
@@ -748,77 +752,59 @@ pub unsafe fn do_polyroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::
         if ncoef < 2 {
             return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
         }
-        let degree = (ncoef - 1) as usize;
-        let mut a_re = vec![0.0f64; ncoef as usize];
-        let mut a_im = vec![0.0f64; ncoef as usize];
+        let n = ncoef as usize;
+        let degree = n - 1;
+        let mut a_re = vec![0.0f64; n];
+        let mut a_im = vec![0.0f64; n];
         if TYPEOF(z) == SEXPTYPE::CPLXSXP {
             let c = COMPLEX(z);
-            for i in 0..ncoef as usize {
+            for i in 0..n {
                 a_re[i] = (*c.add(i)).r;
                 a_im[i] = (*c.add(i)).i;
             }
         } else if TYPEOF(z) == SEXPTYPE::INTSXP {
             let p = INTEGER(z);
-            for i in 0..ncoef as usize {
+            for i in 0..n {
                 a_re[i] = *p.add(i) as f64;
             }
         } else {
             let r = REAL(z);
-            for i in 0..ncoef as usize {
+            for i in 0..n {
                 a_re[i] = *r.add(i);
             }
         }
-        let lead_re = a_re[degree];
-        let lead_im = a_im[degree];
-        let lead_n2 = lead_re * lead_re + lead_im * lead_im;
-        if lead_n2 == 0.0 {
+        if a_re[n - 1] == 0.0 && a_im[n - 1] == 0.0 {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
                 "leading coefficient is zero",
             );
         }
-        let n = degree as i64;
-        let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, n as i32);
-        let _m = protect(mat);
-        let p = REAL(mat);
-        for i in 0..(degree * degree) {
-            *p.add(i) = 0.0;
+        // Jenkins-Traub / Horner here want highest-degree first.
+        let mut coef = vec![0.0f64; 2 * n];
+        for i in 0..n {
+            coef[i] = a_re[n - 1 - i];
+            coef[n + i] = a_im[n - 1 - i];
         }
-        for i in 1..degree {
-            *p.add(i + (i - 1) * degree) = 1.0;
+        let raw = R_cpolyroot(coef.as_mut_ptr(), degree as c_int);
+        if raw.is_null() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "root finding code failed",
+            );
         }
-        for i in 0..degree {
-            *p.add(i + (degree - 1) * degree) = -a_re[i] / lead_re;
-        }
-        let only = Rf_ScalarLogical(0);
-        let _o = protect(only);
-        let ev = crate::modules::lapack::lapack_impl::La_rg(mat, only);
-        let _e = protect(ev);
-        let values = VECTOR_ELT(ev, 0);
-        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+        let roots = Vec::from_raw_parts(raw as *mut f64, 2 * degree, 2 * degree);
+        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, degree as i64);
         let _a = protect(ans);
         let out = COMPLEX(ans);
-        if TYPEOF(values) == SEXPTYPE::CPLXSXP {
-            let c = COMPLEX(values);
-            for i in 0..degree {
-                *out.add(i) = *c.add(i);
-            }
-        } else {
-            let r = REAL(values);
-            for i in 0..degree {
-                *out.add(i) = Rcomplex {
-                    r: *r.add(i),
-                    i: 0.0,
-                };
-            }
+        for i in 0..degree {
+            *out.add(i) = Rcomplex {
+                r: roots[2 * i],
+                i: roots[2 * i + 1],
+            };
         }
-        let _ = SET_VECTOR_ELT;
         ans
     }
 }
-
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

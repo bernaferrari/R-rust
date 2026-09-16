@@ -313,22 +313,18 @@ pub unsafe fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if !any_finite {
             return x;
         }
-        if mx > 0.0 {
-            let adj = (digits - mx.log10().trunc()).max(0.0);
-            let d = Rf_ScalarReal(adj);
-            let _d = protect(d);
-            let packed = Rf_cons(x, Rf_cons(d, R_NilValue()));
-            let _p = protect(packed);
-            do_round(call, op, packed, rho)
-        } else if t == SEXPTYPE::CPLXSXP {
-            let d = Rf_ScalarReal(digits);
-            let _d = protect(d);
-            let packed = Rf_cons(x, Rf_cons(d, R_NilValue()));
-            let _p = protect(packed);
-            do_round(call, op, packed, rho)
+        let adj = if mx > 0.0 && mx.is_finite() {
+            (digits - mx.log10()).max(0.0)
+        } else if mx.is_infinite() {
+            0.0
         } else {
-            apply_unary_scalar_fn(call, x, |_| 0.0)
-        }
+            digits
+        };
+        let d = Rf_ScalarReal(adj);
+        let _d = protect(d);
+        let packed = Rf_cons(x, Rf_cons(d, R_NilValue()));
+        let _p = protect(packed);
+        do_round(call, op, packed, rho)
     }
 }
 
