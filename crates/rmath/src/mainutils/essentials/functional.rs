@@ -922,42 +922,8 @@ fn callable_expr(fun: SEXP) -> SEXP {
 }
 
 
-fn is_typeof_fun(fun: SEXP) -> bool {
-    unsafe {
-        if TYPEOF(fun) == SEXPTYPE::SYMSXP {
-            return symbol_name(fun).as_deref() == Some("typeof");
-        }
-        if TYPEOF(fun) == SEXPTYPE::BUILTINSXP || TYPEOF(fun) == SEXPTYPE::SPECIALSXP {
-            return crate::eval::eval::PRIMNAME(fun) == "typeof";
-        }
-        false
-    }
-}
-
 fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if value == R_MissingArg() && is_typeof_fun(fun) {
-            let args = Rf_cons(value, R_NilValue());
-            let _args_guard = protect(args);
-            return crate::mainutils::essentials_basic::do_typeof(
-                R_NilValue(),
-                R_NilValue(),
-                args,
-                rho,
-            );
-        }
-
-        let arg_sym = Rf_install(c"..rport_apply_value".as_ptr());
-        let call_env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
-        crate::sexp::envir::defineVar(arg_sym, value, call_env);
-
-        let call_args = Rf_cons(arg_sym, R_NilValue());
-        let call_sexp = Rf_cons(fun, call_args);
-        if !call_sexp.is_null() {
-            (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-        }
-        crate::eval::eval::Rf_eval(call_sexp, call_env)
-    }
+    unsafe { apply_fun_to_element(fun, value, R_NilValue(), rho) }
 }
 
 /// Call FUN on one extracted element, forwarding the caller's collected
@@ -965,11 +931,11 @@ fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
 /// pre-forced promise: splicing a language object (`1 + 2` from a saved
 /// expression vector) straight into the call makes evalList EVALUATE it;
 /// upstream lapply.c passes each element as a forced promise too.
+/// Binding the missing-arg sentinel itself would make lookup treat the
+/// formal as missing; a forced promise whose value is that sentinel is
+/// the empty symbol, matching `vapply(formals(f), FUN, ...)`.
 fn apply_fun_to_element(fun: SEXP, elem: SEXP, extra_args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if extra_args == R_NilValue() {
-            return apply_unary_value(fun, elem, rho);
-        }
         let elem_promise = crate::sexp::memory_ext::mkPROMSXP(elem, rho);
         if !elem_promise.is_null() {
             crate::sexp::accessors::SET_PRVALUE(elem_promise, elem);
@@ -985,6 +951,7 @@ fn apply_fun_to_element(fun: SEXP, elem: SEXP, extra_args: SEXP, rho: SEXP) -> S
         crate::eval::eval::Rf_eval(call, rho)
     }
 }
+
 
 fn simplify_scalar_list(list: SEXP) -> SEXP {
     unsafe {

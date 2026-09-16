@@ -238,3 +238,101 @@ pub fn current_srcref_location() -> Option<(String, i32)> {
         (*inst).error_state.current_srcref_location.clone()
     })
 }
+
+/// GNU `utils::removeSource(fn)` — drop srcref/srcfile attributes.
+pub unsafe fn do_remove_source(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == crate::sexp::globals::R_NilValue() {
+            crate::sexp::context::r_error(
+                "argument is not a function or language object:NULL",
+            );
+        }
+        let ty = TYPEOF(x);
+        if ty == SEXPTYPE::CLOSXP {
+            strip_function_source(x)
+        } else if ty == SEXPTYPE::BUILTINSXP || ty == SEXPTYPE::SPECIALSXP {
+            x
+        } else if ty == SEXPTYPE::SYMSXP || ty == SEXPTYPE::LANGSXP || ty == SEXPTYPE::EXPRSXP {
+            recurse_remove_source(x)
+        } else {
+            let kind = unsafe {
+                std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(x)))
+                    .to_string_lossy()
+            };
+
+            crate::sexp::context::r_error(&format!(
+                "argument is not a function or language object:{kind}"
+            ));
+        }
+    }
+}
+
+
+unsafe fn strip_function_source(fun: SEXP) -> SEXP {
+    unsafe {
+        clear_source_attrs(fun);
+        let formals = FORMALS(fun);
+        if !formals.is_null() && formals != crate::sexp::globals::R_NilValue() {
+            SET_FORMALS(fun, recurse_remove_source(formals));
+        }
+        let body = BODY(fun);
+        if !body.is_null() && body != crate::sexp::globals::R_NilValue() {
+            clear_source_attrs(body);
+            SET_BODY(fun, recurse_remove_source(body));
+        }
+        fun
+    }
+}
+
+unsafe fn recurse_remove_source(part: SEXP) -> SEXP {
+    unsafe {
+        if part.is_null() || part == crate::sexp::globals::R_NilValue() {
+            return part;
+        }
+        if TYPEOF(part) == SEXPTYPE::SYMSXP {
+            return part;
+        }
+        if crate::mainutils::essentials::sexp_has_class(part, "srcref") {
+            return crate::sexp::globals::R_NilValue();
+        }
+        clear_source_attrs(part);
+        let ty = TYPEOF(part);
+        if ty == SEXPTYPE::LISTSXP || ty == SEXPTYPE::LANGSXP || ty == SEXPTYPE::EXPRSXP {
+            if ty == SEXPTYPE::EXPRSXP {
+                for i in 0..XLENGTH(part) {
+                    SET_VECTOR_ELT(part, i, recurse_remove_source(VECTOR_ELT(part, i)));
+                }
+            } else {
+                let mut cell = part;
+                while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+                    SETCAR(cell, recurse_remove_source(CAR(cell)));
+                    cell = CDR(cell);
+                }
+            }
+        }
+        part
+    }
+}
+
+unsafe fn clear_source_attrs(x: SEXP) {
+    unsafe {
+        let nil = crate::sexp::globals::R_NilValue();
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+            nil,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"wholeSrcref".as_ptr()),
+            nil,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
+            nil,
+        );
+    }
+}
+

@@ -115,38 +115,130 @@ pub unsafe fn deparse1WithCutoff(
 pub unsafe fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, rho);
-        let mut args = args;
+        let parsed = deparse_call_args(args);
+        deparse1WithCutoff(
+            parsed.expr,
+            false,
+            parsed.cutoff,
+            parsed.backtick,
+            parsed.opts,
+            parsed.nlines,
+        )
+    }
+}
 
-        let expr = CAR(args);
-        args = CDR(args);
+struct DeparseCallArgs {
+    expr: SEXP,
+    cutoff: c_int,
+    backtick: bool,
+    opts: c_int,
+    nlines: c_int,
+}
 
-        let mut cut0 = DEFAULT_CUTOFF;
-        if !isNull(CAR(args)) {
-            let v = Rf_asInteger(CAR(args));
-            if v == NA_INTEGER || v < MIN_CUTOFF || v > MAX_CUTOFF {
-                cut0 = DEFAULT_CUTOFF;
+unsafe fn deparse_call_args(args: SEXP) -> DeparseCallArgs {
+    unsafe {
+        let mut expr = crate::sexp::globals::R_NilValue();
+        let mut cutoff = DEFAULT_CUTOFF;
+        let mut backtick = None;
+        let mut opts = None;
+        let mut nlines = -1;
+        let mut positional = Vec::new();
+        let mut current = args;
+        while !current.is_null() && current != crate::sexp::globals::R_NilValue() {
+            let value = CAR(current);
+            let tag = TAG(current);
+            let name = if !tag.is_null()
+                && tag != crate::sexp::globals::R_NilValue()
+                && TYPEOF(tag) == SEXPTYPE::SYMSXP
+            {
+                let chars = CHAR(PRINTNAME(tag));
+                if chars.is_null() {
+                    None
+                } else {
+                    Some(
+                        std::ffi::CStr::from_ptr(chars)
+                            .to_string_lossy()
+                            .into_owned(),
+                    )
+                }
             } else {
-                cut0 = v;
+                None
+            };
+            match name.as_deref() {
+                Some("expr") => expr = value,
+                Some("width.cutoff") => {
+                    let v = crate::mainutils::coerce::asInteger(value);
+                    if v != NA_INTEGER && v >= MIN_CUTOFF && v <= MAX_CUTOFF {
+                        cutoff = v;
+                    }
+                }
+                Some("backtick") => backtick = Some(crate::mainutils::coerce::asLogical(value) != 0),
+                Some("control") => opts = Some(deparse_opts_from_control(value)),
+                Some("nlines") => {
+                    let v = crate::mainutils::coerce::asInteger(value);
+                    nlines = if v == NA_INTEGER { -1 } else { v };
+                }
+                _ => positional.push(value),
+            }
+            current = CDR(current);
+        }
+        let mut pos = 0;
+        if expr.is_null() || expr == crate::sexp::globals::R_NilValue() {
+            if let Some(value) = positional.get(pos).copied() {
+                expr = value;
+                pos += 1;
             }
         }
-        args = CDR(args);
-
-        let backtick = !isNull(CAR(args)) && Rf_asLogical(CAR(args)) != 0;
-        args = CDR(args);
-
-        let opts = if isNull(CAR(args)) {
-            DEFAULT_USER_DEPARSE
-        } else {
-            Rf_asInteger(CAR(args))
-        };
-        args = CDR(args);
-
-        let mut nlines = Rf_asInteger(CAR(args));
-        if nlines == NA_INTEGER {
-            nlines = -1;
+        if let Some(value) = positional.get(pos).copied() {
+            if TYPEOF(value) == SEXPTYPE::STRSXP && opts.is_none() {
+                // `deparse(x, "all")` or leftover positional control
+                opts = Some(deparse_opts_from_control(value));
+            } else if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::REALSXP {
+                let v = crate::mainutils::coerce::asInteger(value);
+                if v != NA_INTEGER && v >= MIN_CUTOFF && v <= MAX_CUTOFF {
+                    cutoff = v;
+                } else if opts.is_none() && v != NA_INTEGER {
+                    opts = Some(v);
+                }
+            }
+            pos += 1;
         }
+        if backtick.is_none() {
+            if let Some(value) = positional.get(pos).copied() {
+                if TYPEOF(value) == SEXPTYPE::LGLSXP {
+                    backtick = Some(crate::mainutils::coerce::asLogical(value) != 0);
+                    pos += 1;
+                }
+            }
+        }
+        if opts.is_none() {
+            if let Some(value) = positional.get(pos).copied() {
+                if TYPEOF(value) == SEXPTYPE::STRSXP {
+                    opts = Some(deparse_opts_from_control(value));
+                } else if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::REALSXP {
+                    opts = Some(crate::mainutils::coerce::asInteger(value));
+                }
+            }
+        }
+        let backtick = backtick.unwrap_or_else(|| deparse_default_backtick(expr));
+        DeparseCallArgs {
+            expr,
+            cutoff,
+            backtick,
+            opts: opts.unwrap_or(DEFAULT_USER_DEPARSE),
+            nlines,
+        }
+    }
+}
 
-        deparse1WithCutoff(expr, false, cut0, backtick, opts, nlines)
+fn deparse_default_backtick(expr: SEXP) -> bool {
+    unsafe {
+        matches!(
+            TYPEOF(expr),
+            t if t == SEXPTYPE::LANGSXP
+                || t == SEXPTYPE::EXPRSXP
+                || t == SEXPTYPE::CLOSXP
+        )
     }
 }
 

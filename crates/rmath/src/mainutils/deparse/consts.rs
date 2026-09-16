@@ -76,6 +76,86 @@ pub const SIMPLE_OPTS: c_int = !(QUOTEEXPRESSIONS | SHOWATTRIBUTES | DELAYPROMIS
 /// Show attributes or nice names.
 pub const SHOW_ATTR_OR_NMS: c_int = SHOWATTRIBUTES | NICE_NAMES;
 
+/// GNU `.deparseOpts(control)` mapped onto this engine's flag bits.
+/// `"all"` is keepInteger+quoteExpressions+showAttributes+useSource+
+/// warnIncomplete+keepNA+digits17+niceNames (not delayPromises/S_compatible).
+pub fn deparse_opts_from_control(control: SEXP) -> c_int {
+    unsafe {
+        use crate::sexp::accessors::{STRING_ELT, TYPEOF, XLENGTH};
+        use crate::sexp::ffi::SEXPTYPE;
+        if control.is_null()
+            || control == crate::sexp::globals::R_NilValue()
+            || TYPEOF(control) != SEXPTYPE::STRSXP
+            || XLENGTH(control) == 0
+        {
+            return DEFAULT_USER_DEPARSE;
+        }
+        let mut names = Vec::new();
+        for i in 0..XLENGTH(control) {
+            let s = STRING_ELT(control, i);
+            if s.is_null() || s == crate::sexp::globals::R_NaString() {
+                continue;
+            }
+            let text = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(s))
+                .to_string_lossy()
+                .into_owned();
+            names.push(text);
+        }
+        deparse_opts_from_names(&names)
+    }
+}
+
+pub fn deparse_opts_from_names(names: &[String]) -> c_int {
+    if names.is_empty() {
+        return 0;
+    }
+    let has = |prefix: &str| {
+        names.iter().any(|name| {
+            name == prefix
+                || (!name.is_empty() && prefix.starts_with(name.as_str()))
+        })
+    };
+    let all = has("all");
+    let exact = has("exact");
+    let hex = has("hexNumeric");
+    let mut opts = 0;
+    if all || exact || has("keepInteger") {
+        opts |= KEEPINTEGER;
+    }
+    if all || exact || has("quoteExpressions") {
+        opts |= QUOTEEXPRESSIONS;
+    }
+    if all || exact || has("showAttributes") {
+        opts |= SHOWATTRIBUTES;
+    }
+    if all || exact || has("useSource") {
+        opts |= USESOURCE;
+    }
+    if all || exact || has("warnIncomplete") {
+        opts |= WARNINCOMPLETE;
+    }
+    if has("delayPromises") {
+        opts |= DELAYPROMISES;
+    }
+    if all || exact || has("keepNA") {
+        opts |= KEEPNA;
+    }
+    if has("S_compatible") || has("S_compat") {
+        opts |= S_COMPAT;
+    }
+    if exact || hex {
+        opts |= HEXNUMERIC;
+    }
+    if (all && !hex) || has("digits17") {
+        opts |= DIGITS17;
+    }
+    if all || exact || has("niceNames") {
+        opts |= NICE_NAMES;
+    }
+    opts
+}
+
+
 // ---------------------------------------------------------------------------
 // Precedence constants (local aliases for names.rs values)
 // ---------------------------------------------------------------------------

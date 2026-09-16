@@ -451,6 +451,37 @@ pub fn find_var_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupR
     Ok(None)
 }
 
+/// Walk the environment chain and return the binding without forcing
+/// promises. GNU `findVar` is unforced; `Rf_eval` then treats a
+/// `R_MissingArg` *binding* as missing, and only afterwards forces a
+/// promise — so a forced empty-symbol value (lapply of formals) is not
+/// a missing argument.
+pub fn find_var_binding_result<'a>(
+    symbol: Sexp<'a>,
+    rho: Sexp<'a>,
+) -> EnvResult<LookupResult<'a>> {
+    let mut current = rho;
+    loop {
+        if !current.clone().is_environment() {
+            break;
+        }
+        if let Some(val) = find_var_in_frame_result(current.clone(), symbol.clone())? {
+            return Ok(Some(val));
+        }
+        if symbol.clone().is_symbol()
+            && let Ok(sym_val) = symbol.clone().try_symvalue()
+            && sym_val.clone().typeof_() == SEXPTYPE::SPECIALSXP
+        {
+            return Ok(Some(sym_val));
+        }
+        current = current
+            .try_enclos()
+            .map_err(|err| sexp_err("enclosing environment lookup", err))?;
+    }
+    Ok(None)
+}
+
+
 // ---------------------------------------------------------------------------
 // forcePromise — safe version
 // ---------------------------------------------------------------------------

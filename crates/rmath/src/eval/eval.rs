@@ -394,17 +394,22 @@ pub(crate) fn find_var_result<'a>(
         return Ok(Some(value));
     }
 
-    // Keep evaluator lookup aligned with envir.c semantics. In particular,
-    // frame lookup must invoke active bindings rather than returning the
-    // closure stored in the frame, and inherited lookup must force promises.
-    let value = crate::sexp::envir::find_var_result(symbol.clone(), rho)?;
-    if let Some(value) = &value
-        && value.clone().as_raw() == unsafe { R_MissingArg() }
-    {
+    // GNU Rf_eval SYMSXP: findVar is unforced. A MissingArg *binding* is
+    // a missing formal. A promise whose forced value is the empty symbol
+    // (lapply/vapply over formals) is a real value.
+    let binding = crate::sexp::envir::find_var_binding_result(symbol.clone(), rho.clone())?;
+    let Some(binding) = binding else {
+        return Ok(None);
+    };
+    if binding.clone().as_raw() == unsafe { R_MissingArg() } {
         let name = unsafe { get_symbol_name(symbol.as_raw()) };
         missing_arg_error(&name);
     }
-    Ok(value)
+    if binding.clone().typeof_() == SEXPTYPE::PROMSXP {
+        return eval_promise_safe(binding, rho).map(Some);
+    }
+    Ok(Some(binding))
+
 }
 
 /// Safe promise evaluation.
