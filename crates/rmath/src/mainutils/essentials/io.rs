@@ -1230,11 +1230,23 @@ pub unsafe fn do_with_visible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `invisible(x)` — return x, setting visibility to FALSE.
+/// `invisible()` with no argument is NULL (inspect.c do_invisible + missing formal).
 pub unsafe fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+        if args.is_null() || args == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(args) != SEXPTYPE::LISTSXP && TYPEOF(args) != SEXPTYPE::LANGSXP {
+            return R_NilValue();
+        }
+
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || x == crate::sexp::globals::R_MissingArg() {
+            R_NilValue()
+        } else {
+            x
+        }
     }
 }
 
