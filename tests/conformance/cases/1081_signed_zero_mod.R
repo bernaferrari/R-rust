@@ -1,0 +1,5 @@
+x <- 0 * (-1)
+cat(sprintf("%g, rt = %g, .^2 = %g", x, sqrt(x), x^2), "\n", sep = "")
+cat(paste(Mod(1:3), collapse = ","), "\n", sep = "")
+cat(identical(1 / x, -Inf), "\n", sep = "")
+cat(identical(x, sqrt(x), num.eq = FALSE), "\n", sep = "")

@@ -436,8 +436,10 @@ fn format_into(em: &mut Emitter, fmt: &[u8], args: &[CArg]) {
 }
 
 fn apply_sign(body: String, v: f64, flags: Flags) -> String {
-    if v.is_sign_negative() {
-        body // '-' already rendered by Rust
+    if body.starts_with('-') {
+        body
+    } else if v.is_sign_negative() && !v.is_nan() {
+        format!("-{body}")
     } else if flags.plus {
         format!("+{body}")
     } else if flags.space {

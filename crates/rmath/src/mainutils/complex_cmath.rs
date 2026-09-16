@@ -26,6 +26,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_FINITE, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::protect::protect;
 use crate::special::mlutils::R_pow;
 
 // ---------------------------------------------------------------------------
@@ -746,7 +747,14 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             || xtype == SEXPTYPE::INTSXP
             || xtype == SEXPTYPE::LGLSXP
         {
-            // Numeric (non-complex) input
+            let x = if xtype == SEXPTYPE::REALSXP {
+                x
+            } else {
+                let coerced =
+                    crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.0);
+                let _guard = protect(coerced);
+                coerced
+            };
             let px = REAL(x);
             let y = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             if y.is_null() || px.is_null() {
