@@ -1093,11 +1093,12 @@ pub unsafe fn do_rchisq_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if adapter_absent(n) {
             missing_required(call, "n");
         }
-        let df = CADR(args);
+        let b = bind_after_n(args, &["df", "ncp"]);
+        let df = b[0];
         if adapter_absent(df) {
             missing_required(call, "df");
         }
-        let ncp = CADDR(args);
+        let ncp = b[1];
         if adapter_absent(ncp) {
             do_rchisq(n, df)
         } else {
@@ -1153,11 +1154,12 @@ pub unsafe fn do_rt_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if adapter_absent(n) {
             missing_required(call, "n");
         }
-        let df = CADR(args);
+        let b = bind_after_n(args, &["df", "ncp"]);
+        let df = b[0];
         if adapter_absent(df) {
             missing_required(call, "df");
         }
-        let ncp = CADDR(args);
+        let ncp = b[1];
         if adapter_absent(ncp) {
             do_rt(n, df)
         } else {
@@ -1198,15 +1200,16 @@ pub unsafe fn do_rbeta_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if adapter_absent(n) {
             missing_required(call, "n");
         }
-        let shape1 = CADR(args);
+        let b = bind_after_n(args, &["shape1", "shape2", "ncp"]);
+        let shape1 = b[0];
         if adapter_absent(shape1) {
             missing_required(call, "shape1");
         }
-        let shape2 = CADDR(args);
+        let shape2 = b[1];
         if adapter_absent(shape2) {
             missing_required(call, "shape2");
         }
-        let ncp = CADDDR(args);
+        let ncp = b[2];
         if adapter_absent(ncp) {
             do_rbeta(n, shape1, shape2)
         } else {
@@ -1492,12 +1495,13 @@ pub unsafe fn do_rweibull_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if adapter_absent(n) {
             missing_required(call, "n");
         }
-        let shape = CADR(args);
+        let b = bind_after_n(args, &["shape", "scale"]);
+        let shape = b[0];
         if adapter_absent(shape) {
             missing_required(call, "shape");
         }
         let mut guards = Vec::new();
-        do_rweibull(n, shape, with_default(CADDR(args), 1.0, &mut guards))
+        do_rweibull(n, shape, with_default(b[1], 1.0, &mut guards))
     }
 }
 

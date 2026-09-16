@@ -1,0 +1,11 @@
+set.seed(1)
+cat(sprintf("%.5f", rweibull(1, shape = 2, scale = 3)), "\n", sep = "")
+set.seed(1)
+cat(sprintf("%.5f", rweibull(1, scale = 3, shape = 2)), "\n", sep = "")
+set.seed(1)
+cat(sprintf("%.5f", rt(1, df = 5, ncp = 1)), "\n", sep = "")
+x <- 1:12
+y <- c(1, 2, 2, 4, 3, 6, 5, 7, 8, 9, 11, 10)
+L <- line(x, y)
+cat(sprintf("%.5f", coef(L)[1]), "\n", sep = "")
+cat(sprintf("%.5f", coef(L)[2]), "\n", sep = "")
