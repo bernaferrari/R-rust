@@ -793,7 +793,7 @@ unsafe fn unused_arg_item(car: SEXP, tag: SEXP) -> String {
         if pname.is_null() || pname == R_NilValue() {
             return deparsed;
         }
-        let chars = CHAR(STRING_ELT(pname, 0));
+        let chars = CHAR(pname);
         if chars.is_null() {
             return deparsed;
         }

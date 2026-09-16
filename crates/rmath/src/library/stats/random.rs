@@ -938,61 +938,38 @@ fn missing_required(call: SEXP, name: &str) -> ! {
     )
 }
 
-/// True when the pairlist cell's tag is `name` (named-argument dispatch:
-/// the evaluator keeps call order, so `rnbinom(n, size, mu = m)` delivers
-/// `mu` in the third slot). `cell` must be the argument's pairlist cons
-/// cell, not its value.
-unsafe fn arg_tag_is(cell: SEXP, name: &str) -> bool {
+/// Bind `args` to `names` through GNU `matchArgs` (exact, partial, positional).
+/// `rnorm(1, 0, mean = 10)` leaves the untagged `0` for `sd`.
+unsafe fn match_formals(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
     unsafe {
-        if cell.is_null() || cell == R_NilValue() {
-            return false;
+        let mut formals = R_NilValue();
+        for name in names.iter().rev() {
+            let mut buf = Vec::with_capacity(name.len() + 1);
+            buf.extend_from_slice(name.as_bytes());
+            buf.push(0);
+            let sym = crate::sexp::symbol::Rf_install(buf.as_ptr() as *const std::os::raw::c_char);
+            let cell = Rf_cons(R_MissingArg(), formals);
+            SETTAG(cell, sym);
+            formals = cell;
         }
-        let tag = TAG(cell);
-        if tag.is_null() || tag == R_NilValue() {
-            return false;
-        }
-        let pname = PRINTNAME(tag);
-        if pname.is_null() {
-            return false;
-        }
-        std::ffi::CStr::from_ptr(CHAR(pname)).to_bytes() == name.as_bytes()
-    }
-}
-
-/// Bind formals after `n` by exact tag, then leftover untagged positionals.
-/// `rnorm(n, sd = 0.2)` must not put `0.2` in `mean`.
-unsafe fn bind_after_n(args: SEXP, names: &[&str]) -> Vec<SEXP> {
-    unsafe {
-        let missing = R_MissingArg();
-        let mut out = vec![missing; names.len()];
-        let mut cell = CDR(args);
-        let mut pos = 0;
+        let _formals = protect(formals);
+        let matched = crate::mainutils::match_mod::matchArgs_RC(formals, args, call);
+        let _matched = protect(matched);
+        let mut out = Vec::with_capacity(names.len());
+        let mut cell = matched;
         while !cell.is_null() && cell != R_NilValue() {
-            let v = CAR(cell);
-            let mut tagged = false;
-            for (i, name) in names.iter().enumerate() {
-                if arg_tag_is(cell, name) {
-                    out[i] = v;
-                    tagged = true;
-                    break;
-                }
-            }
-            if !tagged {
-                let tag = TAG(cell);
-                if tag.is_null() || tag == R_NilValue() {
-                    while pos < names.len() && !adapter_absent(out[pos]) {
-                        pos += 1;
-                    }
-                    if pos < names.len() {
-                        out[pos] = v;
-                        pos += 1;
-                    }
-                }
-            }
+            out.push(CAR(cell));
             cell = CDR(cell);
         }
         out
     }
+}
+
+unsafe fn require_slot(call: SEXP, slot: SEXP, name: &str) -> SEXP {
+    if adapter_absent(slot) {
+        missing_required(call, name);
+    }
+    slot
 }
 
 
@@ -1089,77 +1066,50 @@ unsafe fn sqrt_vector(x: SEXP) -> SEXP {
 
 pub unsafe fn do_rchisq_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let b = bind_after_n(args, &["df", "ncp"]);
-        let df = b[0];
-        if adapter_absent(df) {
-            missing_required(call, "df");
-        }
-        let ncp = b[1];
-        if adapter_absent(ncp) {
+        let m = match_formals(call, args, &["n", "df", "ncp"]);
+        let n = require_slot(call, m[0], "n");
+        let df = require_slot(call, m[1], "df");
+        if adapter_absent(m[2]) {
             do_rchisq(n, df)
         } else {
-            do_rnchisq(n, df, ncp)
+            do_rnchisq(n, df, m[2])
         }
     }
 }
 
 pub unsafe fn do_rexp_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
+        let m = match_formals(call, args, &["n", "rate"]);
+        let n = require_slot(call, m[0], "n");
         let mut guards = Vec::new();
-        let rate = with_default(CADR(args), 1.0, &mut guards);
-        let scale = reciprocal_vector(rate);
+        let scale = reciprocal_vector(with_default(m[1], 1.0, &mut guards));
         do_rexp(n, scale)
     }
 }
 
 pub unsafe fn do_rgeom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let prob = CADR(args);
-        if adapter_absent(prob) {
-            missing_required(call, "prob");
-        }
-        do_rgeom(n, prob)
+        let m = match_formals(call, args, &["n", "prob"]);
+        do_rgeom(require_slot(call, m[0], "n"), require_slot(call, m[1], "prob"))
     }
 }
 
 pub unsafe fn do_rpois_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let lambda = CADR(args);
-        if adapter_absent(lambda) {
-            missing_required(call, "lambda");
-        }
-        do_rpois(n, lambda)
+        let m = match_formals(call, args, &["n", "lambda"]);
+        do_rpois(
+            require_slot(call, m[0], "n"),
+            require_slot(call, m[1], "lambda"),
+        )
     }
 }
 
 pub unsafe fn do_rt_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let b = bind_after_n(args, &["df", "ncp"]);
-        let df = b[0];
-        if adapter_absent(df) {
-            missing_required(call, "df");
-        }
-        let ncp = b[1];
+        let m = match_formals(call, args, &["n", "df", "ncp"]);
+        let n = require_slot(call, m[0], "n");
+        let df = require_slot(call, m[1], "df");
+        let ncp = m[2];
         if adapter_absent(ncp) {
             do_rt(n, df)
         } else {
@@ -1182,34 +1132,18 @@ pub unsafe fn do_rt_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 pub unsafe fn do_rsignrank_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let nn = CAR(args);
-        if adapter_absent(nn) {
-            missing_required(call, "nn");
-        }
-        let n = CADR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        do_rsignrank(nn, n)
+        let m = match_formals(call, args, &["nn", "n"]);
+        do_rsignrank(require_slot(call, m[0], "nn"), require_slot(call, m[1], "n"))
     }
 }
 
 pub unsafe fn do_rbeta_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let b = bind_after_n(args, &["shape1", "shape2", "ncp"]);
-        let shape1 = b[0];
-        if adapter_absent(shape1) {
-            missing_required(call, "shape1");
-        }
-        let shape2 = b[1];
-        if adapter_absent(shape2) {
-            missing_required(call, "shape2");
-        }
-        let ncp = b[2];
+        let m = match_formals(call, args, &["n", "shape1", "shape2", "ncp"]);
+        let n = require_slot(call, m[0], "n");
+        let shape1 = require_slot(call, m[1], "shape1");
+        let shape2 = require_slot(call, m[2], "shape2");
+        let ncp = m[3];
         if adapter_absent(ncp) {
             do_rbeta(n, shape1, shape2)
         } else {
@@ -1231,55 +1165,32 @@ pub unsafe fn do_rbeta_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 pub unsafe fn do_rbinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let size = CADR(args);
-        if adapter_absent(size) {
-            missing_required(call, "size");
-        }
-        let prob = CADDR(args);
-        if adapter_absent(prob) {
-            missing_required(call, "prob");
-        }
-        do_rbinom(n, size, prob)
+        let m = match_formals(call, args, &["n", "size", "prob"]);
+        do_rbinom(
+            require_slot(call, m[0], "n"),
+            require_slot(call, m[1], "size"),
+            require_slot(call, m[2], "prob"),
+        )
     }
 }
 
 pub unsafe fn do_rmultinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let size = CADR(args);
-        if adapter_absent(size) {
-            missing_required(call, "size");
-        }
-        let prob = CADDR(args);
-        if adapter_absent(prob) {
-            missing_required(call, "prob");
-        }
-        do_rmultinom(n, size, prob)
+        let m = match_formals(call, args, &["n", "size", "prob"]);
+        do_rmultinom(
+            require_slot(call, m[0], "n"),
+            require_slot(call, m[1], "size"),
+            require_slot(call, m[2], "prob"),
+        )
     }
 }
 
-
 pub unsafe fn do_r2dtable_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let r = CADR(args);
-        if adapter_absent(r) {
-            missing_required(call, "r");
-        }
-        let c = CADDR(args);
-        if adapter_absent(c) {
-            missing_required(call, "c");
-        }
+        let m = match_formals(call, args, &["n", "r", "c"]);
+        let n = require_slot(call, m[0], "n");
+        let r = require_slot(call, m[1], "r");
+        let c = require_slot(call, m[2], "c");
         let n_i = coerceVector(n, SEXPTYPE::INTSXP.as_c_int());
         let _n = protect(n_i);
         let r_i = coerceVector(r, SEXPTYPE::INTSXP.as_c_int());
@@ -1290,43 +1201,30 @@ pub unsafe fn do_r2dtable_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-
 pub unsafe fn do_rcauchy_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
+        let m = match_formals(call, args, &["n", "location", "scale"]);
+        let n = require_slot(call, m[0], "n");
         let mut guards = Vec::new();
-        let b = bind_after_n(args, &["location", "scale"]);
         do_rcauchy(
             n,
-            with_default(b[0], 0.0, &mut guards),
-            with_default(b[1], 1.0, &mut guards),
+            with_default(m[1], 0.0, &mut guards),
+            with_default(m[2], 1.0, &mut guards),
         )
     }
 }
 
 pub unsafe fn do_rf_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let df1 = CADR(args);
-        if adapter_absent(df1) {
-            missing_required(call, "df1");
-        }
-        let df2 = CADDR(args);
-        if adapter_absent(df2) {
-            missing_required(call, "df2");
-        }
-        let ncp = CADDDR(args);
-        if adapter_absent(ncp) {
+        let m = match_formals(call, args, &["n", "df1", "df2", "ncp"]);
+        let n = require_slot(call, m[0], "n");
+        let df1 = require_slot(call, m[1], "df1");
+        let df2 = require_slot(call, m[2], "df2");
+        if adapter_absent(m[3]) {
             do_rf(n, df1, df2)
         } else {
             // (rchisq(n, df1, ncp)/df1) / (rchisq(n, df2)/df2)
-            let num0 = do_rnchisq(n, df1, ncp);
+            let num0 = do_rnchisq(n, df1, m[3]);
             let _num0_guard = protect(num0);
             let num = vector_binop(num0, df1, div);
             let _num_guard = protect(num);
@@ -1341,27 +1239,12 @@ pub unsafe fn do_rf_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 pub unsafe fn do_rgamma_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let shape = CADR(args);
-        if adapter_absent(shape) {
-            missing_required(call, "shape");
-        }
+        let m = match_formals(call, args, &["n", "shape", "rate", "scale"]);
+        let n = require_slot(call, m[0], "n");
+        let shape = require_slot(call, m[1], "shape");
+        let rate = m[2];
+        let scale = m[3];
         let mut guards = Vec::new();
-        // Named rate/scale can land in either trailing slot.
-        let cell3 = CDR(CDR(args));
-        let cell4 = CDR(cell3);
-        let mut rate = CADDR(args);
-        let mut scale = CADDDR(args);
-        if adapter_absent(scale) && arg_tag_is(cell3, "scale") {
-            scale = rate;
-            rate = R_NilValue();
-        } else if adapter_absent(rate) && arg_tag_is(cell4, "rate") {
-            rate = scale;
-            scale = R_NilValue();
-        }
         let rate_present = !adapter_absent(rate);
         let scale_present = !adapter_absent(scale);
         if rate_present && scale_present {
@@ -1390,59 +1273,37 @@ pub unsafe fn do_rgamma_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 pub unsafe fn do_rlnorm_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
+        let m = match_formals(call, args, &["n", "meanlog", "sdlog"]);
+        let n = require_slot(call, m[0], "n");
         let mut guards = Vec::new();
-        let b = bind_after_n(args, &["meanlog", "sdlog"]);
         do_rlnorm(
             n,
-            with_default(b[0], 0.0, &mut guards),
-            with_default(b[1], 1.0, &mut guards),
+            with_default(m[1], 0.0, &mut guards),
+            with_default(m[2], 1.0, &mut guards),
         )
     }
 }
 
 pub unsafe fn do_rlogis_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
+        let m = match_formals(call, args, &["n", "location", "scale"]);
+        let n = require_slot(call, m[0], "n");
         let mut guards = Vec::new();
-        let b = bind_after_n(args, &["location", "scale"]);
         do_rlogis(
             n,
-            with_default(b[0], 0.0, &mut guards),
-            with_default(b[1], 1.0, &mut guards),
+            with_default(m[1], 0.0, &mut guards),
+            with_default(m[2], 1.0, &mut guards),
         )
     }
 }
 
 pub unsafe fn do_rnbinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let size = CADR(args);
-        if adapter_absent(size) {
-            missing_required(call, "size");
-        }
-        // The evaluator keeps call order, so rnbinom(n, size, mu = m)
-        // delivers mu in the third slot; recognize the tag on the cells.
-        let cell3 = CDR(CDR(args));
-        let cell4 = CDR(cell3);
-        let mut prob = CADDR(args);
-        let mut mu = CADDDR(args);
-        if adapter_absent(mu) && arg_tag_is(cell3, "mu") {
-            mu = prob;
-            prob = R_NilValue();
-        } else if adapter_absent(prob) && arg_tag_is(cell4, "prob") {
-            prob = mu;
-            mu = R_NilValue();
-        }
+        let m = match_formals(call, args, &["n", "size", "prob", "mu"]);
+        let n = require_slot(call, m[0], "n");
+        let size = require_slot(call, m[1], "size");
+        let prob = m[2];
+        let mu = m[3];
         if !adapter_absent(mu) {
             if !adapter_absent(prob) {
                 crate::main::errors::errorcall_str(call, "'prob' and 'mu' both specified");
@@ -1459,88 +1320,59 @@ pub unsafe fn do_rnbinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 pub unsafe fn do_rnorm_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
+        let m = match_formals(call, args, &["n", "mean", "sd"]);
+        let n = require_slot(call, m[0], "n");
         let mut guards = Vec::new();
-        let b = bind_after_n(args, &["mean", "sd"]);
         do_rnorm(
             n,
-            with_default(b[0], 0.0, &mut guards),
-            with_default(b[1], 1.0, &mut guards),
+            with_default(m[1], 0.0, &mut guards),
+            with_default(m[2], 1.0, &mut guards),
         )
     }
 }
 
 pub unsafe fn do_runif_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
+        let m = match_formals(call, args, &["n", "min", "max"]);
+        let n = require_slot(call, m[0], "n");
         let mut guards = Vec::new();
-        let b = bind_after_n(args, &["min", "max"]);
         do_runif(
             n,
-            with_default(b[0], 0.0, &mut guards),
-            with_default(b[1], 1.0, &mut guards),
+            with_default(m[1], 0.0, &mut guards),
+            with_default(m[2], 1.0, &mut guards),
         )
     }
 }
 
 pub unsafe fn do_rweibull_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let n = CAR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let b = bind_after_n(args, &["shape", "scale"]);
-        let shape = b[0];
-        if adapter_absent(shape) {
-            missing_required(call, "shape");
-        }
+        let m = match_formals(call, args, &["n", "shape", "scale"]);
+        let n = require_slot(call, m[0], "n");
+        let shape = require_slot(call, m[1], "shape");
         let mut guards = Vec::new();
-        do_rweibull(n, shape, with_default(b[1], 1.0, &mut guards))
+        do_rweibull(n, shape, with_default(m[2], 1.0, &mut guards))
     }
 }
 
 pub unsafe fn do_rwilcox_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let nn = CAR(args);
-        if adapter_absent(nn) {
-            missing_required(call, "nn");
-        }
-        let m = CADR(args);
-        if adapter_absent(m) {
-            missing_required(call, "m");
-        }
-        let n = CADDR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        do_rwilcox(nn, m, n)
+        let m = match_formals(call, args, &["nn", "m", "n"]);
+        do_rwilcox(
+            require_slot(call, m[0], "nn"),
+            require_slot(call, m[1], "m"),
+            require_slot(call, m[2], "n"),
+        )
     }
 }
 
 pub unsafe fn do_rhyper_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let nn = CAR(args);
-        if adapter_absent(nn) {
-            missing_required(call, "nn");
-        }
-        let m = CADR(args);
-        if adapter_absent(m) {
-            missing_required(call, "m");
-        }
-        let n = CADDR(args);
-        if adapter_absent(n) {
-            missing_required(call, "n");
-        }
-        let k = CADDDR(args);
-        if adapter_absent(k) {
-            missing_required(call, "k");
-        }
-        do_rhyper(nn, m, n, k)
+        let m = match_formals(call, args, &["nn", "m", "n", "k"]);
+        do_rhyper(
+            require_slot(call, m[0], "nn"),
+            require_slot(call, m[1], "m"),
+            require_slot(call, m[2], "n"),
+            require_slot(call, m[3], "k"),
+        )
     }
 }

@@ -254,6 +254,9 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let mut krn_code = 1i32;
         let mut n_points = nx.max(100);
         let mut xp = R_NilValue();
+        let mut user_xp = false;
+        let mut range_lo: Option<f64> = None;
+        let mut range_hi: Option<f64> = None;
         let mut cell = CDR(CDR(args));
         let mut untagged = 0usize;
         while !cell.is_null() && cell != R_NilValue() {
@@ -290,6 +293,20 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 };
             } else if key == "x.points" {
                 xp = v;
+                user_xp = true;
+            } else if key == "range.x" && !v.is_null() && v != R_NilValue() && XLENGTH(v) >= 2 {
+                let a = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v)
+                } else {
+                    *INTEGER(v) as f64
+                };
+                let b = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    *REAL(v).add(1)
+                } else {
+                    *INTEGER(v).add(1) as f64
+                };
+                range_lo = Some(a.min(b));
+                range_hi = Some(a.max(b));
             } else if key == "n.points"
                 && !v.is_null()
                 && v != R_NilValue()
@@ -314,15 +331,17 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             let mut xmin = f64::INFINITY;
             let mut xmax = f64::NEG_INFINITY;
             for i in 0..nx {
-                let xi = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    *REAL(x).add(i)
-                } else {
-                    *INTEGER(x).add(i) as f64
-                };
+                let xi = *REAL(x).add(i);
                 if xi.is_finite() {
                     xmin = xmin.min(xi);
                     xmax = xmax.max(xi);
                 }
+            }
+            if let Some(lo) = range_lo {
+                xmin = lo;
+            }
+            if let Some(hi) = range_hi {
+                xmax = hi;
             }
             if !xmin.is_finite() || !xmax.is_finite() {
                 xmin = 0.0;
@@ -339,6 +358,19 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 }
             }
             xp = grid;
+        }
+        if user_xp && !xp.is_null() && xp != R_NilValue() {
+            let np = XLENGTH(xp) as usize;
+            let src = coerceVector(xp, SEXPTYPE::REALSXP.as_c_int());
+            let _src = protect(src);
+            let mut vals: Vec<f64> = (0..np).map(|i| *REAL(src).add(i)).collect();
+            vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let sorted = Rf_allocVector3(SEXPTYPE::REALSXP, np as i64);
+            let _s = protect(sorted);
+            for i in 0..np {
+                *REAL(sorted).add(i) = vals[i];
+            }
+            xp = sorted;
         }
         // GNU: order(x) before C_ksmooth.
         let mut ord: Vec<usize> = (0..nx).collect();
