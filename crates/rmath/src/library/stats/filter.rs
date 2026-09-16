@@ -990,773 +990,6 @@ fn css_ma1(y: &[f64]) -> (f64, f64, f64) {
     (th, ic, s2)
 }
 
-fn ma1_ml_nll(y: &[f64], th: f64, mu: f64) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let z = [1.0, 0.0];
-    let a0 = [0.0, 0.0];
-    let t = [0.0, 0.0, 1.0, 0.0];
-    let v = [1.0, th, th, th * th];
-    let pn = [1.0 + th * th, th, th, th * th];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_ma1_ml(y: &[f64]) -> (f64, f64, f64) {
-    let n = y.len();
-    if n < 2 {
-        return (0.0, 0.0, f64::NAN);
-    }
-    let mut th = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        th = golden_min(-0.99, 0.99, 80, |t| ma1_ml_nll(y, t, ic));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| ma1_ml_nll(y, th, m));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let s2 = ma1_ml_sigma2(&yd, th);
-    (th, ic, s2)
-
-}
-
-fn ma1_ml_sigma2(yd: &[f64], th: f64) -> f64 {
-    let mut a = [0.0, 0.0];
-    let mut p = [1.0 + th * th, th, th, th * th];
-    let mut pnew = p;
-    let t = [0.0, 0.0, 1.0, 0.0];
-    let v = [1.0, th, th, th * th];
-    let mut ssq = 0.0;
-    let mut nu = 0.0;
-    for (l, &yi) in yd.iter().enumerate() {
-        let anew = [t[0] * a[0] + t[2] * a[1], t[1] * a[0] + t[3] * a[1]];
-        if l > 0 {
-            let tp00 = t[0] * p[0] + t[2] * p[1];
-            let tp01 = t[0] * p[2] + t[2] * p[3];
-            let tp10 = t[1] * p[0] + t[3] * p[1];
-            let tp11 = t[1] * p[2] + t[3] * p[3];
-            pnew[0] = v[0] + tp00 * t[0] + tp01 * t[2];
-            pnew[1] = v[1] + tp10 * t[0] + tp11 * t[2];
-            pnew[2] = v[2] + tp00 * t[1] + tp01 * t[3];
-            pnew[3] = v[3] + tp10 * t[1] + tp11 * t[3];
-        }
-        let resid = yi - anew[0];
-        let m0 = pnew[0];
-        let m1 = pnew[1];
-        let gain = m0;
-        if gain > 0.0 {
-            ssq += resid * resid / gain;
-            nu += 1.0;
-            a[0] = anew[0] + m0 * resid / gain;
-            a[1] = anew[1] + m1 * resid / gain;
-            p[0] = pnew[0] - m0 * m0 / gain;
-            p[1] = pnew[1] - m1 * m0 / gain;
-            p[2] = pnew[2] - m0 * m1 / gain;
-            p[3] = pnew[3] - m1 * m1 / gain;
-        }
-    }
-    if nu < 1.0 {
-        f64::NAN
-    } else {
-        ssq / nu
-    }
-}
-
-fn arma11_lyapunov_pn(phi: f64, th: f64) -> [f64; 4] {
-    let t = [phi, 0.0, 1.0, 0.0];
-    let v = [1.0, th, th, th * th];
-    let mut p = [0.0; 4];
-    for _ in 0..200 {
-        let tp00 = t[0] * p[0] + t[2] * p[1];
-        let tp01 = t[0] * p[2] + t[2] * p[3];
-        let tp10 = t[1] * p[0] + t[3] * p[1];
-        let tp11 = t[1] * p[2] + t[3] * p[3];
-        p = [
-            v[0] + tp00 * t[0] + tp01 * t[2],
-            v[1] + tp10 * t[0] + tp11 * t[2],
-            v[2] + tp00 * t[1] + tp01 * t[3],
-            v[3] + tp10 * t[1] + tp11 * t[3],
-        ];
-    }
-    p
-}
-
-fn arma11_ml_nll(y: &[f64], phi: f64, th: f64, mu: f64) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let z = [1.0, 0.0];
-    let a0 = [0.0, 0.0];
-    let t = [phi, 0.0, 1.0, 0.0];
-    let v = [1.0, th, th, th * th];
-    let pn = arma11_lyapunov_pn(phi, th);
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_arma11_ml(y: &[f64]) -> (f64, f64, f64, f64) {
-    let n = y.len();
-    if n < 3 {
-        return (0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut phi = 0.0;
-    let mut th = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        phi = golden_min(-0.99, 0.99, 80, |a| arma11_ml_nll(y, a, th, ic));
-        th = golden_min(-0.99, 0.99, 80, |t| arma11_ml_nll(y, phi, t, ic));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| arma11_ml_nll(y, phi, th, m));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let s2 = arma11_ml_sigma2(&yd, phi, th);
-    (phi, th, ic, s2)
-}
-
-fn arma11_ml_sigma2(yd: &[f64], phi: f64, th: f64) -> f64 {
-    let t = [phi, 0.0, 1.0, 0.0];
-    let v = [1.0, th, th, th * th];
-    let mut p = arma11_lyapunov_pn(phi, th);
-    let mut pnew = p;
-    let mut a = [0.0, 0.0];
-    let mut ssq = 0.0;
-    let mut nu = 0.0;
-    for (l, &yi) in yd.iter().enumerate() {
-        let anew = [t[0] * a[0] + t[2] * a[1], t[1] * a[0] + t[3] * a[1]];
-        if l > 0 {
-            let tp00 = t[0] * p[0] + t[2] * p[1];
-            let tp01 = t[0] * p[2] + t[2] * p[3];
-            let tp10 = t[1] * p[0] + t[3] * p[1];
-            let tp11 = t[1] * p[2] + t[3] * p[3];
-            pnew[0] = v[0] + tp00 * t[0] + tp01 * t[2];
-            pnew[1] = v[1] + tp10 * t[0] + tp11 * t[2];
-            pnew[2] = v[2] + tp00 * t[1] + tp01 * t[3];
-            pnew[3] = v[3] + tp10 * t[1] + tp11 * t[3];
-        }
-        let resid = yi - anew[0];
-        let m0 = pnew[0];
-        let m1 = pnew[1];
-        let gain = m0;
-        if gain > 0.0 {
-            ssq += resid * resid / gain;
-            nu += 1.0;
-            a[0] = anew[0] + m0 * resid / gain;
-            a[1] = anew[1] + m1 * resid / gain;
-            p[0] = pnew[0] - m0 * m0 / gain;
-            p[1] = pnew[1] - m1 * m0 / gain;
-            p[2] = pnew[2] - m0 * m1 / gain;
-            p[3] = pnew[3] - m1 * m1 / gain;
-        }
-    }
-    if nu < 1.0 {
-        f64::NAN
-    } else {
-        ssq / nu
-    }
-}
-
-fn ar2_lyapunov_pn(p1: f64, p2: f64) -> [f64; 4] {
-    let t = [p1, p2, 1.0, 0.0];
-    let v = [1.0, 0.0, 0.0, 0.0];
-    let mut p = [0.0; 4];
-    for _ in 0..200 {
-        let tp00 = t[0] * p[0] + t[2] * p[1];
-        let tp01 = t[0] * p[2] + t[2] * p[3];
-        let tp10 = t[1] * p[0] + t[3] * p[1];
-        let tp11 = t[1] * p[2] + t[3] * p[3];
-        p = [
-            v[0] + tp00 * t[0] + tp01 * t[2],
-            v[1] + tp10 * t[0] + tp11 * t[2],
-            v[2] + tp00 * t[1] + tp01 * t[3],
-            v[3] + tp10 * t[1] + tp11 * t[3],
-        ];
-    }
-    p
-}
-
-fn ar2_ml_nll(y: &[f64], p1: f64, p2: f64, mu: f64) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let z = [1.0, 0.0];
-    let a0 = [0.0, 0.0];
-    let t = [p1, p2, 1.0, 0.0];
-    let v = [1.0, 0.0, 0.0, 0.0];
-    let pn = ar2_lyapunov_pn(p1, p2);
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_ar2_ml(y: &[f64]) -> (f64, f64, f64, f64) {
-    let n = y.len();
-    if n < 4 {
-        return (0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut p1 = 0.0;
-    let mut p2 = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        p1 = golden_min(-0.99, 0.99, 80, |a| ar2_ml_nll(y, a, p2, ic));
-        p2 = golden_min(-0.99, 0.99, 80, |a| ar2_ml_nll(y, p1, a, ic));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| ar2_ml_nll(y, p1, p2, m));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let s2 = ar2_ml_sigma2(&yd, p1, p2);
-    (p1, p2, ic, s2)
-}
-
-fn ar2_ml_sigma2(yd: &[f64], p1: f64, p2: f64) -> f64 {
-    let t = [p1, p2, 1.0, 0.0];
-    let v = [1.0, 0.0, 0.0, 0.0];
-    let mut p = ar2_lyapunov_pn(p1, p2);
-    let mut pnew = p;
-    let mut a = [0.0, 0.0];
-    let mut ssq = 0.0;
-    let mut nu = 0.0;
-    for (l, &yi) in yd.iter().enumerate() {
-        let anew = [t[0] * a[0] + t[2] * a[1], t[1] * a[0] + t[3] * a[1]];
-        if l > 0 {
-            let tp00 = t[0] * p[0] + t[2] * p[1];
-            let tp01 = t[0] * p[2] + t[2] * p[3];
-            let tp10 = t[1] * p[0] + t[3] * p[1];
-            let tp11 = t[1] * p[2] + t[3] * p[3];
-            pnew[0] = v[0] + tp00 * t[0] + tp01 * t[2];
-            pnew[1] = v[1] + tp10 * t[0] + tp11 * t[2];
-            pnew[2] = v[2] + tp00 * t[1] + tp01 * t[3];
-            pnew[3] = v[3] + tp10 * t[1] + tp11 * t[3];
-        }
-        let resid = yi - anew[0];
-        let m0 = pnew[0];
-        let m1 = pnew[1];
-        let gain = m0;
-        if gain > 0.0 {
-            ssq += resid * resid / gain;
-            nu += 1.0;
-            a[0] = anew[0] + m0 * resid / gain;
-            a[1] = anew[1] + m1 * resid / gain;
-            p[0] = pnew[0] - m0 * m0 / gain;
-            p[1] = pnew[1] - m1 * m0 / gain;
-            p[2] = pnew[2] - m0 * m1 / gain;
-            p[3] = pnew[3] - m1 * m1 / gain;
-        }
-    }
-    if nu < 1.0 {
-        f64::NAN
-    } else {
-        ssq / nu
-    }
-}
-
-fn lyapunov3(t: &[f64; 9], v: &[f64; 9]) -> [f64; 9] {
-    let mut p = [0.0; 9];
-    for _ in 0..200 {
-        let mut tp = [0.0; 9];
-        for i in 0..3 {
-            for j in 0..3 {
-                let mut s = 0.0;
-                for k in 0..3 {
-                    s += t[i + k * 3] * p[k + j * 3];
-                }
-                tp[i + j * 3] = s;
-            }
-        }
-        for i in 0..3 {
-            for j in 0..3 {
-                let mut s = v[i + j * 3];
-                for m in 0..3 {
-                    s += tp[i + m * 3] * t[j + m * 3];
-                }
-                p[i + j * 3] = s;
-            }
-        }
-    }
-    p
-}
-
-fn ma2_ss(th1: f64, th2: f64) -> ([f64; 9], [f64; 9], [f64; 9]) {
-    let t = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-    let v = [
-        1.0,
-        th1,
-        th2,
-        th1,
-        th1 * th1,
-        th1 * th2,
-        th2,
-        th1 * th2,
-        th2 * th2,
-    ];
-    let pn = lyapunov3(&t, &v);
-    (t, v, pn)
-}
-
-fn ma2_ml_nll(y: &[f64], th1: f64, th2: f64, mu: f64) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let (t, v, pn) = ma2_ss(th1, th2);
-    let z = [1.0, 0.0, 0.0];
-    let a0 = [0.0, 0.0, 0.0];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_ma2_ml(y: &[f64]) -> (f64, f64, f64, f64) {
-    let n = y.len();
-    if n < 3 {
-        return (0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut th1 = 0.0;
-    let mut th2 = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        th1 = golden_min(-0.99, 0.99, 80, |t| ma2_ml_nll(y, t, th2, ic));
-        th2 = golden_min(-0.99, 0.99, 80, |t| ma2_ml_nll(y, th1, t, ic));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| ma2_ml_nll(y, th1, th2, m));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let s2 = ma2_ml_sigma2(&yd, th1, th2);
-    (th1, th2, ic, s2)
-}
-
-fn ma2_ml_sigma2(yd: &[f64], th1: f64, th2: f64) -> f64 {
-    let (t, v, mut p) = ma2_ss(th1, th2);
-    let mut pnew = p;
-    let mut a = [0.0, 0.0, 0.0];
-    let mut ssq = 0.0;
-    let mut nu = 0.0;
-    for (l, &yi) in yd.iter().enumerate() {
-        let mut anew = [0.0; 3];
-        for i in 0..3 {
-            let mut tmp = 0.0;
-            for k in 0..3 {
-                tmp += t[i + k * 3] * a[k];
-            }
-            anew[i] = tmp;
-        }
-        if l > 0 {
-            let mut tp = [0.0; 9];
-            for i in 0..3 {
-                for j in 0..3 {
-                    let mut s = 0.0;
-                    for k in 0..3 {
-                        s += t[i + k * 3] * p[k + j * 3];
-                    }
-                    tp[i + j * 3] = s;
-                }
-            }
-            for i in 0..3 {
-                for j in 0..3 {
-                    let mut s = v[i + j * 3];
-                    for m in 0..3 {
-                        s += tp[i + m * 3] * t[j + m * 3];
-                    }
-                    pnew[i + j * 3] = s;
-                }
-            }
-        }
-        let resid = yi - anew[0];
-        let m0 = pnew[0];
-        let m1 = pnew[1];
-        let m2 = pnew[2];
-        let gain = m0;
-        if gain > 0.0 {
-            ssq += resid * resid / gain;
-            nu += 1.0;
-            a[0] = anew[0] + m0 * resid / gain;
-            a[1] = anew[1] + m1 * resid / gain;
-            a[2] = anew[2] + m2 * resid / gain;
-            for i in 0..3 {
-                let mi = [m0, m1, m2][i];
-                for j in 0..3 {
-                    let mj = [m0, m1, m2][j];
-                    p[i + j * 3] = pnew[i + j * 3] - mi * mj / gain;
-                }
-            }
-        }
-    }
-    if nu < 1.0 {
-        f64::NAN
-    } else {
-        ssq / nu
-    }
-}
-
-fn ar1_sar1_ss(ar: f64, sar: f64, period: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
-    let r = period + 1;
-    let mut t = vec![0.0; r * r];
-    t[0] = ar;
-    t[period - 1] = sar;
-    t[period] = -ar * sar;
-    for ind in 1..r {
-        t[(ind - 1) + ind * r] = 1.0;
-    }
-    let mut v = vec![0.0; r * r];
-    v[0] = 1.0;
-    let pn = lyapunov_nd(&t, &v, r);
-    let mut z = vec![0.0; r];
-    z[0] = 1.0;
-    (t, v, pn, z)
-}
-
-fn ar1_sar1_ml_nll(y: &[f64], ar: f64, sar: f64, mu: f64, period: usize) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let (t, v, pn, z) = ar1_sar1_ss(ar, sar, period);
-    let a0 = vec![0.0; period + 1];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_ar1_sar1_ml(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
-    let n = y.len();
-    if period < 2 || n <= period + 2 {
-        return (0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut ar = 0.0;
-    let mut sar = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        ar = golden_min(-0.99, 0.99, 80, |a| ar1_sar1_ml_nll(y, a, sar, ic, period));
-        sar = golden_min(-0.99, 0.99, 80, |s| ar1_sar1_ml_nll(y, ar, s, ic, period));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| ar1_sar1_ml_nll(y, ar, sar, m, period));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let (t, v, pn, z) = ar1_sar1_ss(ar, sar, period);
-    let a0 = vec![0.0; period + 1];
-    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
-    (ar, sar, ic, s2)
-}
-
-fn sma1_ss(sma: f64, period: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
-    let r = period + 1;
-    let mut t = vec![0.0; r * r];
-    for ind in 1..r {
-        t[(ind - 1) + ind * r] = 1.0;
-    }
-    let mut rr = vec![0.0; r];
-    rr[0] = 1.0;
-    rr[period] = sma;
-    let mut v = vec![0.0; r * r];
-    for i in 0..r {
-        for j in 0..r {
-            v[i + j * r] = rr[i] * rr[j];
-        }
-    }
-    let pn = lyapunov_nd(&t, &v, r);
-    let mut z = vec![0.0; r];
-    z[0] = 1.0;
-    (t, v, pn, z)
-}
-
-fn sma1_ml_nll(y: &[f64], sma: f64, mu: f64, period: usize) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let (t, v, pn, z) = sma1_ss(sma, period);
-    let a0 = vec![0.0; period + 1];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_sma1_ml(y: &[f64], period: usize) -> (f64, f64, f64) {
-    let n = y.len();
-    if period < 2 || n <= period + 1 {
-        return (0.0, 0.0, f64::NAN);
-    }
-    let mut sma = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        sma = golden_min(-0.99, 0.99, 80, |t| sma1_ml_nll(y, t, ic, period));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| sma1_ml_nll(y, sma, m, period));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let (t, v, pn, z) = sma1_ss(sma, period);
-    let a0 = vec![0.0; period + 1];
-    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
-    (sma, ic, s2)
-}
-
-fn ma1_sma1_ss(ma: f64, sma: f64, period: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
-    let r = period + 2;
-    let mut t = vec![0.0; r * r];
-    for ind in 1..r {
-        t[(ind - 1) + ind * r] = 1.0;
-    }
-    let mut rr = vec![0.0; r];
-    rr[0] = 1.0;
-    rr[1] = ma;
-    rr[period] = sma;
-    rr[period + 1] = ma * sma;
-    let mut v = vec![0.0; r * r];
-    for i in 0..r {
-        for j in 0..r {
-            v[i + j * r] = rr[i] * rr[j];
-        }
-    }
-    let pn = lyapunov_nd(&t, &v, r);
-    let mut z = vec![0.0; r];
-    z[0] = 1.0;
-    (t, v, pn, z)
-}
-
-fn ma1_sma1_ml_nll(y: &[f64], ma: f64, sma: f64, mu: f64, period: usize) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let (t, v, pn, z) = ma1_sma1_ss(ma, sma, period);
-    let a0 = vec![0.0; period + 2];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_ma1_sma1_ml(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
-    let n = y.len();
-    if period < 2 || n <= period + 2 {
-        return (0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut ma = 0.0;
-    let mut sma = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        ma = golden_min(-0.99, 0.99, 80, |t| ma1_sma1_ml_nll(y, t, sma, ic, period));
-        sma = golden_min(-0.99, 0.99, 80, |t| ma1_sma1_ml_nll(y, ma, t, ic, period));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| ma1_sma1_ml_nll(y, ma, sma, m, period));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let (t, v, pn, z) = ma1_sma1_ss(ma, sma, period);
-    let a0 = vec![0.0; period + 2];
-    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
-    (ma, sma, ic, s2)
-}
-
-fn ar1_sma1_ss(ar: f64, sma: f64, period: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
-    let r = period + 1;
-    let mut t = vec![0.0; r * r];
-    t[0] = ar;
-    for ind in 1..r {
-        t[(ind - 1) + ind * r] = 1.0;
-    }
-    let mut rr = vec![0.0; r];
-    rr[0] = 1.0;
-    rr[period] = sma;
-    let mut v = vec![0.0; r * r];
-    for i in 0..r {
-        for j in 0..r {
-            v[i + j * r] = rr[i] * rr[j];
-        }
-    }
-    let pn = lyapunov_nd(&t, &v, r);
-    let mut z = vec![0.0; r];
-    z[0] = 1.0;
-    (t, v, pn, z)
-}
-
-fn ar1_sma1_ml_nll(y: &[f64], ar: f64, sma: f64, mu: f64, period: usize) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let (t, v, pn, z) = ar1_sma1_ss(ar, sma, period);
-    let a0 = vec![0.0; period + 1];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_ar1_sma1_ml(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
-    let n = y.len();
-    if period < 2 || n <= period + 2 {
-        return (0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut ar = 0.0;
-    let mut sma = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        ar = golden_min(-0.99, 0.99, 80, |a| ar1_sma1_ml_nll(y, a, sma, ic, period));
-        sma = golden_min(-0.99, 0.99, 80, |t| ar1_sma1_ml_nll(y, ar, t, ic, period));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| ar1_sma1_ml_nll(y, ar, sma, m, period));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let (t, v, pn, z) = ar1_sma1_ss(ar, sma, period);
-    let a0 = vec![0.0; period + 1];
-    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
-    (ar, sma, ic, s2)
-}
-
-fn ma1_sar1_ss(ma: f64, sar: f64, period: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
-    let r = period;
-    let mut t = vec![0.0; r * r];
-    t[period - 1] = sar;
-    for ind in 1..r {
-        t[(ind - 1) + ind * r] = 1.0;
-    }
-    let mut rr = vec![0.0; r];
-    rr[0] = 1.0;
-    rr[1] = ma;
-    let mut v = vec![0.0; r * r];
-    for i in 0..r {
-        for j in 0..r {
-            v[i + j * r] = rr[i] * rr[j];
-        }
-    }
-    let pn = lyapunov_nd(&t, &v, r);
-    let mut z = vec![0.0; r];
-    z[0] = 1.0;
-    (t, v, pn, z)
-}
-
-fn ma1_sar1_ml_nll(y: &[f64], ma: f64, sar: f64, mu: f64, period: usize) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let (t, v, pn, z) = ma1_sar1_ss(ma, sar, period);
-    let a0 = vec![0.0; period];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_ma1_sar1_ml(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
-    let n = y.len();
-    if period < 2 || n <= period + 2 {
-        return (0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut ma = 0.0;
-    let mut sar = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        ma = golden_min(-0.99, 0.99, 80, |t| ma1_sar1_ml_nll(y, t, sar, ic, period));
-        sar = golden_min(-0.99, 0.99, 80, |a| ma1_sar1_ml_nll(y, ma, a, ic, period));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| ma1_sar1_ml_nll(y, ma, sar, m, period));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let (t, v, pn, z) = ma1_sar1_ss(ma, sar, period);
-    let a0 = vec![0.0; period];
-    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
-    (ma, sar, ic, s2)
-}
-
-fn sar1_sma1_ss(sar: f64, sma: f64, period: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
-    let r = period + 1;
-    let mut t = vec![0.0; r * r];
-    t[period - 1] = sar;
-    for ind in 1..r {
-        t[(ind - 1) + ind * r] = 1.0;
-    }
-    let mut rr = vec![0.0; r];
-    rr[0] = 1.0;
-    rr[period] = sma;
-    let mut v = vec![0.0; r * r];
-    for i in 0..r {
-        for j in 0..r {
-            v[i + j * r] = rr[i] * rr[j];
-        }
-    }
-    let pn = lyapunov_nd(&t, &v, r);
-    let mut z = vec![0.0; r];
-    z[0] = 1.0;
-    (t, v, pn, z)
-}
-
-fn sar1_sma1_ml_nll(y: &[f64], sar: f64, sma: f64, mu: f64, period: usize) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let (t, v, pn, z) = sar1_sma1_ss(sar, sma, period);
-    let a0 = vec![0.0; period + 1];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_sar1_sma1_ml(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
-    let n = y.len();
-    if period < 2 || n <= period + 2 {
-        return (0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut sar = 0.0;
-    let mut sma = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        sar = golden_min(-0.99, 0.99, 80, |a| sar1_sma1_ml_nll(y, a, sma, ic, period));
-        sma = golden_min(-0.99, 0.99, 80, |t| sar1_sma1_ml_nll(y, sar, t, ic, period));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| sar1_sma1_ml_nll(y, sar, sma, m, period));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let (t, v, pn, z) = sar1_sma1_ss(sar, sma, period);
-    let a0 = vec![0.0; period + 1];
-    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
-    (sar, sma, ic, s2)
-}
-
-fn sar1_ss(sar: f64, period: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
-    let r = period;
-    let mut t = vec![0.0; r * r];
-    t[period - 1] = sar;
-    for ind in 1..r {
-        t[(ind - 1) + ind * r] = 1.0;
-    }
-    let mut v = vec![0.0; r * r];
-    v[0] = 1.0;
-    let pn = lyapunov_nd(&t, &v, r);
-    let mut z = vec![0.0; r];
-    z[0] = 1.0;
-    (t, v, pn, z)
-}
-
-fn sar1_ml_nll(y: &[f64], sar: f64, mu: f64, period: usize) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let (t, v, pn, z) = sar1_ss(sar, period);
-    let a0 = vec![0.0; period];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_sar1_ml(y: &[f64], period: usize) -> (f64, f64, f64) {
-    let n = y.len();
-    if period < 2 || n <= period + 1 {
-        return (0.0, 0.0, f64::NAN);
-    }
-    let mut sar = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        sar = golden_min(-0.99, 0.99, 80, |a| sar1_ml_nll(y, a, ic, period));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| sar1_ml_nll(y, sar, m, period));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let (t, v, pn, z) = sar1_ss(sar, period);
-    let a0 = vec![0.0; period];
-    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
-    (sar, ic, s2)
-}
-
-fn ar3_ss(p1: f64, p2: f64, p3: f64) -> ([f64; 9], [f64; 9], [f64; 9]) {
-    let t = [p1, p2, p3, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-    let v = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-    let pn = lyapunov3(&t, &v);
-    (t, v, pn)
-}
-
-fn ar3_ml_nll(y: &[f64], p1: f64, p2: f64, p3: f64, mu: f64) -> f64 {
-    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
-    let (t, v, pn) = ar3_ss(p1, p2, p3);
-    let z = [1.0, 0.0, 0.0];
-    let a0 = [0.0, 0.0, 0.0];
-    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
-}
-
-fn exact_ar3_ml(y: &[f64]) -> (f64, f64, f64, f64, f64) {
-    let n = y.len();
-    if n < 6 {
-        return (0.0, 0.0, 0.0, 0.0, f64::NAN);
-    }
-    let mut p1 = 0.0;
-    let mut p2 = 0.0;
-    let mut p3 = 0.0;
-    let mut ic = y.iter().sum::<f64>() / n as f64;
-    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
-    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
-    for _ in 0..25 {
-        p1 = golden_min(-0.99, 0.99, 80, |a| ar3_ml_nll(y, a, p2, p3, ic));
-        p2 = golden_min(-0.99, 0.99, 80, |a| ar3_ml_nll(y, p1, a, p3, ic));
-        p3 = golden_min(-0.99, 0.99, 80, |a| ar3_ml_nll(y, p1, p2, a, ic));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| ar3_ml_nll(y, p1, p2, p3, m));
-    }
-    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
-    let (t, v, pn) = ar3_ss(p1, p2, p3);
-    let z = [1.0, 0.0, 0.0];
-    let a0 = [0.0, 0.0, 0.0];
-    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
-    (p1, p2, p3, ic, s2)
-}
 
 fn poly_expand_ar(ar: &[f64], sar: &[f64], period: usize) -> Vec<f64> {
     if sar.is_empty() {
@@ -2702,12 +1935,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let no_mean = differenced || !include_mean;
         let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) =
             if p <= 0 && q <= 0 && !no_mean && !css && sar_p == 1 && sar_q == 1 && period >= 2 {
-            let (sar, sma, mu, s2) = exact_sar1_sma1_ml(&y, period as usize);
-            (
-                vec![sar, sma, mu],
-                vec!["sar1".to_string(), "sma1".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 0, 0, 1, 1, period as usize, true)
         } else if p <= 0 && q <= 0 && !differenced && sar_p == 1 && sar_q == 1 && period >= 2 {
             let (sar, sma, mu, s2) = css_sar1_sma1(&y, period as usize);
             (
@@ -2716,12 +1944,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p <= 0 && q <= 0 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            let (sar, mu, s2) = exact_sar1_ml(&y, period as usize);
-            (
-                vec![sar, mu],
-                vec!["sar1".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 0, 0, 1, 0, period as usize, true)
         } else if p <= 0 && q <= 0 && !differenced && sar_p == 1 && sar_q <= 0 && period >= 2 {
             let (sar, mu, s2) = css_sar1(&y, period as usize);
             (
@@ -2730,12 +1953,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p <= 0 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
-            let (sma, mu, s2) = exact_sma1_ml(&y, period as usize);
-            (
-                vec![sma, mu],
-                vec!["sma1".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 0, 0, 0, 1, period as usize, true)
         } else if p <= 0 && q <= 0 && !differenced && sar_p <= 0 && sar_q == 1 && period >= 2 {
             let (sma, mu, s2) = css_sma1(&y, period as usize);
             (
@@ -2744,12 +1962,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p == 1 && q <= 0 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            let (ar, sar, mu, s2) = exact_ar1_sar1_ml(&y, period as usize);
-            (
-                vec![ar, sar, mu],
-                vec!["ar1".to_string(), "sar1".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 1, 0, 1, 0, period as usize, true)
         } else if p == 1 && q <= 0 && !differenced && sar_p == 1 && period >= 2 {
             let (ar, sar, mu, s2) = css_ar1_sar1(&y, period as usize);
             (
@@ -2758,12 +1971,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p <= 0 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
-            let (ma, sma, mu, s2) = exact_ma1_sma1_ml(&y, period as usize);
-            (
-                vec![ma, sma, mu],
-                vec!["ma1".to_string(), "sma1".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 0, 1, 0, 1, period as usize, true)
         } else if p <= 0 && q == 1 && !differenced && sar_q == 1 && period >= 2 {
             let (ma, sma, mu, s2) = css_ma1_sma1(&y, period as usize);
             (
@@ -2772,12 +1980,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p == 1 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
-            let (ar, sma, mu, s2) = exact_ar1_sma1_ml(&y, period as usize);
-            (
-                vec![ar, sma, mu],
-                vec!["ar1".to_string(), "sma1".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 1, 0, 0, 1, period as usize, true)
         } else if p == 1 && q <= 0 && !differenced && sar_q == 1 && period >= 2 {
             let (ar, sma, mu, s2) = css_ar1_sma1(&y, period as usize);
             (
@@ -2786,12 +1989,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p <= 0 && q == 1 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            let (ma, sar, mu, s2) = exact_ma1_sar1_ml(&y, period as usize);
-            (
-                vec![ma, sar, mu],
-                vec!["ma1".to_string(), "sar1".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 0, 1, 1, 0, period as usize, true)
         } else if p <= 0 && q == 1 && !differenced && sar_p == 1 && period >= 2 {
             let (ma, sar, mu, s2) = css_ma1_sar1(&y, period as usize);
             (
@@ -2812,12 +2010,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 (vec![mu], vec!["intercept".to_string()], s2)
             }
         } else if p <= 0 && q == 1 && !no_mean && !css {
-            let (th, mu, s2) = exact_ma1_ml(&y);
-            (
-                vec![th, mu],
-                vec!["ma1".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 0, 1, 0, 0, 0, true)
         } else if p <= 0 && q == 1 && d <= 0 && !no_mean {
             let (th, mu, s2) = css_ma1(&y);
             (
@@ -2826,12 +2019,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p <= 0 && q == 2 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
-            let (t1, t2, mu, s2) = exact_ma2_ml(&y);
-            (
-                vec![t1, t2, mu],
-                vec!["ma1".to_string(), "ma2".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 0, 2, 0, 0, 0, true)
         } else if p <= 0 && q == 2 && !differenced && !no_mean {
             let (t1, t2, mu, s2) = css_ma2(&y);
             (
@@ -2886,12 +2074,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p == 1 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
-            let (phi, th, mu, s2) = exact_arma11_ml(&y);
-            (
-                vec![phi, th, mu],
-                vec!["ar1".to_string(), "ma1".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 1, 1, 0, 0, 0, true)
         } else if p == 1 && q == 1 && d <= 0 && !no_mean {
             let (phi, th, mu, s2) = css_arma11(&y);
             (
@@ -2900,24 +2083,9 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 s2,
             )
         } else if p == 2 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
-            let (p1, p2, mu, s2) = exact_ar2_ml(&y);
-            (
-                vec![p1, p2, mu],
-                vec!["ar1".to_string(), "ar2".to_string(), "intercept".to_string()],
-                s2,
-            )
+            exact_arima_ml(&y, 2, 0, 0, 0, 0, true)
         } else if p == 3 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
-            let (p1, p2, p3, mu, s2) = exact_ar3_ml(&y);
-            (
-                vec![p1, p2, p3, mu],
-                vec![
-                    "ar1".to_string(),
-                    "ar2".to_string(),
-                    "ar3".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
+            exact_arima_ml(&y, 3, 0, 0, 0, 0, true)
         } else if !css
             && !no_mean
             && p >= 1
