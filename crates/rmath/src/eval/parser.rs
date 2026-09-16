@@ -156,13 +156,15 @@ impl Lexer {
 
     fn skip_whitespace(&mut self) {
         while let Some(ch) = self.peek_char() {
-            if ch == ' ' || ch == '\t' || ch == '\r' {
+            // GNU gram.y SkipSpace: space, tab, form-feed. Newlines stay tokens.
+            if ch == ' ' || ch == '\t' || ch == '\r' || ch == '\u{0C}' {
                 self.advance();
             } else {
                 break;
             }
         }
     }
+
 
     fn skip_comment(&mut self) {
         if self.peek_char() == Some('#') {
@@ -3489,4 +3491,13 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
+
+    #[test]
+    fn test_form_feed_is_whitespace() {
+        unsafe {
+            let result = must(parse_str("1\u{0C}+\n2"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+        }
+    }
+
 }

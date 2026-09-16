@@ -38,7 +38,7 @@ ok-errors.R	skip	rport-2gpp.5	requires bounded recursion, stack overflow, and fa
 p-qbeta-strict-tst.R	skip	rport-2gpp.2	requires exhaustive beta-distribution accuracy contracts
 p-r-random-tests.R	skip	rport-2gpp.5	requires exhaustive random-generator statistical and long-run checks
 primitives.R	skip	rport-2gpp.1	requires complete primitive registry and base metadata parity
-print-tests.R	skip	rport-2gpp.1	requires complete printing, formatting, dispatch, and locale parity
+print-tests.R	xfail	rport-2gpp.1	parses form-feeds; formatC width/digits and mixed-type == still differ from GNU
 r-strict-tst.R	skip	rport-2gpp.5	requires the strict long-running numerical accuracy suite
 reg-BLAS.R	skip	rport-2gpp.2	requires complete BLAS backend and numerical error contracts
 reg-IO.R	skip	rport-2gpp.4	requires complete file, compression, FIFO, and connection behavior
