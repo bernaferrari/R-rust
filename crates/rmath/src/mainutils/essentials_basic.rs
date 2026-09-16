@@ -1184,19 +1184,60 @@ fn factor_levels(x: SEXP) -> Option<SEXP> {
 // do_as_* — type coercion
 // ---------------------------------------------------------------------------
 
+unsafe fn dispatch_as(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    generic: &[u8],
+) -> Option<SEXP> {
+    unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            generic.as_ptr() as *const std::os::raw::c_char,
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            Some(ans)
+        } else {
+            None
+        }
+    }
+}
+
 /// R's `as.integer(x)` — coerce to INTSXP.
-pub unsafe fn do_as_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { coerce_to_type(args, SEXPTYPE::INTSXP.as_c_int()) }
+pub unsafe fn do_as_integer(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if let Some(ans) = dispatch_as(call, op, args, rho, b"as.integer\0") {
+            return ans;
+        }
+        coerce_to_type(args, SEXPTYPE::INTSXP.as_c_int())
+    }
 }
 
 /// R's `as.double(x)` — coerce to REALSXP.
-pub unsafe fn do_as_double(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { coerce_to_type(args, SEXPTYPE::REALSXP.as_c_int()) }
+pub unsafe fn do_as_double(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if let Some(ans) = dispatch_as(call, op, args, rho, b"as.double\0") {
+            return ans;
+        }
+        coerce_to_type(args, SEXPTYPE::REALSXP.as_c_int())
+    }
 }
 
+
 /// R's `as.character(x)` — coerce to STRSXP.
-pub unsafe fn do_as_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(ans) = dispatch_as(call, op, args, rho, b"as.character\0") {
+            return ans;
+        }
         let x = CAR(args);
         if class_contains(x, "octmode") {
             let n = XLENGTH(x);
@@ -1330,13 +1371,23 @@ unsafe fn class_contains(x: SEXP, class_name: &str) -> bool {
 }
 
 /// R's `as.logical(x)` — coerce to LGLSXP.
-pub unsafe fn do_as_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { coerce_to_type(args, SEXPTYPE::LGLSXP.as_c_int()) }
+pub unsafe fn do_as_logical(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if let Some(ans) = dispatch_as(call, op, args, rho, b"as.logical\0") {
+            return ans;
+        }
+        coerce_to_type(args, SEXPTYPE::LGLSXP.as_c_int())
+    }
 }
 
 /// R's `as.pairlist(x)` — coerce to LISTSXP.
-pub unsafe fn do_as_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { coerce_to_type(args, SEXPTYPE::LISTSXP.as_c_int()) }
+pub unsafe fn do_as_pairlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if let Some(ans) = dispatch_as(call, op, args, rho, b"as.pairlist\0") {
+            return ans;
+        }
+        coerce_to_type(args, SEXPTYPE::LISTSXP.as_c_int())
+    }
 }
 
 /// R's `pairlist(...)` — build a LISTSXP preserving argument tags.

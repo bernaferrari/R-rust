@@ -1059,10 +1059,23 @@ pub unsafe fn do_data_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// R's `as.numeric(x)` — alias for as.double.
-pub unsafe fn do_as_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_as_numeric(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        // Delegate to do_as_double
-        do_as_double(_call, _op, args, _rho)
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"as.numeric".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
+        do_as_double(call, op, args, rho)
     }
 }
 

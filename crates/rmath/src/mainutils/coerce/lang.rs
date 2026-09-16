@@ -93,21 +93,23 @@ pub unsafe fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// Matches C's `do_ascall()` in coerce.c line 1732.
 pub unsafe fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let mut dispatched = R_NilValue();
-        if crate::eval::dispatch::DispatchGroup(
-            c"".as_ptr(),
-
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
             call,
             op,
+            c"as.call".as_ptr(),
             args,
             rho,
-            &mut dispatched,
+            &mut ans,
+            0,
+            1,
         ) != 0
         {
-            return dispatched;
+            return ans;
         }
         let x = CAR(args);
         match TYPEOF(x) {
+
             t if t == SEXPTYPE::LANGSXP => x,
             t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
 
