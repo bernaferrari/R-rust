@@ -3007,6 +3007,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             )
         } else if !css && no_mean && p == 1 && q <= 0 && sar_p <= 0 && sar_q <= 0 {
             exact_arima_ml(&y, 1, 0, 0, 0, 0, false)
+        } else if !css && no_mean && p >= 2 && p <= 3 && q <= 0 && sar_p <= 0 && sar_q <= 0 {
+            exact_arima_ml(&y, p as usize, 0, 0, 0, 0, false)
         } else if no_mean && q <= 0 && p > 0 {
             let (phi, s2) = css_ar_no_mean(&y, p as usize);
             let names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
