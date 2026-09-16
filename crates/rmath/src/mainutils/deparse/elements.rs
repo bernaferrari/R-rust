@@ -329,7 +329,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
         let _nv_guard = protect(nv);
 
         let mut str_names = false;
-        let need_c = tlen > 1;
+        let mut need_c = tlen > 1;
         str_names = do_names && (int_seq || tlen == 0);
         if str_names {
             d.opts &= !NICE_NAMES;
@@ -342,6 +342,10 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
         if do_names {
             do_names = attr == ATTR_OK_NAMES || attr == ATTR_STRUC_ATTR;
         }
+        if !need_c {
+            need_c = do_names; // GNU: c(a = *) but not c(1)
+        }
+
 
         if tlen == 0 {
             match TYPEOF(vector) {

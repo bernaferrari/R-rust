@@ -642,12 +642,24 @@ fn normalize_vapply_x(x: SEXP) -> SEXP {
         }
         let cell = Rf_cons(x, R_NilValue());
         let _cell_guard = protect(cell);
+        if t == SEXPTYPE::CLOSXP
+            || t == SEXPTYPE::BUILTINSXP
+            || t == SEXPTYPE::SPECIALSXP
+        {
+            return crate::mainutils::essentials_basic::do_as_list_function(
+                R_NilValue(),
+                R_NilValue(),
+                cell,
+                R_NilValue(),
+            );
+        }
         crate::mainutils::essentials_basic::do_as_list(
             R_NilValue(),
             R_NilValue(),
             cell,
             R_NilValue(),
         )
+
     }
 }
 

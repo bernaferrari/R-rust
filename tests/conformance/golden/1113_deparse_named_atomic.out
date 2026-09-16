@@ -1,0 +1,4 @@
+c(A = "Txt")
+list(c(A = "Txt"))
+1
+c(a = 1L)
