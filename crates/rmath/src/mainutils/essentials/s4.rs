@@ -2,6 +2,8 @@
 
 use super::*;
 use std::ffi::CString;
+use std::collections::HashMap;
+
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
@@ -219,6 +221,61 @@ unsafe fn s4_slots_from_args(args: SEXP) -> Vec<String> {
         slots
     }
 }
+unsafe fn s4_slot_types_from_args(args: SEXP) -> Option<HashMap<String, String>> {
+    unsafe {
+        let mut current = CDR(args);
+        while !current.is_null() && current != R_NilValue() {
+            if matches!(
+                list_tag_name(current).as_deref(),
+                Some("slots") | Some("representation")
+            ) {
+                let spec = CAR(current);
+                if spec.is_null() || spec == R_NilValue() || TYPEOF(spec) != SEXPTYPE::STRSXP {
+                    return None;
+                }
+                let names = crate::sexp::attrib_core::getAttrib(
+                    spec,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+                    return None;
+                }
+                let mut types = HashMap::new();
+                for i in 0..LENGTH(spec) {
+                    let name = elt_to_string(names, i as R_xlen_t);
+                    let ty = elt_to_string(spec, i as R_xlen_t);
+                    if !name.is_empty() && !ty.is_empty() {
+                        types.insert(name, ty);
+                    }
+                }
+                if types.is_empty() {
+                    return None;
+                }
+                return Some(types);
+            }
+            current = CDR(current);
+        }
+        None
+    }
+}
+
+unsafe fn s4_prototype_for_type(type_name: &str) -> SEXP {
+    unsafe {
+        match type_name {
+            "integer" => Rf_allocVector3(SEXPTYPE::INTSXP, 0),
+            "numeric" | "double" => Rf_allocVector3(SEXPTYPE::REALSXP, 0),
+            "logical" => Rf_allocVector3(SEXPTYPE::LGLSXP, 0),
+            "character" => Rf_allocVector3(SEXPTYPE::STRSXP, 0),
+            "raw" => Rf_allocVector3(SEXPTYPE::RAWSXP, 0),
+            "complex" => Rf_allocVector3(SEXPTYPE::CPLXSXP, 0),
+            "list" => Rf_allocVector3(SEXPTYPE::VECSXP, 0),
+            "expression" => Rf_allocVector3(SEXPTYPE::EXPRSXP, 0),
+            _ => R_NilValue(),
+        }
+    }
+}
+
+
 
 unsafe fn s4_contains_from_args(args: SEXP) -> Vec<String> {
     unsafe {
@@ -254,6 +311,20 @@ unsafe fn string_vector_from_values(values: &[String]) -> SEXP {
     }
 }
 
+unsafe fn s4_named_arg(args: SEXP, name: &str) -> Option<SEXP> {
+    unsafe {
+        let mut current = CDR(args);
+        while !current.is_null() && current != R_NilValue() {
+            if list_tag_name(current).as_deref() == Some(name) {
+                return Some(CAR(current));
+            }
+            current = CDR(current);
+        }
+        None
+    }
+}
+
+
 /// GNU `setClass(Class, ..., contains, validity)`.
 pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -275,6 +346,10 @@ pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             contains,
             virtual_class,
         );
+        if let Some(types) = s4_slot_types_from_args(args) {
+            crate::mainutils::objects::set_s4_slot_types(&class_name, types);
+        }
+
         if let Some(validity) = s4_named_arg(args, "validity") {
             crate::mainutils::objects::set_s4_validity_fn(&class_name, validity);
         }
@@ -300,22 +375,6 @@ unsafe fn s4_class_generator(class_name: &str) -> SEXP {
         );
         let _body = protect(body);
         crate::mainutils::dstruct::mkCLOSXP(formals, body, crate::sexp::globals::R_BaseEnv())
-    }
-}
-
-fn s4_named_arg(args: SEXP, name: &str) -> Option<SEXP> {
-    unsafe {
-        let mut current = CDR(args);
-        while !current.is_null() && current != R_NilValue() {
-            if list_tag_name(current).as_deref() == Some(name) {
-                let value = CAR(current);
-                if !value.is_null() && value != R_NilValue() {
-                    return Some(value);
-                }
-            }
-            current = CDR(current);
-        }
-        None
     }
 }
 
@@ -363,19 +422,41 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 message: format!("class '{}' is virtual", class_name),
             });
         }
-        if class_def.contains.iter().any(|parent| parent == "list") {
-            let mut data = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        if class_slots.iter().any(|slot| slot == ".Data") {
+            let mut data = R_NilValue();
             let mut current = CDR(args);
             while !current.is_null() && current != R_NilValue() {
-                if list_tag_name(current).is_none() {
+                let tag = list_tag_name(current);
+                if tag.is_none() || tag.as_deref() == Some(".Data") {
                     data = CAR(current);
                     break;
                 }
                 current = CDR(current);
             }
+
+            if data.is_null() || data == R_NilValue() {
+                if class_def.contains.iter().any(|parent| parent == "list") {
+                    data = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+                } else if class_def.contains.iter().any(|parent| parent == "expression") {
+                    data = Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
+                } else if class_def.contains.iter().any(|parent| parent == "integer") {
+                    data = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+                } else if class_def
+                    .contains
+                    .iter()
+                    .any(|parent| parent == "numeric" || parent == "double")
+                {
+                    data = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+                } else if class_def.contains.iter().any(|parent| parent == "character") {
+                    data = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+                } else if class_def.contains.iter().any(|parent| parent == "logical") {
+                    data = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+                }
+            }
             let _data = protect(data);
             return finish_s4_object(data, &class_name);
         }
+
         let mut slots: Vec<(String, SEXP)> = Vec::new();
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
@@ -394,10 +475,20 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             current = CDR(current);
         }
         for slot in &class_slots {
+            if slot == ".Data" {
+                continue;
+            }
             if !slots.iter().any(|(name, _)| name == slot) {
-                slots.push((slot.clone(), R_NilValue()));
+                let proto = class_def
+                    .slot_types
+                    .get(slot)
+                    .map(|ty| s4_prototype_for_type(ty))
+                    .unwrap_or_else(|| R_NilValue());
+
+                slots.push((slot.clone(), proto));
             }
         }
+
         let n = slots.len() as R_xlen_t;
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
@@ -562,8 +653,25 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
             if TYPEOF(class_val) == SEXPTYPE::STRSXP && XLENGTH(class_val) > 0 {
                 let class_name = elt_to_string(class_val, 0);
                 if crate::mainutils::objects::s4_class(&class_name).is_some_and(|class_def| {
-                    class_def.contains.iter().any(|parent| parent == "list")
+                    class_def.contains.iter().any(|parent| {
+                        matches!(
+                            parent.as_str(),
+                            "list"
+                                | "expression"
+                                | "formula"
+                                | "integer"
+                                | "numeric"
+                                | "double"
+                                | "character"
+                                | "logical"
+                                | "raw"
+                                | "complex"
+                                | "language"
+                                | "vector"
+                        )
+                    })
                 }) {
+
                     return obj;
                 }
             }

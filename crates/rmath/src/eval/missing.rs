@@ -1097,16 +1097,13 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
             let inner = evalseq(CADR(expr), rho, forcelocal);
             let _inner_guard = protect(inner);
             let target_val = CAR(inner);
-            let _target_sym = CDR(inner);
-
-            // Rebuild the expression with the target's VALUE substituted as
-            // the first argument (like upstream evalseq), so evaluation
-            // works at any chain depth.
+            // GNU evalseq: `names(*tmp*)` so a quoted call is not re-run.
+            let tmp_sym = crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr());
+            crate::sexp::envir::defineVar(tmp_sym, target_val, rho);
             let rest = CDDR(expr);
-            let new_inner = Rf_cons(target_val, rest);
+            let new_inner = Rf_cons(tmp_sym, rest);
             let new_expr = Rf_cons(CAR(expr), new_inner);
             let _new_expr_guard = protect(new_expr);
-
             if !new_expr.is_null() {
                 (*new_expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }

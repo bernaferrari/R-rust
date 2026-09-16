@@ -1509,9 +1509,13 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             SET_VECTOR_ELT(result, 0, x);
             return result;
         }
-        if t == SEXPTYPE::CLOSXP {
-            return function_as_list(x);
+        if t == SEXPTYPE::CLOSXP
+            || t == SEXPTYPE::BUILTINSXP
+            || t == SEXPTYPE::SPECIALSXP
+        {
+            return do_as_list_function(_call, _op, args, _rho);
         }
+
         if !matches!(
             SEXPTYPE(t),
             SEXPTYPE::LGLSXP

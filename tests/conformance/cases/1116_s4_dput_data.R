@@ -1,0 +1,6 @@
+setClass("mp1", slots = c(prec = "integer", d = "integer"))
+setClass("mp", contains = "list")
+m1 <- new("mp", list(new("mp1"), new("mp1", prec = 1L, d = 3:5)))
+dput(m1)
+stopifnot(identical(m1, eval(parse(text = paste(deparse(m1), collapse = "\n")))))
+cat("ok\n")

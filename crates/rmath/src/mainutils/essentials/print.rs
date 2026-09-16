@@ -208,6 +208,51 @@ unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>) -> SEXP {
     }
 }
 
+unsafe fn summary_warnings(x: SEXP) -> SEXP {
+    unsafe {
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        if n == 0 {
+            println!("No warnings");
+        } else {
+            println!("Summary of (a total of {n}) warning messages:");
+            let names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            for i in 0..n {
+                let msg = if !names.is_null()
+                    && names != R_NilValue()
+                    && TYPEOF(names) == SEXPTYPE::STRSXP
+                    && i < XLENGTH(names)
+                {
+                    let s = STRING_ELT(names, i);
+                    if s.is_null() {
+                        String::new()
+                    } else {
+                        std::ffi::CStr::from_ptr(CHAR(s))
+                            .to_string_lossy()
+                            .into_owned()
+                    }
+                } else {
+                    String::new()
+                };
+                if msg.is_empty() {
+                    println!("1x : <warning>");
+                } else {
+                    println!("1x : {msg}");
+                }
+            }
+        }
+        crate::sexp::globals::set_R_Visible(FALSE);
+        x
+    }
+}
+
+
 /// R's `summary.default(x)`: return GNU R-shaped summaryDefault/table vectors.
 pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -231,6 +276,10 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
                     continue;
                 }
                 let name = std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy();
+                if name == "warnings" || name == "summary.warnings" {
+                    return summary_warnings(x);
+                }
+
                 if name == "manova" || name == "maov" {
                     return crate::mainutils::essentials::do_summary_manova(_call, _op, args, _rho);
                 }

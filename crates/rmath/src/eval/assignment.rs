@@ -14,6 +14,8 @@ use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::object::Sexp;
 use crate::sexp::protect::protect;
+use crate::sexp::symbol::Rf_install;
+
 
 use super::eval::Rf_eval;
 
@@ -146,98 +148,54 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // Complex assignment: the LHS is a chain of calls, e.g.
         // `ll$a[1] <- 9` is `[<-`(`$<-`(ll, a), 1, 9).
         if TYPEOF(CADR(expr)) == SEXPTYPE::LANGSXP {
-            // Collect the replacement levels from the outermost call down
-            // to the innermost (assign_fn, subscript args) pairs, and the
-            // chain of intermediate values from evalseq: the chain is
-            // (v_innermost_call . ... (v_first_call . base_symbol)).
-            let mut levels: Vec<(SEXP, SEXP)> = Vec::new();
-            let mut tmp = expr;
-            while TYPEOF(tmp) == SEXPTYPE::LANGSXP {
-                let assign_fn = get_assign_fcn_sym(CAR(tmp));
+            // GNU applydefine: evalseq the first argument, then
+            // `*tmp*` replacement calls while the base is still a call.
+            let tmp_sym = Rf_install(c"*tmp*".as_ptr());
+            let saved_tmp = crate::sexp::envir::R_findVarInFrame(rho, tmp_sym);
+            let _saved_tmp = protect(saved_tmp);
+            let mut lhs_expr = expr;
+            let mut chain = crate::eval::missing::evalseq(CADR(lhs_expr), rho, forcelocal);
+            let _chain_guard = protect(chain);
+            let mut current_rhs = rhs;
+            while TYPEOF(CADR(lhs_expr)) == SEXPTYPE::LANGSXP {
+                let assign_fn = get_assign_fcn_sym(CAR(lhs_expr));
                 if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP {
-                    levels.clear();
                     break;
                 }
-                levels.push((assign_fn, CDDR(tmp)));
-                tmp = CADR(tmp);
+                crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
+                let repl = replace_tmp_call(assign_fn, tmp_sym, CDDR(lhs_expr), current_rhs);
+
+                let _repl = protect(repl);
+                current_rhs = crate::eval::eval::Rf_eval(repl, rho);
+
+                let _ = protect(current_rhs);
+                let next = CDR(chain);
+                if !next.is_null() && next != R_NilValue() && TYPEOF(next) == SEXPTYPE::LISTSXP {
+                    chain = next;
+                }
+                lhs_expr = CADR(lhs_expr);
             }
-
-            if !levels.is_empty() {
-                let chain = crate::eval::missing::evalseq(CADR(expr), rho, forcelocal);
-                let _chain_guard = protect(chain);
-
-                // Evaluate each level's subscript arguments once, keeping
-                // R_MissingArg slots (e.g. `m[1,]` in `m[1,][2] <- 9`).
-                // Slot replacements (`$<-`, `@<-`) receive their name
-                // symbols raw, like the simple-assignment path.
-                let mut evaluated_levels: Vec<(SEXP, SEXP)> = Vec::new();
-                for (assign_fn, rest_args) in &levels {
-                    let slot_level = matches!(
-                        symbol_name(*assign_fn).as_deref(),
-                        Some("$<-") | Some("@<-")
-                    );
-                    let evaled = if slot_level {
-                        *rest_args
-                    } else {
-                        super::dispatch::evalListKeepMissing(*rest_args, rho)
-                    };
-                    let _evaled_guard = protect(evaled);
-                    evaluated_levels.push((*assign_fn, evaled));
-                }
-
-                // Apply the replacement calls outside-in: level k receives
-                // the value of its own base expression (the next chain cell)
-                // and the running value, exactly like upstream applydefine.
-                let mut current_rhs = rhs;
-                let _current_rhs_guard = protect(current_rhs);
-                let mut cell = chain;
-                for (assign_fn, rest_args) in &evaluated_levels {
-                    let target_val = CAR(cell);
-                    let _target_guard = protect(target_val);
-
-                    // `e$x[1] <<- v`: assigning a slot of an environment
-                    // defines the binding directly, like the simple path.
-                    current_rhs = if symbol_name(*assign_fn).as_deref() == Some("$<-")
-                        && TYPEOF(target_val) == SEXPTYPE::ENVSXP
-                        && let Some(field_sym) = dollar_field_symbol(CAR(*rest_args))
-                    {
-                        crate::sexp::envir::defineVar(field_sym, current_rhs, target_val);
-                        target_val
-                    } else {
-                        let arg_list = build_replacement_args(target_val, *rest_args, current_rhs);
-                        let _arg_list_guard = protect(arg_list);
-                        let repl_call = crate::sexp::constructors::Rf_cons(*assign_fn, arg_list);
-                        if !repl_call.is_null() {
-                            (*repl_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                        }
-                        let _repl_call_guard = protect(repl_call);
-                        apply_replacement_call(*assign_fn, repl_call, arg_list, rho)
-                    };
-                    protect(current_rhs);
-                    // Step one chain cell inward for the next level's base.
-                    let next = CDR(cell);
-                    if !next.is_null() && next != R_NilValue() && TYPEOF(next) == SEXPTYPE::LISTSXP
-                    {
-                        cell = next;
-                    }
-                }
-
-                // The deepest chain tail is the variable being assigned.
-                let mut var_cell = cell;
-                loop {
-                    let next = CDR(var_cell);
-                    if !next.is_null() && next != R_NilValue() && TYPEOF(next) == SEXPTYPE::LISTSXP
-                    {
-                        var_cell = next;
-                    } else {
-                        break;
-                    }
-                }
-                let var_sym = CDR(var_cell);
-                if !var_sym.is_null() && TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
-                    bind_assignment(var_sym, current_rhs, primval, rho);
+            if TYPEOF(lhs_expr) == SEXPTYPE::LANGSXP {
+                let assign_fn = get_assign_fcn_sym(CAR(lhs_expr));
+                if assign_fn != R_NilValue() && TYPEOF(assign_fn) == SEXPTYPE::SYMSXP {
+                    crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
+                    let repl = replace_tmp_call(assign_fn, tmp_sym, CDDR(lhs_expr), current_rhs);
+                    let _repl = protect(repl);
+                    current_rhs = crate::eval::eval::Rf_eval(repl, rho);
+                    let _ = protect(current_rhs);
                 }
             }
+            let var_sym = CADR(lhs_expr);
+            if !var_sym.is_null() && TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
+                bind_assignment(var_sym, current_rhs, primval, rho);
+            }
+            if !saved_tmp.is_null()
+                && saved_tmp != R_NilValue()
+                && saved_tmp != crate::sexp::globals::R_UnboundValue()
+            {
+                crate::sexp::envir::defineVar(tmp_sym, saved_tmp, rho);
+            }
+
 
             super::runtime::set_visible(FALSE);
             rhs
@@ -245,6 +203,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // Simple single-level assignment: x[i] <- val
             let lhs = expr;
             let func_sym = CAR(lhs);
+
 
             let assign_fn = if TYPEOF(func_sym) == SEXPTYPE::SYMSXP {
                 get_assign_fcn_sym(func_sym)
@@ -514,6 +473,37 @@ unsafe fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_
             _ => return None,
         };
         if raw < 1 { None } else { Some(raw - 1) }
+    }
+}
+
+/// GNU `replaceCall(afun, *tmp*, rest, rhs)`: `afun(`*tmp*`, ...rest, rhs)`.
+unsafe fn replace_tmp_call(assign_fn: SEXP, tmp_sym: SEXP, rest: SEXP, rhs: SEXP) -> SEXP {
+    unsafe {
+        let rhs_cell = crate::sexp::constructors::Rf_cons(rhs, R_NilValue());
+        let _rhs_cell = protect(rhs_cell);
+        let mut tail = rhs_cell;
+        let mut guards = Vec::new();
+        let mut current = rest;
+        let mut cells = Vec::new();
+        while !current.is_null() && current != R_NilValue() {
+            cells.push((CAR(current), TAG(current)));
+            current = CDR(current);
+        }
+        for (arg, tag) in cells.into_iter().rev() {
+            let cell = crate::sexp::constructors::Rf_cons(arg, tail);
+            if !tag.is_null() && tag != R_NilValue() {
+                SETTAG(cell, tag);
+            }
+            guards.push(protect(cell));
+            tail = cell;
+        }
+        let tmp_cell = crate::sexp::constructors::Rf_cons(tmp_sym, tail);
+        let _tmp_cell = protect(tmp_cell);
+        let call = crate::sexp::constructors::Rf_cons(assign_fn, tmp_cell);
+        if !call.is_null() {
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        call
     }
 }
 

@@ -16,17 +16,13 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
         print2buff(b"new(\0".as_ptr() as *const c_char, d);
         print_r_string_literal(&class_name, d);
 
-        let mut slots = crate::mainutils::objects::s4_all_slots(&class_name).unwrap_or_default();
-        if slots.is_empty() {
-            slots = string_attribute_values(s, b"names\0");
-        }
-
-        for (position, slot_name) in slots.iter().enumerate() {
-            let Some(value) = s4_slot_value(s, slot_name, position) else {
+        let slots = crate::mainutils::objects::s4_all_slots(&class_name).unwrap_or_default();
+        for slot_name in slots {
+            let Some(value) = s4_deparse_slot_value(s, &slot_name) else {
                 continue;
             };
             print2buff(b", \0".as_ptr() as *const c_char, d);
-            print_argument_name(slot_name, d);
+            print_argument_name(&slot_name, d);
             print2buff(b" = \0".as_ptr() as *const c_char, d);
             let old_fnarg = (*d).fnarg;
             (*d).fnarg = true;
@@ -36,6 +32,30 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
 
         print2buff(b")\0".as_ptr() as *const c_char, d);
         true
+    }
+}
+
+unsafe fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
+    unsafe {
+        let Ok(cname) = std::ffi::CString::new(slot_name) else {
+            return None;
+        };
+        let name_sym = Rf_install(cname.as_ptr());
+        let value = crate::mainutils::essentials::R_do_slot(s, name_sym);
+        if value.is_null() || value == R_NilValue() {
+            return None;
+        }
+        if slot_name == ".Data" && crate::mainutils::coerce::IS_S4_OBJECT(value) != 0 {
+            let data = crate::mainutils::duplicate::shallow_duplicate(value);
+            crate::sexp::accessors::UNSET_S4_OBJECT(data);
+            crate::sexp::attrib_core::setAttrib(
+                data,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                R_NilValue(),
+            );
+            return Some(data);
+        }
+        Some(value)
     }
 }
 

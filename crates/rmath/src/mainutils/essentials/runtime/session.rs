@@ -179,6 +179,8 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 })
             });
         }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+
         x
     }
 }

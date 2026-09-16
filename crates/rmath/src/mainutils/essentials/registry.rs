@@ -550,7 +550,9 @@ pub(super) const ALL_FNS: &[&str] = &[
     "proc.time",
     "stop",
     "warning",
+    "warnings",
     "message",
+
     "stopifnot",
     "suppressWarnings",
     "suppressMessages",

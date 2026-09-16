@@ -303,8 +303,9 @@ pub fn internal_result_invisible(name: &str) -> bool {
             | "detach"
             | "source"
             | "withAutoprint"
-
+            | "dput"
             | "layout"
+
     )
 }
 

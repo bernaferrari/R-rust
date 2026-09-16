@@ -827,6 +827,37 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `warnings()` — return `last.warning` as a `"warnings"` object.
+pub unsafe fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let sym = Rf_install(c"last.warning".as_ptr());
+        let mut last = crate::sexp::accessors::SYMVALUE(sym);
+        if last.is_null()
+            || last == R_NilValue()
+            || last == crate::sexp::globals::R_UnboundValue()
+        {
+            last = crate::sexp::envir::R_findVar(sym, crate::sexp::globals::R_BaseEnv());
+        }
+        if last.is_null()
+            || last == R_NilValue()
+            || last == crate::sexp::globals::R_UnboundValue()
+        {
+            last = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        }
+        let _last = protect(last);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _class = protect(class);
+        SET_STRING_ELT(class, 0, crate::sexp::constructors::Rf_mkChar(c"warnings".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            last,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        last
+    }
+}
+
+
 /// R's `message(...)` — print message.
 pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

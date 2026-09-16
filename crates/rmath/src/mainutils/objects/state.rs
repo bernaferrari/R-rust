@@ -103,10 +103,12 @@ pub(crate) struct ObjectsRuntimeState {
 #[derive(Clone, Default)]
 pub(crate) struct S4ClassDef {
     pub slots: Vec<String>,
+    pub slot_types: HashMap<String, String>,
     pub contains: Vec<String>,
     pub virtual_class: bool,
     pub has_validity: bool,
 }
+
 
 
 impl Default for ObjectsRuntimeState {
@@ -176,6 +178,7 @@ pub(crate) fn register_s4_class_with_extends(
             name,
             S4ClassDef {
                 slots,
+                slot_types: HashMap::new(),
                 contains,
                 virtual_class,
                 has_validity: false,
@@ -183,6 +186,17 @@ pub(crate) fn register_s4_class_with_extends(
         );
     });
 }
+
+pub(crate) fn set_s4_slot_types(name: &str, slot_types: HashMap<String, String>) -> bool {
+    with_objects_state(|state| {
+        let Some(class_def) = state.s4_classes.get_mut(name) else {
+            return false;
+        };
+        class_def.slot_types = slot_types;
+        true
+    })
+}
+
 
 pub(crate) fn set_s4_validity(name: &str) -> bool {
     with_objects_state(|state| {
@@ -246,10 +260,48 @@ pub(crate) fn s4_all_slots(name: &str) -> Option<Vec<String>> {
         state.s4_classes.contains_key(name).then(|| {
             let mut slots = Vec::new();
             collect_s4_slots(&state.s4_classes, name, &mut HashSet::new(), &mut slots);
+            if let Some(class_def) = state.s4_classes.get(name) {
+                if class_def
+                    .contains
+                    .iter()
+                    .any(|parent| is_basic_s4_data_class(parent))
+                    && !slots.iter().any(|slot| slot == ".Data")
+                {
+                    slots.insert(0, ".Data".to_string());
+                }
+            }
             slots
         })
     })
 }
+
+fn is_basic_s4_data_class(name: &str) -> bool {
+    matches!(
+        name,
+        "vector"
+            | "list"
+            | "logical"
+            | "integer"
+            | "numeric"
+            | "double"
+            | "character"
+            | "raw"
+            | "complex"
+            | "expression"
+            | "name"
+            | "symbol"
+            | "language"
+            | "environment"
+            | "function"
+            | "formula"
+            | "matrix"
+            | "array"
+            | "ts"
+            | "factor"
+            | "data.frame"
+    )
+}
+
 
 pub(crate) fn s4_class_extends(class1: &str, class2: &str) -> bool {
     with_objects_state(|state| {

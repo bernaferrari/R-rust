@@ -101,7 +101,8 @@ pub unsafe fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe { do_names(_call, _op, args, _rho) }
 }
 
-/// R's `names(x) <- value` — set names attribute.
+/// GNU `names(x) <- value`. Pairlists and language objects store names
+/// as cell tags (including the head of a call as `""`).
 pub unsafe fn do_names_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -109,9 +110,45 @@ pub unsafe fn do_names_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"names".as_ptr()), value);
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+            namesgets_pairlist(x, value);
+        } else {
+            crate::sexp::attrib_core::setAttrib(x, Rf_install(c"names".as_ptr()), value);
+        }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
+    }
+}
+
+unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            let mut cell = list;
+            while !cell.is_null() && cell != R_NilValue() {
+                SETTAG(cell, R_NilValue());
+                cell = CDR(cell);
+            }
+            return;
+        }
+        let n = XLENGTH(value);
+        let mut cell = list;
+        let mut i: R_xlen_t = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            if i >= n {
+                SETTAG(cell, R_NilValue());
+            } else {
+                let label = crate::mainutils::essentials::elt_to_string(value, i);
+                if label.is_empty() || label == "NA" {
+                    SETTAG(cell, R_NilValue());
+                } else {
+                    let c_name = std::ffi::CString::new(label).unwrap_or_default();
+                    SETTAG(cell, Rf_install(c_name.as_ptr()));
+                }
+            }
+            i += 1;
+            cell = CDR(cell);
+        }
     }
 }
 
