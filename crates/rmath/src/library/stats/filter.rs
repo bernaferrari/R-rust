@@ -1377,6 +1377,53 @@ fn ma2_ml_sigma2(yd: &[f64], th1: f64, th2: f64) -> f64 {
     }
 }
 
+fn ar1_sar1_ss(ar: f64, sar: f64, period: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+    let r = period + 1;
+    let mut t = vec![0.0; r * r];
+    t[0] = ar;
+    t[period - 1] = sar;
+    t[period] = -ar * sar;
+    for ind in 1..r {
+        t[(ind - 1) + ind * r] = 1.0;
+    }
+    let mut v = vec![0.0; r * r];
+    v[0] = 1.0;
+    let pn = lyapunov_nd(&t, &v, r);
+    let mut z = vec![0.0; r];
+    z[0] = 1.0;
+    (t, v, pn, z)
+}
+
+fn ar1_sar1_ml_nll(y: &[f64], ar: f64, sar: f64, mu: f64, period: usize) -> f64 {
+    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
+    let (t, v, pn, z) = ar1_sar1_ss(ar, sar, period);
+    let a0 = vec![0.0; period + 1];
+    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
+}
+
+fn exact_ar1_sar1_ml(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
+    let n = y.len();
+    if period < 2 || n <= period + 2 {
+        return (0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut ar = 0.0;
+    let mut sar = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        ar = golden_min(-0.99, 0.99, 80, |a| ar1_sar1_ml_nll(y, a, sar, ic, period));
+        sar = golden_min(-0.99, 0.99, 80, |s| ar1_sar1_ml_nll(y, ar, s, ic, period));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| ar1_sar1_ml_nll(y, ar, sar, m, period));
+    }
+    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
+    let (t, v, pn, z) = ar1_sar1_ss(ar, sar, period);
+    let a0 = vec![0.0; period + 1];
+    let s2 = kalman_s2_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0);
+    (ar, sar, ic, s2)
+}
+
+
 
 
 
@@ -2119,6 +2166,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![sma, mu],
                 vec!["sma1".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p == 1 && q <= 0 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
+            let (ar, sar, mu, s2) = exact_ar1_sar1_ml(&y, period as usize);
+            (
+                vec![ar, sar, mu],
+                vec!["ar1".to_string(), "sar1".to_string(), "intercept".to_string()],
                 s2,
             )
         } else if p == 1 && q <= 0 && !differenced && sar_p == 1 && period >= 2 {
@@ -2960,6 +3014,124 @@ fn kalman_like_nd(
     }
     0.5 * (ssq / nu + sumlog / nu)
 }
+
+fn lyapunov_nd(t: &[f64], v: &[f64], r: usize) -> Vec<f64> {
+    let mut p = vec![0.0; r * r];
+    let mut tp = vec![0.0; r * r];
+    for _ in 0..400 {
+        for i in 0..r {
+            for j in 0..r {
+                let mut s = 0.0;
+                for k in 0..r {
+                    s += t[i + k * r] * p[k + j * r];
+                }
+                tp[i + j * r] = s;
+            }
+        }
+        for i in 0..r {
+            for j in 0..r {
+                let mut s = v[i + j * r];
+                for m in 0..r {
+                    s += tp[i + m * r] * t[j + m * r];
+                }
+                p[i + j * r] = s;
+            }
+        }
+    }
+    p
+}
+
+fn kalman_s2_nd(
+    y: &[f64],
+    z: &[f64],
+    a0: &[f64],
+    p0: &[f64],
+    t: &[f64],
+    v: &[f64],
+    h: f64,
+    s_up: i32,
+) -> f64 {
+    let n = y.len();
+    let p = a0.len();
+    if n == 0 || p == 0 || z.len() != p || p0.len() != p * p || t.len() != p * p || v.len() != p * p
+    {
+        return f64::NAN;
+    }
+    let mut a = a0.to_vec();
+    let mut pmat = p0.to_vec();
+    let mut pnew = p0.to_vec();
+    let mut anew = vec![0.0; p];
+    let mut mm = vec![0.0; p * p];
+    let mut m = vec![0.0; p];
+    let mut ssq = 0.0;
+    let mut nu = 0.0;
+    for l in 0..n {
+        for i in 0..p {
+            let mut tmp = 0.0;
+            for k in 0..p {
+                tmp += t[i + p * k] * a[k];
+            }
+            anew[i] = tmp;
+        }
+        if (l as i32) > s_up {
+            for i in 0..p {
+                for j in 0..p {
+                    let mut tmp = 0.0;
+                    for k in 0..p {
+                        tmp += t[i + p * k] * pmat[k + p * j];
+                    }
+                    mm[i + p * j] = tmp;
+                }
+            }
+            for i in 0..p {
+                for j in 0..p {
+                    let mut tmp = v[i + p * j];
+                    for k in 0..p {
+                        tmp += mm[i + p * k] * t[j + p * k];
+                    }
+                    pnew[i + p * j] = tmp;
+                }
+            }
+        }
+        if y[l].is_nan() {
+            a.copy_from_slice(&anew);
+            pmat.copy_from_slice(&pnew);
+            continue;
+        }
+        let mut resid = y[l];
+        for i in 0..p {
+            resid -= z[i] * anew[i];
+        }
+        let mut gain = h;
+        for i in 0..p {
+            let mut tmp = 0.0;
+            for j in 0..p {
+                tmp += pnew[i + j * p] * z[j];
+            }
+            m[i] = tmp;
+            gain += z[i] * tmp;
+        }
+        if !(gain > 0.0) {
+            return f64::NAN;
+        }
+        ssq += resid * resid / gain;
+        nu += 1.0;
+        for i in 0..p {
+            a[i] = anew[i] + m[i] * resid / gain;
+        }
+        for i in 0..p {
+            for j in 0..p {
+                pmat[i + j * p] = pnew[i + j * p] - m[i] * m[j] / gain;
+            }
+        }
+    }
+    if nu < 1.0 {
+        f64::NAN
+    } else {
+        ssq / nu
+    }
+}
+
 
 /// GNU KalmanLike for local linear trend (p=2). `P[] <- 1e6*vx`.
 fn kalman_trend_like(y: &[f64], rel: [f64; 3], vx: f64) -> f64 {
