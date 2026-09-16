@@ -129,8 +129,10 @@ pub unsafe fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _x = protect(x);
         let (lapply_args, simplify, use_names) = sapply_control_args(args, x, rho);
         let _lapply_args = protect(lapply_args);
+        let _simplify = protect(simplify);
         let list = do_lapply(_call, _op, lapply_args, rho);
         let _list = protect(list);
+
         if use_names
             && !list.is_null()
             && TYPEOF(list) == SEXPTYPE::VECSXP
@@ -919,12 +921,22 @@ fn callable_expr(fun: SEXP) -> SEXP {
     }
 }
 
+
+fn is_typeof_fun(fun: SEXP) -> bool {
+    unsafe {
+        if TYPEOF(fun) == SEXPTYPE::SYMSXP {
+            return symbol_name(fun).as_deref() == Some("typeof");
+        }
+        if TYPEOF(fun) == SEXPTYPE::BUILTINSXP || TYPEOF(fun) == SEXPTYPE::SPECIALSXP {
+            return crate::eval::eval::PRIMNAME(fun) == "typeof";
+        }
+        false
+    }
+}
+
 fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if value == R_MissingArg()
-            && TYPEOF(fun) == SEXPTYPE::SYMSXP
-            && symbol_name(fun).as_deref() == Some("typeof")
-        {
+        if value == R_MissingArg() && is_typeof_fun(fun) {
             let args = Rf_cons(value, R_NilValue());
             let _args_guard = protect(args);
             return crate::mainutils::essentials_basic::do_typeof(
@@ -934,6 +946,7 @@ fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
                 rho,
             );
         }
+
         let arg_sym = Rf_install(c"..rport_apply_value".as_ptr());
         let call_env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
         crate::sexp::envir::defineVar(arg_sym, value, call_env);
