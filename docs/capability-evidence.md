@@ -10,9 +10,9 @@ or a claim that tests passed on a particular commit.
 | Curated error fixtures | 68 |
 | Total curated fixtures | 1160 |
 | Whole upstream files tracked | 70 |
-| Upstream files marked pass | 7 |
+| Upstream files marked pass | 8 |
 | Upstream files marked xfail | 7 |
-| Upstream files marked skip | 56 |
+| Upstream files marked skip | 55 |
 | Real packages with selected probes | 7 |
 | Package probe sets marked pass | 7 |
 | Package probe sets marked partial | 0 |
