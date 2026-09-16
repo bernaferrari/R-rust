@@ -321,10 +321,8 @@ pub(crate) fn order_na_placement(args: SEXP, position: usize) -> SortNaPlacement
         if TYPEOF(arg) == SEXPTYPE::STRSXP {
             let s = STRING_ELT(arg, 0);
             if !s.is_null() {
-                let text = std::ffi::CStr::from_ptr(CHAR(s))
-                    .to_string_lossy()
-                    .to_ascii_lowercase();
-                if text.starts_with('k') {
+                let bytes = std::ffi::CStr::from_ptr(CHAR(s)).to_bytes();
+                if bytes == b"keep" {
                     return SortNaPlacement::Keep;
                 }
             }
