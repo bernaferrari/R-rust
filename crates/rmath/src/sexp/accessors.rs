@@ -96,12 +96,17 @@ pub unsafe fn XLENGTH(x: SEXP) -> R_xlen_t {
             | SEXPTYPE::VECSXP
             | SEXPTYPE::EXPRSXP
             | SEXPTYPE::RAWSXP => (*x).vecsxp_length(),
-            kind => std::panic::panic_any(super::context::RError {
-                message: format!(
-                    "internal vector length requested for non-vector type {}",
-                    kind.0
-                ),
-            }),
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
+                let nil = crate::sexp::globals::R_NilValue();
+                let mut n: R_xlen_t = 0;
+                let mut p = x;
+                while !p.is_null() && p != nil {
+                    n += 1;
+                    p = CDR(p);
+                }
+                n
+            }
+            _ => 1,
         }
     }
 }

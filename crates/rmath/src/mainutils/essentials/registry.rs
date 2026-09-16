@@ -455,6 +455,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "signif",
     "eval",
     "evalq",
+    "eval.parent",
+
     "substitute",
     "quote",
     "parse",

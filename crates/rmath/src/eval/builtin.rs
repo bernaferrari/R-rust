@@ -4045,6 +4045,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_eval,
     },
     EvaluatedBuiltin {
+        name: "eval.parent",
+        handler: crate::mainutils::essentials::do_eval_parent,
+    },
+
+    EvaluatedBuiltin {
         // parse()/source() file-parse path: strict newline-else (gram.y
         // context-stack semantics); the interactive eval path stays lenient.
         name: "parse",

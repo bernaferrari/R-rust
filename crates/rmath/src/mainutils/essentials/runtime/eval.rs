@@ -112,6 +112,34 @@ pub unsafe fn do_eval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `eval.parent(expr, n = 1)` is `eval(expr, parent.frame(n + 1))`.
+/// A builtin has no extra frame, so `parent.frame(n)` is that environment.
+pub unsafe fn do_eval_parent(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = CAR(args);
+        let n_arg = CAR(CDR(args));
+        let n = if n_arg.is_null() || n_arg == R_NilValue() || n_arg == R_MissingArg() {
+            1
+        } else if TYPEOF(n_arg) == SEXPTYPE::INTSXP && XLENGTH(n_arg) > 0 {
+            let v = *INTEGER(n_arg);
+            if v == NA_INTEGER { 1 } else { v }
+        } else if TYPEOF(n_arg) == SEXPTYPE::REALSXP && XLENGTH(n_arg) > 0 {
+            *REAL(n_arg) as c_int
+        } else {
+            1
+        };
+        let n_s = Rf_ScalarInteger(n);
+        let _n_guard = protect(n_s);
+        let pf_args = Rf_cons(n_s, R_NilValue());
+        let _pf_guard = protect(pf_args);
+        let env = do_parent_frame(call, op, pf_args, rho);
+        let eval_args = Rf_cons(expr, Rf_cons(env, R_NilValue()));
+        let _eval_guard = protect(eval_args);
+        do_eval(call, op, eval_args, rho)
+    }
+}
+
+
 /// R's `substitute(expr, env)` — substitute symbols in expression.
 pub unsafe fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::coerce::do_substitute(_call, _op, args, _rho) }
