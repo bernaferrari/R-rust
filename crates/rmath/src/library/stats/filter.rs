@@ -1152,6 +1152,98 @@ fn arma11_ml_sigma2(yd: &[f64], phi: f64, th: f64) -> f64 {
     }
 }
 
+fn ar2_lyapunov_pn(p1: f64, p2: f64) -> [f64; 4] {
+    let t = [p1, p2, 1.0, 0.0];
+    let v = [1.0, 0.0, 0.0, 0.0];
+    let mut p = [0.0; 4];
+    for _ in 0..200 {
+        let tp00 = t[0] * p[0] + t[2] * p[1];
+        let tp01 = t[0] * p[2] + t[2] * p[3];
+        let tp10 = t[1] * p[0] + t[3] * p[1];
+        let tp11 = t[1] * p[2] + t[3] * p[3];
+        p = [
+            v[0] + tp00 * t[0] + tp01 * t[2],
+            v[1] + tp10 * t[0] + tp11 * t[2],
+            v[2] + tp00 * t[1] + tp01 * t[3],
+            v[3] + tp10 * t[1] + tp11 * t[3],
+        ];
+    }
+    p
+}
+
+fn ar2_ml_nll(y: &[f64], p1: f64, p2: f64, mu: f64) -> f64 {
+    let yd: Vec<f64> = y.iter().map(|v| v - mu).collect();
+    let z = [1.0, 0.0];
+    let a0 = [0.0, 0.0];
+    let t = [p1, p2, 1.0, 0.0];
+    let v = [1.0, 0.0, 0.0, 0.0];
+    let pn = ar2_lyapunov_pn(p1, p2);
+    kalman_like_nd(&yd, &z, &a0, &pn, &t, &v, 0.0, 0)
+}
+
+fn exact_ar2_ml(y: &[f64]) -> (f64, f64, f64, f64) {
+    let n = y.len();
+    if n < 4 {
+        return (0.0, 0.0, 0.0, f64::NAN);
+    }
+    let mut p1 = 0.0;
+    let mut p2 = 0.0;
+    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
+    let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
+    for _ in 0..25 {
+        p1 = golden_min(-0.99, 0.99, 80, |a| ar2_ml_nll(y, a, p2, ic));
+        p2 = golden_min(-0.99, 0.99, 80, |a| ar2_ml_nll(y, p1, a, ic));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| ar2_ml_nll(y, p1, p2, m));
+    }
+    let yd: Vec<f64> = y.iter().map(|v| v - ic).collect();
+    let s2 = ar2_ml_sigma2(&yd, p1, p2);
+    (p1, p2, ic, s2)
+}
+
+fn ar2_ml_sigma2(yd: &[f64], p1: f64, p2: f64) -> f64 {
+    let t = [p1, p2, 1.0, 0.0];
+    let v = [1.0, 0.0, 0.0, 0.0];
+    let mut p = ar2_lyapunov_pn(p1, p2);
+    let mut pnew = p;
+    let mut a = [0.0, 0.0];
+    let mut ssq = 0.0;
+    let mut nu = 0.0;
+    for (l, &yi) in yd.iter().enumerate() {
+        let anew = [t[0] * a[0] + t[2] * a[1], t[1] * a[0] + t[3] * a[1]];
+        if l > 0 {
+            let tp00 = t[0] * p[0] + t[2] * p[1];
+            let tp01 = t[0] * p[2] + t[2] * p[3];
+            let tp10 = t[1] * p[0] + t[3] * p[1];
+            let tp11 = t[1] * p[2] + t[3] * p[3];
+            pnew[0] = v[0] + tp00 * t[0] + tp01 * t[2];
+            pnew[1] = v[1] + tp10 * t[0] + tp11 * t[2];
+            pnew[2] = v[2] + tp00 * t[1] + tp01 * t[3];
+            pnew[3] = v[3] + tp10 * t[1] + tp11 * t[3];
+        }
+        let resid = yi - anew[0];
+        let m0 = pnew[0];
+        let m1 = pnew[1];
+        let gain = m0;
+        if gain > 0.0 {
+            ssq += resid * resid / gain;
+            nu += 1.0;
+            a[0] = anew[0] + m0 * resid / gain;
+            a[1] = anew[1] + m1 * resid / gain;
+            p[0] = pnew[0] - m0 * m0 / gain;
+            p[1] = pnew[1] - m1 * m0 / gain;
+            p[2] = pnew[2] - m0 * m1 / gain;
+            p[3] = pnew[3] - m1 * m1 / gain;
+        }
+    }
+    if nu < 1.0 {
+        f64::NAN
+    } else {
+        ssq / nu
+    }
+}
+
+
 
 
 fn css_arma11(y: &[f64]) -> (f64, f64, f64, f64) {
@@ -2004,6 +2096,13 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![phi, th, mu],
                 vec!["ar1".to_string(), "ma1".to_string(), "intercept".to_string()],
+                s2,
+            )
+        } else if p == 2 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
+            let (p1, p2, mu, s2) = exact_ar2_ml(&y);
+            (
+                vec![p1, p2, mu],
+                vec!["ar1".to_string(), "ar2".to_string(), "intercept".to_string()],
                 s2,
             )
         } else if p >= 2 && p <= 5 && q <= 0 && !no_mean && sar_p <= 0 && sar_q <= 0 {
