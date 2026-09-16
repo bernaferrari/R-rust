@@ -1782,7 +1782,8 @@ pub unsafe fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// R's `factor(x)` — create a minimal factor with sorted levels.
+/// GNU `factor(x, levels, labels, exclude = NA, ...)`.
+/// `exclude = ""` keeps missing values as an explicit NA level.
 pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
@@ -1796,63 +1797,156 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
 
         let levels_arg = arg_by_name_or_position(args, &["levels"], 1);
-        let levels = if levels_arg.is_null() || levels_arg == R_NilValue() {
-            let mut level_set = std::collections::BTreeSet::new();
-            for i in 0..n {
-                if !factor_element_is_na(x, i) {
-                    level_set.insert(elt_to_string(x, i));
-                }
-            }
-            level_set.into_iter().collect::<Vec<_>>()
+        let mut levels = if levels_arg.is_null()
+            || levels_arg == R_NilValue()
+            || levels_arg == crate::sexp::globals::R_MissingArg()
+        {
+            collect_default_factor_levels(x, n)
         } else {
-            explicit_factor_levels(levels_arg)
+            explicit_factor_levels_optional(levels_arg)
         };
+        apply_factor_exclude(&mut levels, args);
+
 
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
-
         let dst = INTEGER(result);
         for i in 0..n {
-            if factor_element_is_na(x, i) {
-                *dst.add(i as usize) = NA_INTEGER;
-                continue;
-            }
-            let value = elt_to_string(x, i);
-            let code = levels
-                .iter()
-                .position(|level| level == &value)
-                .map(|idx| idx as i32 + 1)
-                .unwrap_or(NA_INTEGER);
+            let code = if factor_element_is_na(x, i) {
+                levels
+                    .iter()
+                    .position(Option::is_none)
+                    .map(|idx| idx as i32 + 1)
+                    .unwrap_or(NA_INTEGER)
+            } else {
+                let value = elt_to_string(x, i);
+                levels
+                    .iter()
+                    .position(|level| level.as_deref() == Some(value.as_str()))
+                    .map(|idx| idx as i32 + 1)
+                    .unwrap_or(NA_INTEGER)
+            };
             *dst.add(i as usize) = code;
         }
-
-        let levels_vec = Rf_allocVector3(SEXPTYPE::STRSXP, levels.len() as R_xlen_t);
-        let _levels_vec_guard = protect(levels_vec);
-        for (i, level) in levels.iter().enumerate() {
-            let cstr = CString::new(level.as_str()).unwrap_or_default();
-            SET_STRING_ELT(levels_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
-        }
-
-        let class = Rf_mkString(c"factor".as_ptr());
-        let _class_guard = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_LevelsSymbol(),
-            levels_vec,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+        set_factor_attrs_with_optional_levels(result, &levels);
         result
     }
 }
 
-/// R's `ordered(x, levels = ...)` — construct an ordered factor.
+fn collect_default_factor_levels(x: SEXP, n: R_xlen_t) -> Vec<Option<String>> {
+    let mut present = BTreeSet::new();
+    let mut has_na = false;
+    for i in 0..n {
+        if factor_element_is_na(x, i) {
+            has_na = true;
+        } else {
+            present.insert(elt_to_string(x, i));
+        }
+    }
+    let mut levels = present.into_iter().map(Some).collect::<Vec<_>>();
+    if has_na {
+        levels.push(None);
+    }
+    levels
+}
+
+fn explicit_factor_levels_optional(levels_arg: SEXP) -> Vec<Option<String>> {
+    unsafe {
+        let mut levels = Vec::new();
+        let mut seen_na = false;
+        for i in 0..XLENGTH(levels_arg) {
+            if factor_element_is_na(levels_arg, i) {
+                if !seen_na {
+                    levels.push(None);
+                    seen_na = true;
+                }
+                continue;
+            }
+            let level = elt_to_string(levels_arg, i);
+            if !levels
+                .iter()
+                .any(|existing| existing.as_deref() == Some(level.as_str()))
+            {
+                levels.push(Some(level));
+            }
+        }
+        levels
+    }
+}
+
+fn apply_factor_exclude(levels: &mut Vec<Option<String>>, args: SEXP) {
+    unsafe {
+        let exclude = factor_exclude_arg(args);
+        if exclude == R_NilValue() && !exclude.is_null() {
+            // explicit exclude = NULL keeps every collected level
+            return;
+        }
+        let missing = exclude.is_null();
+        let mut drop_na = missing;
+        let mut drop_text = Vec::new();
+        if !missing {
+            drop_na = false;
+            if TYPEOF(exclude) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(exclude) {
+                    if factor_element_is_na(exclude, i) {
+                        drop_na = true;
+                    } else {
+                        drop_text.push(elt_to_string(exclude, i));
+                    }
+                }
+            } else if TYPEOF(exclude) == SEXPTYPE::LGLSXP || TYPEOF(exclude) == SEXPTYPE::INTSXP {
+                for i in 0..XLENGTH(exclude) {
+                    if *INTEGER(exclude).add(i as usize) == NA_INTEGER {
+                        drop_na = true;
+                    }
+                }
+            } else if TYPEOF(exclude) == SEXPTYPE::REALSXP {
+                for i in 0..XLENGTH(exclude) {
+                    let v = *REAL(exclude).add(i as usize);
+                    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
+                        drop_na = true;
+                    }
+                }
+            }
+        }
+        levels.retain(|level| match level {
+            None => !drop_na,
+            Some(text) => !drop_text.iter().any(|ex| ex == text),
+        });
+    }
+}
+
+/// NULL means the formal was omitted (default exclude = NA).
+/// R_NilValue is the explicit `exclude = NULL` keep-all case.
+fn factor_exclude_arg(args: SEXP) -> SEXP {
+    unsafe {
+        let mut current = args;
+        let mut positional = 0;
+        let mut fourth = std::ptr::null_mut();
+        while !current.is_null() && current != R_NilValue() {
+            if let Some(tag) = tag_name(current) {
+                if tag == "exclude" {
+                    return CAR(current);
+                }
+            } else {
+                if positional == 3 {
+                    fourth = CAR(current);
+                }
+                positional += 1;
+            }
+            current = CDR(current);
+        }
+        if !fourth.is_null() {
+            fourth
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+}
+
 pub unsafe fn do_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let result = do_factor(call, op, args, rho);

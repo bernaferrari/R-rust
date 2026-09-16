@@ -1010,7 +1010,12 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                 let nl = XLENGTH(levels);
                 print!("Levels:");
                 for i in 0..nl {
-                    let lvl = elt_to_string(levels, i);
+                    let charsxp = STRING_ELT(levels, i);
+                    let lvl = if charsxp == crate::sexp::globals::R_NaString() {
+                        "<NA>".to_string()
+                    } else {
+                        elt_to_string(levels, i)
+                    };
                     print!(" {}", lvl);
                 }
                 println!();

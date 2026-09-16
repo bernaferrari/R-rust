@@ -847,7 +847,8 @@ fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
             x.as_raw(),
             crate::sexp::attrib_core::R_LevelsSymbol(),
         );
-        string_vector_values(levels).filter(|levels| !levels.is_empty())
+        string_vector_labels(levels).filter(|levels| !levels.is_empty())
+
     }
 }
 

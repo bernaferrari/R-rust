@@ -46,7 +46,8 @@ pub unsafe fn storage_mode_target(value: SEXP) -> Result<c_int, String> {
         match mode.as_str() {
             "logical" => Ok(SEXPTYPE::LGLSXP.as_c_int()),
             "integer" => Ok(SEXPTYPE::INTSXP.as_c_int()),
-            "double" => Ok(SEXPTYPE::REALSXP.as_c_int()),
+            "double" | "numeric" => Ok(SEXPTYPE::REALSXP.as_c_int()),
+
             "complex" => Ok(SEXPTYPE::CPLXSXP.as_c_int()),
             "character" => Ok(SEXPTYPE::STRSXP.as_c_int()),
             "raw" => Ok(SEXPTYPE::RAWSXP.as_c_int()),

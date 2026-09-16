@@ -102,6 +102,26 @@ pub unsafe fn do_require_frontend(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP)
     }
 }
 
+unsafe fn attach_recommended_package_stub(package: &str) {
+    unsafe {
+        if package_attached(package) {
+            return;
+        }
+        let env = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_BaseEnv(),
+            R_NilValue(),
+        );
+        if env.is_null() {
+            package_error(format!("could not attach package '{package}'"));
+        }
+        let _env = protect(env);
+        define_package_metadata(package, env);
+        attach_package_env(env);
+    }
+}
+
+
 /// R's `library(package, ...)` — load a package.
 pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -119,15 +139,21 @@ pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             crate::eval::runtime::set_visible(0);
             return R_NilValue();
         }
-        let lib_path = find_package_path(&package_name);
-        if lib_path.is_empty() {
-            package_error(format!("there is no package called '{}'", package_name));
+        if crate::mainutils::essentials::is_builtin_package_dependency(&package_name) {
+            attach_recommended_package_stub(&package_name);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return R_NilValue();
         }
         if package_attached(&package_name) {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return R_NilValue();
         }
+        let lib_path = find_package_path(&package_name);
+        if lib_path.is_empty() {
+            package_error(format!("there is no package called '{}'", package_name));
+        }
         match load_pure_r_package(&package_name, Path::new(&lib_path)) {
+
             Ok(()) => {
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
                 R_NilValue()
@@ -152,7 +178,13 @@ pub unsafe fn do_require(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             crate::eval::runtime::set_visible(0);
             return Rf_ScalarLogical(TRUE);
         }
+        if crate::mainutils::essentials::is_builtin_package_dependency(&package_name) {
+            attach_recommended_package_stub(&package_name);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return Rf_ScalarLogical(TRUE);
+        }
         let lib_path = find_package_path(&package_name);
+
         if lib_path.is_empty() {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return Rf_ScalarLogical(FALSE);

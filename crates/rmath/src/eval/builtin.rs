@@ -507,6 +507,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "withAutoprint",
+        handler: crate::mainutils::essentials::do_with_autoprint,
+        restore_visibility_always: false,
+    },
+
+    UnevaluatedBuiltin {
         name: "suppressWarnings",
         handler: crate::mainutils::essentials::do_suppress_warnings,
         restore_visibility_always: false,
@@ -1285,6 +1291,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "storage.mode<-",
         handler: crate::mainutils::essentials::do_storage_mode_set,
     },
+    EvaluatedBuiltin {
+        name: "mode<-",
+        handler: crate::mainutils::essentials::do_storage_mode_set,
+    },
+
     EvaluatedBuiltin {
         name: "identity",
         handler: crate::mainutils::essentials::do_identity,

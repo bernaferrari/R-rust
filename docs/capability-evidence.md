@@ -6,9 +6,9 @@ or a claim that tests passed on a particular commit.
 
 | Inventory | Count |
 | --- | ---: |
-| Curated ordinary fixtures | 1101 |
+| Curated ordinary fixtures | 1104 |
 | Curated error fixtures | 68 |
-| Total curated fixtures | 1169 |
+| Total curated fixtures | 1172 |
 | Whole upstream files tracked | 70 |
 | Upstream files marked pass | 8 |
 | Upstream files marked xfail | 8 |

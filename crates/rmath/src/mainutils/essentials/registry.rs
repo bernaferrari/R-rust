@@ -27,6 +27,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "mode",
     "storage.mode",
     "storage.mode<-",
+    "mode<-",
+
     "identity",
     "is.na",
     "names",
@@ -690,6 +692,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "searchpaths",
     "source",
     "sys.source",
+    "withAutoprint",
+
     "demo",
     "example",
     "colSums",

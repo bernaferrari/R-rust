@@ -41,16 +41,32 @@ use crate::sexp::symbol::Rf_install;
 // Complete R runtime — source, sys.source, demo, example
 // ---------------------------------------------------------------------------
 
-/// R's `source(file, local, echo, ...)` — evaluate an R script file.
+/// GNU `source(file, local, echo, print.eval, exprs, ...)`.
+/// `exprs=` (and the `expr=` partial match used by eval-etc.R) evaluates
+/// already-parsed expressions with optional echo/auto-print.
 pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let file_arg = CAR(args);
+        let parsed = source_call_args(args);
+        if let Some(exprs) = parsed.exprs {
+            let env = source_eval_env(parsed.local, rho, false);
+            return eval_source_expressions(
+                exprs,
+                env,
+                parsed.echo,
+                parsed.print_eval.unwrap_or(parsed.echo),
+                &parsed.prompt,
+                parsed.cutoff,
+                parsed.deparse_opts,
+            );
+        }
+        let file_arg = parsed.file.unwrap_or(R_NilValue());
+
+
         if file_arg.is_null() || file_arg == R_NilValue() {
             eprintln!("source: no file specified");
             return R_NilValue();
         }
         let file_path = elt_to_string(file_arg, 0);
-
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(content) => eval_source_text_with_name(&content, rho, &file_path),
             Err(e) => {
@@ -59,6 +75,282 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
     }
 }
+
+/// GNU `withAutoprint(exprs)` — `source(exprs=..., echo=TRUE, print.eval=TRUE)`
+/// in the calling environment. The argument is substituted, not evaluated twice.
+pub unsafe fn do_with_autoprint(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let (expr, print_eval, echo) = with_autoprint_args(args);
+        if expr.is_null() || expr == R_NilValue() || expr == R_MissingArg() {
+            crate::sexp::globals::set_R_Visible(FALSE);
+            return R_NilValue();
+        }
+        let exprs = brace_or_single_expressions(expr);
+        let _exprs = protect(exprs);
+        let prompt = option_prompt();
+        eval_source_expressions(
+            exprs,
+            rho,
+            echo,
+            print_eval,
+            &prompt,
+            crate::mainutils::deparse::DEFAULT_CUTOFF,
+            crate::mainutils::deparse::KEEPNA
+                | crate::mainutils::deparse::KEEPINTEGER
+                | crate::mainutils::deparse::SHOWATTRIBUTES,
+        )
+    }
+}
+
+struct SourceCallArgs {
+    file: Option<SEXP>,
+    exprs: Option<SEXP>,
+    local: Option<SEXP>,
+    echo: bool,
+    print_eval: Option<bool>,
+    prompt: String,
+    cutoff: c_int,
+    deparse_opts: c_int,
+}
+
+fn source_call_args(args: SEXP) -> SourceCallArgs {
+    unsafe {
+        let mut file = None;
+        let mut exprs = None;
+        let mut local = None;
+        let mut echo = false;
+        let mut print_eval = None;
+        let mut first_positional = None;
+        let mut positional = 0usize;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match tag_name(current).as_deref() {
+                Some("file") => file = Some(value),
+                Some(name) if name == "exprs" || name.starts_with("expr") => exprs = Some(value),
+                Some("local") => local = Some(value),
+                Some("echo") => echo = logical_arg(value, false),
+                Some("print.eval") | Some("print.") => print_eval = Some(logical_arg(value, true)),
+                Some(_) => {}
+                None => {
+                    if positional == 0 {
+                        first_positional = Some(value);
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
+        if exprs.is_none() {
+            file = file.or(first_positional);
+        }
+        SourceCallArgs {
+            file,
+            exprs,
+            local,
+            echo,
+            print_eval,
+            prompt: option_prompt(),
+            cutoff: crate::mainutils::deparse::DEFAULT_CUTOFF,
+            deparse_opts: crate::mainutils::deparse::SHOWATTRIBUTES,
+        }
+    }
+}
+
+fn with_autoprint_args(args: SEXP) -> (SEXP, bool, bool) {
+    unsafe {
+        let mut expr = R_MissingArg();
+        let mut print_eval = true;
+        let mut echo = true;
+        let mut saw_exprs = false;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match tag_name(current).as_deref() {
+                Some("exprs") => {
+                    expr = value;
+                    saw_exprs = true;
+                }
+                Some("evaluated") => {}
+                Some("print.") | Some("print.eval") => print_eval = logical_arg(value, true),
+                Some("echo") => echo = logical_arg(value, true),
+                Some(_) => {}
+                None => {
+                    if !saw_exprs {
+                        expr = value;
+                        saw_exprs = true;
+                    }
+                }
+            }
+            current = CDR(current);
+        }
+        (expr, print_eval, echo)
+    }
+}
+
+fn option_prompt() -> String {
+    unsafe {
+        let opt = crate::mainutils::options::GetOption1(Rf_install(c"prompt".as_ptr()));
+        if opt.is_null() || opt == R_NilValue() || TYPEOF(opt) != SEXPTYPE::STRSXP {
+            "> ".to_string()
+        } else {
+            elt_to_string(opt, 0)
+        }
+    }
+}
+
+fn source_eval_env(local: Option<SEXP>, rho: SEXP, default_caller: bool) -> SEXP {
+    unsafe {
+        match local {
+            Some(value) if TYPEOF(value) == SEXPTYPE::ENVSXP => value,
+            Some(value) if logical_arg(value, false) => rho,
+            Some(_) => crate::sexp::globals::R_GlobalEnv(),
+            None if default_caller => rho,
+            None => crate::sexp::globals::R_GlobalEnv(),
+        }
+    }
+}
+
+fn logical_arg(value: SEXP, default: bool) -> bool {
+    unsafe {
+        if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
+            return default;
+        }
+        crate::mainutils::coerce::asLogical(value) != 0
+    }
+}
+
+unsafe fn brace_or_single_expressions(expr: SEXP) -> SEXP {
+    unsafe {
+        if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
+            return expr;
+        }
+        if TYPEOF(expr) == SEXPTYPE::VECSXP {
+            let n = XLENGTH(expr);
+            let out = Rf_allocVector3(SEXPTYPE::EXPRSXP, n);
+            let _out = protect(out);
+            for i in 0..n {
+                SET_VECTOR_ELT(out, i, VECTOR_ELT(expr, i));
+            }
+            return out;
+        }
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP
+            && symbol_name(CAR(expr)).as_deref() == Some("{")
+        {
+            let mut n = 0;
+            let mut cell = CDR(expr);
+            while !cell.is_null() && cell != R_NilValue() {
+                n += 1;
+                cell = CDR(cell);
+            }
+            let out = Rf_allocVector3(SEXPTYPE::EXPRSXP, n);
+            let _out = protect(out);
+            cell = CDR(expr);
+            let mut i = 0;
+            while !cell.is_null() && cell != R_NilValue() {
+                SET_VECTOR_ELT(out, i, CAR(cell));
+                i += 1;
+                cell = CDR(cell);
+            }
+            return out;
+        }
+        let out = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
+        let _out = protect(out);
+        SET_VECTOR_ELT(out, 0, expr);
+        out
+    }
+}
+
+unsafe fn eval_source_expressions(
+    exprs: SEXP,
+    env: SEXP,
+    echo: bool,
+    print_eval: bool,
+    prompt: &str,
+    cutoff: c_int,
+    deparse_opts: c_int,
+) -> SEXP {
+    unsafe {
+        let n = if exprs.is_null() || exprs == R_NilValue() {
+            0
+        } else {
+            XLENGTH(exprs)
+        };
+        let mut last_value = R_NilValue();
+        let mut last_visible = FALSE;
+        for i in 0..n {
+            let expr = VECTOR_ELT(exprs, i);
+            if echo {
+                echo_source_expression(expr, prompt, cutoff, deparse_opts);
+            }
+            last_value = crate::eval::eval::Rf_eval(expr, env);
+            last_visible = crate::sexp::globals::R_Visible();
+            if print_eval && last_visible != FALSE {
+                let print_args = Rf_cons(last_value, R_NilValue());
+                let _print_args = protect(print_args);
+                crate::mainutils::essentials_basic::do_print(
+                    R_NilValue(),
+                    R_NilValue(),
+                    print_args,
+                    env,
+                );
+            }
+        }
+        with_visible_result(last_value, last_visible)
+    }
+}
+
+unsafe fn echo_source_expression(
+    expr: SEXP,
+    prompt: &str,
+    cutoff: c_int,
+    deparse_opts: c_int,
+) {
+    unsafe {
+        let dumped = crate::mainutils::deparse::deparse1WithCutoff(
+            expr,
+            false,
+            cutoff,
+            true,
+            deparse_opts,
+            -1,
+        );
+        let _dumped = protect(dumped);
+        let mut text = String::new();
+        if !dumped.is_null() && dumped != R_NilValue() && TYPEOF(dumped) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(dumped) {
+                if i > 0 {
+                    text.push('\n');
+                    text.push_str("+ ");
+                }
+                text.push_str(&elt_to_string(dumped, i));
+            }
+        }
+        let line = format!("{prompt}{text}\n");
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout(&line);
+        } else {
+            print!("{line}");
+        }
+    }
+}
+
+unsafe fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _result = protect(result);
+        SET_VECTOR_ELT(result, 0, value);
+        SET_VECTOR_ELT(result, 1, Rf_ScalarLogical(visible));
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _names = protect(names);
+        SET_STRING_ELT(names, 0, Rf_mkChar(c"value".as_ptr()));
+        SET_STRING_ELT(names, 1, Rf_mkChar(c"visible".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
+        crate::sexp::globals::set_R_Visible(FALSE);
+        result
+    }
+}
+
 
 /// R's `sys.source(file, envir, ...)` — source an R file into a specific environment.
 pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

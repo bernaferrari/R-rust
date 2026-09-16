@@ -673,10 +673,9 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
         if package_path.is_empty() {
             return Err(format!("there is no package called '{}'", package));
         }
-
         let package_dir = Path::new(&package_path);
         let description = package_dir.join("DESCRIPTION");
-        if package_needs_compilation(&description)? {
+        if package_needs_compilation(&description)? && !is_builtin_package_dependency(package) {
             return Err(format!(
                 "package '{}' declares NeedsCompilation: yes; this pure-R Android runtime does not load compiled package code",
                 package
@@ -685,6 +684,7 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
 
         let mut loading = vec![package.to_string()];
         let (env, _) = load_package_namespace(package, package_dir, &mut loading)?;
+
         Ok(env)
     }
 }
@@ -910,12 +910,14 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
                 package
             ));
         }
-        if package_needs_compilation(&description)? {
+        if package_needs_compilation(&description)? && !is_builtin_package_dependency(package)
+        {
             return Err(format!(
                 "package '{}' declares NeedsCompilation: yes; this pure-R Android runtime does not load compiled package code",
                 package
             ));
         }
+
 
         loading_packages.push(package.to_string());
         let result = (|| {
@@ -1136,8 +1138,11 @@ pub(crate) unsafe fn load_package_namespace(
         let _package_env_guard = crate::sexp::protect::protect(package_env);
 
         define_package_metadata(package, package_env);
-        reject_unsupported_internal_data(package, package_dir)?;
-        reject_unsupported_lazyload_code(package, package_dir)?;
+        if !is_builtin_package_dependency(package) {
+            reject_unsupported_internal_data(package, package_dir)?;
+            reject_unsupported_lazyload_code(package, package_dir)?;
+        }
+
         // Register the in-flight namespace before sourcing its R files:
         // upstream loadNamespace records the namespace first, so package
         // code that calls `asNamespace(pkg)` mid-load (crayon's
@@ -1741,9 +1746,12 @@ pub(crate) unsafe fn populate_package_namespace(
         let namespace = read_namespace_directives(package_dir)?;
         apply_description_depends(package, package_dir, package_env, loading)?;
         if let Some(directives) = namespace.as_ref() {
-            reject_native_namespace_directives(package, directives)?;
+            if !is_builtin_package_dependency(package) {
+                reject_native_namespace_directives(package, directives)?;
+            }
             apply_namespace_imports(package, package_env, directives, loading)?;
         }
+
         source_package_r_files(package, package_dir, package_env)?;
         let lazy_data_names = source_package_lazy_data(package, package_dir, package_env)?;
         define_lazy_data_names(package_env, &lazy_data_names);
