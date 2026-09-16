@@ -305,17 +305,9 @@ pub fn complex_cos(z: Rcomplex) -> Rcomplex {
 
 /// Complex tangent.
 pub fn complex_tan(z: Rcomplex) -> Rcomplex {
-    let s = complex_sin(z);
-    let c = complex_cos(z);
-    let d = c.r * c.r + c.i * c.i;
-    if d == 0.0 {
-        return NA_COMPLEX;
-    }
-    Rcomplex {
-        r: (s.r * c.r + s.i * c.i) / d,
-        i: (s.i * c.r - s.r * c.i) / d,
-    }
+    apply_z_fn(z, crate::mainutils::complex_cmath::z_tan)
 }
+
 
 /// Complex hyperbolic sine.
 pub fn complex_sinh(z: Rcomplex) -> Rcomplex {
@@ -351,6 +343,42 @@ pub fn complex_tanh(z: Rcomplex) -> Rcomplex {
         i: (2.0 * z.i).sin() / denominator,
     }
 }
+
+fn apply_z_fn(z: Rcomplex, f: fn(num::Complex<f64>) -> num::Complex<f64>) -> Rcomplex {
+    let c = f(num::Complex::new(z.r, z.i));
+    Rcomplex { r: c.re, i: c.im }
+}
+
+/// GNU `z_asin` — branch-cut aware complex arcsine.
+pub fn complex_asin(z: Rcomplex) -> Rcomplex {
+    apply_z_fn(z, crate::mainutils::complex_cmath::z_asin)
+}
+
+/// GNU `z_acos` — branch-cut aware complex arccosine.
+pub fn complex_acos(z: Rcomplex) -> Rcomplex {
+    apply_z_fn(z, crate::mainutils::complex_cmath::z_acos)
+}
+
+/// GNU `z_atan` — branch-cut aware complex arctangent.
+pub fn complex_atan(z: Rcomplex) -> Rcomplex {
+    apply_z_fn(z, crate::mainutils::complex_cmath::z_atan)
+}
+
+/// GNU `z_asinh` — branch-cut aware complex inverse hyperbolic sine.
+pub fn complex_asinh(z: Rcomplex) -> Rcomplex {
+    apply_z_fn(z, crate::mainutils::complex_cmath::z_asinh)
+}
+
+/// GNU `z_acosh` — branch-cut aware complex inverse hyperbolic cosine.
+pub fn complex_acosh(z: Rcomplex) -> Rcomplex {
+    apply_z_fn(z, crate::mainutils::complex_cmath::z_acosh)
+}
+
+/// GNU `z_atanh` — branch-cut aware complex inverse hyperbolic tangent.
+pub fn complex_atanh(z: Rcomplex) -> Rcomplex {
+    apply_z_fn(z, crate::mainutils::complex_cmath::z_atanh)
+}
+
 
 // ---------------------------------------------------------------------------
 // Tests

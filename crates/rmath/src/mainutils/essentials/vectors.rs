@@ -1124,6 +1124,12 @@ pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN && v.is_finite()
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                 *INTEGER(x).add(i as usize) != NA_INTEGER
+            } else if t == SEXPTYPE::CPLXSXP {
+                let z = *COMPLEX(x).add(i as usize);
+                z.r.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN
+                    && z.i.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN
+                    && z.r.is_finite()
+                    && z.i.is_finite()
             } else {
                 false
             };
@@ -1154,6 +1160,9 @@ pub unsafe fn do_is_infinite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         for i in 0..n {
             let is_infinite = if t == SEXPTYPE::REALSXP {
                 (*REAL(x).add(i as usize)).is_infinite()
+            } else if t == SEXPTYPE::CPLXSXP {
+                let z = *COMPLEX(x).add(i as usize);
+                z.r.is_infinite() || z.i.is_infinite()
             } else {
                 false
             };
@@ -1185,6 +1194,10 @@ pub unsafe fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let is_nan = if t == SEXPTYPE::REALSXP {
                 let v = *REAL(x).add(i as usize);
                 v.is_nan() && v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN
+            } else if t == SEXPTYPE::CPLXSXP {
+                let z = *COMPLEX(x).add(i as usize);
+                (z.r.is_nan() && z.r.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN)
+                    || (z.i.is_nan() && z.i.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN)
             } else {
                 false
             };
