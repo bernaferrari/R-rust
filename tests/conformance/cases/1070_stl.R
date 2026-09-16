@@ -1,0 +1,6 @@
+set.seed(53)
+x <- ts(cumsum(rnorm(48)) + sin(2 * pi * (1:48) / 12), frequency = 12)
+s <- stl(x, s.window = 7)
+cat(abs(s$time.series[1, "seasonal"] - 1.924) < 0.01, "\n", sep = "")
+cat(sprintf("%.3f", s$time.series[1, "trend"]), "\n", sep = "")
+cat(paste(colnames(s$time.series), collapse = ","), "\n", sep = "")
