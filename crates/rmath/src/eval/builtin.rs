@@ -687,6 +687,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: true,
     },
     UnevaluatedBuiltin {
+        name: "match.arg",
+        handler: crate::mainutils::essentials::do_match_arg,
+        restore_visibility_always: false,
+    },
+
+    UnevaluatedBuiltin {
         name: "model.extract",
         handler: crate::library::stats::filter::do_model_extract,
         restore_visibility_always: false,
@@ -5363,13 +5369,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_simplify2array,
     },
     EvaluatedBuiltin {
-        name: "match.arg",
-        handler: crate::mainutils::essentials::do_match_arg,
-    },
-    EvaluatedBuiltin {
         name: "char.expand",
         handler: crate::mainutils::essentials::do_char_expand,
     },
+
     EvaluatedBuiltin {
         name: "type.convert",
         handler: crate::mainutils::essentials::do_type_convert,

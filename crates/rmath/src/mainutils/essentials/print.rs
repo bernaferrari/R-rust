@@ -453,12 +453,16 @@ unsafe fn str_atomic_summary(x: SEXP) -> String {
             let preview = str_preview_reals_or_ints(x, 6);
             return format!("{type_name} [{}] {preview}", dims.join(", "));
         }
+        if n == 1 && t == SEXPTYPE::STRSXP {
+            return format!("{type_name} \"{}\"", elt_to_string(x, 0));
+        }
         let preview = str_preview_reals_or_ints(x, 10);
         if preview.is_empty() {
             format!("{type_name} [1:{n}]")
         } else {
             format!("{type_name} [1:{n}] {preview}")
         }
+
     }
 }
 

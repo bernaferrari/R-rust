@@ -13793,37 +13793,139 @@ pub unsafe fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
     }
 }
 
-/// R's `match.arg(arg, choices)` — match argument against choices.
-pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `match.arg(arg, choices, several.ok=FALSE)`.
+///
+/// One-arg form (`match.arg(mm)`) is unevaluated so `substitute(arg)` can
+/// name the caller's formal; choices come from `formals(sys.function(0))`.
+pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let arg = CAR(args);
-        let choices = CAR(CDR(args));
-        if arg.is_null() || choices.is_null() || arg == R_NilValue() || choices == R_NilValue() {
-            return arg;
-        }
-        let arg_str = elt_to_string(arg, 0);
-        let n = XLENGTH(choices);
-        let mut matches = Vec::new();
-        for i in 0..n {
-            let choice = elt_to_string(choices, i);
-            if choice.starts_with(&arg_str) {
-                matches.push(choice);
-            }
-        }
-        if matches.len() == 1 {
-            Rf_mkString(
-                CString::new(matches[0].as_str())
-                    .unwrap_or_default()
-                    .as_ptr(),
-            )
+        let arg_expr = CAR(args);
+        let choices_cell = CDR(args);
+        let choices_expr = if choices_cell.is_null() || choices_cell == R_NilValue() {
+            R_MissingArg()
         } else {
-            // Upstream match.arg raises with the call so the error renders
-            // "Error in match.arg(...) : 'arg' should be one of ...".
-            // Upstream appends the (here empty) choice list after "one of ";
-            // with zero choices stock R's message ends at "of", and the
-            // trailing space would break top-level render matching.
+            CAR(choices_cell)
+        };
+        let choices_missing = choices_expr.is_null()
+            || choices_expr == R_NilValue()
+            || choices_expr == R_MissingArg();
+
+        let arg = if arg_expr.is_null() || arg_expr == R_NilValue() || arg_expr == R_MissingArg()
+        {
+            R_NilValue()
+        } else {
+            crate::eval::eval::Rf_eval(arg_expr, rho)
+        };
+        let _arg_guard = protect(arg);
+
+        let choices = if choices_missing {
+            match_arg_choices_from_formals(arg_expr, rho)
+        } else {
+            crate::eval::eval::Rf_eval(choices_expr, rho)
+        };
+        let _choices_guard = protect(choices);
+
+        if arg.is_null() || arg == R_NilValue() {
+            return match_arg_first(choices);
+        }
+        if TYPEOF(arg) != SEXPTYPE::STRSXP {
+            crate::mainutils::errors::errorcall_str(call, "'arg' must be NULL or a character vector");
+        }
+        if TYPEOF(choices) != SEXPTYPE::STRSXP || XLENGTH(choices) == 0 {
             crate::mainutils::errors::errorcall_str(call, "'arg' should be one of");
         }
+
+        if crate::mainutils::identical::R_compute_identical(arg, choices, 0) != 0 {
+            return match_arg_first(choices);
+        }
+        if XLENGTH(arg) != 1 {
+            crate::mainutils::errors::errorcall_str(call, "'arg' must be of length 1");
+        }
+
+        let needle = elt_to_string(arg, 0);
+        let mut exact: Option<i64> = None;
+        let mut prefixes: Vec<i64> = Vec::new();
+        for i in 0..XLENGTH(choices) {
+            let choice = elt_to_string(choices, i);
+            if choice == needle {
+                exact = Some(i);
+                break;
+            }
+            if choice.starts_with(&needle) {
+                prefixes.push(i);
+            }
+        }
+        let idx = if let Some(i) = exact {
+            i
+        } else if prefixes.len() == 1 {
+            prefixes[0]
+        } else {
+            crate::mainutils::errors::errorcall_str(call, "'arg' should be one of");
+        };
+        match_arg_elt(choices, idx)
+    }
+}
+
+unsafe fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let name = if TYPEOF(arg_expr) == SEXPTYPE::SYMSXP {
+            let pname = PRINTNAME(arg_expr);
+            if pname.is_null() {
+                return R_NilValue();
+            }
+            CStr::from_ptr(CHAR(pname))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            return R_NilValue();
+        };
+        let top = crate::sexp::context::R_GlobalContext();
+        if top.is_null() || crate::eval::context::framedepth(top) <= 0 {
+            return R_NilValue();
+        }
+        let fun = crate::eval::context::R_sysfunction(0, top);
+        let _fun_guard = protect(fun);
+        let mut cell = FORMALS(fun);
+
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let pname = PRINTNAME(tag);
+                if !pname.is_null() {
+                    let tag_name = CStr::from_ptr(CHAR(pname)).to_string_lossy();
+                    if tag_name == name {
+                        let def = CAR(cell);
+                        if def.is_null() || def == R_NilValue() || def == R_MissingArg() {
+                            return R_NilValue();
+                        }
+                        return crate::eval::eval::Rf_eval(def, rho);
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
+        R_NilValue()
+    }
+}
+
+unsafe fn match_arg_first(choices: SEXP) -> SEXP {
+    match_arg_elt(choices, 0)
+}
+
+unsafe fn match_arg_elt(choices: SEXP, idx: i64) -> SEXP {
+    unsafe {
+        if choices.is_null()
+            || choices == R_NilValue()
+            || TYPEOF(choices) != SEXPTYPE::STRSXP
+            || idx < 0
+            || idx >= XLENGTH(choices)
+        {
+            return R_NilValue();
+        }
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _g = protect(out);
+        SET_STRING_ELT(out, 0, STRING_ELT(choices, idx));
+        out
     }
 }
 
