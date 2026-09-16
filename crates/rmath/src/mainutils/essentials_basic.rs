@@ -884,6 +884,43 @@ pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 counts.push(na_count);
             }
             (labels, counts)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let mut counts: BTreeMap<i32, i64> = BTreeMap::new();
+            let mut na_count = 0_i64;
+            for i in 0..XLENGTH(x) {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER {
+                    na_count += 1;
+                } else {
+                    *counts.entry(v).or_insert(0) += 1;
+                }
+            }
+            let mut labels: Vec<String> = counts.keys().map(i32::to_string).collect();
+            let mut vals: Vec<i64> = counts.values().copied().collect();
+            if use_na.should_include(na_count) {
+                labels.push("<NA>".to_string());
+                vals.push(na_count);
+            }
+            (labels, vals)
+        } else if t == SEXPTYPE::REALSXP {
+            let mut counts: BTreeMap<RealTableKey, i64> = BTreeMap::new();
+            let mut na_count = 0_i64;
+            for i in 0..XLENGTH(x) {
+                let v = *REAL(x).add(i as usize);
+                if v.is_nan() {
+                    na_count += 1;
+                } else {
+                    let key = RealTableKey(if v == 0.0 { 0.0 } else { v });
+                    *counts.entry(key).or_insert(0) += 1;
+                }
+            }
+            let mut labels: Vec<String> = counts.keys().map(|k| format_table_real(k.0)).collect();
+            let mut vals: Vec<i64> = counts.values().copied().collect();
+            if use_na.should_include(na_count) {
+                labels.push("<NA>".to_string());
+                vals.push(na_count);
+            }
+            (labels, vals)
         } else {
             let mut counts: BTreeMap<String, i64> = BTreeMap::new();
             for i in 0..XLENGTH(x) {
@@ -1009,6 +1046,38 @@ fn table_title(call: SEXP, args: SEXP) -> Option<String> {
         }
     }
 }
+
+#[derive(Copy, Clone)]
+struct RealTableKey(f64);
+
+impl PartialEq for RealTableKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_bits() == other.0.to_bits()
+    }
+}
+
+impl Eq for RealTableKey {}
+
+impl PartialOrd for RealTableKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RealTableKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.total_cmp(&other.0)
+    }
+}
+
+fn format_table_real(v: f64) -> String {
+    if v.fract() == 0.0 && v.abs() < 1e10 {
+        format!("{v:.0}")
+    } else {
+        format!("{v}")
+    }
+}
+
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TableUseNa {

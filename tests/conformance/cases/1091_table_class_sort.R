@@ -1,0 +1,5 @@
+t <- table(c(10, 2, 10, 2, 2))
+cat(paste(class(t), collapse = ","), "\n", sep = "")
+cat(paste(names(t), collapse = ","), "\n", sep = "")
+cat(paste(as.integer(t), collapse = ","), "\n", sep = "")
+print(t)

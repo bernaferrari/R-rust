@@ -4,7 +4,9 @@
 //! so they can be returned to the caller instead of printing
 //! to stdout/stderr.
 
-use super::accessors::{ATTRIB, CAR, CDR, CHAR, PRINTNAME, STRING_ELT, TAG, VECTOR_ELT, XLENGTH};
+use super::accessors::{
+    ATTRIB, CAR, CDR, CHAR, PRINTNAME, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+};
 use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, R_xlen_t, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::instance::RInstance;
@@ -1058,7 +1060,20 @@ fn table_names(x: Sexp<'_>) -> Option<Vec<String>> {
             x.clone().as_raw(),
             crate::sexp::attrib_core::R_NamesSymbol(),
         );
-        string_vector_values(names).filter(|names| names.len() == x.len() as usize)
+        if let Some(labels) =
+            string_vector_values(names).filter(|names| names.len() == x.len() as usize)
+        {
+            return Some(labels);
+        }
+        let dimnames = crate::sexp::attrib_core::getAttrib(
+            x.clone().as_raw(),
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if dimnames.is_null() || TYPEOF(dimnames) != SEXPTYPE::VECSXP || XLENGTH(dimnames) < 1 {
+            return None;
+        }
+        string_vector_values(VECTOR_ELT(dimnames, 0))
+            .filter(|names| names.len() == x.len() as usize)
     }
 }
 
@@ -1107,7 +1122,23 @@ fn format_table(x: Sexp<'_>) -> Option<String> {
             .join(" ");
         Some(format!("{title}\n{name_line}\n{value_line}"))
     } else {
-        Some(format!("\n{}\n{}", names.join(" "), values.join(" ")))
+        let width = names
+            .iter()
+            .zip(&values)
+            .map(|(name, value)| name.len().max(value.len()))
+            .max()
+            .unwrap_or(1);
+        let name_line = names
+            .iter()
+            .map(|name| format!("{name:>width$}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let value_line = values
+            .iter()
+            .map(|value| format!("{value:>width$}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        Some(format!("\n{name_line}\n{value_line}"))
     }
 }
 
@@ -2115,6 +2146,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_matrix(x.clone()) {
                 return output;
             }
+            if let Some(output) = format_table(x.clone()) {
+                return output;
+            }
             if let Some(output) = format_factor(x.clone()) {
                 return output;
             }
@@ -2135,6 +2169,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 return format_with_printable_attributes("numeric(0)".to_string(), x);
             }
             if let Some(output) = format_matrix(x.clone()) {
+                return output;
+            }
+            if let Some(output) = format_table(x.clone()) {
                 return output;
             }
             let base = unsafe { format_vector_stock(x.clone(), true) };

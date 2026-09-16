@@ -821,17 +821,18 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
         } else {
             let n = XLENGTH(x);
-            let names =
+            let mut names =
                 crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
+                let dn = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
+                if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 1 {
+                    names = VECTOR_ELT(dn, 0);
+                }
+            }
             let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
             if has_names {
-                let labels = (0..n)
-                    .map(|i| elt_to_string(names, i))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                println!();
-                println!("{labels}");
-                let values = (0..n)
+                let labels: Vec<String> = (0..n).map(|i| elt_to_string(names, i)).collect();
+                let values: Vec<String> = (0..n)
                     .map(|i| {
                         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                             (*INTEGER(x).add(i as usize)).to_string()
@@ -841,9 +842,26 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                             elt_to_string(x, i)
                         }
                     })
+                    .collect();
+                let width = labels
+                    .iter()
+                    .zip(&values)
+                    .map(|(name, value)| name.len().max(value.len()))
+                    .max()
+                    .unwrap_or(1);
+                let name_line = labels
+                    .iter()
+                    .map(|name| format!("{name:>width$}"))
                     .collect::<Vec<_>>()
                     .join(" ");
-                println!("{values}");
+                let value_line = values
+                    .iter()
+                    .map(|value| format!("{value:>width$}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                println!();
+                println!("{name_line}");
+                println!("{value_line}");
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
                 return x;
             }
