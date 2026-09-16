@@ -747,14 +747,15 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             || xtype == SEXPTYPE::INTSXP
             || xtype == SEXPTYPE::LGLSXP
         {
+            let coerced_holder;
             let x = if xtype == SEXPTYPE::REALSXP {
                 x
             } else {
-                let coerced =
+                coerced_holder =
                     crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.0);
-                let _guard = protect(coerced);
-                coerced
+                coerced_holder
             };
+            let _guard = protect(x);
             let px = REAL(x);
             let y = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             if y.is_null() || px.is_null() {

@@ -30,7 +30,7 @@ class UpstreamCorpusValidationTests(unittest.TestCase):
 
         self.assertEqual(report.imported_files, 245)
         self.assertEqual(report.total, 70)
-        self.assertEqual(report.expected_failures, 9)
+        self.assertEqual(report.expected_failures, 8)
         self.assertEqual(report.skipped, 60)
         self.assertEqual(report.runnable, 10)
 
@@ -81,6 +81,16 @@ class UpstreamCorpusValidationTests(unittest.TestCase):
 
         with self.assertRaisesRegex(validator.CorpusError, "not in inventory.tsv"):
             validator.validate_corpus(corpus)
+
+    def test_vendor_plot_pdf_artifacts_are_ignored(self) -> None:
+        corpus = self.make_corpus()
+        (corpus / "vendor" / "Rplots.pdf").write_bytes(b"%PDF-1.4")
+        (corpus / "vendor" / "reg-plot-latin1.pdf").write_bytes(b"%PDF-1.4")
+
+        report = validator.validate_corpus(corpus)
+
+        self.assertEqual(report.total, 1)
+
 
     def test_missing_disposition_is_rejected(self) -> None:
         corpus = self.make_corpus()

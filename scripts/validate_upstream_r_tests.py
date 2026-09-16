@@ -166,7 +166,7 @@ def validate_corpus(corpus: Path, expected_commit: str | None = None) -> Report:
         {
             path.relative_to(vendor).as_posix()
             for path in vendor.rglob("*")
-            if path.is_file()
+            if path.is_file() and path.suffix.lower() != ".pdf"
         }
         if vendor.is_dir()
         else set()
