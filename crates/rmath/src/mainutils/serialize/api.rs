@@ -527,7 +527,21 @@ unsafe fn R_unserialize_from_stream_hooks(
         let raw_ptr = RAW(icon);
         let data = slice::from_raw_parts(raw_ptr, len);
 
-        let mut reader = BinaryReader::new(data);
+        // GNU serialize.c: gzip-compressed RDS starts with 1f 8b.
+        let decompressed;
+        let payload: &[u8] = if data.len() >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+            let mut decoder = GzDecoder::new(data);
+            let mut out = Vec::new();
+            if decoder.read_to_end(&mut out).is_err() || out.is_empty() {
+                error("read error");
+            }
+            decompressed = out;
+            &decompressed
+        } else {
+            data
+        };
+
+        let mut reader = BinaryReader::new(payload);
         if hook_func.is_some() {
             reader.set_c_persist_hook(hook_func, hook_data);
         } else {

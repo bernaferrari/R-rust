@@ -1640,13 +1640,16 @@ pub(crate) unsafe fn source_package_lazy_data(
     package_env: SEXP,
 ) -> Result<Vec<String>, String> {
     unsafe {
-        if !package_declares_lazy_data(package_dir)? {
-            return Ok(Vec::new());
-        }
-
         let data_dir = package_dir.join("data");
         if !data_dir.is_dir() {
             return Ok(Vec::new());
+        }
+
+        let rdata_base = data_dir.join("Rdata");
+        if rdata_base.with_extension("rdx").is_file() {
+            eager_lazy_load_package_db(&rdata_base, package_env, &[])?;
+        } else if !package_declares_lazy_data(package_dir)? {
+            // No lazy-load database and no LazyData: yes — only source data/*.R.
         }
 
         let before = frame_binding_names(package_env, true)
@@ -1668,10 +1671,11 @@ pub(crate) unsafe fn source_package_lazy_data(
             source_r_file_into_env(&file, package_env)?;
         }
 
-        let mut names = frame_binding_names(package_env, true)
-            .into_iter()
-            .filter(|name| !before.contains(name.as_str()))
-            .collect::<Vec<_>>();
+        let mut names = frame_binding_names(package_env, true);
+        if !rdata_base.with_extension("rdx").is_file() {
+            names.retain(|name| !before.contains(name.as_str()));
+        }
+        names.retain(|name| !name.starts_with('.'));
         names.sort();
         names.dedup();
         Ok(names)

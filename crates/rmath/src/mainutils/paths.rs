@@ -27,15 +27,9 @@ impl RuntimePathPolicy {
 
         #[cfg(not(target_os = "android"))]
         {
-            if library_paths.is_empty() {
-                if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-                    library_paths.push(home.join(".R").join("library"));
-                }
-                library_paths.push(PathBuf::from("/usr/local/lib/R/site-library"));
-                library_paths.push(PathBuf::from("/usr/lib/R/site-library"));
-                library_paths.push(PathBuf::from("/usr/lib/R/library"));
-            }
+            library_paths.extend(discover_host_r_libraries());
         }
+
 
         dedupe_paths(&mut library_paths);
 
@@ -130,6 +124,37 @@ fn extend_env_paths(paths: &mut Vec<PathBuf>, key: &str) {
 fn dedupe_paths(paths: &mut Vec<PathBuf>) {
     let mut seen = HashSet::<OsString>::new();
     paths.retain(|path| !path.as_os_str().is_empty() && seen.insert(path.as_os_str().to_owned()));
+}
+
+#[cfg(not(target_os = "android"))]
+fn discover_host_r_libraries() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        let oracle = home.join(".cache").join("rport").join("r-oracle");
+        if let Ok(entries) = std::fs::read_dir(&oracle) {
+            let mut found = entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.path().join("lib").join("R").join("library"))
+                .filter(|path| path.join("datasets").join("DESCRIPTION").is_file())
+                .collect::<Vec<_>>();
+            found.sort();
+            out.extend(found);
+        }
+        out.push(home.join(".R").join("library"));
+    }
+    if let Ok(entries) = std::fs::read_dir("/opt/homebrew/Cellar/r") {
+        let mut found = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path().join("lib").join("R").join("library"))
+            .filter(|path| path.join("datasets").join("DESCRIPTION").is_file())
+            .collect::<Vec<_>>();
+        found.sort();
+        out.extend(found);
+    }
+    out.push(PathBuf::from("/usr/local/lib/R/site-library"));
+    out.push(PathBuf::from("/usr/lib/R/site-library"));
+    out.push(PathBuf::from("/usr/lib/R/library"));
+    out
 }
 
 #[cfg(test)]

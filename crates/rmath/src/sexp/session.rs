@@ -420,11 +420,21 @@ impl RSession {
                 crate::mainutils::errors::nmath_warning_hook,
             ));
         }
-        RSession {
+        let session = RSession {
             active: true,
             instance,
             _thread_confined: PhantomData,
-        }
+        };
+        session.with_active(|| unsafe {
+            let path = crate::mainutils::essentials::find_package_path("datasets");
+            if !path.is_empty() {
+                let _ = crate::mainutils::essentials::load_pure_r_package(
+                    "datasets",
+                    std::path::Path::new(&path),
+                );
+            }
+        });
+        session
     }
 
     /// Create a session without leaving it installed as the thread's ambient

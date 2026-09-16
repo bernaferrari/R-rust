@@ -382,6 +382,106 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+unsafe fn sexp_has_class_name(x: SEXP, class_name: &str) -> bool {
+    unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
+        if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        (0..XLENGTH(class)).any(|i| elt_to_string(class, i) == class_name)
+    }
+}
+
+unsafe fn str_atomic_summary(x: SEXP) -> String {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return "NULL".to_string();
+        }
+        if sexp_has_class_name(x, "factor") {
+            let n = XLENGTH(x);
+            let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
+            let nlev = if !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP {
+                XLENGTH(levels)
+            } else {
+                0
+            };
+            let shown_levels = nlev.min(2);
+            let mut level_text = String::new();
+            for i in 0..shown_levels {
+                if i > 0 {
+                    level_text.push(',');
+                }
+                level_text.push('"');
+                level_text.push_str(&elt_to_string(levels, i));
+                level_text.push('"');
+            }
+            if nlev > shown_levels {
+                level_text.push_str(",..");
+            }
+            let preview = str_preview_ints(x, 10);
+            return format!("Factor w/ {nlev} levels {level_text}: {preview}");
+        }
+        if sexp_has_class_name(x, "ts") {
+            let n = XLENGTH(x);
+            let tsp = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"tsp".as_ptr()));
+            let (start, end) = if !tsp.is_null() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 2
+            {
+                (*REAL(tsp), *REAL(tsp).add(1))
+            } else {
+                (1.0, n as f64)
+            };
+            let preview = str_preview_reals_or_ints(x, 10);
+            return format!("Time-Series [1:{n}] from {start} to {end}: {preview}");
+        }
+        let t = TYPEOF(x);
+        let n = XLENGTH(x);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let type_name = match t {
+            t if t == SEXPTYPE::REALSXP => "num",
+            t if t == SEXPTYPE::INTSXP => "int",
+            t if t == SEXPTYPE::LGLSXP => "logi",
+            t if t == SEXPTYPE::STRSXP => "chr",
+            t if t == SEXPTYPE::CPLXSXP => "cplx",
+            t if t == SEXPTYPE::RAWSXP => "raw",
+            t if t == SEXPTYPE::VECSXP => "List",
+            _ => "?",
+        };
+        if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
+            let dims: Vec<String> = (0..XLENGTH(dim))
+                .map(|i| format!("1:{}", *INTEGER(dim).add(i as usize)))
+                .collect();
+            let preview = str_preview_reals_or_ints(x, 6);
+            return format!("{type_name} [{}] {preview}", dims.join(", "));
+        }
+        let preview = str_preview_reals_or_ints(x, 10);
+        if preview.is_empty() {
+            format!("{type_name} [1:{n}]")
+        } else {
+            format!("{type_name} [1:{n}] {preview}")
+        }
+    }
+}
+
+unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
+    unsafe {
+        let n = XLENGTH(x) as usize;
+        let show = n.min(max);
+        let mut parts = Vec::with_capacity(show);
+        for i in 0..show {
+            parts.push(elt_to_string(x, i as R_xlen_t));
+        }
+        let mut text = parts.join(" ");
+        if n > show {
+            text.push_str(" ...");
+        }
+        text
+    }
+}
+
+unsafe fn str_preview_reals_or_ints(x: SEXP, max: usize) -> String {
+    unsafe { str_preview_ints(x, max) }
+}
+
 /// Emit a str() line through the session output capture when one is active,
 /// so interleaving with captured print output stays in order.
 fn str_emit_line(line: &str) {
@@ -395,9 +495,12 @@ fn str_emit_line(line: &str) {
 /// R's `str(x)` — compact structure display.
 pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
+        if TYPEOF(x) == SEXPTYPE::PROMSXP {
+            x = crate::sexp::envir::forcePromise(x);
+        }
         if x.is_null() || x == R_NilValue() {
-            println!(" NULL");
+            str_emit_line(" NULL");
             return R_NilValue();
         }
         let t = TYPEOF(x);
@@ -483,14 +586,11 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         if t == SEXPTYPE::VECSXP {
-            // List
             let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
             let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
-
-            // Check for data.frame class
             let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
             let is_df = if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
-                elt_to_string(class, 0) == "data.frame"
+                (0..XLENGTH(class)).any(|i| elt_to_string(class, i) == "data.frame")
             } else {
                 false
             };
@@ -499,35 +599,28 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let ncol = n;
                 let nrow = if ncol > 0 {
                     let first = VECTOR_ELT(x, 0);
-                    if first.is_null() { 0 } else { XLENGTH(first) }
+                    if first.is_null() {
+                        0
+                    } else {
+                        XLENGTH(first)
+                    }
                 } else {
                     0
                 };
-                println!("'data.frame':\t{} obs. of  {} variables:", nrow, ncol);
-                for i in 0..ncol.min(6) {
+                str_emit_line(&format!(
+                    "'data.frame':\t{nrow} obs. of  {ncol} variables:"
+                ));
+                for i in 0..ncol {
                     let name = if has_names && i < XLENGTH(names) {
                         elt_to_string(names, i)
                     } else {
-                        format!("$ {}", i + 1)
+                        format!("{}", i + 1)
                     };
                     let elem = VECTOR_ELT(x, i as i64);
-                    let elem_type = if elem.is_null() {
-                        "NULL".to_string()
-                    } else {
-                        let et = TYPEOF(elem);
-                        let m = XLENGTH(elem);
-                        match et {
-                            t if t == SEXPTYPE::REALSXP => format!("num [1:{}]", m),
-                            t if t == SEXPTYPE::INTSXP => format!("int [1:{}]", m),
-                            t if t == SEXPTYPE::LGLSXP => format!("logi [1:{}]", m),
-                            t if t == SEXPTYPE::STRSXP => format!("chr [1:{}]", m),
-                            _ => format!("? [1:{}]", m),
-                        }
-                    };
-                    println!(" ${:<12}: {}", name, elem_type);
+                    str_emit_line(&format!(" ${name}: {}", str_atomic_summary(elem)));
                 }
             } else {
-                println!("List of {}", n);
+                str_emit_line(&format!("List of {n}"));
                 for i in 0..n.min(6) {
                     let name = if has_names && i < XLENGTH(names) {
                         elt_to_string(names, i)
@@ -535,45 +628,13 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         format!("[[{}]]", i + 1)
                     };
                     let elem = VECTOR_ELT(x, i as i64);
-                    let elem_type = if elem.is_null() {
-                        "NULL".to_string()
-                    } else {
-                        let et = TYPEOF(elem);
-                        let m = XLENGTH(elem);
-                        match et {
-                            t if t == SEXPTYPE::REALSXP => format!("num [1:{}]", m),
-                            t if t == SEXPTYPE::INTSXP => format!("int [1:{}]", m),
-                            t if t == SEXPTYPE::LGLSXP => format!("logi [1:{}]", m),
-                            t if t == SEXPTYPE::STRSXP => format!("chr [1:{}]", m),
-                            t if t == SEXPTYPE::VECSXP => format!("list [1:{}]", m),
-                            _ => format!("? [1:{}]", m),
-                        }
-                    };
-                    println!(" $ {}: {}", name, elem_type);
+                    str_emit_line(&format!(" $ {name}: {}", str_atomic_summary(elem)));
                 }
             }
         } else {
-            // Atomic vector or other
-            let type_name = match t {
-                t if t == SEXPTYPE::REALSXP => "num",
-                t if t == SEXPTYPE::INTSXP => "int",
-                t if t == SEXPTYPE::LGLSXP => "logi",
-                t if t == SEXPTYPE::STRSXP => "chr",
-                t if t == SEXPTYPE::CPLXSXP => "cplx",
-                t if t == SEXPTYPE::RAWSXP => "raw",
-                _ => "?",
-            };
-            let preview_n = n.min(6);
-            let parts: Vec<String> = (0..preview_n).map(|i| elt_to_string(x, i)).collect();
-            print!(" {} [1:{}]", type_name, n);
-            if !parts.is_empty() {
-                print!(": {}", parts.join(" "));
-            }
-            if n > preview_n {
-                print!(" ...");
-            }
-            println!();
+            str_emit_line(&format!(" {}", str_atomic_summary(x)));
         }
+
 
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
