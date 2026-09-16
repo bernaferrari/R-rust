@@ -508,10 +508,14 @@ fn split_sign(body: &[u8]) -> (&[u8], &[u8]) {
 /// %f with precision (handles inf/nan).
 fn format_fixed(v: f64, precision: usize) -> String {
     if v.is_nan() {
-        return "nan".to_string();
+        return "NaN".to_string();
     }
     if v.is_infinite() {
-        return if v > 0.0 { "inf" } else { "-inf" }.to_string();
+        return if v.is_sign_negative() {
+            "-Inf".to_string()
+        } else {
+            "Inf".to_string()
+        };
     }
     format!("{v:.precision$}")
 }
@@ -520,14 +524,13 @@ fn format_fixed(v: f64, precision: usize) -> String {
 fn format_exponent(v: f64, precision: usize, upper: bool) -> String {
     let e_char = if upper { 'E' } else { 'e' };
     if v.is_nan() {
-        return if upper { "NAN" } else { "nan" }.to_string();
+        return "NaN".to_string();
     }
     if v.is_infinite() {
-        let s = if v > 0.0 { "INF" } else { "-INF" }.to_string();
-        return if upper {
-            s.to_uppercase()
+        return if v.is_sign_negative() {
+            "-Inf".to_string()
         } else {
-            s.to_lowercase()
+            "Inf".to_string()
         };
     }
     if v == 0.0 {

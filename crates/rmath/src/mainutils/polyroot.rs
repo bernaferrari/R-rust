@@ -696,12 +696,11 @@ impl CpolyRootState {
 ///
 /// Port of `R_cpolyroot` from `complex.c` (lines 940-1070).
 ///
-/// Given `coef` as interleaved complex coefficients `[re0, im0, re1, im1, ...]`
-/// and `degree` as the polynomial degree, returns a pointer to a heap-allocated
-/// array of `2 * degree` doubles containing `[re0, im0, re1, im1, ...]` root values,
-/// or null on failure.
-///
-/// The caller is responsible for freeing the returned pointer.
+/// `coef` is blocked, not interleaved: `coef[0..n)` are real parts of
+/// coefficients in **descending** degree (leading first), `coef[n..2n)`
+/// the matching imaginary parts. `degree` is `n - 1`. Returns a
+/// heap-allocated `[re0, im0, re1, im1, ...]` of `degree` roots, or
+/// null on failure. The caller owns and must free the pointer.
 pub unsafe fn R_cpolyroot(coef: *mut c_double, degree: c_int) -> *mut std::ffi::c_void {
     unsafe {
         if coef.is_null() || degree <= 0 {

@@ -272,6 +272,19 @@ fn test_dgetrf_3x3() {
     }
 }
 
+#[test]
+fn test_dgetrf_zero_matrix_reports_singular_info() {
+    let mut a = vec![0.0; 4];
+    let n = 2i32;
+    let mut ipiv = vec![0i32; 2];
+    let mut info = 0i32;
+    unsafe {
+        backend::dgetrf_(&n, &n, a.as_mut_ptr(), &n, ipiv.as_mut_ptr(), &mut info);
+    }
+    assert_eq!(info, 1, "dgetrf zero matrix info");
+}
+
+
 // ════════════════════════════════════════════════════════════════
 // dgesv_  –  solve Ax = B via LU
 // ════════════════════════════════════════════════════════════════

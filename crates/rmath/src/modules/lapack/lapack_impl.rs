@@ -643,7 +643,7 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
 
         if anorm == 0.0 {
             let ans = Rf_allocVector(REALSXP_C, 1);
-            *REAL(ans) = f64::INFINITY;
+            *REAL(ans) = 0.0;
             return ans;
         }
 
@@ -1006,7 +1006,7 @@ pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
 
         if anorm == 0.0 {
             let ans = Rf_allocVector(REALSXP_C, 1);
-            *REAL(ans) = f64::INFINITY;
+            *REAL(ans) = 0.0;
             return ans;
         }
 

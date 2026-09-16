@@ -273,7 +273,14 @@ pub unsafe fn dgetrf_(
         for (i, &p) in pivots.iter().take(m.min(n)).enumerate() {
             *ipiv.add(i) = p;
         }
-        *info = 0;
+        let mut info_val = 0;
+        for i in 0..k {
+            if u[(i, i)].abs() == 0.0 {
+                info_val = (i + 1) as core::ffi::c_int;
+                break;
+            }
+        }
+        *info = info_val;
     }
 }
 
