@@ -2975,6 +2975,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ma1".to_string(), "sma1".to_string()],
                 s2,
             )
+        } else if !css && no_mean && p <= 0 && q == 1 && sar_p <= 0 && sar_q <= 0 {
+            exact_arima_ml(&y, 0, 1, 0, 0, 0, false)
         } else if no_mean && p <= 0 && q == 1 {
             let (th, s2) = css_ma1_no_mean(&y);
             (vec![th], vec!["ma1".to_string()], s2)
