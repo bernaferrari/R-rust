@@ -1846,6 +1846,7 @@ fn exact_arima_ml(
     sar_p: usize,
     sar_q: usize,
     period: usize,
+    include_mean: bool,
 ) -> (Vec<f64>, Vec<String>, f64) {
     let n = y.len();
     if n < p + q + 2 {
@@ -1855,7 +1856,11 @@ fn exact_arima_ml(
     let mut ma = vec![0.0; q];
     let mut sar = vec![0.0; sar_p];
     let mut sma = vec![0.0; sar_q];
-    let mut ic = y.iter().sum::<f64>() / n as f64;
+    let mut ic = if include_mean {
+        y.iter().sum::<f64>() / n as f64
+    } else {
+        0.0
+    };
     let lo_ic = y.iter().copied().fold(f64::INFINITY, f64::min) - 1.0;
     let hi_ic = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) + 1.0;
     let ncond = p + sar_p * period.max(1);
@@ -1893,7 +1898,9 @@ fn exact_arima_ml(
                 css(&ar, &ma, &sar, &t, ic)
             });
         }
-        ic = golden_min(lo_ic, hi_ic, 80, |m| css(&ar, &ma, &sar, &sma, m));
+        if include_mean {
+            ic = golden_min(lo_ic, hi_ic, 80, |m| css(&ar, &ma, &sar, &sma, m));
+        }
     }
     let nll = |ar: &[f64], ma: &[f64], sar: &[f64], sma: &[f64], mu: f64| {
         arima_ml_nll(y, ar, ma, sar, sma, mu, period)
@@ -1927,7 +1934,9 @@ fn exact_arima_ml(
                 nll(&ar, &ma, &sar, &t, ic)
             });
         }
-        ic = golden_min(lo_ic, hi_ic, 80, |m| nll(&ar, &ma, &sar, &sma, m));
+        if include_mean {
+            ic = golden_min(lo_ic, hi_ic, 80, |m| nll(&ar, &ma, &sar, &sma, m));
+        }
     }
     let phi = poly_expand_ar(&ar, &sar, period);
     let theta = poly_expand_ma(&ma, &sma, period);
@@ -1953,8 +1962,10 @@ fn exact_arima_ml(
         values.push(sma[i]);
         names.push(format!("sma{}", i + 1));
     }
-    values.push(ic);
-    names.push("intercept".to_string());
+    if include_mean {
+        values.push(ic);
+        names.push("intercept".to_string());
+    }
     (values, names, s2)
 }
 
@@ -2836,7 +2847,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && sar_q == 1
             && period >= 2
         {
-            exact_arima_ml(&y, 1, 1, 1, 1, period as usize)
+            exact_arima_ml(&y, 1, 1, 1, 1, period as usize, true)
         } else if p == 1 && q == 1 && !differenced && sar_p == 1 && sar_q == 1 && period >= 2 {
             let (ar, ma, sar, sma, mu, s2) = css_arma11_sar1_sma1(&y, period as usize);
             (
@@ -2916,7 +2927,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && sar_p <= 0
             && sar_q <= 0
         {
-            exact_arima_ml(&y, p as usize, q as usize, 0, 0, 0)
+            exact_arima_ml(&y, p as usize, q as usize, 0, 0, 0, true)
         } else if p >= 2 && p <= 5 && q <= 0 && !no_mean && sar_p <= 0 && sar_q <= 0 {
             let (phi, mu, s2) = css_ar_mean(&y, p as usize);
             let mut names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
@@ -2981,6 +2992,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ar1".to_string(), "sar1".to_string()],
                 s2,
             )
+        } else if !css && no_mean && p == 1 && q <= 0 && sar_p <= 0 && sar_q <= 0 {
+            exact_arima_ml(&y, 1, 0, 0, 0, 0, false)
         } else if no_mean && q <= 0 && p > 0 {
             let (phi, s2) = css_ar_no_mean(&y, p as usize);
             let names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
