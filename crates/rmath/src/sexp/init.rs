@@ -140,6 +140,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         let _as_list_closure_guard = super::protect::protect(as_list_closure);
         defineVar(Rf_install_in_current("as.list"), as_list_closure, base_env);
 
+        // GNU apply.R: n-d arrays, empty-extent MARGIN, and FUN=NULL collapse.
+        eval_base_binding(base_env, "apply", include_str!("gnu_apply.R"));
+
         // `%||%` <- function(x, y) if (is.null(x)) y else x
         let formals = formals_from_specs(&[arg("x"), arg("y")]);
         let _formals_guard = super::protect::protect(formals);
@@ -291,6 +294,24 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             choose_default_closure,
             base_env,
         );
+    }
+}
+
+unsafe fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
+    unsafe {
+        let parsed = super::memory::with_arena(|arena| {
+            crate::eval::parser::parse_expressions(source, arena)
+        });
+        crate::eval::parser::flush_literal_warnings();
+        let Ok(exprs) = parsed else {
+            return;
+        };
+        if exprs.len() != 1 {
+            return;
+        }
+        let value = crate::eval::eval::Rf_eval(exprs[0], base_env);
+        let _v = super::protect::protect(value);
+        defineVar(Rf_install_in_current(name), value, base_env);
     }
 }
 

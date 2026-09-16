@@ -44,7 +44,10 @@ pub unsafe fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if Rf_length(args) < 2 {
             error("wrong number of arguments");
         }
-        let x = CAR(args);
+        // `aperm` identity returns the original SEXP. GNU dimgets then
+        // shallow-duplicates whenever the object is referenced. The port's
+        // NAMED is still 0 on some local arrays, so always copy here.
+        let x = crate::mainutils::duplicate::shallow_duplicate(CAR(args));
         let val = CADR(args);
         crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimSymbol(), val);
         x

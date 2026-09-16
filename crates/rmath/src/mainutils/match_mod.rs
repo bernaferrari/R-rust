@@ -527,9 +527,9 @@ pub unsafe fn pmatch(formal: SEXP, tag: SEXP, exact: c_int) -> c_int {
 /// the matched arguments in actuals.
 ///
 /// "NR" means non-reference-tracking — uses CONS_NR.
-/// This is the core of R's argument matching for function calls.
-/// Note: canonical version lives in sexp/envir.rs; this is a
-/// local implementation used internally by match_mod.
+/// This is the production three-pass matcher (exact, partial, positional).
+/// Closure evaluation uses `eval/closure.rs::match_closure_args`, a second
+/// port of the same GNU `match.c` algorithm.
 pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let mut seendots: bool;

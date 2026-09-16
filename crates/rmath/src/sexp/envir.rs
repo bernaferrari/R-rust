@@ -1204,28 +1204,6 @@ pub unsafe fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
     }
 }
 
-/// Match actual arguments to formal parameters.
-///
-/// FFI wrapper around [`match_args_safe`].
-pub unsafe fn matchArgs(formals: SEXP, args: SEXP, _call: SEXP) -> SEXP {
-    unsafe {
-        if formals.is_null() || formals == R_NilValue() {
-            return args;
-        }
-
-        match (Sexp::from_raw(formals), Sexp::from_raw(args)) {
-            (Some(formals), Some(args)) => match_args_safe(formals, args.clone())
-                .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(|| args.as_raw()),
-            _ => args,
-        }
-    }
-}
-
-/// Match arguments without renaming.
-pub unsafe fn matchArgs_NR(formals: SEXP, args: SEXP) -> SEXP {
-    unsafe { matchArgs(formals, args, ptr::null_mut()) }
-}
 
 /// Check if a symbol has a missing argument in the given environment.
 ///

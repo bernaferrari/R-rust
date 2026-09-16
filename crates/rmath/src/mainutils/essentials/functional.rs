@@ -2784,7 +2784,6 @@ pub unsafe fn do_c_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `unlist(x)` — flatten nested list to a vector.
-/// Simplified: if list elements are all numeric, return REALSXP.
 pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -2804,6 +2803,11 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         collect_unlist_entries(x, None, recursive, use_names, &mut entries);
         let result_type = unlist_result_type(&entries);
         let total = entries.len() as R_xlen_t;
+        // GNU: unlist(list(NULL, NULL)) is NULL, not numeric(0).
+        // apply() uses this when FUN returns NULL on every slice.
+        if entries.is_empty() {
+            return R_NilValue();
+        }
 
         let result = Rf_allocVector3(result_type, total);
         if result.is_null() {
