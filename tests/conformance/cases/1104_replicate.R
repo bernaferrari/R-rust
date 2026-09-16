@@ -1,0 +1,6 @@
+set.seed(1)
+r <- replicate(3, 1:2)
+cat(paste(dim(r), collapse = "x"), "\n", sep = "")
+cat(paste(r[2, ], collapse = ","), "\n", sep = "")
+s <- replicate(4, "a")
+cat(paste(s, collapse = ","), "\n", sep = "")

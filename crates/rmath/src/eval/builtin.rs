@@ -562,6 +562,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "replicate",
+        handler: crate::mainutils::essentials::do_replicate,
+        restore_visibility_always: false,
+    },
+
+    UnevaluatedBuiltin {
         name: "vapply",
         handler: crate::mainutils::essentials::do_vapply,
         restore_visibility_always: false,

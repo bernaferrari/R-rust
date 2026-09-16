@@ -125,9 +125,30 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let list = do_lapply(_call, _op, args, rho);
-        simplify_scalar_list(list)
+        let _list = protect(list);
+        if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP || XLENGTH(list) == 0 {
+            return list;
+        }
+        let first = VECTOR_ELT(list, 0);
+        let atomic = !first.is_null()
+            && matches!(
+                SEXPTYPE(TYPEOF(first)),
+                SEXPTYPE::REALSXP
+                    | SEXPTYPE::INTSXP
+                    | SEXPTYPE::LGLSXP
+                    | SEXPTYPE::STRSXP
+                    | SEXPTYPE::CPLXSXP
+                    | SEXPTYPE::RAWSXP
+            );
+        if !atomic {
+            return list;
+        }
+        let sargs = Rf_cons(list, R_NilValue());
+        let _sargs = protect(sargs);
+        do_simplify2array(_call, _op, sargs, rho)
     }
 }
+
 
 /// R's `vapply(X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE)` — apply.c's
 /// do_vapply as a dedicated checked loop (the R-level wrapper only adds
@@ -587,6 +608,20 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         )
     }
 }
+
+/// GNU `replicate(n, expr, simplify = "array")`.
+pub unsafe fn do_replicate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "replicate",
+            include_str!("../base_wrappers/replicate.R"),
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
 
 /// R's `do.call(what, args)` — call function with list of args.
 fn do_call_arguments(args: SEXP) -> [Option<SEXP>; 4] {

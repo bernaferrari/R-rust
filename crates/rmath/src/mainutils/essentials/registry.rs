@@ -289,6 +289,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "nzchar",
     "lapply",
     "sapply",
+    "replicate",
+
     "vapply",
     "Map",
     "Filter",
