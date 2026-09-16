@@ -1,0 +1,7 @@
+set.seed(49)
+x <- ts(cumsum(rnorm(40)), frequency = 4)
+h <- HoltWinters(x)
+cat(sprintf("%.2f", h$alpha), "\n", sep = "")
+cat(abs(as.numeric(h$beta) - 0.197) < 0.03, "\n", sep = "")
+cat(sprintf("%.1f", h$gamma), "\n", sep = "")
+cat(abs(h$SSE - 62.57) < 8, "\n", sep = "")

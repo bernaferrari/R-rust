@@ -106,6 +106,139 @@ pub unsafe fn HoltWinters(
     }
 }
 
+fn hw_golden_min(lo: f64, hi: f64, steps: usize, mut f: impl FnMut(f64) -> f64) -> f64 {
+    let gr = 0.5 * (5.0_f64.sqrt() - 1.0);
+    let mut lo = lo;
+    let mut hi = hi;
+    let mut c = hi - gr * (hi - lo);
+    let mut d = lo + gr * (hi - lo);
+    let mut fc = f(c);
+    let mut fd = f(d);
+    for _ in 0..steps {
+        if fc < fd {
+            hi = d;
+            d = c;
+            fd = fc;
+            c = hi - gr * (hi - lo);
+            fc = f(c);
+        } else {
+            lo = c;
+            c = d;
+            fc = fd;
+            d = lo + gr * (hi - lo);
+            fd = f(d);
+        }
+    }
+    0.5 * (lo + hi)
+}
+
+fn hw_additive_start(x: &[f64], period: usize) -> (f64, f64, Vec<f64>) {
+    let wind = 2 * period;
+    if period < 2 || x.len() < wind {
+        return (x.first().copied().unwrap_or(0.0), 0.0, vec![0.0; period.max(1)]);
+    }
+    let flen = period + 1;
+    let mut filt = vec![1.0; flen];
+    filt[0] = 0.5;
+    filt[flen - 1] = 0.5;
+    let p = period as f64;
+    for v in &mut filt {
+        *v /= p;
+    }
+    let off = period / 2;
+    let mut trend = vec![f64::NAN; wind];
+    for i in off..(wind - off) {
+        let mut s = 0.0;
+        for k in 0..flen {
+            let j = i as isize - off as isize + k as isize;
+            if j >= 0 && (j as usize) < wind {
+                s += filt[k] * x[j as usize];
+            }
+        }
+        trend[i] = s;
+    }
+    let mut fig = vec![0.0; period];
+    let mut cnt = vec![0.0; period];
+    for i in 0..wind {
+        if trend[i].is_finite() {
+            fig[i % period] += x[i] - trend[i];
+            cnt[i % period] += 1.0;
+        }
+    }
+    for i in 0..period {
+        if cnt[i] > 0.0 {
+            fig[i] /= cnt[i];
+        }
+    }
+    let mean = fig.iter().sum::<f64>() / period as f64;
+    for v in &mut fig {
+        *v -= mean;
+    }
+    let mut nobs = 0.0;
+    let mut sx = 0.0;
+    let mut sy = 0.0;
+    let mut sxx = 0.0;
+    let mut sxy = 0.0;
+    for i in 0..wind {
+        if trend[i].is_finite() {
+            nobs += 1.0;
+            let t = nobs;
+            sx += t;
+            sy += trend[i];
+            sxx += t * t;
+            sxy += t * trend[i];
+        }
+    }
+    let det = nobs * sxx - sx * sx;
+    if det.abs() < 1e-12 || nobs < 2.0 {
+        return (sy / nobs.max(1.0), 0.0, fig);
+    }
+    let b = (nobs * sxy - sx * sy) / det;
+    let a = (sy - b * sx) / nobs;
+    (a, b, fig)
+}
+
+fn hw_additive_sse(
+    x: &[f64],
+    alpha: f64,
+    beta: f64,
+    gamma: f64,
+    a0: f64,
+    b0: f64,
+    s0: &[f64],
+    start_time: usize,
+    period: usize,
+) -> f64 {
+    let n = x.len();
+    if start_time == 0 || start_time > n || period == 0 {
+        return f64::INFINITY;
+    }
+    let nfit = n - start_time + 1;
+    let mut level = vec![0.0; nfit + 1];
+    let mut trend = vec![0.0; nfit + 1];
+    let mut season = vec![0.0; n + period];
+    level[0] = a0;
+    trend[0] = b0;
+    for i in 0..period.min(s0.len()) {
+        season[i] = s0[i];
+    }
+    let mut sse = 0.0;
+    let mut i = start_time - 1;
+    while i < n {
+        let i0 = i + 2 - start_time;
+        let s0i = i0 + period - 1;
+        let stmp = season[s0i - period];
+        let xhat = level[i0 - 1] + trend[i0 - 1] + stmp;
+        let res = x[i] - xhat;
+        sse += res * res;
+        level[i0] = alpha * (x[i] - stmp) + (1.0 - alpha) * (level[i0 - 1] + trend[i0 - 1]);
+        trend[i0] = beta * (level[i0] - level[i0 - 1]) + (1.0 - beta) * trend[i0 - 1];
+        season[s0i] = gamma * (x[i] - level[i0]) + (1.0 - gamma) * stmp;
+        i += 1;
+    }
+    sse
+}
+
 /// GNU `HoltWinters` additive, first-period start.
 pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -139,16 +272,38 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 *INTEGER(x0).add(i) as f64
             };
         }
-        let mut alpha = 1.0;
-        let mut beta = 0.0;
+        let start_time = (period + 1) as usize;
+        let (a0, b0, s0) = hw_additive_start(&x, period as usize);
+        let mut alpha = 0.3;
+        let mut beta = 0.1;
         let mut gamma = 0.1;
-        let mut start_time = period + 1;
+        for _ in 0..25 {
+            alpha = hw_golden_min(0.0, 1.0, 50, |t| {
+                hw_additive_sse(&x, t, beta, gamma, a0, b0, &s0, start_time, period as usize)
+            });
+            beta = hw_golden_min(0.0, 1.0, 50, |t| {
+                hw_additive_sse(&x, alpha, t, gamma, a0, b0, &s0, start_time, period as usize)
+            });
+            gamma = hw_golden_min(0.0, 1.0, 50, |t| {
+                hw_additive_sse(&x, alpha, beta, t, a0, b0, &s0, start_time, period as usize)
+            });
+        }
+        if alpha.abs() < 1e-6 {
+            alpha = 0.0;
+        }
+        if beta.abs() < 1e-6 {
+            beta = 0.0;
+        }
+        if gamma.abs() < 1e-6 {
+            gamma = 0.0;
+        }
+        let mut start_time_c = period + 1;
         let mut seasonal = 1;
         let mut dotrend = 1;
         let mut doseasonal = 1;
-        let mut a = x[(period - 1) as usize] - (period as f64) / 2.0;
-        let mut b = 1.0;
-        let mut s = vec![0.0f64; period as usize];
+        let mut a = a0;
+        let mut b = b0;
+        let mut s = s0;
         let mut sse = 0.0;
         let nfit = (n - period) as usize;
         let mut level = vec![0.0f64; nfit + 1];
@@ -162,7 +317,7 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             &mut alpha,
             &mut beta,
             &mut gamma,
-            &mut start_time,
+            &mut start_time_c,
             &mut seasonal,
             &mut per,
             &mut dotrend,
@@ -180,7 +335,7 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         for i in 0..nfit {
             let lv = level[i];
             let tr = trend[i];
-            let se = 0.0;
+            let se = season[i];
             *REAL(fitted).add(i) = lv + tr + se;
             *REAL(fitted).add(i + nfit) = lv;
             *REAL(fitted).add(i + 2 * nfit) = tr;
