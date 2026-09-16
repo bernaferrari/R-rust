@@ -2049,6 +2049,15 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 ],
                 s2,
             )
+        } else if p == 1
+            && q == 1
+            && !no_mean
+            && !css
+            && sar_p == 1
+            && sar_q <= 0
+            && period >= 2
+        {
+            exact_arima_ml(&y, 1, 1, 1, 0, period as usize, true)
         } else if p == 1 && q == 1 && !differenced && sar_p == 1 && sar_q <= 0 && period >= 2 {
             let (ar, ma, sar, mu, s2) = css_arma11_sar1(&y, period as usize);
             (
