@@ -938,6 +938,7 @@ impl RSession {
                 };
                 crate::mainutils::errors::set_toplevel_expr_no(index + 1);
                 result = self.eval_sexp(expr);
+                crate::eval::parser::flush_parsed_expr_warnings(index);
                 if result.is_err() {
                     // Same top-level halt semantics as the plain script loop:
                     // an uncaught error stops remaining expressions.

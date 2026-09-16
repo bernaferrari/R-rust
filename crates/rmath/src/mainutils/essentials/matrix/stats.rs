@@ -918,7 +918,15 @@ pub unsafe fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             };
             names.push(name);
         }
-        set_string_names(result, &names);
+        let names_arg = arg_by_name_or_position(args, &["names"], 3);
+        let keep_names = names_arg.is_null()
+            || names_arg == R_NilValue()
+            || names_arg == crate::sexp::globals::R_MissingArg()
+            || XLENGTH(names_arg) == 0
+            || real_or_default(names_arg, 1.0) != 0.0;
+        if keep_names {
+            set_string_names(result, &names);
+        }
         result
     }
 }

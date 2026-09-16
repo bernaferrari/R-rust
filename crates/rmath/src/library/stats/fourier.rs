@@ -69,16 +69,16 @@ fn transform(values: &[Complex64], inverse: bool) -> Vec<Complex64> {
     if factor == n {
         return (0..n)
             .map(|k| {
-                let step =
-                    Complex64::from_polar(1.0, sign * std::f64::consts::TAU * k as f64 / n as f64);
-                let mut twiddle = Complex64::new(1.0, 0.0);
                 let mut sum = Complex64::new(0.0, 0.0);
                 for (index, &value) in values.iter().enumerate() {
                     if index.is_multiple_of(1024) {
                         transform_checkpoint();
                     }
+                    let twiddle = Complex64::from_polar(
+                        1.0,
+                        sign * std::f64::consts::TAU * ((k * index) % n) as f64 / n as f64,
+                    );
                     sum += value * twiddle;
-                    twiddle *= step;
                 }
                 sum
             })
