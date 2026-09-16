@@ -4,7 +4,7 @@ use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_ATTRIB,
+    CAR, CDR, CHAR, COMPLEX, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_ATTRIB,
     SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
@@ -13,7 +13,7 @@ use crate::sexp::constructors::{
     Rf_mkChar, Rf_mkString,
 };
 use crate::sexp::ffi::{
-    FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE,
+    FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
@@ -603,6 +603,8 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             SEXPTYPE::LGLSXP
         } else if TYPEOF(yes) == SEXPTYPE::STRSXP || TYPEOF(no) == SEXPTYPE::STRSXP {
             SEXPTYPE::STRSXP
+        } else if TYPEOF(yes) == SEXPTYPE::CPLXSXP || TYPEOF(no) == SEXPTYPE::CPLXSXP {
+            SEXPTYPE::CPLXSXP
         } else if TYPEOF(yes) == SEXPTYPE::REALSXP || TYPEOF(no) == SEXPTYPE::REALSXP {
             SEXPTYPE::REALSXP
         } else if TYPEOF(yes) == SEXPTYPE::LGLSXP && TYPEOF(no) == SEXPTYPE::LGLSXP {
@@ -656,6 +658,12 @@ unsafe fn set_ifelse_na(result: SEXP, result_type: SEXPTYPE, index: R_xlen_t) {
             SEXPTYPE::STRSXP => {
                 SET_STRING_ELT(result, index, crate::sexp::globals::R_NaString());
             }
+            SEXPTYPE::CPLXSXP => {
+                *COMPLEX(result).add(index as usize) = Rcomplex {
+                    r: NA_REAL,
+                    i: NA_REAL,
+                };
+            }
             SEXPTYPE::REALSXP => *REAL(result).add(index as usize) = NA_REAL,
             SEXPTYPE::LGLSXP => *LOGICAL(result).add(index as usize) = NA_LOGICAL,
             SEXPTYPE::INTSXP => *INTEGER(result).add(index as usize) = NA_INTEGER,
@@ -687,6 +695,9 @@ unsafe fn set_ifelse_value(
                 };
                 SET_STRING_ELT(result, out_index, value);
             }
+            SEXPTYPE::CPLXSXP => {
+                *COMPLEX(result).add(out_index as usize) = source_element_as_complex(src, src_index);
+            }
             SEXPTYPE::REALSXP => {
                 *REAL(result).add(out_index as usize) = source_element_as_real(src, src_index);
             }
@@ -713,7 +724,42 @@ unsafe fn source_element_is_na(src: SEXP, index: R_xlen_t) -> bool {
             t if t == SEXPTYPE::STRSXP => {
                 STRING_ELT(src, index) == crate::sexp::globals::R_NaString()
             }
+            t if t == SEXPTYPE::CPLXSXP => {
+                let z = *COMPLEX(src).add(index as usize);
+                ISNAN(z.r) && ISNAN(z.i)
+            }
             _ => true,
+        }
+    }
+}
+
+unsafe fn source_element_as_complex(src: SEXP, index: R_xlen_t) -> Rcomplex {
+    unsafe {
+        match TYPEOF(src) {
+            t if t == SEXPTYPE::CPLXSXP => *COMPLEX(src).add(index as usize),
+            t if t == SEXPTYPE::REALSXP => {
+                let r = *REAL(src).add(index as usize);
+                if ISNAN(r) {
+                    Rcomplex { r: NA_REAL, i: NA_REAL }
+                } else {
+                    Rcomplex { r, i: 0.0 }
+                }
+            }
+            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+                let value = *INTEGER(src).add(index as usize);
+                if value == NA_INTEGER {
+                    Rcomplex { r: NA_REAL, i: NA_REAL }
+                } else {
+                    Rcomplex {
+                        r: value as f64,
+                        i: 0.0,
+                    }
+                }
+            }
+            _ => Rcomplex {
+                r: NA_REAL,
+                i: NA_REAL,
+            },
         }
     }
 }

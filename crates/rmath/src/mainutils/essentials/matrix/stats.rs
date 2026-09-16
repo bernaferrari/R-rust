@@ -554,6 +554,15 @@ pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && real_or_default(na_rm_arg, 0.0) != 0.0;
 
         if y.is_null() || y == R_NilValue() {
+            let dim =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            if !dim.is_null()
+                && dim != R_NilValue()
+                && TYPEOF(dim) == SEXPTYPE::INTSXP
+                && XLENGTH(dim) == 2
+            {
+                return var_matrix(x, dim, na_rm);
+            }
             // Variance of x
             let n = XLENGTH(x);
             let t = TYPEOF(x);
@@ -642,6 +651,102 @@ pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mean_y = sum_y / count as f64;
             let covariance = (sum_xy - count as f64 * mean_x * mean_y) / (count - 1) as f64;
             Rf_ScalarReal(covariance)
+        }
+    }
+}
+
+unsafe fn var_matrix(x: SEXP, dim: SEXP, na_rm: bool) -> SEXP {
+    unsafe {
+        let nrow = *INTEGER(dim) as R_xlen_t;
+        let ncol = *INTEGER(dim).add(1) as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, ncol.saturating_mul(ncol));
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        if nrow < 2 || ncol == 0 {
+            for i in 0..ncol.saturating_mul(ncol) {
+                *REAL(result).add(i as usize) = NA_REAL;
+            }
+            set_two_dim_attr(result, ncol, ncol);
+            return result;
+        }
+        let mut means = vec![0.0f64; ncol as usize];
+        for col in 0..ncol {
+            let mut sum = 0.0;
+            let mut count = 0i64;
+            for row in 0..nrow {
+                let val = matrix_numeric_elt(x, row + col * nrow);
+                if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
+                    if !na_rm {
+                        for i in 0..ncol.saturating_mul(ncol) {
+                            *REAL(result).add(i as usize) = NA_REAL;
+                        }
+                        set_two_dim_attr(result, ncol, ncol);
+                        return result;
+                    }
+                } else {
+                    sum += val;
+                    count += 1;
+                }
+            }
+            if count == 0 {
+                means[col as usize] = NA_REAL;
+            } else {
+                means[col as usize] = sum / count as f64;
+            }
+        }
+        for j in 0..ncol {
+            for i in 0..=j {
+                let mut sum = 0.0;
+                let mut count = 0i64;
+                for row in 0..nrow {
+                    let a = matrix_numeric_elt(x, row + i * nrow);
+                    let b = matrix_numeric_elt(x, row + j * nrow);
+                    if a.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                        || b.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                        || a.is_nan()
+                        || b.is_nan()
+                    {
+                        if !na_rm {
+                            for k in 0..ncol.saturating_mul(ncol) {
+                                *REAL(result).add(k as usize) = NA_REAL;
+                            }
+                            set_two_dim_attr(result, ncol, ncol);
+                            return result;
+                        }
+                    } else {
+                        sum += (a - means[i as usize]) * (b - means[j as usize]);
+                        count += 1;
+                    }
+                }
+                let cov = if count < 2 {
+                    NA_REAL
+                } else {
+                    sum / (count - 1) as f64
+                };
+                *REAL(result).add((i + j * ncol) as usize) = cov;
+                *REAL(result).add((j + i * ncol) as usize) = cov;
+            }
+        }
+        set_two_dim_attr(result, ncol, ncol);
+        result
+    }
+}
+
+unsafe fn matrix_numeric_elt(x: SEXP, index: R_xlen_t) -> f64 {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::REALSXP => *REAL(x).add(index as usize),
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                let v = *INTEGER(x).add(index as usize);
+                if v == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    v as f64
+                }
+            }
+            _ => NA_REAL,
         }
     }
 }
