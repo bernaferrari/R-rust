@@ -2147,8 +2147,16 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 vec!["ar1".to_string(), "ma1".to_string(), "sma1".to_string()],
                 s2,
             )
-        } else if !css && no_mean && p == 1 && q == 1 && sar_p <= 0 && sar_q <= 0 {
-            exact_arima_ml(&y, 1, 1, 0, 0, 0, false)
+        } else if !css
+            && no_mean
+            && p >= 1
+            && p <= 3
+            && q >= 1
+            && q <= 2
+            && sar_p <= 0
+            && sar_q <= 0
+        {
+            exact_arima_ml(&y, p as usize, q as usize, 0, 0, 0, false)
         } else if no_mean && p == 1 && q == 1 {
             let (ar, ma, s2) = css_arma11_no_mean(&y);
             (
