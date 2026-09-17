@@ -12689,28 +12689,6 @@ pub unsafe fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// GNU `setNames(object = nm, nm)` — missing `object` uses `nm`.
-pub unsafe fn do_setNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut obj = CAR(args);
-        let nm = CAR(CDR(args));
-        if obj.is_null() || obj == R_MissingArg() {
-            obj = nm;
-        }
-        if obj.is_null() || obj == R_NilValue() {
-            return obj;
-        }
-        if crate::sexp::accessors::NAMED(obj) > 0 {
-            obj = crate::mainutils::duplicate::shallow_duplicate(obj);
-            let _o = protect(obj);
-            crate::sexp::attrib_core::setAttrib(obj, Rf_install(c"names".as_ptr()), nm);
-            return obj;
-        }
-        crate::sexp::attrib_core::setAttrib(obj, Rf_install(c"names".as_ptr()), nm);
-        obj
-    }
-}
-
 
 /// R toString(x)
 pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

@@ -26,6 +26,8 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::protect::protect;
+
 
 unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
@@ -201,9 +203,11 @@ pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if Rf_length(args) < 3 {
             error("wrong number of arguments");
         }
-        let x = CAR(args);
+        let mut x = CAR(args);
         let which = CADR(args);
         let val = CADDR(args);
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
         crate::eval::attrib_core::setAttrib(x, which, val);
         x
     }
@@ -235,15 +239,13 @@ pub unsafe fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         if Rf_length(args) < 2 {
             error("wrong number of arguments");
         }
-        let x = CAR(args);
+        let mut x = CAR(args);
         let val = CADR(args);
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
         crate::eval::attrib_core::R_classgets(x, val)
     }
 }
-
-// ---------------------------------------------------------------------------
-// do_namesgets — set names attribute (internal)
-// ---------------------------------------------------------------------------
 
 /// Set the names attribute (internal).
 pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
@@ -252,8 +254,10 @@ pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         if Rf_length(args) < 2 {
             error("wrong number of arguments");
         }
-        let x = CAR(args);
+        let mut x = CAR(args);
         let val = CADR(args);
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
         crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_NamesSymbol(), val);
         x
     }

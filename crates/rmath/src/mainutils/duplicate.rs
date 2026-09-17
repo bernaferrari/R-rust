@@ -594,6 +594,26 @@ pub unsafe fn shallow_duplicate(s: SEXP) -> SEXP {
     unsafe { duplicate1(s, 0) }
 }
 
+/// Copy before attribute mutation when the object may be referenced.
+///
+/// GNU `do_attrgets` uses `MAYBE_SHARED` (`NAMED >= 2`). This port does
+/// not yet RAISE_NAMED on formal binding, so a caller-owned value often
+/// still has NAMED==1 inside `f(x)`. Use MAYBE_REFERENCED (`NAMED > 0`)
+/// until argument matching increments NAMED.
+pub unsafe fn shallow_duplicate_if_shared(s: SEXP) -> SEXP {
+    unsafe {
+        if s.is_null() || s == R_NilValue() {
+            return s;
+        }
+        if NAMED(s) > 0 {
+            shallow_duplicate(s)
+        } else {
+            s
+        }
+    }
+}
+
+
 /// Lazy duplicate: just set NAMEDMAX on the input.
 /// Returns the input unchanged (no copy is made).
 pub unsafe fn lazy_duplicate(s: SEXP) -> SEXP {

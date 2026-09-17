@@ -3463,6 +3463,31 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::datetime::do_as_character_POSIXt,
     },
     EvaluatedBuiltin {
+        name: "as.double.POSIXlt",
+        handler: crate::mainutils::datetime::do_as_double_POSIXt,
+    },
+    EvaluatedBuiltin {
+        name: "as.double.POSIXct",
+        handler: crate::mainutils::datetime::do_as_double_POSIXt,
+    },
+    EvaluatedBuiltin {
+        name: "as.double.POSIXt",
+        handler: crate::mainutils::datetime::do_as_double_POSIXt,
+    },
+    EvaluatedBuiltin {
+        name: "as.numeric.POSIXlt",
+        handler: crate::mainutils::datetime::do_as_double_POSIXt,
+    },
+    EvaluatedBuiltin {
+        name: "as.numeric.POSIXct",
+        handler: crate::mainutils::datetime::do_as_double_POSIXt,
+    },
+    EvaluatedBuiltin {
+        name: "as.numeric.POSIXt",
+        handler: crate::mainutils::datetime::do_as_double_POSIXt,
+    },
+
+    EvaluatedBuiltin {
         name: "mean.Date",
         handler: crate::mainutils::essentials::do_mean_Date,
     },
@@ -5664,10 +5689,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "ncol",
         handler: crate::mainutils::essentials::do_ncol,
-    },
-    EvaluatedBuiltin {
-        name: "setNames",
-        handler: crate::mainutils::essentials::do_setNames,
     },
     EvaluatedBuiltin {
         name: "names<-",

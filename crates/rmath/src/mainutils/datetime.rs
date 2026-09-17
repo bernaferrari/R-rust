@@ -2109,7 +2109,7 @@ pub unsafe fn do_quarters_POSIXt(
     }
 }
 
-/// GNU `as.character.POSIXt(x)`.
+/// GNU `as.character.POSIXt(x, digits, OutDec)`.
 pub unsafe fn do_as_character_POSIXt(
     call: SEXP,
     op: SEXP,
@@ -2118,18 +2118,191 @@ pub unsafe fn do_as_character_POSIXt(
 ) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let lt = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+        let is_lt = crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0;
+        let digits_arg = format_posix_named_arg(args, "digits", 0);
+        let outdec_arg = format_posix_named_arg(args, "OutDec", 1);
+        let digits = if !digits_arg.is_null()
+            && digits_arg != R_NilValue()
+            && digits_arg != R_MissingArg()
+            && (TYPEOF(digits_arg) == SEXPTYPE::INTSXP || TYPEOF(digits_arg) == SEXPTYPE::REALSXP)
+        {
+            crate::mainutils::coerce::asInteger(digits_arg)
+        } else if is_lt {
+            14
+        } else {
+
+            6
+        };
+        let outdec = if !outdec_arg.is_null()
+            && outdec_arg != R_NilValue()
+            && TYPEOF(outdec_arg) == SEXPTYPE::STRSXP
+            && XLENGTH(outdec_arg) > 0
+        {
+            charsxp_text(STRING_ELT(outdec_arg, 0), "OutDec")
+        } else {
+            ".".to_string()
+        };
+
+        let lt = if is_lt {
+
             x
         } else {
             do_as_POSIXlt(call, op, Rf_cons(x, R_NilValue()), env)
         };
+        let _lt0 = protect(lt);
+        let lt = do_balancePOSIXlt(call, op, Rf_cons(lt, R_NilValue()), env);
         let _lt = protect(lt);
-        let out = do_format_POSIXlt(call, op, Rf_cons(lt, R_NilValue()), env);
+        if TYPEOF(lt) != SEXPTYPE::VECSXP || XLENGTH(lt) < 6 {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+
+        let n = XLENGTH(VECTOR_ELT(lt, 0)).max(0);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
-        setAttrib(out, R_NamesSymbol(), R_NilValue());
+        let sec = VECTOR_ELT(lt, 0);
+        for i in 0..n {
+            let iu = i as usize;
+            let s = if TYPEOF(sec) == SEXPTYPE::REALSXP {
+                *REAL(sec).add(iu)
+            } else {
+                NA_REAL
+            };
+            let hour = posixlt_int_elt(VECTOR_ELT(lt, 2), iu);
+            let minu = posixlt_int_elt(VECTOR_ELT(lt, 1), iu);
+            let mday = posixlt_int_elt(VECTOR_ELT(lt, 3), iu);
+            let mon = posixlt_int_elt(VECTOR_ELT(lt, 4), iu);
+            let year = posixlt_int_elt(VECTOR_ELT(lt, 5), iu);
+            let time = f64::from(hour) + f64::from(minu) + s;
+            let is_na = s.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+            let ok = time.is_finite()
+                && hour != NA_INTEGER
+                && minu != NA_INTEGER
+                && mday != NA_INTEGER
+                && mon != NA_INTEGER
+                && year != NA_INTEGER;
+            let text = if !ok && is_na {
+                None
+            } else if !ok {
+                Some(as_character_real(call, op, env, s, &outdec))
+            } else {
+                let date = format!(
+                    "{}-{:02}-{:02}",
+                    1900 + year,
+                    mon + 1,
+                    mday
+                );
+                if time == 0.0 {
+                    Some(date)
+                } else {
+                    let rounded = {
+                        let sx = Rf_ScalarReal(s);
+                        let _sx = protect(sx);
+                        let dg = Rf_ScalarInteger(digits);
+                        let _dg = protect(dg);
+                        let rnd = crate::mainutils::essentials::do_round(
+                            call,
+                            op,
+                            Rf_cons(sx, Rf_cons(dg, R_NilValue())),
+                            env,
+                        );
+                        let _r = protect(rnd);
+                        if TYPEOF(rnd) == SEXPTYPE::REALSXP && XLENGTH(rnd) > 0 {
+                            *REAL(rnd)
+                        } else {
+                            s
+                        }
+                    };
+
+                    let mut sch = as_character_real(call, op, env, rounded, &outdec);
+                    if rounded < 10.0 && rounded >= 0.0 {
+                        sch.insert(0, '0');
+                    }
+                    Some(format!("{date} {hour:02}:{minu:02}:{sch}"))
+                }
+            };
+            match text {
+                None => SET_STRING_ELT(out, i, R_NaString()),
+                Some(s) => {
+                    let cs = CString::new(s).unwrap_or_default();
+                    SET_STRING_ELT(out, i, Rf_mkChar(cs.as_ptr()));
+                }
+            }
+        }
         out
     }
 }
+
+fn r_round_digits(x: f64, digits: i32) -> f64 {
+    if !x.is_finite() {
+        return x;
+    }
+    let digits = digits.clamp(0, 18);
+    let p = 10f64.powi(digits);
+    (x * p).round() / p
+}
+
+unsafe fn as_character_real(call: SEXP, op: SEXP, env: SEXP, value: f64, outdec: &str) -> String {
+    unsafe {
+        let scalar = Rf_ScalarReal(value);
+        let _s = protect(scalar);
+        let ch = crate::mainutils::essentials::do_as_character(
+            call,
+            op,
+            Rf_cons(scalar, R_NilValue()),
+            env,
+        );
+        let _c = protect(ch);
+        let mut text = if TYPEOF(ch) == SEXPTYPE::STRSXP && XLENGTH(ch) > 0 {
+            charsxp_text(STRING_ELT(ch, 0), "as.character")
+        } else {
+            String::new()
+        };
+        if outdec != "." {
+            text = text.replace('.', outdec);
+        }
+        text
+    }
+}
+
+/// GNU `as.double.POSIXlt <- function(x, ...) as.double(as.POSIXct(x))`.
+pub unsafe fn do_as_double_POSIXt(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let ct = if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
+            && TYPEOF(x) == SEXPTYPE::REALSXP
+        {
+            x
+        } else {
+            crate::mainutils::essentials::do_as_POSIXct(
+                call,
+                op,
+                Rf_cons(x, R_NilValue()),
+                env,
+            )
+        };
+        let _ct = protect(ct);
+        let n = XLENGTH(ct);
+        let out = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _o = protect(out);
+        if TYPEOF(ct) == SEXPTYPE::REALSXP {
+            for i in 0..n {
+                *REAL(out).add(i as usize) = *REAL(ct).add(i as usize);
+            }
+        }
+        let names = getAttrib(ct, R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            setAttrib(out, R_NamesSymbol(), names);
+        }
+        out
+    }
+}
+
+
 
 
 

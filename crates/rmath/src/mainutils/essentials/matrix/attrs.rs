@@ -119,11 +119,13 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         {
             return ans;
         }
-        let x = CAR(args);
+        let mut x = CAR(args);
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
 
         let t = TYPEOF(x);
         if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
@@ -184,11 +186,13 @@ pub unsafe fn do_dimnames_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         {
             return ans;
         }
-        let x = CAR(args);
+        let mut x = CAR(args);
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
         set_array_dimnames(x, value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
@@ -432,12 +436,12 @@ pub unsafe fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         result
     }
 }
-
-/// R's `class(x) <- value` — set class attribute.
 pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
         let value = CAR(CDR(args));
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
         crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
@@ -458,16 +462,20 @@ pub unsafe fn do_oldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// R's `oldClass(x) <- value` — set or remove the direct S3 class attribute.
 pub unsafe fn do_oldClass_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
         crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Attribute access helpers
@@ -498,14 +506,11 @@ pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
             return R_NilValue();
         }
-        // GNU do_attrgets: MAYBE_REFERENCED objects are copied so
-        // `attr<-` inside a function does not mutate the caller's binding.
-        let _x = if crate::sexp::accessors::NAMED(x) > 0 {
-            x = crate::mainutils::duplicate::shallow_duplicate(x);
-            protect(x)
-        } else {
-            protect(x)
-        };
+        // MAYBE_REFERENCED: see shallow_duplicate_if_shared.
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
+
+
         let attr_name = elt_to_string(which, 0);
         crate::sexp::attrib_core::setAttrib(
             x,
@@ -521,11 +526,14 @@ pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// R's `attributes(x) <- value` — replace all attributes from a named list.
 pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
+
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
 
         crate::sexp::accessors::SET_ATTRIB(x, R_NilValue());
         if value.is_null() || value == R_NilValue() {
@@ -578,14 +586,17 @@ pub unsafe fn do_comment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// R's `comment(x) <- value` — set the comment attribute.
 pub unsafe fn do_comment_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
         crate::sexp::attrib_core::setAttrib(x, comment_symbol(), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
+
     }
 }
 
