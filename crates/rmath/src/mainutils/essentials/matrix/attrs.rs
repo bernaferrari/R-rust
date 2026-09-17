@@ -492,12 +492,20 @@ pub unsafe fn do_attr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `attr(x, which) <- value` — set or remove a single attribute.
 pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
         let which = CAR(CDR(args));
         let value = CAR(CDR(CDR(args)));
         if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
             return R_NilValue();
         }
+        // GNU do_attrgets: MAYBE_REFERENCED objects are copied so
+        // `attr<-` inside a function does not mutate the caller's binding.
+        let _x = if crate::sexp::accessors::NAMED(x) > 0 {
+            x = crate::mainutils::duplicate::shallow_duplicate(x);
+            protect(x)
+        } else {
+            protect(x)
+        };
         let attr_name = elt_to_string(which, 0);
         crate::sexp::attrib_core::setAttrib(
             x,
@@ -508,6 +516,7 @@ pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         x
     }
 }
+
 
 /// R's `attributes(x) <- value` — replace all attributes from a named list.
 pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

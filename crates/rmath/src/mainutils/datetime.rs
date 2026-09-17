@@ -801,6 +801,39 @@ fn tz_is_utc(tz: &str) -> bool {
     tz == "GMT" || tz == "UTC"
 }
 
+/// GNU `as.POSIXlt.default` uses `missing(tz)`. A supplied non-empty tz
+/// only relabels `tzone` on an existing POSIXlt.
+unsafe fn posixlt_supplied_tz(args: SEXP) -> Option<String> {
+    unsafe {
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let named_tz = !tag.is_null()
+                && tag != R_NilValue()
+                && TYPEOF(tag) == SEXPTYPE::SYMSXP
+                && {
+                    let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                        .to_string_lossy();
+                    name == "tz"
+                };
+            let positional = tag.is_null() || tag == R_NilValue();
+            if named_tz || positional {
+                let t = CAR(cell);
+                if t.is_null() || t == R_NilValue() || t == R_MissingArg() {
+                    return None;
+                }
+                if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
+                    return Some(charsxp_text(STRING_ELT(t, 0), "tz"));
+                }
+                return None;
+            }
+            cell = CDR(cell);
+        }
+        None
+    }
+}
+
+
 unsafe fn set_posixlt_balanced(ans: SEXP) {
     unsafe {
         setAttrib(ans, Rf_install(c"balanced".as_ptr()), Rf_ScalarLogical(TRUE));
@@ -1696,8 +1729,21 @@ pub unsafe fn do_as_POSIXlt(
             return x;
         }
         if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+            if let Some(tz) = posixlt_supplied_tz(args) {
+                if !tz.is_empty() {
+                    let out = crate::mainutils::duplicate::Rf_duplicate(x);
+                    let _o = protect(out);
+                    setAttrib(
+                        out,
+                        Rf_install(c"tzone".as_ptr()),
+                        Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr()),
+                    );
+                    return out;
+                }
+            }
             return x;
         }
+
         let mut tz = Rf_mkString(c"".as_ptr());
         let rest = CDR(args);
         if !rest.is_null() && rest != R_NilValue() {
@@ -1713,13 +1759,20 @@ pub unsafe fn do_as_POSIXlt(
             String::new()
         };
         if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
-            return do_D2POSIXlt(
-                call,
-                op,
-                Rf_cons(x, R_NilValue()),
-                env,
-            );
+            let out = do_D2POSIXlt(call, op, Rf_cons(x, R_NilValue()), env);
+            let _o = protect(out);
+            if let Some(tz) = posixlt_supplied_tz(args) {
+                if !tz.is_empty() {
+                    setAttrib(
+                        out,
+                        Rf_install(c"tzone".as_ptr()),
+                        Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr()),
+                    );
+                }
+            }
+            return out;
         }
+
         if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
             || TYPEOF(x) == SEXPTYPE::REALSXP
             || TYPEOF(x) == SEXPTYPE::INTSXP
@@ -1930,16 +1983,22 @@ pub unsafe fn do_format_POSIXlt(
             env,
         );
         let _out = protect(out);
-        let mut names = getAttrib(x, R_NamesSymbol());
-        if (names.is_null() || names == R_NilValue())
-            && TYPEOF(x) == SEXPTYPE::VECSXP
-            && XLENGTH(x) >= 6
-        {
+        // Observation names live on POSIXlt components (year), never on
+        // the list itself — list names are sec/min/hour/...
+        let mut names = R_NilValue();
+        if TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 6 {
             names = getAttrib(VECTOR_ELT(x, 5), R_NamesSymbol());
+        } else {
+            names = getAttrib(x, R_NamesSymbol());
         }
-        if !names.is_null() && names != R_NilValue() {
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == XLENGTH(out)
+        {
             setAttrib(out, R_NamesSymbol(), names);
         }
+
         out
     }
 }
@@ -1984,7 +2043,18 @@ pub unsafe fn do_format_POSIXct(
         }
         let call_args = Rf_cons(lt, rest);
         let _ca = protect(call_args);
-        do_format_POSIXlt(call, op, call_args, env)
+        let out = do_format_POSIXlt(call, op, call_args, env);
+        let _o = protect(out);
+        let names = getAttrib(x, R_NamesSymbol());
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == XLENGTH(out)
+        {
+            setAttrib(out, R_NamesSymbol(), names);
+        }
+        out
+
     }
 }
 

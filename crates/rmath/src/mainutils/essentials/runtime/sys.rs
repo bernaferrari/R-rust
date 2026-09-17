@@ -1486,8 +1486,24 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             return R_NilValue();
         }
         if sexp_has_class(x, "POSIXct") && TYPEOF(x) == SEXPTYPE::REALSXP {
+            let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
+            if !tz_arg.is_null()
+                && tz_arg != R_NilValue()
+                && tz_arg != R_MissingArg()
+                && TYPEOF(tz_arg) == SEXPTYPE::STRSXP
+                && XLENGTH(tz_arg) > 0
+            {
+                let tz = elt_to_string(tz_arg, 0);
+                if !tz.is_empty() {
+                    let out = crate::mainutils::duplicate::Rf_duplicate(x);
+                    let _o = protect(out);
+                    set_posixct_class(out, &tz);
+                    return out;
+                }
+            }
             return x;
         }
+
         if sexp_has_class(x, "POSIXlt") && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 6 {
             let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
             let mut tz = if tz_arg.is_null() || tz_arg == R_NilValue() || XLENGTH(tz_arg) == 0 {
@@ -1511,16 +1527,15 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let result = crate::mainutils::datetime::convert_posixlt_to_posixct(x, &tz);
             let _r = protect(result);
             set_posixct_class(result, if tz.is_empty() { "UTC" } else { &tz });
-            let mut names = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
-            if (names.is_null() || names == R_NilValue()) && XLENGTH(x) >= 6 {
-                names = crate::sexp::attrib_core::getAttrib(
+            // List names are sec/min/hour. Observation names sit on year.
+            let names = if XLENGTH(x) >= 6 {
+                crate::sexp::attrib_core::getAttrib(
                     VECTOR_ELT(x, 5),
                     crate::sexp::attrib_core::R_NamesSymbol(),
-                );
-            }
+                )
+            } else {
+                R_NilValue()
+            };
             if !names.is_null()
                 && names != R_NilValue()
                 && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -1532,6 +1547,7 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     names,
                 );
             }
+
             return result;
         }
 

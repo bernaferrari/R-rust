@@ -185,13 +185,11 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
 
         for i in 0..n {
             poll_vector_cancellation(i);
-            let (x_na, y_na, x_nan, y_nan, cmp): (bool, bool, bool, bool, bool) = if use_real {
+            let (missing, cmp): (bool, bool) = if use_real {
                 let x = a.clone().real_at(i);
                 let y = b.clone().real_at(i);
-                let xn = x.to_bits() == R_NA_BIT_PATTERN;
-                let yn = y.to_bits() == R_NA_BIT_PATTERN;
-                let xnan = x.is_nan() && !xn;
-                let ynan = y.is_nan() && !yn;
+                // GNU relop ISNAN: NA and NaN both yield NA_LOGICAL.
+                let missing = x.is_nan() || y.is_nan();
                 let c = match op {
                     "<" => x < y,
                     ">" => x > y,
@@ -201,12 +199,11 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                     "!=" => x != y,
                     _ => false,
                 };
-                (xn, yn, xnan, ynan, c)
+                (missing, c)
             } else {
                 let x = a.clone().int_at(i);
                 let y = b.clone().int_at(i);
-                let xn = x == NA_INTEGER;
-                let yn = y == NA_INTEGER;
+                let missing = x == NA_INTEGER || y == NA_INTEGER;
                 let c = match op {
                     "<" => x < y,
                     ">" => x > y,
@@ -216,10 +213,10 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                     "!=" => x != y,
                     _ => false,
                 };
-                (xn, yn, false, false, c)
+                (missing, c)
             };
 
-            let value = if x_na || y_na || x_nan || y_nan {
+            let value = if missing {
                 NA_LOGICAL
             } else if cmp {
                 TRUE

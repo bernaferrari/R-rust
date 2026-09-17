@@ -294,8 +294,17 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             choose_default_closure,
             base_env,
         );
+
+        // GNU stats::setNames is a closure so `setNames(, nm)` uses the
+        // `object = nm` default instead of evalList's empty-arg error.
+        eval_base_binding(
+            base_env,
+            "setNames",
+            "function(object = nm, nm) { names(object) <- nm; object }",
+        );
     }
 }
+
 
 unsafe fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
     unsafe {
