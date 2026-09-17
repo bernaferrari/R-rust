@@ -1103,15 +1103,25 @@ pub unsafe fn do_format_Date(
     }
 }
 
-/// GNU `as.character.Date(x)`.
+/// GNU `as.character.Date` is `as.character(as.POSIXlt(x))` — no names.
 pub unsafe fn do_as_character_Date(
     call: SEXP,
     op: SEXP,
     args: SEXP,
     rho: SEXP,
 ) -> SEXP {
-    unsafe { do_format_Date(call, op, args, rho) }
+    unsafe {
+        let out = do_format_Date(call, op, args, rho);
+        let _o = protect(out);
+        crate::sexp::attrib_core::setAttrib(
+            out,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            R_NilValue(),
+        );
+        out
+    }
 }
+
 
 fn date_level_string(days: f64) -> String {
     let tm = unix_secs_to_utc((days * 86_400.0) as i64);
@@ -1333,44 +1343,66 @@ fn date_days_elt(x: SEXP, i: i64) -> f64 {
     }
 }
 
+fn date_from_ymd(year: i32, month: i32, day: i32) -> f64 {
+    let mut tm = crate::mainutils::datetime::stm::new();
+    tm.tm_year = year - 1900;
+    tm.tm_mon = month - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = 0;
+    tm.tm_min = 0;
+    tm.tm_sec = 0;
+    crate::mainutils::datetime::mkdate00(&mut tm)
+}
+
+fn date_civil(days: f64) -> Option<(i32, i32, i32)> {
+    let mut tm = crate::mainutils::datetime::stm::new();
+    if crate::mainutils::datetime::julian2dtime(days, &mut tm) {
+        Some((tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday))
+    } else {
+        None
+    }
+}
+
 fn date_first_of_month(days: f64) -> f64 {
-    let tm = unix_secs_to_utc((days * 86_400.0) as i64);
-    let y = tm.tm_year + 1900;
-    let m = tm.tm_mon + 1;
-    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{m:02}-01"))
-        .unwrap_or(days)
+    match date_civil(days) {
+        Some((y, m, _)) => date_from_ymd(y, m, 1),
+        None => days,
+    }
 }
 
 fn date_first_of_quarter(days: f64) -> f64 {
-    let tm = unix_secs_to_utc((days * 86_400.0) as i64);
-    let y = tm.tm_year + 1900;
-    let qmon = (tm.tm_mon / 3) * 3 + 1;
-    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{qmon:02}-01"))
-        .unwrap_or(days)
+    match date_civil(days) {
+        Some((y, m, _)) => date_from_ymd(y, (m - 1) / 3 * 3 + 1, 1),
+        None => days,
+    }
 }
 
-
 fn date_first_of_year(days: f64) -> f64 {
-    let tm = unix_secs_to_utc((days * 86_400.0) as i64);
-    let y = tm.tm_year + 1900;
-    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-01-01")).unwrap_or(days)
+    match date_civil(days) {
+        Some((y, _, _)) => date_from_ymd(y, 1, 1),
+        None => days,
+    }
 }
 
 fn date_add_months(days: f64, add: i32) -> f64 {
-    let tm = unix_secs_to_utc((days * 86_400.0) as i64);
-    let mut y = tm.tm_year + 1900;
-    let mut m = tm.tm_mon + 1 + add;
-    while m > 12 {
-        m -= 12;
-        y += 1;
+    match date_civil(days) {
+        Some((y, m, _)) => {
+            let mut y = y;
+            let mut m = m + add;
+            while m > 12 {
+                m -= 12;
+                y += 1;
+            }
+            while m < 1 {
+                m += 12;
+                y -= 1;
+            }
+            date_from_ymd(y, m, 1)
+        }
+        None => days,
     }
-    while m < 1 {
-        m += 12;
-        y -= 1;
-    }
-    crate::mainutils::essentials::parse_iso_date_days(&format!("{y:04}-{m:02}-01"))
-        .unwrap_or(days)
 }
+
 
 /// GNU `trunc.Date(x, units)`.
 pub unsafe fn do_trunc_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1479,8 +1511,30 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let result = crate::mainutils::datetime::convert_posixlt_to_posixct(x, &tz);
             let _r = protect(result);
             set_posixct_class(result, if tz.is_empty() { "UTC" } else { &tz });
+            let mut names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if (names.is_null() || names == R_NilValue()) && XLENGTH(x) >= 6 {
+                names = crate::sexp::attrib_core::getAttrib(
+                    VECTOR_ELT(x, 5),
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+            }
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == XLENGTH(result)
+            {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
             return result;
         }
+
 
 
         let tz_arg = arg_by_name_or_position(args, &["tz"], 1);

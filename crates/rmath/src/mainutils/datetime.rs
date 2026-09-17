@@ -1872,7 +1872,11 @@ pub unsafe fn do_format_POSIXlt(
                         let val = if TYPEOF(v) == SEXPTYPE::REALSXP {
                             *REAL(v).add(i as usize)
                         } else if TYPEOF(v) == SEXPTYPE::INTSXP {
-                            *INTEGER(v).add(i as usize) as f64
+                            let iv = *INTEGER(v).add(i as usize);
+                            if iv == NA_INTEGER {
+                                continue;
+                            }
+                            iv as f64
                         } else {
                             0.0
                         };
@@ -1919,12 +1923,24 @@ pub unsafe fn do_format_POSIXlt(
         let _u = protect(usetz);
         let digs = Rf_ScalarInteger(digits);
         let _d = protect(digs);
-        do_formatPOSIXlt(
+        let out = do_formatPOSIXlt(
             call,
             op,
             Rf_cons(x, Rf_cons(format, Rf_cons(usetz, Rf_cons(digs, R_NilValue())))),
             env,
-        )
+        );
+        let _out = protect(out);
+        let mut names = getAttrib(x, R_NamesSymbol());
+        if (names.is_null() || names == R_NilValue())
+            && TYPEOF(x) == SEXPTYPE::VECSXP
+            && XLENGTH(x) >= 6
+        {
+            names = getAttrib(VECTOR_ELT(x, 5), R_NamesSymbol());
+        }
+        if !names.is_null() && names != R_NilValue() {
+            setAttrib(out, R_NamesSymbol(), names);
+        }
+        out
     }
 }
 
@@ -2037,7 +2053,10 @@ pub unsafe fn do_as_character_POSIXt(
             do_as_POSIXlt(call, op, Rf_cons(x, R_NilValue()), env)
         };
         let _lt = protect(lt);
-        do_format_POSIXlt(call, op, Rf_cons(lt, R_NilValue()), env)
+        let out = do_format_POSIXlt(call, op, Rf_cons(lt, R_NilValue()), env);
+        let _o = protect(out);
+        setAttrib(out, R_NamesSymbol(), R_NilValue());
+        out
     }
 }
 
@@ -2108,8 +2127,16 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         let tzone = Rf_mkString(c"UTC".as_ptr());
         let _tz = protect(tzone);
         finish_posixlt(ans, ansnames, tzone);
+        let names = getAttrib(x, R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            for j in 0..XLENGTH(ans) {
+                let elt = VECTOR_ELT(ans, j);
+                if !elt.is_null() && elt != R_NilValue() {
+                    setAttrib(elt, R_NamesSymbol(), names);
+                }
+            }
+        }
         ans
-
     }
 }
 
