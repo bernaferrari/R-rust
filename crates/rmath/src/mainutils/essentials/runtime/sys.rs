@@ -570,38 +570,27 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 };
             }
         } else if sexp_has_class(x, "POSIXlt") && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 6 {
-            let sec = VECTOR_ELT(x, 0);
-            let nlt = if TYPEOF(sec) == SEXPTYPE::REALSXP || TYPEOF(sec) == SEXPTYPE::INTSXP {
-                XLENGTH(sec)
-            } else {
-                1
-            };
-            let result_lt = Rf_allocVector3(SEXPTYPE::REALSXP, nlt);
-            let _lt = protect(result_lt);
-            let mday = VECTOR_ELT(x, 3);
-            let mon = VECTOR_ELT(x, 4);
+            let days = crate::mainutils::datetime::do_POSIXlt2D(
+                _call,
+                _op,
+                Rf_cons(x, R_NilValue()),
+                _rho,
+            );
+            let _d = protect(days);
+            set_single_class(days, "Date");
             let year = VECTOR_ELT(x, 5);
-            for i in 0..nlt {
-                let y = crate::mainutils::datetime::posixlt_int_elt(year, i as usize) + 1900;
-                let m = crate::mainutils::datetime::posixlt_int_elt(mon, i as usize) + 1;
-                let d = crate::mainutils::datetime::posixlt_int_elt(mday, i as usize);
-                *REAL(result_lt).add(i as usize) =
-                    parse_iso_date_days(&format!("{y:04}-{m:02}-{d:02}")).unwrap_or(NA_REAL);
-            }
-            set_single_class(result_lt, "Date");
             let year_names = crate::sexp::attrib_core::getAttrib(
                 year,
                 crate::sexp::attrib_core::R_NamesSymbol(),
             );
             if !year_names.is_null() && year_names != R_NilValue() {
                 crate::sexp::attrib_core::setAttrib(
-                    result_lt,
+                    days,
                     crate::sexp::attrib_core::R_NamesSymbol(),
                     year_names,
                 );
             }
-            return result_lt;
-
+            return days;
         } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP {
             let origin = arg_by_name_or_position(args, &["origin"], 1);
             let origin_days = if origin.is_null() || origin == R_NilValue() {
@@ -1032,62 +1021,56 @@ fn unix_secs_to_utc(secs: i64) -> crate::tzone_strftime::stm {
     }
 }
 
-/// GNU `strftime(x, format)`.
-pub unsafe fn do_strftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `strftime(x, format, tz)` is `format(as.POSIXlt(x, tz), format)`.
+pub unsafe fn do_strftime(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
-        let mut fmt = "%Y-%m-%d %H:%M:%S".to_string();
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let f = CAR(rest);
-            if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
-                let ch = STRING_ELT(f, 0);
-                if !ch.is_null() {
-                    let s = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
-                    if !s.is_empty() {
-                        fmt = s;
-                    }
-                }
-            }
-        }
-        let n = XLENGTH(x);
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _o = protect(out);
-        for i in 0..n {
-            let secs = if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
-                let days = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    *REAL(x).add(i as usize)
-                } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                    *INTEGER(x).add(i as usize) as f64
-                } else {
-                    f64::NAN
-                };
-                days * 86_400.0
-            } else if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                *INTEGER(x).add(i as usize) as f64
-            } else {
-                f64::NAN
-            };
-            let formatted = if secs.is_finite() {
-                let tm = unix_secs_to_utc(secs as i64);
-                crate::tzone_strftime::strftime_safe(&fmt, &tm)
-                    .unwrap_or_default()
+        let mut format = R_NilValue();
+        let mut tz = R_NilValue();
+        let mut cell = CDR(args);
+        let mut pos = 0usize;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
             } else {
                 String::new()
             };
-            let c = CString::new(formatted).unwrap_or_default();
-            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+            if name == "format" || (name.is_empty() && pos == 0) {
+                format = CAR(cell);
+            } else if name == "tz" || (name.is_empty() && pos == 1) {
+                tz = CAR(cell);
+            }
+            if name.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
         }
-        out
+        let lt_args = if tz.is_null() || tz == R_NilValue() {
+            Rf_cons(x, R_NilValue())
+        } else {
+            Rf_cons(x, Rf_cons(tz, R_NilValue()))
+        };
+        let _la = protect(lt_args);
+        let lt = crate::mainutils::datetime::do_as_POSIXlt(call, op, lt_args, rho);
+        let _lt = protect(lt);
+        let fmt_args = if format.is_null() || format == R_NilValue() {
+            Rf_cons(lt, R_NilValue())
+        } else {
+            let cell = Rf_cons(format, R_NilValue());
+            SETTAG(cell, Rf_install(c"format".as_ptr()));
+            Rf_cons(lt, cell)
+        };
+        let _fa = protect(fmt_args);
+        crate::mainutils::datetime::do_format_POSIXlt(call, op, fmt_args, rho)
     }
 }
+
 
 /// GNU `format.Date(x, format="%Y-%m-%d")`.
 pub unsafe fn do_format_Date(
