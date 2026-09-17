@@ -13,9 +13,10 @@ use crate::mainutils::essentials::*;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    ATTRIB, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT,
+    LENGTH, LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT,
+    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -2119,6 +2120,31 @@ pub unsafe fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 
 
+/// GNU `.Date(xx, cl = "Date")` — `class<-`(xx, cl).
+pub unsafe fn do_dot_Date(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let xx = CAR(args);
+        if xx.is_null() || xx == R_NilValue() {
+            return R_NilValue();
+        }
+        let cl_arg = CADR(args);
+        let cl = if cl_arg.is_null()
+            || cl_arg == R_NilValue()
+            || cl_arg == crate::sexp::globals::R_MissingArg()
+        {
+            Rf_mkString(c"Date".as_ptr())
+        } else {
+            cl_arg
+        };
+        let pair = Rf_cons(cl, R_NilValue());
+        let _p = protect(pair);
+        let call_args = Rf_cons(xx, pair);
+        let _a = protect(call_args);
+        crate::mainutils::attrib::do_classgets(_call, _op, call_args, rho)
+    }
+}
+
+
 /// R's `Sys.Date()` — current date as REALSXP (days since epoch).
 pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -2157,6 +2183,7 @@ fn system_timezone_name() -> String {
         .unwrap_or_else(|| "UTC".to_string())
 }
 
+
 pub(crate) fn timezone_name_from_zoneinfo_path(path: &Path) -> Option<String> {
     let path = path.to_string_lossy();
     for prefix in [
@@ -2172,6 +2199,53 @@ pub(crate) fn timezone_name_from_zoneinfo_path(path: &Path) -> Option<String> {
     }
     None
 }
+
+/// GNU `utils::sessionInfo()` — enough fields for datetime2.R.
+pub unsafe fn do_sessionInfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, Rf_mkString(c"internal".as_ptr()));
+        crate::mainutils::essentials::set_string_names(result, &["tzcode_type".to_string()]);
+        result
+    }
+}
+
+/// GNU `.POSIXct(xx, tz = NULL, cl = c("POSIXct", "POSIXt"))`.
+pub unsafe fn do_dot_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let xx = CAR(args);
+        if xx.is_null() || xx == R_NilValue() {
+            return R_NilValue();
+        }
+        let tz = CADR(args);
+        let cl_arg = CADDR(args);
+        let cl = if cl_arg.is_null()
+            || cl_arg == R_NilValue()
+            || cl_arg == crate::sexp::globals::R_MissingArg()
+        {
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+            let _n = protect(names);
+            SET_STRING_ELT(names, 0, Rf_mkChar(c"POSIXct".as_ptr()));
+            SET_STRING_ELT(names, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+            names
+        } else {
+            cl_arg
+        };
+        let pair = Rf_cons(cl, R_NilValue());
+        let _p = protect(pair);
+        let call_args = Rf_cons(xx, pair);
+        let _a = protect(call_args);
+        let result = crate::mainutils::attrib::do_classgets(_call, _op, call_args, rho);
+        if !tz.is_null() && tz != R_NilValue() && tz != crate::sexp::globals::R_MissingArg() {
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"tzone".as_ptr()), tz);
+        }
+        result
+    }
+}
+
+
+
 
 /// R's `OlsonNames()` — known IANA timezone names from the system zoneinfo DB.
 pub unsafe fn do_OlsonNames(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {

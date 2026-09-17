@@ -11,9 +11,10 @@ use crate::sexp::accessors::{
     XLENGTH, translateChar,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_allocVector3, Rf_isInteger, Rf_isNull,
-    Rf_isReal, Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_allocVector3, Rf_cons, Rf_isInteger,
+    Rf_isNull, Rf_isReal, Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
 };
+
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 
@@ -42,7 +43,10 @@ pub unsafe fn first_str_elt(x: SEXP) -> Option<String> {
 
 pub unsafe fn datetime_class_of(x: SEXP) -> Option<DatetimeKind> {
     unsafe {
-        if crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
+            || crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+            || crate::mainutils::essentials::sexp_has_class(x, "POSIXt")
+        {
             Some(DatetimeKind::Posixct)
         } else if crate::mainutils::essentials::sexp_has_class(x, "Date") {
             Some(DatetimeKind::Date)
@@ -51,6 +55,38 @@ pub unsafe fn datetime_class_of(x: SEXP) -> Option<DatetimeKind> {
         }
     }
 }
+
+unsafe fn posix_time_length(x: SEXP) -> R_xlen_t {
+    unsafe {
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+            && TYPEOF(x) == VECSXP_VAL
+            && XLENGTH(x) > 0
+
+        {
+            let sec = VECTOR_ELT(x, 0);
+            if !sec.is_null() && sec != R_NilValue() {
+                return XLENGTH(sec);
+            }
+        }
+        XLENGTH(x)
+    }
+}
+
+unsafe fn posix_as_seconds(call: SEXP, x: SEXP) -> c_double {
+    unsafe {
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
+            let ct = crate::mainutils::essentials::do_as_POSIXct(
+                call,
+                std::ptr::null_mut(),
+                Rf_cons(x, R_NilValue()),
+                std::ptr::null_mut(),
+            );
+            return asReal(ct);
+        }
+        asReal(x)
+    }
+}
+
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum DatetimeKind {
@@ -320,13 +356,16 @@ pub unsafe fn datetime_seq(
                 );
             }
             if !miss_to {
-                if !crate::mainutils::essentials::sexp_has_class(to, "POSIXct") {
+                if !crate::mainutils::essentials::sexp_has_class(to, "POSIXct")
+                    && !crate::mainutils::essentials::sexp_has_class(to, "POSIXlt")
+                    && !crate::mainutils::essentials::sexp_has_class(to, "POSIXt")
+                {
                     errorcall(
                         call,
                         b"'to' must be a \"POSIXt\" object\0".as_ptr() as *const c_char,
                     );
                 }
-                if LENGTH(to) != 1 {
+                if posix_time_length(to) != 1 {
                     errorcall(
                         call,
                         b"'to' must be of length 1\0".as_ptr() as *const c_char,
@@ -334,19 +373,23 @@ pub unsafe fn datetime_seq(
                 }
             }
             if !miss_from {
-                if !crate::mainutils::essentials::sexp_has_class(from, "POSIXct") {
+                if !crate::mainutils::essentials::sexp_has_class(from, "POSIXct")
+                    && !crate::mainutils::essentials::sexp_has_class(from, "POSIXlt")
+                    && !crate::mainutils::essentials::sexp_has_class(from, "POSIXt")
+                {
                     errorcall(
                         call,
                         b"'from' must be a \"POSIXt\" object\0".as_ptr() as *const c_char,
                     );
                 }
-                if LENGTH(from) != 1 {
+                if posix_time_length(from) != 1 {
                     errorcall(
                         call,
                         b"'from' must be of length 1\0".as_ptr() as *const c_char,
                     );
                 }
             }
+
         } else if !by_given && (miss_from || miss_to) && !have_lout {
             // seq.Date without 'by'.
             errorcall(
@@ -446,10 +489,19 @@ pub unsafe fn datetime_seq(
         // Endpoints as raw numbers (days for Date, seconds for POSIXct).
         let vfrom = if miss_from {
             c_double::NAN
+        } else if kind == DatetimeKind::Posixct {
+            posix_as_seconds(call, from)
         } else {
             asReal(from)
         };
-        let vto = if miss_to { c_double::NAN } else { asReal(to) };
+        let vto = if miss_to {
+            c_double::NAN
+        } else if kind == DatetimeKind::Posixct {
+            posix_as_seconds(call, to)
+        } else {
+            asReal(to)
+        };
+
 
         let build = |first: c_double, step: c_double, n: usize| -> Vec<c_double> {
             (0..n).map(|i| first + i as c_double * step).collect()
