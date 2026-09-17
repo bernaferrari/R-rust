@@ -951,18 +951,57 @@ fn format_date_element(x: Sexp<'_>, i: R_xlen_t) -> String {
         .unwrap_or_else(|| "NA".to_string())
 }
 
+/// GNU `print.Date`: `print(format(x))` so width wrapping matches print.default.
 fn format_date_vector(x: Sexp<'_>) -> String {
+    format_date_vector_max(x, None)
+}
+
+pub(crate) fn format_date_vector_max(x: Sexp<'_>, max_override: Option<i64>) -> String {
     if x.clone().len() == 0 {
         return "Date of length 0".to_string();
     }
-    let vals: Vec<String> = (0..x.clone().len().min(10))
-        .map(|i| format_date_element(x.clone(), i))
-        .collect();
-    let suffix = if x.clone().len() > 10 { " ..." } else { "" };
-    format_named_atomic_vector(x, vals.clone())
-        .map(|output| format!("{output}{suffix}"))
-        .unwrap_or_else(|| format!("[1] {}{}", vals.join(" "), suffix))
+    unsafe {
+        let n = x.clone().len();
+        let opt_max = crate::mainutils::options::GetOptionMaxPrint() as i64;
+        let max = max_override.unwrap_or(opt_max).max(0);
+        let n_show = n.min(max as R_xlen_t);
+        let formatted = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, n_show);
+        if formatted.is_null() {
+            return String::new();
+        }
+        let _g = crate::sexp::protect::protect(formatted);
+        for i in 0..n_show {
+            let text = x
+                .clone()
+                .try_real_elt(i)
+                .ok()
+                .and_then(crate::mainutils::essentials::date_days_to_iso)
+                .unwrap_or_else(|| "NA".to_string());
+            let c = std::ffi::CString::new(text).unwrap_or_default();
+            crate::sexp::accessors::SET_STRING_ELT(
+                formatted,
+                i,
+                crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+            );
+        }
+        let sexp = Sexp::from_raw_unchecked(formatted);
+        // GNU print.Date uses max+1 when truncating so print.default does
+        // not emit a second omitted line.
+        let print_max = if n_show < n { n_show as i64 + 1 } else { max };
+        let mut out = format_vector_stock_n(sexp, true, Some(print_max));
+        if n_show < n {
+            if !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(&format!(
+                " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]",
+                n - n_show
+            ));
+        }
+        out
+    }
 }
+
 
 fn format_posixct_element(x: Sexp<'_>, i: R_xlen_t, include_tz: bool, force_time: bool) -> String {
     x.try_real_elt(i)
@@ -1847,17 +1886,20 @@ pub(crate) unsafe fn print_named_vector_stock(
 /// through printNamedVector, others through printVector with index labels;
 /// both honour options("max.print") truncation.
 pub(crate) unsafe fn format_vector_stock(x: Sexp, quote: bool) -> String {
+    unsafe { format_vector_stock_n(x, quote, None) }
+}
+
+pub(crate) unsafe fn format_vector_stock_n(
+    x: Sexp,
+    quote: bool,
+    max_override: Option<i64>,
+) -> String {
     if let Some(message) = result_admission_error(x.clone()) {
         return message;
     }
-    // SAFETY: `x` is a rooted live atomic-vector SEXP; the delegated stock
-    // formatters preserve that lifetime and perform bounded read-only access.
     unsafe {
         let n = x.clone().len();
         if n == 0 {
-            // stock printVector PRINT_V_0. Callers own the final newline,
-            // exactly like the non-empty paths (whose closing newline is
-            // popped below).
             return match x.typeof_() {
                 SEXPTYPE::LGLSXP => "logical(0)".to_string(),
                 SEXPTYPE::INTSXP => "integer(0)".to_string(),
@@ -1868,12 +1910,14 @@ pub(crate) unsafe fn format_vector_stock(x: Sexp, quote: bool) -> String {
                 _ => String::new(),
             };
         }
-        let (_width, _gap, max) = vector_print_settings();
+        let (_width, _gap, opt_max) = vector_print_settings();
+        let max = max_override.unwrap_or(opt_max);
         let n_pr = if n <= (max + 1) as R_xlen_t {
             n
         } else {
             max as R_xlen_t
         };
+
         let mut out = match names_sexp(x.clone()) {
             Some(names) => print_named_vector_stock(x, names, quote, n_pr),
             None => print_vector_stock(x, quote, n_pr),

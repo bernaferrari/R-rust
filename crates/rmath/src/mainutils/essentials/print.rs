@@ -713,6 +713,45 @@ pub unsafe fn do_print_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     unsafe { do_print(_call, _op, args, _rho) }
 }
 
+/// GNU `print.Date(x, max = NULL, ...)`.
+pub unsafe fn do_print_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return R_NilValue();
+        }
+        let mut max = None;
+        let max_sym = Rf_install(c"max".as_ptr());
+        let mut p = CDR(args);
+        while !p.is_null() && p != R_NilValue() {
+            if TAG(p) == max_sym {
+                let v = CAR(p);
+                if !v.is_null() && v != R_NilValue() {
+                    if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                        max = Some(*INTEGER(v) as i64);
+                    } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                        max = Some(*REAL(v) as i64);
+                    }
+                }
+                break;
+            }
+            p = CDR(p);
+        }
+        if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
+            let text = crate::sexp::output::format_date_vector_max(sexp, max);
+            if crate::sexp::output::is_capturing() {
+                crate::sexp::output::capture_stdout(&format!("{text}\n"));
+            } else {
+                println!("{text}");
+            }
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        x
+    }
+}
+
+
 fn print_data_frame_show_row_names(args: SEXP) -> bool {
     unsafe {
         let row_names_sym = Rf_install(c"row.names".as_ptr());

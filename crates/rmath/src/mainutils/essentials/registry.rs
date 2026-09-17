@@ -389,6 +389,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "as.data.frame",
     "unlist",
     "print.default",
+    "print.Date",
     "print.data.frame",
     "print.table",
     "print.factor",

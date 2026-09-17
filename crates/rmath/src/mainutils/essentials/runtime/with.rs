@@ -110,15 +110,81 @@ pub unsafe fn do_within(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `transform(x, ...)` — add/modify columns of a data.frame (simplified).
-pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `transform.data.frame`: eval extras in the data, then replace/add columns.
+pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
+        let data_expr = CAR(args);
+        if data_expr.is_null() || data_expr == R_NilValue() {
             return R_NilValue();
         }
-        // Simplified: return the data as-is
-        // A full implementation would evaluate named args as new columns
-        x
+        let data = crate::eval::eval::Rf_eval(data_expr, rho);
+        if data.is_null() || data == R_NilValue() || TYPEOF(data) != SEXPTYPE::VECSXP {
+            return data;
+        }
+        let eval_env = data_environment(data, rho);
+        let names =
+            crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
+        let old_n = XLENGTH(data);
+        let mut extras: Vec<(String, SEXP)> = Vec::new();
+        let mut p = CDR(args);
+        while !p.is_null() && p != R_NilValue() {
+            let tag = TAG(p);
+            let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = crate::eval::eval::Rf_eval(CAR(p), eval_env);
+            extras.push((name, val));
+            p = CDR(p);
+        }
+        if extras.is_empty() {
+            return data;
+        }
+        let mut columns: Vec<(String, SEXP)> = Vec::with_capacity(old_n as usize + extras.len());
+        for i in 0..old_n {
+            let name = if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+            {
+                elt_to_string(names, i)
+            } else {
+                String::new()
+            };
+            columns.push((name, VECTOR_ELT(data, i)));
+        }
+        for (name, val) in extras {
+            if !name.is_empty() {
+                if let Some(pos) = columns.iter().position(|(existing, _)| existing == &name) {
+                    columns[pos].1 = val;
+                    continue;
+                }
+            }
+            columns.push((name, val));
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
+        let _r = protect(result);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, columns.len() as R_xlen_t);
+        let _n = protect(out_names);
+        for (i, (name, val)) in columns.into_iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, val);
+            let c = CString::new(name).unwrap_or_default();
+            SET_STRING_ELT(out_names, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            out_names,
+        );
+        let nrow = if old_n > 0 {
+            XLENGTH(VECTOR_ELT(data, 0))
+        } else {
+            0
+        };
+        crate::mainutils::essentials::set_compact_row_names(result, nrow);
+        crate::mainutils::essentials::set_data_frame_class(result);
+        result
     }
 }

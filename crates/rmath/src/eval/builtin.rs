@@ -561,6 +561,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "transform",
+        handler: crate::mainutils::essentials::do_transform,
+        restore_visibility_always: false,
+    },
+
+    UnevaluatedBuiltin {
         name: "save",
         handler: crate::mainutils::saveload::do_save_user,
         restore_visibility_always: false,
@@ -3907,6 +3913,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "print.default",
         handler: crate::mainutils::essentials::do_print_default,
     },
+    EvaluatedBuiltin {
+        name: "print.Date",
+        handler: crate::mainutils::essentials::do_print_Date,
+    },
+
     EvaluatedBuiltin {
         name: "print.data.frame",
         handler: crate::mainutils::essentials::do_print_data_frame,
