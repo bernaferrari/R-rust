@@ -110,12 +110,86 @@ pub unsafe fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             }
         };
 
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+            && TYPEOF(x) == SEXPTYPE::VECSXP
+        {
+            let result = length_set_posixlt(x, new_len);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return result;
+        }
         let result = resize_vector(x, new_len);
+        let _r = protect(result);
         resize_names(x, result, new_len);
+        copy_datetime_class(x, result);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         result
+
     }
 }
+
+unsafe fn copy_datetime_class(from: SEXP, to: SEXP) {
+    unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(
+            from,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if !class.is_null() && class != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                to,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+        }
+        let tzone = crate::sexp::attrib_core::getAttrib(
+            from,
+            crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+        );
+        if !tzone.is_null() && tzone != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                to,
+                crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+                tzone,
+            );
+        }
+    }
+}
+
+unsafe fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
+    unsafe {
+        let old = crate::mainutils::subassign::posixlt_obs_length(x);
+        if old == new_len {
+            return x;
+        }
+        let ncomp = XLENGTH(x);
+
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, ncomp);
+        let _a = protect(ans);
+        for j in 0..ncomp {
+            SET_VECTOR_ELT(ans, j, resize_vector(VECTOR_ELT(x, j), new_len));
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                ans,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
+        copy_datetime_class(x, ans);
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::symbol::Rf_install(c"balanced".as_ptr()),
+            Rf_ScalarLogical(crate::sexp::ffi::NA_LOGICAL),
+        );
+
+        ans
+    }
+}
+
+
 
 pub unsafe fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
     unsafe {

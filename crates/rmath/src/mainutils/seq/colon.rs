@@ -590,11 +590,19 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 pub unsafe fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let _ = (call, rho);
+        let _ = rho;
         checkArity(op, args);
         check1arg(args, call, b"along.with\0".as_ptr() as *const c_char);
 
-        let len = XLENGTH(CAR(args));
+        let x = CAR(args);
+        let len = if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+            && TYPEOF(x) == VECSXP_VAL
+        {
+            crate::mainutils::subassign::posixlt_obs_length(x)
+        } else {
+            XLENGTH(x)
+        };
+
         if len == 0 {
             Rf_allocVector(INTSXP_VAL, 0)
         } else {

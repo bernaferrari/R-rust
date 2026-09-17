@@ -329,6 +329,64 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "names<-.POSIXlt",
             "function(x, value) { n <- length(x); yr <- x$year; if (length(yr) < n) x$year <- rep_len(yr, n); if (length(value) < n) value <- c(as.character(value), rep(NA_character_, n - length(value))); if (length(value) > n) value <- value[seq_len(n)]; names(x$year) <- value; x }",
         );
+        {
+            const LEAP: [f64; 27] = [
+                78_796_800.0,
+                94_694_400.0,
+                126_230_400.0,
+                157_766_400.0,
+                189_302_400.0,
+                220_924_800.0,
+                252_460_800.0,
+                283_996_800.0,
+                315_532_800.0,
+                362_793_600.0,
+                394_329_600.0,
+                425_865_600.0,
+                489_024_000.0,
+                567_993_600.0,
+                631_152_000.0,
+                662_688_000.0,
+                709_948_800.0,
+                741_484_800.0,
+                773_020_800.0,
+                820_454_400.0,
+                867_715_200.0,
+                915_148_800.0,
+                1_136_073_600.0,
+                1_230_768_000.0,
+                1_341_100_800.0,
+                1_435_708_800.0,
+                1_483_228_800.0,
+            ];
+            let leap = crate::sexp::constructors::Rf_allocVector3(
+                crate::sexp::ffi::SEXPTYPE::REALSXP,
+                LEAP.len() as i64,
+            );
+            let _l = super::protect::protect(leap);
+            for (i, sec) in LEAP.iter().enumerate() {
+                *crate::sexp::accessors::REAL(leap).add(i) = *sec;
+            }
+            let klass = crate::sexp::constructors::Rf_allocVector3(
+                crate::sexp::ffi::SEXPTYPE::STRSXP,
+                2,
+            );
+            let _k = super::protect::protect(klass);
+            crate::sexp::accessors::SET_STRING_ELT(
+                klass,
+                0,
+                crate::sexp::constructors::Rf_mkChar(c"POSIXct".as_ptr()),
+            );
+            crate::sexp::accessors::SET_STRING_ELT(
+                klass,
+                1,
+                crate::sexp::constructors::Rf_mkChar(c"POSIXt".as_ptr()),
+            );
+            crate::sexp::attrib_core::R_classgets(leap, klass);
+            defineVar(Rf_install_in_current(".leap.seconds"), leap, base_env);
+        }
+
+
 
 
 
