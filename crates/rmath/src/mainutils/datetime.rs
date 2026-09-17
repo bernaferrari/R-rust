@@ -2513,7 +2513,7 @@ pub unsafe fn do_as_double_POSIXt(
     unsafe {
         let x = CAR(args);
         let ct = if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
-            && TYPEOF(x) == SEXPTYPE::REALSXP
+            && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
         {
             x
         } else {
@@ -2532,7 +2532,13 @@ pub unsafe fn do_as_double_POSIXt(
             for i in 0..n {
                 *REAL(out).add(i as usize) = *REAL(ct).add(i as usize);
             }
+        } else if TYPEOF(ct) == SEXPTYPE::INTSXP {
+            for i in 0..n {
+                let v = *INTEGER(ct).add(i as usize);
+                *REAL(out).add(i as usize) = if v == NA_INTEGER { NA_REAL } else { f64::from(v) };
+            }
         }
+
         let names = getAttrib(ct, R_NamesSymbol());
         if !names.is_null() && names != R_NilValue() {
             setAttrib(out, R_NamesSymbol(), names);

@@ -140,6 +140,12 @@ pub(crate) fn is_hidden_builtin_name(name: &str) -> bool {
 
 pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     UnevaluatedBuiltin {
+        name: "stopifnot",
+        handler: crate::mainutils::essentials::do_stopifnot,
+        restore_visibility_always: false,
+    },
+
+    UnevaluatedBuiltin {
         name: "callNextMethod",
         handler: crate::library::methods::methods_list_dispatch::do_callNextMethod,
         restore_visibility_always: false,
@@ -5751,10 +5757,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "stop",
         handler: crate::mainutils::essentials::do_stop,
     },
-    EvaluatedBuiltin {
-        name: "stopifnot",
-        handler: crate::mainutils::essentials::do_stopifnot,
-    },
+
     EvaluatedBuiltin {
         name: "warning",
         handler: crate::mainutils::essentials::do_warning,

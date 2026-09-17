@@ -5,8 +5,10 @@ use std::os::raw::c_int;
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     CAR, CDR, CHAR, COMPLEX, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_ATTRIB,
-    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    SET_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
+    VECTOR_ELT, XLENGTH,
 };
+
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocList, Rf_allocVector3, Rf_cons,
@@ -1533,7 +1535,9 @@ unsafe fn duplicate_without_attributes(x: SEXP) -> SEXP {
         let result = crate::mainutils::duplicate::duplicate(x);
         if !result.is_null() && result != R_NilValue() {
             SET_ATTRIB(result, R_NilValue());
+            SET_OBJECT(result, 0);
         }
+
         result
     }
 }

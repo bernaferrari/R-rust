@@ -344,23 +344,55 @@ pub(crate) fn pipe_commands_disabled_by_runtime_policy() -> bool {
 }
 
 /// R's `stopifnot(...)` — stop if any condition is FALSE.
-pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+///
+/// GNU `stopifnot(exprs = { ... })` evaluates each brace statement.
+pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let fail = |value: SEXP, all: bool| {
+            if value.is_null() || TYPEOF(value) != SEXPTYPE::LGLSXP {
+                return;
+            }
+            let n = LENGTH(value);
+            let limit = if all { n } else { n.min(1) };
+            for i in 0..limit {
+                if *LOGICAL(value).add(i as usize) == 0 {
+                    crate::mainutils::errors::errorcall_str(
+                        crate::sexp::globals::R_NilValue(),
+                        "FALSE is not TRUE",
+                    );
+                }
+            }
+        };
+
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
-            let cond = CAR(current);
-            if !cond.is_null()
-                && TYPEOF(cond) == SEXPTYPE::LGLSXP
-                && LENGTH(cond) > 0
-                && *LOGICAL(cond) == 0
+            let expr = CAR(current);
+            let tag = TAG(current);
+            let named_exprs = !tag.is_null()
+                && tag != R_NilValue()
+                && CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy() == "exprs";
+            if named_exprs
+                && TYPEOF(expr) == SEXPTYPE::LANGSXP
+                && CAR(expr) == crate::sexp::symbol::R_BraceSymbol()
             {
-                // Upstream stopifnot() raises stop(call. = FALSE): the error
-                // renders without call attribution. Render explicitly so the
-                // builtin-dispatch attribution wrapper does not add a call.
-                crate::mainutils::errors::errorcall_str(
-                    crate::sexp::globals::R_NilValue(),
-                    "FALSE is not TRUE",
-                );
+                let mut stmt = CDR(expr);
+                while !stmt.is_null() && stmt != R_NilValue() {
+                    fail(crate::eval::eval::Rf_eval(CAR(stmt), rho), true);
+
+                    stmt = CDR(stmt);
+                }
+            } else if !named_exprs
+                && !tag.is_null()
+                && tag != R_NilValue()
+                && matches!(
+                    CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy().as_ref(),
+                    "exprObject" | "local"
+                )
+            {
+                // GNU formals, not conditions.
+            } else {
+                fail(crate::eval::eval::Rf_eval(expr, rho), false);
+
             }
             current = CDR(current);
         }
@@ -368,6 +400,7 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         R_NilValue()
     }
 }
+
 
 /// R's `nargs()` — number of arguments in the current call.
 pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {

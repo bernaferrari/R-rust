@@ -528,6 +528,23 @@ pub(crate) unsafe fn set_posixct_class(x: SEXP, tz: &str) {
     }
 }
 
+/// GNU `as.POSIXct(*, tz=)` stored tzone: missing/empty stays `""`.
+fn posixct_tz_arg(args: SEXP) -> String {
+    unsafe {
+        let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
+        if tz_arg.is_null()
+            || tz_arg == R_NilValue()
+            || tz_arg == R_MissingArg()
+            || XLENGTH(tz_arg) == 0
+        {
+            String::new()
+        } else {
+            elt_to_string(tz_arg, 0)
+        }
+    }
+}
+
+
 /// R's `as.Date(x, origin)` — coerce ISO date strings or day counts to Date.
 pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1483,9 +1500,15 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
+            // GNU as.POSIXct.default: NULL -> .POSIXct(integer(), tz).
+            let out = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+            let _o = protect(out);
+            set_posixct_class(out, &posixct_tz_arg(args));
+            return out;
         }
-        if sexp_has_class(x, "POSIXct") && TYPEOF(x) == SEXPTYPE::REALSXP {
+        if sexp_has_class(x, "POSIXct")
+            && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
+        {
             let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
             if !tz_arg.is_null()
                 && tz_arg != R_NilValue()
@@ -1503,6 +1526,7 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
             return x;
         }
+
 
         if sexp_has_class(x, "POSIXlt") && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 6 {
             let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
@@ -1593,7 +1617,22 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             return result;
         }
 
+        let origin = arg_by_name_or_position(args, &["origin"], 2);
+        let origin_missing =
+            origin.is_null() || origin == R_NilValue() || origin == R_MissingArg();
+        if !sexp_has_class(x, "Date")
+            && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
+            && origin_missing
+        {
+            // GNU as.POSIXct.numeric: missing origin keeps x's type.
+            let out = crate::mainutils::duplicate::Rf_duplicate(x);
+            let _o = protect(out);
+            set_posixct_class(out, &posixct_tz_arg(args));
+            return out;
+        }
+
         let tz = if tz.is_empty() { "UTC".to_string() } else { tz };
+
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
@@ -1623,8 +1662,7 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 *out.add(i as usize) = NA_REAL;
             }
         } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP {
-            let origin = arg_by_name_or_position(args, &["origin"], 2);
-            let origin_seconds = if origin.is_null() || origin == R_NilValue() {
+            let origin_seconds = if origin_missing {
                 0.0
             } else {
                 parse_iso_datetime_seconds(&elt_to_string(origin, 0))
@@ -1633,6 +1671,7 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     })
                     .unwrap_or_else(|| base_error("'origin' must be a character string"))
             };
+
             for i in 0..n {
                 let seconds = if TYPEOF(x) == SEXPTYPE::REALSXP {
                     let v = *REAL(x).add(i as usize);
@@ -2003,11 +2042,7 @@ pub unsafe fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
         let r = crate::mainutils::bind::do_c_dflt(call, op, args, rho);
         let _r = protect(r);
-        if tz_s.is_empty() {
-            set_posixct_class(r, "UTC");
-        } else {
-            set_posixct_class(r, &tz_s);
-        }
+        set_posixct_class(r, &tz_s);
         r
     }
 }

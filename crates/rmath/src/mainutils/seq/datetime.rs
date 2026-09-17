@@ -583,15 +583,23 @@ pub unsafe fn datetime_seq(
             }
         };
 
-        let keep_int = kind == DatetimeKind::Date
-            && (miss_from || TYPEOF(from) == INTSXP_VAL)
-            && (miss_to || TYPEOF(to) == INTSXP_VAL)
-            && values.iter().all(|v| {
-                v.is_finite()
-                    && *v == v.trunc()
-                    && *v >= c_int::MIN as c_double
-                    && *v <= c_int::MAX as c_double
-            });
+        let values_are_int = values.iter().all(|v| {
+            v.is_finite()
+                && *v == v.trunc()
+                && *v >= c_int::MIN as c_double
+                && *v <= c_int::MAX as c_double
+        });
+        let keep_int = values_are_int
+            && match kind {
+                DatetimeKind::Date => {
+                    (miss_from || TYPEOF(from) == INTSXP_VAL)
+                        && (miss_to || TYPEOF(to) == INTSXP_VAL)
+                }
+                // GNU seq.int of integer-valued seconds returns INTSXP;
+                // .POSIXct keeps that type (R >= 4.5).
+                DatetimeKind::Posixct => true,
+            };
+
         let ans = if keep_int {
             let ans = Rf_allocVector(INTSXP_VAL, values.len() as c_int);
             let ia = INTEGER(ans);
