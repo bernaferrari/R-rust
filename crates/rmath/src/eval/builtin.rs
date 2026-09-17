@@ -1305,6 +1305,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_is_na,
     },
     EvaluatedBuiltin {
+        name: "is.na.POSIXlt",
+        handler: crate::mainutils::essentials::do_is_na_POSIXlt,
+    },
+
+    EvaluatedBuiltin {
         name: "names",
         handler: crate::mainutils::essentials::do_names,
     },
@@ -3467,6 +3472,19 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "is.nan",
         handler: crate::mainutils::essentials::do_is_nan,
     },
+    EvaluatedBuiltin {
+        name: "is.finite.POSIXlt",
+        handler: crate::mainutils::essentials::do_is_finite_POSIXlt,
+    },
+    EvaluatedBuiltin {
+        name: "is.infinite.POSIXlt",
+        handler: crate::mainutils::essentials::do_is_infinite_POSIXlt,
+    },
+    EvaluatedBuiltin {
+        name: "is.nan.POSIXlt",
+        handler: crate::mainutils::essentials::do_is_nan_POSIXlt,
+    },
+
     EvaluatedBuiltin {
         name: "is.matrix",
         handler: crate::mainutils::essentials::do_is_matrix,

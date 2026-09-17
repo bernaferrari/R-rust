@@ -31,6 +31,8 @@ pub(super) const ALL_FNS: &[&str] = &[
 
     "identity",
     "is.na",
+    "is.na.POSIXlt",
+
     "names",
     "logical",
     "integer",
@@ -128,6 +130,10 @@ pub(super) const ALL_FNS: &[&str] = &[
     "is.finite",
     "is.infinite",
     "is.nan",
+    "is.finite.POSIXlt",
+    "is.infinite.POSIXlt",
+    "is.nan.POSIXlt",
+
     "is.matrix",
     "is.array",
     "is.list",
