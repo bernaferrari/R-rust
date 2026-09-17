@@ -659,6 +659,21 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                     return probe;
                 }
             }
+            if lookup_name == "assertError"
+                || lookup_name == "assertWarning"
+                || lookup_name == "assertCondition"
+            {
+                let probe = crate::eval::primitive::make_primitive_binding(
+                    &lookup_name,
+                    SEXPTYPE::SPECIALSXP,
+                );
+                if !probe.is_null() && probe != R_NilValue() {
+                    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                    return probe;
+                }
+            }
+
+
             std::panic::panic_any(RError {
                 message: format!("object '{lookup_name}' not found in tools namespace"),
             });

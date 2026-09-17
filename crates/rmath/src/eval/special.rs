@@ -38,6 +38,12 @@ pub unsafe fn do_special_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
             return dispatch_special_by_name(name, call, op, args, rho);
         }
 
+        if let Some(op_sexp) = crate::sexp::object::Sexp::from_raw(op)
+            && let Some(name) = crate::eval::primitive::portable_primitive_name(op_sexp)
+        {
+            return dispatch_special_by_name(&name, call, op, args, rho);
+        }
+
         // Match by symbol name
         let fun_sym = CAR(call);
         if TYPEOF(fun_sym) == SEXPTYPE::SYMSXP {

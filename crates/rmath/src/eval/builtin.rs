@@ -567,6 +567,22 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     },
 
     UnevaluatedBuiltin {
+        name: "assertError",
+        handler: crate::mainutils::essentials::do_assertError,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "assertWarning",
+        handler: crate::mainutils::essentials::do_assertError,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "assertCondition",
+        handler: crate::mainutils::essentials::do_assertError,
+        restore_visibility_always: false,
+    },
+
+    UnevaluatedBuiltin {
         name: "save",
         handler: crate::mainutils::saveload::do_save_user,
         restore_visibility_always: false,

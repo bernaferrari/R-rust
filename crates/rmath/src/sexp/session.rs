@@ -815,15 +815,32 @@ impl RSession {
                 result = self.eval_sexp(expr);
                 crate::eval::parser::flush_parsed_expr_warnings(index);
                 if result.is_err() {
-                    // An uncaught top-level error unwinds like R's error()
-                    // longjmp to the REPL top level: remaining expressions are
-                    // not evaluated and the script fails. Errors caught inside
-                    // the expression (tryCatch/withCallingHandlers) never
-                    // surface here, so local condition handling still resumes
-                    // normally. Warnings deferred by the failing statement
-                    // print with the error in the embedding layer instead.
+                    let catch_script = unsafe {
+                        crate::mainutils::options::logical_option_enabled(c"catch.script.errors")
+                    };
+                    if catch_script {
+                        if let Err(err) = &result {
+                            let text = crate::mainutils::errors::try_last_rendered_message(
+                                &err.message,
+                            )
+                            .unwrap_or_else(|| format!("Error: {}\n", err.message));
+                            super::output::capture_stdout(&text);
+                            if !text.ends_with('\n') {
+                                super::output::capture_stdout("\n");
+                            }
+                            if crate::mainutils::errors::collect_warnings() > 0 {
+                                unsafe {
+                                    crate::mainutils::errors::print_warnings_at_statement_boundary();
+                                }
+                            }
+                        }
+                        result = Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+                        crate::sexp::gengc::run_pending_gc_if_quiescent();
+                        continue;
+                    }
                     break;
                 }
+
                 let _expr_guard = result.as_ref().ok().map(|value| {
                     RootedSexp::try_root(value.clone()).ok()
                 });

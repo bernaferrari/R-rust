@@ -2429,6 +2429,48 @@ unsafe fn restart_stack_from_args(mut args: SEXP, rho: SEXP, old_stack: SEXP) ->
     }
 }
 
+/// GNU `tools::assertError(expr)` — require `expr` to signal an error.
+pub unsafe fn do_assertError(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = CAR(args);
+        let dcall = crate::mainutils::deparse::deparse1s(expr);
+        let dtext = if !dcall.is_null() && dcall != R_NilValue() {
+            let elt = STRING_ELT(dcall, 0);
+            if elt.is_null() {
+                "expr".to_string()
+            } else {
+                CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned()
+            }
+        } else {
+            "expr".to_string()
+        };
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(expr, rho)
+        }));
+        match caught {
+            Err(payload) => {
+                if payload.downcast_ref::<crate::sexp::context::RError>().is_some()
+                    || matches!(
+                        payload.downcast_ref::<crate::sexp::context::RSignal>(),
+                        Some(crate::sexp::context::RSignal::Error { .. })
+                    )
+                {
+                    crate::sexp::globals::set_R_Visible(FALSE);
+                    return R_NilValue();
+                }
+                std::panic::resume_unwind(payload);
+            }
+            Ok(_) => {
+                crate::mainutils::errors::errorcall_str(
+                    _call,
+                    &format!("Failed to get error in evaluating {dtext}"),
+                );
+            }
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
