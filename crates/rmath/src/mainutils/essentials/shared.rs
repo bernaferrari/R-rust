@@ -181,6 +181,38 @@ pub unsafe fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let object = crate::eval::eval::Rf_eval(CAR(args), rho);
         let _object_guard = protect(object);
+
+        // GNU do_AT: OBJECT && !S4 → fixSubset3Args + DispatchOrEval("@").
+        if crate::eval::attrib_core::isObject(object) != 0
+            && crate::mainutils::coerce::IS_S4_OBJECT(object) == crate::sexp::ffi::FALSE
+        {
+            let fixed = crate::mainutils::subset::fixSubset3Args(
+                call,
+                args,
+                rho,
+                std::ptr::null_mut(),
+            );
+            let _fixed = protect(fixed);
+            SETCAR(
+                fixed,
+                crate::sexp::memory_ext::R_mkEVPROMISE(CAR(fixed), object),
+            );
+            let mut dispatched = R_NilValue();
+            if crate::eval::dispatch::DispatchOrEval(
+                call,
+                op,
+                c"@".as_ptr(),
+                fixed,
+                rho,
+                &mut dispatched,
+                0,
+                0,
+            ) != 0
+            {
+                return dispatched;
+            }
+        }
+
         let nlist = CADR(args);
 
         // do_AT name check: symbol or non-NA scalar string.
@@ -207,11 +239,10 @@ pub unsafe fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             std::panic::panic_any(RError { message: msg });
         }
 
-        let _ = call;
-        let _ = op;
         crate::mainutils::essentials::s4::R_do_slot(object, nlist)
     }
 }
+
 
 pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

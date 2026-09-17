@@ -677,13 +677,12 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
                         )
                     })
                 }) {
-
                     return obj;
                 }
             }
         }
-        let data_sym = Rf_install(c".Data".as_ptr());
-        crate::sexp::attrib_core::getAttrib(obj, data_sym)
+        // GNU methods::getDataPart on a base vector is the object itself.
+        obj
     }
 }
 

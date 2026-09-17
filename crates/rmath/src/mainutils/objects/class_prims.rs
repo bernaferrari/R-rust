@@ -143,15 +143,44 @@ pub(crate) unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
 // nameOfClass -- get the class name from an object
 // ---------------------------------------------------------------------------
 
-/// Get the class name of an object. Simplified version.
-unsafe fn nameOfClass(what: SEXP, _env: SEXP) -> SEXP {
+/// GNU `base::nameOfClass(X)` — S3 generic used by inherits().
+unsafe fn nameOfClass(what: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        if isString(what) != FALSE {
-            return what;
-        }
-        R_NilValue()
+        let args = Rf_cons(what, R_NilValue());
+        let _args = protect(args);
+        crate::mainutils::base_wrappers::apply(
+            "nameOfClass",
+            "function(x) UseMethod(\"nameOfClass\")",
+            args,
+            env,
+            true,
+        )
     }
 }
+
+/// GNU `nameOfClass <- function(x) UseMethod("nameOfClass")`
+pub unsafe fn do_nameOfClass(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "nameOfClass",
+            "function(x) UseMethod(\"nameOfClass\")",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
+/// GNU `nameOfClass.default <- function(x) NULL`
+pub unsafe fn do_nameOfClass_default(
+    _call: SEXP,
+    _op: SEXP,
+    _args: SEXP,
+    _rho: SEXP,
+) -> SEXP {
+    unsafe { R_NilValue() }
+}
+
 
 // ---------------------------------------------------------------------------
 // do_inherits -- inherits() primitive

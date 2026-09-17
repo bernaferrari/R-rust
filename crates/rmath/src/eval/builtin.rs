@@ -5587,6 +5587,15 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::objects::do_inherits,
     },
     EvaluatedBuiltin {
+        name: "nameOfClass",
+        handler: crate::mainutils::objects::do_nameOfClass,
+    },
+    EvaluatedBuiltin {
+        name: "nameOfClass.default",
+        handler: crate::mainutils::objects::do_nameOfClass_default,
+    },
+
+    EvaluatedBuiltin {
         name: "stop",
         handler: crate::mainutils::essentials::do_stop,
     },
