@@ -411,6 +411,42 @@ pub unsafe fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let min_np = if n < p { n } else { p };
+        let mut nu = min_np;
+        let mut nv = min_np;
+        let mut cell = CDR(args);
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = CAR(cell);
+            let iv = if TYPEOF(val) == SEXPTYPE::INTSXP && XLENGTH(val) > 0 {
+                *INTEGER(val)
+            } else if TYPEOF(val) == SEXPTYPE::REALSXP && XLENGTH(val) > 0 {
+                *REAL(val) as i32
+            } else {
+                -1
+            };
+            if named == "nu" || (named.is_empty() && pos == 0) {
+                if iv >= 0 {
+                    nu = iv.min(n);
+                }
+            } else if named == "nv" || (named.is_empty() && pos == 1) {
+                if iv >= 0 {
+                    nv = iv.min(p);
+                }
+            }
+            if named.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
+        }
+
         let jobu = Rf_mkString(c"A".as_ptr());
         let _j = protect(jobu);
         let s = Rf_allocVector3(SEXPTYPE::REALSXP, min_np as i64);
@@ -429,16 +465,53 @@ pub unsafe fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _la = protect(la);
         let v = crate::mainutils::array::do_transpose(call, op, Rf_cons(vt, R_NilValue()), rho);
         let _v = protect(v);
+        // GNU svd() defaults nu=nv=min(n,p).
+        let u_out = if nu != n {
+            let thin = crate::mainutils::array::allocMatrix(
+                SEXPTYPE::REALSXP.as_c_int(),
+                n,
+                nu,
+            );
+            let _th = protect(thin);
+            let cols = (nu.min(n)) as usize;
+            for j in 0..cols {
+                for i in 0..n as usize {
+                    *REAL(thin).add(j * n as usize + i) = *REAL(u).add(j * n as usize + i);
+                }
+            }
+            thin
+        } else {
+            u
+        };
+        let v_out = if nv != p {
+            let thin = crate::mainutils::array::allocMatrix(
+                SEXPTYPE::REALSXP.as_c_int(),
+                p,
+                nv,
+            );
+            let _th = protect(thin);
+            let cols = (nv.min(p)) as usize;
+            for j in 0..cols {
+                for i in 0..p as usize {
+                    *REAL(thin).add(j * p as usize + i) = *REAL(v).add(j * p as usize + i);
+                }
+            }
+            thin
+        } else {
+            v
+        };
+
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, s);
-        SET_VECTOR_ELT(result, 1, u);
-        SET_VECTOR_ELT(result, 2, v);
+        SET_VECTOR_ELT(result, 1, u_out);
+        SET_VECTOR_ELT(result, 2, v_out);
         crate::mainutils::essentials::set_string_names(
             result,
             &["d".to_string(), "u".to_string(), "v".to_string()],
         );
         result
+
     }
 }
 
