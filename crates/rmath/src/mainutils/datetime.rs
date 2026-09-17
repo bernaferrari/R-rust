@@ -1804,10 +1804,11 @@ pub unsafe fn do_as_POSIXlt(
                     .into_owned()
             };
             let fmt = if sample.contains(' ') {
-                "%Y-%m-%d %H:%M:%S"
+                "%Y-%m-%d %H:%M:%OS"
             } else {
                 "%Y-%m-%d"
             };
+
             (x, fmt)
         } else if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
             let formatted = crate::mainutils::essentials::do_format_Date(
