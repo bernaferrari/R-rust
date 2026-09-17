@@ -903,7 +903,7 @@ pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
         let _tz_guard = protect(tzone);
         for i in 0..n {
             let mut dummy = stm::new();
-            let d = if TYPEOF(x) == SEXPTYPE::INTSXP {
+            let d = if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
                 let v = *INTEGER(x).add(i as usize);
                 if v == NA_INTEGER {
                     NA_REAL
@@ -913,6 +913,7 @@ pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
             } else {
                 *REAL(x).add(i as usize)
             };
+
             let valid = if R_FINITE(d) {
                 localtime0(&d as *const c_double, !is_utc, &mut dummy)
             } else {
@@ -1069,7 +1070,10 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 *REAL(ans).add(iu) = NA_REAL;
             } else {
                 let tmp = mktime0(&mut tm, !is_utc);
-                *REAL(ans).add(iu) = if tmp == -1.0 {
+                // GNU: mktime -1 is either error or 1969-12-31 23:59:59.
+                // A real error is not at tm_sec==59 (datetime.c do_asPOSIXct).
+                let failed = tmp == -1.0 && tm.tm_sec != 59;
+                *REAL(ans).add(iu) = if failed {
                     NA_REAL
                 } else {
                     tmp + (secs - fsecs)
@@ -1077,9 +1081,18 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             }
         }
 
+        let names = if XLENGTH(x) >= 6 {
+            getAttrib(VECTOR_ELT(x, 5), R_NamesSymbol())
+        } else {
+            R_NilValue()
+        };
+        if !names.is_null() && names != R_NilValue() && XLENGTH(names) == n {
+            setAttrib(ans, R_NamesSymbol(), names);
+        }
         ans
     }
 }
+
 
 
 fn use_dig_secs(secs: &[f64], digits: i32) -> i32 {
@@ -1162,6 +1175,49 @@ unsafe fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) -> SEXP {
         positional
     }
 }
+
+/// Exact named match, then leftover positionals — GNU closure matching
+/// without partial names. `sapply(dd, as.character.POSIXt, x = xf)` binds
+/// `x = xf` and the untagged `dd[[i]]` to `digits`.
+unsafe fn match_named_then_positional(args: SEXP, formals: &[&str]) -> Vec<SEXP> {
+    unsafe {
+        let n = formals.len();
+        let mut out = vec![R_NilValue(); n];
+        let mut filled = vec![false; n];
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy();
+                if let Some(i) = formals.iter().position(|f| *f == name) {
+                    out[i] = CAR(cell);
+                    filled[i] = true;
+                }
+            }
+            cell = CDR(cell);
+        }
+        let mut next = 0usize;
+        cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let untagged = tag.is_null() || tag == R_NilValue();
+            if untagged {
+                while next < n && filled[next] {
+                    next += 1;
+                }
+                if next < n {
+                    out[next] = CAR(cell);
+                    filled[next] = true;
+                    next += 1;
+                }
+            }
+            cell = CDR(cell);
+        }
+        out
+    }
+}
+
 
 
 // ---------------------------------------------------------------------------
@@ -1776,7 +1832,9 @@ pub unsafe fn do_as_POSIXlt(
         if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
             || TYPEOF(x) == SEXPTYPE::REALSXP
             || TYPEOF(x) == SEXPTYPE::INTSXP
+            || TYPEOF(x) == SEXPTYPE::LGLSXP
         {
+
             if tz_s.is_empty() {
                 let attr = getAttrib(x, Rf_install(c"tzone".as_ptr()));
                 if !attr.is_null()
@@ -2117,10 +2175,11 @@ pub unsafe fn do_as_character_POSIXt(
     env: SEXP,
 ) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let matched = match_named_then_positional(args, &["x", "digits", "OutDec"]);
+        let x = matched[0];
+        let digits_arg = matched[1];
+        let outdec_arg = matched[2];
         let is_lt = crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0;
-        let digits_arg = format_posix_named_arg(args, "digits", 0);
-        let outdec_arg = format_posix_named_arg(args, "OutDec", 1);
         let digits = if !digits_arg.is_null()
             && digits_arg != R_NilValue()
             && digits_arg != R_MissingArg()
@@ -2130,7 +2189,6 @@ pub unsafe fn do_as_character_POSIXt(
         } else if is_lt {
             14
         } else {
-
             6
         };
         let outdec = if !outdec_arg.is_null()
@@ -2142,6 +2200,7 @@ pub unsafe fn do_as_character_POSIXt(
         } else {
             ".".to_string()
         };
+
 
         let lt = if is_lt {
 
@@ -2159,7 +2218,24 @@ pub unsafe fn do_as_character_POSIXt(
         let n = XLENGTH(VECTOR_ELT(lt, 0)).max(0);
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
+        // GNU as.character.POSIXt: options(scipen = max(digits)+1) so
+        // as.character(sec) does not go scientific for tiny fractions.
+        let scipen_sym = Rf_install(c"scipen".as_ptr());
+        let old_scipen = crate::mainutils::options::GetOption1(scipen_sym);
+        let _old_s = protect(old_scipen);
+        let want = digits.max(0) + 1;
+        let cur = if !old_scipen.is_null() && old_scipen != R_NilValue() {
+            crate::mainutils::coerce::asInteger(old_scipen)
+        } else {
+            0
+        };
+        if cur <= digits {
+            let nv = Rf_ScalarInteger(want);
+            let _nv = protect(nv);
+            crate::mainutils::options::SetOptionByName("scipen", nv);
+        }
         let sec = VECTOR_ELT(lt, 0);
+
         for i in 0..n {
             let iu = i as usize;
             let s = if TYPEOF(sec) == SEXPTYPE::REALSXP {
@@ -2228,7 +2304,11 @@ pub unsafe fn do_as_character_POSIXt(
                 }
             }
         }
+        if cur <= digits {
+            crate::mainutils::options::SetOptionByName("scipen", old_scipen);
+        }
         out
+
     }
 }
 

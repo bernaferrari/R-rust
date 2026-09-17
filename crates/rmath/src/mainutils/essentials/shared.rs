@@ -377,12 +377,6 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         };
         let _value_eval = protect(value);
 
-        // Upstream `$<-` promotes a NULL target to a list: `NULL$a <- 1`
-        // yields `list(a=1)`. R6 relies on this —
-        // `generator$public_methods$clone <- f` where public_methods was
-        // assigned NULL (get_functions returns NULL when a class has no
-        // user methods) must produce list(clone=f), not NULL. The
-        // promotion must happen BEFORE the NULL early-return.
         let object = if !object.is_null()
             && object == R_NilValue()
             && !field.is_empty()
@@ -393,6 +387,7 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         } else {
             object
         };
+        let mut object = crate::mainutils::duplicate::shallow_duplicate_if_shared(object);
         let _object_guard = protect(object);
         if object.is_null() || object == R_NilValue() || field.is_empty() {
             return object;
@@ -400,6 +395,7 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         if TYPEOF(object) != SEXPTYPE::VECSXP {
             return object;
         }
+
 
         // `$<-.data.frame` recycles a length-1 atomic value to the
         // frame's row count (`df$f <- factor("", levels=lv)` gives an

@@ -61,9 +61,11 @@ pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> 
         let mut xS4: SEXP = R_NilValue();
         let nprotect = 0;
 
-        if MAYBE_SHARED(x) {
-            x = shallow_duplicate(x);
-        }
+        // Formal binding does not RAISE_NAMED; treat NAMED > 0 as shared.
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
+
+        // Code to allow classes to extend ENVSXP
 
         // Code to allow classes to extend ENVSXP
         if TYPEOF(x) == OBJSXP {

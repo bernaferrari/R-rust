@@ -302,6 +302,30 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "setNames",
             "function(object = nm, nm) { names(object) <- nm; object }",
         );
+
+        // GNU datetime.R constructors: class + tzone/units only.
+        eval_base_binding(
+            base_env,
+            ".POSIXlt",
+            "function(xx, tz = NULL, cl = c(\"POSIXlt\", \"POSIXt\")) { class(xx) <- cl; attr(xx, \"tzone\") <- tz; xx }",
+        );
+        eval_base_binding(
+            base_env,
+            ".difftime",
+            "function(xx, units, cl = \"difftime\") { class(xx) <- cl; attr(xx, \"units\") <- units; xx }",
+        );
+        eval_base_binding(
+            base_env,
+            "names.POSIXlt",
+            "function(x) names(x$year)",
+        );
+        eval_base_binding(
+            base_env,
+            "length.POSIXlt",
+            "function(x) max(lengths(unclass(x)))",
+        );
+
+
     }
 }
 

@@ -1595,6 +1595,14 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     days.floor() * 86_400.0
                 };
             }
+        } else if TYPEOF(x) == SEXPTYPE::LGLSXP {
+            // GNU as.POSIXct.default: logical all-NA -> numeric POSIXct.
+            for i in 0..n {
+                if *INTEGER(x).add(i as usize) != NA_INTEGER {
+                    base_error("do not know how to convert 'x' to class \"POSIXct\"");
+                }
+                *out.add(i as usize) = NA_REAL;
+            }
         } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP {
             let origin = arg_by_name_or_position(args, &["origin"], 2);
             let origin_seconds = if origin.is_null() || origin == R_NilValue() {
