@@ -481,9 +481,34 @@ pub unsafe fn datetime_seq(
                 if ISNAN(rby) {
                     errorcall(call, b"'by' is NA\0".as_ptr() as *const c_char);
                 }
+                if crate::mainutils::essentials::sexp_has_class(by, "difftime") {
+                    let units_attr = crate::sexp::attrib_core::getAttrib(
+                        by,
+                        crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                    );
+                    let units = if TYPEOF(units_attr) == STRSXP_VAL && XLENGTH(units_attr) > 0 {
+                        first_str_elt(units_attr).unwrap_or_else(|| "secs".to_string())
+                    } else {
+                        "secs".to_string()
+                    };
+                    let scale = match units.as_str() {
+                        "secs" => 1.0,
+                        "mins" => 60.0,
+                        "hours" => 3600.0,
+                        "days" => 86_400.0,
+                        "weeks" => 7.0 * 86_400.0,
+                        _ => 1.0,
+                    };
+                    rby *= scale;
+                    if kind == DatetimeKind::Date {
+                        rby /= 86_400.0;
+                    }
+                }
+
             } else {
                 errorcall(call, b"invalid mode for 'by'\0".as_ptr() as *const c_char);
             }
+
         }
 
         // Endpoints as raw numbers (days for Date, seconds for POSIXct).
@@ -592,13 +617,34 @@ pub unsafe fn datetime_seq(
         let keep_int = values_are_int
             && match kind {
                 DatetimeKind::Date => {
-                    (miss_from || TYPEOF(from) == INTSXP_VAL)
-                        && (miss_to || TYPEOF(to) == INTSXP_VAL)
+                    if calendar.is_some() {
+                        (miss_from || TYPEOF(from) == INTSXP_VAL)
+                            && (miss_to || TYPEOF(to) == INTSXP_VAL)
+                    } else if have_lout && !miss_from && !miss_to {
+                        TYPEOF(from) == INTSXP_VAL && TYPEOF(to) == INTSXP_VAL
+                    } else if have_lout {
+                        true
+                    } else if !by_given || rby.abs() == 1.0 {
+                        true
+                    } else {
+                        (miss_from || TYPEOF(from) == INTSXP_VAL)
+                            && (miss_to || TYPEOF(to) == INTSXP_VAL)
+                    }
                 }
-                // GNU seq.int of integer-valued seconds returns INTSXP;
-                // .POSIXct keeps that type (R >= 4.5).
-                DatetimeKind::Posixct => true,
+
+
+
+                // seq.int(from, to, by) keeps the endpoint type; length.out
+                // of integer-valued seconds becomes INTSXP (GNU R >= 4.5).
+                // Calendar steps go through POSIXlt and keep endpoint type.
+                DatetimeKind::Posixct => {
+                    (have_lout && calendar.is_none())
+                        || ((miss_from || TYPEOF(from) == INTSXP_VAL)
+                            && (miss_to || TYPEOF(to) == INTSXP_VAL))
+                }
+
             };
+
 
         let ans = if keep_int {
             let ans = Rf_allocVector(INTSXP_VAL, values.len() as c_int);

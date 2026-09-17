@@ -918,17 +918,27 @@ fn iso_arg_num(x: SEXP, default: f64) -> f64 {
 unsafe fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, tz: &str) -> SEXP {
     unsafe {
         let stamp = format!(
-            "{:04}-{:02}-{:02}",
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:09.6}",
             year as i32,
             month as i32,
-            day as i32
+            day as i32,
+            hour as i32,
+            min as i32,
+            sec
         );
-        let days = crate::mainutils::essentials::parse_iso_date_days(&stamp).unwrap_or(f64::NAN);
-        let seconds = days * 86_400.0 + hour * 3600.0 + min * 60.0 + sec;
-        let result = Rf_ScalarReal(seconds);
-        let _r = protect(result);
-        set_posixct_class(result, tz);
-        result
+        let text = Rf_mkString(CString::new(stamp.as_str()).unwrap_or_default().as_ptr());
+        let _t = protect(text);
+        let tz_s = Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr());
+        let _z = protect(tz_s);
+        let args = Rf_cons(text, Rf_cons(tz_s, R_NilValue()));
+        let _a = protect(args);
+        SETTAG(CDR(args), Rf_install(c"tz".as_ptr()));
+        do_as_POSIXct(
+            R_NilValue(),
+            R_NilValue(),
+            args,
+            R_NilValue(),
+        )
     }
 }
 
