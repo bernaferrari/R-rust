@@ -3291,7 +3291,9 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 *data.add(i as usize) = charsxp;
             }
         }
+        crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
         result
+
     }
 }
 

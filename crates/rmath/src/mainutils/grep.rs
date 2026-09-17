@@ -1324,7 +1324,9 @@ pub unsafe fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             let result_charsxp = Rf_mkChar(result_cstr.as_ptr());
             SET_STRING_ELT(ans, i as R_xlen_t, result_charsxp);
         }
+        crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(ans, text);
         ans
+
     }
 }
 
