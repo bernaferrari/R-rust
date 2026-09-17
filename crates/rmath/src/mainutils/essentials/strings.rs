@@ -3486,6 +3486,18 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         {
             return result;
         }
+        if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != FALSE {
+            return crate::mainutils::datetime::do_format_POSIXlt(_call, _op, args, _rho);
+        }
+        if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != FALSE
+            || crate::mainutils::objects::inherits2(x, c"POSIXt".as_ptr()) != FALSE
+        {
+            return crate::mainutils::datetime::do_format_POSIXct(_call, _op, args, _rho);
+        }
+        if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != FALSE {
+            return crate::mainutils::essentials::do_format_Date(_call, _op, args, _rho);
+        }
+
         if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {
             return format_mode_ints(x, true);
         }

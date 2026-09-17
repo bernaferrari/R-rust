@@ -1049,6 +1049,88 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 }
 
 
+fn use_dig_secs(secs: &[f64], digits: i32) -> i32 {
+    let mut np = digits.min(6);
+    if np < 1 {
+        return 0;
+    }
+    let finite: Vec<f64> = secs.iter().copied().filter(|s| s.is_finite()).collect();
+    if finite.is_empty() {
+        return np;
+    }
+    for i in 0..np {
+        let ti = 10f64.powi(i);
+        if finite
+            .iter()
+            .all(|&s| (s - (s * ti).trunc() / ti).abs() < 1e-6)
+        {
+            return i;
+        }
+    }
+    np
+}
+
+fn expand_os_format(fmt: &str, secs: f64, fsecs: f64, tm_sec: i32, digits: i32, ns0: &mut i32) -> String {
+    let Some(pos) = fmt.find("%OS") else {
+        return fmt.to_string();
+    };
+    let after = pos + 3;
+    let next = fmt.as_bytes().get(after).copied();
+    let (ns, nused) = match next {
+        Some(b) if b.is_ascii_digit() => ((b - b'0') as i32, 4),
+        _ => {
+            if *ns0 < 0 {
+                *ns0 = if digits == NA_INTEGER { 0 } else { digits };
+            }
+            (*ns0, 3)
+        }
+    };
+    let ns = ns.clamp(0, 6);
+    let mut out = String::new();
+    out.push_str(&fmt[..pos]);
+    if ns > 0 {
+        let s = tm_sec as f64 + (secs - fsecs);
+        let t = 10f64.powi(ns);
+        let s = ((s * t) as i32) as f64 / t;
+        out.push_str(&format!("{s:0width$.prec$}", width = (ns + 3) as usize, prec = ns as usize));
+        out.push_str(&fmt[pos + nused..]);
+    } else {
+        out.push_str("%S");
+        out.push_str(&fmt[pos + nused..]);
+    }
+    out
+}
+
+unsafe fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) -> SEXP {
+    unsafe {
+        let mut cell = CDR(args);
+        let mut i = 0usize;
+        let mut positional = R_NilValue();
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let tagged = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if tagged == name {
+                return CAR(cell);
+            }
+            if tagged.is_empty() {
+                if i == pos {
+                    positional = CAR(cell);
+                }
+                i += 1;
+            }
+            cell = CDR(cell);
+        }
+        positional
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // do_formatPOSIXlt -- .Internal(format.POSIXlt(x, format, usetz, ...))
 // ---------------------------------------------------------------------------
@@ -1090,6 +1172,13 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 
         let m = XLENGTH(sformat);
         let N = if n > 0 { std::cmp::max(m, n) } else { 0 };
+        let digits_arg = CADDDR(args);
+        let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
+            NA_INTEGER
+        } else {
+            crate::mainutils::coerce::asInteger(digits_arg)
+        };
+        let mut ns0 = -1i32;
 
         let ans = Rf_allocVector3(SEXPTYPE::STRSXP, N);
         let _ans_guard = protect(ans);
@@ -1165,13 +1254,21 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                     // Get format string
                     let fmt_charsxp = STRING_ELT(sformat, (i % m) as R_xlen_t);
                     let fmt_ptr = CHAR(fmt_charsxp);
-                    let fmt_cstr = if fmt_ptr.is_null() {
+                    let fmt_raw = if fmt_ptr.is_null() {
                         "%Y-%m-%d %H:%M:%S"
                     } else {
                         CStr::from_ptr(fmt_ptr)
                             .to_str()
                             .unwrap_or("%Y-%m-%d %H:%M:%S")
                     };
+                    let fmt_exp = expand_os_format(
+                        fmt_raw,
+                        secs,
+                        fsecs,
+                        ctm.tm_sec,
+                        digits,
+                        &mut ns0,
+                    );
 
                     let mut sf_tm_ctm: sf_tm = std::mem::zeroed();
                     sf_tm_ctm.tm_sec = ctm.tm_sec;
@@ -1188,7 +1285,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                         R_strftime(
                             buf.as_mut_ptr(),
                             2048,
-                            CString::new(fmt_cstr).unwrap_or_default().as_ptr()
+                            CString::new(fmt_exp.as_str()).unwrap_or_default().as_ptr()
                                 as *const core::ffi::c_char,
                             &sf_tm_ctm,
                         )
@@ -1687,7 +1784,7 @@ pub unsafe fn do_as_POSIXlt(
 }
 
 
-/// GNU `format.POSIXlt(x, format)`.
+/// GNU `format.POSIXlt(x, format, usetz, digits)`.
 pub unsafe fn do_format_POSIXlt(
     call: SEXP,
     op: SEXP,
@@ -1696,46 +1793,109 @@ pub unsafe fn do_format_POSIXlt(
 ) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let mut fmt = String::new();
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let f = CAR(rest);
-            if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
-                let ch = STRING_ELT(f, 0);
-                if !ch.is_null() {
-                    fmt = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
-                }
+        let mut format = format_posix_named_arg(args, "format", 0);
+        let digits_arg = format_posix_named_arg(args, "digits", 2);
+        if format.is_null() || format == R_NilValue() || TYPEOF(format) != SEXPTYPE::STRSXP {
+            format = Rf_mkString(c"".as_ptr());
+        }
+        let _f0 = protect(format);
+        let nf = XLENGTH(format);
+        let mut filled = false;
+        for i in 0..nf {
+            let ch = STRING_ELT(format, i);
+            let empty = ch.is_null()
+                || ch == R_NaString()
+                || CStr::from_ptr(CHAR(ch)).to_bytes().is_empty();
+            if empty {
+                filled = true;
+                break;
             }
         }
-        if fmt.is_empty() {
-            fmt = "%Y-%m-%d".to_string();
-            if TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 3 {
-                let hour = VECTOR_ELT(x, 2);
-                let min = VECTOR_ELT(x, 1);
-                let sec = VECTOR_ELT(x, 0);
-                let nonzero = |v: SEXP| -> bool {
-                    if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                        *INTEGER(v) != 0
-                    } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                        *REAL(v) != 0.0
-                    } else {
-                        false
+        let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
+            let opt = crate::mainutils::options::GetOption1(Rf_install(c"digits.secs".as_ptr()));
+            if opt.is_null() || opt == R_NilValue() {
+                0
+            } else {
+                crate::mainutils::coerce::asInteger(opt)
+            }
+        } else {
+            crate::mainutils::coerce::asInteger(digits_arg)
+        };
+        if filled && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 3 {
+            let nsec = XLENGTH(VECTOR_ELT(x, 0)).max(0);
+            let mut secs = Vec::with_capacity(nsec as usize);
+            if TYPEOF(VECTOR_ELT(x, 0)) == SEXPTYPE::REALSXP {
+                for i in 0..nsec {
+                    secs.push(*REAL(VECTOR_ELT(x, 0)).add(i as usize));
+                }
+            }
+            let np = use_dig_secs(&secs, digits);
+            let times_zero = {
+                let mut z = true;
+                for comp in 0..3 {
+                    let v = VECTOR_ELT(x, comp);
+                    let n = XLENGTH(v);
+                    for i in 0..n {
+                        let val = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                            *REAL(v).add(i as usize)
+                        } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+                            *INTEGER(v).add(i as usize) as f64
+                        } else {
+                            0.0
+                        };
+                        if val.is_finite() && val != 0.0 {
+                            z = false;
+                        }
                     }
-                };
-                if nonzero(hour) || nonzero(min) || nonzero(sec) {
-                    fmt = "%Y-%m-%d %H:%M:%S".to_string();
+                }
+                z
+            };
+            let repl = if times_zero {
+                "%Y-%m-%d"
+            } else if np == 0 {
+                "%Y-%m-%d %H:%M:%S"
+            } else {
+                // filled below per-element
+                ""
+            };
+            let format2 = Rf_allocVector3(SEXPTYPE::STRSXP, nf);
+            let _f2 = protect(format2);
+            for i in 0..nf {
+                let ch = STRING_ELT(format, i);
+                let empty = ch.is_null()
+                    || ch == R_NaString()
+                    || CStr::from_ptr(CHAR(ch)).to_bytes().is_empty();
+                if empty {
+                    let s = if times_zero {
+                        "%Y-%m-%d".to_string()
+                    } else if np == 0 {
+                        "%Y-%m-%d %H:%M:%S".to_string()
+                    } else {
+                        format!("%Y-%m-%d %H:%M:%OS{np}")
+                    };
+                    let cs = CString::new(s).unwrap_or_default();
+                    SET_STRING_ELT(format2, i, Rf_mkChar(cs.as_ptr()));
+                } else {
+                    SET_STRING_ELT(format2, i, ch);
                 }
             }
+            format = format2;
+            let _ = repl;
         }
-        let fmt_s = Rf_mkString(CString::new(fmt.as_str()).unwrap_or_default().as_ptr());
-        let _f = protect(fmt_s);
-        do_formatPOSIXlt(call, op, Rf_cons(x, Rf_cons(fmt_s, R_NilValue())), env)
+        let usetz = Rf_ScalarLogical(0);
+        let _u = protect(usetz);
+        let digs = Rf_ScalarInteger(digits);
+        let _d = protect(digs);
+        do_formatPOSIXlt(
+            call,
+            op,
+            Rf_cons(x, Rf_cons(format, Rf_cons(usetz, Rf_cons(digs, R_NilValue())))),
+            env,
+        )
     }
 }
 
-/// GNU `format.POSIXct(x, format, tz)`.
+/// GNU `format.POSIXct(x, format, tz, usetz, digits)`.
 pub unsafe fn do_format_POSIXct(
     call: SEXP,
     op: SEXP,
@@ -1744,32 +1904,41 @@ pub unsafe fn do_format_POSIXct(
 ) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let mut fmt = String::new();
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let f = CAR(rest);
-            if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
-                let ch = STRING_ELT(f, 0);
-                if !ch.is_null() {
-                    fmt = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
-                }
+        let format = format_posix_named_arg(args, "format", 0);
+        let tz = format_posix_named_arg(args, "tz", 1);
+        let digits = format_posix_named_arg(args, "digits", 3);
+        let mut tz_s = tz;
+        if tz_s.is_null() || tz_s == R_NilValue() {
+            let attr = getAttrib(x, Rf_install(c"tzone".as_ptr()));
+            if !attr.is_null() && attr != R_NilValue() {
+                tz_s = attr;
             }
         }
-        if fmt.is_empty() {
-            fmt = "%Y-%m-%d %H:%M:%S".to_string();
+        let lt_args = if tz_s.is_null() || tz_s == R_NilValue() {
+            Rf_cons(x, R_NilValue())
+        } else {
+            Rf_cons(x, Rf_cons(tz_s, R_NilValue()))
+        };
+        let _la = protect(lt_args);
+        let lt = do_as_POSIXlt(call, op, lt_args, env);
+        let _lt = protect(lt);
+        let mut rest = R_NilValue();
+        if !digits.is_null() && digits != R_NilValue() {
+            let cell = Rf_cons(digits, rest);
+            SETTAG(cell, Rf_install(c"digits".as_ptr()));
+            rest = cell;
         }
-        let fmt_s = Rf_mkString(CString::new(fmt.as_str()).unwrap_or_default().as_ptr());
-        let _f = protect(fmt_s);
-        crate::mainutils::essentials::do_strftime(
-            call,
-            op,
-            Rf_cons(x, Rf_cons(fmt_s, R_NilValue())),
-            env,
-        )
+        if !format.is_null() && format != R_NilValue() {
+            let cell = Rf_cons(format, rest);
+            SETTAG(cell, Rf_install(c"format".as_ptr()));
+            rest = cell;
+        }
+        let call_args = Rf_cons(lt, rest);
+        let _ca = protect(call_args);
+        do_format_POSIXlt(call, op, call_args, env)
     }
 }
+
 
 unsafe fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
     unsafe {

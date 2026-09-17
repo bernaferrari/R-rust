@@ -9665,6 +9665,7 @@ pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let resid = list_named_elt(obj, "residuals");
         let fitted = list_named_elt(obj, "fitted.values");
         let dfr = list_named_elt(obj, "df.residual");
+        let rank = list_named_elt(obj, "rank");
         if resid == R_NilValue() {
             return R_NilValue();
         }
@@ -9673,6 +9674,11 @@ pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             elt_real_safe(dfr, 0)
         } else {
             (n as f64) - 2.0
+        };
+        let df_mod = if rank != R_NilValue() {
+            (elt_real_safe(rank, 0) - 1.0).max(1.0)
+        } else {
+            (n as f64 - 1.0 - df_res).max(1.0)
         };
         let mut sse = 0.0;
         let mut ysum = 0.0;
@@ -9692,24 +9698,28 @@ pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let ybar = ysum / n as f64;
         let sst: f64 = ys.iter().map(|y| (y - ybar) * (y - ybar)).sum();
         let ssr = sst - sse;
-        let df_mod = 1.0;
         let msr = ssr / df_mod;
         let mse = if df_res > 0.0 { sse / df_res } else { f64::NAN };
         let f = if mse > 0.0 { msr / mse } else { f64::NAN };
         let p = crate::dist::f_dist::pf_inner(f, df_mod, df_res, false, false);
         let tab = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
         let _t = protect(tab);
+        let dfcol = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _df = protect(dfcol);
+        *INTEGER(dfcol) = df_mod as i32;
+        *INTEGER(dfcol).add(1) = df_res as i32;
         let col = |vals: [f64; 2]| {
             let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
             *REAL(v) = vals[0];
             *REAL(v).add(1) = vals[1];
             v
         };
-        SET_VECTOR_ELT(tab, 0, col([df_mod, df_res]));
+        SET_VECTOR_ELT(tab, 0, dfcol);
         SET_VECTOR_ELT(tab, 1, col([ssr, sse]));
         SET_VECTOR_ELT(tab, 2, col([msr, mse]));
         SET_VECTOR_ELT(tab, 3, col([f, NA_REAL]));
         SET_VECTOR_ELT(tab, 4, col([p, NA_REAL]));
+
         crate::mainutils::essentials::set_string_names(
             tab,
             &[
