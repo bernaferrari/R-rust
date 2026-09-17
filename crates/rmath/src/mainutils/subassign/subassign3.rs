@@ -44,21 +44,19 @@ pub(crate) unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
             return ans;
         }
         let _ans_guard = protect(ans);
+        let old_n = posixlt_obs_length(CAR(ans));
         let result = R_subassign3_dflt(call, CAR(ans), nlist, CADDR(ans));
-        mark_posixlt_dollar_balanced(result, CADDR(ans));
+        mark_posixlt_dollar_balanced(result, CADDR(ans), old_n);
         result
+
 
     }
 }
 
-pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP) {
+pub(crate) unsafe fn posixlt_obs_length(x: SEXP) -> R_xlen_t {
     unsafe {
-        if x.is_null()
-            || x == R_NilValue()
-            || TYPEOF(x) != SEXPTYPE::VECSXP
-            || !crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
-        {
-            return;
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
+            return 0;
         }
         let mut n: R_xlen_t = 0;
         for i in 0..XLENGTH(x) {
@@ -66,6 +64,20 @@ pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP) {
             if len > n {
                 n = len;
             }
+        }
+        n
+    }
+}
+
+/// GNU `$<-.POSIXlt`: compare `length(value)` to the *pre-assign* `length(x)`.
+pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R_xlen_t) {
+    unsafe {
+        if x.is_null()
+            || x == R_NilValue()
+            || TYPEOF(x) != SEXPTYPE::VECSXP
+            || !crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+        {
+            return;
         }
         let nv = if value.is_null() || value == R_NilValue() {
             0
@@ -79,7 +91,7 @@ pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP) {
             && TYPEOF(was) == SEXPTYPE::LGLSXP
             && XLENGTH(was) > 0
             && *INTEGER(was) == TRUE;
-        if was_true && nv == n {
+        if was_true && nv == old_n {
             crate::sexp::attrib_core::setAttrib(
                 x,
                 bal_sym,
@@ -90,6 +102,7 @@ pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP) {
         }
     }
 }
+
 
 
 

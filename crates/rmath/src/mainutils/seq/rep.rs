@@ -12,11 +12,14 @@ use crate::sexp::accessors::{
     XLENGTH, translateChar,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_allocVector3, Rf_isInteger, Rf_isNull,
-    Rf_isReal, Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector, Rf_allocVector3,
+    Rf_isInteger, Rf_isNull, Rf_isReal, Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
 };
-use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP};
+use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
+use crate::sexp::protect::protect;
+
+
 
 // ---------------------------------------------------------------------------
 // rep2: rep.int(x, times) for a vector times
@@ -930,7 +933,14 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
         }
 
-        let lx = XLENGTH(x);
+        let lx = if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+            && TYPEOF(x) == VECSXP_VAL
+        {
+            crate::mainutils::subassign::posixlt_obs_length(x)
+        } else {
+            XLENGTH(x)
+        };
+
 
         // Parse length.out
         let length_out_arg = CADDR(args);
@@ -1085,6 +1095,60 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             errorcall(call, b"invalid 'each' argument\0".as_ptr() as *const c_char);
         }
 
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+            && TYPEOF(x) == VECSXP_VAL
+        {
+            let ncomp = XLENGTH(x);
+            let out = Rf_allocVector(VECSXP_VAL, ncomp as c_int);
+            let _o = protect(out);
+            for i in 0..ncomp {
+                let comp = VECTOR_ELT(x, i);
+                let rc = rep4(comp, times, len, each, nt);
+                let _rc = protect(rc);
+                let cnames = getAttrib(comp, R_NamesSymbol());
+                if !cnames.is_null()
+                    && cnames != R_NilValue()
+                    && TYPEOF(cnames) == STRSXP_VAL
+                    && XLENGTH(cnames) > 0
+                {
+                    setAttrib(rc, R_NamesSymbol(), rep4(cnames, times, len, each, nt));
+                }
+                SET_VECTOR_ELT(out, i, rc);
+            }
+            let ln = getAttrib(x, R_NamesSymbol());
+            if !ln.is_null() && ln != R_NilValue() {
+                setAttrib(out, R_NamesSymbol(), ln);
+            }
+            let klass = getAttrib(x, R_ClassSymbol());
+            if !klass.is_null() && klass != R_NilValue() {
+                setAttrib(out, R_ClassSymbol(), klass);
+            }
+            let tzone = getAttrib(x, Rf_install_stub(b"tzone\0".as_ptr() as *const c_char));
+            if !tzone.is_null() && tzone != R_NilValue() {
+                setAttrib(out, Rf_install_stub(b"tzone\0".as_ptr() as *const c_char), tzone);
+            }
+            let bal = getAttrib(x, Rf_install_stub(b"balanced\0".as_ptr() as *const c_char));
+            if !bal.is_null()
+                && bal != R_NilValue()
+                && TYPEOF(bal) == LGLSXP_VAL
+                && XLENGTH(bal) > 0
+                && *INTEGER(bal) == TRUE
+            {
+                setAttrib(
+                    out,
+                    Rf_install_stub(b"balanced\0".as_ptr() as *const c_char),
+                    Rf_ScalarLogical(TRUE),
+                );
+            } else {
+                setAttrib(
+                    out,
+                    Rf_install_stub(b"balanced\0".as_ptr() as *const c_char),
+                    Rf_ScalarLogical(NA_INTEGER),
+                );
+            }
+            return out;
+        }
+
         let xn = getAttrib(x, R_NamesSymbol());
         ans = rep4(x, times, len, each, nt);
 
@@ -1097,6 +1161,7 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else if crate::mainutils::essentials::sexp_has_class(x, "Date") {
             crate::mainutils::essentials::set_single_class(ans, "Date");
         }
+
 
         if XLENGTH(xn) > 0 {
             setAttrib(ans, R_NamesSymbol(), rep4(xn, times, len, each, nt));

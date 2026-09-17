@@ -2758,6 +2758,98 @@ fn logical_arg_true(arg: SEXP, default: bool) -> bool {
     }
 }
 
+unsafe fn recycle_posixlt_year_names(ans: SEXP, src: SEXP, n: R_xlen_t) {
+    unsafe {
+        if n <= 0 || XLENGTH(src) < 6 || XLENGTH(ans) < 6 {
+            return;
+        }
+        let year_src = VECTOR_ELT(src, 5);
+        let nm = getAttrib(year_src, R_NamesSymbol());
+        if nm.is_null() || nm == R_NilValue() || TYPEOF(nm) != SEXPTYPE::STRSXP {
+            return;
+        }
+        let ni = XLENGTH(nm);
+        if ni <= 0 {
+            return;
+        }
+        let out_nm = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _g = protect(out_nm);
+        for i in 0..n {
+            SET_STRING_ELT(out_nm, i, STRING_ELT(nm, i % ni));
+        }
+        setAttrib(VECTOR_ELT(ans, 5), R_NamesSymbol(), out_nm);
+    }
+}
+
+unsafe fn recycle_vector_mod(src: SEXP, n: R_xlen_t) -> SEXP {
+    unsafe {
+        let ni = XLENGTH(src);
+        if ni == n {
+            return crate::mainutils::duplicate::Rf_duplicate(src);
+        }
+        let ty = TYPEOF(src);
+        let out = Rf_allocVector3(ty, n);
+        let _o = protect(out);
+        if ni <= 0 {
+            return out;
+        }
+        if ty == SEXPTYPE::REALSXP {
+            for i in 0..n {
+                *REAL(out).add(i as usize) = *REAL(src).add((i % ni) as usize);
+            }
+        } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
+            for i in 0..n {
+                *INTEGER(out).add(i as usize) = *INTEGER(src).add((i % ni) as usize);
+            }
+        } else if ty == SEXPTYPE::STRSXP {
+            for i in 0..n {
+                SET_STRING_ELT(out, i, STRING_ELT(src, i % ni));
+            }
+        }
+        let nm = getAttrib(src, R_NamesSymbol());
+        if !nm.is_null() && nm != R_NilValue() && TYPEOF(nm) == SEXPTYPE::STRSXP && XLENGTH(nm) > 0 {
+            let nmi = XLENGTH(nm);
+            let out_nm = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _g = protect(out_nm);
+            for i in 0..n {
+                SET_STRING_ELT(out_nm, i, STRING_ELT(nm, i % nmi));
+            }
+            setAttrib(out, R_NamesSymbol(), out_nm);
+        }
+        out
+    }
+}
+
+unsafe fn balance_posixlt_fill_only(
+    x: SEXP,
+    n: R_xlen_t,
+    nlen: &[i64; 11],
+    nn: i32,
+    keep_class: bool,
+) -> SEXP {
+    unsafe {
+        let ans = crate::mainutils::duplicate::Rf_duplicate(x);
+        let _a = protect(ans);
+        for i in 0..nn {
+            let iu = i as usize;
+            if nlen[iu] != n {
+                SET_VECTOR_ELT(ans, i as R_xlen_t, recycle_vector_mod(VECTOR_ELT(x, i as R_xlen_t), n));
+            }
+        }
+        recycle_posixlt_year_names(ans, x, n);
+        if !keep_class {
+            setAttrib(ans, R_ClassSymbol(), R_NilValue());
+        }
+        setAttrib(
+            ans,
+            Rf_install(c"balanced".as_ptr()),
+            Rf_ScalarLogical(NA_INTEGER),
+        );
+        ans
+    }
+}
+
+
 /// Ported from `do_balancePOSIXlt()` in datetime.c.
 pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
@@ -2765,7 +2857,7 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
         let x = matched[0];
         let fill_only = logical_arg_true(matched[1], false);
         let keep_class = logical_arg_true(matched[2], true);
-        let _ = fill_only;
+
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
                 message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
@@ -2806,6 +2898,11 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
                 n = len;
             }
         }
+
+        if fill_only {
+            return balance_posixlt_fill_only(x, n, &nlen, nn, keep_class);
+        }
+
 
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nn as R_xlen_t);
         let _ans_guard = protect(ans);
@@ -2913,7 +3010,7 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
                 setAttrib(ans, R_ClassSymbol(), klass);
             }
         }
-
+        recycle_posixlt_year_names(ans, x, n);
         let tzone = getAttrib(x, Rf_install(c"tzone".as_ptr()));
         if !tzone.is_null() && tzone != R_NilValue() {
             setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);

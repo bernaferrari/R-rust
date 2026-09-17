@@ -2088,7 +2088,70 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let _a = protect(rev);
         let ct = do_c_POSIXct(call, op, rev, rho);
         let _ct = protect(ct);
-        crate::mainutils::datetime::do_as_POSIXlt(call, op, Rf_cons(ct, R_NilValue()), rho)
+        let mut any_tag = false;
+        let mut cell = rev;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null() && tag != R_NilValue() {
+                let s = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)));
+                if !s.to_bytes().is_empty() {
+                    any_tag = true;
+                    break;
+                }
+            }
+            cell = CDR(cell);
+        }
+        if any_tag && XLENGTH(ct) > 0 {
+            let nm = Rf_allocVector3(SEXPTYPE::STRSXP, XLENGTH(ct));
+            let _nm = protect(nm);
+            let blank = Rf_mkChar(c"".as_ptr());
+            let mut i: i64 = 0;
+            let mut cell = rev;
+            while !cell.is_null() && cell != R_NilValue() && i < XLENGTH(ct) {
+                let tag = TAG(cell);
+                let ch = if !tag.is_null() && tag != R_NilValue() {
+                    PRINTNAME(tag)
+                } else {
+                    blank
+                };
+                let nv = XLENGTH(CAR(cell)).max(1);
+                for _ in 0..nv {
+                    if i >= XLENGTH(ct) {
+                        break;
+                    }
+                    SET_STRING_ELT(nm, i, ch);
+                    i += 1;
+                }
+                cell = CDR(cell);
+            }
+            crate::sexp::attrib_core::setAttrib(
+                ct,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                nm,
+            );
+        }
+
+        let lt = crate::mainutils::datetime::do_as_POSIXlt(call, op, Rf_cons(ct, R_NilValue()), rho);
+        let _lt = protect(lt);
+
+        let names = crate::sexp::attrib_core::getAttrib(
+            ct,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && TYPEOF(lt) == SEXPTYPE::VECSXP
+            && XLENGTH(lt) >= 6
+        {
+            crate::sexp::attrib_core::setAttrib(
+                VECTOR_ELT(lt, 5),
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
+        lt
+
     }
 }
 

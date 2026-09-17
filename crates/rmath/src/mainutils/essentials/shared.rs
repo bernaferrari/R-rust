@@ -426,9 +426,13 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             for i in 0..n {
                 let name = STRING_ELT(names, i);
                 if !name.is_null() && CStr::from_ptr(CHAR(name)).to_string_lossy() == field {
+                    let old_n = crate::mainutils::subassign::posixlt_obs_length(object);
                     SET_VECTOR_ELT(object, i, value);
-                    crate::mainutils::subassign::mark_posixlt_dollar_balanced(object, value);
+                    crate::mainutils::subassign::mark_posixlt_dollar_balanced(
+                        object, value, old_n,
+                    );
                     return object;
+
 
                 }
             }
@@ -527,8 +531,13 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                 crate::mainutils::essentials::functional::set_compact_row_names(out, new_rows);
             }
         }
-        crate::mainutils::subassign::mark_posixlt_dollar_balanced(out, value);
+        crate::mainutils::subassign::mark_posixlt_dollar_balanced(
+            out,
+            value,
+            crate::mainutils::subassign::posixlt_obs_length(object),
+        );
         out
+
 
     }
 }

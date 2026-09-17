@@ -324,6 +324,14 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "length.POSIXlt",
             "function(x) max(lengths(unclass(x)))",
         );
+        eval_base_binding(
+            base_env,
+            "names<-.POSIXlt",
+            "function(x, value) { n <- length(x); yr <- x$year; if (length(yr) < n) x$year <- rep_len(yr, n); if (length(value) < n) value <- c(as.character(value), rep(NA_character_, n - length(value))); if (length(value) > n) value <- value[seq_len(n)]; names(x$year) <- value; x }",
+        );
+
+
+
 
 
     }
