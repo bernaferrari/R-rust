@@ -350,7 +350,8 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
 
         match name {
             "[<-" => crate::mainutils::subset::do_subassign(call, assign_fn, args, rho),
-            "[[<-" => crate::mainutils::subassign::do_subassign2_dflt(call, assign_fn, args, rho),
+            "[[<-" => crate::mainutils::subset::do_subassign2(call, assign_fn, args, rho),
+
             "$<-" => crate::mainutils::essentials::do_dollar_set(call, assign_fn, args, rho),
             "@<-" => crate::mainutils::essentials::do_at_set(call, assign_fn, args, rho),
             "names<-" => crate::mainutils::essentials::do_names_set(call, assign_fn, args, rho),

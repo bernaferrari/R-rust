@@ -2755,19 +2755,60 @@ unsafe fn subassign_posixlt_time(
                 n = len;
             }
         }
+        let x_tz = {
+            let tzone = getAttrib(x, sym_Tzone());
+            if !isNull(tzone) && TYPEOF(tzone) == SEXPTYPE::STRSXP && XLENGTH(tzone) > 0 {
+                let ch = STRING_ELT(tzone, 0);
+                if !ch.is_null() && ch != crate::sexp::globals::R_NaString() {
+                    std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned()
+                } else {
+                    "UTC".to_string()
+                }
+            } else {
+                "UTC".to_string()
+            }
+        };
         let rhs = if crate::mainutils::essentials::sexp_has_class(value, "POSIXlt")
             && TYPEOF(value) == SEXPTYPE::VECSXP
         {
-            value
+            let value_tz = {
+                let tzone = getAttrib(value, sym_Tzone());
+                if !isNull(tzone) && TYPEOF(tzone) == SEXPTYPE::STRSXP && XLENGTH(tzone) > 0 {
+                    let ch = STRING_ELT(tzone, 0);
+                    if !ch.is_null() && ch != crate::sexp::globals::R_NaString() {
+                        std::ffi::CStr::from_ptr(CHAR(ch))
+                            .to_string_lossy()
+                            .into_owned()
+                    } else {
+                        x_tz.clone()
+                    }
+                } else {
+                    x_tz.clone()
+                }
+            };
+            if value_tz == x_tz
+                || ((value_tz == "UTC" || value_tz == "GMT") && (x_tz == "UTC" || x_tz == "GMT"))
+            {
+                value
+            } else {
+                let ct = crate::mainutils::datetime::convert_posixlt_to_posixct(value, &value_tz);
+                let _ct = protect(ct);
+                crate::mainutils::datetime::convert_posixct_to_posixlt(ct, &x_tz)
+            }
         } else {
+            let tz_s = Rf_mkString(std::ffi::CString::new(x_tz.as_str()).unwrap_or_default().as_ptr());
+            let _z = protect(tz_s);
             crate::mainutils::datetime::do_as_POSIXlt(
-
                 call,
                 op,
-                Rf_cons(value, R_NilValue()),
+                Rf_cons(value, Rf_cons(tz_s, R_NilValue())),
                 env,
             )
         };
+
+
         let _rhs = protect(rhs);
         let mut rn: R_xlen_t = 0;
         let rcomp = if TYPEOF(rhs) == SEXPTYPE::VECSXP {
@@ -2900,6 +2941,7 @@ pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             }
         }
         crate::mainutils::subassign::do_subassign_dflt(call, op, ans, env)
+
     }
 }
 
@@ -2928,8 +2970,23 @@ pub unsafe fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             return ans;
         }
 
-        /* Fall through to default -- delegated to subassign module */
+        let target = CAR(ans);
+        if crate::mainutils::essentials::sexp_has_class(target, "POSIXlt")
+            && TYPEOF(target) == SEXPTYPE::VECSXP
+        {
+            let idx = CADR(ans);
+            let value = CADDR(ans);
+            let rest = CDDDR(ans);
+            let only_time_index = !idx.is_null()
+                && idx != R_NilValue()
+                && idx != R_MissingArg()
+                && (rest.is_null() || rest == R_NilValue());
+            if only_time_index {
+                return subassign_posixlt_time(target, idx, value, call, op, env);
+            }
+        }
         crate::mainutils::subassign::do_subassign2_dflt(call, op, ans, env)
+
     }
 }
 
