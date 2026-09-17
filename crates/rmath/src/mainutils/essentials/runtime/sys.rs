@@ -2018,6 +2018,7 @@ pub unsafe fn do_c_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let r = crate::mainutils::bind::do_c_dflt(call, op, args, rho);
         let _r = protect(r);
+        drop_empty_names(r);
         set_single_class(r, "Date");
         r
     }
@@ -2042,10 +2043,45 @@ pub unsafe fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
         let r = crate::mainutils::bind::do_c_dflt(call, op, args, rho);
         let _r = protect(r);
+        drop_empty_names(r);
         set_posixct_class(r, &tz_s);
         r
+
     }
 }
+
+fn drop_empty_names(x: SEXP) {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names_have_label(names) {
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                R_NilValue(),
+            );
+        }
+    }
+}
+
+
+fn names_have_label(names: SEXP) -> bool {
+    unsafe {
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        for i in 0..XLENGTH(names) {
+            let ch = STRING_ELT(names, i);
+            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                continue;
+            }
+            if !std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes().is_empty() {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 
 /// GNU `c.POSIXlt(...)`.
 pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -2138,18 +2174,23 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             ct,
             crate::sexp::attrib_core::R_NamesSymbol(),
         );
-        if !names.is_null()
-            && names != R_NilValue()
-            && TYPEOF(names) == SEXPTYPE::STRSXP
-            && TYPEOF(lt) == SEXPTYPE::VECSXP
-            && XLENGTH(lt) >= 6
-        {
-            crate::sexp::attrib_core::setAttrib(
-                VECTOR_ELT(lt, 5),
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names,
-            );
+        if TYPEOF(lt) == SEXPTYPE::VECSXP && XLENGTH(lt) >= 6 {
+            let year = VECTOR_ELT(lt, 5);
+            if names_have_label(names) {
+                crate::sexp::attrib_core::setAttrib(
+                    year,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            } else {
+                crate::sexp::attrib_core::setAttrib(
+                    year,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    R_NilValue(),
+                );
+            }
         }
+
         lt
 
     }

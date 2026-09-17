@@ -2987,20 +2987,38 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             );
 
             if nn >= 10 {
-                let zone_cstr = c"";
+                let zone_col = VECTOR_ELT(x, 9);
+                let mut zone = String::new();
+                if TYPEOF(zone_col) == SEXPTYPE::STRSXP && nlen[9] > 0 {
+                    let ch = STRING_ELT(zone_col, idx(9) as R_xlen_t);
+                    if !ch.is_null() && ch != R_NaString() {
+                        zone = charsxp_text(ch, "zone");
+                    }
+                }
+                let out_zone = if valid && tm.tm_isdst >= 0 {
+                    if zone.is_empty() {
+                        tzname_str(tm.tm_isdst.clamp(0, 1) as usize)
+                    } else {
+                        zone
+                    }
+                } else {
+                    String::new()
+                };
                 SET_STRING_ELT(
                     VECTOR_ELT(ans, 9),
                     i as R_xlen_t,
-                    Rf_mkChar(zone_cstr.as_ptr()),
+                    Rf_mkChar(CString::new(out_zone).unwrap_or_default().as_ptr()),
                 );
             }
             if nn >= 11 {
-                *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = if valid {
-                    tm.tm_gmtoff as c_int
+                let gmtoff = if nlen[10] > 0 {
+                    posixlt_int_elt(VECTOR_ELT(x, 10), idx(10))
                 } else {
                     NA_INTEGER
                 };
+                *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = if valid { gmtoff } else { NA_INTEGER };
             }
+
         }
 
         setAttrib(ans, R_NamesSymbol(), ansnames);

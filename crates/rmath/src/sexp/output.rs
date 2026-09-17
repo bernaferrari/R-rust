@@ -971,12 +971,26 @@ pub(crate) fn format_date_vector_max(x: Sexp<'_>, max_override: Option<i64>) -> 
         }
         let _g = crate::sexp::protect::protect(formatted);
         for i in 0..n_show {
-            let text = x
+            let days = x
                 .clone()
                 .try_real_elt(i)
                 .ok()
+                .or_else(|| {
+                    x.clone()
+                        .try_integer_elt(i)
+                        .ok()
+                        .and_then(|v| {
+                            if v == crate::sexp::NA_INTEGER {
+                                None
+                            } else {
+                                Some(v as f64)
+                            }
+                        })
+                });
+            let text = days
                 .and_then(crate::mainutils::essentials::date_days_to_iso)
                 .unwrap_or_else(|| "NA".to_string());
+
             let c = std::ffi::CString::new(text).unwrap_or_default();
             crate::sexp::accessors::SET_STRING_ELT(
                 formatted,
