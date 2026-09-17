@@ -601,7 +601,19 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                     parse_iso_date_days(&format!("{y:04}-{m:02}-{d:02}")).unwrap_or(NA_REAL);
             }
             set_single_class(result_lt, "Date");
+            let year_names = crate::sexp::attrib_core::getAttrib(
+                year,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !year_names.is_null() && year_names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    result_lt,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    year_names,
+                );
+            }
             return result_lt;
+
         } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP {
             let origin = arg_by_name_or_position(args, &["origin"], 1);
             if origin.is_null() || origin == R_NilValue() {
@@ -630,9 +642,20 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         } else {
             base_error("do not know how to convert 'x' to class \"Date\"");
         }
-
         set_single_class(result, "Date");
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
         result
+
     }
 }
 
@@ -1564,7 +1587,19 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         }
 
         set_posixct_class(result, &tz);
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
         result
+
     }
 }
 

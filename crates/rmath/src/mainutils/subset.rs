@@ -1532,6 +1532,36 @@ unsafe fn R_DispatchOrEvalSP(
 // ---------------------------------------------------------------------------
 
 /// The `[` subset operator -- the most general form of subsetting.
+unsafe fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        let n = XLENGTH(x);
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let _a = protect(ans);
+        for j in 0..n {
+            let col = VECTOR_ELT(x, j);
+            let args = Rf_cons(col, Rf_cons(i, R_NilValue()));
+            let _g = protect(args);
+            let sub = do_subset_dflt(call, op, args, env);
+            SET_VECTOR_ELT(ans, j, sub);
+        }
+        let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !isNull(names) {
+            setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        }
+        setAttrib(ans, sym_Class(), getAttrib(x, sym_Class()));
+        let tzone = getAttrib(x, sym_Tzone());
+        if !isNull(tzone) {
+            setAttrib(ans, sym_Tzone(), tzone);
+        }
+        let balanced = getAttrib(x, Rf_install(c"balanced".as_ptr()));
+        if !isNull(balanced) {
+            setAttrib(ans, Rf_install(c"balanced".as_ptr()), balanced);
+        }
+        ans
+    }
+}
+
+
 pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
@@ -1572,6 +1602,23 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 cell = CDR(cell);
             }
         }
+        let orig = CAR(ans);
+        if crate::mainutils::essentials::sexp_has_class(orig, "POSIXlt")
+            && TYPEOF(orig) == SEXPTYPE::VECSXP
+        {
+            let idx = CADR(ans);
+            let rest = CDDR(ans);
+            let only_time_index = !idx.is_null()
+                && idx != R_NilValue()
+                && (rest.is_null()
+                    || rest == R_NilValue()
+                    || TAG(rest) == sym_Drop());
+            if only_time_index {
+                return subset_posixlt_time(orig, idx, call, op, env);
+            }
+        }
+
+
         let result = do_subset_dflt(call, op, ans, env);
         // Base R ships an S3 `[.factor`:
         //   y <- NextMethod("[")

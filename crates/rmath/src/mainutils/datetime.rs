@@ -1525,15 +1525,19 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             }
         }
         let nm = getAttrib(x, R_NamesSymbol());
-        if nm != R_NilValue() && N > n {
-            // We need to recycle names.
-            let nm3 = Rf_allocVector3(SEXPTYPE::STRSXP, N);
-            let _nm3_guard = protect(nm3);
-            for j in 0..N {
-                SET_STRING_ELT(nm3, j as R_xlen_t, STRING_ELT(nm, (j % n) as R_xlen_t));
+        if nm != R_NilValue() && TYPEOF(nm) == SEXPTYPE::STRSXP && XLENGTH(nm) > 0 {
+            if N == n {
+                setAttrib(VECTOR_ELT(ans, 5), R_NamesSymbol(), nm);
+            } else if N > n {
+                let nm3 = Rf_allocVector3(SEXPTYPE::STRSXP, N);
+                let _nm3_guard = protect(nm3);
+                for j in 0..N {
+                    SET_STRING_ELT(nm3, j as R_xlen_t, STRING_ELT(nm, (j % n) as R_xlen_t));
+                }
+                setAttrib(VECTOR_ELT(ans, 5), R_NamesSymbol(), nm3);
             }
-            setAttrib(VECTOR_ELT(ans, 5), R_NamesSymbol(), nm3);
         }
+
 
         ans
     }

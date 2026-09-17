@@ -1024,18 +1024,79 @@ fn posixct_vector_needs_time(x: Sexp<'_>) -> bool {
 }
 
 fn format_posixct_vector(x: Sexp<'_>, include_tz: bool) -> String {
+    format_posixct_vector_max(x, include_tz, None)
+}
+
+pub(crate) fn format_posixct_vector_max(
+    x: Sexp<'_>,
+    include_tz: bool,
+    max_override: Option<i64>,
+) -> String {
     if x.clone().len() == 0 {
         return "POSIXct of length 0".to_string();
     }
-    let force_time = posixct_vector_needs_time(x.clone());
-    let vals: Vec<String> = (0..x.clone().len().min(10))
-        .map(|i| format_posixct_element(x.clone(), i, include_tz, force_time))
-        .collect();
-    let suffix = if x.clone().len() > 10 { " ..." } else { "" };
-    format_named_atomic_vector(x, vals.clone())
-        .map(|output| format!("{output}{suffix}"))
-        .unwrap_or_else(|| format!("[1] {}{}", vals.join(" "), suffix))
+    unsafe {
+        let n = x.clone().len();
+        let opt_max = crate::mainutils::options::GetOptionMaxPrint() as i64;
+        let max = max_override.unwrap_or(opt_max).max(0);
+        let n_show = n.min(max as R_xlen_t);
+        let force_time = posixct_vector_needs_time(x.clone());
+        let formatted = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, n_show);
+        if formatted.is_null() {
+            return String::new();
+        }
+        let _g = crate::sexp::protect::protect(formatted);
+        for i in 0..n_show {
+            let text = x
+                .clone()
+                .try_real_elt(i)
+                .ok()
+                .and_then(|seconds| {
+                    crate::mainutils::essentials::posix_seconds_to_iso_with_time(
+                        seconds, include_tz, force_time,
+                    )
+                })
+                .unwrap_or_else(|| "NA".to_string());
+            let c = std::ffi::CString::new(text).unwrap_or_default();
+            crate::sexp::accessors::SET_STRING_ELT(
+                formatted,
+                i,
+                crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+            );
+        }
+        let sexp = Sexp::from_raw_unchecked(formatted);
+        let print_max = if n_show < n { n_show as i64 + 1 } else { max };
+        let mut out = format_vector_stock_n(sexp, true, Some(print_max));
+        if n_show < n {
+            if !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(&format!(
+                " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]",
+                n - n_show
+            ));
+        }
+        out
+    }
 }
+
+
+fn posixlt_time_length(x: Sexp<'_>) -> R_xlen_t {
+    unsafe {
+        let raw = x.as_raw();
+        let ncomp = XLENGTH(raw);
+        let mut n = 0;
+        for i in 0..ncomp {
+            let col = VECTOR_ELT(raw, i);
+            if !col.is_null() {
+                n = n.max(XLENGTH(col));
+            }
+        }
+        n
+    }
+}
+
+
 
 fn difftime_units(x: Sexp<'_>) -> String {
     unsafe {
@@ -2114,12 +2175,20 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::VECSXP => {
+            if has_class(x.clone(), "POSIXlt") {
+                let n = posixlt_time_length(x.clone());
+                if n == 0 {
+                    emit("POSIXlt of length 0\n");
+                    return;
+                }
+            }
             if let Some(output) = format_data_frame(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
             emit(&format!("{}\n", format_sexp_top_level(x)));
         }
+
         SEXPTYPE::EXPRSXP => {
             emit(&format!("{}\n", format_expression_vector(x)));
         }
