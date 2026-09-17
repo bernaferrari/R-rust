@@ -1529,6 +1529,60 @@ fn format_cut_number(value: f64) -> String {
 // Set operations: unique, sort, order, rev, match, %in%, setequal, union, intersect, setdiff
 // ---------------------------------------------------------------------------
 
+unsafe fn unique_matrix_rows(x: SEXP, sexptype: SEXPTYPE) -> Option<SEXP> {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 2
+        {
+            return None;
+        }
+        let nrow = *INTEGER(dim) as R_xlen_t;
+        let ncol = *INTEGER(dim).add(1) as R_xlen_t;
+        if nrow <= 0 || ncol <= 0 {
+            return None;
+        }
+        let mut seen = BTreeSet::new();
+        let mut keep: Vec<R_xlen_t> = Vec::new();
+        for i in 0..nrow {
+            let mut row = Vec::with_capacity(ncol as usize);
+            for j in 0..ncol {
+                let idx = i + j * nrow;
+                row.push(atomic_unique_key(x, idx, sexptype));
+            }
+            if seen.insert(row) {
+                keep.push(i);
+            }
+        }
+        let nkeep = keep.len() as R_xlen_t;
+        let result = Rf_allocVector3(TYPEOF(x), nkeep * ncol);
+        let _r = protect(result);
+        for (new_i, &old_i) in keep.iter().enumerate() {
+            for j in 0..ncol {
+                let src = old_i + j * nrow;
+                let dst = new_i as R_xlen_t + j * nkeep;
+                match TYPEOF(x) {
+                    t if t == SEXPTYPE::STRSXP => {
+                        SET_STRING_ELT(result, dst, STRING_ELT(x, src));
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        *REAL(result).add(dst as usize) = *REAL(x).add(src as usize);
+                    }
+                    _ => {
+                        *INTEGER(result).add(dst as usize) = *INTEGER(x).add(src as usize);
+                    }
+                }
+            }
+        }
+        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _d = protect(out_dim);
+        *INTEGER(out_dim) = nkeep as c_int;
+        *INTEGER(out_dim).add(1) = ncol as c_int;
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), out_dim);
+        Some(result)
+    }
+}
+
+
 /// R's `unique(x)` — return unique atomic elements in R's retained-index order.
 pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1545,7 +1599,11 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         {
             return x;
         }
+        if let Some(result) = unique_matrix_rows(x, sexptype) {
+            return result;
+        }
         let n = XLENGTH(x);
+
         let from_last = logical_arg_by_name_or_position(args, "fromLast", 2).unwrap_or(false);
         let incomparables = arg_by_name_or_position(args, &["incomparables"], 1);
         let incomparable_keys = atomic_incomparable_keys(incomparables, sexptype);

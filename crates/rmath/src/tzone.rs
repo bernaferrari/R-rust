@@ -531,30 +531,30 @@ fn settzname(g: &mut TzGlobals) {
         }
     }
 
-    // Scrub abbreviations: replace bogus characters
+    // Scrub each abbreviation independently. NULs separate names in
+    // `chars`; replacing them would glue "MMT" and "GMT" into "MMT_GMT_".
     let valid_set = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 :+-._";
-    for i in 0..g.lclmem.charcnt as usize {
-        let c = g.lclmem.chars[i];
-        if !valid_set.contains(&c) {
-            g.lclmem.chars[i] = b'_';
+    for i in 0..g.lclmem.typecnt as usize {
+        let abbr_start = g.lclmem.ttis[i].tt_abbrind as usize;
+        let abbr = get_abbr(&g.lclmem, abbr_start);
+        let is_gp = std::str::from_utf8(abbr)
+            .map(|s| s == GRANDPARENTED)
+            .unwrap_or(false);
+        if is_gp {
+            continue;
+        }
+        let n = abbr.len();
+        for j in 0..n {
+            let c = g.lclmem.chars[abbr_start + j];
+            if !valid_set.contains(&c) {
+                g.lclmem.chars[abbr_start + j] = b'_';
+            }
+        }
+        if n > TZ_ABBR_MAX_LEN {
+            g.lclmem.chars[abbr_start + TZ_ABBR_MAX_LEN] = 0;
         }
     }
 
-    // Truncate long abbreviations
-    for i in 0..g.lclmem.typecnt as usize {
-        let ttisp = &g.lclmem.ttis[i];
-        let abbr_start = ttisp.tt_abbrind as usize;
-        let abbr = get_abbr(&g.lclmem, abbr_start);
-        if abbr.len() > TZ_ABBR_MAX_LEN {
-            // Check if it's the GRANDPARENTED string
-            let is_gp = std::str::from_utf8(abbr)
-                .map(|s| s == GRANDPARENTED)
-                .unwrap_or(false);
-            if !is_gp {
-                g.lclmem.chars[abbr_start + TZ_ABBR_MAX_LEN] = 0;
-            }
-        }
-    }
 
     g.sync_tzname_ptrs();
 }

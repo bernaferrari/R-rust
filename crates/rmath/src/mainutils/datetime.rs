@@ -121,6 +121,7 @@ pub struct stm {
     pub tm_yday: c_int,
     pub tm_isdst: c_int,
     pub tm_gmtoff: c_long,
+    pub tm_zone: *const std::os::raw::c_char,
 }
 
 impl stm {
@@ -137,6 +138,7 @@ impl stm {
             tm_yday: 0,
             tm_isdst: -1,
             tm_gmtoff: 0,
+            tm_zone: std::ptr::null(),
         }
     }
 }
@@ -594,7 +596,6 @@ fn mktime0(tm: &mut stm, local: bool) -> c_double {
     ctm.tm_year = tm.tm_year;
     ctm.tm_isdst = tm.tm_isdst;
     let result = unsafe { R_mktime(&mut ctm) };
-    // Copy back normalized values.
     tm.tm_sec = ctm.tm_sec;
     tm.tm_min = ctm.tm_min;
     tm.tm_hour = ctm.tm_hour;
@@ -604,6 +605,8 @@ fn mktime0(tm: &mut stm, local: bool) -> c_double {
     tm.tm_isdst = ctm.tm_isdst;
     tm.tm_wday = ctm.tm_wday;
     tm.tm_yday = ctm.tm_yday;
+    tm.tm_gmtoff = ctm.tm_gmtoff;
+    tm.tm_zone = ctm.tm_zone;
 
     if result == -1 {
         return -1.0;
@@ -680,13 +683,8 @@ fn localtime0(tp: *const c_double, local: bool, ltm: &mut stm) -> bool {
     ltm.tm_wday = ctm.tm_wday;
     ltm.tm_yday = ctm.tm_yday;
     ltm.tm_isdst = ctm.tm_isdst;
-    ltm.tm_gmtoff = 0;
-
-    // Try to get gmtoff from the system tm struct
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
-    {
-        ltm.tm_gmtoff = ctm.tm_gmtoff;
-    }
+    ltm.tm_gmtoff = ctm.tm_gmtoff;
+    ltm.tm_zone = ctm.tm_zone;
 
     true
 }
@@ -756,6 +754,153 @@ unsafe fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
     }
 }
 
+fn tm_zone_string(p: *const std::os::raw::c_char) -> String {
+    if p.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() }
+    }
+}
+
+fn tz_is_utc(tz: &str) -> bool {
+    tz == "GMT" || tz == "UTC"
+}
+
+unsafe fn set_posixlt_balanced(ans: SEXP) {
+    unsafe {
+        setAttrib(ans, Rf_install(c"balanced".as_ptr()), Rf_ScalarLogical(TRUE));
+    }
+}
+
+unsafe fn posixlt_tzone_sexp(tz: &str, is_utc: bool) -> SEXP {
+    unsafe {
+        if is_utc {
+            let name = if tz.is_empty() { "UTC" } else { tz };
+            Rf_mkString(CString::new(name).unwrap_or_default().as_ptr())
+        } else {
+            let label = if tz.is_empty() {
+                crate::tzone::timezone_override()
+                    .or_else(|| std::env::var("TZ").ok())
+                    .unwrap_or_default()
+            } else {
+                tz.to_string()
+            };
+
+            let tzone = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+            for (j, s) in [label, tzname_str(0), tzname_str(1)].iter().enumerate() {
+                let cs = CString::new(s.as_str()).unwrap_or_default();
+                SET_STRING_ELT(tzone, j as R_xlen_t, Rf_mkChar(cs.as_ptr()));
+            }
+            tzone
+        }
+    }
+}
+
+unsafe fn finish_posixlt(ans: SEXP, ansnames: SEXP, tzone: SEXP) {
+    unsafe {
+        setAttrib(ans, R_NamesSymbol(), ansnames);
+        let klass = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _klass_guard = protect(klass);
+        SET_STRING_ELT(klass, 0, Rf_mkChar(c"POSIXlt".as_ptr()));
+        SET_STRING_ELT(klass, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+        R_classgets(ans, klass);
+        if !tzone.is_null() && tzone != R_NilValue() && TYPEOF(tzone) == SEXPTYPE::STRSXP {
+            setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);
+        }
+        set_posixlt_balanced(ans);
+    }
+}
+
+/// GNU `.Internal(as.POSIXlt(x, tz))` for numeric POSIXct seconds.
+pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
+    unsafe {
+        let is_utc = tz_is_utc(tz);
+        let tzsi = TzSetup::prepare();
+        if !is_utc {
+            if tz.is_empty() {
+                if let Some(env_tz) = crate::tzone::timezone_override().or_else(|| std::env::var("TZ").ok())
+                {
+                    tzsi.set(&env_tz);
+                }
+            } else {
+                tzsi.set(tz);
+            }
+        }
+
+        let n = XLENGTH(x);
+        let (ans, ansnames) = make_posixlt_skeleton(n);
+        let _ans_guard = protect(ans);
+        let _ansnames_guard = protect(ansnames);
+        let tzone = posixlt_tzone_sexp(tz, is_utc);
+        let _tz_guard = protect(tzone);
+        for i in 0..n {
+            let mut dummy = stm::new();
+            let d = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    v as c_double
+                }
+            } else {
+                *REAL(x).add(i as usize)
+            };
+            let valid = if R_FINITE(d) {
+                localtime0(&d as *const c_double, !is_utc, &mut dummy)
+            } else {
+                false
+            };
+            makelt(&dummy, ans, i, valid, if valid { d - d.floor() } else { d });
+            let zone = if valid && dummy.tm_isdst >= 0 {
+                let named = tm_zone_string(dummy.tm_zone);
+                if named.is_empty() {
+                    tzname_str(dummy.tm_isdst.clamp(0, 1) as usize)
+                } else {
+                    named
+                }
+            } else {
+                String::new()
+            };
+            SET_STRING_ELT(
+                VECTOR_ELT(ans, 9),
+                i,
+                Rf_mkChar(CString::new(zone).unwrap_or_default().as_ptr()),
+            );
+            *INTEGER(VECTOR_ELT(ans, 10)).add(i as usize) = if valid {
+                dummy.tm_gmtoff as c_int
+            } else {
+                NA_INTEGER
+            };
+        }
+        finish_posixlt(ans, ansnames, tzone);
+        ans
+    }
+}
+
+/// GNU `.Internal(as.POSIXct(x, tz))` for a POSIXlt list.
+pub unsafe fn convert_posixlt_to_posixct(x: SEXP, tz: &str) -> SEXP {
+    unsafe {
+        let is_utc = tz_is_utc(tz);
+        let tzsi = TzSetup::prepare();
+        if !is_utc && !tz.is_empty() {
+            tzsi.set(tz);
+        }
+        do_asPOSIXct(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            Rf_cons(
+                x,
+                Rf_cons(
+                    Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr()),
+                    R_NilValue(),
+                ),
+            ),
+            std::ptr::null_mut(),
+        )
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // do_asPOSIXlt -- .Internal(as.POSIXlt(x, tz))
 // ---------------------------------------------------------------------------
@@ -765,71 +910,21 @@ unsafe fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
 /// Ported from `do_asPOSIXlt()` in datetime.c.
 pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        // x = CAR(args) should be a REALSXP (POSIXct)
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
-            // Try to coerce
             std::panic::panic_any(RError {
                 message: "invalid 'x' value: not numeric".to_string(),
             });
         }
-        let x = Rf_allocVector3(SEXPTYPE::REALSXP, XLENGTH(x));
-        let _x_guard = protect(x);
-        // Copy values (simplified: assumes input is already REALSXP)
-        std::ptr::copy_nonoverlapping(REAL(CAR(args)), REAL(x), XLENGTH(x) as usize);
-
-        let n = XLENGTH(x);
-        let (ans, ansnames) = make_posixlt_skeleton(n);
-        let _ans_guard = protect(ans);
-        let _ansnames_guard = protect(ansnames);
-
-        for i in 0..n {
-            let mut dummy = stm::new();
-            let d = *REAL(x).add(i as usize);
-            let valid = if R_FINITE(d) {
-                localtime0(REAL(x).add(i as usize), true, &mut dummy)
-            } else {
-                false
-            };
-            makelt(&dummy, ans, i, valid, if valid { d - d.floor() } else { d });
-
-            // zone and gmtoff
-            let zone_cstr = if valid && dummy.tm_isdst >= 0 {
-                // Get timezone abbreviation from system
-                let mut t = d as time_t;
-                if d < 0.0 && d != (t as c_double) {
-                    t -= 1;
-                }
-                let mut ctm: tz_tm = std::mem::zeroed();
-                let res = unsafe { R_localtime_r(&t, &mut ctm) };
-                if !res.is_null() {
-                    // R_tzname abstracts the platform tzname global.
-                    let tzname_idx = if ctm.tm_isdst > 0 { 1 } else { 0 };
-                    let tzname_ptr = unsafe { *R_tzname().add(tzname_idx) };
-                    if !tzname_ptr.is_null() {
-                        CStr::from_ptr(tzname_ptr).to_string_lossy().into_owned()
-                    } else {
-                        String::new()
-                    }
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            };
-            let zone_charsxp = Rf_mkChar(CString::new(zone_cstr).unwrap_or_default().as_ptr());
-            SET_STRING_ELT(VECTOR_ELT(ans, 9), i, zone_charsxp);
-            *INTEGER(VECTOR_ELT(ans, 10)).add(i as usize) = dummy.tm_gmtoff as c_int;
-        }
-
-        // Set names
-        // We'd need install() and setAttrib() here, but those may not be available
-        // so we just set the names directly via the ansnames
-        // In full R: setAttrib(ans, R_NamesSymbol, ansnames);
-        // We store ansnames as the names attribute directly
-        let _ = ansnames; // ansnames is already protected
-
-        ans
+        let stz = CADR(args);
+        let tz = if stz.is_null() || stz == R_NilValue() || stz == R_MissingArg() {
+            String::new()
+        } else if TYPEOF(stz) == SEXPTYPE::STRSXP && XLENGTH(stz) > 0 {
+            charsxp_text(STRING_ELT(stz, 0), "tz")
+        } else {
+            String::new()
+        };
+        convert_posixct_to_posixlt(x, &tz)
     }
 }
 
@@ -1335,15 +1430,15 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                     // mktime _may_ result in error e.g. during the
                     // spring-forward gap.
                     if mktime0(&mut tm2, !isUTC) != -1.0 {
-                        // Set wday, yday, isdst.
                         tm.tm_wday = tm2.tm_wday;
                         tm.tm_yday = tm2.tm_yday;
+                        tm.tm_gmtoff = tm2.tm_gmtoff;
+                        tm.tm_zone = tm2.tm_zone;
                         if !isUTC && tm.tm_hour == tm2.tm_hour && tm.tm_min == tm2.tm_min {
-                            // Do not adjust tm_isdst when the hours/minutes
-                            // have been adjusted (PR#18581).
                             tm.tm_isdst = tm2.tm_isdst;
                         }
                     }
+
                 }
                 invalid = validate_tm(&mut tm) != 0;
             }
@@ -1366,7 +1461,12 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = 0; // gmtoff
             } else {
                 let p = if !invalid && tm.tm_isdst >= 0 {
-                    tzname_str(tm.tm_isdst.clamp(0, 1) as usize)
+                    let named = tm_zone_string(tm.tm_zone);
+                    if named.is_empty() {
+                        tzname_str(tm.tm_isdst.clamp(0, 1) as usize)
+                    } else {
+                        named
+                    }
                 } else {
                     String::new()
                 };
@@ -1390,6 +1490,8 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         if TYPEOF(tzone) == SEXPTYPE::STRSXP {
             setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);
         }
+        set_posixlt_balanced(ans);
+
 
         // The base closure post-processes non-finite inputs: elements of
         // 'x' equal to "Inf" / "-Inf" are replaced by
@@ -1461,6 +1563,27 @@ pub unsafe fn do_as_POSIXlt(
             }
         }
         let _tz = protect(tz);
+        let mut tz_s = if TYPEOF(tz) == SEXPTYPE::STRSXP && XLENGTH(tz) > 0 {
+            charsxp_text(STRING_ELT(tz, 0), "tz")
+        } else {
+            String::new()
+        };
+        if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
+            || TYPEOF(x) == SEXPTYPE::REALSXP
+            || TYPEOF(x) == SEXPTYPE::INTSXP
+        {
+            if tz_s.is_empty() {
+                let attr = getAttrib(x, Rf_install(c"tzone".as_ptr()));
+                if !attr.is_null()
+                    && attr != R_NilValue()
+                    && TYPEOF(attr) == SEXPTYPE::STRSXP
+                    && XLENGTH(attr) > 0
+                {
+                    tz_s = charsxp_text(STRING_ELT(attr, 0), "tz");
+                }
+            }
+            return convert_posixct_to_posixlt(x, &tz_s);
+        }
         let (text, fmt) = if TYPEOF(x) == SEXPTYPE::STRSXP {
             let ch = if XLENGTH(x) > 0 {
                 STRING_ELT(x, 0)
@@ -1488,16 +1611,6 @@ pub unsafe fn do_as_POSIXlt(
                 env,
             );
             (formatted, "%Y-%m-%d")
-        } else if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0 {
-            let fmt_s = Rf_mkString(c"%Y-%m-%d %H:%M:%S".as_ptr());
-            let _f = protect(fmt_s);
-            let formatted = crate::mainutils::essentials::do_strftime(
-                call,
-                op,
-                Rf_cons(x, Rf_cons(fmt_s, R_NilValue())),
-                env,
-            );
-            (formatted, "%Y-%m-%d %H:%M:%S")
         } else {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
@@ -1513,6 +1626,7 @@ pub unsafe fn do_as_POSIXlt(
             Rf_cons(text, Rf_cons(fmt_s, Rf_cons(tz, R_NilValue()))),
             env,
         )
+
     }
 }
 

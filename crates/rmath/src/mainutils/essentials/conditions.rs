@@ -2429,21 +2429,24 @@ unsafe fn restart_stack_from_args(mut args: SEXP, rho: SEXP, old_stack: SEXP) ->
     }
 }
 
+unsafe fn deparse_assert_expr(expr: SEXP) -> String {
+    unsafe {
+        let dcall = crate::mainutils::deparse::deparse1s(expr);
+        if !dcall.is_null() && dcall != R_NilValue() {
+            let elt = STRING_ELT(dcall, 0);
+            if !elt.is_null() {
+                return CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
+            }
+        }
+        "expr".to_string()
+    }
+}
+
 /// GNU `tools::assertError(expr)` — require `expr` to signal an error.
 pub unsafe fn do_assertError(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
-        let dcall = crate::mainutils::deparse::deparse1s(expr);
-        let dtext = if !dcall.is_null() && dcall != R_NilValue() {
-            let elt = STRING_ELT(dcall, 0);
-            if elt.is_null() {
-                "expr".to_string()
-            } else {
-                CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned()
-            }
-        } else {
-            "expr".to_string()
-        };
+        let dtext = deparse_assert_expr(expr);
         let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(expr, rho)
         }));
@@ -2469,6 +2472,86 @@ pub unsafe fn do_assertError(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
         }
     }
 }
+
+/// GNU `tools::assertWarning(expr)` — require a warning, reject a bare error.
+pub unsafe fn do_assertWarning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = CAR(args);
+        let dtext = deparse_assert_expr(expr);
+        let before = crate::mainutils::errors::collect_warnings();
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(expr, rho)
+        }));
+        let warned = crate::mainutils::errors::collect_warnings() > before;
+        match caught {
+            Err(payload) => {
+                let is_error = payload.downcast_ref::<crate::sexp::context::RError>().is_some()
+                    || matches!(
+                        payload.downcast_ref::<crate::sexp::context::RSignal>(),
+                        Some(crate::sexp::context::RSignal::Error { .. })
+                    );
+                if is_error && warned {
+                    crate::mainutils::errors::errorcall_str(
+                        _call,
+                        &format!("Got warning in evaluating {dtext}, but also an error"),
+                    );
+                }
+                if is_error {
+                    crate::mainutils::errors::errorcall_str(
+                        _call,
+                        &format!("Failed to get warning in evaluating {dtext}"),
+                    );
+                }
+                std::panic::resume_unwind(payload);
+            }
+            Ok(_) if warned => {
+                crate::sexp::globals::set_R_Visible(FALSE);
+                R_NilValue()
+            }
+            Ok(_) => crate::mainutils::errors::errorcall_str(
+                _call,
+                &format!("Failed to get warning in evaluating {dtext}"),
+            ),
+        }
+    }
+}
+
+/// GNU `tools::assertCondition(expr)` — require any condition.
+pub unsafe fn do_assertCondition(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = CAR(args);
+        let dtext = deparse_assert_expr(expr);
+        let before = crate::mainutils::errors::collect_warnings();
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(expr, rho)
+        }));
+        let warned = crate::mainutils::errors::collect_warnings() > before;
+        match caught {
+            Err(payload) => {
+                if payload.downcast_ref::<crate::sexp::context::RError>().is_some()
+                    || matches!(
+                        payload.downcast_ref::<crate::sexp::context::RSignal>(),
+                        Some(crate::sexp::context::RSignal::Error { .. })
+                    )
+                    || warned
+                {
+                    crate::sexp::globals::set_R_Visible(FALSE);
+                    return R_NilValue();
+                }
+                std::panic::resume_unwind(payload);
+            }
+            Ok(_) if warned => {
+                crate::sexp::globals::set_R_Visible(FALSE);
+                R_NilValue()
+            }
+            Ok(_) => crate::mainutils::errors::errorcall_str(
+                _call,
+                &format!("Failed to get any condition in evaluating {dtext}"),
+            ),
+        }
+    }
+}
+
 
 
 #[cfg(test)]

@@ -143,6 +143,11 @@ pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         if extras.is_empty() {
             return data;
         }
+        let nrow = if old_n > 0 {
+            XLENGTH(VECTOR_ELT(data, 0))
+        } else {
+            0
+        };
         let mut columns: Vec<(String, SEXP)> = Vec::with_capacity(old_n as usize + extras.len());
         for i in 0..old_n {
             let name = if !names.is_null()
@@ -156,6 +161,16 @@ pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             columns.push((name, VECTOR_ELT(data, i)));
         }
         for (name, val) in extras {
+            let val = if nrow > 0 {
+                let n = XLENGTH(val);
+                if n > 0 && n != nrow && (nrow % n == 0 || n == 1) {
+                    crate::mainutils::seq::rep3(val, n, nrow)
+                } else {
+                    val
+                }
+            } else {
+                val
+            };
             if !name.is_empty() {
                 if let Some(pos) = columns.iter().position(|(existing, _)| existing == &name) {
                     columns[pos].1 = val;
@@ -178,13 +193,9 @@ pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             crate::sexp::attrib_core::R_NamesSymbol(),
             out_names,
         );
-        let nrow = if old_n > 0 {
-            XLENGTH(VECTOR_ELT(data, 0))
-        } else {
-            0
-        };
         crate::mainutils::essentials::set_compact_row_names(result, nrow);
         crate::mainutils::essentials::set_data_frame_class(result);
         result
     }
 }
+

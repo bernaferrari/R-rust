@@ -360,6 +360,31 @@ unsafe fn copy_vector_element(src: SEXP, from: i64, dst: SEXP, to: i64) {
     }
 }
 
+unsafe fn coerce_list_replacement(existing: SEXP, value: SEXP) -> SEXP {
+    unsafe {
+        if existing.is_null() || existing == R_NilValue() || value.is_null() || value == R_NilValue()
+        {
+            return value;
+        }
+        let want = TYPEOF(existing);
+        if want == TYPEOF(value) {
+            return value;
+        }
+        if want == SEXPTYPE::INTSXP
+            || want == SEXPTYPE::LGLSXP
+            || want == SEXPTYPE::REALSXP
+            || want == SEXPTYPE::STRSXP
+        {
+            let coerced = crate::mainutils::coerce::coerceVector(value, want);
+            if !coerced.is_null() && coerced != R_NilValue() {
+                return coerced;
+            }
+        }
+        value
+    }
+}
+
+
 pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
@@ -429,6 +454,8 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             for i in 0..n {
                 let name = STRING_ELT(names, i);
                 if !name.is_null() && CStr::from_ptr(CHAR(name)).to_string_lossy() == field {
+                    let existing = VECTOR_ELT(object, i);
+                    let value = coerce_list_replacement(existing, value);
                     SET_VECTOR_ELT(object, i, value);
                     return object;
                 }

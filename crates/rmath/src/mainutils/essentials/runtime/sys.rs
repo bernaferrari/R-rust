@@ -1462,92 +1462,28 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             return x;
         }
         if sexp_has_class(x, "POSIXlt") && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 6 {
-            let sec = VECTOR_ELT(x, 0);
-            let minv = VECTOR_ELT(x, 1);
-            let hour = VECTOR_ELT(x, 2);
-            let mday = VECTOR_ELT(x, 3);
-            let mon = VECTOR_ELT(x, 4);
-            let year = VECTOR_ELT(x, 5);
-            let nlt = if TYPEOF(sec) == SEXPTYPE::REALSXP || TYPEOF(sec) == SEXPTYPE::INTSXP {
-                XLENGTH(sec)
-            } else {
-                1
-            };
-            let result = Rf_allocVector3(SEXPTYPE::REALSXP, nlt);
-            let _r = protect(result);
-            for i in 0..nlt {
-                let yi = if TYPEOF(year) == SEXPTYPE::INTSXP {
-                    *INTEGER(year).add(i as usize)
-                } else {
-                    70
-                };
-                let mi = if TYPEOF(mon) == SEXPTYPE::INTSXP {
-                    *INTEGER(mon).add(i as usize)
-                } else {
-                    0
-                };
-                let di = if TYPEOF(mday) == SEXPTYPE::INTSXP {
-                    *INTEGER(mday).add(i as usize)
-                } else {
-                    1
-                };
-                let hi = if TYPEOF(hour) == SEXPTYPE::INTSXP {
-                    *INTEGER(hour).add(i as usize)
-                } else {
-                    0
-                };
-                let mini = if TYPEOF(minv) == SEXPTYPE::INTSXP {
-                    *INTEGER(minv).add(i as usize)
-                } else {
-                    0
-                };
-                let s = if TYPEOF(sec) == SEXPTYPE::REALSXP {
-                    *REAL(sec).add(i as usize)
-                } else if TYPEOF(sec) == SEXPTYPE::INTSXP {
-                    let iv = *INTEGER(sec).add(i as usize);
-                    if iv == NA_INTEGER {
-                        NA_REAL
-                    } else {
-                        iv as f64
-                    }
-                } else {
-                    0.0
-                };
-                // GNU do_asPOSIXct: non-finite sec is kept; any NA calendar
-                // field becomes NA_REAL (datetime.c:1233-1238).
-                if !s.is_finite() {
-                    *REAL(result).add(i as usize) = s;
-                    continue;
-                }
-                if yi == NA_INTEGER
-                    || mi == NA_INTEGER
-                    || di == NA_INTEGER
-                    || hi == NA_INTEGER
-                    || mini == NA_INTEGER
-                {
-                    *REAL(result).add(i as usize) = NA_REAL;
-                    continue;
-                }
-                let y = yi + 1900;
-                let m = mi + 1;
-                let days = parse_iso_date_days(&format!("{y:04}-{m:02}-{d:02}", d = di))
-                    .unwrap_or(0.0);
-                *REAL(result).add(i as usize) =
-                    days * 86_400.0 + (hi as f64) * 3600.0 + (mini as f64) * 60.0 + s;
-            }
-
             let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
-            let tz = if tz_arg.is_null() || tz_arg == R_NilValue() || XLENGTH(tz_arg) == 0 {
-                "UTC".to_string()
+            let mut tz = if tz_arg.is_null() || tz_arg == R_NilValue() || XLENGTH(tz_arg) == 0 {
+                String::new()
             } else {
-                let value = elt_to_string(tz_arg, 0);
-                if value.is_empty() {
-                    "UTC".to_string()
-                } else {
-                    value
-                }
+                elt_to_string(tz_arg, 0)
             };
-            set_posixct_class(result, &tz);
+            if tz.is_empty() {
+                let attr = crate::sexp::attrib_core::getAttrib(
+                    x,
+                    crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+                );
+                if !attr.is_null()
+                    && attr != R_NilValue()
+                    && TYPEOF(attr) == SEXPTYPE::STRSXP
+                    && XLENGTH(attr) > 0
+                {
+                    tz = elt_to_string(attr, 0);
+                }
+            }
+            let result = crate::mainutils::datetime::convert_posixlt_to_posixct(x, &tz);
+            let _r = protect(result);
+            set_posixct_class(result, if tz.is_empty() { "UTC" } else { &tz });
             return result;
         }
 

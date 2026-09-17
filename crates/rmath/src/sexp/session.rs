@@ -835,9 +835,11 @@ impl RSession {
                             }
                         }
                         result = Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+                        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
                         crate::sexp::gengc::run_pending_gc_if_quiescent();
                         continue;
                     }
+
                     break;
                 }
 
