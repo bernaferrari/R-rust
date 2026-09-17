@@ -2000,6 +2000,22 @@ pub unsafe fn do_as_POSIXlt(
             } else {
                 String::new()
             };
+            if sample == "Inf"
+                || sample == "+Inf"
+                || sample == "-Inf"
+                || sample.eq_ignore_ascii_case("NaN")
+            {
+                let n = XLENGTH(x);
+                let ct = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+                let _ct = protect(ct);
+                for i in 0..n {
+                    let text = charsxp_text(STRING_ELT(x, i), "x");
+                    *REAL(ct).add(i as usize) =
+                        crate::mainutils::essentials::parse_iso_datetime_seconds(&text)
+                            .unwrap_or(NA_REAL);
+                }
+                return convert_posixct_to_posixlt(ct, &tz_s);
+            }
             let try_fmts: &[&str] = if sample.contains(' ') {
                 &["%Y-%m-%d %H:%M:%OS", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
             } else {

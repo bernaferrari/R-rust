@@ -571,9 +571,20 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                     NA_REAL
                 } else {
                     let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
-                    parse_iso_date_days(text).unwrap_or_else(|| {
-                        base_error("character string is not in a standard unambiguous format")
-                    })
+                    if text == "Inf" || text == "+Inf" {
+                        f64::INFINITY
+                    } else if text == "-Inf" {
+                        f64::NEG_INFINITY
+                    } else if text.eq_ignore_ascii_case("NaN") {
+                        f64::NAN
+                    } else {
+                        parse_iso_date_days(text).unwrap_or_else(|| {
+                            base_error(
+                                "character string is not in a standard unambiguous format",
+                            )
+                        })
+                    }
+
                 };
                 *out.add(i as usize) = days;
             }

@@ -3100,6 +3100,15 @@ pub(crate) fn civil_from_days(mut days: i64) -> (i64, i64, i64) {
 
 pub(crate) fn parse_iso_date_days(text: &str) -> Option<f64> {
     let text = text.trim();
+    if text == "Inf" || text == "+Inf" {
+        return Some(f64::INFINITY);
+    }
+    if text == "-Inf" {
+        return Some(f64::NEG_INFINITY);
+    }
+    if text.eq_ignore_ascii_case("NaN") {
+        return Some(f64::NAN);
+    }
     let mut parts = text.split('-');
     let year = parts.next()?.parse::<i64>().ok()?;
     let month = parts.next()?.parse::<i64>().ok()?;
@@ -3138,6 +3147,15 @@ pub(crate) fn date_days_to_civil(days: f64) -> Option<(i64, i64, i64)> {
 
 pub(crate) fn parse_iso_datetime_seconds(text: &str) -> Option<f64> {
     let text = text.trim();
+    if text == "Inf" || text == "+Inf" {
+        return Some(f64::INFINITY);
+    }
+    if text == "-Inf" {
+        return Some(f64::NEG_INFINITY);
+    }
+    if text.eq_ignore_ascii_case("NaN") {
+        return Some(f64::NAN);
+    }
     let mut fields = text.split_whitespace();
     let date = fields.next()?;
     let time = fields.next().unwrap_or("00:00:00");
@@ -3145,6 +3163,9 @@ pub(crate) fn parse_iso_datetime_seconds(text: &str) -> Option<f64> {
         return None;
     }
     let days = parse_iso_date_days(date)?;
+    if !days.is_finite() {
+        return Some(days);
+    }
     let mut parts = time.split(':');
     let hour = parts.next()?.parse::<i64>().ok()?;
     let minute = parts.next()?.parse::<i64>().ok()?;
@@ -3158,6 +3179,7 @@ pub(crate) fn parse_iso_datetime_seconds(text: &str) -> Option<f64> {
     }
     Some(days * 86_400.0 + (hour * 3_600 + minute * 60 + second) as f64)
 }
+
 
 pub(crate) fn posix_seconds_to_iso(seconds: f64, include_tz: bool) -> Option<String> {
     posix_seconds_to_iso_with_time(seconds, include_tz, false)
