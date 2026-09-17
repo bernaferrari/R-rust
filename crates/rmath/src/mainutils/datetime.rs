@@ -262,6 +262,9 @@ impl stm {
 ///
 /// Ported from `validate_tm()` in datetime.c.
 pub fn validate_tm(tm: &mut stm) -> c_int {
+    if tm.tm_year > c_int::MAX - 1900 || tm.tm_year < c_int::MIN + 1900 {
+        return -1;
+    }
     let mut tmp: c_int;
     let mut res: c_int = 0;
 
@@ -869,8 +872,21 @@ fn tm_zone_string(p: *const std::os::raw::c_char) -> String {
 }
 
 fn tz_is_utc(tz: &str) -> bool {
-    tz == "GMT" || tz == "UTC"
+    matches!(
+        tz,
+        "GMT"
+            | "UTC"
+            | "Etc/UTC"
+            | "Etc/GMT"
+            | "UTC0"
+            | "GMT0"
+            | "UTC+0"
+            | "UTC-0"
+            | "GMT+0"
+            | "GMT-0"
+    )
 }
+
 
 unsafe fn posixlt_has_valid_time(x: SEXP) -> bool {
     unsafe {
