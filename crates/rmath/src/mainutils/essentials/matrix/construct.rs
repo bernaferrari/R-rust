@@ -641,7 +641,11 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             result
         } else {
-            if XLENGTH(x) == 1 {
+            let nrow_arg = CAR(CDR(args));
+            let nrow_given = !nrow_arg.is_null()
+                && nrow_arg != R_NilValue()
+                && nrow_arg != crate::sexp::globals::R_MissingArg();
+            if XLENGTH(x) == 1 && !nrow_given {
                 let n = real_or_default(x, 0.0).max(0.0) as usize;
                 let t = TYPEOF(x);
                 if !supported_matrix_type(t) {
@@ -652,7 +656,6 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     return R_NilValue();
                 }
                 let _result_guard = protect(result);
-
                 for i in 0..n * n {
                     set_matrix_zero(result, i as R_xlen_t);
                 }
@@ -660,7 +663,32 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let dst = i + i * n;
                     set_diagonal_identity_value(result, dst as R_xlen_t);
                 }
-
+                let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+                if !dim.is_null() {
+                    *INTEGER(dim) = n as c_int;
+                    *INTEGER(dim).add(1) = n as c_int;
+                    crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
+                }
+                return result;
+            }
+            if XLENGTH(x) == 1 && nrow_given {
+                let n = real_or_default(nrow_arg, 0.0).max(0.0) as usize;
+                let t = TYPEOF(x);
+                if !supported_matrix_type(t) {
+                    return R_NilValue();
+                }
+                let result = Rf_allocVector3(t, (n * n) as R_xlen_t);
+                if result.is_null() {
+                    return R_NilValue();
+                }
+                let _result_guard = protect(result);
+                for i in 0..n * n {
+                    set_matrix_zero(result, i as R_xlen_t);
+                }
+                for i in 0..n {
+                    let dst = i + i * n;
+                    copy_matrix_element(result, dst as R_xlen_t, x, 0);
+                }
                 let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
                 if !dim.is_null() {
                     *INTEGER(dim) = n as c_int;

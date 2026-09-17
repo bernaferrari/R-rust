@@ -193,6 +193,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              res\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "matrix",
+            "function(data = NA, nrow = NULL, ncol = NULL, byrow = FALSE, dimnames = NULL) {\n\
+             if (is.object(data) || !is.atomic(data)) data <- as.vector(data)\n\
+             matrix_impl(data, nrow, ncol, byrow, dimnames)\n\
+             }",
+        );
+
+
 
 
 

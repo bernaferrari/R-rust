@@ -399,6 +399,9 @@ pub unsafe fn do_is_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 v.is_nan()
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                 *INTEGER(x).add(i as usize) == NA_INTEGER
+            } else if t == SEXPTYPE::CPLXSXP {
+                let z = *COMPLEX(x).add(i as usize);
+                z.r.is_nan() || z.i.is_nan()
             } else if t == SEXPTYPE::STRSXP {
                 STRING_ELT(x, i) == crate::sexp::globals::R_NaString()
             } else {
@@ -406,6 +409,7 @@ pub unsafe fn do_is_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
             *dst.add(i as usize) = if is_na { TRUE } else { FALSE };
         }
+
         result
     }
 }

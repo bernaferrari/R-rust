@@ -1312,11 +1312,15 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
         if piv != 0 {
             // pivoted Cholesky: dpstrf
             let piv_arr = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+            for i in 0..n as usize {
+                *piv_arr.add(i) = i as c_int + 1;
+            }
             let mut rank: c_int = 0;
             let mut work = vec![0.0f64; work_len];
+            let uplo_s = c"U";
 
             super::backend::dpstrf_(
-                &uplo,
+                uplo_s.as_ptr() as *const u8,
                 &n,
                 a_copy.as_mut_ptr(),
                 &n,
@@ -1327,58 +1331,72 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
                 &mut info,
             );
 
-            if info < 0 {
-                Rf_error(b"error code from Lapack routine 'dpstrf'\0".as_ptr() as *const c_char);
+            if info != 0 {
+                let msg = std::ffi::CString::new(
+                    "the matrix is either rank-deficient or not positive definite",
+                )
+                .unwrap();
+                crate::mainutils::errors::warningcall(R_NilValue(), msg.as_ptr());
+                if rank <= 0 {
+                    rank = 0;
+                }
             }
 
-            // Build result: list(rank, factors, pivot)
-            let ret = Rf_allocVector(VECSXP_C, 3);
-            let _ret_guard = protect(ret);
-            let nm = Rf_allocVector(STRSXP_C, 3);
-            let _nm_guard = protect(nm);
-            SET_STRING_ELT(nm, 0, Rf_mkChar(b"rank\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(nm, 1, Rf_mkChar(b"factors\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(nm, 2, Rf_mkChar(b"pivot\0".as_ptr() as *const c_char));
-
-            let rank_s = Rf_allocVector(INTSXP_C, 1);
-            *INTEGER(rank_s) = rank;
-            SET_VECTOR_ELT(ret, 0, rank_s);
-
-            let factors = Rf_allocVector(REALSXP_C, len as c_int);
+            let nn = n as usize;
+            for j in rank as usize..nn {
+                for i in rank as usize..=j {
+                    a_copy[i + nn * j] = 0.0;
+                }
+            }
+            for j in 0..nn {
+                for i in (j + 1)..nn {
+                    a_copy[i + j * nn] = 0.0;
+                }
+            }
+            let ans = Rf_allocVector(REALSXP_C, len as c_int);
+            let _ans = protect(ans);
             if len != 0 {
-                ptr::copy_nonoverlapping(a_copy.as_ptr(), REAL(factors), len);
+                ptr::copy_nonoverlapping(a_copy.as_ptr(), REAL(ans), len);
             }
-            SET_VECTOR_ELT(ret, 1, factors);
-
+            let dims = Rf_allocVector(INTSXP_C, 2);
+            let _d = protect(dims);
+            *INTEGER(dims) = n;
+            *INTEGER(dims).add(1) = n;
+            setAttrib(ans, R_DimSymbol(), dims);
             let pivot_s = Rf_allocVector(INTSXP_C, n as c_int);
-            for i in 0..n as usize {
+            let _ps = protect(pivot_s);
+            for i in 0..nn {
                 *INTEGER(pivot_s).add(i) = *piv_arr.add(i);
             }
-            SET_VECTOR_ELT(ret, 2, pivot_s);
-
-            setAttrib(ret, R_NamesSymbol(), nm);
-            ret
+            setAttrib(ans, crate::sexp::symbol::Rf_install(c"pivot".as_ptr()), pivot_s);
+            setAttrib(
+                ans,
+                crate::sexp::symbol::Rf_install(c"rank".as_ptr()),
+                Rf_ScalarInteger(rank),
+            );
+            ans
         } else {
-            // Non-pivoted Cholesky: dpotrf
             super::backend::dpotrf_(&uplo, &n, a_copy.as_mut_ptr(), &n, &mut info);
-
-            if info != 0 {
-                Rf_error(b"not positive definite\0".as_ptr() as *const c_char);
+            if info > 0 {
+                crate::sexp::context::r_error(&format!(
+                    "the leading minor of order {info} is not positive"
+                ));
             }
-
-            // Zero out the lower triangle (R returns upper triangle only)
+            if info != 0 {
+                crate::sexp::context::r_error("error code from Lapack routine 'dpotrf'");
+            }
             for j in 0..n as usize {
                 for i in (j + 1)..n as usize {
                     a_copy[i + j * n as usize] = 0.0;
                 }
             }
-
             let ans = Rf_allocVector(REALSXP_C, len as c_int);
             if len != 0 {
                 ptr::copy_nonoverlapping(a_copy.as_ptr(), REAL(ans), len);
             }
             ans
         }
+
     }
 }
 
@@ -1555,10 +1573,28 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             ptr::copy_nonoverlapping(REAL(bin), b_copy.as_mut_ptr(), len_b);
         }
 
-        let anorm = a_copy
-            .chunks((n as usize).max(1))
-            .map(|col| col.iter().map(|v| v.abs()).sum::<f64>())
-            .fold(0.0, f64::max);
+        let anorm = {
+            let n0 = (n as usize).max(1);
+            let mut max_col = 0.0;
+            let mut saw_nan = false;
+            for col in a_copy.chunks(n0) {
+                let mut sum = 0.0;
+                for v in col {
+                    if v.is_nan() {
+                        saw_nan = true;
+                    }
+                    sum += v.abs();
+                }
+                if sum > max_col {
+                    max_col = sum;
+                }
+            }
+            if saw_nan {
+                f64::NAN
+            } else {
+                max_col
+            }
+        };
         let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
         let mut info: c_int = 0;
 
@@ -1595,7 +1631,8 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
                 iwork.as_mut_ptr(),
                 &mut info,
             );
-            if rcond < tol {
+            // GNU: NaN rcond is not < tol (IEEE). All-NaN A must return NaN, not error.
+            if rcond.is_finite() && rcond < tol {
                 crate::sexp::context::r_error("system is computationally singular");
             }
         }
@@ -1605,6 +1642,7 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             ptr::copy_nonoverlapping(b_copy.as_ptr(), REAL(ans), len_b);
         }
         ans
+
     }
 }
 
@@ -1709,10 +1747,28 @@ pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             );
         }
 
-        let anorm = a_copy
-            .chunks((n as usize).max(1))
-            .map(|col| col.iter().map(|v| v.r.hypot(v.i)).sum::<f64>())
-            .fold(0.0, f64::max);
+        let anorm = {
+            let n0 = (n as usize).max(1);
+            let mut max_col = 0.0;
+            let mut saw_nan = false;
+            for col in a_copy.chunks(n0) {
+                let mut sum = 0.0;
+                for v in col {
+                    if v.r.is_nan() || v.i.is_nan() {
+                        saw_nan = true;
+                    }
+                    sum += v.r.hypot(v.i);
+                }
+                if sum > max_col {
+                    max_col = sum;
+                }
+            }
+            if saw_nan {
+                f64::NAN
+            } else {
+                max_col
+            }
+        };
         let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
         let mut info: c_int = 0;
 
@@ -1749,7 +1805,7 @@ pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
                 rwork.as_mut_ptr(),
                 &mut info,
             );
-            if rcond < tol {
+            if rcond.is_finite() && rcond < tol {
                 crate::sexp::context::r_error("system is computationally singular");
             }
         }
