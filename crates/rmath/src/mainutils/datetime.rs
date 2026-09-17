@@ -2526,7 +2526,7 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
     unsafe {
         let x = CAR(args);
         let _x_guard = protect(x);
-        if TYPEOF(x) != SEXPTYPE::REALSXP {
+        if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
             std::panic::panic_any(RError {
                 message: "invalid 'x' value: not numeric".to_string(),
             });
@@ -2539,9 +2539,19 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         for i in 0..n {
             let iu = i as usize;
-            let x_i = *REAL(x).add(iu);
+            let x_i = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(iu)
+            } else {
+                let v = *INTEGER(x).add(iu);
+                if v == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    v as f64
+                }
+            };
             let mut tm = stm::new();
             let valid = julian2dtime(x_i, &mut tm);
+
             makelt(
                 &tm,
                 ans,

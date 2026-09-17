@@ -583,16 +583,35 @@ pub unsafe fn datetime_seq(
             }
         };
 
-        // Emit the result vector --------------------------------------------
-        let ans = Rf_allocVector(REALSXP_VAL, values.len() as c_int);
-        let ra = REAL(ans);
-        for (i, v) in values.iter().enumerate() {
-            *ra.add(i) = *v;
-        }
+        let keep_int = kind == DatetimeKind::Date
+            && (miss_from || TYPEOF(from) == INTSXP_VAL)
+            && (miss_to || TYPEOF(to) == INTSXP_VAL)
+            && values.iter().all(|v| {
+                v.is_finite()
+                    && *v == v.trunc()
+                    && *v >= c_int::MIN as c_double
+                    && *v <= c_int::MAX as c_double
+            });
+        let ans = if keep_int {
+            let ans = Rf_allocVector(INTSXP_VAL, values.len() as c_int);
+            let ia = INTEGER(ans);
+            for (i, v) in values.iter().enumerate() {
+                *ia.add(i) = *v as c_int;
+            }
+            ans
+        } else {
+            let ans = Rf_allocVector(REALSXP_VAL, values.len() as c_int);
+            let ra = REAL(ans);
+            for (i, v) in values.iter().enumerate() {
+                *ra.add(i) = *v;
+            }
+            ans
+        };
         Some(attach_datetime_class(
             ans,
             kind,
             if miss_from { to } else { from },
         ))
+
     }
 }

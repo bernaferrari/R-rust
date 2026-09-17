@@ -1586,9 +1586,11 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 };
                 *out.add(i as usize) = seconds;
             }
-        } else if sexp_has_class(x, "Date") && TYPEOF(x) == SEXPTYPE::REALSXP {
+        } else if sexp_has_class(x, "Date")
+            && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
+        {
             for i in 0..n {
-                let days = *REAL(x).add(i as usize);
+                let days = date_days_elt(x, i);
                 *out.add(i as usize) = if days.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     NA_REAL
                 } else {
@@ -1635,6 +1637,7 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         } else {
             base_error("do not know how to convert 'x' to class \"POSIXct\"");
         }
+
 
         set_posixct_class(result, &tz);
         let names = crate::sexp::attrib_core::getAttrib(
