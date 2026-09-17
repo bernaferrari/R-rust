@@ -974,15 +974,21 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
     unsafe {
         let x = CAR(args);
         let _x_guard = protect(x);
-
-        // x must be a VECSXP (list) with at least 9 components
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
                 message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
             });
         }
+        let stz = CADR(args);
+        let tz = if stz.is_null() || stz == R_NilValue() || stz == R_MissingArg() {
+            String::new()
+        } else if TYPEOF(stz) == SEXPTYPE::STRSXP && XLENGTH(stz) > 0 {
+            charsxp_text(STRING_ELT(stz, 0), "tz")
+        } else {
+            String::new()
+        };
+        let is_utc = tz_is_utc(&tz);
 
-        // Determine length from components
         let mut n: R_xlen_t = 0;
         let mut nlen = [0i64; 9];
         for i in 0..6 {
@@ -1019,7 +1025,6 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             tm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), iu);
             tm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), iu);
 
-
             if !R_FINITE(secs) {
                 *REAL(ans).add(iu) = secs;
             } else if tm.tm_min == NA_INTEGER
@@ -1030,7 +1035,7 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             {
                 *REAL(ans).add(iu) = NA_REAL;
             } else {
-                let tmp = mktime0(&mut tm, true);
+                let tmp = mktime0(&mut tm, !is_utc);
                 *REAL(ans).add(iu) = if tmp == -1.0 {
                     NA_REAL
                 } else {
@@ -1042,6 +1047,7 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         ans
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // do_formatPOSIXlt -- .Internal(format.POSIXlt(x, format, usetz, ...))

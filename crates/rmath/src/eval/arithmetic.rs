@@ -619,6 +619,24 @@ unsafe fn date_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
         Some(binary_compare(op, a, b))
     }
 }
+unsafe fn posixlt_as_posixct_operand(call: SEXP, x: SEXP) -> SEXP {
+    unsafe {
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
+            let ct = crate::mainutils::essentials::do_as_POSIXct(
+                call,
+                R_NilValue(),
+                Rf_cons(x, R_NilValue()),
+                R_NilValue(),
+            );
+            let _ct = protect(ct);
+            ct
+        } else {
+            x
+        }
+    }
+}
+
+
 
 unsafe fn posixct_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
     unsafe {
@@ -1268,9 +1286,12 @@ pub unsafe fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if let Some(result) = date_binary_arithmetic(op_name, a, b) {
                     return result;
                 }
+                let a = posixlt_as_posixct_operand(call, a);
+                let b = posixlt_as_posixct_operand(call, b);
                 if let Some(result) = posixct_binary_arithmetic(op_name, a, b) {
                     return result;
                 }
+
                 if let Some(result) = difftime_binary_arithmetic(op_name, a, b) {
                     return result;
                 }
@@ -1327,33 +1348,12 @@ unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
         if let Some(result) = date_binary_comparison(op_name, a, b) {
             return result;
         }
-        let a = if crate::mainutils::essentials::sexp_has_class(a, "POSIXlt") {
-            let ct = crate::mainutils::essentials::do_as_POSIXct(
-                call,
-                R_NilValue(),
-                Rf_cons(a, R_NilValue()),
-                R_NilValue(),
-            );
-            let _ct = protect(ct);
-            ct
-        } else {
-            a
-        };
-        let b = if crate::mainutils::essentials::sexp_has_class(b, "POSIXlt") {
-            let ct = crate::mainutils::essentials::do_as_POSIXct(
-                call,
-                R_NilValue(),
-                Rf_cons(b, R_NilValue()),
-                R_NilValue(),
-            );
-            let _ct = protect(ct);
-            ct
-        } else {
-            b
-        };
+        let a = posixlt_as_posixct_operand(call, a);
+        let b = posixlt_as_posixct_operand(call, b);
         if let Some(result) = posixct_binary_comparison(op_name, a, b) {
             return result;
         }
+
 
         if let Some(result) = difftime_binary_comparison(op_name, a, b) {
             return result;
