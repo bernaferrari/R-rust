@@ -872,6 +872,27 @@ fn tz_is_utc(tz: &str) -> bool {
     tz == "GMT" || tz == "UTC"
 }
 
+unsafe fn posixlt_has_valid_time(x: SEXP) -> bool {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP || XLENGTH(x) < 1 {
+            return false;
+        }
+        let sec = VECTOR_ELT(x, 0);
+        if sec.is_null() || XLENGTH(sec) < 1 {
+            return false;
+        }
+        if TYPEOF(sec) == SEXPTYPE::REALSXP {
+            let v = *REAL(sec);
+            R_FINITE(v) || (v.is_infinite() && !R_IsNA(v))
+        } else if TYPEOF(sec) == SEXPTYPE::INTSXP {
+            *INTEGER(sec) != NA_INTEGER
+        } else {
+            false
+        }
+    }
+}
+
+
 /// GNU `as.POSIXlt.default` uses `missing(tz)`. A supplied non-empty tz
 /// only relabels `tzone` on an existing POSIXlt.
 unsafe fn posixlt_supplied_tz(args: SEXP) -> Option<String> {
@@ -1941,27 +1962,40 @@ pub unsafe fn do_as_POSIXlt(
             return convert_posixct_to_posixlt(x, &tz_s);
         }
 
-        let (text, fmt) = if TYPEOF(x) == SEXPTYPE::STRSXP {
-            let ch = if XLENGTH(x) > 0 {
-                STRING_ELT(x, 0)
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let sample = if XLENGTH(x) > 0 {
+                let ch = STRING_ELT(x, 0);
+                if ch.is_null() {
+                    String::new()
+                } else {
+                    CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned()
+                }
             } else {
-                std::ptr::null_mut()
-            };
-            let sample = if ch.is_null() {
                 String::new()
-            } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
             };
-            let fmt = if sample.contains(' ') {
-                "%Y-%m-%d %H:%M:%OS"
+            let try_fmts: &[&str] = if sample.contains(' ') {
+                &["%Y-%m-%d %H:%M:%OS", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
             } else {
-                "%Y-%m-%d"
+                &["%Y-%m-%d", "%Y/%m/%d"]
             };
-
-            (x, fmt)
-        } else if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+            let mut last = R_NilValue();
+            for fmt in try_fmts {
+                let fmt_s = Rf_mkString(CString::new(*fmt).unwrap_or_default().as_ptr());
+                let _fmt = protect(fmt_s);
+                last = do_strptime(
+                    call,
+                    op,
+                    Rf_cons(x, Rf_cons(fmt_s, Rf_cons(tz, R_NilValue()))),
+                    env,
+                );
+                let _last = protect(last);
+                if posixlt_has_valid_time(last) {
+                    return last;
+                }
+            }
+            return last;
+        }
+        let (text, fmt) = if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
             let formatted = crate::mainutils::essentials::do_format_Date(
                 call,
                 op,
@@ -1976,7 +2010,7 @@ pub unsafe fn do_as_POSIXlt(
             );
         };
         let _text = protect(text);
-        let fmt_s = Rf_mkString(std::ffi::CString::new(fmt).unwrap_or_default().as_ptr());
+        let fmt_s = Rf_mkString(CString::new(fmt).unwrap_or_default().as_ptr());
         let _fmt = protect(fmt_s);
         do_strptime(
             call,
@@ -1984,6 +2018,7 @@ pub unsafe fn do_as_POSIXlt(
             Rf_cons(text, Rf_cons(fmt_s, Rf_cons(tz, R_NilValue()))),
             env,
         )
+
 
     }
 }
@@ -1999,7 +2034,9 @@ pub unsafe fn do_format_POSIXlt(
     unsafe {
         let x = CAR(args);
         let mut format = format_posix_named_arg(args, "format", 0);
+        let usetz_arg = format_posix_named_arg(args, "usetz", 1);
         let digits_arg = format_posix_named_arg(args, "digits", 2);
+
         if format.is_null() || format == R_NilValue() || TYPEOF(format) != SEXPTYPE::STRSXP {
             format = Rf_mkString(c"".as_ptr());
         }
@@ -2124,8 +2161,13 @@ pub unsafe fn do_format_POSIXlt(
             format = format2;
             let _ = repl;
         }
-        let usetz = Rf_ScalarLogical(0);
+        let usetz = if usetz_arg.is_null() || usetz_arg == R_NilValue() {
+            Rf_ScalarLogical(0)
+        } else {
+            usetz_arg
+        };
         let _u = protect(usetz);
+
         let digs = Rf_ScalarInteger(digits);
         let _d = protect(digs);
         let out = do_formatPOSIXlt(
@@ -2166,6 +2208,7 @@ pub unsafe fn do_format_POSIXct(
         let x = CAR(args);
         let format = format_posix_named_arg(args, "format", 0);
         let tz = format_posix_named_arg(args, "tz", 1);
+        let usetz = format_posix_named_arg(args, "usetz", 2);
         let digits = format_posix_named_arg(args, "digits", 3);
         let mut tz_s = tz;
         if tz_s.is_null() || tz_s == R_NilValue() {
@@ -2188,6 +2231,11 @@ pub unsafe fn do_format_POSIXct(
             SETTAG(cell, Rf_install(c"digits".as_ptr()));
             rest = cell;
         }
+        if !usetz.is_null() && usetz != R_NilValue() {
+            let cell = Rf_cons(usetz, rest);
+            SETTAG(cell, Rf_install(c"usetz".as_ptr()));
+            rest = cell;
+        }
         if !format.is_null() && format != R_NilValue() {
             let cell = Rf_cons(format, rest);
             SETTAG(cell, Rf_install(c"format".as_ptr()));
@@ -2206,9 +2254,9 @@ pub unsafe fn do_format_POSIXct(
             setAttrib(out, R_NamesSymbol(), names);
         }
         out
-
     }
 }
+
 
 
 unsafe fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
@@ -2677,6 +2725,27 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
                 message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
             });
         }
+        let bal = getAttrib(x, Rf_install(c"balanced".as_ptr()));
+        if !bal.is_null()
+            && bal != R_NilValue()
+            && TYPEOF(bal) == SEXPTYPE::LGLSXP
+            && XLENGTH(bal) > 0
+            && *INTEGER(bal) == TRUE
+        {
+            let classed = CADDR(args);
+            let keep_class = classed.is_null()
+                || classed == R_NilValue()
+                || classed == R_MissingArg()
+                || (TYPEOF(classed) == SEXPTYPE::LGLSXP && *INTEGER(classed) == TRUE);
+            if keep_class {
+                return x;
+            }
+            let out = crate::mainutils::duplicate::Rf_duplicate(x);
+            let _o = protect(out);
+            setAttrib(out, R_ClassSymbol(), R_NilValue());
+            return out;
+        }
+
 
         let n_comp = LENGTH(x);
         if n_comp < 9 {

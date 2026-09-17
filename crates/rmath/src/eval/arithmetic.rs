@@ -468,21 +468,24 @@ unsafe fn coerce_summary_posixlt_args(
     unsafe {
         let mut out = R_NilValue();
         let mut tail: SEXP = std::ptr::null_mut();
+        let mut guards: Vec<_> = Vec::new();
         let mut p = args;
         while !p.is_null() && p != R_NilValue() {
             let mut val = CAR(p);
             if crate::mainutils::essentials::sexp_has_class(val, "POSIXlt")
                 && TYPEOF(val) == SEXPTYPE::VECSXP
             {
-                val = crate::mainutils::essentials::do_as_POSIXct(
+                let converted = crate::mainutils::essentials::do_as_POSIXct(
                     call,
                     op,
                     Rf_cons(val, R_NilValue()),
                     rho,
                 );
+                guards.push(protect(converted));
+                val = converted;
             }
             let cell = Rf_cons(val, R_NilValue());
-            let _c = protect(cell);
+            guards.push(protect(cell));
             if !TAG(p).is_null() && TAG(p) != R_NilValue() {
                 SETTAG(cell, TAG(p));
             }
@@ -494,8 +497,10 @@ unsafe fn coerce_summary_posixlt_args(
             tail = cell;
             p = CDR(p);
         }
+        let _guards = guards;
         out
     }
+
 }
 
 

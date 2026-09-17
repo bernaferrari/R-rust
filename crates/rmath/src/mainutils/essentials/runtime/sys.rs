@@ -1554,17 +1554,46 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 
         let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
-        let tz = if tz_arg.is_null() || tz_arg == R_NilValue() || XLENGTH(tz_arg) == 0 {
-            "UTC".to_string()
+        let tz_missing = tz_arg.is_null()
+            || tz_arg == R_NilValue()
+            || tz_arg == R_MissingArg()
+            || XLENGTH(tz_arg) == 0;
+        let tz = if tz_missing {
+            crate::tzone::timezone_override()
+                .or_else(|| std::env::var("TZ").ok())
+                .unwrap_or_default()
         } else {
-            let value = elt_to_string(tz_arg, 0);
-            if value.is_empty() {
-                "UTC".to_string()
-            } else {
-                value
-            }
+            elt_to_string(tz_arg, 0)
         };
 
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let tz_s = Rf_mkString(CString::new(tz.as_str()).unwrap_or_default().as_ptr());
+            let _tz = protect(tz_s);
+            let lt = crate::mainutils::datetime::do_as_POSIXlt(
+                _call,
+                _op,
+                Rf_cons(x, Rf_cons(tz_s, R_NilValue())),
+                _rho,
+            );
+            let _lt = protect(lt);
+            let result = crate::mainutils::datetime::convert_posixlt_to_posixct(lt, &tz);
+            let _r = protect(result);
+            set_posixct_class(result, &tz);
+            let names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+            return result;
+        }
+
+        let tz = if tz.is_empty() { "UTC".to_string() } else { tz };
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
@@ -1573,20 +1602,8 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let _guard = protect(result);
         let out = REAL(result);
 
-        if TYPEOF(x) == SEXPTYPE::STRSXP {
-            for i in 0..n {
-                let value = STRING_ELT(x, i);
-                let seconds = if value == crate::sexp::globals::R_NaString() {
-                    NA_REAL
-                } else {
-                    let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
-                    parse_iso_datetime_seconds(text).unwrap_or_else(|| {
-                        base_error("character string is not in a standard unambiguous format")
-                    })
-                };
-                *out.add(i as usize) = seconds;
-            }
-        } else if sexp_has_class(x, "Date")
+        if sexp_has_class(x, "Date")
+
             && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
         {
             for i in 0..n {

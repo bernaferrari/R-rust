@@ -3306,8 +3306,9 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
 /// NA split token does not split; NA strings pass through as NA.
 pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x_arg = CAR(args);
-        let split_arg = CAR(CDR(args));
+        let x_arg = arg_by_name_or_position(args, &["x"], 0);
+        let split_arg = arg_by_name_or_position(args, &["split"], 1);
+
         if x_arg.is_null() || x_arg == R_NilValue() || split_arg.is_null() {
             return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         }
