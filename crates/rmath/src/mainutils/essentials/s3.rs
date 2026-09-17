@@ -709,7 +709,8 @@ unsafe fn list_as_data_frame(x: SEXP) -> SEXP {
 /// R's `as.data.frame(x)` — convert to data.frame.
 pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
+
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
@@ -721,13 +722,26 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                 return x;
             }
         }
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+            && TYPEOF(x) == SEXPTYPE::VECSXP
+        {
+            let ct = crate::mainutils::essentials::do_as_POSIXct(
+                _call,
+                _op,
+                Rf_cons(x, R_NilValue()),
+                _rho,
+            );
+            let _ct = protect(ct);
+            x = ct;
+        }
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
             return matrix_as_data_frame(x, dim);
         }
-        if TYPEOF(x) == SEXPTYPE::VECSXP {
+        if TYPEOF(x) == SEXPTYPE::VECSXP && !crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
             return list_as_data_frame(x);
         }
+
         // Wrap in a single-element list and set class
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         if result.is_null() {

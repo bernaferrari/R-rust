@@ -1534,11 +1534,19 @@ unsafe fn R_DispatchOrEvalSP(
 /// The `[` subset operator -- the most general form of subsetting.
 unsafe fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let n = XLENGTH(x);
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let ncomp = XLENGTH(x);
+        let mut n: R_xlen_t = 0;
+        for j in 0..ncomp {
+            let len = XLENGTH(VECTOR_ELT(x, j));
+            if len > n {
+                n = len;
+            }
+        }
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, ncomp);
         let _a = protect(ans);
-        for j in 0..n {
-            let col = VECTOR_ELT(x, j);
+        for j in 0..ncomp {
+            let col = crate::mainutils::datetime::recycle_posixlt_component(VECTOR_ELT(x, j), n);
+            let _c = protect(col);
             let args = Rf_cons(col, Rf_cons(i, R_NilValue()));
             let _g = protect(args);
             let sub = do_subset_dflt(call, op, args, env);
@@ -1553,10 +1561,7 @@ unsafe fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP)
         if !isNull(tzone) {
             setAttrib(ans, sym_Tzone(), tzone);
         }
-        let balanced = getAttrib(x, Rf_install(c"balanced".as_ptr()));
-        if !isNull(balanced) {
-            setAttrib(ans, Rf_install(c"balanced".as_ptr()), balanced);
-        }
+        setAttrib(ans, Rf_install(c"balanced".as_ptr()), Rf_ScalarLogical(NA_LOGICAL));
         ans
     }
 }
@@ -2614,6 +2619,84 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
 /// The `[<-` assignment operator.
 ///
 /// Dispatches to the appropriate method or falls through to default.
+unsafe fn subassign_posixlt_time(
+    x: SEXP,
+    i: SEXP,
+    value: SEXP,
+    call: SEXP,
+    op: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        let ncomp = XLENGTH(x);
+        let mut n: R_xlen_t = 0;
+        for j in 0..ncomp {
+            let len = XLENGTH(VECTOR_ELT(x, j));
+            if len > n {
+                n = len;
+            }
+        }
+        let rhs = if crate::mainutils::essentials::sexp_has_class(value, "POSIXlt")
+            && TYPEOF(value) == SEXPTYPE::VECSXP
+        {
+            value
+        } else {
+            crate::mainutils::datetime::do_as_POSIXlt(
+
+                call,
+                op,
+                Rf_cons(value, R_NilValue()),
+                env,
+            )
+        };
+        let _rhs = protect(rhs);
+        let mut rn: R_xlen_t = 0;
+        let rcomp = if TYPEOF(rhs) == SEXPTYPE::VECSXP {
+            XLENGTH(rhs)
+        } else {
+            0
+        };
+        for j in 0..rcomp {
+            let len = XLENGTH(VECTOR_ELT(rhs, j));
+            if len > rn {
+                rn = len;
+            }
+        }
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, ncomp);
+        let _a = protect(ans);
+        for j in 0..ncomp {
+            let col = crate::mainutils::datetime::recycle_posixlt_component(VECTOR_ELT(x, j), n);
+            let _c = protect(col);
+            let rcol = if j < rcomp {
+                crate::mainutils::datetime::recycle_posixlt_component(VECTOR_ELT(rhs, j), rn.max(1))
+            } else {
+                R_NilValue()
+            };
+            let _r = protect(rcol);
+            let assigned = if rcol.is_null() || rcol == R_NilValue() {
+                col
+            } else {
+                let args = Rf_cons(col, Rf_cons(i, Rf_cons(rcol, R_NilValue())));
+                let _g = protect(args);
+                crate::mainutils::subassign::do_subassign_dflt(call, op, args, env)
+            };
+            SET_VECTOR_ELT(ans, j, assigned);
+        }
+        let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !isNull(names) {
+            setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        }
+        setAttrib(ans, sym_Class(), getAttrib(x, sym_Class()));
+        let tzone = getAttrib(x, sym_Tzone());
+        if !isNull(tzone) {
+            setAttrib(ans, sym_Tzone(), tzone);
+        }
+        setAttrib(ans, Rf_install(c"balanced".as_ptr()), Rf_ScalarLogical(NA_LOGICAL));
+        ans
+    }
+}
+
+
 pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
@@ -2681,6 +2764,20 @@ pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     *crate::sexp::accessors::INTEGER(codes).add(i as usize) = code;
                 }
                 SETCAR(CDDR(ans), codes);
+            }
+        }
+        if crate::mainutils::essentials::sexp_has_class(target, "POSIXlt")
+            && TYPEOF(target) == SEXPTYPE::VECSXP
+        {
+            let idx = CADR(ans);
+            let value = CADDR(ans);
+            let rest = CDDDR(ans);
+            let only_time_index = !idx.is_null()
+                && idx != R_NilValue()
+                && idx != R_MissingArg()
+                && (rest.is_null() || rest == R_NilValue());
+            if only_time_index {
+                return subassign_posixlt_time(target, idx, value, call, op, env);
             }
         }
         crate::mainutils::subassign::do_subassign_dflt(call, op, ans, env)

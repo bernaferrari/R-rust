@@ -86,6 +86,81 @@ pub(crate) unsafe fn posixlt_int_elt(col: SEXP, i: usize) -> c_int {
     }
 }
 
+pub(crate) unsafe fn posixlt_real_elt(col: SEXP, i: usize) -> f64 {
+    unsafe {
+        if col.is_null() || col == R_NilValue() {
+            return NA_REAL;
+        }
+        let n = XLENGTH(col);
+        if n <= 0 {
+            return NA_REAL;
+        }
+        let i = i % n as usize;
+        if TYPEOF(col) == SEXPTYPE::REALSXP {
+            *REAL(col).add(i)
+        } else if TYPEOF(col) == SEXPTYPE::INTSXP || TYPEOF(col) == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(col).add(i);
+            if v == NA_INTEGER {
+                NA_REAL
+            } else {
+                v as f64
+            }
+        } else {
+            NA_REAL
+        }
+    }
+}
+
+pub(crate) unsafe fn recycle_posixlt_component(x: SEXP, n: R_xlen_t) -> SEXP {
+    unsafe {
+        let nx = XLENGTH(x);
+        if n <= 0 {
+            return x;
+        }
+        if nx == n {
+            return x;
+        }
+        if nx <= 0 {
+            return crate::mainutils::builtin::xlengthgets(x, n);
+        }
+        let y = crate::mainutils::builtin::xlengthgets(x, n);
+        let _y = protect(y);
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::REALSXP => {
+                for i in 0..n {
+                    *REAL(y).add(i as usize) = *REAL(x).add((i % nx) as usize);
+                }
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                for i in 0..n {
+                    *INTEGER(y).add(i as usize) = *INTEGER(x).add((i % nx) as usize);
+                }
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                for i in 0..n {
+                    SET_STRING_ELT(y, i, STRING_ELT(x, i % nx));
+                }
+            }
+            _ => {}
+        }
+        let names = getAttrib(x, R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            let nn = XLENGTH(names);
+            if nn > 0 {
+                let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+                let _on = protect(out_names);
+                for i in 0..n {
+                    SET_STRING_ELT(out_names, i, STRING_ELT(names, i % nn));
+                }
+                setAttrib(y, R_NamesSymbol(), out_names);
+            }
+        }
+        y
+    }
+}
+
+
+
 
 
 /// POSIXlt component names.
@@ -1039,11 +1114,8 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         for i in 0..n {
             let iu = i as usize;
-            let secs = if nlen[0] <= 0 {
-                NA_REAL
-            } else {
-                *REAL(VECTOR_ELT(x, 0)).add(iu % nlen[0] as usize)
-            };
+            let secs = posixlt_real_elt(VECTOR_ELT(x, 0), iu);
+
             let fsecs = secs.floor();
 
             let mut tm = stm::new();
@@ -1285,7 +1357,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 
         for i in 0..N {
             let iu = i as usize;
-            let secs = *REAL(VECTOR_ELT(x, 0)).add(iu % nlen[0] as usize);
+            let secs = posixlt_real_elt(VECTOR_ELT(x, 0), iu);
             let fsecs = secs.floor();
 
             let mut ctm: tz_tm = std::mem::zeroed();
@@ -1296,14 +1368,15 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             } else {
                 ctm.tm_sec = 0;
             }
-            ctm.tm_min = posixlt_int_elt(VECTOR_ELT(x, 1), iu % nlen[1] as usize);
-            ctm.tm_hour = posixlt_int_elt(VECTOR_ELT(x, 2), iu % nlen[2] as usize);
-            ctm.tm_mday = posixlt_int_elt(VECTOR_ELT(x, 3), iu % nlen[3] as usize);
-            ctm.tm_mon = posixlt_int_elt(VECTOR_ELT(x, 4), iu % nlen[4] as usize);
-            ctm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), iu % nlen[5] as usize);
-            ctm.tm_wday = posixlt_int_elt(VECTOR_ELT(x, 6), iu % nlen[6] as usize);
-            ctm.tm_yday = posixlt_int_elt(VECTOR_ELT(x, 7), iu % nlen[7] as usize);
-            ctm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), iu % nlen[8] as usize);
+            ctm.tm_min = posixlt_int_elt(VECTOR_ELT(x, 1), iu);
+            ctm.tm_hour = posixlt_int_elt(VECTOR_ELT(x, 2), iu);
+            ctm.tm_mday = posixlt_int_elt(VECTOR_ELT(x, 3), iu);
+            ctm.tm_mon = posixlt_int_elt(VECTOR_ELT(x, 4), iu);
+            ctm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), iu);
+            ctm.tm_wday = posixlt_int_elt(VECTOR_ELT(x, 6), iu);
+            ctm.tm_yday = posixlt_int_elt(VECTOR_ELT(x, 7), iu);
+            ctm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), iu);
+
 
 
             if !R_FINITE(secs) {
@@ -2531,11 +2604,8 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         for i in 0..n {
             let iu = i as usize;
-            let secs = if nlen[0] <= 0 {
-                NA_REAL
-            } else {
-                *REAL(VECTOR_ELT(x, 0)).add(iu % nlen[0] as usize)
-            };
+            let secs = posixlt_real_elt(VECTOR_ELT(x, 0), iu);
+
 
             let fsecs = secs.floor();
 
@@ -2715,7 +2785,13 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
         if !tzone.is_null() && tzone != R_NilValue() {
             setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);
         }
+        setAttrib(
+            ans,
+            Rf_install(c"balanced".as_ptr()),
+            Rf_ScalarLogical(TRUE),
+        );
         ans
+
     }
 }
 

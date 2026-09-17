@@ -2849,6 +2849,19 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     });
                 }
             } else {
+                let value = if sexp_has_class(value, "POSIXlt") && TYPEOF(value) == SEXPTYPE::VECSXP
+                {
+                    let ct = crate::mainutils::essentials::do_as_POSIXct(
+                        _call,
+                        _op,
+                        Rf_cons(value, R_NilValue()),
+                        _rho,
+                    );
+                    filter_guards.push(protect(ct));
+                    ct
+                } else {
+                    value
+                };
                 let len = XLENGTH(value);
                 match nrow {
                     Some(existing) if len != existing && len != 1 => base_error(format!(
@@ -2860,6 +2873,7 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 columns.push(value);
                 names.push(arg_name);
             }
+
         }
 
         repair_data_frame_names(&mut names);
