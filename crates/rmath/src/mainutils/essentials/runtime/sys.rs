@@ -582,21 +582,9 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             let mon = VECTOR_ELT(x, 4);
             let year = VECTOR_ELT(x, 5);
             for i in 0..nlt {
-                let y = if TYPEOF(year) == SEXPTYPE::INTSXP {
-                    *INTEGER(year).add(i as usize) + 1900
-                } else {
-                    1970
-                };
-                let m = if TYPEOF(mon) == SEXPTYPE::INTSXP {
-                    *INTEGER(mon).add(i as usize) + 1
-                } else {
-                    1
-                };
-                let d = if TYPEOF(mday) == SEXPTYPE::INTSXP {
-                    *INTEGER(mday).add(i as usize)
-                } else {
-                    1
-                };
+                let y = crate::mainutils::datetime::posixlt_int_elt(year, i as usize) + 1900;
+                let m = crate::mainutils::datetime::posixlt_int_elt(mon, i as usize) + 1;
+                let d = crate::mainutils::datetime::posixlt_int_elt(mday, i as usize);
                 *REAL(result_lt).add(i as usize) =
                     parse_iso_date_days(&format!("{y:04}-{m:02}-{d:02}")).unwrap_or(NA_REAL);
             }

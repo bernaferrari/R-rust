@@ -425,6 +425,38 @@ unsafe fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
     }
 }
 
+unsafe fn first_summary_data_arg(args: SEXP) -> SEXP {
+    unsafe {
+        let na_rm_sym = Rf_install(c"na.rm".as_ptr());
+        let mut p = args;
+        while !p.is_null() && p != R_NilValue() {
+            if TAG(p) != na_rm_sym {
+                return CAR(p);
+            }
+            p = CDR(p);
+        }
+        R_NilValue()
+    }
+}
+
+unsafe fn restore_datetime_summary_class(source: SEXP, result: SEXP) {
+    unsafe {
+        if source.is_null() || source == R_NilValue() || result.is_null() || result == R_NilValue()
+        {
+            return;
+        }
+        if crate::mainutils::essentials::sexp_has_class(source, "Date") {
+            set_single_string_class(result, "Date");
+        } else if crate::mainutils::essentials::sexp_has_class(source, "POSIXct")
+            || crate::mainutils::essentials::sexp_has_class(source, "POSIXt")
+        {
+            set_posixct_attributes_from(result, source);
+        }
+    }
+}
+
+
+
 unsafe fn string_attribute_value(source: SEXP, name: &CStr) -> Option<String> {
     unsafe {
         let attr = getAttrib(source, Rf_install(name.as_ptr()));
@@ -2068,14 +2100,23 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let na_rm = parse_summary_na_rm(args);
         let shape = scan_summary_shape(args, summary_op);
+        let first = first_summary_data_arg(args);
 
-        match summary_op {
+        let result = match summary_op {
             SummaryOp::Sum => eval_sum(args, shape, na_rm),
             SummaryOp::Prod => eval_prod(args, shape, na_rm),
             SummaryOp::Min => eval_minmax(args, shape, na_rm, SummaryOp::Min),
             SummaryOp::Max => eval_minmax(args, shape, na_rm, SummaryOp::Max),
             SummaryOp::Range => eval_range(args, shape, na_rm),
+        };
+        if matches!(
+            summary_op,
+            SummaryOp::Min | SummaryOp::Max | SummaryOp::Range
+        ) {
+            restore_datetime_summary_class(first, result);
         }
+        result
+
     }
 }
 

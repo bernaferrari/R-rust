@@ -2505,9 +2505,11 @@ pub unsafe fn do_assertWarning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
                 std::panic::resume_unwind(payload);
             }
             Ok(_) if warned => {
+                crate::mainutils::errors::restore_collect_warnings(before);
                 crate::sexp::globals::set_R_Visible(FALSE);
                 R_NilValue()
             }
+
             Ok(_) => crate::mainutils::errors::errorcall_str(
                 _call,
                 &format!("Failed to get warning in evaluating {dtext}"),
@@ -2535,15 +2537,18 @@ pub unsafe fn do_assertCondition(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) 
                     )
                     || warned
                 {
+                    crate::mainutils::errors::restore_collect_warnings(before);
                     crate::sexp::globals::set_R_Visible(FALSE);
                     return R_NilValue();
                 }
                 std::panic::resume_unwind(payload);
             }
             Ok(_) if warned => {
+                crate::mainutils::errors::restore_collect_warnings(before);
                 crate::sexp::globals::set_R_Visible(FALSE);
                 R_NilValue()
             }
+
             Ok(_) => crate::mainutils::errors::errorcall_str(
                 _call,
                 &format!("Failed to get any condition in evaluating {dtext}"),

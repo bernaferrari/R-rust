@@ -39,6 +39,34 @@ pub unsafe fn do_hist_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
     }
 }
 
+/// GNU `hist.Date`.
+pub unsafe fn do_hist_Date(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "hist.Date",
+            include_str!("graphics_highlevel/hist_date.R"),
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
+/// GNU `hist.POSIXt`.
+pub unsafe fn do_hist_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "hist.POSIXt",
+            include_str!("graphics_highlevel/hist_posixct.R"),
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
+
+
 /// The public `barplot` generic.
 pub unsafe fn do_barplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

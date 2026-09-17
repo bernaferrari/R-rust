@@ -77,6 +77,21 @@ pub(super) fn unevaluated_builtin_handler(name: &str) -> Option<UnevaluatedBuilt
         .copied()
 }
 
+pub(crate) fn builtin_primitive_kind(name: &str) -> Option<SEXPTYPE> {
+    if is_hidden_builtin_name(name) {
+        return None;
+    }
+    if unevaluated_builtin_handler(name).is_some() {
+        Some(SEXPTYPE::SPECIALSXP)
+    } else if EVALUATED_BUILTINS.iter().any(|b| b.name == name) {
+        Some(SEXPTYPE::BUILTINSXP)
+    } else {
+        None
+    }
+}
+
+
+
 /// Return whether the Rust evaluator has a builtin implementation for `name`.
 ///
 /// Builtins are dispatched directly by the evaluator rather than being eagerly
@@ -164,6 +179,28 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::graphics_highlevel::do_hist_default,
         restore_visibility_always: false,
     },
+    UnevaluatedBuiltin {
+        name: "hist.Date",
+        handler: crate::mainutils::graphics_highlevel::do_hist_Date,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "hist.POSIXt",
+        handler: crate::mainutils::graphics_highlevel::do_hist_POSIXt,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "hist.POSIXlt",
+        handler: crate::mainutils::graphics_highlevel::do_hist_POSIXt,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "hist.POSIXct",
+        handler: crate::mainutils::graphics_highlevel::do_hist_POSIXt,
+        restore_visibility_always: false,
+    },
+
+
     UnevaluatedBuiltin {
         name: "barplot",
         handler: crate::mainutils::graphics_highlevel::do_barplot,

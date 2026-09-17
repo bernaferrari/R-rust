@@ -231,6 +231,14 @@ pub(super) fn set_collect_warnings(val: c_int) {
     with_error_state(|state| state.collect_warnings = val);
 }
 
+/// Drop warnings collected after `n` so a muffling catcher (assertWarning)
+/// does not leak them at the next statement boundary.
+pub(crate) fn restore_collect_warnings(n: c_int) {
+    set_collect_warnings(n);
+}
+
+
+
 pub(super) fn increment_collect_warnings() {
     with_error_state(|state| state.collect_warnings += 1);
 }

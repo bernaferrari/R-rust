@@ -368,21 +368,26 @@ pub(crate) unsafe fn lookup_s3_method_symbol(
             return method;
         }
 
-        // Eval builtins are not copied into session frames; exists()/eval
-        // materialize them on demand. UseMethod must see the same table.
+        // Eval builtins are not copied into session frames. UseMethod sees
+        // `.default` methods plus an explicit hist.* whitelist. Materializing
+        // every builtin here re-enters wrappers such as seq.Date via seq().
         if !method_symbol.is_null() {
             let pname = PRINTNAME(method_symbol);
             if !pname.is_null() {
-                let name = CStr::from_ptr(CHAR(pname)).to_string_lossy();
-                if name.ends_with(".default")
-                    && crate::eval::builtin::has_builtin_handler(name.as_ref())
-                {
-                    let primitive = crate::eval::primitive::make_primitive_binding(
+                let name = std::ffi::CStr::from_ptr(CHAR(pname)).to_string_lossy();
+                let allow = name.ends_with(".default")
+                    || matches!(
                         name.as_ref(),
-                        SEXPTYPE::BUILTINSXP,
+                        "hist.Date" | "hist.POSIXt" | "hist.POSIXlt" | "hist.POSIXct"
                     );
-                    if isFunction(primitive) != FALSE {
-                        return primitive;
+                if allow {
+                    if let Some(kind) = crate::eval::builtin::builtin_primitive_kind(name.as_ref())
+                    {
+                        let primitive =
+                            crate::eval::primitive::make_primitive_binding(name.as_ref(), kind);
+                        if isFunction(primitive) != FALSE {
+                            return primitive;
+                        }
                     }
                 }
             }

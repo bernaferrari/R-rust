@@ -57,6 +57,40 @@ pub static month_days: [c_int; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30
 /// NA_REAL sentinel matching R's NA_REAL.
 pub const NA_REAL: c_double = crate::sexp::ffi::NA_REAL;
 
+/// GNU datetime.c reads POSIXlt calendar fields via INTEGER() after
+/// balance, but `$year <-` can leave a REALSXP (GNU `$<-` does not coerce).
+/// Accept INTSXP/LGLSXP/REALSXP the way REAL_ELT accepts integers.
+pub(crate) unsafe fn posixlt_int_elt(col: SEXP, i: usize) -> c_int {
+    unsafe {
+        if col.is_null() || col == R_NilValue() {
+            return NA_INTEGER;
+        }
+        match TYPEOF(col) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                if i >= XLENGTH(col) as usize {
+                    NA_INTEGER
+                } else {
+                    *INTEGER(col).add(i)
+                }
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                if i >= XLENGTH(col) as usize {
+                    return NA_INTEGER;
+                }
+                let v = *REAL(col).add(i);
+                if !R_FINITE(v) || R_IsNA(v) {
+                    NA_INTEGER
+                } else {
+                    v as c_int
+                }
+            }
+            _ => NA_INTEGER,
+        }
+    }
+}
+
+
+
 /// POSIXlt component names.
 pub static ltnames: [&str; 11] = [
     "sec", "min", "hour", "mday", "mon", "year", "wday", "yday", "isdst", "zone", "gmtoff",
@@ -977,12 +1011,13 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             } else {
                 NA_INTEGER
             };
-            tm.tm_min = *INTEGER(VECTOR_ELT(x, 1)).add(iu);
-            tm.tm_hour = *INTEGER(VECTOR_ELT(x, 2)).add(iu);
-            tm.tm_mday = *INTEGER(VECTOR_ELT(x, 3)).add(iu);
-            tm.tm_mon = *INTEGER(VECTOR_ELT(x, 4)).add(iu);
-            tm.tm_year = *INTEGER(VECTOR_ELT(x, 5)).add(iu);
-            tm.tm_isdst = *INTEGER(VECTOR_ELT(x, 8)).add(iu);
+            tm.tm_min = posixlt_int_elt(VECTOR_ELT(x, 1), iu);
+            tm.tm_hour = posixlt_int_elt(VECTOR_ELT(x, 2), iu);
+            tm.tm_mday = posixlt_int_elt(VECTOR_ELT(x, 3), iu);
+            tm.tm_mon = posixlt_int_elt(VECTOR_ELT(x, 4), iu);
+            tm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), iu);
+            tm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), iu);
+
 
             if !R_FINITE(secs) {
                 *REAL(ans).add(iu) = secs;
@@ -1065,14 +1100,15 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             } else {
                 ctm.tm_sec = 0;
             }
-            ctm.tm_min = *INTEGER(VECTOR_ELT(x, 1)).add(iu % nlen[1] as usize);
-            ctm.tm_hour = *INTEGER(VECTOR_ELT(x, 2)).add(iu % nlen[2] as usize);
-            ctm.tm_mday = *INTEGER(VECTOR_ELT(x, 3)).add(iu % nlen[3] as usize);
-            ctm.tm_mon = *INTEGER(VECTOR_ELT(x, 4)).add(iu % nlen[4] as usize);
-            ctm.tm_year = *INTEGER(VECTOR_ELT(x, 5)).add(iu % nlen[5] as usize);
-            ctm.tm_wday = *INTEGER(VECTOR_ELT(x, 6)).add(iu % nlen[6] as usize);
-            ctm.tm_yday = *INTEGER(VECTOR_ELT(x, 7)).add(iu % nlen[7] as usize);
-            ctm.tm_isdst = *INTEGER(VECTOR_ELT(x, 8)).add(iu % nlen[8] as usize);
+            ctm.tm_min = posixlt_int_elt(VECTOR_ELT(x, 1), iu % nlen[1] as usize);
+            ctm.tm_hour = posixlt_int_elt(VECTOR_ELT(x, 2), iu % nlen[2] as usize);
+            ctm.tm_mday = posixlt_int_elt(VECTOR_ELT(x, 3), iu % nlen[3] as usize);
+            ctm.tm_mon = posixlt_int_elt(VECTOR_ELT(x, 4), iu % nlen[4] as usize);
+            ctm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), iu % nlen[5] as usize);
+            ctm.tm_wday = posixlt_int_elt(VECTOR_ELT(x, 6), iu % nlen[6] as usize);
+            ctm.tm_yday = posixlt_int_elt(VECTOR_ELT(x, 7), iu % nlen[7] as usize);
+            ctm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), iu % nlen[8] as usize);
+
 
             if !R_FINITE(secs) {
                 // NA, NaN, Inf, -Inf
@@ -1572,6 +1608,14 @@ pub unsafe fn do_as_POSIXlt(
         } else {
             String::new()
         };
+        if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+            return do_D2POSIXlt(
+                call,
+                op,
+                Rf_cons(x, R_NilValue()),
+                env,
+            );
+        }
         if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
             || TYPEOF(x) == SEXPTYPE::REALSXP
             || TYPEOF(x) == SEXPTYPE::INTSXP
@@ -1588,6 +1632,7 @@ pub unsafe fn do_as_POSIXlt(
             }
             return convert_posixct_to_posixlt(x, &tz_s);
         }
+
         let (text, fmt) = if TYPEOF(x) == SEXPTYPE::STRSXP {
             let ch = if XLENGTH(x) > 0 {
                 STRING_ELT(x, 0)
@@ -1851,8 +1896,11 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             );
             *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = 0;
         }
-
+        let tzone = Rf_mkString(c"UTC".as_ptr());
+        let _tz = protect(tzone);
+        finish_posixlt(ans, ansnames, tzone);
         ans
+
     }
 }
 
@@ -1903,11 +1951,12 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             } else {
                 NA_INTEGER
             };
-            tm.tm_min = *INTEGER(VECTOR_ELT(x, 1)).add(iu);
-            tm.tm_hour = *INTEGER(VECTOR_ELT(x, 2)).add(iu);
-            tm.tm_mday = *INTEGER(VECTOR_ELT(x, 3)).add(iu);
-            tm.tm_mon = *INTEGER(VECTOR_ELT(x, 4)).add(iu);
-            tm.tm_year = *INTEGER(VECTOR_ELT(x, 5)).add(iu);
+            tm.tm_min = posixlt_int_elt(VECTOR_ELT(x, 1), iu);
+            tm.tm_hour = posixlt_int_elt(VECTOR_ELT(x, 2), iu);
+            tm.tm_mday = posixlt_int_elt(VECTOR_ELT(x, 3), iu);
+            tm.tm_mon = posixlt_int_elt(VECTOR_ELT(x, 4), iu);
+            tm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), iu);
+
             tm.tm_isdst = 0; // always UTC for Date conversion
 
             if !R_FINITE(secs) {
@@ -1999,14 +2048,15 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             } else {
                 NA_INTEGER
             };
-            tm.tm_min = *INTEGER(VECTOR_ELT(x, 1)).add(iu);
-            tm.tm_hour = *INTEGER(VECTOR_ELT(x, 2)).add(iu);
-            tm.tm_mday = *INTEGER(VECTOR_ELT(x, 3)).add(iu);
-            tm.tm_mon = *INTEGER(VECTOR_ELT(x, 4)).add(iu);
-            tm.tm_year = *INTEGER(VECTOR_ELT(x, 5)).add(iu);
-            tm.tm_wday = *INTEGER(VECTOR_ELT(x, 6)).add(iu);
-            tm.tm_yday = *INTEGER(VECTOR_ELT(x, 7)).add(iu);
-            tm.tm_isdst = *INTEGER(VECTOR_ELT(x, 8)).add(iu);
+            tm.tm_min = posixlt_int_elt(VECTOR_ELT(x, 1), iu);
+            tm.tm_hour = posixlt_int_elt(VECTOR_ELT(x, 2), iu);
+            tm.tm_mday = posixlt_int_elt(VECTOR_ELT(x, 3), iu);
+            tm.tm_mon = posixlt_int_elt(VECTOR_ELT(x, 4), iu);
+            tm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), iu);
+            tm.tm_wday = posixlt_int_elt(VECTOR_ELT(x, 6), iu);
+            tm.tm_yday = posixlt_int_elt(VECTOR_ELT(x, 7), iu);
+            tm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), iu);
+
 
             let valid = R_FINITE(secs)
                 && tm.tm_min != NA_INTEGER
