@@ -70,12 +70,16 @@ pub unsafe fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 NA_REAL
             };
-            *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v <= 0.0
-            {
+            *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 NA_REAL
+            } else if v == 0.0 {
+                f64::NEG_INFINITY
+            } else if v < 0.0 {
+                f64::NAN
             } else {
                 v.ln() / log_base
             };
+
         }
         result
     }

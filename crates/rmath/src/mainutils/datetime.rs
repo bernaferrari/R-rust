@@ -2033,8 +2033,16 @@ pub unsafe fn do_as_POSIXlt(
                 );
                 let _last = protect(last);
                 if posixlt_has_valid_time(last) {
+                    if !tz_s.is_empty() {
+                        setAttrib(
+                            last,
+                            Rf_install(c"tzone".as_ptr()),
+                            Rf_mkString(CString::new(tz_s.as_str()).unwrap_or_default().as_ptr()),
+                        );
+                    }
                     return last;
                 }
+
             }
             return last;
         }
