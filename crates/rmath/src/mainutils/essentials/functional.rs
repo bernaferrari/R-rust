@@ -3773,7 +3773,7 @@ pub unsafe fn do_flatten(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `split(x, f)` — split vector `x` into groups defined by `f`.
-pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let f = CAR(CDR(args));
@@ -3781,7 +3781,15 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-        let n = XLENGTH(x);
+        let n = if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+            && TYPEOF(x) == SEXPTYPE::VECSXP
+        {
+            crate::mainutils::subassign::posixlt_obs_length(x)
+        } else {
+            XLENGTH(x)
+        };
+        let classed = crate::sexp::accessors::OBJECT(x) != 0;
+
         let nf = XLENGTH(f);
         if nf == 0 && n > 0 {
             base_error("group length is 0 but data length > 0");
@@ -3843,25 +3851,38 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && XLENGTH(x_names) >= n;
 
         for (group_index, (label, indices)) in labels.iter().zip(groups.iter()).enumerate() {
-            let sub = Rf_allocVector3(TYPEOF(x), indices.len() as R_xlen_t);
-            let _sub_guard = protect(sub);
-            for (dst, &src) in indices.iter().enumerate() {
-                copy_matrix_element(sub, dst as R_xlen_t, x, src);
-            }
-            restore_datetime_or_difftime_class(x, sub);
-            if have_x_names {
-                let names = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
-                let _group_names_guard = protect(names);
+            let sub = if classed {
+                let idx = Rf_allocVector3(SEXPTYPE::INTSXP, indices.len() as R_xlen_t);
+                let _idx = protect(idx);
                 for (dst, &src) in indices.iter().enumerate() {
-                    SET_STRING_ELT(names, dst as R_xlen_t, STRING_ELT(x_names, src));
+                    *INTEGER(idx).add(dst) = (src + 1) as c_int;
                 }
-                crate::sexp::attrib_core::setAttrib(
-                    sub,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    names,
-                );
-            }
+                let sub_args = Rf_cons(x, Rf_cons(idx, R_NilValue()));
+                let _sa = protect(sub_args);
+                crate::mainutils::subset::do_subset(_call, _op, sub_args, rho)
+            } else {
+                let sub = Rf_allocVector3(TYPEOF(x), indices.len() as R_xlen_t);
+                let _sub_guard = protect(sub);
+                for (dst, &src) in indices.iter().enumerate() {
+                    copy_matrix_element(sub, dst as R_xlen_t, x, src);
+                }
+                restore_datetime_or_difftime_class(x, sub);
+                if have_x_names {
+                    let names = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
+                    let _group_names_guard = protect(names);
+                    for (dst, &src) in indices.iter().enumerate() {
+                        SET_STRING_ELT(names, dst as R_xlen_t, STRING_ELT(x_names, src));
+                    }
+                    crate::sexp::attrib_core::setAttrib(
+                        sub,
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                        names,
+                    );
+                }
+                sub
+            };
             SET_VECTOR_ELT(result, group_index as R_xlen_t, sub);
+
             let label_c = CString::new(label.as_str()).unwrap_or_default();
             SET_STRING_ELT(
                 result_names,

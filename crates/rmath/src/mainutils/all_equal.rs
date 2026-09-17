@@ -114,6 +114,26 @@ unsafe fn compare(
         if is_nil(target) || is_nil(current) {
             return Err("target and current differ in nullness".into());
         }
+
+        if crate::mainutils::essentials::sexp_has_class(target, "POSIXt")
+            || crate::mainutils::essentials::sexp_has_class(current, "POSIXt")
+        {
+            let t = crate::mainutils::essentials::do_as_POSIXct(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                crate::sexp::constructors::Rf_cons(target, R_NilValue()),
+                std::ptr::null_mut(),
+            );
+            let _t = crate::sexp::protect::protect(t);
+            let c = crate::mainutils::essentials::do_as_POSIXct(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                crate::sexp::constructors::Rf_cons(current, R_NilValue()),
+                std::ptr::null_mut(),
+            );
+            let _c = crate::sexp::protect::protect(c);
+            return compare_numeric(t, c, tolerance, scale);
+        }
         if LENGTH(target) != LENGTH(current) {
             return Err(format!(
                 "Lengths ({}, {}) differ",
@@ -121,6 +141,7 @@ unsafe fn compare(
                 LENGTH(current)
             ));
         }
+
         if check_attributes {
             compare_attributes(target, current, tolerance, depth + 1)?;
         }

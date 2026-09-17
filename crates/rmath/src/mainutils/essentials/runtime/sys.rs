@@ -2108,6 +2108,7 @@ fn names_have_label(names: SEXP) -> bool {
 pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut converted = R_NilValue();
+        let mut fracs: Vec<f64> = Vec::new();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             let v = crate::eval::eval::Rf_eval(CAR(cell), rho);
@@ -2121,10 +2122,72 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 false
             };
             if !skip {
-                let ct = if sexp_has_class(v, "POSIXct") && TYPEOF(v) == SEXPTYPE::REALSXP {
+                let v = if TYPEOF(v) == SEXPTYPE::STRSXP
+                    || crate::mainutils::objects::inherits2(v, c"factor".as_ptr()) != 0
+                {
+                    let lt = crate::mainutils::datetime::do_as_POSIXlt(
+                        call,
+                        op,
+                        Rf_cons(v, R_NilValue()),
+                        rho,
+                    );
+                    let _ltv = protect(lt);
+                    lt
+                } else {
+                    v
+                };
+                let ct = if sexp_has_class(v, "POSIXlt") && TYPEOF(v) == SEXPTYPE::VECSXP {
+                    let nobs = crate::mainutils::subassign::posixlt_obs_length(v);
+                    let sec = if XLENGTH(v) > 0 {
+                        VECTOR_ELT(v, 0)
+                    } else {
+                        R_NilValue()
+                    };
+                    let nsec = if sec.is_null() || sec == R_NilValue() {
+                        0
+                    } else {
+                        XLENGTH(sec)
+                    };
+                    for i in 0..nobs {
+                        let s = if nsec == 0 {
+                            0.0
+                        } else if TYPEOF(sec) == SEXPTYPE::REALSXP {
+                            *REAL(sec).add((i % nsec) as usize)
+                        } else if TYPEOF(sec) == SEXPTYPE::INTSXP {
+                            let iv = *INTEGER(sec).add((i % nsec) as usize);
+                            if iv == NA_INTEGER {
+                                NA_REAL
+                            } else {
+                                iv as f64
+                            }
+                        } else {
+                            0.0
+                        };
+                        fracs.push(if s.is_finite() { s - s.floor() } else { 0.0 });
+                    }
+                    let dup = crate::mainutils::duplicate::Rf_duplicate(v);
+                    let _d = protect(dup);
+                    if XLENGTH(dup) > 0 {
+                        let dsec = VECTOR_ELT(dup, 0);
+                        if TYPEOF(dsec) == SEXPTYPE::REALSXP {
+                            for i in 0..XLENGTH(dsec) {
+                                let s = *REAL(dsec).add(i as usize);
+                                if s.is_finite() {
+                                    *REAL(dsec).add(i as usize) = s.floor();
+                                }
+                            }
+                        }
+                    }
+                    do_as_POSIXct(call, op, Rf_cons(dup, R_NilValue()), rho)
+                } else if sexp_has_class(v, "POSIXct")
+                    && (TYPEOF(v) == SEXPTYPE::REALSXP || TYPEOF(v) == SEXPTYPE::INTSXP)
+                {
+                    fracs.extend(std::iter::repeat(0.0).take(XLENGTH(v) as usize));
                     v
                 } else {
-                    do_as_POSIXct(call, op, Rf_cons(v, R_NilValue()), rho)
+                    let ct = do_as_POSIXct(call, op, Rf_cons(v, R_NilValue()), rho);
+                    fracs.extend(std::iter::repeat(0.0).take(XLENGTH(ct) as usize));
+                    ct
                 };
                 let _ct_one = protect(ct);
                 let node = Rf_cons(ct, converted);
@@ -2134,6 +2197,7 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             }
             cell = CDR(cell);
         }
+
         let mut rev = R_NilValue();
         let mut c = converted;
         while !c.is_null() && c != R_NilValue() {
@@ -2211,8 +2275,22 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 );
             }
         }
+        if TYPEOF(lt) == SEXPTYPE::VECSXP && XLENGTH(lt) > 0 {
+            let sec = VECTOR_ELT(lt, 0);
+            if TYPEOF(sec) == SEXPTYPE::REALSXP {
+                let n = XLENGTH(sec).min(fracs.len() as i64);
+                for i in 0..n {
+                    let s = *REAL(sec).add(i as usize);
+                    let frac = fracs[i as usize];
+                    if s.is_finite() && frac != 0.0 {
+                        *REAL(sec).add(i as usize) = s + frac;
+                    }
+                }
+            }
+        }
 
         lt
+
 
     }
 }

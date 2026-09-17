@@ -63,10 +63,15 @@ pub unsafe fn do_lengths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 let elem = VECTOR_ELT(x, i as i64);
                 *dst.add(i as usize) = if elem.is_null() {
                     0
+                } else if crate::mainutils::essentials::sexp_has_class(elem, "POSIXlt")
+                    && TYPEOF(elem) == SEXPTYPE::VECSXP
+                {
+                    crate::mainutils::subassign::posixlt_obs_length(elem) as i32
                 } else {
                     XLENGTH(elem) as i32
                 };
             }
+
         } else {
             for i in 0..n {
                 *dst.add(i as usize) = 1;
