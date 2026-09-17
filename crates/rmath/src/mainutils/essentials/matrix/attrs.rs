@@ -438,10 +438,7 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let x = CAR(args);
         let value = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"class".as_ptr()), value);
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }

@@ -499,8 +499,16 @@ pub unsafe fn copy_bind_value(
             SEXPTYPE::REALSXP => {
                 let value = match SEXPTYPE(TYPEOF(src)) {
                     SEXPTYPE::REALSXP => REAL_ELT(src, src_i as c_int),
-                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
+                    SEXPTYPE::INTSXP => {
                         let value = INTEGER_ELT(src, src_i as c_int);
+                        if value == NA_INTEGER {
+                            NA_REAL
+                        } else {
+                            value as f64
+                        }
+                    }
+                    SEXPTYPE::LGLSXP => {
+                        let value = LOGICAL_ELT(src, src_i as c_int);
                         if value == NA_INTEGER {
                             NA_REAL
                         } else {
@@ -513,11 +521,13 @@ pub unsafe fn copy_bind_value(
             }
             SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
                 let value = match SEXPTYPE(TYPEOF(src)) {
-                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => INTEGER_ELT(src, src_i as c_int),
+                    SEXPTYPE::INTSXP => INTEGER_ELT(src, src_i as c_int),
+                    SEXPTYPE::LGLSXP => LOGICAL_ELT(src, src_i as c_int),
                     _ => NA_INTEGER,
                 };
                 *INTEGER(dst).add(dst_i as usize) = value;
             }
+
             _ => {}
         }
     }

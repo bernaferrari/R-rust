@@ -1100,6 +1100,36 @@ unsafe fn dispatch_is(
     }
 }
 
+/// GNU `copyDimAndNames`: dim+dimnames if array, else names.
+unsafe fn copy_dim_and_names(src: SEXP, dst: SEXP) {
+    unsafe {
+        let dims = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
+        if !dims.is_null() && dims != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dims);
+            let dimnames =
+                crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimNamesSymbol());
+            if !dimnames.is_null() && dimnames != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    dst,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    dimnames,
+                );
+            }
+        } else {
+            let names =
+                crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    dst,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+        }
+    }
+}
+
+
 /// R's `is.finite(x)` — check for finite values.
 pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -1135,7 +1165,10 @@ pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             };
             *dst.add(i as usize) = if is_fin { TRUE } else { FALSE };
         }
+        copy_dim_and_names(x, result);
         result
+
+
     }
 }
 
@@ -1168,7 +1201,10 @@ pub unsafe fn do_is_infinite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             };
             *dst.add(i as usize) = if is_infinite { TRUE } else { FALSE };
         }
+        copy_dim_and_names(x, result);
         result
+
+
     }
 }
 
@@ -1203,7 +1239,10 @@ pub unsafe fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
             *dst.add(i as usize) = if is_nan { TRUE } else { FALSE };
         }
+        copy_dim_and_names(x, result);
         result
+
+
     }
 }
 

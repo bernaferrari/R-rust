@@ -119,9 +119,12 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         if x.is_null() || which.is_null() {
             return;
         }
-        if which == R_ClassSymbol() {
-            crate::sexp::attrib_core::classgets_check(x, value);
-        }
+        let value = if which == R_ClassSymbol() {
+            crate::sexp::attrib_core::classgets_normalize(x, value)
+        } else {
+            value
+        };
+
 
 
         let attrib = ATTRIB(x);

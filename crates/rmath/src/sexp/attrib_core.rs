@@ -115,14 +115,11 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         if x.is_null() || which.is_null() {
             return;
         }
-        if which == R_ClassSymbol() {
-            classgets_check(x, value);
-        }
-
-
-        // setAttrib(x, R_DimSymbol, val) routes through dimgets(), whose
-        // first step stores the dims as integer (coerceVector(val, INTSXP)).
-        let value = if which == R_DimSymbol()
+        // GNU classgets: empty/NULL class strips; non-string errors.
+        // GNU dimgets: coerce dims to INTSXP first.
+        let value = if which == R_ClassSymbol() {
+            classgets_normalize(x, value)
+        } else if which == R_DimSymbol()
             && !value.is_null()
             && value != R_NilValue()
             && TYPEOF(value) != SEXPTYPE::INTSXP
@@ -131,6 +128,7 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         } else {
             value
         };
+
 
         let attrib = ATTRIB(x);
 
@@ -194,11 +192,11 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
     }
 }
 
-pub(crate) unsafe fn classgets_check(vec: SEXP, klass: SEXP) {
-
+/// GNU `classgets`: NULL or length-0 STRSXP unclasses; other non-strings error.
+pub(crate) unsafe fn classgets_normalize(vec: SEXP, klass: SEXP) -> SEXP {
     unsafe {
         if klass.is_null() || klass == R_NilValue() {
-            return;
+            return R_NilValue();
         }
         if TYPEOF(klass) != SEXPTYPE::STRSXP {
             std::panic::panic_any(crate::sexp::context::RError {
@@ -206,7 +204,7 @@ pub(crate) unsafe fn classgets_check(vec: SEXP, klass: SEXP) {
             });
         }
         if XLENGTH(klass) <= 0 {
-            return;
+            return R_NilValue();
         }
         if vec.is_null() || vec == R_NilValue() {
             std::panic::panic_any(crate::sexp::context::RError {
@@ -220,14 +218,16 @@ pub(crate) unsafe fn classgets_check(vec: SEXP, klass: SEXP) {
                 continue;
             }
             let cs = super::accessors::CHAR(elt);
-            if !cs.is_null() && std::ffi::CStr::from_ptr(cs).to_bytes() == b"factor" {
-                if TYPEOF(vec) != SEXPTYPE::INTSXP {
-                    std::panic::panic_any(crate::sexp::context::RError {
-                        message: "adding class \"factor\" to an invalid object".to_string(),
-                    });
-                }
+            if !cs.is_null()
+                && std::ffi::CStr::from_ptr(cs).to_bytes() == b"factor"
+                && TYPEOF(vec) != SEXPTYPE::INTSXP
+            {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "adding class \"factor\" to an invalid object".to_string(),
+                });
             }
         }
+        klass
     }
 }
 

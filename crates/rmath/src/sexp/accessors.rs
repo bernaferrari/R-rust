@@ -893,13 +893,14 @@ pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
 }
 
 /// Get the i-th integer value.
-/// GNU INTEGER() is the same buffer for INTSXP and LGLSXP.
+/// Requires exact INTSXP (LGLSXP must use LOGICAL_ELT).
 pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
         if !is_valid_sexp_ptr(x) || INTEGER(x).is_null() {
             return NA_INTEGER;
         }
-        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP]);
+        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP]);
+
 
         *INTEGER(x).add(i as usize)
     }
