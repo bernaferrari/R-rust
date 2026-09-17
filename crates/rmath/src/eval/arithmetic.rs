@@ -24,9 +24,10 @@ use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_lang2,
-    Rf_lang3, Rf_mkChar,
+    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons,
+    Rf_lang2, Rf_lang3, Rf_mkChar,
 };
+
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{
     FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE,
@@ -1326,9 +1327,34 @@ unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
         if let Some(result) = date_binary_comparison(op_name, a, b) {
             return result;
         }
+        let a = if crate::mainutils::essentials::sexp_has_class(a, "POSIXlt") {
+            let ct = crate::mainutils::essentials::do_as_POSIXct(
+                call,
+                R_NilValue(),
+                Rf_cons(a, R_NilValue()),
+                R_NilValue(),
+            );
+            let _ct = protect(ct);
+            ct
+        } else {
+            a
+        };
+        let b = if crate::mainutils::essentials::sexp_has_class(b, "POSIXlt") {
+            let ct = crate::mainutils::essentials::do_as_POSIXct(
+                call,
+                R_NilValue(),
+                Rf_cons(b, R_NilValue()),
+                R_NilValue(),
+            );
+            let _ct = protect(ct);
+            ct
+        } else {
+            b
+        };
         if let Some(result) = posixct_binary_comparison(op_name, a, b) {
             return result;
         }
+
         if let Some(result) = difftime_binary_comparison(op_name, a, b) {
             return result;
         }

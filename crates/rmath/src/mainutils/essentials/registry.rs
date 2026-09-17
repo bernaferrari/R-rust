@@ -346,6 +346,14 @@ pub(super) const ALL_FNS: &[&str] = &[
     "do.call",
     "set.seed",
     "RNGkind",
+    "RNGversion",
+    "q",
+    "quit",
+    "sQuote",
+    "dQuote",
+    "balancePOSIXlt",
+
+
     "runif",
     "rnorm",
     "rpois",
@@ -555,6 +563,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "withVisible",
     "invisible",
     "proc.time",
+    "system.time",
+
     "stop",
     "warning",
     "warnings",

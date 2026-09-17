@@ -12899,6 +12899,19 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// GNU `system.time(expr)` — evaluate `expr` and return a `proc_time` delta.
+pub unsafe fn do_system_time(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = CAR(args);
+        if !expr.is_null() && expr != R_NilValue() {
+            let _ = crate::eval::eval::Rf_eval(expr, rho);
+        }
+        do_proc_time(_call, _op, R_NilValue(), rho)
+    }
+}
+
+
+
 /// R regexpr(pattern, text) — port of grep.c:do_regexpr.
 ///
 /// With perl = TRUE and capture groups in the pattern, attaches the

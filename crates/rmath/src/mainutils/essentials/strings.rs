@@ -5216,3 +5216,49 @@ pub unsafe fn do_str_sub_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         result
     }
 }
+
+/// GNU `sQuote(x)` in the C locale — wrap each string in single quotes.
+pub unsafe fn do_sQuote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { quote_wrap(CAR(args), '\'', rho) }
+}
+
+/// GNU `dQuote(x)` in the C locale — wrap each string in double quotes.
+pub unsafe fn do_dQuote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { quote_wrap(CAR(args), '"', rho) }
+}
+
+unsafe fn quote_wrap(x: SEXP, q: char, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        } else if TYPEOF(x) != SEXPTYPE::STRSXP {
+            let coerced = crate::mainutils::essentials::do_as_character(
+                R_NilValue(),
+                R_NilValue(),
+                Rf_cons(x, R_NilValue()),
+                rho,
+            );
+            let _c = protect(coerced);
+            coerced
+        } else {
+            x
+        };
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let s = STRING_ELT(x, i);
+            if s.is_null() || s == crate::sexp::globals::R_NaString() {
+                SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
+            let body = elt_to_string(x, i);
+            let wrapped = format!("{q}{body}{q}");
+            let cs = CString::new(wrapped).unwrap_or_default();
+            SET_STRING_ELT(out, i, Rf_mkChar(cs.as_ptr()));
+        }
+        out
+    }
+}
+
+

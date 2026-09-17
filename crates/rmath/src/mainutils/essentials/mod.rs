@@ -88,9 +88,10 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // not be pre-evaluated, so empty subscript slots (`m[,1]`) reach
             // the subset handlers' keep-missing argument evaluation.
             let kind = match name {
-                "quote" | "substitute" | "[" | "[[" => SEXPTYPE::SPECIALSXP,
+                "quote" | "substitute" | "[" | "[[" | "system.time" => SEXPTYPE::SPECIALSXP,
                 _ => SEXPTYPE::BUILTINSXP,
             };
+
             let prim = crate::eval::primitive::make_primitive_binding(name, kind);
             let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
             let cell = Rf_cons(prim, chain);

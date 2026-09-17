@@ -793,6 +793,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: true,
     },
     UnevaluatedBuiltin {
+        name: "system.time",
+        handler: crate::mainutils::essentials::do_system_time,
+        restore_visibility_always: false,
+    },
+
+    UnevaluatedBuiltin {
         name: "call",
         handler: crate::mainutils::coerce::do_call,
         restore_visibility_always: true,
@@ -1751,6 +1757,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_strftime,
     },
     EvaluatedBuiltin {
+        name: "balancePOSIXlt",
+        handler: crate::mainutils::datetime::do_balancePOSIXlt,
+    },
+
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
@@ -1766,6 +1777,27 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "RNGkind",
         handler: crate::mainutils::random::do_RNGkind,
     },
+    EvaluatedBuiltin {
+        name: "RNGversion",
+        handler: crate::mainutils::random::do_RNGversion,
+    },
+    EvaluatedBuiltin {
+        name: "q",
+        handler: crate::mainutils::essentials::do_quit,
+    },
+    EvaluatedBuiltin {
+        name: "quit",
+        handler: crate::mainutils::essentials::do_quit,
+    },
+    EvaluatedBuiltin {
+        name: "sQuote",
+        handler: crate::mainutils::essentials::do_sQuote,
+    },
+    EvaluatedBuiltin {
+        name: "dQuote",
+        handler: crate::mainutils::essentials::do_dQuote,
+    },
+
     EvaluatedBuiltin {
         name: "runif",
         handler: crate::library::stats::random::do_runif_r,

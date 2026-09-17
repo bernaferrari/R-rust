@@ -604,11 +604,12 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
         } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP {
             let origin = arg_by_name_or_position(args, &["origin"], 1);
-            if origin.is_null() || origin == R_NilValue() {
-                base_error("'origin' must be supplied");
-            }
-            let origin_days = parse_iso_date_days(&elt_to_string(origin, 0))
-                .unwrap_or_else(|| base_error("'origin' must be a character string"));
+            let origin_days = if origin.is_null() || origin == R_NilValue() {
+                0.0
+            } else {
+                parse_iso_date_days(&elt_to_string(origin, 0))
+                    .unwrap_or_else(|| base_error("'origin' must be a character string"))
+            };
             for i in 0..n {
                 let days = if TYPEOF(x) == SEXPTYPE::REALSXP {
                     let v = *REAL(x).add(i as usize);
@@ -2419,3 +2420,13 @@ unsafe fn locale_string_from_libc(category: c_int) -> SEXP {
         }
     }
 }
+
+/// GNU `q(save="no")` / `quit` — end the script without tearing down the process.
+pub unsafe fn do_quit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        crate::sexp::globals::set_R_Visible(0);
+        R_NilValue()
+    }
+}
+
+

@@ -2131,6 +2131,60 @@ pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
     }
 }
 
+/// GNU `RNGversion(vstr)` — select RNGkind for a historical R version.
+pub unsafe fn do_RNGversion(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let v = CAR(args);
+        if v.is_null() || v == R_NilValue() || TYPEOF(v) != SEXPTYPE::STRSXP || XLENGTH(v) < 1 {
+            error("malformed version string");
+        }
+        let raw = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0)))
+            .to_string_lossy()
+            .into_owned();
+        let parts: Vec<i32> = raw
+            .split('.')
+            .filter_map(|p| p.parse::<i32>().ok())
+            .collect();
+        if parts.len() < 2 {
+            error("malformed version string");
+        }
+        let major = parts[0];
+        let minor = parts[1];
+        let (rng, norm, sample) = if major == 0 && minor < 99 {
+            (
+                RNGtype::WICHMANN_HILL,
+                N01type::BUGGY_KINDERMAN_RAMAGE,
+                Sampletype::ROUNDING,
+            )
+        } else if major == 0 || (major == 1 && minor <= 6) {
+            (
+                RNGtype::MARSAGLIA_MULTICARRY,
+                N01type::BUGGY_KINDERMAN_RAMAGE,
+                Sampletype::ROUNDING,
+            )
+        } else if major <= 2 || (major == 3 && minor <= 5) {
+            (
+                RNGtype::MERSENNE_TWISTER,
+                N01type::INVERSION,
+                Sampletype::ROUNDING,
+            )
+        } else {
+            (
+                RNGtype::MERSENNE_TWISTER,
+                N01type::INVERSION,
+                Sampletype::REJECTION,
+            )
+        };
+        r_RNGkind(rng);
+        r_Norm_kind(norm);
+        r_Samp_kind(sample);
+        crate::sexp::globals::set_R_Visible(0);
+        R_NilValue()
+    }
+}
+
+
+
 /// R's `set.seed(seed, kind = NULL, normal.kind = NULL, sample.kind = NULL,
 /// binom.kind = NULL)`.
 ///

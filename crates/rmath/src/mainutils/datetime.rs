@@ -39,7 +39,8 @@ type time_t = i64;
 
 use crate::mainutils::rstrptime::R_strptime;
 use crate::sexp::accessors::*;
-use crate::sexp::attrib_core::{R_NamesSymbol, R_classgets, getAttrib, setAttrib};
+use crate::sexp::attrib_core::{R_ClassSymbol, R_NamesSymbol, R_classgets, getAttrib, setAttrib};
+
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::*;
@@ -1468,12 +1469,12 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                     if mktime0(&mut tm2, !isUTC) != -1.0 {
                         tm.tm_wday = tm2.tm_wday;
                         tm.tm_yday = tm2.tm_yday;
-                        tm.tm_gmtoff = tm2.tm_gmtoff;
                         tm.tm_zone = tm2.tm_zone;
                         if !isUTC && tm.tm_hour == tm2.tm_hour && tm.tm_min == tm2.tm_min {
                             tm.tm_isdst = tm2.tm_isdst;
                         }
                     }
+
 
                 }
                 invalid = validate_tm(&mut tm) != 0;
@@ -2039,7 +2040,19 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
 
         for i in 0..n {
             let iu = i as usize;
-            let secs = *REAL(VECTOR_ELT(x, 0)).add(iu);
+            let idx = |comp: usize| -> usize {
+                let len = nlen[comp] as usize;
+                if len == 0 { 0 } else { iu % len }
+            };
+            let sec_col = VECTOR_ELT(x, 0);
+            let secs = if TYPEOF(sec_col) == SEXPTYPE::REALSXP && XLENGTH(sec_col) > 0 {
+                *REAL(sec_col).add(idx(0))
+            } else if TYPEOF(sec_col) == SEXPTYPE::INTSXP && XLENGTH(sec_col) > 0 {
+                let v = *INTEGER(sec_col).add(idx(0));
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
             let fsecs = secs.floor();
 
             let mut tm = stm::new();
@@ -2048,15 +2061,14 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             } else {
                 NA_INTEGER
             };
-            tm.tm_min = posixlt_int_elt(VECTOR_ELT(x, 1), iu);
-            tm.tm_hour = posixlt_int_elt(VECTOR_ELT(x, 2), iu);
-            tm.tm_mday = posixlt_int_elt(VECTOR_ELT(x, 3), iu);
-            tm.tm_mon = posixlt_int_elt(VECTOR_ELT(x, 4), iu);
-            tm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), iu);
-            tm.tm_wday = posixlt_int_elt(VECTOR_ELT(x, 6), iu);
-            tm.tm_yday = posixlt_int_elt(VECTOR_ELT(x, 7), iu);
-            tm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), iu);
-
+            tm.tm_min = posixlt_int_elt(VECTOR_ELT(x, 1), idx(1));
+            tm.tm_hour = posixlt_int_elt(VECTOR_ELT(x, 2), idx(2));
+            tm.tm_mday = posixlt_int_elt(VECTOR_ELT(x, 3), idx(3));
+            tm.tm_mon = posixlt_int_elt(VECTOR_ELT(x, 4), idx(4));
+            tm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), idx(5));
+            tm.tm_wday = posixlt_int_elt(VECTOR_ELT(x, 6), idx(6));
+            tm.tm_yday = posixlt_int_elt(VECTOR_ELT(x, 7), idx(7));
+            tm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), idx(8));
 
             let valid = R_FINITE(secs)
                 && tm.tm_min != NA_INTEGER
@@ -2077,8 +2089,10 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
                 valid,
                 if valid {
                     secs - fsecs
+                } else if R_FINITE(secs) {
+                    NA_REAL
                 } else {
-                    if R_FINITE(secs) { NA_REAL } else { secs }
+                    secs
                 },
             );
 
@@ -2099,6 +2113,15 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             }
         }
 
+        setAttrib(ans, R_NamesSymbol(), ansnames);
+        let klass = getAttrib(x, R_ClassSymbol());
+        if !klass.is_null() && klass != R_NilValue() {
+            setAttrib(ans, R_ClassSymbol(), klass);
+        }
+        let tzone = getAttrib(x, Rf_install(c"tzone".as_ptr()));
+        if !tzone.is_null() && tzone != R_NilValue() {
+            setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);
+        }
         ans
     }
 }
