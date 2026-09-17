@@ -1410,28 +1410,27 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 
 
             if !R_FINITE(secs) {
-                // NA, NaN, Inf, -Inf
-                let s = if R_IsNA(secs) {
-                    // NA_STRING equivalent: use empty string
-                    ""
-                } else if ISNAN(secs) {
-                    "NaN"
-                } else if secs > 0.0 {
-                    "Inf"
+                // NA, NaN, Inf, -Inf — GNU datetime.c uses NA_STRING for NA.
+                if R_IsNA(secs) {
+                    SET_STRING_ELT(ans, i as R_xlen_t, R_NaString());
                 } else {
-                    "-Inf"
-                };
-                let cstr = CString::new(s).unwrap_or_default();
-                SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                    let s = if ISNAN(secs) {
+                        "NaN"
+                    } else if secs > 0.0 {
+                        "Inf"
+                    } else {
+                        "-Inf"
+                    };
+                    let cstr = CString::new(s).unwrap_or_default();
+                    SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                }
             } else if ctm.tm_min == NA_INTEGER
                 || ctm.tm_hour == NA_INTEGER
                 || ctm.tm_mday == NA_INTEGER
                 || ctm.tm_mon == NA_INTEGER
                 || ctm.tm_year == NA_INTEGER
             {
-                // NA_STRING
-                let cstr = c"";
-                SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                SET_STRING_ELT(ans, i as R_xlen_t, R_NaString());
             } else {
                 let mut tm_check = stm::new();
                 tm_check.tm_sec = ctm.tm_sec;
@@ -1443,8 +1442,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                 tm_check.tm_isdst = ctm.tm_isdst;
 
                 if validate_tm(&mut tm_check) < 0 || likely_strftime_overflow(&tm_check) {
-                    let cstr = c"";
-                    SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                    SET_STRING_ELT(ans, i as R_xlen_t, R_NaString());
                 } else {
                     // Copy validated values back
                     ctm.tm_sec = tm_check.tm_sec;
@@ -1504,6 +1502,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                     }
                 }
             }
+
         }
 
         ans

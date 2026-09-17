@@ -348,13 +348,12 @@ pub(crate) fn pipe_commands_disabled_by_runtime_policy() -> bool {
 /// GNU `stopifnot(exprs = { ... })` evaluates each brace statement.
 pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let fail = |value: SEXP, all: bool| {
+        let fail = |value: SEXP| {
             if value.is_null() || TYPEOF(value) != SEXPTYPE::LGLSXP {
                 return;
             }
             let n = LENGTH(value);
-            let limit = if all { n } else { n.min(1) };
-            for i in 0..limit {
+            for i in 0..n {
                 if *LOGICAL(value).add(i as usize) == 0 {
                     crate::mainutils::errors::errorcall_str(
                         crate::sexp::globals::R_NilValue(),
@@ -363,6 +362,7 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 }
             }
         };
+
 
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -377,7 +377,8 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             {
                 let mut stmt = CDR(expr);
                 while !stmt.is_null() && stmt != R_NilValue() {
-                    fail(crate::eval::eval::Rf_eval(CAR(stmt), rho), true);
+                    fail(crate::eval::eval::Rf_eval(CAR(stmt), rho));
+
 
                     stmt = CDR(stmt);
                 }
@@ -391,7 +392,8 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             {
                 // GNU formals, not conditions.
             } else {
-                fail(crate::eval::eval::Rf_eval(expr, rho), false);
+                fail(crate::eval::eval::Rf_eval(expr, rho));
+
 
             }
             current = CDR(current);

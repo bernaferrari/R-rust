@@ -107,6 +107,12 @@ pub fn mycpow(x: Complex<f64>, y: Complex<f64>) -> Complex<f64> {
     }
 }
 
+/// `mycpow` on R SEXPREC complexes.
+pub fn mycpow_rcomplex(x: Rcomplex, y: Rcomplex) -> Rcomplex {
+    from_complex(mycpow(to_complex(&x), to_complex(&y)))
+}
+
+
 // ---------------------------------------------------------------------------
 // Complex math fallback implementations
 // ---------------------------------------------------------------------------

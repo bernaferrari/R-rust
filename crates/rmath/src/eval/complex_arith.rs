@@ -174,31 +174,15 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     }
 }
 
-/// Complex power: z^w = exp(w * log(z))
+/// Complex power via GNU `mycpow` (integer exponents stay exact).
 fn complex_pow(z: Rcomplex, w: Rcomplex) -> Rcomplex {
-    let rho = complex_abs(z);
-    if rho == 0.0 {
-        if w.r == 0.0 && w.i == 0.0 {
-            return Rcomplex { r: 1.0, i: 0.0 }; // 0^0 = 1
-        }
-        if w.r > 0.0 {
-            return Rcomplex { r: 0.0, i: 0.0 }; // 0^positive = 0
-        }
-        return NA_COMPLEX; // 0^negative = NA
+    if is_na_complex(z) || is_na_complex(w) {
+        return NA_COMPLEX;
     }
-    let theta = z.i.atan2(z.r);
-    let log_rho = rho.ln();
-    // log(z) = ln|z| + i*arg(z)
-    // w * log(z) = (a+ib)(ln|z| + i*theta) = (a*ln|z| - b*theta) + i(b*ln|z| + a*theta)
-    let re = w.r * log_rho - w.i * theta;
-    let im = w.i * log_rho + w.r * theta;
-    // exp(re + i*im) = exp(re) * (cos(im) + i*sin(im))
-    let abs = re.exp();
-    Rcomplex {
-        r: abs * im.cos(),
-        i: abs * im.sin(),
-    }
+    crate::mainutils::complex_cmath::mycpow_rcomplex(z, w)
 }
+
+
 
 /// Complex absolute value |z| = sqrt(r^2 + i^2)
 #[inline]
