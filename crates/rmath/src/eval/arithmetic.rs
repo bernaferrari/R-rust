@@ -598,6 +598,86 @@ fn parse_posixct_comparison_seconds(text: &str) -> Option<f64> {
     crate::mainutils::essentials::parse_iso_datetime_seconds(text)
 }
 
+unsafe fn is_numeric_version(x: SEXP) -> bool {
+    unsafe {
+        crate::mainutils::essentials::sexp_has_class(x, "numeric_version")
+            || crate::mainutils::essentials::sexp_has_class(x, "package_version")
+            || crate::mainutils::essentials::sexp_has_class(x, "R_system_version")
+    }
+}
+
+
+unsafe fn version_components(x: SEXP) -> Option<Vec<i32>> {
+    unsafe {
+        if is_numeric_version(x) && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 1 {
+            let elt = VECTOR_ELT(x, 0);
+            if TYPEOF(elt) == SEXPTYPE::INTSXP {
+                let n = XLENGTH(elt);
+                let mut out = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    out.push(INTEGER_ELT(elt, i as std::os::raw::c_int));
+
+                }
+                return Some(out);
+            }
+        }
+
+        if TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 {
+            let ch = STRING_ELT(x, 0);
+            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                return None;
+            }
+            let text = std::ffi::CStr::from_ptr(CHAR(ch))
+                .to_string_lossy();
+            let mut out = Vec::new();
+            for part in text.split(['.', '-']) {
+                if part.is_empty() {
+                    continue;
+                }
+                out.push(part.parse::<i32>().ok()?);
+            }
+            return Some(out);
+        }
+        None
+    }
+}
+
+unsafe fn numeric_version_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    unsafe {
+        if !is_numeric_version(a) && !is_numeric_version(b) {
+            return None;
+        }
+        let Some(av) = version_components(a) else {
+            return None;
+        };
+        let Some(bv) = version_components(b) else {
+            return None;
+        };
+        let n = av.len().max(bv.len());
+        let mut ord = 0i32;
+        for i in 0..n {
+            let x = av.get(i).copied().unwrap_or(0);
+            let y = bv.get(i).copied().unwrap_or(0);
+            if x != y {
+                ord = if x < y { -1 } else { 1 };
+                break;
+            }
+
+        }
+        let yes = match op {
+            "<" => ord < 0,
+            ">" => ord > 0,
+            "<=" => ord <= 0,
+            ">=" => ord >= 0,
+            "==" => ord == 0,
+            "!=" => ord != 0,
+            _ => return None,
+        };
+        Some(Rf_ScalarLogical(if yes { TRUE } else { FALSE }))
+    }
+}
+
+
 unsafe fn date_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
     unsafe {
         let a_is_date = crate::mainutils::essentials::sexp_has_class(a, "Date");
@@ -1345,9 +1425,13 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// numeric behavior instead of growing a second, subtly different comparator.
 unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
     unsafe {
+        if let Some(result) = numeric_version_comparison(op_name, a, b) {
+            return result;
+        }
         if let Some(result) = date_binary_comparison(op_name, a, b) {
             return result;
         }
+
         let a = posixlt_as_posixct_operand(call, a);
         let b = posixlt_as_posixct_operand(call, b);
         if let Some(result) = posixct_binary_comparison(op_name, a, b) {

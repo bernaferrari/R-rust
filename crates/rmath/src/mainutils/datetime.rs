@@ -66,18 +66,14 @@ pub(crate) unsafe fn posixlt_int_elt(col: SEXP, i: usize) -> c_int {
         if col.is_null() || col == R_NilValue() {
             return NA_INTEGER;
         }
+        let n = XLENGTH(col);
+        if n <= 0 {
+            return NA_INTEGER;
+        }
+        let i = i % n as usize;
         match TYPEOF(col) {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                if i >= XLENGTH(col) as usize {
-                    NA_INTEGER
-                } else {
-                    *INTEGER(col).add(i)
-                }
-            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => *INTEGER(col).add(i),
             t if t == SEXPTYPE::REALSXP => {
-                if i >= XLENGTH(col) as usize {
-                    return NA_INTEGER;
-                }
                 let v = *REAL(col).add(i);
                 if !R_FINITE(v) || R_IsNA(v) {
                     NA_INTEGER
@@ -1043,7 +1039,11 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         for i in 0..n {
             let iu = i as usize;
-            let secs = *REAL(VECTOR_ELT(x, 0)).add(iu);
+            let secs = if nlen[0] <= 0 {
+                NA_REAL
+            } else {
+                *REAL(VECTOR_ELT(x, 0)).add(iu % nlen[0] as usize)
+            };
             let fsecs = secs.floor();
 
             let mut tm = stm::new();
@@ -1057,7 +1057,11 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             tm.tm_mday = posixlt_int_elt(VECTOR_ELT(x, 3), iu);
             tm.tm_mon = posixlt_int_elt(VECTOR_ELT(x, 4), iu);
             tm.tm_year = posixlt_int_elt(VECTOR_ELT(x, 5), iu);
-            tm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), iu);
+            tm.tm_isdst = if is_utc {
+                0
+            } else {
+                posixlt_int_elt(VECTOR_ELT(x, 8), iu)
+            };
 
             if !R_FINITE(secs) {
                 *REAL(ans).add(iu) = secs;
@@ -1070,9 +1074,16 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 *REAL(ans).add(iu) = NA_REAL;
             } else {
                 let tmp = mktime0(&mut tm, !is_utc);
-                // GNU: mktime -1 is either error or 1969-12-31 23:59:59.
-                // A real error is not at tm_sec==59 (datetime.c do_asPOSIXct).
-                let failed = tmp == -1.0 && tm.tm_sec != 59;
+                // GNU datetime.c:1240-1259 (no errno): -1 is NA unless
+                // this is the epoch-minus-one gotcha (sec==59) or the
+                // sec=58 probe returns -2.
+                let failed = tmp == -1.0
+                    && tm.tm_sec != 59
+                    && {
+                        let mut probe = tm;
+                        probe.tm_sec = 58;
+                        mktime0(&mut probe, !is_utc) != -2.0
+                    };
                 *REAL(ans).add(iu) = if failed {
                     NA_REAL
                 } else {
@@ -2229,11 +2240,16 @@ pub unsafe fn do_as_character_POSIXt(
         } else {
             0
         };
+        let _scipen = ScipenGuard {
+            old: old_scipen,
+            active: cur <= digits,
+        };
         if cur <= digits {
             let nv = Rf_ScalarInteger(want);
             let _nv = protect(nv);
             crate::mainutils::options::SetOptionByName("scipen", nv);
         }
+
         let sec = VECTOR_ELT(lt, 0);
 
         for i in 0..n {
@@ -2304,13 +2320,26 @@ pub unsafe fn do_as_character_POSIXt(
                 }
             }
         }
-        if cur <= digits {
-            crate::mainutils::options::SetOptionByName("scipen", old_scipen);
-        }
         out
 
     }
 }
+
+struct ScipenGuard {
+    old: SEXP,
+    active: bool,
+}
+
+impl Drop for ScipenGuard {
+    fn drop(&mut self) {
+        if self.active {
+            unsafe {
+                crate::mainutils::options::SetOptionByName("scipen", self.old);
+            }
+        }
+    }
+}
+
 
 fn r_round_digits(x: f64, digits: i32) -> f64 {
     if !x.is_finite() {
@@ -2502,7 +2531,12 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         for i in 0..n {
             let iu = i as usize;
-            let secs = *REAL(VECTOR_ELT(x, 0)).add(iu);
+            let secs = if nlen[0] <= 0 {
+                NA_REAL
+            } else {
+                *REAL(VECTOR_ELT(x, 0)).add(iu % nlen[0] as usize)
+            };
+
             let fsecs = secs.floor();
 
             let mut tm = stm::new();
