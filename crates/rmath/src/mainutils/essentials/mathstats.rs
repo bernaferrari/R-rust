@@ -5640,14 +5640,44 @@ unsafe fn lm_named_call(call: SEXP) -> SEXP {
 pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let first = CAR(args);
+        let eval_rho = {
+            let mut data = R_NilValue();
+            let mut p = CDR(args);
+            while !p.is_null() && p != R_NilValue() {
+                let tag = TAG(p);
+                let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP
+                {
+                    std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                        .to_string_lossy()
+                        .into_owned()
+                } else {
+                    String::new()
+                };
+                if name == "data" || (name.is_empty() && data == R_NilValue()) {
+                    data = CAR(p);
+                    if name == "data" {
+                        break;
+                    }
+                }
+                p = CDR(p);
+            }
+            if !data.is_null() && data != R_NilValue() {
+                crate::mainutils::essentials::data_environment(data, rho)
+            } else {
+                rho
+            }
+
+        };
+        let _eval_rho = protect(eval_rho);
         let mut y = first;
         let mut preds: Vec<(String, SEXP)> = Vec::new();
         if !first.is_null() && first != R_NilValue() && TYPEOF(first) == SEXPTYPE::LANGSXP {
             let lhs = CADR(first);
             let rhs = CAR(CDR(CDR(first)));
             if !lhs.is_null() && lhs != R_NilValue() {
-                y = crate::eval::eval::Rf_eval(lhs, rho);
+                y = crate::eval::eval::Rf_eval(lhs, eval_rho);
             }
+
             fn collect_plus(expr: SEXP, out: &mut Vec<SEXP>) {
                 unsafe {
                     if expr.is_null() || expr == R_NilValue() {
@@ -5681,7 +5711,8 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 } else {
                     "x".to_string()
                 };
-                let val = crate::eval::eval::Rf_eval(term, rho);
+                let val = crate::eval::eval::Rf_eval(term, eval_rho);
+
                 preds.push((name, val));
             }
         } else {

@@ -165,15 +165,17 @@ unsafe fn as_bool_arg(sexp: SEXP, rho: SEXP) -> bool {
 
 pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        // GNU formals are `(expr, ...)`. A tagged first argument is a
-        // handler, not `expr` — `withCallingHandlers(foo = h, expr)`.
+        // GNU formals `(expr, ...)`. `expr=` binds by name; other tags are handlers.
+        let expr_sym = Rf_install(c"expr".as_ptr());
         let mut expr = crate::sexp::globals::R_MissingArg();
         let mut handler_args = R_NilValue();
         let mut p = args;
         let mut handler_cells = Vec::new();
         while !p.is_null() && p != R_NilValue() {
             let tag = TAG(p);
-            if tag.is_null() || tag == R_NilValue() {
+            if !tag.is_null() && tag != R_NilValue() && tag == expr_sym {
+                expr = CAR(p);
+            } else if tag.is_null() || tag == R_NilValue() {
                 if expr == crate::sexp::globals::R_MissingArg() {
                     expr = CAR(p);
                 }
@@ -189,8 +191,13 @@ pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SE
         }
         let _ha = protect(handler_args);
         if expr.is_null() || expr == R_NilValue() || expr == crate::sexp::globals::R_MissingArg() {
-            return R_NilValue();
+            crate::mainutils::errors::errorcall_str(
+                _call,
+                "argument \"expr\" is missing, with no default",
+            );
+
         }
+
 
         let old_stack = condition_handler_stack();
         let new_stack = calling_handler_stack_from_args(handler_args, rho, old_stack);
@@ -313,10 +320,12 @@ pub unsafe fn do_globalCallingHandlers(
         let single = rest.is_null() || rest == R_NilValue();
 
         if single && (first.is_null() || first == R_NilValue()) {
+            refuse_if_local_handlers();
             let old = global_handlers_list();
             let _old = protect(old);
             set_global_handlers_list(empty_named_list());
             install_global_handler_stack(rho);
+
             crate::sexp::globals::set_R_Visible(FALSE);
             return old;
         }
@@ -331,6 +340,7 @@ pub unsafe fn do_globalCallingHandlers(
         };
         let _incoming = protect(incoming);
         validate_named_handlers(incoming);
+        refuse_if_local_handlers();
 
         let combined = prepend_handlers(incoming, global_handlers_list());
         let _combined = protect(combined);
@@ -338,6 +348,7 @@ pub unsafe fn do_globalCallingHandlers(
         let _dedup = protect(combined);
         set_global_handlers_list(combined);
         install_global_handler_stack(rho);
+
         crate::sexp::globals::set_R_Visible(FALSE);
         R_NilValue()
     }
@@ -466,25 +477,41 @@ unsafe fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
         if n <= 1 {
             return list;
         }
-        let names = crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+        let names =
+            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
         let mut keep = vec![true; n as usize];
         for i in 0..n {
             if !keep[i as usize] {
                 continue;
             }
-            let class_i = STRING_ELT(names, i);
+            let mut dropped = false;
             for j in (i + 1)..n {
                 if !keep[j as usize] {
                     continue;
                 }
-                if STRING_ELT(names, j) != class_i
-                    && !chars_equal(STRING_ELT(names, i), STRING_ELT(names, j))
-                {
+                if !chars_equal(STRING_ELT(names, i), STRING_ELT(names, j)) {
                     continue;
                 }
                 if handlers_structurally_equal(VECTOR_ELT(list, i), VECTOR_ELT(list, j)) {
                     keep[j as usize] = false;
+                    dropped = true;
                 }
+            }
+            if dropped {
+                let class_name = elt_to_string(names, i);
+                let msg = crate::sexp::constructors::Rf_mkString(
+                    std::ffi::CString::new(format!(
+                        "pushing duplicate `{class_name}` handler on top of the stack"
+                    ))
+                    .unwrap_or_default()
+                    .as_ptr(),
+                );
+                crate::mainutils::essentials::do_message(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    crate::sexp::constructors::Rf_cons(msg, R_NilValue()),
+                    R_NilValue(),
+                );
             }
         }
         let kept = keep.iter().filter(|k| **k).count() as i64;
@@ -503,7 +530,11 @@ unsafe fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
                 k += 1;
             }
         }
-        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), out_names);
+        crate::sexp::attrib_core::setAttrib(
+            out,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            out_names,
+        );
         out
     }
 }
@@ -522,6 +553,21 @@ unsafe fn chars_equal(a: SEXP, b: SEXP) -> bool {
     }
 }
 
+unsafe fn refuse_if_local_handlers() {
+    unsafe {
+        let gh = global_handlers_list();
+        let n = if gh.is_null() || gh == R_NilValue() {
+            0
+        } else {
+            XLENGTH(gh)
+        };
+        if pairlist_len(condition_handler_stack()) > n {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "should not be called with handlers on the stack".to_string(),
+            });
+        }
+    }
+}
 
 unsafe fn install_global_handler_stack(rho: SEXP) {
     unsafe {
@@ -536,6 +582,7 @@ unsafe fn install_global_handler_stack(rho: SEXP) {
         } else {
             crate::sexp::attrib_core::getAttrib(gh, crate::sexp::attrib_core::R_NamesSymbol())
         };
+
         let mut stack = R_NilValue();
         if n > 0 {
             for i in (0..n).rev() {
@@ -550,6 +597,19 @@ unsafe fn install_global_handler_stack(rho: SEXP) {
         set_condition_handler_stack(stack);
     }
 }
+
+unsafe fn pairlist_len(mut p: SEXP) -> i64 {
+    unsafe {
+        let mut n = 0i64;
+        while !p.is_null() && p != R_NilValue() {
+            n += 1;
+            p = CDR(p);
+        }
+        n
+    }
+}
+
+
 
 
 

@@ -5119,6 +5119,29 @@ pub unsafe fn do_expand_model_frame(
         if names.is_empty() {
             return R_NilValue();
         }
+        let mut data = R_NilValue();
+        let mut p = CDDR(mcall);
+        while !p.is_null() && p != R_NilValue() {
+            let tag = TAG(p);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy();
+                if name == "data" {
+                    data = CAR(p);
+                    break;
+                }
+            }
+            p = CDR(p);
+        }
+        if TYPEOF(data) == SEXPTYPE::SYMSXP {
+            data = crate::eval::eval::Rf_eval(data, rho);
+        }
+        let eval_rho = if !data.is_null() && data != R_NilValue() {
+            crate::mainutils::essentials::data_environment(data, rho)
+        } else {
+            rho
+        };
+        let _er = protect(eval_rho);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as i64);
         let _r = protect(result);
         let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
@@ -5126,10 +5149,11 @@ pub unsafe fn do_expand_model_frame(
         for (i, name) in names.iter().enumerate() {
             let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
             let sym = crate::sexp::symbol::Rf_install(c.as_ptr());
-            let col = crate::eval::eval::Rf_eval(sym, rho);
+            let col = crate::eval::eval::Rf_eval(sym, eval_rho);
             SET_VECTOR_ELT(result, i as i64, col);
             SET_STRING_ELT(out_names, i as i64, Rf_mkChar(c.as_ptr()));
         }
+
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_NamesSymbol(),

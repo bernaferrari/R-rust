@@ -60,7 +60,8 @@ pub unsafe fn do_with(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
+pub(crate) unsafe fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
+
     unsafe {
         if TYPEOF(data) == SEXPTYPE::ENVSXP {
             return data;
