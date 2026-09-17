@@ -3103,9 +3103,19 @@ pub(crate) fn parse_iso_date_days(text: &str) -> Option<f64> {
 }
 
 pub(crate) fn date_days_to_iso(days: f64) -> Option<String> {
+    if days.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+        return Some("NA".to_string());
+    }
+    if days.is_nan() {
+        return Some("NaN".to_string());
+    }
+    if days.is_infinite() {
+        return Some(if days > 0.0 { "Inf" } else { "-Inf" }.to_string());
+    }
     let (year, month, day) = date_days_to_civil(days)?;
     Some(format!("{year:04}-{month:02}-{day:02}"))
 }
+
 
 pub(crate) fn date_days_to_civil(days: f64) -> Option<(i64, i64, i64)> {
     if days.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !days.is_finite() {

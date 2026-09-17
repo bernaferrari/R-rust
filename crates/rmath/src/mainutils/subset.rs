@@ -1532,6 +1532,51 @@ unsafe fn R_DispatchOrEvalSP(
 // ---------------------------------------------------------------------------
 
 /// The `[` subset operator -- the most general form of subsetting.
+unsafe fn posixlt_extract_component(x: SEXP, j: SEXP) -> SEXP {
+    unsafe {
+        let ncomp = XLENGTH(x);
+        if TYPEOF(j) == SEXPTYPE::STRSXP && XLENGTH(j) > 0 {
+            let ch = STRING_ELT(j, 0);
+            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                errorcall(std::ptr::null_mut(), "invalid POSIXlt component");
+            }
+            let name = std::ffi::CStr::from_ptr(CHAR(ch))
+                .to_string_lossy();
+            let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            if !isNull(names) && TYPEOF(names) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(names).min(ncomp) {
+                    let ni = STRING_ELT(names, i);
+                    if ni.is_null() {
+                        continue;
+                    }
+                    let nm = std::ffi::CStr::from_ptr(CHAR(ni)).to_string_lossy();
+                    if nm == name {
+                        return VECTOR_ELT(x, i);
+                    }
+                }
+            }
+            for (i, nm) in crate::mainutils::datetime::ltnames.iter().enumerate() {
+                if *nm == name && (i as R_xlen_t) < ncomp {
+                    return VECTOR_ELT(x, i as R_xlen_t);
+                }
+            }
+            errorcall(std::ptr::null_mut(), "invalid POSIXlt component");
+        }
+        let idx = if TYPEOF(j) == SEXPTYPE::INTSXP && XLENGTH(j) > 0 {
+            *INTEGER(j) as R_xlen_t
+        } else if TYPEOF(j) == SEXPTYPE::REALSXP && XLENGTH(j) > 0 {
+            *REAL(j) as R_xlen_t
+        } else {
+            0
+        };
+        if idx < 1 || idx > ncomp {
+            errorcall(std::ptr::null_mut(), "invalid POSIXlt component");
+        }
+        VECTOR_ELT(x, idx - 1)
+    }
+}
+
+
 unsafe fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let ncomp = XLENGTH(x);
@@ -1565,6 +1610,60 @@ unsafe fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP)
         ans
     }
 }
+
+unsafe fn subset_posixlt_obs(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        let mut idx = i;
+        if TYPEOF(i) == SEXPTYPE::STRSXP && XLENGTH(i) > 0 {
+            let year = if XLENGTH(x) > 5 {
+                VECTOR_ELT(x, 5)
+            } else {
+                R_NilValue()
+            };
+            let names = if !year.is_null() && year != R_NilValue() {
+                getAttrib(year, crate::sexp::attrib_core::R_NamesSymbol())
+            } else {
+                R_NilValue()
+            };
+            let ch = STRING_ELT(i, 0);
+            let needle = if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(ch))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let mut found = 0i32;
+            if !isNull(names) && TYPEOF(names) == SEXPTYPE::STRSXP && !needle.is_empty() {
+                for k in 0..XLENGTH(names) {
+                    let nk = STRING_ELT(names, k);
+                    if nk.is_null() || nk == crate::sexp::globals::R_NaString() {
+                        continue;
+                    }
+                    let nm = std::ffi::CStr::from_ptr(CHAR(nk)).to_string_lossy();
+                    if nm == needle {
+                        found = (k + 1) as i32;
+                        break;
+                    }
+                }
+            }
+            if found == 0 {
+                errorcall(
+                    call,
+                    &format!(
+                        "No element named \"{needle}\" found in x, did you mean x[, \"{needle}\"] instead?"
+                    ),
+                );
+            }
+
+            idx = Rf_ScalarInteger(found);
+        }
+        let _i = protect(idx);
+        subset_posixlt_time(x, idx, call, op, env)
+    }
+}
+
+
 
 
 pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
@@ -1613,14 +1712,28 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         {
             let idx = CADR(ans);
             let rest = CDDR(ans);
-            let only_time_index = !idx.is_null()
-                && idx != R_NilValue()
+            let j = if !rest.is_null()
+                && rest != R_NilValue()
+                && TAG(rest) != sym_Drop()
+            {
+                CAR(rest)
+            } else {
+                R_NilValue()
+            };
+            let i_missing = idx.is_null() || idx == R_NilValue() || idx == R_MissingArg();
+            let j_missing = j.is_null() || j == R_NilValue() || j == R_MissingArg();
+            if i_missing && !j_missing {
+                return posixlt_extract_component(orig, j);
+            }
+            let only_time_index = !i_missing
                 && (rest.is_null()
                     || rest == R_NilValue()
-                    || TAG(rest) == sym_Drop());
+                    || TAG(rest) == sym_Drop()
+                    || j_missing);
             if only_time_index {
                 return subset_posixlt_time(orig, idx, call, op, env);
             }
+
         }
 
 
@@ -2051,8 +2164,14 @@ pub unsafe fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return ans;
         }
 
-        /* Method dispatch has failed. We now run the generic internal code. */
+        let orig = CAR(ans);
+        if crate::mainutils::essentials::sexp_has_class(orig, "POSIXlt")
+            && TYPEOF(orig) == SEXPTYPE::VECSXP
+        {
+            return subset_posixlt_obs(orig, CADR(ans), call, op, rho);
+        }
         do_subset2_dflt(call, op, ans, rho)
+
     }
 }
 

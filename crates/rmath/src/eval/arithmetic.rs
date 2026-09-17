@@ -17,9 +17,10 @@ use std::ffi::{CStr, CString};
 
 use crate::sexp::accessors::{
     CAR, CDR, CHAR, COMPLEX_ELT, INTEGER_ELT, LENGTH, LOGICAL_ELT, PRINTNAME, RAW_ELT, REAL_ELT,
-    SET_COMPLEX_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_RAW_ELT, SET_REAL_ELT, SET_STRING_ELT,
-    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    SETCDR, SETTAG, SET_COMPLEX_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_RAW_ELT, SET_REAL_ELT,
+    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
+
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
 };
@@ -429,11 +430,13 @@ unsafe fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
 unsafe fn first_summary_data_arg(args: SEXP) -> SEXP {
     unsafe {
         let na_rm_sym = Rf_install(c"na.rm".as_ptr());
+        let finite_sym = Rf_install(c"finite".as_ptr());
         let mut p = args;
         while !p.is_null() && p != R_NilValue() {
-            if TAG(p) != na_rm_sym {
+            if TAG(p) != na_rm_sym && TAG(p) != finite_sym {
                 return CAR(p);
             }
+
             p = CDR(p);
         }
         R_NilValue()
@@ -455,6 +458,46 @@ unsafe fn restore_datetime_summary_class(source: SEXP, result: SEXP) {
         }
     }
 }
+
+unsafe fn coerce_summary_posixlt_args(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let mut out = R_NilValue();
+        let mut tail: SEXP = std::ptr::null_mut();
+        let mut p = args;
+        while !p.is_null() && p != R_NilValue() {
+            let mut val = CAR(p);
+            if crate::mainutils::essentials::sexp_has_class(val, "POSIXlt")
+                && TYPEOF(val) == SEXPTYPE::VECSXP
+            {
+                val = crate::mainutils::essentials::do_as_POSIXct(
+                    call,
+                    op,
+                    Rf_cons(val, R_NilValue()),
+                    rho,
+                );
+            }
+            let cell = Rf_cons(val, R_NilValue());
+            let _c = protect(cell);
+            if !TAG(p).is_null() && TAG(p) != R_NilValue() {
+                SETTAG(cell, TAG(p));
+            }
+            if out == R_NilValue() {
+                out = cell;
+            } else {
+                SETCDR(tail, cell);
+            }
+            tail = cell;
+            p = CDR(p);
+        }
+        out
+    }
+}
+
 
 
 
@@ -2209,23 +2252,44 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return result;
         }
         let na_rm = parse_summary_na_rm(args);
+        let finite = parse_summary_finite(args);
+        let first = first_summary_data_arg(args);
+        let first_is_lt = crate::mainutils::essentials::sexp_has_class(first, "POSIXlt")
+            && TYPEOF(first) == SEXPTYPE::VECSXP;
+        let args = if first_is_lt {
+            coerce_summary_posixlt_args(call, op, args, rho)
+        } else {
+            args
+        };
+        let _args = protect(args);
         let shape = scan_summary_shape(args, summary_op);
         let first = first_summary_data_arg(args);
 
         let result = match summary_op {
             SummaryOp::Sum => eval_sum(args, shape, na_rm),
             SummaryOp::Prod => eval_prod(args, shape, na_rm),
-            SummaryOp::Min => eval_minmax(args, shape, na_rm, SummaryOp::Min),
-            SummaryOp::Max => eval_minmax(args, shape, na_rm, SummaryOp::Max),
-            SummaryOp::Range => eval_range(args, shape, na_rm),
+            SummaryOp::Min => eval_minmax(args, shape, na_rm, finite, SummaryOp::Min),
+            SummaryOp::Max => eval_minmax(args, shape, na_rm, finite, SummaryOp::Max),
+            SummaryOp::Range => eval_range(args, shape, na_rm, finite),
         };
+        let _r = protect(result);
+
         if matches!(
             summary_op,
             SummaryOp::Min | SummaryOp::Max | SummaryOp::Range
         ) {
             restore_datetime_summary_class(first, result);
+            if first_is_lt {
+                return crate::mainutils::datetime::do_as_POSIXlt(
+                    call,
+                    op,
+                    Rf_cons(result, R_NilValue()),
+                    rho,
+                );
+            }
         }
         result
+
 
     }
 }
@@ -2311,6 +2375,28 @@ unsafe fn parse_summary_na_rm(args: SEXP) -> bool {
     }
 }
 
+unsafe fn parse_summary_finite(args: SEXP) -> bool {
+    unsafe {
+        let mut finite = false;
+        let mut seen = false;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name_is(TAG(current), "finite") {
+                if seen {
+                    summary_error(
+                        "formal argument \"finite\" matched by multiple actual arguments",
+                    );
+                }
+                seen = true;
+                finite = summary_logical_arg(CAR(current));
+            }
+            current = CDR(current);
+        }
+        finite
+    }
+}
+
+
 unsafe fn summary_logical_arg(x: SEXP) -> bool {
     unsafe {
         let Some(arg) = NumericVector::from_raw(x) else {
@@ -2344,10 +2430,11 @@ unsafe fn scan_summary_shape(args: SEXP, op: SummaryOp) -> SummaryShape {
         let mut shape = SummaryShape::default();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
-            if tag_name_is(TAG(current), "na.rm") {
+            if tag_name_is(TAG(current), "na.rm") || tag_name_is(TAG(current), "finite") {
                 current = CDR(current);
                 continue;
             }
+
             let value = CAR(current);
             if value.is_null() || value == R_NilValue() {
                 current = CDR(current);
@@ -2380,13 +2467,13 @@ unsafe fn eval_sum(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
         let mut complex_total = Rcomplex { r: 0.0, i: 0.0 };
         let mut missing = None;
         let mut current = args;
-
         while !current.is_null() && current != R_NilValue() {
-            if tag_name_is(TAG(current), "na.rm") {
+            if tag_name_is(TAG(current), "na.rm") || tag_name_is(TAG(current), "finite") {
                 current = CDR(current);
                 continue;
             }
             let value = CAR(current);
+
             match Sexp::from_raw(value).map(|s| s.typeof_()) {
                 Some(SEXPTYPE::LGLSXP) | Some(SEXPTYPE::INTSXP) => {
                     let vector = NumericVector::from_raw(value).expect("integer-like vector");
@@ -2468,10 +2555,11 @@ unsafe fn eval_prod(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
         let mut current = args;
 
         while !current.is_null() && current != R_NilValue() {
-            if tag_name_is(TAG(current), "na.rm") {
+            if tag_name_is(TAG(current), "na.rm") || tag_name_is(TAG(current), "finite") {
                 current = CDR(current);
                 continue;
             }
+
             let value = CAR(current);
             match Sexp::from_raw(value).map(|s| s.typeof_()) {
                 Some(SEXPTYPE::LGLSXP) | Some(SEXPTYPE::INTSXP) => {
@@ -2543,7 +2631,13 @@ unsafe fn eval_prod(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
     }
 }
 
-unsafe fn eval_minmax(args: SEXP, shape: SummaryShape, na_rm: bool, op: SummaryOp) -> SEXP {
+unsafe fn eval_minmax(
+    args: SEXP,
+    shape: SummaryShape,
+    na_rm: bool,
+    finite: bool,
+    op: SummaryOp,
+) -> SEXP {
     unsafe {
         let mut seen = false;
         let mut int_best = if op == SummaryOp::Min {
@@ -2560,7 +2654,7 @@ unsafe fn eval_minmax(args: SEXP, shape: SummaryShape, na_rm: bool, op: SummaryO
         let mut current = args;
 
         while !current.is_null() && current != R_NilValue() {
-            if tag_name_is(TAG(current), "na.rm") {
+            if tag_name_is(TAG(current), "na.rm") || tag_name_is(TAG(current), "finite") {
                 current = CDR(current);
                 continue;
             }
@@ -2572,7 +2666,7 @@ unsafe fn eval_minmax(args: SEXP, shape: SummaryShape, na_rm: bool, op: SummaryO
                         poll_vector_cancellation(i);
                         let item = vector.clone().int_at(i);
                         if item == NA_INTEGER {
-                            if !na_rm {
+                            if !finite && !na_rm {
                                 missing = merge_missing(missing, MissingKind::NA);
                             }
                             continue;
@@ -2592,6 +2686,9 @@ unsafe fn eval_minmax(args: SEXP, shape: SummaryShape, na_rm: bool, op: SummaryO
                     for i in 0..vector.clone().len() {
                         poll_vector_cancellation(i);
                         let item = vector.clone().real_at(i);
+                        if finite && !item.is_finite() {
+                            continue;
+                        }
                         if let Some(kind) = real_missing(item) {
                             if !na_rm {
                                 missing = merge_missing(missing, kind);
@@ -2633,10 +2730,11 @@ unsafe fn eval_minmax(args: SEXP, shape: SummaryShape, na_rm: bool, op: SummaryO
     }
 }
 
-unsafe fn eval_range(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
+unsafe fn eval_range(args: SEXP, shape: SummaryShape, na_rm: bool, finite: bool) -> SEXP {
     unsafe {
-        let min = eval_minmax(args, shape, na_rm, SummaryOp::Min);
-        let max = eval_minmax(args, shape, na_rm, SummaryOp::Max);
+        let min = eval_minmax(args, shape, na_rm, finite, SummaryOp::Min);
+        let max = eval_minmax(args, shape, na_rm, finite, SummaryOp::Max);
+
         let min_value = Sexp::from_raw_unchecked(min);
         let max_value = Sexp::from_raw_unchecked(max);
         let result_type = if TYPEOF(min) == SEXPTYPE::REALSXP || TYPEOF(max) == SEXPTYPE::REALSXP {

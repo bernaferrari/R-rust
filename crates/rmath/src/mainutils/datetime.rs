@@ -1013,7 +1013,16 @@ pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
             };
         }
         finish_posixlt(ans, ansnames, tzone);
+        let names = getAttrib(x, R_NamesSymbol());
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == n
+        {
+            setAttrib(VECTOR_ELT(ans, 5), R_NamesSymbol(), names);
+        }
         ans
+
     }
 }
 
