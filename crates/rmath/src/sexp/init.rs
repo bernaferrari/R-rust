@@ -142,6 +142,59 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
 
         // GNU apply.R: n-d arrays, empty-extent MARGIN, and FUN=NULL collapse.
         eval_base_binding(base_env, "apply", include_str!("gnu_apply.R"));
+        eval_base_binding(
+            base_env,
+            "determinant",
+            "function(x, logarithm = TRUE, ...) UseMethod(\"determinant\")",
+        );
+        eval_base_binding(
+            base_env,
+            "determinant.matrix",
+            "function(x, logarithm = TRUE, ...) {\n\
+             if ((n <- ncol(x)) != nrow(x))\n\
+                 stop(\"'x' must be a square matrix\")\n\
+             if (n < 1L)\n\
+                 return(structure(list(modulus = structure(if (logarithm) 0 else 1, logarithm = logarithm), sign = 1L), class = \"det\"))\n\
+             if (is.complex(x))\n\
+                 stop(\"'determinant' not currently defined for complex matrices\")\n\
+             det_ge_real(x, logarithm)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "det",
+            "function(x, ...) { z <- determinant(x, logarithm = TRUE, ...); c(z$sign * exp(z$modulus)) }",
+        );
+        eval_base_binding(
+            base_env,
+            "La.svd",
+            "function(x, nu = min(n, p), nv = min(n, p)) {\n\
+             if (!is.logical(x) && !is.numeric(x) && !is.complex(x))\n\
+                 stop(\"argument to 'La.svd' must be numeric or complex\")\n\
+             if (any(!is.finite(x))) stop(\"infinite or missing values in 'x'\")\n\
+             x <- as.matrix(x)\n\
+             n <- nrow(x); p <- ncol(x)\n\
+             if (!n || !p) stop(\"a dimension is zero\")\n\
+             zero <- if (is.complex(x)) 0+0i else 0\n\
+             if (nu || nv) {\n\
+                 np <- min(n, p)\n\
+                 if (nu <= np && nv <= np) {\n\
+                     jobu <- \"S\"; u <- matrix(zero, n, np); vt <- matrix(zero, np, p); nu0 <- nv0 <- np\n\
+                 } else {\n\
+                     jobu <- \"A\"; u <- matrix(zero, n, n); vt <- matrix(zero, p, p); nu0 <- n; nv0 <- p\n\
+                 }\n\
+             } else {\n\
+                 jobu <- \"N\"; u <- matrix(zero, 1L, 1L); vt <- matrix(zero, 1L, 1L); nu0 <- nv0 <- 0L\n\
+             }\n\
+             res <- if (is.complex(x)) La_svd_cmplx(jobu, x, double(min(n, p)), u, vt) else La_svd(jobu, x, double(min(n, p)), u, vt)\n\
+             res <- res[c(\"d\", if (nu) \"u\", if (nv) \"vt\")]\n\
+             if (nu && nu < nu0) res$u <- res$u[, seq_len(min(n, nu)), drop = FALSE]\n\
+             if (nv && nv < nv0) res$vt <- res$vt[seq_len(min(p, nv)), drop = FALSE]\n\
+             res\n\
+             }",
+        );
+
+
 
         // `%||%` <- function(x, y) if (is.null(x)) y else x
         let formals = formals_from_specs(&[arg("x"), arg("y")]);

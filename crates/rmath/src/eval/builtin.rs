@@ -4111,6 +4111,20 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_det,
     },
     EvaluatedBuiltin {
+        name: "det_ge_real",
+        handler: crate::mainutils::essentials::do_det_ge_real,
+    },
+    EvaluatedBuiltin {
+        name: "La_svd",
+        handler: crate::mainutils::essentials::do_la_svd,
+    },
+    EvaluatedBuiltin {
+        name: "La_svd_cmplx",
+        handler: crate::mainutils::essentials::do_la_svd_cmplx,
+    },
+
+
+    EvaluatedBuiltin {
         name: "solve",
         handler: crate::mainutils::essentials::do_solve,
     },

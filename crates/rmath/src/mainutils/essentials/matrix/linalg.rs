@@ -88,6 +88,45 @@ pub unsafe fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `.Internal(det_ge_real(x, logarithm))`.
+
+/// GNU `.Internal(La_svd(jobu, x, s, u, vt))`.
+pub unsafe fn do_la_svd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let jobu = CAR(args);
+        let rest = CDR(args);
+        let x = coerce_numeric_matrix(CAR(rest));
+        let rest = CDR(rest);
+        let s = CAR(rest);
+        let rest = CDR(rest);
+        let u = CAR(rest);
+        let vt = CAR(CDR(rest));
+        crate::modules::lapack::lapack_impl::La_svd(jobu, x, s, u, vt)
+    }
+}
+
+/// GNU `.Internal(La_svd_cmplx(jobu, x, s, u, vt))`.
+pub unsafe fn do_la_svd_cmplx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let jobu = CAR(args);
+        let rest = CDR(args);
+        let x = CAR(rest);
+        let rest = CDR(rest);
+        let s = CAR(rest);
+        let rest = CDR(rest);
+        let u = CAR(rest);
+        let vt = CAR(CDR(rest));
+        crate::modules::lapack::lapack_impl::La_svd_cmplx(jobu, x, s, u, vt)
+    }
+}
+
+pub unsafe fn do_det_ge_real(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        crate::modules::lapack::lapack_impl::det_ge_real(CAR(args), CADR(args))
+    }
+}
+
+
 /// Solve through the selected LAPACK adapter using R's column-major layout.
 pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -242,12 +281,35 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `chol(x)` — upper Cholesky factor.
 pub unsafe fn do_chol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let pivot = Rf_ScalarLogical(FALSE);
-        let _p = protect(pivot);
+        let x = coerce_numeric_matrix(CAR(args));
+        let mut pivot = FALSE;
+        let mut cell = CDR(args);
+        let mut pos = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let named = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = CAR(cell);
+            if named == "pivot" || (named.is_empty() && pos == 0) {
+                if TYPEOF(val) == SEXPTYPE::LGLSXP && XLENGTH(val) > 0 {
+                    pivot = *LOGICAL(val);
+                }
+            }
+            if named.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
+        }
+        let pivot_s = Rf_ScalarLogical(pivot);
+        let _p = protect(pivot_s);
         let tol = Rf_ScalarReal(-1.0);
         let _t = protect(tol);
-        let ans = crate::modules::lapack::lapack_impl::La_chol(x, pivot, tol);
+        let ans = crate::modules::lapack::lapack_impl::La_chol(x, pivot_s, tol);
         let _a = protect(ans);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if !dim.is_null() && dim != R_NilValue() {
@@ -301,7 +363,7 @@ pub unsafe fn do_norm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `rcond(x, norm)` — `La_dgecon`. Default norm `"O"`.
 pub unsafe fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = coerce_numeric_matrix(CAR(args));
         let typ = CAR(CDR(args));
         let typ = if typ.is_null() || typ == R_NilValue() || TYPEOF(typ) != SEXPTYPE::STRSXP {
             let s = Rf_mkString(c"O".as_ptr());
@@ -385,13 +447,27 @@ pub unsafe fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         let ut = Rf_ScalarLogical(FALSE);
         let _u = protect(ut);
         let tail = Rf_cons(ut, R_NilValue());
-        let _t = protect(tail);
         crate::sexp::accessors::SETTAG(tail, crate::sexp::symbol::Rf_install(c"upper.tri".as_ptr()));
         let packed = Rf_cons(l, Rf_cons(x, tail));
         let _p = protect(packed);
         crate::mainutils::array::do_backsolve(call, op, packed, rho)
     }
 }
+
+unsafe fn coerce_numeric_matrix(x: SEXP) -> SEXP {
+    unsafe {
+        if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
+            let coerced =
+                crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+            let _c = protect(coerced);
+            coerced
+        } else {
+            x
+        }
+    }
+}
+
+
 
 /// GNU `svd(x)` — singular values via `La_svd` / `La_svd_cmplx`.
 unsafe fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SEXP {
@@ -424,7 +500,8 @@ unsafe fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SE
 
 pub unsafe fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = coerce_numeric_matrix(CAR(args));
+
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if dim.is_null()
             || dim == R_NilValue()

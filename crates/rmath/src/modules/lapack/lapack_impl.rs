@@ -11,7 +11,10 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
+use crate::attrib_core::{
+    R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
+};
+
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
 use crate::main::errors::Rf_error;
 use crate::sexp::accessors::*;
@@ -3176,16 +3179,22 @@ pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
         if ldet == NA_INTEGER {
             Rf_error(b"invalid 'logarithm' argument\0".as_ptr() as *const c_char);
         }
+        let ain = if TYPEOF(ain) == REALSXP_C {
 
-        if TYPEOF(ain) != REALSXP_C {
+            ain
+        } else if TYPEOF(ain) == INTSXP_C || TYPEOF(ain) == LGLSXP_C {
+            let coerced = coerceVector(ain, REALSXP_C);
+            let _c = protect(coerced);
+            coerced
+        } else {
             crate::sexp::context::r_error("'a' must be a numeric matrix");
-        }
+        };
         let _a_guard = protect(ain);
         let _log_guard = protect(logarithm);
 
         let dim = getAttrib(ain, R_DimSymbol());
         if dim.is_null() || TYPEOF(dim) != INTSXP_C || XLENGTH(dim) != 2 {
-            crate::sexp::context::r_error("'a' must be a matrix");
+            crate::sexp::context::r_error("'a' must be a numeric matrix");
         }
 
         let n = INTEGER(dim).add(0).read();
@@ -3224,44 +3233,74 @@ pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
 
         let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
         let mut info: c_int = 0;
-
         super::backend::dgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
-
-        if info != 0 {
-            let modulus = Rf_allocVector(REALSXP_C, 1);
-            let _modulus_guard = protect(modulus);
-            *REAL(modulus) = 0.0;
-            let attr = Rf_allocVector(INTSXP_C, 1);
-            let _attr_guard = protect(attr);
-            *INTEGER(attr) = 0;
-            setAttrib(modulus, R_NilValue(), attr); // sign attribute
-            return modulus;
+        if info < 0 {
+            crate::sexp::context::r_error("error code from Lapack routine 'dgetrf'");
         }
 
-        // Compute the determinant from the diagonal of U
-        let mut det: f64 = 1.0;
+        let use_log = ldet != 0;
         let mut sign: c_int = 1;
-        for i in 0..n as usize {
-            det *= a_copy[i * (n as usize + 1)]; // diagonal elements
-            if *ipiv.add(i) != (i as c_int + 1) {
-                sign = -sign;
+        let modulus = if info > 0 {
+            if use_log {
+                f64::NEG_INFINITY
+            } else {
+                0.0
             }
-        }
-
-        let ans = Rf_allocVector(REALSXP_C, 1);
-        let _ans_guard = protect(ans);
-        if ldet != 0 {
-            *REAL(ans) = det.abs().ln() + (if sign < 0 { std::f64::consts::PI } else { 0.0 });
         } else {
-            *REAL(ans) = det * (sign as f64);
-        }
+            for i in 0..n as usize {
+                if *ipiv.add(i) != (i as c_int + 1) {
+                    sign = -sign;
+                }
+            }
+            if use_log {
+                let mut acc = 0.0;
+                let n1 = n as usize + 1;
+                for i in 0..n as usize {
+                    let dii = a_copy[i * n1];
+                    acc += dii.abs().ln();
+                    if dii < 0.0 {
+                        sign = -sign;
+                    }
+                }
+                acc
+            } else {
+                let mut acc = 1.0;
+                let n1 = n as usize + 1;
+                for i in 0..n as usize {
+                    acc *= a_copy[i * n1];
+                }
+                if acc < 0.0 {
+                    sign = -sign;
+                    -acc
+                } else {
+                    acc
+                }
+            }
+        };
 
-        let attr = Rf_allocVector(INTSXP_C, 1);
-        let _attr_guard = protect(attr);
-        *INTEGER(attr) = sign;
-        setAttrib(ans, R_NilValue(), attr);
+        let val = Rf_allocVector(VECSXP_C, 2);
+        let _val = protect(val);
+        let nm = Rf_allocVector(STRSXP_C, 2);
+        let _nm = protect(nm);
+        SET_STRING_ELT(nm, 0, Rf_mkChar(b"modulus\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nm, 1, Rf_mkChar(b"sign\0".as_ptr() as *const c_char));
+        setAttrib(val, R_NamesSymbol(), nm);
+        let modulus_s = Rf_ScalarReal(modulus);
+        let _ms = protect(modulus_s);
+        setAttrib(
+            modulus_s,
+            crate::sexp::symbol::Rf_install(c"logarithm".as_ptr()),
+            Rf_ScalarLogical(if use_log { 1 } else { 0 }),
+        );
+        SET_VECTOR_ELT(val, 0, modulus_s);
+        SET_VECTOR_ELT(val, 1, Rf_ScalarInteger(sign));
+        setAttrib(
+            val,
+            R_ClassSymbol(),
+            Rf_ScalarString(Rf_mkChar(b"det\0".as_ptr() as *const c_char)),
+        );
+        val
 
-        ans
     }
 }
 

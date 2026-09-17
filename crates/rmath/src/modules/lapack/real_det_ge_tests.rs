@@ -3,7 +3,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::lapack_impl::det_ge_real;
 use crate::attrib_core::R_DimSymbol;
-use crate::sexp::accessors::{INTEGER, REAL, SET_ATTRIB, SETTAG};
+use crate::sexp::accessors::{INTEGER, REAL, SET_ATTRIB, SETTAG, VECTOR_ELT};
+
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_cons};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -97,7 +98,9 @@ fn real_det_ge_reserves_caller_scratch_before_allocation_and_recovers() {
         let _logarithm = protect(logarithm);
         let ans = det_ge_real(input, logarithm);
         let _ans = protect(ans);
-        assert!((*REAL(ans) - 1.0).abs() < 1e-12);
+        let modulus = VECTOR_ELT(ans, 0);
+        assert!((*REAL(modulus) - 1.0).abs() < 1e-12);
+
     });
 }
 
