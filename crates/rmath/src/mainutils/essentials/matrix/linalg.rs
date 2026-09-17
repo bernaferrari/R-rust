@@ -393,7 +393,35 @@ pub unsafe fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     }
 }
 
-/// GNU `svd(x)` — singular values via `La_svd`.
+/// GNU `svd(x)` — singular values via `La_svd` / `La_svd_cmplx`.
+unsafe fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SEXP {
+    unsafe {
+        let ty = if is_cmplx {
+            SEXPTYPE::CPLXSXP.as_c_int()
+        } else {
+            SEXPTYPE::REALSXP.as_c_int()
+        };
+        let thin = crate::mainutils::array::allocMatrix(ty, rows, cols);
+        let _th = protect(thin);
+        let r = rows as usize;
+        let c = (cols.max(0)) as usize;
+        if is_cmplx {
+            for j in 0..c {
+                for i in 0..r {
+                    *COMPLEX(thin).add(j * r + i) = *COMPLEX(src).add(j * r + i);
+                }
+            }
+        } else {
+            for j in 0..c {
+                for i in 0..r {
+                    *REAL(thin).add(j * r + i) = *REAL(src).add(j * r + i);
+                }
+            }
+        }
+        thin
+    }
+}
+
 pub unsafe fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -447,59 +475,56 @@ pub unsafe fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             cell = CDR(cell);
         }
 
+        let is_cmplx = TYPEOF(x) == SEXPTYPE::CPLXSXP;
+        let u_type = if is_cmplx {
+            SEXPTYPE::CPLXSXP.as_c_int()
+        } else {
+            SEXPTYPE::REALSXP.as_c_int()
+        };
         let jobu = Rf_mkString(c"A".as_ptr());
         let _j = protect(jobu);
         let s = Rf_allocVector3(SEXPTYPE::REALSXP, min_np as i64);
         let _s = protect(s);
-        let u = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n, n);
+        let u = crate::mainutils::array::allocMatrix(u_type, n, n);
         let _u = protect(u);
-        let vt = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p, p);
+        let vt = crate::mainutils::array::allocMatrix(u_type, p, p);
         let _vt = protect(vt);
-        for i in 0..(n as usize * n as usize) {
-            *REAL(u).add(i) = 0.0;
+        if !is_cmplx {
+            for i in 0..(n as usize * n as usize) {
+                *REAL(u).add(i) = 0.0;
+            }
+            for i in 0..(p as usize * p as usize) {
+                *REAL(vt).add(i) = 0.0;
+            }
         }
-        for i in 0..(p as usize * p as usize) {
-            *REAL(vt).add(i) = 0.0;
-        }
-        let la = crate::modules::lapack::lapack_impl::La_svd(jobu, x, s, u, vt);
+        let la = if is_cmplx {
+            crate::modules::lapack::lapack_impl::La_svd_cmplx(jobu, x, s, u, vt)
+        } else {
+            crate::modules::lapack::lapack_impl::La_svd(jobu, x, s, u, vt)
+        };
         let _la = protect(la);
         let v = crate::mainutils::array::do_transpose(call, op, Rf_cons(vt, R_NilValue()), rho);
         let _v = protect(v);
+        if is_cmplx {
+            // GNU svd(): V = Conj(t(VT)).
+            let nelt = XLENGTH(v) as usize;
+            for i in 0..nelt {
+                let z = *COMPLEX(v).add(i);
+                *COMPLEX(v).add(i) = Rcomplex { r: z.r, i: -z.i };
+            }
+        }
         // GNU svd() defaults nu=nv=min(n,p).
         let u_out = if nu != n {
-            let thin = crate::mainutils::array::allocMatrix(
-                SEXPTYPE::REALSXP.as_c_int(),
-                n,
-                nu,
-            );
-            let _th = protect(thin);
-            let cols = (nu.min(n)) as usize;
-            for j in 0..cols {
-                for i in 0..n as usize {
-                    *REAL(thin).add(j * n as usize + i) = *REAL(u).add(j * n as usize + i);
-                }
-            }
-            thin
+            thin_svd_factor(u, n, nu, is_cmplx)
         } else {
             u
         };
         let v_out = if nv != p {
-            let thin = crate::mainutils::array::allocMatrix(
-                SEXPTYPE::REALSXP.as_c_int(),
-                p,
-                nv,
-            );
-            let _th = protect(thin);
-            let cols = (nv.min(p)) as usize;
-            for j in 0..cols {
-                for i in 0..p as usize {
-                    *REAL(thin).add(j * p as usize + i) = *REAL(v).add(j * p as usize + i);
-                }
-            }
-            thin
+            thin_svd_factor(v, p, nv, is_cmplx)
         } else {
             v
         };
+
 
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);

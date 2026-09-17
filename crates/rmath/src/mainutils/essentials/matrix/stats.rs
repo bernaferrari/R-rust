@@ -376,12 +376,19 @@ unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
 }
 
 pub fn bind_common_type(left: SEXPTYPE, right: SEXPTYPE) -> SEXPTYPE {
-    if left == SEXPTYPE::STRSXP || right == SEXPTYPE::STRSXP {
+    // GNU bind type lattice: raw < lgl < int < real < complex < char < list
+    if left == SEXPTYPE::VECSXP || right == SEXPTYPE::VECSXP {
+        SEXPTYPE::VECSXP
+    } else if left == SEXPTYPE::STRSXP || right == SEXPTYPE::STRSXP {
         SEXPTYPE::STRSXP
+    } else if left == SEXPTYPE::CPLXSXP || right == SEXPTYPE::CPLXSXP {
+        SEXPTYPE::CPLXSXP
     } else if left == SEXPTYPE::REALSXP || right == SEXPTYPE::REALSXP {
         SEXPTYPE::REALSXP
     } else if left == SEXPTYPE::INTSXP || right == SEXPTYPE::INTSXP {
         SEXPTYPE::INTSXP
+    } else if left == SEXPTYPE::LGLSXP || right == SEXPTYPE::LGLSXP {
+        SEXPTYPE::LGLSXP
     } else {
         left
     }
@@ -496,6 +503,48 @@ pub unsafe fn copy_bind_value(
                     SET_STRING_ELT(dst, dst_i, Rf_mkChar(c_value.as_ptr()));
                 }
             }
+            SEXPTYPE::CPLXSXP => {
+                let value = match SEXPTYPE(TYPEOF(src)) {
+                    SEXPTYPE::CPLXSXP => *COMPLEX(src).add(src_i as usize),
+                    SEXPTYPE::REALSXP => Rcomplex {
+                        r: REAL_ELT(src, src_i as c_int),
+                        i: 0.0,
+                    },
+                    SEXPTYPE::INTSXP => {
+                        let v = INTEGER_ELT(src, src_i as c_int);
+                        if v == NA_INTEGER {
+                            Rcomplex {
+                                r: NA_REAL,
+                                i: 0.0,
+                            }
+                        } else {
+                            Rcomplex {
+                                r: v as f64,
+                                i: 0.0,
+                            }
+                        }
+                    }
+                    SEXPTYPE::LGLSXP => {
+                        let v = LOGICAL_ELT(src, src_i as c_int);
+                        if v == NA_INTEGER {
+                            Rcomplex {
+                                r: NA_REAL,
+                                i: 0.0,
+                            }
+                        } else {
+                            Rcomplex {
+                                r: v as f64,
+                                i: 0.0,
+                            }
+                        }
+                    }
+                    _ => Rcomplex {
+                        r: NA_REAL,
+                        i: NA_REAL,
+                    },
+                };
+                *COMPLEX(dst).add(dst_i as usize) = value;
+            }
             SEXPTYPE::REALSXP => {
                 let value = match SEXPTYPE(TYPEOF(src)) {
                     SEXPTYPE::REALSXP => REAL_ELT(src, src_i as c_int),
@@ -519,6 +568,7 @@ pub unsafe fn copy_bind_value(
                 };
                 *REAL(dst).add(dst_i as usize) = value;
             }
+
             SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
                 let value = match SEXPTYPE(TYPEOF(src)) {
                     SEXPTYPE::INTSXP => INTEGER_ELT(src, src_i as c_int),

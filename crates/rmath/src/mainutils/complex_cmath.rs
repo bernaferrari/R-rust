@@ -640,6 +640,14 @@ pub unsafe fn complex_binary(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 ///
 /// Ported from lines 245-356 of complex.c.
 pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe fn keep_shape(y: SEXP, x: SEXP) -> SEXP {
+        unsafe {
+            let _g = protect(y);
+            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(y, x);
+            y
+        }
+    }
+
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -682,7 +690,8 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     for i in 0..n as usize {
                         *py.add(i) = (*px.add(i)).r;
                     }
-                    return y;
+                    return keep_shape(y, x);
+
                 }
                 2 => {
                     // Im
@@ -694,7 +703,8 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     for i in 0..n as usize {
                         *py.add(i) = (*px.add(i)).i;
                     }
-                    return y;
+                    return keep_shape(y, x);
+
                 }
                 3 | 6 => {
                     // Mod / abs
@@ -707,7 +717,8 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                         let xi = *px.add(i);
                         *py.add(i) = xi.r.hypot(xi.i);
                     }
-                    return y;
+                    return keep_shape(y, x);
+
                 }
                 4 => {
                     // Arg
@@ -720,7 +731,8 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                         let xi = *px.add(i);
                         *py.add(i) = xi.i.atan2(xi.r);
                     }
-                    return y;
+                    return keep_shape(y, x);
+
                 }
                 5 => {
                     // Conj
@@ -734,7 +746,8 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                         (*py.add(i)).r = xi.r;
                         (*py.add(i)).i = -xi.i;
                     }
-                    return y;
+                    return keep_shape(y, x);
+
                 }
                 _ => {
                     // Default: treat as Re
@@ -746,7 +759,8 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     for i in 0..n as usize {
                         *py.add(i) = (*px.add(i)).r;
                     }
-                    return y;
+                    return keep_shape(y, x);
+
                 }
             }
         } else if xtype == SEXPTYPE::REALSXP
@@ -808,7 +822,8 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     }
                 }
             }
-            y
+            keep_shape(y, x)
+
         } else {
             R_NilValue()
         }
