@@ -501,6 +501,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_dollar_set,
         restore_visibility_always: false,
     },
+    UnevaluatedBuiltin {
+        name: "@<-",
+        handler: crate::mainutils::essentials::do_at_set,
+        restore_visibility_always: false,
+    },
+
 
     UnevaluatedBuiltin {
         name: "on.exit",
@@ -538,6 +544,7 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_withCallingHandlers,
         restore_visibility_always: false,
     },
+
     UnevaluatedBuiltin {
         name: "try",
         handler: crate::mainutils::essentials::do_try,
@@ -922,10 +929,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_xtfrm_Date,
     },
     EvaluatedBuiltin {
-        name: "@<-",
-        handler: crate::mainutils::essentials::do_at_set,
-    },
-    EvaluatedBuiltin {
         name: "+",
         handler: super::arithmetic::do_arith,
     },
@@ -1302,6 +1305,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "identity",
         handler: crate::mainutils::essentials::do_identity,
     },
+    EvaluatedBuiltin {
+        name: "globalCallingHandlers",
+        handler: crate::mainutils::essentials::do_globalCallingHandlers,
+    },
+
     EvaluatedBuiltin {
         name: "is.na",
         handler: crate::mainutils::essentials::do_is_na,
@@ -4131,6 +4139,15 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "simpleWarning",
         handler: crate::mainutils::essentials::do_simpleWarning,
     },
+    EvaluatedBuiltin {
+        name: "simpleCondition",
+        handler: crate::mainutils::essentials::do_simpleCondition,
+    },
+    EvaluatedBuiltin {
+        name: "signalCondition",
+        handler: crate::mainutils::essentials::do_signalCondition_r,
+    },
+
     EvaluatedBuiltin {
         name: "isS4",
         handler: crate::mainutils::essentials::do_isS4,

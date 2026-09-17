@@ -70,6 +70,9 @@ pub(crate) struct ErrorState {
     pub nwarnings: c_int,
     pub warnings: SEXP,
     pub handler_stack: SEXP,
+    /// R-level `globalCallingHandlers()` list (named functions).
+    pub global_calling_handlers: SEXP,
+
     pub restart_stack: SEXP,
     pub error_buffer: [u8; crate::mainutils::errors::BUFSIZE + 1],
     pub expressions: c_int,
@@ -139,6 +142,8 @@ impl Default for ErrorState {
             sequence_recycling_warned: false,
             warnings: std::ptr::null_mut(),
             handler_stack: std::ptr::null_mut(),
+            global_calling_handlers: std::ptr::null_mut(),
+
             restart_stack: std::ptr::null_mut(),
             error_buffer: [0; crate::mainutils::errors::BUFSIZE + 1],
             expressions: 500,

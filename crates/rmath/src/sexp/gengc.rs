@@ -331,6 +331,9 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
 
         mark_reachable((*instance).error_state.warnings);
         mark_reachable((*instance).error_state.handler_stack);
+        mark_reachable((*instance).error_state.global_calling_handlers);
+        mark_reachable((*instance).error_state.restart_stack);
+
         mark_reachable((*instance).error_state.restart_stack);
         mark_reachable((*instance).error_state.warning_call);
         mark_reachable((*instance).error_state.signalled_condition);
@@ -791,6 +794,12 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         update_field(&mut (*instance).error_state.warnings, old_to_new);
         update_field(&mut (*instance).error_state.handler_stack, old_to_new);
         update_field(&mut (*instance).error_state.restart_stack, old_to_new);
+        update_field(
+            &mut (*instance).error_state.global_calling_handlers,
+            old_to_new,
+        );
+        update_field(&mut (*instance).error_state.restart_stack, old_to_new);
+
         update_field(&mut (*instance).error_state.warning_call, old_to_new);
         update_field(&mut (*instance).error_state.signalled_condition, old_to_new);
         update_field(
@@ -1684,6 +1693,9 @@ mod tests {
             (*instance).error_state.warnings = nil;
             (*instance).error_state.handler_stack = nil;
             (*instance).error_state.restart_stack = nil;
+            (*instance).error_state.global_calling_handlers = nil;
+            (*instance).error_state.restart_stack = nil;
+
             (*instance).error_state.signalled_condition = nil;
             (*instance).error_state.mathlib_warning_call = nil;
             (*instance).error_state.mathlib_warning_call_stack.clear();

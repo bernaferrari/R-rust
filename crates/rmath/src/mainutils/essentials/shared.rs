@@ -246,12 +246,27 @@ pub unsafe fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let object = if args.is_null() || args == R_NilValue() {
+        if args.is_null() || args == R_NilValue() {
+            return R_NilValue();
+        }
+        let object = crate::eval::eval::Rf_eval(CAR(args), rho);
+        let _object = protect(object);
+        let name = CADR(args);
+        let value_cell = CDR(CDR(args));
+        let value = if value_cell.is_null() || value_cell == R_NilValue() {
             R_NilValue()
         } else {
-            CAR(args)
+            crate::eval::eval::Rf_eval(CAR(value_cell), rho)
         };
-        let _ = do_set_slot(call, op, args, rho);
+
+        let _value = protect(value);
+        let evaled = Rf_cons(value, R_NilValue());
+        let _e1 = protect(evaled);
+        let evaled = Rf_cons(name, evaled);
+        let _e2 = protect(evaled);
+        let evaled = Rf_cons(object, evaled);
+        let _e3 = protect(evaled);
+        let _ = do_set_slot(call, op, evaled, rho);
         object
     }
 }

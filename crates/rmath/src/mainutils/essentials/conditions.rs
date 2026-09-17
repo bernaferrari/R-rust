@@ -165,13 +165,35 @@ unsafe fn as_bool_arg(sexp: SEXP, rho: SEXP) -> bool {
 
 pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let expr = CAR(args);
-        if expr.is_null() || expr == R_NilValue() {
+        // GNU formals are `(expr, ...)`. A tagged first argument is a
+        // handler, not `expr` — `withCallingHandlers(foo = h, expr)`.
+        let mut expr = crate::sexp::globals::R_MissingArg();
+        let mut handler_args = R_NilValue();
+        let mut p = args;
+        let mut handler_cells = Vec::new();
+        while !p.is_null() && p != R_NilValue() {
+            let tag = TAG(p);
+            if tag.is_null() || tag == R_NilValue() {
+                if expr == crate::sexp::globals::R_MissingArg() {
+                    expr = CAR(p);
+                }
+            } else {
+                handler_cells.push((tag, CAR(p)));
+            }
+            p = CDR(p);
+        }
+        for (tag, val) in handler_cells.into_iter().rev() {
+            let cell = Rf_cons(val, handler_args);
+            SETTAG(cell, tag);
+            handler_args = cell;
+        }
+        let _ha = protect(handler_args);
+        if expr.is_null() || expr == R_NilValue() || expr == crate::sexp::globals::R_MissingArg() {
             return R_NilValue();
         }
 
         let old_stack = condition_handler_stack();
-        let new_stack = calling_handler_stack_from_args(CDR(args), rho, old_stack);
+        let new_stack = calling_handler_stack_from_args(handler_args, rho, old_stack);
         set_condition_handler_stack(new_stack);
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -185,6 +207,386 @@ pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SE
         }
     }
 }
+
+unsafe fn handlers_structurally_equal(a: SEXP, b: SEXP) -> bool {
+    unsafe {
+        if a == b {
+            return true;
+        }
+        if TYPEOF(a) != TYPEOF(b) {
+            return false;
+        }
+        if TYPEOF(a) != SEXPTYPE::CLOSXP {
+            return crate::mainutils::identical::R_compute_identical(a, b, 32) != 0;
+        }
+        if crate::sexp::accessors::CLOENV(a) != crate::sexp::accessors::CLOENV(b) {
+            return false;
+        }
+        if crate::mainutils::identical::R_compute_identical(
+            crate::sexp::accessors::FORMALS(a),
+            crate::sexp::accessors::FORMALS(b),
+            0,
+        ) == 0
+        {
+            return false;
+        }
+        if !lang_equal_ignore_srcref(
+            crate::sexp::accessors::BODY(a),
+            crate::sexp::accessors::BODY(b),
+        ) {
+            return false;
+        }
+        attribs_equal_ignore_source(
+            crate::sexp::accessors::ATTRIB(a),
+            crate::sexp::accessors::ATTRIB(b),
+        )
+    }
+}
+
+unsafe fn lang_equal_ignore_srcref(a: SEXP, b: SEXP) -> bool {
+    unsafe {
+        if a == b {
+            return true;
+        }
+        if a.is_null() || b.is_null() || a == R_NilValue() || b == R_NilValue() {
+            return a == b || (a == R_NilValue() && b == R_NilValue());
+        }
+        if TYPEOF(a) != TYPEOF(b) {
+            return false;
+        }
+        if TYPEOF(a) == SEXPTYPE::LANGSXP || TYPEOF(a) == SEXPTYPE::LISTSXP {
+            lang_equal_ignore_srcref(CAR(a), CAR(b)) && lang_equal_ignore_srcref(CDR(a), CDR(b))
+        } else {
+            crate::mainutils::identical::R_compute_identical(a, b, 0) != 0
+        }
+    }
+}
+
+unsafe fn attribs_equal_ignore_source(mut a: SEXP, mut b: SEXP) -> bool {
+    unsafe {
+        fn skip_src(mut p: SEXP) -> SEXP {
+            unsafe {
+                while !p.is_null() && p != R_NilValue() {
+                    let tag = TAG(p);
+                    let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                        let c = crate::sexp::accessors::CHAR(PRINTNAME(tag));
+                        if c.is_null() {
+                            ""
+                        } else {
+                            std::ffi::CStr::from_ptr(c).to_str().unwrap_or("")
+                        }
+                    } else {
+                        ""
+                    };
+                    if name == "srcref" || name == "srcfile" || name == "wholeSrcref" {
+                        p = CDR(p);
+                        continue;
+                    }
+                    break;
+                }
+                p
+            }
+        }
+        a = skip_src(a);
+        b = skip_src(b);
+        crate::mainutils::identical::R_compute_identical(a, b, 0) != 0
+    }
+}
+
+
+/// GNU `globalCallingHandlers(...)` — register/inspect/clear global calling handlers.
+pub unsafe fn do_globalCallingHandlers(
+    _call: SEXP,
+    _op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            crate::sexp::globals::set_R_Visible(TRUE);
+            return global_handlers_list();
+        }
+
+        let first = CAR(args);
+        let rest = CDR(args);
+        let single = rest.is_null() || rest == R_NilValue();
+
+        if single && (first.is_null() || first == R_NilValue()) {
+            let old = global_handlers_list();
+            let _old = protect(old);
+            set_global_handlers_list(empty_named_list());
+            install_global_handler_stack(rho);
+            crate::sexp::globals::set_R_Visible(FALSE);
+            return old;
+        }
+
+        let incoming = if single
+            && TYPEOF(first) == SEXPTYPE::VECSXP
+            && (TAG(args).is_null() || TAG(args) == R_NilValue())
+        {
+            first
+        } else {
+            named_list_from_dots(args)
+        };
+        let _incoming = protect(incoming);
+        validate_named_handlers(incoming);
+
+        let combined = prepend_handlers(incoming, global_handlers_list());
+        let _combined = protect(combined);
+        let combined = drop_duplicate_class_handlers(combined);
+        let _dedup = protect(combined);
+        set_global_handlers_list(combined);
+        install_global_handler_stack(rho);
+        crate::sexp::globals::set_R_Visible(FALSE);
+        R_NilValue()
+    }
+}
+
+fn global_handlers_list() -> SEXP {
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        let gh = (*inst).error_state.global_calling_handlers;
+        if gh.is_null() || gh == R_NilValue() {
+            empty_named_list()
+        } else {
+            gh
+        }
+    })
+}
+
+fn set_global_handlers_list(list: SEXP) {
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.global_calling_handlers = list;
+    });
+}
+
+unsafe fn empty_named_list() -> SEXP {
+    unsafe { Rf_allocVector3(SEXPTYPE::VECSXP, 0) }
+}
+
+unsafe fn named_list_from_dots(mut args: SEXP) -> SEXP {
+    unsafe {
+        let mut n = 0;
+        let mut p = args;
+        while !p.is_null() && p != R_NilValue() {
+            n += 1;
+            p = CDR(p);
+        }
+        let list = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let _list = protect(list);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _names = protect(names);
+        let mut i = 0i64;
+        while !args.is_null() && args != R_NilValue() {
+            SET_VECTOR_ELT(list, i, CAR(args));
+            let tag = TAG(args);
+            if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+                SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
+            } else {
+                SET_STRING_ELT(names, i, PRINTNAME(tag));
+            }
+            i += 1;
+            args = CDR(args);
+        }
+        crate::sexp::attrib_core::setAttrib(list, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        list
+    }
+}
+
+unsafe fn validate_named_handlers(list: SEXP) {
+    unsafe {
+        let n = XLENGTH(list);
+        let names = crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+        if n > 0 && (names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP) {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "condition handlers must be specified with a condition class".to_string(),
+            });
+        }
+        for i in 0..n {
+            if names.is_null()
+                || names == R_NilValue()
+                || STRING_ELT(names, i).is_null()
+                || crate::sexp::accessors::CHAR(STRING_ELT(names, i)).is_null()
+                || std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(names, i)))
+                    .to_bytes()
+                    .is_empty()
+            {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "condition handlers must be specified with a condition class"
+                        .to_string(),
+                });
+            }
+            if !crate::mainutils::essentials::is_function_value(VECTOR_ELT(list, i)) {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "condition handlers must be functions".to_string(),
+                });
+            }
+        }
+    }
+}
+
+unsafe fn prepend_handlers(new: SEXP, old: SEXP) -> SEXP {
+    unsafe {
+        let nn = XLENGTH(new);
+        let no = if old.is_null() || old == R_NilValue() {
+            0
+        } else {
+            XLENGTH(old)
+        };
+        let out = Rf_allocVector3(SEXPTYPE::VECSXP, nn + no);
+        let _out = protect(out);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, nn + no);
+        let _names = protect(names);
+        let new_names = crate::sexp::attrib_core::getAttrib(new, crate::sexp::attrib_core::R_NamesSymbol());
+        let old_names = if old.is_null() || old == R_NilValue() {
+            R_NilValue()
+        } else {
+            crate::sexp::attrib_core::getAttrib(old, crate::sexp::attrib_core::R_NamesSymbol())
+        };
+        for i in 0..nn {
+            SET_VECTOR_ELT(out, i, VECTOR_ELT(new, i));
+            if !new_names.is_null() && new_names != R_NilValue() {
+                SET_STRING_ELT(names, i, STRING_ELT(new_names, i));
+            }
+        }
+        for i in 0..no {
+            SET_VECTOR_ELT(out, nn + i, VECTOR_ELT(old, i));
+            if !old_names.is_null() && old_names != R_NilValue() {
+                SET_STRING_ELT(names, nn + i, STRING_ELT(old_names, i));
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        out
+    }
+}
+
+unsafe fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
+    unsafe {
+        let n = XLENGTH(list);
+        if n <= 1 {
+            return list;
+        }
+        let names = crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut keep = vec![true; n as usize];
+        for i in 0..n {
+            if !keep[i as usize] {
+                continue;
+            }
+            let class_i = STRING_ELT(names, i);
+            for j in (i + 1)..n {
+                if !keep[j as usize] {
+                    continue;
+                }
+                if STRING_ELT(names, j) != class_i
+                    && !chars_equal(STRING_ELT(names, i), STRING_ELT(names, j))
+                {
+                    continue;
+                }
+                if handlers_structurally_equal(VECTOR_ELT(list, i), VECTOR_ELT(list, j)) {
+                    keep[j as usize] = false;
+                }
+            }
+        }
+        let kept = keep.iter().filter(|k| **k).count() as i64;
+        if kept == n {
+            return list;
+        }
+        let out = Rf_allocVector3(SEXPTYPE::VECSXP, kept);
+        let _out = protect(out);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept);
+        let _on = protect(out_names);
+        let mut k = 0i64;
+        for i in 0..n {
+            if keep[i as usize] {
+                SET_VECTOR_ELT(out, k, VECTOR_ELT(list, i));
+                SET_STRING_ELT(out_names, k, STRING_ELT(names, i));
+                k += 1;
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), out_names);
+        out
+    }
+}
+
+unsafe fn chars_equal(a: SEXP, b: SEXP) -> bool {
+    unsafe {
+        if a.is_null() || b.is_null() {
+            return a == b;
+        }
+        let ca = crate::sexp::accessors::CHAR(a);
+        let cb = crate::sexp::accessors::CHAR(b);
+        if ca.is_null() || cb.is_null() {
+            return ca == cb;
+        }
+        std::ffi::CStr::from_ptr(ca) == std::ffi::CStr::from_ptr(cb)
+    }
+}
+
+
+unsafe fn install_global_handler_stack(rho: SEXP) {
+    unsafe {
+        let gh = global_handlers_list();
+        let n = if gh.is_null() || gh == R_NilValue() {
+            0
+        } else {
+            XLENGTH(gh)
+        };
+        let names = if n == 0 {
+            R_NilValue()
+        } else {
+            crate::sexp::attrib_core::getAttrib(gh, crate::sexp::attrib_core::R_NamesSymbol())
+        };
+        let mut stack = R_NilValue();
+        if n > 0 {
+            for i in (0..n).rev() {
+                let class_name = elt_to_string(names, i);
+                let handler = VECTOR_ELT(gh, i);
+                let entry = calling_handler_entry(&class_name, handler, rho);
+                let _e = protect(entry);
+                stack = Rf_cons(entry, stack);
+                let _s = protect(stack);
+            }
+        }
+        set_condition_handler_stack(stack);
+    }
+}
+
+
+
+/// GNU `simpleCondition(message, call = NULL)`.
+pub unsafe fn do_simpleCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let message = if args.is_null() || args == R_NilValue() {
+            String::new()
+        } else {
+            elt_to_string(CAR(args), 0)
+        };
+        simple_condition(&message, &["simpleCondition", "condition"])
+    }
+}
+
+/// GNU `signalCondition(cond)` — invoke matching calling handlers.
+pub unsafe fn do_signalCondition_r(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut cond = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(args)
+        };
+        if cond.is_null()
+            || cond == R_NilValue()
+            || crate::mainutils::objects::inherits2(cond, c"condition".as_ptr()) == 0
+        {
+            let msg = elt_to_string(cond, 0);
+            cond = simple_condition(&msg, &["simpleCondition", "condition"]);
+        }
+        let _cond = protect(cond);
+        signal_calling_handlers(cond, rho);
+        R_NilValue()
+    }
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Exiting handlers (tryCatch) for warning conditions
@@ -944,6 +1346,7 @@ pub(crate) unsafe fn simple_warning_condition(message: &str) -> SEXP {
             s("parentenv"),
             s("handler"),
         );
+
         let _call_guard = protect(call);
         let c_msg = CString::new(message).unwrap_or_default();
         crate::mainutils::errors::R_makeWarningCondition(
@@ -974,7 +1377,8 @@ unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
 
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"message".as_ptr()), msg);
 
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, classes.len() as i64);
+
         if !class.is_null() {
             let _cp = protect(class);
             for (i, name) in classes.iter().enumerate() {

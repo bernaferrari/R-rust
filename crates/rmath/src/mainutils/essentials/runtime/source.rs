@@ -60,19 +60,19 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
         }
         let file_arg = parsed.file.unwrap_or(R_NilValue());
-
-
         if file_arg.is_null() || file_arg == R_NilValue() {
             eprintln!("source: no file specified");
             return R_NilValue();
         }
         let file_path = elt_to_string(file_arg, 0);
+        let env = source_eval_env(parsed.local, rho, false);
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
-            Ok(content) => eval_source_text_with_name(&content, rho, &file_path),
+            Ok(content) => eval_source_text_with_name(&content, env, &file_path),
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }
         }
+
     }
 }
 
