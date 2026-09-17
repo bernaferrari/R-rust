@@ -368,18 +368,15 @@ pub(crate) unsafe fn lookup_s3_method_symbol(
             return method;
         }
 
-        // Eval builtins are not copied into session frames. UseMethod sees
-        // `.default` methods plus an explicit hist.* whitelist. Materializing
-        // every builtin here re-enters wrappers such as seq.Date via seq().
+        // Eval builtins are not copied into session frames. Materializing
+        // seq.* re-enters seq() via seq.Date; other generic.class builtins
+        // (format.POSIXct, print.Date, …) are the method implementations.
         if !method_symbol.is_null() {
             let pname = PRINTNAME(method_symbol);
             if !pname.is_null() {
                 let name = std::ffi::CStr::from_ptr(CHAR(pname)).to_string_lossy();
-                let allow = name.ends_with(".default")
-                    || matches!(
-                        name.as_ref(),
-                        "hist.Date" | "hist.POSIXt" | "hist.POSIXlt" | "hist.POSIXct"
-                    );
+                let allow = name.ends_with(".default") || !name.starts_with("seq.");
+
                 if allow {
                     if let Some(kind) = crate::eval::builtin::builtin_primitive_kind(name.as_ref())
                     {

@@ -36,14 +36,11 @@ pub unsafe fn do_setOldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-/// Dispatch a generic builtin call to a class-specific S3 method when one
-/// exists and is a closure. Upstream generic functions (`print`, `format`,
-/// ...) dispatch via UseMethod before their default methods run; this
-/// port's built-in `print.<class>`-style primitives keep their dedicated
-/// handlers, so this intercepts only closure methods — the ones registered
-/// by loaded packages (e.g. R6's `print.R6ClassGenerator`, bound into the
-/// package namespace's `.__S3MethodsTable__.` and the attached search
-/// path). Returns the method's result, or `None` to keep the default path.
+/// Dispatch a generic builtin call to a class-specific S3 method.
+///
+/// Closures (package `.__S3MethodsTable__.` entries) go through
+/// `applyClosure`. Builtin/special methods (`format.POSIXct`, `print.Date`,
+/// …) are invoked through their PRIMFUN, matching `eval::apply`.
 pub(crate) unsafe fn apply_s3_closure_method(
     generic: &str,
     call: SEXP,
@@ -64,18 +61,24 @@ pub(crate) unsafe fn apply_s3_closure_method(
         let method = crate::mainutils::objects::lookup_s3_method_for_classes(
             generic, klass, rho, rho, rho, false,
         )?;
-        if TYPEOF(method.method) != SEXPTYPE::CLOSXP {
-            return None;
-        }
         let _method_guard = protect(method.method);
-        Some(crate::eval::closure::applyClosure(
-            call,
-            method.method,
-            args,
-            rho,
-            R_NilValue(),
-            TRUE,
-        ))
+        let ty = TYPEOF(method.method);
+        if ty == SEXPTYPE::CLOSXP {
+            return Some(crate::eval::closure::applyClosure(
+                call,
+                method.method,
+                args,
+                rho,
+                R_NilValue(),
+                TRUE,
+            ));
+        }
+        if ty == SEXPTYPE::BUILTINSXP || ty == SEXPTYPE::SPECIALSXP {
+            if let Some(primfun) = crate::eval::builtin::PRIMFUN(method.method) {
+                return Some(primfun(call, method.method, args, rho));
+            }
+        }
+        None
     }
 }
 

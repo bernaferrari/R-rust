@@ -1811,16 +1811,49 @@ pub unsafe fn do_format_POSIXlt(
                 break;
             }
         }
-        let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
+        let opt_digits = {
             let opt = crate::mainutils::options::GetOption1(Rf_install(c"digits.secs".as_ptr()));
             if opt.is_null() || opt == R_NilValue() {
                 0
             } else {
                 crate::mainutils::coerce::asInteger(opt)
             }
-        } else {
-            crate::mainutils::coerce::asInteger(digits_arg)
         };
+        let explicit_digits = !digits_arg.is_null() && digits_arg != R_NilValue();
+        let mut digits = if explicit_digits {
+            crate::mainutils::coerce::asInteger(digits_arg)
+        } else {
+            opt_digits
+        };
+        if explicit_digits && digits != opt_digits && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 1
+        {
+            let mut bare_os = false;
+            for i in 0..nf {
+                let ch = STRING_ELT(format, i);
+                if ch.is_null() || ch == R_NaString() {
+                    continue;
+                }
+                let s = CStr::from_ptr(CHAR(ch)).to_string_lossy();
+                if let Some(pos) = s.find("%OS") {
+                    match s.as_bytes().get(pos + 3) {
+                        None => bare_os = true,
+                        Some(b) if !b.is_ascii_digit() => bare_os = true,
+                        _ => {}
+                    }
+                }
+            }
+            if bare_os {
+                let sec = VECTOR_ELT(x, 0);
+                let mut secs = Vec::new();
+                if TYPEOF(sec) == SEXPTYPE::REALSXP {
+                    for i in 0..XLENGTH(sec) {
+                        secs.push(*REAL(sec).add(i as usize));
+                    }
+                }
+                digits = use_dig_secs(&secs, digits);
+            }
+        }
+
         if filled && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 3 {
             let nsec = XLENGTH(VECTOR_ELT(x, 0)).max(0);
             let mut secs = Vec::with_capacity(nsec as usize);
