@@ -45,9 +45,53 @@ pub(crate) unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
         }
         let _ans_guard = protect(ans);
         let result = R_subassign3_dflt(call, CAR(ans), nlist, CADDR(ans));
+        mark_posixlt_dollar_balanced(result, CADDR(ans));
         result
+
     }
 }
+
+pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP) {
+    unsafe {
+        if x.is_null()
+            || x == R_NilValue()
+            || TYPEOF(x) != SEXPTYPE::VECSXP
+            || !crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+        {
+            return;
+        }
+        let mut n: R_xlen_t = 0;
+        for i in 0..XLENGTH(x) {
+            let len = XLENGTH(VECTOR_ELT(x, i));
+            if len > n {
+                n = len;
+            }
+        }
+        let nv = if value.is_null() || value == R_NilValue() {
+            0
+        } else {
+            XLENGTH(value)
+        };
+        let bal_sym = Rf_install(c"balanced".as_ptr());
+        let was = crate::sexp::attrib_core::getAttrib(x, bal_sym);
+        let was_true = !was.is_null()
+            && was != R_NilValue()
+            && TYPEOF(was) == SEXPTYPE::LGLSXP
+            && XLENGTH(was) > 0
+            && *INTEGER(was) == TRUE;
+        if was_true && nv == n {
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                bal_sym,
+                crate::sexp::constructors::Rf_ScalarLogical(NA_INTEGER),
+            );
+        } else {
+            crate::sexp::attrib_core::setAttrib(x, bal_sym, R_NilValue());
+        }
+    }
+}
+
+
 
 /// Port of `R_subassign3_dflt()` -- default `$<-` implementation.
 pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> SEXP {

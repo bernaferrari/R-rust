@@ -1289,20 +1289,30 @@ unsafe fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) -> SEXP {
     }
 }
 
-/// Exact named match, then leftover positionals — GNU closure matching
-/// without partial names. `sapply(dd, as.character.POSIXt, x = xf)` binds
-/// `x = xf` and the untagged `dd[[i]]` to `digits`.
+/// GNU-style matching: exact names, unique prefixes, then positionals.
+/// `balancePOSIXlt(x, class=FALSE)` binds `class` to `classed`.
+
 unsafe fn match_named_then_positional(args: SEXP, formals: &[&str]) -> Vec<SEXP> {
     unsafe {
         let n = formals.len();
         let mut out = vec![R_NilValue(); n];
         let mut filled = vec![false; n];
+        let tag_of = |cell: SEXP| -> Option<String> {
+            let tag = TAG(cell);
+            if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+                None
+            } else {
+                Some(
+                    std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                        .to_string_lossy()
+                        .into_owned(),
+                )
+            }
+        };
+        // Pass 1: exact names.
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy();
+            if let Some(name) = tag_of(cell) {
                 if let Some(i) = formals.iter().position(|f| *f == name) {
                     out[i] = CAR(cell);
                     filled[i] = true;
@@ -1310,12 +1320,30 @@ unsafe fn match_named_then_positional(args: SEXP, formals: &[&str]) -> Vec<SEXP>
             }
             cell = CDR(cell);
         }
+        // Pass 2: unique partial names (GNU matchArgs).
+        cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if let Some(name) = tag_of(cell) {
+                if !formals.iter().any(|f| *f == name) {
+                    let hits: Vec<usize> = formals
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, f)| !filled[*i] && f.starts_with(&name))
+                        .map(|(i, _)| i)
+                        .collect();
+                    if hits.len() == 1 {
+                        out[hits[0]] = CAR(cell);
+                        filled[hits[0]] = true;
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
+        // Pass 3: remaining positional.
         let mut next = 0usize;
         cell = args;
         while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let untagged = tag.is_null() || tag == R_NilValue();
-            if untagged {
+            if tag_of(cell).is_none() {
                 while next < n && filled[next] {
                     next += 1;
                 }
@@ -2715,16 +2743,29 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
     }
 }
 
-// ---------------------------------------------------------------------------
-// do_balancePOSIXlt -- .Internal(balancePOSIXlt(x, fill.only, classed))
-// ---------------------------------------------------------------------------
+fn logical_arg_true(arg: SEXP, default: bool) -> bool {
+    unsafe {
+        if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
+            return default;
+        }
+        if TYPEOF(arg) == SEXPTYPE::LGLSXP && XLENGTH(arg) > 0 {
+            return *INTEGER(arg) == TRUE;
+        }
+        if TYPEOF(arg) == SEXPTYPE::INTSXP && XLENGTH(arg) > 0 {
+            return *INTEGER(arg) != 0 && *INTEGER(arg) != NA_INTEGER;
+        }
+        default
+    }
+}
 
-/// Balance (validate and normalize) a POSIXlt object.
-///
 /// Ported from `do_balancePOSIXlt()` in datetime.c.
 pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let matched = match_named_then_positional(args, &["x", "fill.only", "classed"]);
+        let x = matched[0];
+        let fill_only = logical_arg_true(matched[1], false);
+        let keep_class = logical_arg_true(matched[2], true);
+        let _ = fill_only;
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
                 message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
@@ -2737,11 +2778,6 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             && XLENGTH(bal) > 0
             && *INTEGER(bal) == TRUE
         {
-            let classed = CADDR(args);
-            let keep_class = classed.is_null()
-                || classed == R_NilValue()
-                || classed == R_MissingArg()
-                || (TYPEOF(classed) == SEXPTYPE::LGLSXP && *INTEGER(classed) == TRUE);
             if keep_class {
                 return x;
             }
@@ -2750,6 +2786,7 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             setAttrib(out, R_ClassSymbol(), R_NilValue());
             return out;
         }
+
 
 
         let n_comp = LENGTH(x);
@@ -2870,10 +2907,13 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
         }
 
         setAttrib(ans, R_NamesSymbol(), ansnames);
-        let klass = getAttrib(x, R_ClassSymbol());
-        if !klass.is_null() && klass != R_NilValue() {
-            setAttrib(ans, R_ClassSymbol(), klass);
+        if keep_class {
+            let klass = getAttrib(x, R_ClassSymbol());
+            if !klass.is_null() && klass != R_NilValue() {
+                setAttrib(ans, R_ClassSymbol(), klass);
+            }
         }
+
         let tzone = getAttrib(x, Rf_install(c"tzone".as_ptr()));
         if !tzone.is_null() && tzone != R_NilValue() {
             setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);
