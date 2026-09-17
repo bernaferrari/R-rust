@@ -497,6 +497,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "$<-",
+        handler: crate::mainutils::essentials::do_dollar_set,
+        restore_visibility_always: false,
+    },
+
+    UnevaluatedBuiltin {
         name: "on.exit",
         handler: crate::mainutils::builtin::do_onexit,
         restore_visibility_always: false,
@@ -918,10 +924,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "@<-",
         handler: crate::mainutils::essentials::do_at_set,
-    },
-    EvaluatedBuiltin {
-        name: "$<-",
-        handler: crate::mainutils::essentials::do_dollar_set,
     },
     EvaluatedBuiltin {
         name: "+",

@@ -345,15 +345,22 @@ unsafe fn copy_vector_element(src: SEXP, from: i64, dst: SEXP, to: i64) {
     }
 }
 
-pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
             return R_NilValue();
         }
 
-        let object = CAR(args);
+        let object = crate::eval::eval::Rf_eval(CAR(args), rho);
+        let _object_eval = protect(object);
         let field = replacement_name(CAR(CDR(args)));
-        let value = CAR(CDR(CDR(args)));
+        let value = if CDR(CDR(args)).is_null() || CDR(CDR(args)) == R_NilValue() {
+            R_NilValue()
+        } else {
+            crate::eval::eval::Rf_eval(CAR(CDR(CDR(args))), rho)
+        };
+        let _value_eval = protect(value);
+
         // Upstream `$<-` promotes a NULL target to a list: `NULL$a <- 1`
         // yields `list(a=1)`. R6 relies on this —
         // `generator$public_methods$clone <- f` where public_methods was
