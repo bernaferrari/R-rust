@@ -986,6 +986,17 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn setdiff_null_has_gnu_length_zero() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "identical(setdiff(NULL, \"x\"), NULL) && length(setdiff(NULL, \"x\")) == 0L && is.null(setdiff(NULL, \"x\"))",
+        );
+        let result = result.expect("setdiff(NULL, *) must be NULL with length 0");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
 

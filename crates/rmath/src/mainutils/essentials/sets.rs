@@ -32,9 +32,10 @@ pub unsafe fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         let y = arg_by_name_or_position(args, &["y"], 1);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(TYPEOF(x), 0);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) == SEXPTYPE::NILSXP {
+            return R_NilValue();
         }
+
         let xn = XLENGTH(x);
         let yn = if y.is_null() || y == R_NilValue() {
             0

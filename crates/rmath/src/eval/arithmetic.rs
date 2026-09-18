@@ -2230,9 +2230,10 @@ pub unsafe fn do_length(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return ans;
         }
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) == SEXPTYPE::NILSXP {
             return Rf_ScalarInteger(0);
         }
+
 
         #[cfg(feature = "renderplot-device")]
         if crate::mainutils::essentials::sexp_has_class(x, "unit") {
