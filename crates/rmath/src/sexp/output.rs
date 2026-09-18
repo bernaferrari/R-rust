@@ -1286,7 +1286,7 @@ fn format_difftime_vector(x: Sexp<'_>) -> String {
 
 fn format_factor(x: Sexp<'_>) -> Option<String> {
     let levels = factor_levels(x.clone())?;
-    let vals: Vec<String> = x
+    let mut vals: Vec<String> = x
         .clone()
         .iter_integer()
         .take(10)
@@ -1301,6 +1301,10 @@ fn format_factor(x: Sexp<'_>) -> Option<String> {
             }
         })
         .collect();
+    let width = vals.iter().map(|s| s.chars().count()).max().unwrap_or(0);
+    for val in &mut vals {
+        *val = format!("{val:<width$}");
+    }
     let suffix = if x.len() > 10 { " ..." } else { "" };
     Some(format!(
         "[1] {}{}\nLevels: {}",
@@ -1401,7 +1405,8 @@ fn format_table(x: Sexp<'_>) -> Option<String> {
             .map(|value| format!("{value:>width$}"))
             .collect::<Vec<_>>()
             .join(" ");
-        Some(format!("\n{name_line}\n{value_line}"))
+        // GNU print.array of a 1-d table keeps a trailing column space.
+        Some(format!("\n{name_line} \n{value_line} "))
     }
 }
 

@@ -1143,8 +1143,11 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     .collect::<Vec<_>>()
                     .join(" ");
                 println!();
-                println!("{name_line}");
-                println!("{value_line}");
+                // GNU print.array of a 1-d table: a space after the last
+                // column, so both header and count lines gain a trailing space.
+                println!("{name_line} ");
+                println!("{value_line} ");
+
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
                 return x;
             }
@@ -1159,11 +1162,8 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-/// R's `print.factor(x)` — print factor with levels and counts.
-///
-/// Prints the factor values and a levels summary like:
-///   [1] a b c a
-///   Levels: a b c
+/// GNU `print.factor`: `as.character` then `print(..., quote=FALSE)`, which
+/// `format()`s labels to the widest field (`<NA>` is 4), then `Levels:`.
 pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -1173,22 +1173,14 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         }
 
         let n = XLENGTH(x);
-
-        // Get levels attribute
         let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
         let has_levels = !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP;
 
-        // Print the factor values
         if n == 0 {
             println!("factor(0)");
         } else {
             let t = TYPEOF(x);
-            let mut counts: Vec<i32> = Vec::new();
-            if has_levels {
-                let nl = XLENGTH(levels);
-                counts.resize(nl as usize, 0);
-            }
-
+            let mut labels: Vec<String> = Vec::with_capacity(n as usize);
             for i in 0..n {
                 let val = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                     let v = *INTEGER(x).add(i as usize);
@@ -1196,9 +1188,6 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                         "<NA>".to_string()
                     } else if has_levels && (v as R_xlen_t) <= XLENGTH(levels) && v > 0 {
                         let idx = (v - 1) as R_xlen_t;
-                        if (idx as usize) < counts.len() {
-                            counts[idx as usize] += 1;
-                        }
                         let charsxp = STRING_ELT(levels, idx);
                         if charsxp == crate::sexp::globals::R_NaString() {
                             "<NA>".to_string()
@@ -1206,21 +1195,28 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                             elt_to_string(levels, idx)
                         }
                     } else {
-                        format!("{}", v)
+                        format!("{v}")
                     }
-
                 } else {
                     elt_to_string(x, i)
                 };
+                labels.push(val);
+            }
+            let width = labels
+                .iter()
+                .map(|s| s.chars().count())
+                .max()
+                .unwrap_or(0);
+            for (i, val) in labels.iter().enumerate() {
+                let padded = format!("{val:<width$}");
                 if i == 0 {
-                    print!("[1] {}", val);
+                    print!("[1] {padded}");
                 } else {
-                    print!(" {}", val);
+                    print!(" {padded}");
                 }
             }
             println!();
 
-            // Print levels summary
             if has_levels {
                 let nl = XLENGTH(levels);
                 print!("Levels:");
@@ -1231,7 +1227,7 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                     } else {
                         elt_to_string(levels, i)
                     };
-                    print!(" {}", lvl);
+                    print!(" {lvl}");
                 }
                 println!();
             }

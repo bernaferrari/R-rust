@@ -1120,6 +1120,31 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn print_factor_pads_to_widest_label_like_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"identical(capture.output(print(factor(c("a", NA, "b"), exclude=""))), c("[1] a    <NA> b   ", "Levels: a b <NA>"))"#,
+        );
+        let result = result.expect("print.factor must pad to <NA> width");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn print_table_1d_keeps_gnu_trailing_column_space() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+fx <- factor(c("a", NA, "b"), exclude="")
+r <- replicate(3, capture.output(print(fx)))
+identical(capture.output(print(table(r[2,]))), c("", "Levels: a b <NA> ", "               3 "))
+"#,
+        );
+        let result = result.expect("print.table must emit GNU's trailing column space");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
 
