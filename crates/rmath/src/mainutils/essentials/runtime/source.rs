@@ -55,6 +55,7 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 parsed.echo,
                 parsed.print_eval.unwrap_or(parsed.echo),
                 &parsed.prompt,
+                &parsed.continue_echo,
                 parsed.cutoff,
                 parsed.deparse_opts,
             );
@@ -67,12 +68,19 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let file_path = elt_to_string(file_arg, 0);
         let env = source_eval_env(parsed.local, rho, false);
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
-            Ok(content) => eval_source_text_with_name(&content, env, &file_path),
+            Ok(content) => eval_source_text_with_options(
+                &content,
+                env,
+                &file_path,
+                parsed.echo,
+                parsed.print_eval.unwrap_or(parsed.echo),
+                &parsed.prompt,
+                &parsed.continue_echo,
+            ),
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }
         }
-
     }
 }
 
@@ -94,6 +102,7 @@ pub unsafe fn do_with_autoprint(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
             echo,
             print_eval,
             &prompt,
+            "+ ",
             crate::mainutils::deparse::DEFAULT_CUTOFF,
             crate::mainutils::deparse::KEEPNA
                 | crate::mainutils::deparse::KEEPINTEGER
@@ -102,6 +111,7 @@ pub unsafe fn do_with_autoprint(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
     }
 }
 
+
 struct SourceCallArgs {
     file: Option<SEXP>,
     exprs: Option<SEXP>,
@@ -109,6 +119,7 @@ struct SourceCallArgs {
     echo: bool,
     print_eval: Option<bool>,
     prompt: String,
+    continue_echo: String,
     cutoff: c_int,
     deparse_opts: c_int,
 }
@@ -120,6 +131,8 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
         let mut local = None;
         let mut echo = false;
         let mut print_eval = None;
+        let mut prompt = None;
+        let mut continue_echo = None;
         let mut first_positional = None;
         let mut positional = 0usize;
         let mut current = args;
@@ -131,6 +144,8 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
                 Some("local") => local = Some(value),
                 Some("echo") => echo = logical_arg(value, false),
                 Some("print.eval") | Some("print.") => print_eval = Some(logical_arg(value, true)),
+                Some("prompt.echo") => prompt = Some(elt_to_string(value, 0)),
+                Some("continue.echo") => continue_echo = Some(elt_to_string(value, 0)),
                 Some(_) => {}
                 None => {
                     if positional == 0 {
@@ -150,7 +165,8 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
             local,
             echo,
             print_eval,
-            prompt: option_prompt(),
+            prompt: prompt.unwrap_or_else(option_prompt),
+            continue_echo: continue_echo.unwrap_or_else(option_continue),
             cutoff: crate::mainutils::deparse::DEFAULT_CUTOFF,
             deparse_opts: crate::mainutils::deparse::SHOWATTRIBUTES,
         }
@@ -189,12 +205,26 @@ fn with_autoprint_args(args: SEXP) -> (SEXP, bool, bool) {
 }
 
 fn option_prompt() -> String {
+    option_string("prompt", "> ")
+}
+
+fn option_continue() -> String {
+    option_string("continue", "+ ")
+}
+
+fn option_string(name: &str, default: &str) -> String {
     unsafe {
-        let opt = crate::mainutils::options::GetOption1(Rf_install(c"prompt".as_ptr()));
+        let cname = CString::new(name).unwrap_or_default();
+        let opt = crate::mainutils::options::GetOption1(Rf_install(cname.as_ptr()));
         if opt.is_null() || opt == R_NilValue() || TYPEOF(opt) != SEXPTYPE::STRSXP {
-            "> ".to_string()
+            default.to_string()
         } else {
-            elt_to_string(opt, 0)
+            let s = elt_to_string(opt, 0);
+            if s.is_empty() {
+                default.to_string()
+            } else {
+                s
+            }
         }
     }
 }
@@ -268,6 +298,7 @@ unsafe fn eval_source_expressions(
     echo: bool,
     print_eval: bool,
     prompt: &str,
+    continue_echo: &str,
     cutoff: c_int,
     deparse_opts: c_int,
 ) -> SEXP {
@@ -282,7 +313,7 @@ unsafe fn eval_source_expressions(
         for i in 0..n {
             let expr = VECTOR_ELT(exprs, i);
             if echo {
-                echo_source_expression(expr, prompt, cutoff, deparse_opts);
+                echo_source_expression(expr, prompt, continue_echo, cutoff, deparse_opts);
             }
             last_value = crate::eval::eval::Rf_eval(expr, env);
             last_visible = crate::sexp::globals::R_Visible();
@@ -304,6 +335,7 @@ unsafe fn eval_source_expressions(
 unsafe fn echo_source_expression(
     expr: SEXP,
     prompt: &str,
+    continue_echo: &str,
     cutoff: c_int,
     deparse_opts: c_int,
 ) {
@@ -322,7 +354,7 @@ unsafe fn echo_source_expression(
             for i in 0..XLENGTH(dumped) {
                 if i > 0 {
                     text.push('\n');
-                    text.push_str("+ ");
+                    text.push_str(continue_echo);
                 }
                 text.push_str(&elt_to_string(dumped, i));
             }
@@ -335,6 +367,7 @@ unsafe fn echo_source_expression(
         }
     }
 }
+
 
 unsafe fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
     unsafe {
@@ -380,6 +413,56 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }
         }
+    }
+}
+
+unsafe fn eval_source_text_with_options(
+    content: &str,
+    env: SEXP,
+    filename: &str,
+    echo: bool,
+    print_eval: bool,
+    prompt: &str,
+    continue_echo: &str,
+) -> SEXP {
+    let _ = filename;
+    unsafe {
+        let parsed = parse_source_expression_vector(content);
+        let _parsed = protect(parsed);
+        if parsed.is_null() || parsed == R_NilValue() {
+            crate::sexp::globals::set_R_Visible(FALSE);
+            return R_NilValue();
+        }
+        let n = XLENGTH(parsed);
+        let mut result = R_NilValue();
+        for i in 0..n {
+            let element = VECTOR_ELT(parsed, i);
+            if element.is_null() || element == R_NilValue() {
+                continue;
+            }
+            if echo {
+                echo_source_expression(
+                    element,
+                    prompt,
+                    continue_echo,
+                    crate::mainutils::deparse::DEFAULT_CUTOFF,
+                    crate::mainutils::deparse::SHOWATTRIBUTES,
+                );
+            }
+            result = crate::eval::eval::Rf_eval(element, env);
+            if print_eval && crate::sexp::globals::R_Visible() != FALSE {
+                let print_args = Rf_cons(result, R_NilValue());
+                let _print_args = protect(print_args);
+                crate::mainutils::essentials_basic::do_print(
+                    R_NilValue(),
+                    R_NilValue(),
+                    print_args,
+                    env,
+                );
+            }
+        }
+        crate::sexp::globals::set_R_Visible(FALSE);
+        result
     }
 }
 
