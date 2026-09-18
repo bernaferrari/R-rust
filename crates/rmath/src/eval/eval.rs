@@ -1080,6 +1080,23 @@ mod tests {
     }
 
     #[test]
+    fn with_autoprint_capture_output_splits_gnu_lines() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+CO <- utils::capture.output
+out <- CO(withAutoprint({ x <- 1:2; cat("x=", x, "\n") }))
+identical(out[1], paste0(getOption("prompt"), "x <- 1:2")) &&
+  length(out) >= 3L &&
+  identical(out[3], "x= 1 2 ")
+"#,
+        );
+        let result = result.expect("withAutoprint capture.output must emit GNU lines");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn utils_namespace_loads_without_windows_s3_methods() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(

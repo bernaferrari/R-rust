@@ -328,7 +328,10 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
         let search_start = ENCLOS(top);
 
         if !search_start.is_null() && search_start != R_EmptyEnv() {
-            let val3 = findFunWithBaseEnvAfterGlobalEnv(method, search_start);
+            let val3 = force_s3_method_value(findFunWithBaseEnvAfterGlobalEnv(
+                method,
+                search_start,
+            ));
             if val3 != R_UnboundValue() {
                 return val3;
             }

@@ -99,6 +99,9 @@ pub struct RConn {
     pub text_var: Option<String>,
     /// Environment that receives `text_var` updates. Null when unused.
     pub text_env: SEXP,
+    /// True when the last write did not end in `\n` (GNU partial-line buffer).
+    pub text_incomplete: bool,
+
 
     /// Child process (for pipe connections).
     pub child: Option<Child>,
@@ -135,6 +138,8 @@ impl RConn {
             text_data: String::new(),
             text_pos: 0,
             text_lines: RefCell::new(Vec::new()),
+            text_incomplete: false,
+
             child: None,
             file: None,
             reader: None,
@@ -619,6 +624,38 @@ pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
     write_bytes_to_conn(conn, bytes);
 }
 
+fn append_text_connection_write(conn: &mut RConn, bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    let text = String::from_utf8_lossy(bytes);
+    let ends_with_nl = text.ends_with('\n');
+    let mut pieces: Vec<&str> = text.split('\n').collect();
+    if ends_with_nl {
+        pieces.pop();
+    }
+    {
+        let mut lines = conn.text_lines.borrow_mut();
+        for (i, piece) in pieces.iter().enumerate() {
+            if i == 0 && conn.text_incomplete {
+                if let Some(last) = lines.last_mut() {
+                    last.push_str(piece);
+                } else {
+                    lines.push((*piece).to_string());
+                }
+            } else {
+                lines.push((*piece).to_string());
+            }
+        }
+    }
+    if !pieces.is_empty() {
+        conn.text_incomplete = !ends_with_nl;
+    }
+    unsafe {
+        conn.assign_text_output();
+    }
+}
+
 pub fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
     match &mut conn.kind {
         ConnKind::File => {
@@ -661,28 +698,8 @@ pub fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
             }
         }
         ConnKind::RawConnection => conn.raw_data.extend_from_slice(bytes),
-        ConnKind::TextConnection => {
-            let text = String::from_utf8_lossy(bytes);
-            {
-                let mut lines = conn.text_lines.borrow_mut();
-                for (i, piece) in text.split('\n').enumerate() {
-                    if i == 0 {
-                        if let Some(last) = lines.last_mut() {
-                            last.push_str(piece);
-                            continue;
-                        }
-                    }
-                    if i + 1 == text.split('\n').count() && piece.is_empty() && text.ends_with('\n')
-                    {
-                        break;
-                    }
-                    lines.push(piece.to_string());
-                }
-            }
-            unsafe {
-                conn.assign_text_output();
-            }
-        }
+        ConnKind::TextConnection => append_text_connection_write(conn, bytes),
+
 
         ConnKind::Terminal(name) if name == "stdout" => {
             let stdout = io::stdout();
