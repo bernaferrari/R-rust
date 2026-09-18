@@ -718,27 +718,51 @@ pub unsafe fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `data_part()`: `getDataPart(obj, TRUE)` then `UNSET_S4_OBJECT`.
+/// The data part is a base vector/closure, not an S4 object.
+unsafe fn strip_s4_data_part(value: SEXP) -> SEXP {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return value;
+        }
+        if crate::mainutils::coerce::IS_S4_OBJECT(value) == 0 {
+            return value;
+        }
+        let data = crate::mainutils::duplicate::shallow_duplicate(value);
+        crate::sexp::accessors::UNSET_S4_OBJECT(data);
+        crate::sexp::attrib_core::setAttrib(
+            data,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            R_NilValue(),
+        );
+        crate::sexp::attrib_core::setAttrib(data, Rf_install(c"className".as_ptr()), R_NilValue());
+        crate::sexp::attrib_core::setAttrib(data, Rf_install(c"package".as_ptr()), R_NilValue());
+        data
+    }
+}
+
 unsafe fn R_data_part(obj: SEXP) -> SEXP {
     unsafe {
         let data_sym = Rf_install(c".Data".as_ptr());
         let attr = crate::sexp::attrib_core::getAttrib(obj, data_sym);
         if !attr.is_null() && attr != R_NilValue() {
-            return unmap_slot_pseudo_null(attr);
+            return strip_s4_data_part(unmap_slot_pseudo_null(attr));
         }
         if crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
             if let Some(value) = s4_named_slot(obj, ".Data") {
-                return unmap_slot_pseudo_null(value);
+                return strip_s4_data_part(unmap_slot_pseudo_null(value));
             }
             // GNU getDataPart: `typeof(object) == "S4"` (OBJSXP) requires an
             // explicit .Data/.xData attribute. Function S4 objects
-            // (MethodDefinition) have typeof "closure" — the object IS the
-            // data part when no .Data attribute is stored.
+            // (MethodDefinition, classGeneratorFunction) have typeof
+            // "closure" — the object IS the data part when no .Data
+            // attribute is stored.
             if TYPEOF(obj) != SEXPTYPE::OBJSXP {
-                return obj;
+                return strip_s4_data_part(obj);
             }
             let xdata = crate::sexp::attrib_core::getAttrib(obj, Rf_install(c".xData".as_ptr()));
             if !xdata.is_null() && xdata != R_NilValue() {
-                return unmap_slot_pseudo_null(xdata);
+                return strip_s4_data_part(unmap_slot_pseudo_null(xdata));
             }
             let class_val = crate::sexp::attrib_core::getAttrib(
                 obj,
@@ -766,7 +790,7 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
                         )
                     })
                 }) {
-                    return obj;
+                    return strip_s4_data_part(obj);
                 }
             }
             return R_NilValue();

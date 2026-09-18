@@ -45,31 +45,13 @@ unsafe fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
         let name_sym = Rf_install(cname.as_ptr());
         let value = crate::mainutils::essentials::R_do_slot(s, name_sym);
         if value.is_null() || value == R_NilValue() {
-            return None;
+            None
+        } else {
+            Some(value)
         }
-        if slot_name == ".Data" && crate::mainutils::coerce::IS_S4_OBJECT(value) != 0 {
-            let data = crate::mainutils::duplicate::shallow_duplicate(value);
-            crate::sexp::accessors::UNSET_S4_OBJECT(data);
-            crate::sexp::attrib_core::setAttrib(
-                data,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                R_NilValue(),
-            );
-            crate::sexp::attrib_core::setAttrib(
-                data,
-                Rf_install(c"className".as_ptr()),
-                R_NilValue(),
-            );
-            crate::sexp::attrib_core::setAttrib(
-                data,
-                Rf_install(c"package".as_ptr()),
-                R_NilValue(),
-            );
-            return Some(data);
-        }
-        Some(value)
     }
 }
+
 
 
 pub unsafe fn s4_class_name(s: SEXP) -> Option<String> {
