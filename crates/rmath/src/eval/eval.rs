@@ -2897,10 +2897,10 @@ bar <- setClass("bar", contains = "foo")
 setMethod("[", "foo",  function(x, i, j, ..., flag = FALSE, drop = FALSE) { flag })
 setMethod("[", "bar", function(x, i, j, ..., flag = FALSE, drop = FALSE) { callNextMethod() })
 BAR <- new("bar")
-identical(BAR[1L], FALSE)
+identical(BAR[1L], FALSE) && identical(BAR[1L, , flag=TRUE], TRUE)
 "#,
         );
-        let result = result.expect("setMethod([) + callNextMethod default must work");
+        let result = result.expect("classes-methods.R callNextMethod must forward flag=");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 

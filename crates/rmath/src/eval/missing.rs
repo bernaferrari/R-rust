@@ -609,9 +609,26 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
                 frame_guards.push(guard);
             }
         }
-
-        let call = allocLang(1);
-        SETCAR(call, op);
+        // GNU eval.c R_execMethod reuses the generic context's LANGSXP so
+        // sys.call() in the method is `BAR[1L, , flag=TRUE]`, not a
+        // 1-form call whose CAR is the MethodDefinition.
+        let mut cptr = crate::sexp::context::R_GlobalContext();
+        if !cptr.is_null()
+            && ((*cptr).callflag & crate::sexp::context::ctxt_flags::CTXT_BUILTIN) != 0
+        {
+            cptr = (*cptr).nextcontext;
+        }
+        let call = if !cptr.is_null()
+            && !(*cptr).call.is_null()
+            && (*cptr).call != R_NilValue()
+            && TYPEOF((*cptr).call) == SEXPTYPE::LANGSXP
+        {
+            (*cptr).call
+        } else {
+            let call = allocLang(1);
+            SETCAR(call, op);
+            call
+        };
         let _call_guard = protect(call);
         applyClosureWithFrameVars(call, op, actuals, rho, R_NilValue(), frame_vars, TRUE)
     }

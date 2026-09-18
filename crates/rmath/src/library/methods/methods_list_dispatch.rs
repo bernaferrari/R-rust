@@ -1013,8 +1013,6 @@ pub unsafe fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
                 op = primitive;
             }
         }
-
-
         let call = crate::mainutils::duplicate::shallow_duplicate(matched_call);
         let _call_guard = protect(call);
 
@@ -1024,6 +1022,23 @@ pub unsafe fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
                 op = primitive;
                 prim_case = true;
             }
+        }
+
+        // Primitive `callNextMethod(...)` (nargs > 0): apply the next
+        // method to the supplied args. GNU NextMethod.R does this via
+        // eval(.nextMethod(...), callEnv) after assign(); the primitive
+        // path never assigned `.nextMethod` in `ev`.
+        let r_level_call =
+            sexp_to_string(CAR(matched_call)).as_deref() == Some("callNextMethod");
+        if !prim_case && r_level_call {
+            return crate::eval::closure::applyClosure(
+                matched_call,
+                op,
+                CDR(matched_call),
+                ev,
+                R_NilValue(),
+                TRUE,
+            );
         }
 
         if prim_case {
@@ -1067,24 +1082,8 @@ pub unsafe fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
 }
 
 /// Evaluator entry point for the R-level `callNextMethod` special form.
-///
-/// GNU `methods::callNextMethod` rematches extra formals (`.local` /
-/// `.doSubNextCall`) before `.Call(C_R_nextMethodCall, ...)`. The
-/// primitive must not shadow that rematch once methods is loaded.
-pub unsafe fn do_callNextMethod(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if let Some(fun) = methods_call_next_method_closure() {
-            return crate::eval::closure::applyClosure(
-                call,
-                fun,
-                args,
-                rho,
-                R_NilValue(),
-                TRUE,
-            );
-        }
-        R_nextMethodCall(call, rho)
-    }
+pub unsafe fn do_callNextMethod(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { R_nextMethodCall(call, rho) }
 }
 
 unsafe fn methods_call_next_method_closure() -> Option<SEXP> {
