@@ -689,7 +689,21 @@ pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SE
     }
 }
 
+fn is_generic_function(value: SEXP) -> bool {
+    unsafe {
+        crate::mainutils::objects::inherits2(value, c"genericFunction".as_ptr()) != 0
+            || crate::mainutils::objects::inherits2(value, c"standardGeneric".as_ptr()) != 0
+            || crate::mainutils::objects::inherits2(
+                value,
+                c"nonstandardGenericFunction".as_ptr(),
+            ) != 0
+            || crate::mainutils::objects::inherits2(value, c"groupGenericFunction".as_ptr()) != 0
+    }
+}
+
 /// R_getGeneric - get the generic function definition for a given name.
+/// GNU `get_generic` walks `R_ParentEnv` from `env` and accepts only
+/// genericFunction objects, then falls back to `SYMVALUE`.
 pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
     unsafe {
         let Some(name_string) = sexp_to_string(name) else {
@@ -697,7 +711,6 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
         };
         if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
             if crate::mainutils::coerce::asLogical(mustFind) != 0 {
-
                 r_error(format!(
                     "no generic function definition found for '{}'",
                     name_string
@@ -707,21 +720,40 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
         }
         let cname = CString::new(name_string.as_str()).unwrap_or_default();
         let symbol = crate::sexp::symbol::Rf_install(cname.as_ptr());
-        let value = crate::sexp::envir::R_findVarInFrame(env, symbol);
-        if value == R_UnboundValue() {
-            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
-
-                r_error(format!(
-                    "no generic function definition found for '{}' in the supplied environment",
-                    name_string
-                ));
+        let mut rho = env;
+        while !rho.is_null() && rho != R_NilValue() && TYPEOF(rho) == SEXPTYPE::ENVSXP {
+            let mut value = crate::sexp::envir::R_findVarInFrame(rho, symbol);
+            if value != crate::sexp::globals::R_UnboundValue() {
+                if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                    value = crate::sexp::envir::forcePromise(value);
+                }
+                if is_generic_function(value) {
+                    return value;
+                }
             }
-            R_NilValue()
-        } else {
-            value
+            let parent = crate::sexp::accessors::ENCLOS(rho);
+            if parent.is_null() || parent == rho || parent == crate::sexp::globals::R_EmptyEnv() {
+                break;
+            }
+            rho = parent;
         }
+        let value = crate::sexp::accessors::SYMVALUE(symbol);
+        if !value.is_null()
+            && value != crate::sexp::globals::R_UnboundValue()
+            && is_generic_function(value)
+        {
+            return value;
+        }
+        if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+            r_error(format!(
+                "no generic function definition found for '{}' in the supplied environment",
+                name_string
+            ));
+        }
+        R_NilValue()
     }
 }
+
 
 /// Like R_getGeneric but walks the whole enclosing-environment chain, so a
 /// generic defined in the global environment is found from any caller.

@@ -24,13 +24,18 @@ fn as_dl<T>(f: T) -> DL_FUNC {
     Some(unsafe { std::mem::transmute_copy(&f) })
 }
 
+unsafe extern "C-unwind" fn c_rnorm(n: SEXP, mu: SEXP, sd: SEXP) -> SEXP {
+    unsafe { do_rnorm(n, mu, sd) }
+}
+
 pub fn lookup_call(name: &str) -> DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "rnorm" => as_dl(do_rnorm as unsafe fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rnorm" => as_dl(c_rnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         _ => None,
     }
 }
+
 pub unsafe fn install_stats_call_symbols(env: SEXP) {
     unsafe {
         let cname = std::ffi::CString::new("C_rnorm").unwrap_or_default();

@@ -408,17 +408,37 @@ pub(crate) unsafe fn R_FixupRHS(x: SEXP, y: SEXP) -> SEXP {
 }
 
 /// PairToVectorList: convert a pairlist to a vector list.
+/// GNU copies cell tags onto the `names` attribute so `formals(f)[i] <- …`
+/// keeps formal names.
 pub(crate) unsafe fn PairToVectorList(x: SEXP) -> SEXP {
     unsafe {
         let len = Rf_length(x);
         let ans = Rf_allocVector3(VECSXP, len as R_xlen_t);
         let _ans_guard = protect(ans);
+        let names = Rf_allocVector3(STRSXP, len as R_xlen_t);
+        let _names_guard = protect(names);
         let mut src = x;
         let mut i: R_xlen_t = 0;
+        let mut any_name = false;
         while !isNull(src) && i < len as R_xlen_t {
             SET_VECTOR_ELT(ans, i, CAR(src));
+            let tag = TAG(src);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let printname = PRINTNAME(tag);
+                if !printname.is_null() && printname != R_NilValue() {
+                    SET_STRING_ELT(names, i, printname);
+                    any_name = true;
+                } else {
+                    SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
+                }
+            } else {
+                SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
+            }
             src = CDR(src);
             i += 1;
+        }
+        if any_name {
+            setAttrib(ans, sym_Names(), names);
         }
         ans
     }

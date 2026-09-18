@@ -1906,8 +1906,15 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             } else {
                 ax = Rf_allocVector3(SEXPTYPE::VECSXP, xlength(x));
                 _ax_guard = Some(protect(ax));
-                setAttrib(ax, sym_Names(), getAttrib(x, sym_Names()));
+                let names = getAttrib(x, sym_Names());
+                let names = if isNull(names) || names == R_NilValue() {
+                    pairlist_tag_names(x)
+                } else {
+                    names
+                };
+                setAttrib(ax, sym_Names(), names);
             }
+
             let mut px = x;
             let mut idx: R_xlen_t = 0;
             while !isNull(px) {
