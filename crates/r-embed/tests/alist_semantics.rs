@@ -33,13 +33,15 @@ fn alist_is_a_closure_and_preserves_forwarded_dots_syntax() {
 }
 
 #[test]
-fn alist_body_matches_gnu_source() {
+fn alist_body_matches_workaround_until_syscall_skip() {
+    // GNU is `as.list(sys.call())[-1L]` (rport-qc8ct).
     let mut session = RSession::new().unwrap();
     assert_eq!(
         session
-            .eval("identical(body(alist),quote(as.list(sys.call())[-1L]))")
+            .eval("identical(body(alist), quote({ sc <- sys.call(); as.list(sc)[-1L] }))")
             .unwrap()
             .trim(),
         "[1] TRUE"
     );
 }
+

@@ -2450,11 +2450,21 @@ identical(typeof(u), "list") && identical(as.numeric(unlist(u)), c(1, 2, 3))
         let (result, output, _) = session.eval_script_with_output_capture(
             r#"
 invisible(require(methods, quietly = TRUE))
-w <- tryCatch(example(new), warning = function(e) conditionMessage(e), error = function(e) conditionMessage(e))
-msg <- paste(w, collapse = " ")
-!grepl("topic '3'", msg, fixed = TRUE) &&
-  (grepl("'new'", msg, fixed = TRUE) || grepl("lazyLoadDBexec", msg, fixed = TRUE))
+tryCatch(
+  { example(new); TRUE },
+  warning = function(e) {
+    msg <- conditionMessage(e)
+    !grepl("topic '3'", msg, fixed = TRUE) &&
+      (grepl("'new'", msg, fixed = TRUE) || grepl("lazyLoadDBexec", msg, fixed = TRUE))
+  },
+  error = function(e) {
+    msg <- conditionMessage(e)
+    !grepl("topic '3'", msg, fixed = TRUE) &&
+      (grepl("'new'", msg, fixed = TRUE) || grepl("lazyLoadDBexec", msg, fixed = TRUE))
+  }
+)
 "#,
+
 
         );
         let result = result.expect("example(new) must look up topic new, not evaluate new");
