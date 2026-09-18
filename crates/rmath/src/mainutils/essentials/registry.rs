@@ -491,7 +491,9 @@ pub(super) const ALL_FNS: &[&str] = &[
     "withRestarts",
     "isS4",
     "asS4",
+    "isNamespace",
     ".asS4",
+
     ".OBJSXP",
     "is",
     "setClass",

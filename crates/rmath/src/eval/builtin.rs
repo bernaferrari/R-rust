@@ -4817,6 +4817,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_invisible,
     },
     EvaluatedBuiltin {
+        name: "isNamespace",
+        handler: crate::mainutils::essentials::do_isNamespace,
+    },
+
+    EvaluatedBuiltin {
         name: "suppressWarnings",
         handler: crate::mainutils::essentials::do_suppress_warnings,
     },

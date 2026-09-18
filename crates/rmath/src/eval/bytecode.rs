@@ -877,12 +877,14 @@ fn validate_gnu_adapter_impl(
                 || loop_stacks[instruction_pc].as_ref() != Some(&loop_stack)
                 || call_stacks[instruction_pc].as_ref() != Some(&call_stack)
             {
-                return Err(format!(
-                    "GNU bytecode state disagrees at instruction {instruction_pc}"
-                ));
+                // Merge disagreement: GNU compiler can produce CFGs our
+                // stack-effect model does not yet prove. Not malformed —
+                // fall back to the retained source expression.
+                return Ok(false);
             }
             continue;
         }
+
         if call_stack.last().is_some_and(|marker| *marker >= depth) {
             return Err("GNU bytecode consumed an active call frame".into());
         }

@@ -923,7 +923,7 @@ pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
 }
 
 /// Get the i-th integer value.
-/// Requires exact INTSXP (LGLSXP must use LOGICAL_ELT).
+/// GNU `INTEGER_ELT` shares storage with `LGLSXP`.
 pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
         if !is_valid_sexp_ptr(x) {
@@ -933,7 +933,7 @@ pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
         if data.is_null() || (data as usize) % std::mem::align_of::<c_int>() != 0 {
             return NA_INTEGER;
         }
-        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP]);
+        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP]);
         *data.add(i as usize)
     }
 }

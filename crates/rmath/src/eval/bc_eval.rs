@@ -1488,8 +1488,19 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             super::runtime::base_env(),
                         );
                         if fun == R_UnboundValue() || TYPEOF(fun) != SEXPTYPE::SPECIALSXP {
-                            bc_error("GNU CALLSPECIAL symbol did not resolve to a special");
+                            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))
+                                .to_string_lossy();
+                            let kind = if fun == R_UnboundValue() {
+                                -1
+                            } else {
+                                TYPEOF(fun)
+                            };
+                            bc_error(format!(
+                                "GNU CALLSPECIAL symbol did not resolve to a special: {name} has type {kind}"
+                            ));
                         }
+
+
                         use crate::sexp::object::Sexp;
                         let result = super::apply::apply_special_safe(
                             Sexp::from_raw_unchecked(fun),

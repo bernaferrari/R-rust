@@ -43,6 +43,31 @@ pub unsafe fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `isNamespace(ns)` — `.Internal(isNamespaceEnv(ns))`.
+pub unsafe fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let ns = CAR(args);
+        if ns.is_null() || TYPEOF(ns) != SEXPTYPE::ENVSXP {
+            return Rf_ScalarLogical(FALSE);
+        }
+        let info = crate::sexp::envir::R_findVarInFrame(
+            ns,
+            Rf_install(c".__NAMESPACE__.".as_ptr()),
+        );
+        Rf_ScalarLogical(
+            if !info.is_null()
+                && info != crate::sexp::globals::R_UnboundValue()
+                && TYPEOF(info) == SEXPTYPE::ENVSXP
+            {
+                TRUE
+            } else {
+                FALSE
+            },
+        )
+    }
+}
+
+
 /// R's `is(x, class2)` — type/class check.
 pub unsafe fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

@@ -3050,8 +3050,9 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "return",
             "switch",
             "on.exit",
-
+            "rep",
             "$",
+
             "$<-",
             "[",
             "[<-",

@@ -1039,6 +1039,29 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn rnorm_named_mean_leaves_positional_for_sd() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "set.seed(1); a <- rnorm(1, 0, mean = 10); set.seed(1); b <- rnorm(1, mean = 10, sd = 0); identical(a, b) && identical(a, 10)",
+        );
+        let result = result.expect("rnorm must match GNU exact-then-positional formals");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn rep_is_gnu_special() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "identical(typeof(rep), \"special\") && identical(rep(1L, 3L), c(1L, 1L, 1L))",
+        );
+        let result = result.expect("rep must be GNU's special");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
 
 
 
