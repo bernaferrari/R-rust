@@ -303,97 +303,110 @@ pub unsafe fn R_standardGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
 
 // Match exact/ANY table signatures without generating 2^arity combinations.
 // Class inheritance remains the responsibility of the full methods selector.
-unsafe fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
+unsafe fn for_each_env_binding(env: SEXP, mut visit: impl FnMut(SEXP, SEXP)) {
     unsafe {
-        let mut candidates: Vec<(Vec<bool>, SEXP)> = Vec::new();
-        let mut binding = FRAME(table);
-        while !binding.is_null() && binding != R_NilValue() {
-            let symbol = TAG(binding);
-            if !symbol.is_null() && TYPEOF(symbol) == SEXPTYPE::SYMSXP {
-                let label = CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
-                let signature: Vec<&str> = label.split('#').collect();
-                if signature.len() == classes.len()
-                    && signature
-                        .iter()
-                        .zip(classes)
-                        .all(|(want, got)| *want == "ANY" || *want == got)
+        let mut walk = |mut frame: SEXP| {
+            while !frame.is_null() && frame != R_NilValue() {
+                let symbol = TAG(frame);
+                let value = CAR(frame);
+                if !symbol.is_null()
+                    && TYPEOF(symbol) == SEXPTYPE::SYMSXP
+                    && value != R_UnboundValue()
                 {
-                    let specificity = signature.iter().map(|want| *want != "ANY").collect();
-                    let method = CAR(binding);
-                    if method != R_UnboundValue() && method != R_NilValue() {
-                        candidates.push((specificity, method));
-                    }
+                    visit(symbol, value);
                 }
+                frame = CDR(frame);
             }
-            binding = CDR(binding);
-        }
-        let best: Vec<_> = candidates
-            .iter()
-            .filter(|(rank, _)| {
-                !candidates.iter().any(|(other, _)| {
-                    other != rank && other.iter().zip(rank).all(|(a, b)| *a || !*b)
-                })
-            })
-            .collect();
-        match best.as_slice() {
-            [] => R_UnboundValue(),
-            [(_, method)] => *method,
-            _ => r_error(
-                "ambiguous ANY method signatures require the full inherited-method selector",
-            ),
+        };
+        walk(FRAME(env));
+        let hashtab = HASHTAB(env);
+        if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
+            for i in 0..XLENGTH(hashtab) {
+                walk(VECTOR_ELT(hashtab, i));
+            }
         }
     }
 }
 
-#[derive(Clone)]
+unsafe fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
+    unsafe {
+        let mut candidates: Vec<(Vec<bool>, SEXP)> = Vec::new();
+        for_each_env_binding(table, |symbol, method| {
+            let label = CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
+            let signature: Vec<&str> = label.split('#').collect();
+            if signature.len() == classes.len()
+                && signature
+                    .iter()
+                    .zip(classes)
+                    .all(|(want, got)| *want == "ANY" || *want == got)
+            {
+                let specificity = signature.iter().map(|want| *want != "ANY").collect();
+                if method != R_NilValue() {
+                    candidates.push((specificity, method));
+                }
+            }
+        });
+        candidates.sort_by(|a, b| b.0.cmp(&a.0));
+        candidates
+            .into_iter()
+            .next()
+            .map(|(_, method)| method)
+            .unwrap_or_else(|| unsafe { R_NilValue() })
+
+    }
+}
+
 struct TableMethod {
     signature: Vec<String>,
     method: SEXP,
     distances: Vec<usize>,
 }
 
+impl Clone for TableMethod {
+    fn clone(&self) -> Self {
+        Self {
+            signature: self.signature.clone(),
+            method: self.method,
+            distances: self.distances.clone(),
+        }
+    }
+}
+
 unsafe fn table_methods(table: SEXP, targets: &[String]) -> Vec<TableMethod> {
     unsafe {
         let mut out = Vec::new();
-        let mut binding = FRAME(table);
-        while !binding.is_null() && binding != R_NilValue() {
-            let symbol = TAG(binding);
-            if !symbol.is_null() && TYPEOF(symbol) == SEXPTYPE::SYMSXP {
-                let label = CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
-                let signature: Vec<String> = label.split('#').map(str::to_owned).collect();
-                if signature.len() == targets.len() {
-                    let distances: Option<Vec<usize>> = signature
-                        .iter()
-                        .zip(targets)
-                        .map(|(defined, target)| {
-                            if defined == target {
-                                Some(0)
-                            } else if defined == "ANY" {
-                                Some(usize::MAX / 4)
-                            } else {
-                                crate::mainutils::objects::s4_class_distance(target, defined)
-                            }
-                        })
-                        .collect();
-                    let method = CAR(binding);
-                    if let Some(distances) = distances
-                        && method != R_UnboundValue()
-                        && method != R_NilValue()
-                        && Rf_isFunction(method) != 0
-                    {
-                        out.push(TableMethod {
-                            signature,
-                            method,
-                            distances,
-                        });
-                    }
-                }
+        for_each_env_binding(table, |symbol, method| {
+            let label = CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
+            let signature: Vec<String> = label.split('#').map(str::to_owned).collect();
+            if signature.len() != targets.len() || method == R_NilValue() || Rf_isFunction(method) == 0
+            {
+                return;
             }
-            binding = CDR(binding);
-        }
+            let distances: Option<Vec<usize>> = signature
+                .iter()
+                .zip(targets)
+                .map(|(defined, target)| {
+                    if defined == target {
+                        Some(0)
+                    } else if defined == "ANY" {
+                        Some(usize::MAX / 4)
+                    } else {
+                        crate::mainutils::objects::s4_class_distance(target, defined)
+                    }
+                })
+                .collect();
+            if let Some(distances) = distances {
+                out.push(TableMethod {
+                    signature,
+                    method,
+                    distances,
+                });
+            }
+        });
         out
     }
 }
+
 
 fn nearest_method(methods: Vec<TableMethod>) -> Option<TableMethod> {
     // GNU .getBestMethods compares the defined classes by inheritance,
@@ -581,6 +594,31 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
                     return R_NilValue();
                 };
                 classes.push(class);
+            }
+        }
+        // GNU: findVarInFrame(.AllMTable, "Class#Class") then inherited scan.
+        let label = classes.join("#");
+        if let Ok(clabel) = CString::new(label.as_str()) {
+            let symbol = crate::sexp::symbol::Rf_install(clabel.as_ptr());
+            let exact = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
+            if exact != R_UnboundValue() && exact != R_NilValue() && Rf_isFunction(exact) != 0 {
+                let selected = TableMethod {
+                    signature: classes.clone(),
+                    method: exact,
+                    distances: vec![0; classes.len()],
+                };
+                install_method_context(ev, &name, mtable, &classes, &selected);
+                return match TYPEOF(exact) {
+                    kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
+                        crate::eval::missing::R_execMethod(exact, ev)
+                    }
+                    kind if kind == SEXPTYPE::SPECIALSXP.as_c_int()
+                        || kind == SEXPTYPE::BUILTINSXP.as_c_int() =>
+                    {
+                        crate::mainutils::objects::R_deferred_default_method()
+                    }
+                    _ => r_error("invalid object (non-function) used as method"),
+                };
             }
         }
         let selected = nearest_method(table_methods(mtable, &classes));
