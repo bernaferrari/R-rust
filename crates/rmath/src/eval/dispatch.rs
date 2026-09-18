@@ -654,6 +654,18 @@ pub unsafe fn DispatchOrEval(
                     op,
                     pargs,
                 );
+                if crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE
+                    && crate::mainutils::objects::R_has_methods(op) != FALSE
+                {
+                    let value = crate::mainutils::objects::R_possible_dispatch(
+                        call, op, pargs, rho, TRUE,
+                    );
+                    if !value.is_null() && value != R_NilValue() {
+                        *ans = value;
+                        return 1;
+                    }
+                }
+
                 let dispatched = crate::mainutils::objects::usemethod(
                     generic,
                     x,
