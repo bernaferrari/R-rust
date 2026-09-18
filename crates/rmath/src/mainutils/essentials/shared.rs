@@ -1550,6 +1550,40 @@ pub(crate) unsafe fn lazy_lazy_load_package_db(
         }
         let _datafile_guard = protect(datafile);
 
+        let hook = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_EmptyEnv(),
+            R_NilValue(),
+        );
+        let _hook_guard = protect(hook);
+        let cache = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_EmptyEnv(),
+            R_NilValue(),
+        );
+        let _cache_guard = protect(cache);
+        crate::sexp::envir::defineVar(Rf_install(c"cache".as_ptr()), cache, hook);
+        crate::sexp::envir::defineVar(Rf_install(c"datafile".as_ptr()), datafile, hook);
+        crate::sexp::envir::defineVar(Rf_install(c"compressed".as_ptr()), compressed, hook);
+        if let Some(refs) = list_element_by_name(map, "references") {
+            let refs_env = crate::sexp::memory_ext::NewEnvironment(
+                R_NilValue(),
+                crate::sexp::globals::R_EmptyEnv(),
+                R_NilValue(),
+            );
+            let _refs_guard = protect(refs_env);
+            if TYPEOF(refs) == SEXPTYPE::VECSXP {
+                let _ = crate::mainutils::essentials::do_list2env(
+                    R_NilValue(),
+                    R_NilValue(),
+                    Rf_cons(refs, Rf_cons(refs_env, R_NilValue())),
+                    R_NilValue(),
+                );
+            }
+            crate::sexp::envir::defineVar(Rf_install(c"refs".as_ptr()), refs_env, hook);
+        }
+
+
         let names = crate::sexp::attrib_core::getAttrib(
             variables,
             crate::sexp::attrib_core::R_NamesSymbol(),
@@ -1582,7 +1616,8 @@ pub(crate) unsafe fn lazy_lazy_load_package_db(
                 R_NilValue(),
                 Rf_cons(
                     datafile,
-                    Rf_cons(compressed, Rf_cons(R_NilValue(), R_NilValue())),
+                    Rf_cons(compressed, Rf_cons(hook, R_NilValue())),
+
                 ),
             ),
         );

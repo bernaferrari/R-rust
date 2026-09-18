@@ -484,8 +484,166 @@ pub unsafe fn R_serialize_with_xdr(
 
 /// Unserialize an R object from a raw vector.
 pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
-    unsafe { R_unserialize_from_stream_hooks(icon, None, fun) }
+    unsafe {
+        if !fun.is_null() && fun != R_NilValue() && TYPEOF(fun) == SEXPTYPE::ENVSXP {
+            R_unserialize_from_stream_hooks(icon, Some(lazy_load_persist_restore), fun)
+        } else {
+            R_unserialize_from_stream_hooks(icon, None, fun)
+        }
+    }
 }
+
+/// GNU lazyLoad `envhook`: persist name -> cached environment, else fetch
+/// the referenced payload and reconstruct bindings.
+unsafe extern "C" fn lazy_load_persist_restore(names: SEXP, data: SEXP) -> SEXP {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        persist_restore_inner(names, data)
+    })) {
+        Ok(value) => value,
+        Err(_) => unsafe {
+            crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue())
+        },
+    }
+}
+
+unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
+    unsafe {
+        if data.is_null() || TYPEOF(data) != SEXPTYPE::ENVSXP {
+            return R_NilValue();
+        }
+        let name = if TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0 {
+            let raw = CHAR(STRING_ELT(names, 0));
+            if raw.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
+            }
+        } else {
+            String::new()
+        };
+        if name.is_empty() {
+            return R_NilValue();
+        }
+        let Ok(cname) = std::ffi::CString::new(name.clone()) else {
+            return R_NilValue();
+        };
+        let name_sym = Rf_install(cname.as_ptr());
+
+        let cache_sym = Rf_install(c"cache".as_ptr());
+        let cache = R_findVarInFrame(data, cache_sym);
+        if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
+            let hit = R_findVarInFrame(cache, name_sym);
+            if !hit.is_null() && hit != R_UnboundValue() {
+                return hit;
+            }
+        }
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue());
+        let _e = protect(env);
+        if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
+            crate::sexp::envir::defineVar(name_sym, env, cache);
+        }
+        let refs_sym = Rf_install(c"refs".as_ptr());
+        let refs = R_findVarInFrame(data, refs_sym);
+        let mut key = R_NilValue();
+        if !refs.is_null() && refs != R_UnboundValue() {
+            if TYPEOF(refs) == SEXPTYPE::ENVSXP {
+                key = R_findVarInFrame(refs, name_sym);
+            } else if TYPEOF(refs) == SEXPTYPE::VECSXP {
+                let nm = crate::sexp::attrib_core::getAttrib(
+                    refs,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                if TYPEOF(nm) == SEXPTYPE::STRSXP {
+                    for i in 0..XLENGTH(nm) {
+                        let raw = CHAR(STRING_ELT(nm, i));
+                        if !raw.is_null()
+                            && std::ffi::CStr::from_ptr(raw).to_string_lossy() == name
+                        {
+                            key = VECTOR_ELT(refs, i);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if key.is_null() || key == R_UnboundValue() || key == R_NilValue() {
+            return env;
+        }
+        if TYPEOF(key) == SEXPTYPE::VECSXP {
+            let kn = crate::sexp::attrib_core::getAttrib(
+                key,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if TYPEOF(kn) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(kn) {
+                    let raw = CHAR(STRING_ELT(kn, i));
+                    if !raw.is_null()
+                        && std::ffi::CStr::from_ptr(raw).to_string_lossy() == "eagerKey"
+                    {
+                        key = VECTOR_ELT(key, i);
+                        break;
+                    }
+                }
+            }
+        }
+        let datafile = R_findVarInFrame(data, Rf_install(c"datafile".as_ptr()));
+        let compressed = R_findVarInFrame(data, Rf_install(c"compressed".as_ptr()));
+        if datafile.is_null()
+            || datafile == R_UnboundValue()
+            || compressed.is_null()
+            || compressed == R_UnboundValue()
+        {
+            return env;
+        }
+        let args = Rf_cons(
+            key,
+            Rf_cons(
+                datafile,
+                Rf_cons(compressed, Rf_cons(data, R_NilValue())),
+            ),
+        );
+        let _a = protect(args);
+        let fetched = do_lazyLoadDBfetch(R_NilValue(), R_NilValue(), args, R_NilValue());
+        let _f = protect(fetched);
+        if TYPEOF(fetched) == SEXPTYPE::VECSXP {
+            let fnames = crate::sexp::attrib_core::getAttrib(
+                fetched,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if TYPEOF(fnames) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(fnames) {
+                    let raw = CHAR(STRING_ELT(fnames, i));
+                    if raw.is_null() {
+                        continue;
+                    }
+                    let label = std::ffi::CStr::from_ptr(raw).to_string_lossy();
+                    let elt = VECTOR_ELT(fetched, i);
+                    if label == "enclos" && TYPEOF(elt) == SEXPTYPE::ENVSXP {
+                        crate::sexp::accessors::SET_ENCLOS(env, elt);
+                    } else if label == "bindings" && TYPEOF(elt) == SEXPTYPE::VECSXP {
+                        let _ = crate::mainutils::essentials::do_list2env(
+                            R_NilValue(),
+                            R_NilValue(),
+                            Rf_cons(elt, Rf_cons(env, R_NilValue())),
+                            R_NilValue(),
+                        );
+                    } else if label == "attributes" && elt != R_NilValue() {
+                        crate::sexp::accessors::SET_ATTRIB(env, elt);
+                    } else if label == "locked"
+                        && TYPEOF(elt) == SEXPTYPE::LGLSXP
+                        && XLENGTH(elt) > 0
+                        && *LOGICAL(elt) != 0
+                    {
+                        crate::sexp::envir::lock_environment_raw(env);
+                    }
+                }
+            }
+        }
+        env
+    }
+}
+
+
 
 unsafe fn persist_hook_is_r_function(hook: SEXP) -> bool {
     unsafe {
@@ -502,6 +660,7 @@ unsafe fn R_unserialize_from_stream_hooks(
     hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     hook_data: SEXP,
 ) -> SEXP {
+
     unsafe {
         if icon.is_null() {
             error("read error");

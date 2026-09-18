@@ -604,7 +604,20 @@ pub unsafe fn comment_symbol() -> SEXP {
     unsafe { Rf_install(c"comment".as_ptr()) }
 }
 
-/// R's namespace lookup operators, `pkg::name` and `pkg:::name`.
+unsafe fn force_namespace_value(value: SEXP) -> SEXP {
+    unsafe {
+        if !value.is_null()
+            && value != R_UnboundValue()
+            && TYPEOF(value) == SEXPTYPE::PROMSXP
+        {
+            crate::sexp::envir::forcePromise(value)
+        } else {
+            value
+        }
+    }
+}
+
+
 pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package = CAR(args);
@@ -639,7 +652,8 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                 ));
             }
             let namespace = crate::mainutils::portable_grid::namespace();
-            return crate::sexp::envir::R_findVarInFrame(namespace, name);
+            return force_namespace_value(crate::sexp::envir::R_findVarInFrame(namespace, name));
+
         }
 
         if package_name == "compiler" {
@@ -650,7 +664,8 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
             let namespace = crate::eval::compiler::namespace();
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-            return crate::sexp::envir::R_findVarInFrame(namespace, name);
+            return force_namespace_value(crate::sexp::envir::R_findVarInFrame(namespace, name));
+
         }
 
         if package_name == "tools" {
@@ -710,7 +725,8 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                 let probe = crate::sexp::envir::R_findVar(name, crate::sexp::globals::R_BaseEnv());
                 if probe != crate::sexp::globals::R_UnboundValue() && !probe.is_null() {
                     crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-                    return probe;
+                    return force_namespace_value(probe);
+
                 }
             }
             let namespace = match load_package_namespace_by_name(&package_name) {
@@ -744,7 +760,8 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                 });
             }
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-            return value;
+            return force_namespace_value(value);
+
         }
 
         let value = crate::sexp::envir::R_findVar(name, crate::sexp::globals::R_BaseEnv());
@@ -754,7 +771,8 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             });
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-        value
+        force_namespace_value(value)
+
     }
 }
 

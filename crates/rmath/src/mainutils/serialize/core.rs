@@ -287,6 +287,8 @@ pub struct BinaryReader<'a> {
     bc_source_depth: usize,
     persist_hook: SEXP,
     persist_hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
+
+
     persist_hook_data: SEXP,
 }
 
@@ -320,6 +322,8 @@ impl<'a> BinaryReader<'a> {
     pub fn set_c_persist_hook(
         &mut self,
         func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
+
+
         data: SEXP,
     ) {
         self.persist_hook_func = func;
@@ -1295,6 +1299,47 @@ unsafe fn read_bc_language(
     reader.item_depth -= 1;
     result
 }
+unsafe fn read_packed_string_vec(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+) -> Result<SEXP, String> {
+    unsafe {
+        let names_flag = reader.read_i32()?;
+        if names_flag != 0 {
+            return Err("names in persistent strings are not supported".into());
+        }
+        let len = reader.read_vector_length(4)?;
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        let _names = protect(names);
+        for i in 0..len {
+            let value = ReadItemInternal(reader, ref_table)?;
+            if TYPEOF(value) != SEXPTYPE::CHARSXP {
+                return Err("persistent names must contain strings".into());
+            }
+            SET_STRING_ELT(names, i as R_xlen_t, value);
+        }
+        Ok(names)
+    }
+}
+
+fn first_string_elt(names: SEXP) -> String {
+    unsafe {
+        if names.is_null()
+            || TYPEOF(names) != SEXPTYPE::STRSXP
+            || XLENGTH(names) < 1
+        {
+            return String::new();
+        }
+        let raw = CHAR(STRING_ELT(names, 0));
+        if raw.is_null() {
+            return String::new();
+        }
+        std::ffi::CStr::from_ptr(raw)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
 
 unsafe fn read_item_body(
     reader: &mut BinaryReader,
@@ -1342,8 +1387,9 @@ unsafe fn read_item_body(
             let _restored_guard = protect(restored);
             ref_table.add(restored);
             return Ok(restored);
-        } else if stype == NILVALUE_SXP || stype == SEXPTYPE::NILSXP {
+        } else if stype == NILVALUE_SXP {
             Ok(R_NilValue())
+
 
         } else if stype == GLOBALENV_SXP {
             Ok(R_GlobalEnv())
@@ -1355,6 +1401,26 @@ unsafe fn read_item_body(
             Ok(R_EmptyEnv())
         } else if stype == BASEENV_SXP {
             Ok(R_BaseEnv())
+        } else if stype == BASENAMESPACE_SXP {
+            Ok(R_BaseEnv())
+        } else if stype == NAMESPACESXP || stype == PACKAGESXP {
+            let names = read_packed_string_vec(reader, ref_table)?;
+            let pkg = first_string_elt(names);
+            let env = if pkg.is_empty() || pkg == "base" {
+                R_BaseEnv()
+            } else {
+                crate::mainutils::essentials::load_package_namespace_by_name(&pkg).unwrap_or_else(
+                    |_| {
+                        crate::sexp::memory_ext::NewEnvironment(
+                            R_NilValue(),
+                            R_BaseEnv(),
+                            R_NilValue(),
+                        )
+                    },
+                )
+            };
+            ref_table.add(env);
+            Ok(env)
         } else if stype == REFSXP {
             let idx = InRefIndex(flags, reader)?;
             ref_table.get(idx)
@@ -1616,12 +1682,15 @@ unsafe fn read_item_body(
             crate::eval::bytecode::validate_gnu_bytecode_stream(code_slice)?;
             Err("GNU R BCODESXP is well-framed but execution adapter is unavailable".into())
         } else if stype == SEXPTYPE::SPECIALSXP || stype == SEXPTYPE::BUILTINSXP {
-            let names = ReadItemInternal(reader, ref_table)?;
-            if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) < 1 {
-                return Err("serialized primitive name is not a string".into());
+            // GNU serialize.c: OutInteger(strlen(PRIMNAME)); OutString(name, len)
+            let length = reader.read_i32()?;
+            if length < 0 {
+                return Err("invalid primitive name length".into());
             }
-            let nm = CHAR(STRING_ELT(names, 0));
-            let prim = crate::mainutils::names::R_Primitive(nm);
+            let bytes = reader.read_string_bytes(length as usize)?;
+            let mut cbuf = bytes;
+            cbuf.push(0);
+            let prim = crate::mainutils::names::R_Primitive(cbuf.as_ptr() as *const c_char);
             if prim.is_null() || prim == R_NilValue() {
                 Ok(R_NilValue())
             } else {
