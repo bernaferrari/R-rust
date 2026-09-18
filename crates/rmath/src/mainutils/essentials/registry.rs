@@ -805,6 +805,27 @@ pub(super) const ALL_FNS: &[&str] = &[
     "!=",
     "mean",
     "(",
+    "|",
+    "!",
+    "&",
+    "seq.int",
+    ".C",
+    "untracemem",
+    ".Primitive",
+    ".isMethodsDispatchOn",
+    ".Call",
+    "unclass",
+    ".External2",
+    "is.raw",
+    "is.complex",
+    "tracemem",
+    ".Call.graphics",
+    "retracemem",
+    ".External",
+    ".Fortran",
+    "lazyLoadDBfetch",
+    "unCfillPOSIXlt",
+
 ];
 
 #[cfg(test)]

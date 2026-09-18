@@ -484,20 +484,24 @@ unsafe fn binary_logic_raw(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 ///
 /// `PRIMVAL(op)` determines the operation for binary case: 1 = &, 2 = |.
 /// For unary `!`, the PRIMVAL is 3 but the operation is determined by arity.
-pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let arg1 = CAR(args);
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            b"Ops\0".as_ptr() as *const std::os::raw::c_char,
+            call,
+            op,
+            args,
+            env,
+            &mut ans,
+        ) != 0
+        {
+            return ans;
+        }
 
-        // Check if there are attributes that might trigger S3/S4 dispatch.
-        // Skipping DispatchGroup and go straight to the logic.
         let attr1 = !ATTRIB(arg1).is_null();
-        let arg2 = CADR(args);
-        let attr2 = !ATTRIB(arg2).is_null();
 
-        // Attempt group dispatch if attributes present
-        // In a full implementation this would call DispatchGroup("Ops", ...)
-        // and return the result if dispatched. For now, fall through.
-        let _ = (call, attr1, attr2);
 
         // Arity check: CDR(args) == R_NilValue() means single argument
         if CDR(args) == R_NilValue() {

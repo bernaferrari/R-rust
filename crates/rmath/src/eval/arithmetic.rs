@@ -3062,6 +3062,12 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "||",
             "~",
             ":",
+            ".Internal",
+            "expression",
+            "call",
+            "Exec",
+            "Tailcall",
+
         ];
 
 

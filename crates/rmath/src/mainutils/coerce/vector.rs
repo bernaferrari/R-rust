@@ -521,9 +521,13 @@ pub unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
 
         // list -> pairlist
         if type_ == SEXPTYPE::LISTSXP {
-            // VectorToPairList
+            // VectorToPairList — GNU returns NULL for a length-0 list.
             let n = LENGTH(v);
+            if n == 0 {
+                return R_NilValue();
+            }
             let x = Rf_allocList(n);
+
             let _x_guard = protect(x);
             let names = getAttrib(v, R_NamesSymbol());
             let _names_guard = protect(names);

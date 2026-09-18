@@ -141,6 +141,18 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             crate::mainutils::dstruct::mkCLOSXP(as_list_formals, as_list_body, base_env);
         let _as_list_closure_guard = super::protect::protect(as_list_closure);
         defineVar(Rf_install_in_current("as.list"), as_list_closure, base_env);
+        // GNU pairlist.R: closures over .Internal(as.vector(..., "pairlist")).
+        eval_base_binding(
+            base_env,
+            "as.pairlist",
+            "function(x) .Internal(as.vector(x, \"pairlist\"))",
+        );
+        eval_base_binding(
+            base_env,
+            "pairlist",
+            "function(...) as.pairlist(list(...))",
+        );
+
 
         // GNU apply.R: n-d arrays, empty-extent MARGIN, and FUN=NULL collapse.
         eval_base_binding(base_env, "apply", include_str!("gnu_apply.R"));
@@ -665,7 +677,6 @@ const NON_GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto("is.symbol", X, false),
     proto("isS4", &[arg("object")], false),
     proto("list", DOTS, false),
-    proto("pairlist", DOTS, false),
     proto(
         "lazyLoadDBfetch",
         &[arg("key"), arg("file"), arg("compressed"), arg("hook")],
@@ -724,7 +735,6 @@ const GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto("as.integer", &[arg("x"), arg("...")], true),
     proto("as.list", &[arg("x"), arg("...")], true),
     proto("as.logical", &[arg("x"), arg("...")], true),
-    proto("as.pairlist", &[arg("x"), arg("...")], true),
     proto("as.call", X, true),
     proto("as.numeric", &[arg("x"), arg("...")], true),
     proto("as.raw", X, true),
