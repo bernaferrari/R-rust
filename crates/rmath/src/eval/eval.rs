@@ -1792,6 +1792,25 @@ TRUE
         );
     }
 
+    #[test]
+    fn alist_keeps_missing_formals_like_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+a <- alist(x=, y=2)
+stopifnot(identical(names(a), c("x","y")))
+stopifnot(identical(a$y, 2))
+f <- function(x) x+1
+formals(f) <- a
+stopifnot(identical(names(formals(f)), c("x","y")))
+TRUE
+"#,
+        );
+        let result = result.expect("alist");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
     #[test]

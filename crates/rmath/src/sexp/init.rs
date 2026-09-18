@@ -108,25 +108,9 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
 /// shortcuts so argument promises retain GNU R's lazy semantics.
 unsafe fn initialize_base_functions(base_env: SEXP) {
     unsafe {
-        // GNU base: alist <- function(...) as.list(sys.call())[-1L].
-        // Keeping a closure preserves unevaluated arguments and introspection.
-        let alist_formals = formals_from_specs(&[arg("...")]);
-        let _alist_formals_guard = super::protect::protect(alist_formals);
-        let alist_call = Rf_allocList(1);
-        let _alist_call_guard = super::protect::protect(alist_call);
-        (*alist_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-        SETCAR(alist_call, Rf_install_in_current("sys.call"));
-        let alist_list = Rf_lang2(Rf_install_in_current("as.list"), alist_call);
-        let _alist_list_guard = super::protect::protect(alist_list);
-        let alist_one = Rf_ScalarInteger(1);
-        let _alist_one_guard = super::protect::protect(alist_one);
-        let alist_index = Rf_lang2(Rf_install_in_current("-"), alist_one);
-        let _alist_index_guard = super::protect::protect(alist_index);
-        let alist_body = Rf_lang3(Rf_install_in_current("["), alist_list, alist_index);
-        let _alist_body_guard = super::protect::protect(alist_body);
-        let alist = crate::mainutils::dstruct::mkCLOSXP(alist_formals, alist_body, base_env);
-        let _alist_guard = super::protect::protect(alist);
-        defineVar(Rf_install_in_current("alist"), alist, base_env);
+        // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
+        // Installed after as.list so parse/eval can see the generic.
+
 
         // GNU: as.list <- function(x, ...) UseMethod("as.list")
         // The builtin stays as as.list.default; as.list.function is a
@@ -142,6 +126,13 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             crate::mainutils::dstruct::mkCLOSXP(as_list_formals, as_list_body, base_env);
         let _as_list_closure_guard = super::protect::protect(as_list_closure);
         defineVar(Rf_install_in_current("as.list"), as_list_closure, base_env);
+        eval_base_binding(
+            base_env,
+            "alist",
+            "function(...) { sc <- sys.call(); as.list(sc)[-1L] }",
+        );
+
+
         // GNU pairlist.R: closures over .Internal(as.vector(..., "pairlist")).
         eval_base_binding(
             base_env,
