@@ -416,7 +416,9 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
             c".copyMethodDefaults",
             c"rematchDefinition",
             c"setMethod",
+            c".matchSigLength",
         ] {
+
 
             let mut bound = crate::sexp::envir::R_findVarInFrame(
                 methods,

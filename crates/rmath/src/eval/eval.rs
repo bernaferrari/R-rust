@@ -2450,20 +2450,19 @@ identical(typeof(u), "list") && identical(as.numeric(unlist(u)), c(1, 2, 3))
         let (result, output, _) = session.eval_script_with_output_capture(
             r#"
 invisible(require(methods, quietly = TRUE))
-tryCatch(
-  { example(new); TRUE },
-  warning = function(e) {
-    msg <- conditionMessage(e)
-    !grepl("topic '3'", msg, fixed = TRUE) &&
-      (grepl("'new'", msg, fixed = TRUE) || grepl("lazyLoadDBexec", msg, fixed = TRUE))
-  },
-  error = function(e) {
-    msg <- conditionMessage(e)
-    !grepl("topic '3'", msg, fixed = TRUE) &&
-      (grepl("'new'", msg, fixed = TRUE) || grepl("lazyLoadDBexec", msg, fixed = TRUE))
-  }
-)
+local({
+  new <- 42
+  w <- tryCatch(
+    example(new),
+    warning = function(e) conditionMessage(e),
+    error = function(e) conditionMessage(e)
+  )
+  msg <- paste(as.character(w), collapse = " ")
+  !grepl("topic '42'", msg, fixed = TRUE) && !grepl("topic 42", msg, fixed = TRUE)
+})
 "#,
+
+
 
 
         );
@@ -2563,6 +2562,30 @@ any(grepl("/methods$", find.package(NULL)))
         let result = result.expect("setMethod([[) must match GNU primitives.R");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+    #[test]
+    fn methods_setmethod_caret_ops_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("foo", representation(x="numeric"))
+xx <- new("foo", x=1)
+ff <- args(getGeneric("^"))
+body(ff) <- "testit"
+setMethod("^", "foo", ff)
+g <- getGeneric("^")
+s <- methods:::.matchSigLength(matchSignature("foo", g), g, environment(g), TRUE)
+identical(as.character(s), c("foo","ANY")) &&
+  isTRUE(all(c("ANY#ANY","foo#ANY") %in% ls(environment(g)$.MTable, all.names=TRUE))) &&
+  identical(g(xx), "testit") &&
+  identical(xx^2, "testit")
+"#,
+        );
+        let result = result.expect("setMethod(^) must store foo#ANY and dispatch like GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
 

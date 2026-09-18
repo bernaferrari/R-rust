@@ -810,6 +810,22 @@ pub unsafe fn DispatchGroup(
                 }
             }
         }
+        if crate::mainutils::coerce::IS_S4_OBJECT(CAR(args)) != FALSE
+            || (!CDR(args).is_null()
+                && CDR(args) != R_NilValue()
+                && crate::mainutils::coerce::IS_S4_OBJECT(CADR(args)) != FALSE)
+        {
+            if crate::mainutils::objects::R_has_methods(op) != FALSE {
+                let value = crate::mainutils::objects::R_possible_dispatch(
+                    call, op, args, rho, FALSE,
+                );
+                if !value.is_null() && value != R_NilValue() {
+                    *ans = value;
+                    return 1;
+                }
+            }
+        }
+
 
         // For Ops group, check both args; for others, only the first
         let is_ops = streql(group, b"Ops\x00".as_ptr() as *const c_char) != FALSE
