@@ -251,9 +251,18 @@ pub(crate) fn push_print_dispatch_extras(extras: SEXP) -> PrintDispatchExtrasGua
     PrintDispatchExtrasGuard { previous }
 }
 
-fn print_dispatch_extras() -> SEXP {
+pub(crate) fn print_dispatch_extras() -> SEXP {
     PRINT_DISPATCH_EXTRAS.with(|slot| slot.get())
 }
+
+pub(crate) unsafe fn cons_print_args(x: SEXP) -> SEXP {
+    unsafe {
+        let extras = print_dispatch_extras();
+        let extras = if extras.is_null() { R_NilValue() } else { extras };
+        crate::sexp::constructors::Rf_cons(x, extras)
+    }
+}
+
 
 unsafe fn print_args_except_x(args: SEXP, x: SEXP) -> SEXP {
     unsafe {
@@ -1418,9 +1427,6 @@ fn format_array(x: Sexp<'_>) -> Option<String> {
     Some(sections.join(""))
 }
 
-fn format_dimmed(x: Sexp<'_>) -> Option<String> {
-    format_matrix(x.clone()).or_else(|| format_array(x))
-}
 
 
 
@@ -1864,24 +1870,13 @@ fn format_table(x: Sexp<'_>) -> Option<String> {
     }
 }
 
-fn format_summary_real_value(x: Sexp<'_>, i: R_xlen_t) -> String {
-    if let Some(values) = x.as_real_slice() {
-        let value = values[i as usize];
-        if R_IsNA(value) {
-            return "NA".to_string();
-        }
-        if R_IsNaN(value) {
-            return "NaN".to_string();
-        }
-        return format!("{value:.1}");
-    }
-    "NA".to_string()
+fn summary_default_digits() -> i32 {
+    unsafe { 3.max(crate::mainutils::options::GetOptionDigits() - 3) }
 }
 
-fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
+fn with_summary_default_digits<T>(f: impl FnOnce() -> T) -> T {
     unsafe {
-        let digits = crate::mainutils::options::GetOptionDigits();
-        let digits = 3.max(digits - 3);
+        let digits = summary_default_digits();
         let old = crate::mainutils::format::format_get_R_print();
         let previous = crate::mainutils::format::format_set_R_print(
             crate::mainutils::format::RPrint {
@@ -1891,11 +1886,31 @@ fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
                 na_width_noquote: old.na_width_noquote,
             },
         );
-        let rendered = format_vector_stock(x, false);
+        let rendered = f();
         crate::mainutils::format::format_set_R_print(previous);
         rendered
     }
 }
+
+fn format_summary_real_value(x: Sexp<'_>, i: R_xlen_t) -> String {
+    if let Some(values) = x.as_real_slice() {
+        let value = values[i as usize];
+        if R_IsNA(value) {
+            return "NA".to_string();
+        }
+        if R_IsNaN(value) {
+            return "NaN".to_string();
+        }
+        return with_summary_default_digits(|| format_r_default_real(value));
+    }
+    "NA".to_string()
+}
+
+
+fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
+    with_summary_default_digits(|| unsafe { format_vector_stock(x, false) })
+}
+
 
 
 fn format_summary_default(x: Sexp<'_>) -> Option<String> {

@@ -1652,6 +1652,46 @@ invisible(NULL)
 
     }
 
+    #[test]
+    fn summary_pi_prints_gnu_digits() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "options(digits=7); summary(pi)\ninvisible(NULL)\n",
+        );
+        assert!(
+            captured.stdout.contains("3.142"),
+            "named numeric summaryDefault must use digits=max(3,digits-3), got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains("3.1 ") && !captured.stdout.contains("3.141593"),
+            "must not use 1 decimal or full digits, got {:?}",
+            captured.stdout
+        );
+    }
+
+    #[test]
+    fn options_max_print_inf_warns_then_errors() {
+        let mut session = RSession::new();
+        let (result, captured, _) = session.eval_script_with_output_capture(
+            r#"
+e1 <- tryCatch(options(max.print=Inf), error=function(e)e)
+inherits(e1, "error")
+"#,
+        );
+        let result = result.expect("max.print=Inf must error");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        let text = format!("{}{}", captured.stdout, captured.stderr);
+        assert!(
+            text.contains("NAs introduced by coercion to integer range"),
+            "asInteger(Inf) must warn like GNU, got stdout={:?} stderr={:?}",
+            captured.stdout,
+            captured.stderr
+        );
+    }
+
+
+
 
 
 

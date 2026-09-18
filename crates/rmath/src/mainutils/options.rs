@@ -1228,10 +1228,11 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                 } else if streql(name_cstr, c"max.print".as_ptr()) {
-                    let k = asInteger(argi);
+                    let k = crate::mainutils::coerce::asInteger(argi);
                     if k < 1 {
                         r_error("invalid value for 'max.print'");
                     }
+
                     let v = Rf_ScalarInteger(k);
                     let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));

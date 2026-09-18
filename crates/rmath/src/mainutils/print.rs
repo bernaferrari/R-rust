@@ -743,9 +743,10 @@ unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
         // ordinary `print()`.  The protected one-element call is acyclic;
         // custom methods may return a value, which is intentionally ignored
         // by this value-printing entry point.
-        let args = Rf_cons(s, R_NilValue());
+        let args = crate::sexp::output::cons_print_args(s);
         let _args_guard = protect(args);
         crate::mainutils::essentials::do_print(R_NilValue(), R_NilValue(), args, data.env);
+
     }
 }
 
