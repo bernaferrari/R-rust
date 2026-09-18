@@ -936,4 +936,26 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn missing_is_false_after_assigning_formal() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "f <- function(x) { x <- 5; missing(x) }; identical(c(f(), f(1)), c(FALSE, FALSE))",
+        );
+        let result = result.expect("assigning a formal must clear missing()");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn methods_load_does_not_steal_lexical_enclosure() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "x <- 99; f <- function() x; invisible(require(methods, quietly=TRUE)); identical(f(), 99)",
+        );
+        let result = result.expect("user closures must keep lexical scope after methods loads");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
 }

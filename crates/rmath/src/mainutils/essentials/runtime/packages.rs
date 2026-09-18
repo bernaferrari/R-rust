@@ -121,6 +121,7 @@ unsafe fn attach_recommended_package_stub(package: &str) {
                 ) {
                     attach_package_env(attach_env);
                     return;
+
                 }
             }
         }

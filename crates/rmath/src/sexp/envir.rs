@@ -588,8 +588,12 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
                 return true;
             }
             unsafe {
-                SETCAR(cell.as_raw(), value.clone().as_raw());
+                let raw = cell.clone().as_raw();
+                SETCAR(raw, value.clone().as_raw());
+                super::accessors::SET_MISSING(raw, 0);
             }
+
+
             increment_named_on_assign(value.clone().as_raw());
             if super::env_hash::env_has_hash_table(rho.clone().as_raw()) {
                 super::env_hash::hash_insert(rho.as_raw(), symbol.as_raw(), value.as_raw());

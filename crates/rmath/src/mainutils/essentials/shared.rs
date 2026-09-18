@@ -990,10 +990,15 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
             let (package_env, namespace) =
                 load_package_namespace(package, package_dir, &mut loading)?;
             let _package_env_guard = crate::sexp::protect::protect(package_env);
-
             let attach_env = make_package_attach_env(package, namespace.as_ref(), package_env)?;
+            if package == "methods" {
+                bind_methods_standardGeneric(package_env);
+                retarget_methods_generics(package_env);
+
+            }
             attach_package_env(attach_env);
             Ok(())
+
         })();
         loading_packages.pop();
         result
@@ -1174,8 +1179,62 @@ pub(crate) fn is_builtin_package_dependency(package: &str) -> bool {
             | "tcltk"
             | "tools"
             | "utils"
+
+
     )
 }
+unsafe fn bind_methods_standardGeneric(ns: SEXP) {
+    unsafe {
+        let symbol = Rf_install(c"standardGeneric".as_ptr());
+        let value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
+        let kind = TYPEOF(value);
+        if kind == SEXPTYPE::CLOSXP
+            || kind == SEXPTYPE::BUILTINSXP
+            || kind == SEXPTYPE::SPECIALSXP
+        {
+            return;
+        }
+        let prim = crate::eval::primitive::make_primitive_binding(
+            "standardGeneric",
+            SEXPTYPE::BUILTINSXP,
+        );
+        if !prim.is_null() && prim != R_NilValue() {
+            crate::sexp::envir::defineVar(symbol, prim, ns);
+        }
+    }
+}
+
+unsafe fn retarget_methods_generics(ns: SEXP) {
+    unsafe {
+        for name in ["initialize", "new", "setClass", "getClass", "getClassDef"] {
+            let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let mut value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
+            if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                value = crate::sexp::accessors::PRVALUE(value);
+            }
+            if TYPEOF(value) != SEXPTYPE::CLOSXP {
+                continue;
+            }
+            let cloenv = crate::sexp::accessors::CLOENV(value);
+            if cloenv.is_null() || cloenv == ns {
+                continue;
+            }
+            // Do not steal a generic's table environment; only enclose it.
+            if crate::sexp::accessors::ENCLOS(cloenv) != ns {
+                crate::sexp::accessors::SET_ENCLOS(cloenv, ns);
+            }
+        }
+    }
+}
+
+
+
+
+
+
 
 pub(crate) unsafe fn load_package_namespace(
     package: &str,
@@ -1239,6 +1298,12 @@ pub(crate) unsafe fn load_package_namespace(
                 std::panic::resume_unwind(payload);
             }
         };
+        if package == "methods" {
+            bind_methods_standardGeneric(package_env);
+            retarget_methods_generics(package_env);
+
+        }
+
         Ok((package_env, namespace))
     }
 }
@@ -2113,8 +2178,14 @@ unsafe fn make_package_attach_env_inner(
             crate::sexp::envir::defineVar(symbol, value, attach_env);
         }
 
+        if package == "methods" {
+            bind_methods_standardGeneric(package_env);
+            retarget_methods_generics(package_env);
+
+        }
         if missing.is_empty() {
             Ok(attach_env)
+
         } else {
             Err(format!(
                 "package '{}' has undefined exports: {}",

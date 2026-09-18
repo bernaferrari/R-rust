@@ -298,6 +298,48 @@ unsafe fn install_frame_vars(mut vars: SEXP, rho: SEXP) {
 
 /// Create the environment for a closure application.
 ///
+unsafe fn remap_methods_snapshot_cloenv(_op: SEXP, cloenv: SEXP) -> SEXP {
+    unsafe {
+        let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
+        else {
+            return cloenv;
+        };
+        if cloenv.is_null() || cloenv == methods {
+            return cloenv;
+        }
+        if crate::sexp::accessors::ENCLOS(cloenv) == methods {
+            return cloenv;
+        }
+        // Only generic environments carry .AllMTable. User closures must
+        // keep their lexical enclosure.
+        let all_mtable = crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr());
+        let tables = crate::sexp::envir::R_findVarInFrame(cloenv, all_mtable);
+        if tables.is_null()
+            || tables == crate::sexp::globals::R_UnboundValue()
+            || crate::sexp::accessors::TYPEOF(tables) != SEXPTYPE::ENVSXP
+        {
+            return cloenv;
+        }
+        let sg = crate::sexp::symbol::Rf_install(c"standardGeneric".as_ptr());
+        let snap = crate::sexp::envir::R_findVarInFrame(cloenv, sg);
+        let live = crate::sexp::envir::R_findVarInFrame(methods, sg);
+        if is_function_sexp(live) && !is_function_sexp(snap) {
+            crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
+        }
+        cloenv
+    }
+}
+
+fn is_function_sexp(value: SEXP) -> bool {
+    let kind = unsafe { TYPEOF(value) };
+    kind == SEXPTYPE::CLOSXP || kind == SEXPTYPE::BUILTINSXP || kind == SEXPTYPE::SPECIALSXP
+}
+
+
+
+
+
+
 /// This is a helper that separates environment creation from body evaluation.
 pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
@@ -319,6 +361,10 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
                     Ok(e) => e,
                     Err(_) => return R_NilValue(),
                 };
+                let cloenv = Sexp::from_raw_unchecked(remap_methods_snapshot_cloenv(
+                    op,
+                    cloenv.as_raw(),
+                ));
 
                 let promised_args = crate::eval::dispatch::promiseArgs(arglist, rho);
                 let matched = match_closure_args(formals.clone().as_raw(), promised_args)
@@ -330,6 +376,7 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
                     Ok(e) => e,
                     Err(_) => return R_NilValue(),
                 };
+
 
                 install_default_promises(formals.as_raw(), matched, new_env.clone().as_raw());
 
