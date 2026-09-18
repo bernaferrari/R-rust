@@ -1678,3 +1678,60 @@ fn c_persist_hook_unserialize_with_restore_returns_replacement() {
         assert_eq!(token.to_bytes(), b"token");
     }
 }
+
+#[test]
+fn gnu_compact_intseq_altrep_unserializes_to_sequence() {
+    let _session = crate::sexp::session::RSession::new();
+    // serialize(1947:1962, NULL, xdr=TRUE, version=3) from GNU R 4.7.0-dev
+    let bytes: [u8; 133] = [
+        88, 10, 0, 0, 0, 3, 0, 4, 7, 0, 0, 3, 5, 0, 0, 0, 0, 5, 85, 84, 70, 45, 56, 0, 0, 0, 238,
+        0, 0, 0, 2, 0, 0, 0, 1, 0, 4, 0, 9, 0, 0, 0, 14, 99, 111, 109, 112, 97, 99, 116, 95, 105,
+        110, 116, 115, 101, 113, 0, 0, 0, 2, 0, 0, 0, 1, 0, 4, 0, 9, 0, 0, 0, 4, 98, 97, 115, 101,
+        0, 0, 0, 2, 0, 0, 0, 13, 0, 0, 0, 1, 0, 0, 0, 13, 0, 0, 0, 254, 0, 0, 0, 14, 0, 0, 0, 3,
+        64, 48, 0, 0, 0, 0, 0, 0, 64, 158, 108, 0, 0, 0, 0, 0, 63, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        254,
+    ];
+    unsafe {
+        let raw = make_raw(&bytes);
+        let _raw = protect(raw);
+        let result = R_unserialize(raw, R_NilValue());
+        let _result = protect(result);
+        assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+        assert_eq!(LENGTH(result), 16);
+        let data = INTEGER(result);
+        for i in 0..16 {
+            assert_eq!(*data.add(i), 1947 + i as i32);
+        }
+    }
+}
+
+#[test]
+fn gnu_deferred_string_altrep_unserializes_to_character() {
+    let _session = crate::sexp::session::RSession::new();
+    // serialize(as.character(1:8), NULL, xdr=TRUE, version=3) from GNU R 4.7.0-dev
+    let bytes: [u8; 216] = [
+        88, 10, 0, 0, 0, 3, 0, 4, 7, 0, 0, 3, 5, 0, 0, 0, 0, 5, 85, 84, 70, 45, 56, 0, 0, 0, 238,
+        0, 0, 0, 2, 0, 0, 0, 1, 0, 4, 0, 9, 0, 0, 0, 15, 100, 101, 102, 101, 114, 114, 101, 100,
+        95, 115, 116, 114, 105, 110, 103, 0, 0, 0, 2, 0, 0, 0, 1, 0, 4, 0, 9, 0, 0, 0, 4, 98, 97,
+        115, 101, 0, 0, 0, 2, 0, 0, 0, 13, 0, 0, 0, 1, 0, 0, 0, 16, 0, 0, 0, 254, 0, 0, 0, 2, 0, 0,
+        0, 238, 0, 0, 0, 2, 0, 0, 0, 1, 0, 4, 0, 9, 0, 0, 0, 14, 99, 111, 109, 112, 97, 99, 116, 95,
+        105, 110, 116, 115, 101, 113, 0, 0, 0, 2, 0, 0, 2, 255, 0, 0, 0, 2, 0, 0, 0, 13, 0, 0, 0, 1,
+        0, 0, 0, 13, 0, 0, 0, 254, 0, 0, 0, 14, 0, 0, 0, 3, 64, 32, 0, 0, 0, 0, 0, 0, 63, 240, 0, 0,
+        0, 0, 0, 0, 63, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 254, 0, 0, 0, 13, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 254,
+    ];
+    unsafe {
+        let raw = make_raw(&bytes);
+        let _raw = protect(raw);
+        let result = R_unserialize(raw, R_NilValue());
+        let _result = protect(result);
+        assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
+        assert_eq!(LENGTH(result), 8);
+        for i in 0..8 {
+            let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(result, i as R_xlen_t)));
+            assert_eq!(s.to_bytes(), (i + 1).to_string().as_bytes());
+        }
+    }
+}
+
+
