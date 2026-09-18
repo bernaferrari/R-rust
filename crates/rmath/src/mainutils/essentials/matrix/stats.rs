@@ -110,7 +110,7 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `rbind(...)` — combine vectors/matrices by rows.
-pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // GNU R dispatches `rbind` through S3.  This runtime registers a
         // direct builtin, so retain the key dispatch boundary explicitly:
@@ -141,18 +141,29 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut entries = Vec::new();
 
         let mut current = args;
+        let mut expr = if !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+            CDR(call)
+        } else {
+            R_NilValue()
+        };
         while !current.is_null() && current != R_NilValue() {
+            if bind_cell_is_deparse_level(current, expr) {
+                current = CDR(current);
+                expr = next_bind_expr(expr);
+                continue;
+            }
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
                 result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
                 let (arg_nrow, arg_ncol) = bind_dims(arg, false);
-                let name = tag_name(current).unwrap_or_default();
+                let name = bind_arg_label(current, expr);
                 if !name.is_empty() {
                     has_row_names = true;
                 }
                 entries.push((arg, arg_nrow, arg_ncol, name));
             }
             current = CDR(current);
+            expr = next_bind_expr(expr);
         }
 
         let has_nonzero_extent = entries
@@ -177,14 +188,25 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
 
+        let col_names = first_rbind_colnames(&entries, ncols);
+        let has_col_names = !col_names.is_null() && col_names != R_NilValue();
+
         if nrows == 0 || ncols == 0 {
             let result = Rf_allocVector3(result_type, 0);
             if result.is_null() {
                 return R_NilValue();
             }
             set_two_dim_attr(result, nrows, ncols);
-            if has_row_names {
-                set_bind_dimnames(result, string_vector(&row_names), R_NilValue());
+            if has_row_names || has_col_names {
+                set_bind_dimnames(
+                    result,
+                    if has_row_names {
+                        string_vector(&row_names)
+                    } else {
+                        R_NilValue()
+                    },
+                    col_names,
+                );
             }
             return result;
         }
@@ -217,8 +239,16 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         set_two_dim_attr(result, nrows, ncols);
-        if has_row_names {
-            set_bind_dimnames(result, string_vector(&row_names), R_NilValue());
+        if has_row_names || has_col_names {
+            set_bind_dimnames(
+                result,
+                if has_row_names {
+                    string_vector(&row_names)
+                } else {
+                    R_NilValue()
+                },
+                col_names,
+            );
         }
         result
     }
@@ -415,6 +445,111 @@ pub unsafe fn bind_dims(arg: SEXP, cbind: bool) -> (R_xlen_t, R_xlen_t) {
         }
     }
 }
+
+unsafe fn next_bind_expr(expr: SEXP) -> SEXP {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() {
+            R_NilValue()
+        } else {
+            CDR(expr)
+        }
+    }
+}
+
+unsafe fn bind_cell_is_deparse_level(eval_cell: SEXP, expr_cell: SEXP) -> bool {
+    unsafe {
+        tag_name(eval_cell).as_deref() == Some("deparse.level")
+            || (!expr_cell.is_null()
+                && expr_cell != R_NilValue()
+                && tag_name(expr_cell).as_deref() == Some("deparse.level"))
+    }
+}
+
+/// GNU `rbind` deparse.level=1: a tag, else the argument symbol.
+unsafe fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP) -> String {
+    unsafe {
+        if let Some(name) = tag_name(eval_cell) {
+            if name != "deparse.level" {
+                return name;
+            }
+        }
+        if expr_cell.is_null() || expr_cell == R_NilValue() {
+            return String::new();
+        }
+        if let Some(name) = tag_name(expr_cell) {
+            if name != "deparse.level" {
+                return name;
+            }
+        }
+        let expr = CAR(expr_cell);
+        if expr.is_null() || TYPEOF(expr) != SEXPTYPE::SYMSXP {
+            return String::new();
+        }
+        let pname = PRINTNAME(expr);
+        if pname.is_null() {
+            return String::new();
+        }
+        let chars = CHAR(pname);
+        if chars.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(chars)
+                .to_str()
+                .unwrap_or("")
+                .to_string()
+        }
+    }
+}
+
+unsafe fn first_rbind_colnames(
+    entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
+    ncols: R_xlen_t,
+) -> SEXP {
+    unsafe {
+        if ncols <= 0 {
+            return R_NilValue();
+        }
+        for &(arg, _, arg_ncol, _) in entries {
+            let dim = crate::sexp::attrib_core::getAttrib(
+                arg,
+                crate::sexp::attrib_core::R_DimSymbol(),
+            );
+            if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 2 {
+                let dn = crate::sexp::attrib_core::getAttrib(
+                    arg,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                );
+                if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                    let cols = VECTOR_ELT(dn, 1);
+                    if !cols.is_null()
+                        && cols != R_NilValue()
+                        && TYPEOF(cols) == SEXPTYPE::STRSXP
+                        && XLENGTH(cols) == ncols
+                    {
+                        return cols;
+                    }
+                }
+                continue;
+            }
+            if arg_ncol != ncols {
+                continue;
+            }
+            let names = crate::sexp::attrib_core::getAttrib(
+                arg,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == ncols
+            {
+                return names;
+            }
+        }
+        R_NilValue()
+    }
+}
+
 
 unsafe fn first_vector_names(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)], nrows: R_xlen_t) -> SEXP {
     unsafe {
@@ -1177,4 +1312,15 @@ mod rbind_data_frame_tests {
              identical(z$b, c('x', 'y', 'z', 'w'))",
         );
     }
+
+    #[test]
+    fn rbind_named_vectors_use_gnu_deparse_dimnames() {
+        assert_r_true(
+            "x0 <- x <- c(1+1i, 1.2 + 10i); names(x) <- c('a','b'); \
+             xx <- rbind(x, 2*x); \
+             identical(dimnames(xx), list(c('x', ''), c('a','b'))) && \
+             identical(dimnames(rbind(x0, 2*x0)), list(c('x0', ''), NULL))",
+        );
+    }
+
 }
