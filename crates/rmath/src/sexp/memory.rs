@@ -189,8 +189,13 @@ pub struct RArena {
     /// borrow, so hooks record their firings here instead.
     alloc_gc_torture_ticks: u32,
     alloc_gc_collect_requested: bool,
+    /// Live size after the last collection. Triggers use *growth* since
+    /// then so a large live heap does not GC on every `{`.
+    nodes_at_last_gc: usize,
+    bytes_at_last_gc: usize,
     /// Optional budget to limit arena growth.
     budget: ArenaBudget,
+
 }
 
 impl RArena {
@@ -245,8 +250,11 @@ impl RArena {
             transient_bytes: Rc::new(Cell::new(0)),
             alloc_gc_torture_ticks: 0,
             alloc_gc_collect_requested: false,
+            nodes_at_last_gc: 0,
+            bytes_at_last_gc: 0,
             budget: ArenaBudget::unlimited(),
         };
+
         a.alloc_new_page();
         a
     }
@@ -265,8 +273,11 @@ impl RArena {
             transient_bytes: Rc::new(Cell::new(0)),
             alloc_gc_torture_ticks: 0,
             alloc_gc_collect_requested: false,
+            nodes_at_last_gc: 0,
+            bytes_at_last_gc: 0,
             budget,
         };
+
         a.alloc_new_page();
         a
     }
@@ -382,15 +393,13 @@ impl RArena {
             return ptr;
         }
 
-        let active_nodes = self.active_addrs.len();
-        let should_gc =
-            active_nodes > GC_TRIGGER_THRESHOLD || self.total_bytes_allocated > GC_BYTE_THRESHOLD;
-        if should_gc {
+        if self.growth_warrants_gc() {
             self.alloc_gc_collect_requested = true;
             if let Some(ptr) = self.reuse_free_node(sexptype) {
                 return ptr;
             }
         }
+
 
         if !self.can_grow_bytes_by(std::mem::size_of::<SexprecCore>()) {
             return ptr::null_mut();
@@ -420,7 +429,7 @@ impl RArena {
 
         self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
 
-        if self.total_bytes_allocated > GC_BYTE_THRESHOLD {
+        if self.growth_warrants_gc() {
             self.alloc_gc_collect_requested = true;
         }
 
@@ -524,9 +533,10 @@ impl RArena {
         }
 
         // Run GC if approaching thresholds (same as alloc_vector)
-        if self.total_bytes_allocated > GC_BYTE_THRESHOLD {
+        if self.growth_warrants_gc() {
             self.alloc_gc_collect_requested = true;
         }
+
 
         let data = if data_bytes > 0 {
             let layout = match Layout::from_size_align(data_bytes, std::mem::align_of::<u64>()) {
@@ -706,6 +716,22 @@ impl RArena {
     pub fn node_count(&self) -> usize {
         self.active_addrs.len()
     }
+
+    /// True when enough *new* nodes/bytes have appeared since the last
+    /// collection. A large live set must not re-trigger GC by itself.
+    pub(crate) fn growth_warrants_gc(&self) -> bool {
+        self.node_count().saturating_sub(self.nodes_at_last_gc) > GC_TRIGGER_THRESHOLD
+            || self
+                .total_bytes_allocated
+                .saturating_sub(self.bytes_at_last_gc)
+                > GC_BYTE_THRESHOLD
+    }
+
+    pub(crate) fn note_gc_completed(&mut self) {
+        self.nodes_at_last_gc = self.node_count();
+        self.bytes_at_last_gc = self.total_bytes_allocated;
+    }
+
 
     /// Return true if this pointer is one of the arena's active nodes.
     pub(crate) fn contains(&self, ptr: SEXP) -> bool {
@@ -1011,6 +1037,22 @@ mod tests {
         }
         assert_eq!(arena.node_count(), 1);
     }
+
+    #[test]
+    fn growth_warrants_gc_uses_delta_since_last_collection() {
+        let mut arena = RArena::new();
+        for _ in 0..=GC_TRIGGER_THRESHOLD {
+            assert!(!arena.alloc_node(SEXPTYPE::INTSXP).is_null());
+        }
+        assert!(arena.growth_warrants_gc());
+        arena.note_gc_completed();
+        assert!(!arena.growth_warrants_gc());
+        for _ in 0..=GC_TRIGGER_THRESHOLD {
+            assert!(!arena.alloc_node(SEXPTYPE::INTSXP).is_null());
+        }
+        assert!(arena.growth_warrants_gc());
+    }
+
 
     #[test]
     fn test_arena_alloc_vector_real() {

@@ -984,9 +984,11 @@ where
         match result {
             Ok((promoted, freed)) => {
                 record_collection_in(&mut (*instance).gc_state, promoted, freed);
+                (*instance).arena.note_gc_completed();
                 notify_gc_callbacks_in(&(*instance).gc_state);
                 (promoted, freed)
             }
+
             // A panic mid-collection leaves the heap in an indeterminate state.
             // Swallowing it (the old `=> (0, 0)`) risks silent memory corruption:
             // callers would keep using a partially-marked/swept heap. Make the
@@ -1034,8 +1036,6 @@ pub(crate) fn minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) 
     unsafe { run_gc_cycle_in(instance, do_minor_gc_in) }
 }
 
-const GC_TRIGGER_THRESHOLD: usize = 10_000;
-const GC_BYTE_THRESHOLD: usize = 64 * 1024 * 1024;
 
 /// Deferred alloc-time GC processing (see `memory::with_arena_in`).
 ///
@@ -1110,11 +1110,7 @@ fn maybe_torture_gc_in(instance: *mut instance::RInstance, ticks: u32) {
 }
 
 fn eval_safe_point_gc_due_in(instance: *mut instance::RInstance) -> bool {
-    unsafe {
-        (*instance).gc_state.gc_pending
-            || (*instance).arena.node_count() > GC_TRIGGER_THRESHOLD
-            || (*instance).arena.total_bytes_allocated() > GC_BYTE_THRESHOLD
-    }
+    unsafe { (*instance).gc_state.gc_pending || (*instance).arena.growth_warrants_gc() }
 }
 
 fn sync_env_hash_tables_from_frames(instance: *mut instance::RInstance) {
