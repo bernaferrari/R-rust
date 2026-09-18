@@ -750,11 +750,16 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
                 {
                     IN_GET_DATA_PART.with(|flag| flag.set(true));
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        // GNU data_part: PROTECT the LANGSXP first, then
+                        // SETCADR ScalarLogical — do not leave the flag
+                        // unprotected across Rf_lang3 allocation.
                         let flag = Rf_ScalarLogical(TRUE);
+                        let _flag = protect(flag);
                         let call = Rf_lang3(fun, obj, flag);
                         let _call = protect(call);
                         crate::eval::eval::Rf_eval(call, methods)
                     }));
+
                     IN_GET_DATA_PART.with(|flag| flag.set(false));
                     match result {
                         Ok(val) => {
