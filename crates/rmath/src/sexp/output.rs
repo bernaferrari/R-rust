@@ -878,12 +878,81 @@ fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
     }
 }
 
+fn print_max_cells() -> usize {
+    unsafe {
+        let extras = print_dispatch_extras();
+        let mut cur = extras;
+        while !cur.is_null() && cur != R_NilValue() {
+            if printable_attribute_name(cur).as_deref() == Some("max") {
+                let value = CAR(cur);
+                if !value.is_null() && value != R_NilValue() {
+                    if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
+                        let n = *crate::sexp::accessors::INTEGER(value);
+                        if n > 0 {
+                            return n as usize;
+                        }
+                    } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
+                        let n = *crate::sexp::accessors::REAL(value);
+                        if n.is_finite() && n > 0.0 {
+                            return n as usize;
+                        }
+                    }
+                }
+            }
+            cur = CDR(cur);
+        }
+        crate::mainutils::options::GetOptionMaxPrint().max(0) as usize
+    }
+}
+
+fn matrix_print_window(nrow: usize, ncol: usize, max: usize) -> (usize, usize) {
+    let c_pr = ncol.min(max);
+    let mut r_pr = nrow;
+    if ncol > 0 && max / ncol < nrow {
+        r_pr = max / ncol;
+    }
+    if ncol > c_pr && r_pr < 1 && nrow > 0 {
+        r_pr = 1;
+    }
+    (r_pr, c_pr)
+}
+
+fn matrix_omitted_message(nrow: usize, ncol: usize, r_pr: usize, c_pr: usize) -> Option<String> {
+    if r_pr >= nrow && c_pr >= ncol {
+        return None;
+    }
+    let mut msg = String::from(" [ reached 'max' / getOption(\"max.print\") -- omitted");
+    if r_pr < nrow {
+        let omitted = nrow - r_pr;
+        msg.push_str(&format!(
+            " {} row{}",
+            omitted,
+            if omitted == 1 { "" } else { "s" }
+        ));
+    }
+    if c_pr < ncol {
+        if r_pr < nrow {
+            msg.push_str(" and");
+        }
+        let omitted = ncol - c_pr;
+        msg.push_str(&format!(
+            " {} column{}",
+            omitted,
+            if omitted == 1 { "" } else { "s" }
+        ));
+    }
+    msg.push_str(" ]");
+    Some(msg)
+}
+
 fn format_matrix_with<F>(x: Sexp<'_>, nrow: usize, ncol: usize, value_at: F) -> String
 where
     F: Fn(usize, usize) -> String,
 {
+    let max = print_max_cells();
+    let (r_pr, c_pr) = matrix_print_window(nrow, ncol, max);
     let dn = matrix_dimnames(x, nrow, ncol);
-    let row_labels: Vec<String> = (0..nrow)
+    let row_labels: Vec<String> = (0..r_pr)
         .map(|r| {
             dn.rows
                 .as_ref()
@@ -892,7 +961,7 @@ where
                 .unwrap_or_else(|| gnu_row_index_label(r, nrow))
         })
         .collect();
-    let col_labels: Vec<String> = (0..ncol)
+    let col_labels: Vec<String> = (0..c_pr)
         .map(|c| {
             dn.cols
                 .as_ref()
@@ -902,11 +971,11 @@ where
         })
         .collect();
     let (row_width, lbloff) = matrix_row_geometry(&row_labels, dn.row_title.as_deref());
-    let mut values = vec![vec![String::new(); ncol]; nrow];
-    let mut widths = Vec::with_capacity(ncol);
-    for c in 0..ncol {
+    let mut values = vec![vec![String::new(); c_pr]; r_pr];
+    let mut widths = Vec::with_capacity(c_pr);
+    for c in 0..c_pr {
         let mut width = col_labels[c].len().max(1);
-        for r in 0..nrow {
+        for r in 0..r_pr {
             let value = value_at(r, c);
             width = width.max(value.len());
             values[r][c] = value;
@@ -914,38 +983,78 @@ where
         widths.push(width);
     }
 
-    let mut lines = Vec::with_capacity(nrow + 2);
-    // GNU `_PRINT_ROW_LAB`: `"%*s%s\n"` then left-justified `rn`.
-    if let Some(cn) = dn.col_title.as_deref() {
-        lines.push(format!("{:row_width$}{cn}", ""));
-    }
-    let mut header = if let Some(rn) = dn.row_title.as_deref() {
-        format!("{rn:<row_width$}")
-    } else {
-        " ".repeat(row_width)
-    };
-    if row_width > 0 {
-        header.push(' ');
-    }
-    for (c, width) in widths.iter().enumerate() {
-        header.push_str(&format!("{:>width$}", col_labels[c]));
-        if c + 1 < ncol {
-            header.push(' ');
+    let page_width = unsafe { crate::mainutils::options::GetOptionWidth().max(10) as usize };
+    let mut blocks = Vec::new();
+    let mut start = 0;
+    while start < c_pr {
+        let mut used = row_width;
+        let mut end = start;
+        while end < c_pr {
+            let extra = widths[end] + 1;
+            if end > start && used + extra > page_width {
+                break;
+            }
+            used += extra;
+            end += 1;
         }
+        if end == start {
+            end += 1;
+        }
+        blocks.push((start, end));
+        start = end;
     }
-    lines.push(header);
+    if blocks.is_empty() {
+        blocks.push((0, 0));
+    }
 
-    for r in 0..nrow {
-        let label = format!("{:lbloff$}{}", "", row_labels[r]);
-        let mut line = format!("{label:<row_width$}");
-        for (c, width) in widths.iter().enumerate() {
-            line.push(' ');
-            line.push_str(&format!("{:>width$}", values[r][c]));
+    let mut lines = Vec::new();
+    if r_pr == 0 {
+        let mut header = "     ".to_string();
+        for c in 0..c_pr {
+            if c > 0 {
+                header.push(' ');
+            }
+            header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
         }
-        lines.push(line);
+        lines.push(header);
+    } else {
+        for &(cs, ce) in &blocks {
+            if let Some(cn) = dn.col_title.as_deref() {
+                lines.push(format!("{:row_width$}{cn}", ""));
+            }
+            let mut header = if let Some(rn) = dn.row_title.as_deref() {
+                format!("{rn:<row_width$}")
+            } else {
+                " ".repeat(row_width)
+            };
+            if row_width > 0 && cs < ce {
+                header.push(' ');
+            }
+            for c in cs..ce {
+                header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
+                if c + 1 < ce {
+                    header.push(' ');
+                }
+            }
+            lines.push(header);
+            for r in 0..r_pr {
+                let label = format!("{:lbloff$}{}", "", row_labels[r]);
+                let mut line = format!("{label:<row_width$}");
+                for c in cs..ce {
+                    line.push(' ');
+                    line.push_str(&format!("{:>width$}", values[r][c], width = widths[c]));
+                }
+                lines.push(line);
+            }
+        }
+    }
+
+    if let Some(omitted) = matrix_omitted_message(nrow, ncol, r_pr, c_pr) {
+        lines.push(omitted);
     }
     lines.join("\n")
 }
+
 
 
 fn format_character_matrix_with<F>(x: Sexp<'_>, nrow: usize, ncol: usize, value_at: F) -> String
@@ -2001,26 +2110,89 @@ pub(crate) fn format_sexp_top_level(x: Sexp<'_>) -> String {
 
 
 
-fn deparse_expression_one(expr: SEXP) -> String {
+fn first_deparse_line(text: crate::sexp::ffi::SEXP) -> Option<String> {
     unsafe {
-        let text = crate::mainutils::deparse::deparse1line(expr, false);
         if text.is_null() || XLENGTH(text) == 0 {
-            return String::new();
+            return None;
         }
         let charsxp = STRING_ELT(text, 0);
         if charsxp.is_null() {
-            return String::new();
+            return None;
         }
         let chars = CHAR(charsxp);
         if chars.is_null() {
-            String::new()
+            None
         } else {
-            std::ffi::CStr::from_ptr(chars)
-                .to_string_lossy()
-                .into_owned()
+            Some(
+                std::ffi::CStr::from_ptr(chars)
+                    .to_string_lossy()
+                    .into_owned(),
+            )
         }
     }
 }
+
+fn primitive_args_prototype(name: &str) -> Option<crate::sexp::ffi::SEXP> {
+    unsafe {
+        let name_c = std::ffi::CString::new(name).ok()?;
+        let symbol = crate::sexp::symbol::Rf_install(name_c.as_ptr());
+        let base = crate::sexp::globals::R_BaseEnv();
+        for registry in [".ArgsEnv", ".GenericArgsEnv"] {
+            let registry_c = std::ffi::CString::new(registry).ok()?;
+            let registry_sym = crate::sexp::symbol::Rf_install(registry_c.as_ptr());
+            let mut env = crate::sexp::envir::R_findVarInFrame(base, registry_sym);
+            if env.is_null() || env == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            if TYPEOF(env) == SEXPTYPE::PROMSXP {
+                env = crate::eval::eval::Rf_eval(env, base);
+            }
+            if env.is_null()
+                || env == crate::sexp::globals::R_UnboundValue()
+                || TYPEOF(env) != SEXPTYPE::ENVSXP
+            {
+                continue;
+            }
+            let proto = crate::sexp::envir::R_findVarInFrame(env, symbol);
+            if !proto.is_null()
+                && proto != crate::sexp::globals::R_UnboundValue()
+                && TYPEOF(proto) == SEXPTYPE::CLOSXP
+            {
+                return Some(proto);
+            }
+        }
+        None
+    }
+}
+
+fn format_primitive(x: Sexp<'_>) -> String {
+    unsafe {
+        let name = crate::eval::primitive::PRIMNAME(x.as_raw());
+        let primitive = format!(".Primitive(\"{name}\")");
+        let Some(proto) = primitive_args_prototype(name) else {
+            return primitive;
+        };
+        let text = crate::mainutils::deparse::deparse1m(
+            proto,
+            false,
+            crate::mainutils::deparse::DEFAULTDEPARSE,
+        );
+        match first_deparse_line(text) {
+            Some(line) if !line.is_empty() => format!("{line} {primitive}"),
+            _ => primitive,
+        }
+    }
+}
+
+
+
+fn deparse_expression_one(expr: SEXP) -> String {
+    unsafe {
+        let text = crate::mainutils::deparse::deparse1line(expr, false);
+        first_deparse_line(text).unwrap_or_default()
+    }
+}
+
 
 fn format_expression_vector(x: Sexp<'_>) -> String {
     unsafe {
@@ -2568,14 +2740,18 @@ pub fn print_value(x: Sexp<'_>) {
         return;
     }
     match x.clone().typeof_() {
-        SEXPTYPE::SYMSXP
-        | SEXPTYPE::LANGSXP
-        | SEXPTYPE::CLOSXP
-        | SEXPTYPE::SPECIALSXP
-        | SEXPTYPE::BUILTINSXP => {
+        SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP | SEXPTYPE::CLOSXP => {
             let base = deparse_expression_one(x.clone().as_raw());
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
+        SEXPTYPE::SPECIALSXP | SEXPTYPE::BUILTINSXP => {
+            emit(&format!(
+                "{}\n",
+                format_with_printable_attributes(format_primitive(x.clone()), x)
+            ));
+        }
+
+
         SEXPTYPE::LISTSXP => {
             emit(&format!("{}\n", format_sexp_top_level(x)));
         }
@@ -2655,6 +2831,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::LGLSXP => {
+            if let Some(output) = format_matrix(x.clone()) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             if x.clone().len() == 0 {
                 emit(&format!(
                     "{}\n",
@@ -2662,14 +2842,15 @@ pub fn print_value(x: Sexp<'_>) {
                 ));
                 return;
             }
+            let base = unsafe { format_vector_stock(x.clone(), true) };
+            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
+        }
+
+        SEXPTYPE::CPLXSXP => {
             if let Some(output) = format_matrix(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
-            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
-        }
-        SEXPTYPE::CPLXSXP => {
             if x.clone().len() == 0 {
                 emit(&format!(
                     "{}\n",
@@ -2677,13 +2858,10 @@ pub fn print_value(x: Sexp<'_>) {
                 ));
                 return;
             }
-            if let Some(output) = format_matrix(x.clone()) {
-                emit(&format!("{output}\n"));
-                return;
-            }
             let base = unsafe { format_vector_stock(x.clone(), true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
+
         SEXPTYPE::STRSXP => {
             if let Some(output) = format_matrix(x.clone()) {
                 emit(&format!("{output}\n"));
@@ -2845,25 +3023,26 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::LGLSXP => {
-            if x.clone().len() == 0 {
-                return format_with_printable_attributes("logical(0)".to_string(), x);
-            }
             if let Some(output) = format_matrix(x.clone()) {
                 return output;
+            }
+            if x.clone().len() == 0 {
+                return format_with_printable_attributes("logical(0)".to_string(), x);
             }
             let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::CPLXSXP => {
-            if x.clone().len() == 0 {
-                return format_with_printable_attributes("complex(0)".to_string(), x);
-            }
             if let Some(output) = format_matrix(x.clone()) {
                 return output;
+            }
+            if x.clone().len() == 0 {
+                return format_with_printable_attributes("complex(0)".to_string(), x);
             }
             let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
+
         SEXPTYPE::STRSXP => {
             if let Some(output) = format_matrix(x.clone()) {
                 return output;
@@ -2895,14 +3074,14 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
 
 
         SEXPTYPE::EXPRSXP => format_expression_vector(x),
-        SEXPTYPE::SYMSXP
-        | SEXPTYPE::LANGSXP
-        | SEXPTYPE::CLOSXP
-        | SEXPTYPE::SPECIALSXP
-        | SEXPTYPE::BUILTINSXP => {
+        SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP | SEXPTYPE::CLOSXP => {
             let base = deparse_expression_one(x.clone().as_raw());
             format_with_printable_attributes(base, x)
         }
+        SEXPTYPE::SPECIALSXP | SEXPTYPE::BUILTINSXP => {
+            format_with_printable_attributes(format_primitive(x.clone()), x)
+        }
+
         SEXPTYPE::LISTSXP => format_pairlist(x),
         SEXPTYPE::ENVSXP => format_environment(x),
         tp => {

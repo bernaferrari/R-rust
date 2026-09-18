@@ -1576,6 +1576,52 @@ invisible(NULL)
         );
     }
 
+    #[test]
+    fn print_primitive_includes_argsenv_formals() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "print(base::list)\ninvisible(NULL)\n",
+        );
+        assert_eq!(
+            captured.stdout.trim_end(),
+            "function (...)  .Primitive(\"list\")",
+            "PrintSpecial must wrap ArgsEnv formals, got {:?}",
+            captured.stdout
+        );
+    }
+
+    #[test]
+    fn dots_length_treats_empty_dots_as_zero() {
+
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "h <- function(...) ...length(); identical(h(), 0L)",
+        );
+        let result = result.expect("empty ... must have length 0");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn print_matrix_honors_max_argument() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "print(matrix(nrow = 100, ncol = 4), max = 5)\ninvisible(NULL)\n",
+        );
+        assert!(
+            captured.stdout.contains("omitted 99 rows"),
+            "matrix print must honour max=, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains("[2,]"),
+            "truncated matrix must not print a second row, got {:?}",
+            captured.stdout
+        );
+    }
+
+
+
+
 
 
 
