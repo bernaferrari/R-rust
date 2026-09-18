@@ -141,37 +141,34 @@ fn error_result_with_captured(
     captured: &super::sexp::output::RCapturedOutput,
 ) -> RResult {
     let mut result = error_result(message);
-    // Mirror Rscript's combined output: any stdout printed before the error,
-    // then the rendered error text. The rendered text comes from
-    // `with_error_output` (error buffer when this error was the last one
-    // rendered there, bare "Error: <message>" otherwise) — raise-time
-    // emission is intentionally deferred to here so caught errors never
-    // leak into results.
-    let mut text = String::new();
+    // GNU Rscript: pre-error print/cat stays on stdout; the rendered
+    // error and trailing "In addition:" warnings go to stderr.
+    let mut stdout = String::new();
     if !captured.stdout.is_empty() {
-        text.push_str(captured.stdout.trim_end());
-        text.push('\n');
+        stdout.push_str(captured.stdout.trim_end());
+        stdout.push('\n');
     }
-    text.push_str(result.output.trim_end());
-    // Trunk ends the rendered error line before the deferred-warning
-    // block ("Error: ...\nIn addition: ..."). The separator is pushed
-    // lazily so the output never carries a trailing newline when no
-    // deferred warnings follow.
-    // errors.c:922-928 — an error that escapes to top level prints pending
-    // deferred warnings after the rendered error ("In addition: Warning
-    // message: ..."); when capturing, that emission defers to here.
+    let mut stderr = result.output.trim_end().to_string();
+    if !stderr.is_empty() && !stderr.ends_with('\n') {
+        stderr.push('\n');
+    }
+
     if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
         if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
-            if !text.is_empty() {
-                text.push('\n');
+            if !stderr.is_empty() {
+                stderr.push('\n');
             }
-            text.push_str("In addition: ");
-            text.push_str(&block);
+            stderr.push_str("In addition: ");
+            stderr.push_str(&block);
         }
     }
     if captured.truncated {
-        text.push_str("\n[captured console output truncated by runtime limit]");
+        stdout.push_str("[captured console output truncated by runtime limit]\n");
     }
+    let mut text = stdout.clone();
+    text.push_str(&stderr);
+    result.stdout = stdout;
+    result.stderr = stderr;
     if text.contains("Error") {
         result.output = text;
     }
