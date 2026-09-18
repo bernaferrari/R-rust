@@ -728,6 +728,10 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool) -> String {
         if TYPEOF(x) == SEXPTYPE::LANGSXP || sexp_has_class_name(x, "formula") {
             return str_language_summary(x);
         }
+        if TYPEOF(x) == SEXPTYPE::VECSXP {
+            return str_list_summary(x);
+        }
+
 
         if sexp_has_class_name(x, "ts") {
             let n = XLENGTH(x);
@@ -741,9 +745,19 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool) -> String {
             } else {
                 ("1".to_string(), n.to_string())
             };
+            let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            let lestr = if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
+                let dims: Vec<String> = (0..XLENGTH(dim))
+                    .map(|i| format!("1:{}", *INTEGER(dim).add(i as usize)))
+                    .collect();
+                format!("[{}]", dims.join(", "))
+            } else {
+                format!("[1:{n}]")
+            };
             let preview = str_preview_reals_or_ints(x, 0);
-            return format!("Time-Series [1:{n}] from {start} to {end}: {preview}");
+            return format!("Time-Series {lestr} from {start} to {end}: {preview}");
         }
+
 
         let t = TYPEOF(x);
         let n = XLENGTH(x);
@@ -772,8 +786,17 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool) -> String {
                 .map(|i| format!("1:{}", *INTEGER(dim).add(i as usize)))
                 .collect();
             let preview = str_preview_reals_or_ints(x, 6);
-            return format!("{named_prefix}{type_name} [{}] {preview}", dims.join(", "));
+            let table = if sexp_has_class_name(x, "table") {
+                "'table' "
+            } else {
+                ""
+            };
+            return format!(
+                "{table}{named_prefix}{type_name} [{}] {preview}",
+                dims.join(", ")
+            );
         }
+
         if n == 0 {
             return format!("{named_prefix}{type_name}(0)");
         }
@@ -891,6 +914,43 @@ unsafe fn str_environment_brief(env: SEXP) -> String {
         }
     }
 }
+
+unsafe fn str_list_summary(x: SEXP) -> String {
+    unsafe {
+        let n = XLENGTH(x);
+        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
+        let has_names = !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == n;
+        let raw_names: Vec<String> = (0..n)
+            .map(|i| {
+                if has_names {
+                    elt_to_string(names, i)
+                } else {
+                    String::new()
+                }
+            })
+            .collect();
+        let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
+        let mut out = format!("List of {n}");
+        let show = n.min(99);
+        for i in 0..show {
+            let name = format!("{:<name_width$}", raw_names[i as usize]);
+            let elem = VECTOR_ELT(x, i);
+            out.push_str(&format!(
+                "\n  ..$ {name}: {}",
+                str_atomic_summary_opts(elem, true)
+            ));
+        }
+        if n > show {
+            out.push_str("\n  .. [list output truncated]");
+        }
+        out
+    }
+}
+
+
 
 
 
@@ -1030,11 +1090,15 @@ unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
             };
             if !name.is_empty() && !skip.iter().any(|s| *s == name) {
                 let summary = str_atomic_summary(CAR(attrs));
-                let sep = if summary.starts_with("Class") || summary.starts_with("language") {
+                let sep = if summary.starts_with("Class")
+                    || summary.starts_with("language")
+                    || summary.starts_with("List")
+                {
                     ""
                 } else {
                     " "
                 };
+
                 str_emit_line(&format!(" - attr(*, \"{name}\")={sep}{summary}"));
             }
 
@@ -1215,33 +1279,28 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 str_emit_nonstandard_attrs(x, &["names", "class", "row.names"]);
             } else {
                 str_emit_line(&format!("List of {n}"));
+                let raw_names: Vec<String> = (0..n.min(6))
+                    .map(|i| {
+                        if has_names && i < XLENGTH(names) {
+                            elt_to_string(names, i)
+                        } else {
+                            String::new()
+                        }
+                    })
+                    .collect();
+                let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
                 for i in 0..n.min(6) {
-                    let name = if has_names && i < XLENGTH(names) {
-                        elt_to_string(names, i)
-                    } else {
-                        format!("[[{}]]", i + 1)
-                    };
+                    let name = format!("{:<name_width$}", raw_names[i as usize]);
                     let elem = VECTOR_ELT(x, i as i64);
                     str_emit_line(&format!(" $ {name}: {}", str_atomic_summary(elem)));
                 }
             }
+
         } else {
             str_emit_line(&format!(" {}", str_atomic_summary(x)));
-            let names = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
-            if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && XLENGTH(names) > 0
-            {
-                str_emit_line(&format!(
-                    " - attr(*, \"names\")= {}",
-                    str_atomic_summary(names)
-                ));
-            }
+            str_emit_nonstandard_attrs(x, &["class", "tsp", "dim"]);
         }
+
 
 
 

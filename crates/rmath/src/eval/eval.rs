@@ -1773,6 +1773,10 @@ str(g)
 fm <- uptake ~ conc | Plant
 attr(fm, ".Environment") <- emptyenv()
 str(fm)
+labs <- list(x="Ambient carbon dioxide concentration", y="CO2 uptake rate")
+attr(df, "labels") <- labs
+str(df)
+
 invisible(NULL)
 
 "#,
@@ -1797,6 +1801,14 @@ invisible(NULL)
             "formula str must match GNU Class/language header, got {:?}",
             captured.stdout
         );
+        assert!(
+            captured.stdout.contains("- attr(*, \"labels\")=List of 2")
+                && captured.stdout.contains("$ x: chr \"Ambient carbon dioxide concentration\"")
+                && captured.stdout.contains("$ y: chr \"CO2 uptake rate\""),
+            "named list attrs must be List of N with $ children, got {:?}",
+            captured.stdout
+        );
+
 
 
 
