@@ -2611,6 +2611,30 @@ ok
         let result = result.expect("internal generics must UseMethod like GNU primitives.R");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+    #[test]
+    fn unlist_as_vector_lengths_are_gnu_closures() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("foo", representation(x="numeric", y="numeric"))
+xx <- new("foo", x=1, y=2)
+ff <- args(getGeneric("unlist"))
+body(ff) <- "testit"
+setMethod("unlist", "foo", ff)
+identical(typeof(unlist), "closure") &&
+  identical(typeof(as.vector), "closure") &&
+  identical(typeof(lengths), "closure") &&
+  identical(unlist(list(1, 2:3)), c(1, 2, 3)) &&
+  identical(as.vector(c(a=1), "any"), 1) &&
+  identical(as.integer(lengths(list(1:2, 3))), c(2L, 1L)) &&
+  identical(getGeneric("unlist")(xx), "testit")
+"#,
+        );
+        let result = result.expect("unlist/as.vector/lengths must be GNU closures");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
 
 
 

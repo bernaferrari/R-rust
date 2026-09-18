@@ -1142,6 +1142,15 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"islistfactor\0",
+        None,
+        0,
+        11,
+        2,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+
+    FunTabEntry::new(
         b"cbind\0",
         None,
         1,

@@ -119,10 +119,14 @@ pub unsafe fn R_set_prim_method(
                 R_NilValue()
             };
             op = crate::sexp::accessors::INTERNAL(name);
+            // GNU extraS4 wrappers (unlist, as.vector, lengths) are
+            // closures. setMethod still calls this hook after installing
+            // the table method; there is no primitive to cache.
             if op.is_null() || op == R_NilValue() {
-                error("'internal' slot does not name an internal function");
+                return fname;
             }
         }
+
         do_set_prim_method(op, code_string, fundef, mlist);
         fname
     }

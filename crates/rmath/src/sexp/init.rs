@@ -108,6 +108,16 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
 /// shortcuts so argument promises retain GNU R's lazy semantics.
 unsafe fn initialize_base_functions(base_env: SEXP) {
     unsafe {
+        // GNU base binds `.BaseNamespaceEnv` to namespace:base. rport's
+        // base environment is that namespace; methods extraS4 wrappers
+        // (unlist, as.vector, lengths) must live here so implicitGeneric
+        // treats them as base functions, not primitives.
+        defineVar(
+            Rf_install_in_current(".BaseNamespaceEnv"),
+            base_env,
+            base_env,
+        );
+
         // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
         // Installed after as.list so parse/eval can see the generic.
 
@@ -156,6 +166,38 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "pairlist",
             "function(...) as.pairlist(list(...))",
         );
+        // GNU as.R / unlist.R / New-Internal.R: these are closures, not
+        // primitives. methods::.BasicFunsList still lists them so setMethod
+        // can wrap the closure (primitives.R extraS4).
+        eval_base_binding(
+            base_env,
+            "as.vector",
+            "function(x, mode = \"any\") .Internal(as.vector(x, mode))",
+        );
+        eval_base_binding(
+            base_env,
+            "lengths",
+            "function(x, use.names = TRUE) .Internal(lengths(x, use.names))",
+        );
+        eval_base_binding(
+            base_env,
+            "unlist",
+            "function(x, recursive = TRUE, use.names = TRUE) {\n\
+             if (is.function(recursive) || length(recursive) != 1L)\n\
+                 stop(\"'recursive' must be a length-1 vector\")\n\
+             if (is.na(recursive)) stop(\"'recursive' is NA\")\n\
+             if (.Internal(islistfactor(x, recursive))) {\n\
+                 URapply <- if (recursive)\n\
+                     function(x, Fn) .Internal(unlist(rapply(x, Fn, how = \"list\"), recursive, FALSE))\n\
+                 else function(x, Fn) .Internal(unlist(lapply(x, Fn), recursive, FALSE))\n\
+                 lv <- unique(URapply(x, levels))\n\
+                 nm <- if (use.names) names(.Internal(unlist(x, recursive, use.names)))\n\
+                 res <- match(URapply(x, as.character), lv)\n\
+                 structure(res, levels = lv, names = nm, class = \"factor\")\n\
+             } else .Internal(unlist(x, recursive, use.names))\n\
+             }",
+        );
+
         // GNU formals.R: replacement functions are closures, not primitives.
         eval_base_binding(
             base_env,
