@@ -1099,6 +1099,17 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn methods_setmethod_double_bracket_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); setClass(\"foo\", representation(x=\"numeric\", y=\"numeric\")); xx <- new(\"foo\", x=1, y=2); ff <- args(getGeneric(\"[[\")); body(ff) <- \"testit\"; setMethod(\"[[\", \"foo\", ff); identical(getGeneric(\"[[\")(xx), \"testit\")",
+        );
+        let result = result.expect("setMethod([[) must match GNU primitives.R");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
     #[test]
     fn methods_setclass_defines_s4_class() {

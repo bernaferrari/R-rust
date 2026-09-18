@@ -12,7 +12,8 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    BODY, CAR, CDR, CHAR, PRCODE, PRINTNAME, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, XLENGTH,
+    BODY, CAR, CDR, CHAR, CLOENV, PRCODE, PRINTNAME, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF,
+    XLENGTH,
 };
 use crate::sexp::envir::{Environment, addMissingVarsToNewEnv};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -183,7 +184,12 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         // and constant pool. Compilation installs BODY(op) only after the
         // complete bytecode object exists; an unsupported body stays source.
         let _op_guard = protect(op);
-        super::jit::R_CheckJIT(op);
+        // Do not JIT-compile matchSignature after the source unwrap
+        // (rport-7i458): the port compiler would reinstall a bad stream.
+        if !is_methods_matchsignature_closure(op) {
+            super::jit::R_CheckJIT(op);
+        }
+
 
         // Upstream applyClosure_core passes the *promised* arguments
         // (`actuals = promiseArgs(arglist, rho)`) to begincontext as the
@@ -386,31 +392,51 @@ unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
     }
 }
 
-unsafe fn methods_matchsignature_source(op: SEXP, body: SEXP) -> Option<SEXP> {
+unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
     unsafe {
-        let methods = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
+        let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
+        else {
+            return false;
+        };
+        if CLOENV(op) != methods {
+            return false;
+        }
         for name in [c"matchSignature", c".isSealedMethod"] {
-            let mut bound = crate::sexp::envir::R_findVarInFrame(methods, crate::sexp::symbol::Rf_install(name.as_ptr()));
+            let mut bound = crate::sexp::envir::R_findVarInFrame(
+                methods,
+                crate::sexp::symbol::Rf_install(name.as_ptr()),
+            );
             if bound.is_null() || bound == crate::sexp::globals::R_UnboundValue() {
                 continue;
             }
             if TYPEOF(bound) == SEXPTYPE::PROMSXP {
                 bound = crate::sexp::accessors::PRVALUE(bound);
             }
-            if bound != op {
-                continue;
-            }
-            let source = super::bc_eval::BCODE_EXPR(body);
-            if !source.is_null()
-                && source != crate::sexp::globals::R_NilValue()
-                && TYPEOF(source) == SEXPTYPE::LANGSXP
-            {
-                return Some(source);
+            if bound == op {
+                return true;
             }
         }
-        None
+        false
     }
 }
+
+unsafe fn methods_matchsignature_source(op: SEXP, body: SEXP) -> Option<SEXP> {
+    unsafe {
+        if !is_methods_matchsignature_closure(op) {
+            return None;
+        }
+        let source = super::bc_eval::BCODE_EXPR(body);
+        if !source.is_null()
+            && source != crate::sexp::globals::R_NilValue()
+            && TYPEOF(source) == SEXPTYPE::LANGSXP
+        {
+            Some(source)
+        } else {
+            None
+        }
+    }
+}
+
 
 
 
