@@ -336,42 +336,29 @@ impl Drop for CoercionWarningCallGuard {
 pub unsafe fn CoercionWarning(warn: c_int) {
     // Route through the warnings machinery (like stock's warningcall) so
     // handlers such as suppressWarnings()/withCallingHandlers() see them.
+    // GNU `options()` is a closure, so warning() attributes to that call;
+    // the port's primitive uses this override to keep the same `In options(...)`.
     let override_call = COERCION_WARN_CALL.get();
-    if warn & WARN_NA != 0 {
-        unsafe {
-            if !override_call.is_null() {
-                crate::mainutils::errors::warningcall(
-                    override_call,
-                    b"NAs introduced by coercion\0".as_ptr() as *const core::ffi::c_char,
-                );
-            } else {
-                crate::mainutils::errors::Rf_warning(
-                    b"NAs introduced by coercion\0".as_ptr() as *const core::ffi::c_char,
-                );
-            }
+    let emit = |msg: &[u8]| {
+        if !override_call.is_null() {
+            crate::mainutils::errors::warningcall(
+                override_call,
+                msg.as_ptr() as *const core::ffi::c_char,
+            );
+        } else {
+            crate::mainutils::errors::Rf_warning(msg.as_ptr() as *const core::ffi::c_char);
         }
+    };
+    if warn & WARN_NA != 0 {
+        emit(b"NAs introduced by coercion\0");
     }
     if warn & WARN_INT_NA != 0 {
-        unsafe {
-            crate::mainutils::errors::Rf_warning(
-                b"NAs introduced by coercion to integer range\0".as_ptr()
-                    as *const core::ffi::c_char,
-            );
-        }
+        emit(b"NAs introduced by coercion to integer range\0");
     }
     if warn & WARN_IMAG != 0 {
-        unsafe {
-            crate::mainutils::errors::Rf_warning(
-                b"imaginary parts discarded in coercion\0".as_ptr() as *const core::ffi::c_char,
-            );
-        }
+        emit(b"imaginary parts discarded in coercion\0");
     }
     if warn & WARN_RAW != 0 {
-        unsafe {
-            crate::mainutils::errors::Rf_warning(
-                b"out-of-range values treated as 0 in coercion to raw\0".as_ptr()
-                    as *const core::ffi::c_char,
-            );
-        }
+        emit(b"out-of-range values treated as 0 in coercion to raw\0");
     }
 }

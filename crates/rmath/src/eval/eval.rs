@@ -1671,6 +1671,27 @@ invisible(NULL)
     }
 
     #[test]
+    fn summary_mixed_range_shares_common_decimals() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "options(digits=7); summary(c(1,100))\ninvisible(NULL)\n",
+        );
+        assert!(
+            captured.stdout.contains("1.00")
+                && captured.stdout.contains("100.00")
+                && captured.stdout.contains("50.50"),
+            "named numeric summary must share format() decimals, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains("   1 ") && !captured.stdout.split_whitespace().any(|w| w == "1"),
+            "must not trim 1.00 to 1, got {:?}",
+            captured.stdout
+        );
+    }
+
+
+    #[test]
     fn options_max_print_inf_warns_then_errors() {
         let mut session = RSession::new();
         let (result, captured, _) = session.eval_script_with_output_capture(
@@ -1683,11 +1704,12 @@ inherits(e1, "error")
         assert_eq!(result.logical_elt(0), Some(TRUE));
         let text = format!("{}{}", captured.stdout, captured.stderr);
         assert!(
-            text.contains("NAs introduced by coercion to integer range"),
-            "asInteger(Inf) must warn like GNU, got stdout={:?} stderr={:?}",
+            text.contains("In options(max.print = Inf) : NAs introduced by coercion to integer range"),
+            "asInteger(Inf) must warn with the options() call like GNU, got stdout={:?} stderr={:?}",
             captured.stdout,
             captured.stderr
         );
+
     }
 
 

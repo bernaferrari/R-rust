@@ -965,6 +965,12 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         InitOptions();
+        // GNU `options` is a closure; warning() from asInteger therefore
+        // stores `options(...)` as the call. The port's primitive has no
+        // function context, so pin the LANGSXP for CoercionWarning.
+        crate::main::coerce::set_coercion_warning_call(call);
+        let _coercion_call = crate::main::coerce::CoercionWarningCallGuard;
+
 
         // Zero-argument case: return all options sorted alphabetically
         if args == R_NilValue() {

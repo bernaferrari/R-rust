@@ -1892,19 +1892,53 @@ fn with_summary_default_digits<T>(f: impl FnOnce() -> T) -> T {
     }
 }
 
-fn format_summary_real_value(x: Sexp<'_>, i: R_xlen_t) -> String {
-    if let Some(values) = x.as_real_slice() {
-        let value = values[i as usize];
-        if R_IsNA(value) {
-            return "NA".to_string();
+fn format_named_summary_reals(x: Sexp<'_>, names: &[String]) -> Option<Vec<String>> {
+    unsafe {
+        let slice = x.as_real_slice()?;
+        if slice.len() != names.len() {
+            return None;
         }
-        if R_IsNaN(value) {
-            return "NaN".to_string();
+        let mut finite = Vec::new();
+        let mut nas_at = None;
+        for (i, name) in names.iter().enumerate() {
+            if name == "NAs" {
+                nas_at = Some(i);
+            } else {
+                finite.push(i);
+            }
         }
-        return with_summary_default_digits(|| format_r_default_real(value));
+        let n = finite.len() as R_xlen_t;
+        let tmp = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if tmp.is_null() {
+            return None;
+        }
+        let _tmp = crate::sexp::protect::protect(tmp);
+        for (j, &i) in finite.iter().enumerate() {
+            *crate::sexp::accessors::REAL(tmp).add(j) = slice[i];
+        }
+        Some(with_summary_default_digits(|| {
+            let mut w = 0;
+            let mut d = 0;
+            let mut e = 0;
+            crate::mainutils::format::formatRealS(tmp, n, &mut w, &mut d, &mut e, 0);
+            let mut values = vec![String::new(); names.len()];
+            for (j, &i) in finite.iter().enumerate() {
+                values[i] = encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                    crate::sexp::accessors::REAL_ELT(tmp, j as std::os::raw::c_int),
+                    w,
+                    d,
+                    e,
+                    OUT_DEC,
+                ));
+            }
+            if let Some(i) = nas_at {
+                values[i] = format!("{}", slice[i] as i64);
+            }
+            values
+        }))
     }
-    "NA".to_string()
 }
+
 
 
 fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
@@ -1923,20 +1957,10 @@ fn format_summary_default(x: Sexp<'_>) -> Option<String> {
         }
         return Some(format_summary_default_unnamed_numeric(x));
     };
-
     let values: Vec<String> = match x.clone().typeof_() {
-        SEXPTYPE::REALSXP => (0..x.clone().len())
-            .map(|i| {
-                if matches!(names.get(i as usize).map(String::as_str), Some("NAs")) {
-                    x.clone()
-                        .as_real_slice()
-                        .map(|values| format!("{}", values[i as usize] as i64))
-                        .unwrap_or_else(|| format_summary_real_value(x.clone(), i))
-                } else {
-                    format_summary_real_value(x.clone(), i)
-                }
-            })
-            .collect(),
+        SEXPTYPE::REALSXP => format_named_summary_reals(x.clone(), &names)?,
+
+
         SEXPTYPE::INTSXP => (0..x.clone().len())
             .map(|i| {
                 if matches!(
