@@ -1359,8 +1359,25 @@ identical(class(summary(warnings())), "summary.warnings")
             !output.stdout.contains("1x :"),
             "identical warnings must not print per-item 1x tags, got {output:?}"
         );
-
     }
+
+    #[test]
+
+    fn unlist_preserves_na_names_for_dput() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+LNA <- setNames(as.list(c(1, 2, 99)), c("A", "NA", NA))
+iNA <- unlist(LNA)
+identical(names(iNA), c("A", "NA", NA)) &&
+  identical(paste(capture.output(dput(iNA)), collapse = "\n"),
+            "structure(c(1, 2, 99), names = c(\"A\", \"NA\", NA))")
+"#,
+        );
+        let result = result.expect("unlist must keep NA names so dput uses structure()");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
 
 
 

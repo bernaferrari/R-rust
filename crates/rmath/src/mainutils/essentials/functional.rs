@@ -3033,7 +3033,8 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             .or_else(|| logical_from_raw_arg(args, 2))
             .unwrap_or(true);
         let mut entries = Vec::new();
-        collect_unlist_entries(x, None, recursive, use_names, &mut entries);
+        collect_unlist_entries(x, UnlistName::Absent, recursive, use_names, &mut entries);
+
         let result_type = unlist_result_type(&entries);
         let total = entries.len() as R_xlen_t;
         // GNU: unlist(list(NULL, NULL)) is NULL, not numeric(0).
@@ -3073,14 +3074,20 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
 
-        if use_names && entries.iter().any(|entry| entry.name.is_some()) {
+        if use_names && entries.iter().any(|entry| !matches!(entry.name, UnlistName::Absent)) {
             let names = Rf_allocVector3(SEXPTYPE::STRSXP, total);
             if !names.is_null() {
                 let _names_guard = protect(names);
                 for (idx, entry) in entries.iter().enumerate() {
-                    let cstr =
-                        CString::new(entry.name.as_deref().unwrap_or("")).unwrap_or_default();
-                    SET_STRING_ELT(names, idx as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                    let charsxp = match &entry.name {
+                        UnlistName::Na => crate::sexp::globals::R_NaString(),
+                        UnlistName::Value(s) => {
+                            let cstr = CString::new(s.as_str()).unwrap_or_default();
+                            Rf_mkChar(cstr.as_ptr())
+                        }
+                        UnlistName::Absent => Rf_mkChar(c"".as_ptr()),
+                    };
+                    SET_STRING_ELT(names, idx as R_xlen_t, charsxp);
                 }
                 crate::sexp::attrib_core::setAttrib(
                     result,
@@ -3128,8 +3135,16 @@ unsafe fn logical_from_raw_arg(args: SEXP, position: usize) -> Option<bool> {
 
 struct UnlistEntry {
     value: UnlistValue,
-    name: Option<String>,
+    name: UnlistName,
 }
+
+#[derive(Clone)]
+enum UnlistName {
+    Absent,
+    Na,
+    Value(String),
+}
+
 
 enum UnlistValue {
     Logical(i32),
@@ -3295,7 +3310,8 @@ unsafe fn unlist_scalar_element(x: SEXP, index: R_xlen_t) -> SEXP {
 
 unsafe fn collect_unlist_entries(
     x: SEXP,
-    prefix: Option<String>,
+    prefix: UnlistName,
+
     recursive: bool,
     use_names: bool,
     out: &mut Vec<UnlistEntry>,
@@ -3313,13 +3329,13 @@ unsafe fn collect_unlist_entries(
                     let child = VECTOR_ELT(x, i);
                     TYPEOF(child) == SEXPTYPE::VECSXP || TYPEOF(child) == SEXPTYPE::EXPRSXP
                 });
-                if any_list || prefix.is_some() {
+                if any_list || !matches!(prefix, UnlistName::Absent) {
                     for i in 0..n {
                         let child = VECTOR_ELT(x, i);
                         let child_name = if use_names {
-                            unlist_element_name(prefix.as_deref(), names, i, n)
+                            unlist_element_name(&prefix, names, i, n)
                         } else {
-                            None
+                            UnlistName::Absent
                         };
                         if TYPEOF(child) == SEXPTYPE::VECSXP
                             || TYPEOF(child) == SEXPTYPE::EXPRSXP
@@ -3331,14 +3347,9 @@ unsafe fn collect_unlist_entries(
                             let child_n = XLENGTH(child);
                             for j in 0..child_n {
                                 let leaf_name = if use_names {
-                                    unlist_element_name(
-                                        child_name.as_deref(),
-                                        child_names,
-                                        j,
-                                        child_n,
-                                    )
+                                    unlist_element_name(&child_name, child_names, j, child_n)
                                 } else {
-                                    None
+                                    UnlistName::Absent
                                 };
                                 out.push(UnlistEntry {
                                     value: UnlistValue::Object(VECTOR_ELT(child, j)),
@@ -3353,14 +3364,9 @@ unsafe fn collect_unlist_entries(
                             );
                             for j in 0..child_n {
                                 let leaf_name = if use_names {
-                                    unlist_element_name(
-                                        child_name.as_deref(),
-                                        child_names,
-                                        j,
-                                        child_n,
-                                    )
+                                    unlist_element_name(&child_name, child_names, j, child_n)
                                 } else {
-                                    None
+                                    UnlistName::Absent
                                 };
                                 out.push(UnlistEntry {
                                     value: UnlistValue::Element {
@@ -3371,16 +3377,15 @@ unsafe fn collect_unlist_entries(
                                 });
                             }
                         }
-
                     }
                     return;
                 }
             }
             for i in 0..n {
                 let child_name = if use_names {
-                    unlist_element_name(prefix.as_deref(), names, i, n)
+                    unlist_element_name(&prefix, names, i, n)
                 } else {
-                    None
+                    UnlistName::Absent
                 };
                 collect_unlist_entries(VECTOR_ELT(x, i), child_name, recursive, use_names, out);
             }
@@ -3391,10 +3396,11 @@ unsafe fn collect_unlist_entries(
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         for i in 0..XLENGTH(x) {
             let name = if use_names {
-                unlist_element_name(prefix.as_deref(), names, i, XLENGTH(x))
+                unlist_element_name(&prefix, names, i, XLENGTH(x))
             } else {
-                None
+                UnlistName::Absent
             };
+
             let value = match TYPEOF(x) {
                 t if t == SEXPTYPE::LGLSXP => UnlistValue::Logical(*LOGICAL(x).add(i as usize)),
                 t if t == SEXPTYPE::INTSXP => UnlistValue::Integer(*INTEGER(x).add(i as usize)),
@@ -3418,32 +3424,51 @@ unsafe fn collect_unlist_entries(
 }
 
 unsafe fn unlist_element_name(
-    prefix: Option<&str>,
+    prefix: &UnlistName,
     names: SEXP,
     index: R_xlen_t,
     len: R_xlen_t,
-) -> Option<String> {
+) -> UnlistName {
     unsafe {
         let own = if !names.is_null()
             && names != R_NilValue()
             && TYPEOF(names) == SEXPTYPE::STRSXP
             && index < XLENGTH(names)
         {
-            let value = string_at_or_empty(names, index);
-            (!value.is_empty()).then_some(value)
+            let elt = STRING_ELT(names, index);
+            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                UnlistName::Na
+            } else {
+                let value = CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
+                if value.is_empty() {
+                    UnlistName::Absent
+                } else {
+                    UnlistName::Value(value)
+                }
+            }
         } else {
-            None
+            UnlistName::Absent
         };
 
         match (prefix, own) {
-            (Some(prefix), Some(own)) => Some(format!("{prefix}.{own}")),
-            (None, Some(own)) => Some(own),
-            (Some(prefix), None) if len > 1 => Some(format!("{}{}", prefix, index + 1)),
-            (Some(prefix), None) => Some(prefix.to_string()),
-            (None, None) => None,
+            (UnlistName::Value(prefix), UnlistName::Value(own)) => {
+                UnlistName::Value(format!("{prefix}.{own}"))
+            }
+            (UnlistName::Absent, own) => own,
+            (UnlistName::Na, UnlistName::Value(own)) => UnlistName::Value(format!("NA.{own}")),
+            (UnlistName::Na, UnlistName::Absent) if len > 1 => {
+                UnlistName::Value(format!("NA{}", index + 1))
+            }
+            (UnlistName::Na, _) => UnlistName::Na,
+            (UnlistName::Value(prefix), UnlistName::Na) => UnlistName::Value(format!("{prefix}.NA")),
+            (UnlistName::Value(prefix), UnlistName::Absent) if len > 1 => {
+                UnlistName::Value(format!("{}{}", prefix, index + 1))
+            }
+            (UnlistName::Value(prefix), UnlistName::Absent) => UnlistName::Value(prefix.clone()),
         }
     }
 }
+
 
 /// R's `is.atomic(x)` — TRUE for non-recursive types (not list, pairlist, etc.).
 pub unsafe fn do_is_atomic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
