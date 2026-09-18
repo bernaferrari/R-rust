@@ -1707,6 +1707,44 @@ invisible(NULL)
         );
     }
 
+    #[test]
+    fn print_noquote_empty_character_omits_class() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "print(noquote(character(0)))\ninvisible(NULL)\n",
+        );
+        assert_eq!(
+            captured.stdout.trim_end(),
+            "character(0)",
+            "GNU print.noquote strips class before print, got {:?}",
+            captured.stdout
+        );
+    }
+
+    #[test]
+    fn rnorm_named_mean_after_positional_sd_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, captured, _) = session.eval_script_with_output_capture(
+            r#"
+set.seed(1); a <- rnorm(1, 0, mean = 10)
+set.seed(1); b <- rnorm(1, mean = 10, sd = 0)
+set.seed(1); c <- rnorm(sd = 0, n = 1, mean = 10)
+dup <- tryCatch(rnorm(1, mean = 1, mean = 2), error = function(e) e)
+unk <- tryCatch(rnorm(1, foo = 2), error = function(e) e)
+identical(a, b) && identical(a, c) && isTRUE(all.equal(a, 10)) &&
+  grepl("formal argument \"mean\" matched by multiple actual arguments", conditionMessage(dup), fixed = TRUE) &&
+  grepl("unused argument (foo = 2)", conditionMessage(unk), fixed = TRUE)
+"#,
+        );
+        assert_eq!(
+            result.expect("rnorm matching should evaluate").logical_elt(0),
+            Some(TRUE),
+            "stdout={:?} stderr={:?}",
+            captured.stdout,
+            captured.stderr
+        );
+    }
+
 
     #[test]
     fn summary_mixed_range_shares_common_decimals() {

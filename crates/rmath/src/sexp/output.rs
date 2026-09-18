@@ -675,14 +675,21 @@ fn is_structural_print_attribute(name: &str) -> bool {
     matches!(name, "names" | "dim" | "dimnames" | "row.names")
 }
 
+fn is_hidden_noquote_class(name: &str, x: Sexp<'_>) -> bool {
+    name == "class" && has_class(x, "noquote")
+}
+
+
 
 fn format_printable_attributes(x: Sexp<'_>) -> String {
     unsafe {
-        let mut attrs = ATTRIB(x.as_raw());
+        let mut attrs = ATTRIB(x.clone().as_raw());
+
         let mut visible = Vec::new();
         while !attrs.is_null() && attrs != R_NilValue() {
             if let Some(name) = printable_attribute_name(attrs)
                 && !is_structural_print_attribute(&name)
+                && !is_hidden_noquote_class(&name, x.clone())
             {
                 let value = CAR(attrs);
                 if !value.is_null() && value != R_NilValue() {
@@ -3295,7 +3302,8 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_summary_default(x.clone()) {
                 return output;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let quote = !has_class(x.clone(), "noquote") && !has_class(x.clone(), "table");
+            let base = unsafe { format_vector_stock(x.clone(), quote) };
             format_with_printable_attributes(base, x)
         }
 
