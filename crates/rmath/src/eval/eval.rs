@@ -1056,6 +1056,26 @@ identical(as.numeric(t2@x), as.numeric(1:4)) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn register_s3method_is_invisible() {
+        let mut session = RSession::new();
+        let (result, stdout, _) = session.eval_script_with_output_capture(
+            r#"
+registerS3method("print", "RegInv", function(x) invisible(x))
+identical(withVisible(registerS3method("print", "RegInv2", function(x) x))$visible, FALSE)
+"#,
+        );
+        let result = result.expect("registerS3method must be invisible");
+        assert!(
+            !stdout.stdout.contains("NULL"),
+            "registerS3method must not auto-print NULL, got {:?}",
+            stdout.stdout
+        );
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
 
     #[test]
     fn methods_externalptr_typeof_and_class() {

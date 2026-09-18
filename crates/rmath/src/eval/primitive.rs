@@ -299,10 +299,12 @@ pub fn internal_result_invisible(name: &str) -> bool {
             | "setClass"
             | "setGeneric"
             | "setMethod"
+            | "registerS3method"
             | "unlockBinding"
             | "lockBinding"
             | "lockEnvironment"
             | "makeActiveBinding"
+
             | "attach"
             | "detach"
             | "source"
