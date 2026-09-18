@@ -1221,7 +1221,9 @@ fn format_complex_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
 
 
 fn format_matrix(x: Sexp<'_>) -> Option<String> {
-    let (nrow, ncol) = matrix_dims(x.clone())?;
+    let Some((nrow, ncol)) = matrix_dims(x.clone()) else {
+        return format_array(x);
+    };
     match x.clone().typeof_() {
         SEXPTYPE::INTSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
             format_integer_element(x.clone(), (r + c * nrow) as i64)
@@ -1231,10 +1233,8 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
             format_logical_element(x.clone(), (r + c * nrow) as i64)
         })),
         SEXPTYPE::CPLXSXP => Some(format_complex_matrix_gnu(x.clone(), nrow, ncol)),
-
         SEXPTYPE::STRSXP => {
             let quote = !has_class(x.clone(), "noquote") && !has_class(x.clone(), "table");
-
             Some(format_character_matrix_with(
                 x.clone(),
                 nrow,
@@ -1242,10 +1242,187 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
                 |r, c| format_string_element_maybe_quoted(x.clone(), (r + c * nrow) as i64, quote),
             ))
         }
-
         _ => None,
     }
 }
+
+
+fn array_dims(x: Sexp<'_>) -> Option<Vec<usize>> {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(
+            x.clone().as_raw(),
+            crate::sexp::attrib_core::R_DimSymbol(),
+        );
+        let dim = Sexp::from_raw(dim)?;
+        if dim.clone().typeof_() != SEXPTYPE::INTSXP || dim.clone().len() < 3 {
+            return None;
+        }
+        let mut dims = Vec::with_capacity(dim.clone().len() as usize);
+        let mut product = 1usize;
+        for i in 0..dim.clone().len() {
+            let n = dim.clone().integer_elt(i)? as usize;
+            product = product.checked_mul(n)?;
+            dims.push(n);
+        }
+        if product > x.len() as usize {
+            return None;
+        }
+        Some(dims)
+    }
+}
+
+fn ceil_div(a: usize, b: usize) -> usize {
+    if b == 0 {
+        0
+    } else {
+        a.div_ceil(b)
+    }
+}
+
+fn format_array_slice<F>(label_nrow: usize, use_nr: usize, use_nc: usize, value_at: F) -> String
+where
+    F: Fn(usize, usize) -> String,
+{
+    let row_labels: Vec<String> = (0..use_nr)
+        .map(|r| gnu_row_index_label(r, label_nrow.max(1)))
+        .collect();
+    let col_labels: Vec<String> = (0..use_nc).map(|c| format!("[,{}]", c + 1)).collect();
+    let (row_width, lbloff) = matrix_row_geometry(&row_labels, None);
+    let mut values = vec![vec![String::new(); use_nc]; use_nr];
+    let mut widths = Vec::with_capacity(use_nc);
+    for c in 0..use_nc {
+        let mut width = col_labels[c].len().max(1);
+        for r in 0..use_nr {
+            let value = value_at(r, c);
+            width = width.max(value.len());
+            values[r][c] = value;
+        }
+        widths.push(width);
+    }
+    let mut lines = Vec::new();
+    let mut header = " ".repeat(row_width);
+    if row_width > 0 && use_nc > 0 {
+        header.push(' ');
+    }
+    for c in 0..use_nc {
+        header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
+        if c + 1 < use_nc {
+            header.push(' ');
+        }
+    }
+    lines.push(header);
+    for r in 0..use_nr {
+        let label = format!("{:lbloff$}{}", "", row_labels[r]);
+        let mut line = format!("{label:<row_width$}");
+        for c in 0..use_nc {
+            line.push(' ');
+            line.push_str(&format!("{:>width$}", values[r][c], width = widths[c]));
+        }
+        lines.push(line);
+    }
+    lines.join("\n")
+}
+
+fn format_array(x: Sexp<'_>) -> Option<String> {
+    let dims = array_dims(x.clone())?;
+    let nr = dims[0];
+    let nc = dims[1];
+    let b = nr.saturating_mul(nc);
+    let mut nb = 1usize;
+    for &d in &dims[2..] {
+        nb = nb.saturating_mul(d);
+    }
+    let max = print_max_cells();
+    let max_reached = b > 0 && nb > 0 && max / b < nb;
+    let (nb_pr, nc_last, nr_last) = if max_reached {
+        let mut nb_pr = ceil_div(max, b);
+        let ne_last = max.saturating_sub(b.saturating_mul(nb_pr.saturating_sub(1)));
+        let mut nc_last = ne_last.min(nc);
+        let mut nr_last = if ne_last < nc { 1 } else { ne_last / nc };
+        if nr_last == 0 {
+            nb_pr = nb_pr.saturating_sub(1);
+            nc_last = nc;
+            nr_last = nr;
+        }
+        (nb_pr.max(1), nc_last, nr_last)
+    } else {
+        (nb.max(1), nc, nr)
+    };
+
+    let value_at = |offset: usize, r: usize, c: usize| -> String {
+        let index = (offset + r + c * nr) as i64;
+        match x.clone().typeof_() {
+            SEXPTYPE::LGLSXP => format_logical_element(x.clone(), index),
+            SEXPTYPE::INTSXP => format_integer_element(x.clone(), index),
+            SEXPTYPE::REALSXP => format_real_element(x.clone(), index),
+            SEXPTYPE::CPLXSXP => format_complex_element(x.clone(), index),
+            SEXPTYPE::STRSXP => {
+                format_string_element_maybe_quoted(x.clone(), index, true)
+            }
+            _ => "NA".to_string(),
+        }
+    };
+
+    let mut sections = Vec::new();
+    for ii in 0..nb_pr {
+        let i_last = ii + 1 == nb_pr;
+        let use_nc = if i_last { nc_last } else { nc };
+        let use_nr = if i_last { nr_last } else { nr };
+        let mut header = String::from(", ");
+        let mut k = 1usize;
+        for &extent in &dims[2..] {
+            let l = if extent == 0 {
+                1
+            } else {
+                (ii / k) % extent + 1
+            };
+            header.push_str(&format!(", {l}"));
+            k = k.saturating_mul(extent.max(1));
+        }
+        let offset = ii.saturating_mul(b);
+        let body = format_array_slice(nr, use_nr, use_nc, |r, c| value_at(offset, r, c));
+        sections.push(format!("{header}\n\n{body}\n\n"));
+    }
+    if max_reached {
+        let mut msg =
+            String::from(" [ reached 'max' / getOption(\"max.print\") -- omitted");
+        if nb_pr < nb {
+            let omitted = nb - nb_pr;
+            msg.push_str(&format!(
+                " {} slice{}",
+                omitted,
+                if omitted == 1 { "" } else { "s" }
+            ));
+        } else if nb_pr == nb {
+
+            let nr_rem = nr.saturating_sub(nr_last);
+            if nr_rem > 0 {
+                msg.push_str(&format!(
+                    " {} row{}",
+                    nr_rem,
+                    if nr_rem == 1 { "" } else { "s" }
+                ));
+            }
+            let nc_rem = nc.saturating_sub(nc_last);
+            if nc_rem > 0 {
+                msg.push_str(&format!(
+                    " {} column{}",
+                    nc_rem,
+                    if nc_rem == 1 { "" } else { "s" }
+                ));
+            }
+        }
+        msg.push_str(" ] ");
+        sections.push(msg);
+    }
+    Some(sections.join(""))
+}
+
+fn format_dimmed(x: Sexp<'_>) -> Option<String> {
+    format_matrix(x.clone()).or_else(|| format_array(x))
+}
+
+
 
 fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
     unsafe {
@@ -2760,6 +2937,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit("NULL\n");
         }
         SEXPTYPE::INTSXP => {
+            if let Some(output) = format_matrix(x.clone()) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             if x.clone().len() == 0 {
                 let empty = if has_names_attribute(x.clone()) {
                     "named integer(0)"
@@ -2772,10 +2953,7 @@ pub fn print_value(x: Sexp<'_>) {
                 ));
                 return;
             }
-            if let Some(output) = format_matrix(x.clone()) {
-                emit(&format!("{output}\n"));
-                return;
-            }
+
             if let Some(output) = format_summary_default(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
@@ -2792,6 +2970,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::REALSXP => {
+            if let Some(output) = format_matrix(x.clone()) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             if x.clone().len() == 0
                 && !has_class(x.clone(), "difftime")
                 && !has_class(x.clone(), "POSIXct")
@@ -2803,10 +2985,7 @@ pub fn print_value(x: Sexp<'_>) {
                 ));
                 return;
             }
-            if let Some(output) = format_matrix(x.clone()) {
-                emit(&format!("{output}\n"));
-                return;
-            }
+
             if let Some(output) = format_summary_default(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;

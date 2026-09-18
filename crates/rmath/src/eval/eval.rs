@@ -1619,6 +1619,25 @@ invisible(NULL)
         );
     }
 
+    #[test]
+    fn print_array_uses_gnu_slice_headers() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "print(array(dim = c(2, 2, 2)), max = 4)\ninvisible(NULL)\n",
+        );
+        assert!(
+            captured.stdout.contains(", , 1"),
+            "3-D arrays must print GNU slice headers, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            captured.stdout.contains("omitted 1 slice"),
+            "array print must honour max=, got {:?}",
+            captured.stdout
+        );
+    }
+
+
 
 
 
