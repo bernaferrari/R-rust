@@ -1184,6 +1184,10 @@ pub(crate) unsafe fn load_package_namespace(
 ) -> Result<(SEXP, Option<NamespaceDirectives>), String> {
     unsafe {
         if let Some(env) = cached_package_namespace(package, package_dir) {
+            if package == "methods" {
+                crate::library::methods::native_calls::install_methods_call_symbols(env);
+            }
+
             return Ok((env, read_namespace_directives(package_dir)?));
         }
 
@@ -1213,6 +1217,10 @@ pub(crate) unsafe fn load_package_namespace(
         // receives the environment under construction instead of triggering
         // a nested load of the same package.
         cache_package_namespace(package, package_dir, package_env);
+        if package == "methods" {
+            crate::library::methods::native_calls::install_methods_call_symbols(package_env);
+        }
+
         let populated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             populate_package_namespace(package, package_dir, package_env, loading)
         }));
@@ -1263,6 +1271,16 @@ pub(crate) fn uncache_package_namespace(package: &str) {
         (*inst).package_namespace_cache.remove(package);
     });
 }
+
+pub(crate) fn cached_namespace_by_name(package: &str) -> Option<SEXP> {
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst)
+            .package_namespace_cache
+            .get(package)
+            .map(|(_, env)| *env)
+    })
+}
+
 
 pub(crate) fn package_arg_values(package_arg: SEXP) -> Vec<String> {
     unsafe {
@@ -2010,6 +2028,24 @@ pub(crate) unsafe fn make_package_attach_env(
     namespace: Option<&NamespaceDirectives>,
     package_env: SEXP,
 ) -> Result<SEXP, String> {
+    unsafe { make_package_attach_env_inner(package, namespace, package_env, false) }
+}
+
+pub(crate) unsafe fn make_package_attach_env_lenient(
+    package: &str,
+    namespace: Option<&NamespaceDirectives>,
+    package_env: SEXP,
+) -> Result<SEXP, String> {
+    unsafe { make_package_attach_env_inner(package, namespace, package_env, true) }
+}
+
+unsafe fn make_package_attach_env_inner(
+    package: &str,
+    namespace: Option<&NamespaceDirectives>,
+    package_env: SEXP,
+    skip_missing: bool,
+) -> Result<SEXP, String> {
+
     unsafe {
         let Some(directives) = namespace else {
             return Ok(package_env);
@@ -2052,7 +2088,9 @@ pub(crate) unsafe fn make_package_attach_env(
         let mut missing = Vec::new();
         for export in exports {
             let Ok(symbol_name) = CString::new(export.as_str()) else {
-                missing.push(export);
+                if !skip_missing {
+                    missing.push(export);
+                }
                 continue;
             };
             let symbol = Rf_install(symbol_name.as_ptr());
@@ -2067,11 +2105,14 @@ pub(crate) unsafe fn make_package_attach_env(
                 || value == R_NilValue()
                 || value == crate::sexp::globals::R_UnboundValue()
             {
-                missing.push(export);
-            } else {
-                crate::sexp::envir::defineVar(symbol, value, attach_env);
+                if !skip_missing {
+                    missing.push(export);
+                }
+                continue;
             }
+            crate::sexp::envir::defineVar(symbol, value, attach_env);
         }
+
         if missing.is_empty() {
             Ok(attach_env)
         } else {

@@ -107,6 +107,23 @@ unsafe fn attach_recommended_package_stub(package: &str) {
         if package_attached(package) {
             return;
         }
+        let lib_path = find_package_path(package);
+        if !lib_path.is_empty() {
+            let package_dir = Path::new(&lib_path);
+            let mut loading = vec![package.to_string()];
+            if let Ok((namespace, directives)) =
+                load_package_namespace(package, package_dir, &mut loading)
+            {
+                if let Ok(attach_env) = make_package_attach_env_lenient(
+                    package,
+                    directives.as_ref(),
+                    namespace,
+                ) {
+                    attach_package_env(attach_env);
+                    return;
+                }
+            }
+        }
         let env = crate::sexp::memory_ext::NewEnvironment(
             R_NilValue(),
             crate::sexp::globals::R_BaseEnv(),
@@ -120,6 +137,7 @@ unsafe fn attach_recommended_package_stub(package: &str) {
         attach_package_env(env);
     }
 }
+
 
 
 /// R's `library(package, ...)` — load a package.
@@ -333,6 +351,36 @@ pub unsafe fn do_loaded_namespaces(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SE
         string_vector(&names)
     }
 }
+
+/// `.Internal(getRegisteredNamespace(name))` — loaded namespace or NULL.
+pub unsafe fn do_get_registered_namespace(
+    _call: SEXP,
+    _op: SEXP,
+    args: SEXP,
+    _rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let name = CAR(args);
+        let package = if TYPEOF(name) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(name)))
+                .to_str()
+                .unwrap_or("")
+                .to_string()
+        } else {
+            elt_to_string(name, 0)
+        };
+        if package.is_empty() {
+            return R_NilValue();
+        }
+        if package == "base" {
+            return crate::sexp::globals::R_BaseEnv();
+        }
+        crate::mainutils::essentials::shared::cached_namespace_by_name(&package)
+            .unwrap_or_else(|| R_NilValue())
+    }
+}
+
+
 
 /// R's `data(..., package, envir)` — load package data.
 ///

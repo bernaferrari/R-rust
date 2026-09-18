@@ -1696,7 +1696,22 @@ unsafe fn read_item_body(
             } else {
                 Ok(prim)
             }
+        } else if stype == SEXPTYPE::S4SXP {
+            // GNU serialize.c: S4SXP is attributes-only; allocS4Object + InAttrib.
+            let s = allocSExp(SEXPTYPE::S4SXP);
+            let _s_guard = protect(s);
+            SET_S4_OBJECT(s);
+            SETLEVELS(s, levs);
+            if isobj != 0 {
+                SET_OBJECT(s, 1);
+            }
+            if hasattr != 0 {
+                let attr = ReadItemInternal(reader, ref_table)?;
+                SET_ATTRIB(s, attr);
+            }
+            Ok(s)
         } else {
+
             Err(format!("ReadItem: unknown type {}", stype))
         }
 

@@ -182,6 +182,33 @@ fn native_extension_policy_enabled() -> bool {
     !crate::mainutils::rdynload::native_extensions_enabled()
 }
 
+unsafe fn ported_call_name(op: SEXP) -> Option<String> {
+    unsafe {
+        if TYPEOF(op) == SEXPTYPE::STRSXP && LENGTH(op) >= 1 {
+            let ptr = translateChar(STRING_ELT(op, 0));
+            if ptr.is_null() {
+                return None;
+            }
+            return std::ffi::CStr::from_ptr(ptr)
+                .to_str()
+                .ok()
+                .map(str::to_string);
+        }
+        if TYPEOF(op) == SEXPTYPE::SYMSXP {
+            let ptr = translateChar(PRINTNAME(op));
+            if ptr.is_null() {
+                return None;
+            }
+            return std::ffi::CStr::from_ptr(ptr)
+                .to_str()
+                .ok()
+                .map(str::to_string);
+        }
+        None
+    }
+}
+
+
 unsafe fn warning(msg: &str) {
     eprintln!("WARNING: {}", msg);
 }
@@ -866,6 +893,7 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             f(args)
         };
 
+
         vmaxset(ptr::null_mut()); // simplified
         check_retval(call, retval)
     }
@@ -878,30 +906,47 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// .Call handler.
 pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        if native_extension_policy_enabled() {
-            native_extension_policy_error(call, ".Call");
-        }
-
-        let mut ofun: DL_FUNC = None;
-        let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
-        let _vmax = vmaxget();
-        let mut buf = [0u8; MAX_SYMBOL_BYTES];
-
         if Rf_length(args) < 1 {
             errorcall(call, "'.NAME' is missing");
         }
         check1arg2(args, call, ".NAME");
 
-        let _args = resolveNativeRoutine(
-            args,
-            &mut ofun,
-            &mut symbol,
-            &mut buf,
-            ptr::null_mut(),
-            ptr::null_mut(),
-            call,
-            env,
-        );
+        let mut ofun: DL_FUNC = None;
+        if let Some(name) = ported_call_name(CAR(args)) {
+            ofun = crate::library::methods::native_calls::lookup(&name);
+        }
+
+        if ofun.is_none() && native_extension_policy_enabled() {
+            native_extension_policy_error(call, ".Call");
+        }
+
+        let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
+        let _vmax = vmaxget();
+        let mut buf = [0u8; MAX_SYMBOL_BYTES];
+
+        if ofun.is_none() {
+            let _args = resolveNativeRoutine(
+                args,
+                &mut ofun,
+                &mut symbol,
+                &mut buf,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                call,
+                env,
+            );
+            if ofun.is_none() {
+                let name = std::ffi::CStr::from_bytes_until_nul(&buf)
+                    .ok()
+                    .and_then(|c| c.to_str().ok())
+                    .unwrap_or("");
+                if !name.is_empty() {
+                    ofun = crate::library::methods::native_calls::lookup(name);
+                }
+            }
+        }
+
+
 
         // Collect arguments (skip .NAME)
         let mut cargs: [SEXP; MAX_ARGS] = [ptr::null_mut(); MAX_ARGS];

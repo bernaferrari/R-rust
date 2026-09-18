@@ -3778,6 +3778,16 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_parent_frame,
     },
     EvaluatedBuiltin {
+        name: "gettextf",
+        handler: crate::mainutils::essentials::do_gettextf,
+    },
+
+    EvaluatedBuiltin {
+        name: "topenv",
+        handler: crate::mainutils::objects::do_topenv,
+    },
+
+    EvaluatedBuiltin {
         name: "sys.call",
         handler: crate::mainutils::essentials::do_sys_call,
     },
@@ -5281,6 +5291,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "loadedNamespaces",
         handler: crate::mainutils::essentials::do_loaded_namespaces,
     },
+    EvaluatedBuiltin {
+        name: "getRegisteredNamespace",
+        handler: crate::mainutils::essentials::do_get_registered_namespace,
+    },
+
     EvaluatedBuiltin {
         name: "data",
         handler: crate::mainutils::essentials::do_data,

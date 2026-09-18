@@ -693,6 +693,15 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         3,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
+    FunTabEntry::new(
+        b"getRegisteredNamespace\0",
+        None,
+        0,
+        11,
+        1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+
     // ===== Binary Operators (primitives) =====
     FunTabEntry::new(
         b"+\0",
@@ -5026,6 +5035,10 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "delayedAssign" => Some(crate::mainutils::builtin::do_delayed),
         "radixsort" => Some(crate::mainutils::radixsort::do_radixsort),
         "save" => Some(crate::mainutils::saveload::do_save),
+        "getRegisteredNamespace" => {
+            Some(crate::mainutils::essentials::do_get_registered_namespace)
+        }
+
         "load" => Some(crate::mainutils::saveload::do_load),
         "strptime" => Some(crate::mainutils::datetime::do_strptime),
         _ => None,

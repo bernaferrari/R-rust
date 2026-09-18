@@ -362,8 +362,8 @@ unsafe fn implicit_s3_class(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Find the top-level environment by walking ENCLOS.
-/// If `what` is not R_NilValue, search for it starting from `env`.
-pub(crate) unsafe fn topenv(_what: SEXP, env: SEXP) -> SEXP {
+/// GNU: GlobalEnv, BaseEnv, BaseNamespace, package/namespace, or `.packageName`.
+pub(crate) unsafe fn topenv(what: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if env.is_null() {
             return R_NilValue();
@@ -371,18 +371,57 @@ pub(crate) unsafe fn topenv(_what: SEXP, env: SEXP) -> SEXP {
         let mut rho = env;
         loop {
             if rho == R_EmptyEnv() {
+                return R_GlobalEnv();
+            }
+            if (!what.is_null() && what != R_NilValue() && rho == what)
+                || rho == R_GlobalEnv()
+                || rho == R_BaseEnv()
+            {
                 return rho;
             }
-            if rho == R_GlobalEnv() || rho == R_BaseEnv() {
+            let pkg = crate::sexp::envir::R_findVarInFrame(
+                rho,
+                crate::sexp::symbol::Rf_install(c".packageName".as_ptr()),
+            );
+            if pkg != R_UnboundValue() {
                 return rho;
             }
             rho = ENCLOS(rho);
             if rho.is_null() {
-                return R_NilValue();
+                return R_GlobalEnv();
             }
         }
     }
 }
+
+/// R's `topenv(envir, matchThisEnv)` — `.Internal(topenv(...))` / primitive.
+pub unsafe fn do_topenv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut envir = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+            rho
+        } else {
+            CAR(args)
+        };
+        if TYPEOF(envir) != SEXPTYPE::ENVSXP {
+            envir = rho;
+        }
+        let mut target = if !args.is_null() && args != R_NilValue() {
+            let rest = CDR(args);
+            if rest.is_null() || rest == R_NilValue() || CAR(rest) == R_MissingArg() {
+                R_NilValue()
+            } else {
+                CAR(rest)
+            }
+        } else {
+            R_NilValue()
+        };
+        if target != R_NilValue() && TYPEOF(target) != SEXPTYPE::ENVSXP {
+            target = R_NilValue();
+        }
+        topenv(target, envir)
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Helper: listAppend -- append two lists

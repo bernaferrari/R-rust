@@ -875,11 +875,15 @@ pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 /// Get the i-th logical value.
 pub unsafe fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
-        if !is_valid_sexp_ptr(x) || LOGICAL(x).is_null() {
+        if !is_valid_sexp_ptr(x) {
+            return NA_INTEGER;
+        }
+        let data = LOGICAL(x);
+        if data.is_null() || (data as usize) % std::mem::align_of::<c_int>() != 0 {
             return NA_INTEGER;
         }
         debug_assert_sexptype(x, &[SEXPTYPE::LGLSXP]);
-        *LOGICAL(x).add(i as usize)
+        *data.add(i as usize)
     }
 }
 
@@ -896,13 +900,15 @@ pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
 /// Requires exact INTSXP (LGLSXP must use LOGICAL_ELT).
 pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
-        if !is_valid_sexp_ptr(x) || INTEGER(x).is_null() {
+        if !is_valid_sexp_ptr(x) {
+            return NA_INTEGER;
+        }
+        let data = INTEGER(x);
+        if data.is_null() || (data as usize) % std::mem::align_of::<c_int>() != 0 {
             return NA_INTEGER;
         }
         debug_assert_sexptype(x, &[SEXPTYPE::INTSXP]);
-
-
-        *INTEGER(x).add(i as usize)
+        *data.add(i as usize)
     }
 }
 
@@ -914,15 +920,17 @@ pub unsafe fn SET_INTEGER_ELT(x: SEXP, i: c_int, v: c_int) {
         }
     }
 }
-
-/// Get the i-th real value.
 pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
     unsafe {
-        if !is_valid_sexp_ptr(x) || REAL(x).is_null() {
+        if !is_valid_sexp_ptr(x) {
+            return NA_REAL;
+        }
+        let data = REAL(x);
+        if data.is_null() || (data as usize) % std::mem::align_of::<c_double>() != 0 {
             return NA_REAL;
         }
         debug_assert_sexptype(x, &[SEXPTYPE::REALSXP]);
-        *REAL(x).add(i as usize)
+        *data.add(i as usize)
     }
 }
 

@@ -696,7 +696,7 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
             r_error("The argument \"f\" to getGeneric must be a single string or symbol");
         };
         if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+            if crate::mainutils::coerce::asLogical(mustFind) == TRUE {
                 r_error(format!(
                     "no generic function definition found for '{}'",
                     name_string
@@ -708,7 +708,7 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
         let symbol = crate::sexp::symbol::Rf_install(cname.as_ptr());
         let value = crate::sexp::envir::R_findVarInFrame(env, symbol);
         if value == R_UnboundValue() {
-            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+            if crate::mainutils::coerce::asLogical(mustFind) == TRUE {
                 r_error(format!(
                     "no generic function definition found for '{}' in the supplied environment",
                     name_string

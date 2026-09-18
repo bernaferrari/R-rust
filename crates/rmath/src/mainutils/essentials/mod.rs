@@ -88,7 +88,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // not be pre-evaluated, so empty subscript slots (`m[,1]`) reach
             // the subset handlers' keep-missing argument evaluation.
             let kind = match name {
-                "quote" | "substitute" | "[" | "[[" | "system.time" => SEXPTYPE::SPECIALSXP,
+                "quote" | "substitute" | "[" | "[[" | "system.time" | "missing" => {
+                    SEXPTYPE::SPECIALSXP
+                }
                 _ => SEXPTYPE::BUILTINSXP,
             };
 

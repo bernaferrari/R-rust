@@ -1534,8 +1534,11 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         }
                     });
                     if fun == R_UnboundValue() {
-                        bc_error("could not find function for GNU GETFUN");
+                        let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))
+                            .to_string_lossy();
+                        bc_error(format!("could not find function \"{name}\""));
                     }
+
                     let fun_type = TYPEOF(fun);
                     if fun_type != SEXPTYPE::CLOSXP
                         && fun_type != SEXPTYPE::BUILTINSXP
