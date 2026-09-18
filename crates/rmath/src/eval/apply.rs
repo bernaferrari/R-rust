@@ -451,6 +451,12 @@ unsafe fn first_prototype_formal(op_name: &str) -> Option<Option<String>> {
             if formals.is_null() || formals == R_NilValue() {
                 return Some(None);
             }
+            // GNU Rf_check1arg is only used by one-argument primitives.
+            // Multi-arg prototypes such as seq.int(from, to, ...) must
+            // accept `seq.int(to=3, from=1)` via matchArgs.
+            if CDR(formals) != R_NilValue() && !CDR(formals).is_null() {
+                return None;
+            }
             let tag = TAG(formals);
             if tag.is_null() || tag == R_NilValue() {
                 return Some(None);

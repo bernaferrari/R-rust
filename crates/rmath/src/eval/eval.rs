@@ -2813,6 +2813,40 @@ identical(norm(x, "O"), "O") && identical(norm(x), "O") &&
     }
 
     #[test]
+    fn classes_methods_implicit_norm_rcond_unmodified() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("zzz", slots = c(x = "NULL"))
+setMethod( "norm", c(x = "zzz", type = "character"),
+          function (x, type, ...) type)
+setMethod("rcond", c(x = "zzz", norm = "character"),
+          function (x, norm, ...) norm)
+m4 <- list(getMethod( "norm", c(x = "ANY", type = "missing")),
+           getMethod("rcond", c(x = "ANY", norm = "missing")),
+           selectMethod( "norm", c(x = "zzz", type = "missing")),
+           selectMethod("rcond", c(x = "zzz", norm = "missing")))
+f4 <- lapply(m4, getDataPart)
+x <- new("zzz")
+stopifnot(all(vapply(m4, is, FALSE, "MethodDefinition")),
+          identical(f4[3:4], f4[1:2]),
+          identical( norm(x, "O"), "O"),
+          identical( norm(x     ), "O"),
+          identical(rcond(x, "O"), "O"),
+          identical(rcond(x     ), "O"),
+          removeGeneric( "norm"),
+          removeGeneric("rcond"),
+          removeClass("zzz"))
+TRUE
+"#,
+        );
+        let result = result.expect("unmodified classes-methods.R:10-29");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn unlist_empty_lists_keep_gnu_type() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
@@ -2841,6 +2875,38 @@ isClass("bar") && extends("bar", "foo")
         let result = result.expect("setClass(contains=) must complete empty slots");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn seq_int_named_to_before_from_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "identical(seq.int(to = 3, from = 1), 1:3)",
+        );
+        let result = result.expect("seq.int must matchArgs, not check1arg the first tag");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn setmethod_subset_callnextmethod_matches_classes_methods() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+foo <- setClass("foo")
+bar <- setClass("bar", contains = "foo")
+setMethod("[", "foo",  function(x, i, j, ..., flag = FALSE, drop = FALSE) { flag })
+setMethod("[", "bar", function(x, i, j, ..., flag = FALSE, drop = FALSE) { callNextMethod() })
+BAR <- new("bar")
+identical(BAR[1L], FALSE)
+"#,
+        );
+        let result = result.expect("setMethod([) + callNextMethod default must work");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
 
 
     #[test]
