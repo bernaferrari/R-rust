@@ -194,7 +194,11 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 && saved_tmp != crate::sexp::globals::R_UnboundValue()
             {
                 crate::sexp::envir::defineVar(tmp_sym, saved_tmp, rho);
+            } else {
+                // GNU applydefine: drop *tmp* when this assignment created it.
+                crate::sexp::envir::remove_binding_raw(rho, tmp_sym);
             }
+
 
 
             super::runtime::set_visible(FALSE);

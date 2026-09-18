@@ -1181,6 +1181,38 @@ identical(length(m), 2L) && identical(typeof(m), "list")
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn complex_assign_does_not_leave_tmp_binding() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+e2 <- quote(c(a = 1, b = 2))
+names(e2)[2] <- "a b c"
+!exists("*tmp*", inherits = FALSE)
+"#,
+        );
+        let result = result.expect("applydefine must unbind *tmp*");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn s4_list_dput_includes_data_part() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("mp1Dput", slots = c(prec = "integer", d = "integer"))
+setClass("mpDput", contains = "list")
+m <- new("mpDput", list(new("mp1Dput", prec=1L, d=3:5)))
+out <- paste(capture.output(dput(m)), collapse = "\n")
+grepl(".Data", out, fixed = TRUE) && grepl("prec = 1L", out, fixed = TRUE)
+"#,
+        );
+        let result = result.expect("dput of a list-class S4 object must emit .Data");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
 

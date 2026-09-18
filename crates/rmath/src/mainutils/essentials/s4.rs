@@ -1211,20 +1211,17 @@ pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
                         crate::mainutils::essentials::cached_namespace_by_name("methods")
                     {
                         IN_SET_DATA_PART.with(|flag| flag.set(true));
-                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            let call = Rf_lang3(fun, obj, value);
-                            let _call = protect(call);
-                            crate::eval::eval::Rf_eval(call, methods)
-                        }));
+                        let call = Rf_lang3(fun, obj, value);
+                        let _call = protect(call);
+                        let val = crate::eval::eval::Rf_eval(call, methods);
+                        let _val = protect(val);
                         IN_SET_DATA_PART.with(|flag| flag.set(false));
-                        match result {
-                            Ok(val) => return val,
-                            Err(payload) => std::panic::resume_unwind(payload),
-                        }
+                        return val;
                     }
                 }
             }
             // GNU setDataPart on a function S4 object (.mergeAttrs): the
+
             // closure IS the object. Copy formals/body/env from value.
             if TYPEOF(obj) == SEXPTYPE::CLOSXP && TYPEOF(value) == SEXPTYPE::CLOSXP {
                 crate::sexp::accessors::SET_FORMALS(obj, crate::sexp::accessors::FORMALS(value));

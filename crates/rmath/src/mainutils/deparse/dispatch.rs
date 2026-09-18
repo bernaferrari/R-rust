@@ -16,8 +16,17 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
         print2buff(b"new(\0".as_ptr() as *const c_char, d);
         print_r_string_literal(&class_name, d);
 
-        let slots = crate::mainutils::objects::s4_all_slots(&class_name)
+        let mut slots = crate::mainutils::objects::s4_all_slots(&class_name)
             .unwrap_or_else(|| s4_instance_slot_names(s));
+        // methods::setClass list/expression/etc. objects are the data
+        // part; slotNames includes .Data even when the local class table
+        // was not updated.
+        if crate::mainutils::coerce::IS_S4_OBJECT(s) != 0
+            && TYPEOF(s) != SEXPTYPE::OBJSXP
+            && !slots.iter().any(|slot| slot == ".Data")
+        {
+            slots.insert(0, ".Data".to_string());
+        }
         for slot_name in slots {
             let Some(value) = s4_deparse_slot_value(s, &slot_name) else {
                 continue;
@@ -30,6 +39,7 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
             deparse2buff(value, d);
             (*d).fnarg = old_fnarg;
         }
+
 
 
         print2buff(b")\0".as_ptr() as *const c_char, d);
