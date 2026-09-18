@@ -1050,6 +1050,27 @@ mod tests {
     }
 
     #[test]
+    fn rnorm_partial_names_and_docall_match_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "set.seed(1); a <- rnorm(1, m=10, s=0); set.seed(1); b <- do.call(rnorm, list(1, mean=10, sd=0)); identical(a, b) && identical(a, 10)",
+        );
+        let result = result.expect("rnorm partial names and do.call must match GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn rnorm_unused_argument_errors_like_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "inherits(tryCatch(rnorm(1, foo=1), error=function(e) e), \"error\")",
+        );
+        let result = result.expect("unused rnorm argument must error");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn rep_is_gnu_special() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
