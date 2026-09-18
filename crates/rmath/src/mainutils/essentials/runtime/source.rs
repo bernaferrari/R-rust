@@ -155,6 +155,8 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
         let mut keep_source = None;
         let mut cutoff = crate::mainutils::deparse::DEFAULT_CUTOFF;
         let mut max_deparse_length: usize = 150;
+        let mut deparse_opts = crate::mainutils::deparse::SHOWATTRIBUTES;
+
         let mut first_positional = None;
         let mut positional = 0usize;
         let mut current = args;
@@ -194,8 +196,12 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
                         max_deparse_length = n.min(usize::MAX as f64) as usize;
                     }
                 }
+                Some("deparseCtrl") | Some("deparse.ctrl") => {
+                    deparse_opts = crate::mainutils::deparse::deparse_opts_from_control(value);
+                }
 
                 Some(_) => {}
+
                 None => {
                     if positional == 0 {
                         first_positional = Some(value);
@@ -219,7 +225,8 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
             skip_echo,
             keep_source: keep_source.unwrap_or_else(option_keep_source),
             cutoff,
-            deparse_opts: crate::mainutils::deparse::SHOWATTRIBUTES,
+            deparse_opts,
+
             max_deparse_length,
         }
     }
@@ -366,6 +373,7 @@ unsafe fn eval_source_expressions(
     max_deparse_length: usize,
 ) -> SEXP {
     unsafe {
+        let exprs = brace_or_single_expressions(exprs);
         let n = if exprs.is_null() || exprs == R_NilValue() {
             0
         } else {
@@ -373,6 +381,7 @@ unsafe fn eval_source_expressions(
         };
         let mut last_value = R_NilValue();
         let mut last_visible = FALSE;
+
         for i in 0..n {
             let expr = VECTOR_ELT(exprs, i);
             if echo {

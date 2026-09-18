@@ -1491,6 +1491,21 @@ identical(out[1], paste0(getOption("prompt"), "x <- 1:2")) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn with_autoprint_is_gnu_source_wrapper() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+is.function(withAutoprint) &&
+  identical(names(formals(withAutoprint))[1:3], c("exprs", "evaluated", "local")) &&
+  grepl("source(", paste(deparse(body(withAutoprint)), collapse = "\n"), fixed = TRUE)
+"#,
+        );
+        let result = result.expect("withAutoprint must be GNU's source() wrapper");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
     #[test]
     fn unlist_recursive_false_keeps_list_of_lists() {
