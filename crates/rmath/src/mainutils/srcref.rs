@@ -123,8 +123,10 @@ pub(crate) unsafe fn attach_srcrefs_with_spans(
             *p.add(3) = end as i32; // last byte
             *p.add(4) = fc;
             *p.add(5) = lc;
-            *p.add(6) = 1; // first parsed expression index
-            *p.add(7) = 1; // last parsed
+            // GNU srcref[7]/[8] are first/last parsed *lines*.
+            *p.add(6) = fl;
+            *p.add(7) = ll;
+
             let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
             let _cg = crate::sexp::protect::protect(class);
             SET_STRING_ELT(

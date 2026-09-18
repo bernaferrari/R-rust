@@ -76,13 +76,17 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 parsed.print_eval.unwrap_or(parsed.echo),
                 &parsed.prompt,
                 &parsed.continue_echo,
+                parsed.skip_echo,
+                parsed.keep_source,
             ),
+
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }
         }
     }
 }
+
 
 /// GNU `withAutoprint(exprs)` — `source(exprs=..., echo=TRUE, print.eval=TRUE)`
 /// in the calling environment. The argument is substituted, not evaluated twice.
@@ -120,9 +124,12 @@ struct SourceCallArgs {
     print_eval: Option<bool>,
     prompt: String,
     continue_echo: String,
+    skip_echo: c_int,
+    keep_source: bool,
     cutoff: c_int,
     deparse_opts: c_int,
 }
+
 
 fn source_call_args(args: SEXP) -> SourceCallArgs {
     unsafe {
@@ -133,6 +140,8 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
         let mut print_eval = None;
         let mut prompt = None;
         let mut continue_echo = None;
+        let mut skip_echo: c_int = 0;
+        let mut keep_source = None;
         let mut first_positional = None;
         let mut positional = 0usize;
         let mut current = args;
@@ -146,6 +155,13 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
                 Some("print.eval") | Some("print.") => print_eval = Some(logical_arg(value, true)),
                 Some("prompt.echo") => prompt = Some(elt_to_string(value, 0)),
                 Some("continue.echo") => continue_echo = Some(elt_to_string(value, 0)),
+                Some("skip.echo") => {
+                    let n = crate::mainutils::coerce::asInteger(value);
+                    if n != NA_INTEGER && n > 0 {
+                        skip_echo = n;
+                    }
+                }
+                Some("keep.source") => keep_source = Some(logical_arg(value, false)),
                 Some(_) => {}
                 None => {
                     if positional == 0 {
@@ -167,11 +183,15 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
             print_eval,
             prompt: prompt.unwrap_or_else(option_prompt),
             continue_echo: continue_echo.unwrap_or_else(option_continue),
+            skip_echo,
+            keep_source: keep_source.unwrap_or_else(option_keep_source),
             cutoff: crate::mainutils::deparse::DEFAULT_CUTOFF,
             deparse_opts: crate::mainutils::deparse::SHOWATTRIBUTES,
         }
     }
 }
+
+
 
 fn with_autoprint_args(args: SEXP) -> (SEXP, bool, bool) {
     unsafe {
@@ -211,6 +231,14 @@ fn option_prompt() -> String {
 fn option_continue() -> String {
     option_string("continue", "+ ")
 }
+
+fn option_keep_source() -> bool {
+    unsafe {
+        let opt = crate::mainutils::options::GetOption1(Rf_install(c"keep.source".as_ptr()));
+        !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
+    }
+}
+
 
 fn option_string(name: &str, default: &str) -> String {
     unsafe {
@@ -359,7 +387,8 @@ unsafe fn echo_source_expression(
                 text.push_str(&elt_to_string(dumped, i));
             }
         }
-        let line = format!("{prompt}{text}\n");
+        // GNU file source spaced=TRUE: blank line before each echoed block.
+        let line = format!("\n{prompt}{text}\n");
         if crate::sexp::output::is_capturing() {
             crate::sexp::output::capture_stdout(&line);
         } else {
@@ -367,6 +396,7 @@ unsafe fn echo_source_expression(
         }
     }
 }
+
 
 
 unsafe fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
@@ -424,23 +454,27 @@ unsafe fn eval_source_text_with_options(
     print_eval: bool,
     prompt: &str,
     continue_echo: &str,
+    skip_echo: c_int,
+    keep_source: bool,
 ) -> SEXP {
-    let _ = filename;
     unsafe {
-        let parsed = parse_source_expression_vector(content);
-        let _parsed = protect(parsed);
-        if parsed.is_null() || parsed == R_NilValue() {
-            crate::sexp::globals::set_R_Visible(FALSE);
-            return R_NilValue();
+        if !echo {
+            return eval_source_text_with_name(content, env, filename);
         }
-        let n = XLENGTH(parsed);
-        let mut result = R_NilValue();
-        for i in 0..n {
-            let element = VECTOR_ELT(parsed, i);
-            if element.is_null() || element == R_NilValue() {
-                continue;
+        if !keep_source {
+            let parsed = parse_source_expression_vector(content);
+            let _parsed = protect(parsed);
+            if parsed.is_null() || parsed == R_NilValue() {
+                crate::sexp::globals::set_R_Visible(FALSE);
+                return R_NilValue();
             }
-            if echo {
+            let n = XLENGTH(parsed);
+            let mut result = R_NilValue();
+            for i in 0..n {
+                let element = VECTOR_ELT(parsed, i);
+                if element.is_null() || element == R_NilValue() {
+                    continue;
+                }
                 echo_source_expression(
                     element,
                     prompt,
@@ -448,8 +482,69 @@ unsafe fn eval_source_text_with_options(
                     crate::mainutils::deparse::DEFAULT_CUTOFF,
                     crate::mainutils::deparse::SHOWATTRIBUTES,
                 );
+                result = crate::eval::eval::Rf_eval(element, env);
+                if print_eval && crate::sexp::globals::R_Visible() != FALSE {
+                    let print_args = Rf_cons(result, R_NilValue());
+                    let _print_args = protect(print_args);
+                    crate::mainutils::essentials_basic::do_print(
+                        R_NilValue(),
+                        R_NilValue(),
+                        print_args,
+                        env,
+                    );
+                }
             }
-            result = crate::eval::eval::Rf_eval(element, env);
+            crate::sexp::globals::set_R_Visible(FALSE);
+            return result;
+        }
+        // GNU source() echo with keep.source: original file text via spans
+        // (comments, spacing, skip.echo header).
+
+        let spans = crate::sexp::memory::with_arena(|arena| {
+            let mut parser = crate::eval::parser::Parser::new(content, arena);
+            parser
+                .parse_top_level_with_spans()
+                .map_err(|e| e.to_string())
+        });
+        let Ok(spans) = spans else {
+            return eval_source_text_with_name(content, env, filename);
+        };
+        let lines: Vec<&str> = content.lines().collect();
+        let nlines = lines.len() as i32;
+        let vec_sexp = crate::sexp::constructors::Rf_allocVector3(
+            crate::sexp::ffi::SEXPTYPE::EXPRSXP,
+            spans.len() as i64,
+        );
+        let _vg = protect(vec_sexp);
+        for (i, &(e, _, _)) in spans.iter().enumerate() {
+            crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
+        }
+        let mut lastshown: i32 = 0;
+        let mut result = R_NilValue();
+        for (i, &(expr, start, end)) in spans.iter().enumerate() {
+
+            if expr.is_null() || expr == R_NilValue() {
+                continue;
+            }
+            let firstl = byte_line(content, start);
+            let last_byte = end.saturating_sub(1).max(start);
+            let lastl = byte_line(content, last_byte);
+            if i == 0 {
+                lastshown = skip_echo.min(lastl.saturating_sub(1)).max(0);
+            }
+            if lastshown < lastl {
+                echo_original_lines(
+                    &lines,
+                    lastshown + 1,
+                    lastl,
+                    firstl - lastshown,
+                    prompt,
+                    continue_echo,
+                    true,
+                );
+                lastshown = lastl;
+            }
+            result = crate::eval::eval::Rf_eval(expr, env);
             if print_eval && crate::sexp::globals::R_Visible() != FALSE {
                 let print_args = Rf_cons(result, R_NilValue());
                 let _print_args = protect(print_args);
@@ -461,10 +556,82 @@ unsafe fn eval_source_text_with_options(
                 );
             }
         }
+        if lastshown < nlines {
+            echo_original_lines(
+                &lines,
+                lastshown + 1,
+                nlines,
+                nlines - lastshown,
+                prompt,
+                continue_echo,
+                true,
+            );
+        }
         crate::sexp::globals::set_R_Visible(FALSE);
         result
     }
 }
+
+fn byte_line(src: &str, byte: usize) -> i32 {
+    src.as_bytes()[..byte.min(src.len())]
+        .iter()
+        .filter(|&&b| b == b'\n')
+        .count() as i32
+        + 1
+}
+
+/// GNU `trySrcLines` + prompt/continue prefixing.
+fn echo_original_lines(
+    lines: &[&str],
+    from: i32,
+    to: i32,
+    mut leading: i32,
+    prompt: &str,
+    continue_echo: &str,
+    spaced: bool,
+) {
+    if from < 1 || to < from {
+        return;
+    }
+    let start = (from as usize).saturating_sub(1);
+    let end = (to as usize).min(lines.len());
+    if start >= end {
+        return;
+    }
+    let mut dep: Vec<&str> = lines[start..end].to_vec();
+    while let Some(first) = dep.first() {
+        if first.chars().all(|c| c.is_whitespace()) {
+            dep.remove(0);
+            leading -= 1;
+        } else {
+            break;
+        }
+    }
+    if dep.is_empty() {
+        return;
+    }
+    leading = leading.max(0);
+    let mut text = String::new();
+    if spaced {
+        text.push('\n');
+    }
+    for (i, line) in dep.iter().enumerate() {
+        let prefix = if (i as i32) < leading {
+            prompt
+        } else {
+            continue_echo
+        };
+        text.push_str(prefix);
+        text.push_str(line);
+        text.push('\n');
+    }
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&text);
+    } else {
+        print!("{text}");
+    }
+}
+
 
 unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -> SEXP {
     unsafe {
