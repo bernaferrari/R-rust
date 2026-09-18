@@ -826,8 +826,11 @@ unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
     }
 }
 
-unsafe fn str_preview_reals_or_ints(x: SEXP, _max: usize) -> String {
+unsafe fn str_preview_reals_or_ints(x: SEXP, max: usize) -> String {
     unsafe {
+        if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
+            return str_preview_ints(x, if max == 0 { 10 } else { max });
+        }
         let n = XLENGTH(x) as usize;
         if n == 0 {
             return String::new();
@@ -843,16 +846,13 @@ unsafe fn str_preview_reals_or_ints(x: SEXP, _max: usize) -> String {
             str_format_real_slice(x, show)
         } else {
             (0..show)
-                .map(|i| match TYPEOF(x) {
-                    t if t == SEXPTYPE::INTSXP => {
-                        let v = INTEGER_ELT(x, i as std::os::raw::c_int);
-                        if v == NA_INTEGER {
-                            "NA".to_string()
-                        } else {
-                            v.to_string()
-                        }
+                .map(|i| {
+                    let v = INTEGER_ELT(x, i as std::os::raw::c_int);
+                    if v == NA_INTEGER {
+                        "NA".to_string()
+                    } else {
+                        v.to_string()
                     }
-                    _ => elt_to_string(x, i as R_xlen_t),
                 })
                 .collect()
         };

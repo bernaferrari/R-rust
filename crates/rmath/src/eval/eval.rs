@@ -1745,6 +1745,20 @@ identical(a, b) && identical(a, c) && isTRUE(all.equal(a, 10)) &&
         );
     }
 
+    #[test]
+    fn str_named_character_quotes_like_gnu() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "str(c(F=0.3, `Tail area`=60))\ninvisible(NULL)\n",
+        );
+        assert!(
+            captured.stdout.contains("chr [1:2] \"F\" \"Tail area\""),
+            "str() of character names must quote, got {:?}",
+            captured.stdout
+        );
+    }
+
+
 
     #[test]
     fn summary_mixed_range_shares_common_decimals() {
