@@ -5090,7 +5090,7 @@ pub unsafe fn do_model_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-/// GNU `expand.model.frame(model, extras)` — add extras to the model frame.
+/// GNU `expand.model.frame(model, extras, na.expand = FALSE)`.
 pub unsafe fn do_expand_model_frame(
     call: SEXP,
     op: SEXP,
@@ -5100,6 +5100,7 @@ pub unsafe fn do_expand_model_frame(
     unsafe {
         let model = CAR(args);
         let extras = CAR(CDR(args));
+        let na_expand = expand_na_expand_arg(args);
         let mcall = named_list_elt(model, "call");
         if mcall.is_null() || mcall == R_NilValue() || TYPEOF(mcall) != SEXPTYPE::LANGSXP {
             return R_NilValue();
@@ -5116,24 +5117,18 @@ pub unsafe fn do_expand_model_frame(
         let _u = protect(updated);
         let mut names = Vec::new();
         collect_formula_symbols(updated, &mut names);
+        collect_extra_names(extras, &mut names);
         if names.is_empty() {
             return R_NilValue();
         }
-        let mut data = R_NilValue();
-        let mut p = CDDR(mcall);
-        while !p.is_null() && p != R_NilValue() {
-            let tag = TAG(p);
-            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy();
-                if name == "data" {
-                    data = CAR(p);
-                    break;
-                }
-            }
-            p = CDR(p);
-        }
-        if TYPEOF(data) == SEXPTYPE::SYMSXP {
+        let extra_names = {
+            let mut extra = Vec::new();
+            collect_extra_names(extras, &mut extra);
+            extra
+        };
+
+        let mut data = pairlist_named(mcall, "data");
+        if TYPEOF(data) == SEXPTYPE::SYMSXP || TYPEOF(data) == SEXPTYPE::LANGSXP {
             data = crate::eval::eval::Rf_eval(data, rho);
         }
         let eval_rho = if !data.is_null() && data != R_NilValue() {
@@ -5142,26 +5137,230 @@ pub unsafe fn do_expand_model_frame(
             rho
         };
         let _er = protect(eval_rho);
+
+        let mut cols: Vec<SEXP> = Vec::with_capacity(names.len());
+        let mut nrow: R_xlen_t = 0;
+        for name in &names {
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            let mut col = if !data.is_null() && data != R_NilValue() {
+                named_list_elt(data, name)
+            } else {
+                R_NilValue()
+            };
+            if col.is_null() || col == R_NilValue() {
+                let sym = crate::sexp::symbol::Rf_install(c.as_ptr());
+                col = crate::eval::eval::Rf_eval(sym, eval_rho);
+            }
+            if !col.is_null() && col != R_NilValue() {
+                nrow = nrow.max(XLENGTH(col));
+            }
+            cols.push(col);
+        }
+
+        let mut rows = expand_subset_rows(pairlist_named(mcall, "subset"), rho, nrow);
+        if !na_expand {
+            rows.retain(|&r| {
+                extra_names.iter().all(|name| {
+                    names
+                        .iter()
+                        .position(|n| n == name)
+                        .and_then(|i| cols.get(i).copied())
+                        .is_none_or(|col| !elt_is_na(col, r))
+                })
+            });
+        }
+
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as i64);
         let _r = protect(result);
         let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
         let _on = protect(out_names);
         for (i, name) in names.iter().enumerate() {
-            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            let sym = crate::sexp::symbol::Rf_install(c.as_ptr());
-            let col = crate::eval::eval::Rf_eval(sym, eval_rho);
+            let col = vector_take_rows(cols[i], &rows);
             SET_VECTOR_ELT(result, i as i64, col);
+            let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
             SET_STRING_ELT(out_names, i as i64, Rf_mkChar(c.as_ptr()));
         }
-
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_NamesSymbol(),
             out_names,
         );
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, rows.len() as i64);
+        let _rn = protect(rn);
+        for (i, row) in rows.iter().enumerate() {
+            let label = format!("{}", row + 1);
+            let c = std::ffi::CString::new(label).unwrap_or_default();
+            SET_STRING_ELT(rn, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+            rn,
+        );
+        crate::mainutils::essentials::set_data_frame_class(result);
         result
     }
 }
+
+fn collect_extra_names(extras: SEXP, out: &mut Vec<String>) {
+    unsafe {
+        if extras.is_null() || extras == R_NilValue() {
+            return;
+        }
+        if TYPEOF(extras) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(extras) {
+                let raw = CHAR(STRING_ELT(extras, i));
+                if raw.is_null() {
+                    continue;
+                }
+                let name = std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned();
+                if !name.is_empty() && !out.iter().any(|s| s == &name) {
+                    out.push(name);
+                }
+            }
+            return;
+        }
+        collect_formula_symbols(extras, out);
+    }
+}
+
+unsafe fn expand_na_expand_arg(args: SEXP) -> bool {
+    unsafe {
+        let v = pairlist_named(args, "na.expand");
+        if v.is_null() || v == R_NilValue() {
+            false
+        } else {
+            asBool(v)
+        }
+    }
+}
+
+unsafe fn pairlist_named(list: SEXP, want: &str) -> SEXP {
+    unsafe {
+        let mut p = if !list.is_null() && TYPEOF(list) == SEXPTYPE::LANGSXP {
+            CDR(list)
+        } else {
+            list
+        };
+        while !p.is_null() && p != R_NilValue() {
+            let tag = TAG(p);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                if name == want {
+                    return CAR(p);
+                }
+            }
+            p = CDR(p);
+        }
+        R_NilValue()
+    }
+}
+
+unsafe fn expand_subset_rows(subset: SEXP, rho: SEXP, nrow: R_xlen_t) -> Vec<R_xlen_t> {
+    unsafe {
+        if subset.is_null() || subset == R_NilValue() {
+            return (0..nrow).collect();
+        }
+        let value = if TYPEOF(subset) == SEXPTYPE::SYMSXP || TYPEOF(subset) == SEXPTYPE::LANGSXP {
+            crate::eval::eval::Rf_eval(subset, rho)
+        } else {
+            subset
+        };
+        if value.is_null() || value == R_NilValue() {
+            return (0..nrow).collect();
+        }
+        let n = XLENGTH(value);
+        let mut rows = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let idx = match TYPEOF(value) {
+                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                    *INTEGER(value).add(i as usize)
+                }
+                t if t == SEXPTYPE::REALSXP => *REAL(value).add(i as usize) as i32,
+                _ => 0,
+            };
+
+            if idx >= 1 && (idx as R_xlen_t) <= nrow {
+                rows.push((idx as R_xlen_t) - 1);
+            }
+        }
+        if rows.is_empty() {
+            (0..nrow).collect()
+        } else {
+            rows
+        }
+    }
+}
+
+unsafe fn elt_is_na(x: SEXP, i: R_xlen_t) -> bool {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || i < 0 || i >= XLENGTH(x) {
+            return true;
+        }
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::REALSXP => {
+                let v = *REAL(x).add(i as usize);
+                v.to_bits() == R_NA_BIT_PATTERN || v.is_nan()
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                *INTEGER(x).add(i as usize) == NA_INTEGER
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                let s = STRING_ELT(x, i);
+                s.is_null() || s == crate::sexp::globals::R_NaString()
+            }
+            _ => false,
+        }
+
+    }
+}
+
+unsafe fn vector_take_rows(x: SEXP, rows: &[R_xlen_t]) -> SEXP {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, rows.len() as R_xlen_t);
+        }
+        let n = rows.len() as R_xlen_t;
+        let out = Rf_allocVector3(TYPEOF(x), n);
+        if out.is_null() {
+            return R_NilValue();
+        }
+        let src_n = XLENGTH(x);
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::REALSXP => {
+                for (j, &r) in rows.iter().enumerate() {
+                    *REAL(out).add(j) = if r < src_n {
+                        *REAL(x).add(r as usize)
+                    } else {
+                        NA_REAL
+                    };
+                }
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                for (j, &r) in rows.iter().enumerate() {
+                    *INTEGER(out).add(j) = if r < src_n {
+                        *INTEGER(x).add(r as usize)
+                    } else {
+                        NA_INTEGER
+                    };
+                }
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                for (j, &r) in rows.iter().enumerate() {
+                    if r < src_n {
+                        SET_STRING_ELT(out, j as R_xlen_t, STRING_ELT(x, r));
+                    } else {
+                        SET_STRING_ELT(out, j as R_xlen_t, crate::sexp::globals::R_NaString());
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        out
+    }
+}
+
 
 
 /// GNU `model.response(data)` — first column of a model frame.

@@ -1372,6 +1372,7 @@ identical(signif(numeric(0), 3), numeric(0)) &&
 m1 <- matrix(letters[1:24], 6, 4)
 m1
 noquote(m1)
+m1
 invisible(NULL)
 "#,
         );
@@ -1395,6 +1396,13 @@ invisible(NULL)
             "character matrix must not flatten to a quoted vector, got {:?}",
             captured.stdout
         );
+        let quoted_blocks = captured.stdout.matches("\"a\"").count();
+        assert!(
+            quoted_blocks >= 2,
+            "noquote must not mutate m1; later print must still quote, got {:?}",
+            captured.stdout
+        );
+
     }
 
     #[test]
@@ -1418,8 +1426,30 @@ invisible(NULL)
             "format(data.frame) must not list-print, got {:?}",
             captured.stdout
         );
-
     }
+
+    #[test]
+    fn expand_model_frame_honors_subset_and_na_expand() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+set.seed(321)
+dd <- data.frame(x = 1:5, y = rnorm(5), z = c(1, 2, NA, 4, 5))
+model <- glm(y ~ x, data = dd, subset = 1:4, na.action = na.omit)
+a <- expand.model.frame(model, "z", na.expand = FALSE)
+b <- expand.model.frame(model, "z", na.expand = TRUE)
+is.data.frame(a) && is.data.frame(b) &&
+  identical(names(a), c("y","x","z")) &&
+  identical(row.names(a), c("1","2","4")) &&
+  identical(a$z, c(1,2,4)) &&
+  identical(row.names(b), c("1","2","3","4")) &&
+  identical(b$z, c(1,2,NA,4))
+"#,
+        );
+        let result = result.expect("expand.model.frame must honor subset and na.expand");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
 
 
 

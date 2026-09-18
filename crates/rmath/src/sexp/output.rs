@@ -1572,6 +1572,28 @@ fn data_frame_nrows(x: Sexp<'_>) -> R_xlen_t {
     x.iter_vector().map(|col| col.len()).max().unwrap_or(0)
 }
 
+fn data_frame_row_labels(x: Sexp<'_>, nrow: R_xlen_t) -> Vec<String> {
+    unsafe {
+        let row_names = crate::sexp::attrib_core::getAttrib(
+            x.clone().as_raw(),
+            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+        );
+        if let Some(row_names) = Sexp::from_raw(row_names)
+            && row_names.clone().typeof_() == SEXPTYPE::STRSXP
+            && row_names.clone().len() == nrow
+        {
+            return (0..nrow)
+                .map(|i| match string_element_text(row_names.clone(), i) {
+                    Some(Some(value)) => value.to_string(),
+                    Some(None) | None => (i + 1).to_string(),
+                })
+                .collect();
+        }
+    }
+    (1..=nrow).map(|i| i.to_string()).collect()
+}
+
+
 fn format_data_frame_cell(x: Sexp<'_>, row: R_xlen_t) -> String {
     if x.clone().len() == 0 {
         return "NA".to_string();
@@ -1589,23 +1611,63 @@ fn format_data_frame_cell(x: Sexp<'_>, row: R_xlen_t) -> String {
     }
 }
 
+fn format_data_frame_column(col: Sexp<'_>, nrow: R_xlen_t) -> Vec<String> {
+    unsafe {
+        if matches!(
+            col.clone().typeof_(),
+            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::CPLXSXP
+        ) {
+            let args = crate::sexp::constructors::Rf_cons(col.clone().as_raw(), R_NilValue());
+
+            let _g = crate::sexp::protect::protect(args);
+            let formatted = crate::mainutils::essentials::do_format(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                R_NilValue(),
+            );
+            if let Some(formatted) = Sexp::from_raw(formatted)
+                && formatted.clone().typeof_() == SEXPTYPE::STRSXP
+            {
+                return (0..nrow)
+                    .map(|i| match string_element_text(formatted.clone(), i) {
+                        Some(Some(value)) => value.to_string(),
+                        Some(None) | None => "NA".to_string(),
+                    })
+                    .collect();
+            }
+        }
+    }
+    (0..nrow)
+        .map(|row| format_data_frame_cell(col.clone(), row))
+        .collect()
+}
+
+
 fn format_data_frame(x: Sexp<'_>) -> Option<String> {
     if !has_class(x.clone(), "data.frame") {
         return None;
     }
     let names = list_names(x.clone());
     let nrow = data_frame_nrows(x.clone());
+    let row_labels = data_frame_row_labels(x.clone(), nrow);
     let columns: Vec<Sexp<'_>> = x.iter_vector().collect();
-    let row_width = nrow.to_string().len().max(1);
-    let widths: Vec<usize> = columns
+    let row_width = row_labels
+        .iter()
+        .map(String::len)
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let formatted_cols: Vec<Vec<String>> = columns
+        .iter()
+        .map(|col| format_data_frame_column(col.clone(), nrow))
+        .collect();
+    let widths: Vec<usize> = formatted_cols
         .iter()
         .enumerate()
-        .map(|(i, col)| {
+        .map(|(i, cells)| {
             let name_width = names.get(i).map(String::len).unwrap_or(0);
-            let value_width = (0..nrow)
-                .map(|row| format_data_frame_cell(col.clone(), row).len())
-                .max()
-                .unwrap_or(0);
+            let value_width = cells.iter().map(String::len).max().unwrap_or(0);
             name_width.max(value_width)
         })
         .collect();
@@ -1622,11 +1684,22 @@ fn format_data_frame(x: Sexp<'_>) -> Option<String> {
     let mut lines = Vec::with_capacity(nrow as usize + 1);
     lines.push(header);
     for row in 0..nrow {
-        let row_name = format!("{:>row_width$}", row + 1);
-        let cells = columns
+        let row_name = format!(
+            "{:>row_width$}",
+            row_labels
+                .get(row as usize)
+                .cloned()
+                .unwrap_or_else(|| (row + 1).to_string())
+        );
+        let cells = formatted_cols
             .iter()
             .zip(&widths)
-            .map(|(col, width)| format!("{:>width$}", format_data_frame_cell(col.clone(), row)))
+            .map(|(col, width)| {
+                format!(
+                    "{:>width$}",
+                    col.get(row as usize).cloned().unwrap_or_else(|| "NA".to_string())
+                )
+            })
             .collect::<Vec<_>>()
             .join(" ");
         lines.push(format!("{row_name} {cells}"));

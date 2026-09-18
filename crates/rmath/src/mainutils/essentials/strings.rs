@@ -4688,25 +4688,47 @@ pub unsafe fn do_is_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 // String formatting
 // ---------------------------------------------------------------------------
 
-/// R's `noquote(x)` — mark object to prevent quoting in print.
+/// R's `noquote(x)` — mark a copy so print skips quoting.
 pub unsafe fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return x;
         }
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !class_vec.is_null() {
-            let cstr = c"noquote";
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                let data = (*class_vec).gengc_next_node as *mut SEXP;
-                *data.add(0) = charsxp;
+        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
+        if crate::mainutils::objects::inherits2(x, c"noquote".as_ptr()) == FALSE {
+            let old = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            );
+            let old_n = if !old.is_null()
+                && old != R_NilValue()
+                && TYPEOF(old) == SEXPTYPE::STRSXP
+            {
+                XLENGTH(old)
+            } else {
+                0
+            };
+            let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, old_n + 1);
+            if !class_vec.is_null() {
+                let _c = protect(class_vec);
+                for i in 0..old_n {
+                    SET_STRING_ELT(class_vec, i, STRING_ELT(old, i));
+                }
+                SET_STRING_ELT(
+                    class_vec,
+                    old_n,
+                    crate::sexp::constructors::Rf_mkChar(c"noquote".as_ptr()),
+                );
+                crate::sexp::attrib_core::setAttrib(
+                    x,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    class_vec,
+                );
             }
-            crate::sexp::attrib_core::setAttrib(x, Rf_install(c"class".as_ptr()), class_vec);
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-
         x
     }
 }
