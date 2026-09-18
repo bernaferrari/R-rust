@@ -47,14 +47,17 @@ unsafe fn dispatchMethod(
         );
         let _newvars_guard = protect(newvars);
 
-        // Create the new call
+        // GNU UseMethod rewrites the generic frame's call so
+        // sys.call(sys.parent()) is `abc.expression(e0)`, not `abc(e0)`.
         let mut newcall = R_NilValue();
         if !cptr.is_null() {
             newcall = crate::mainutils::duplicate::shallow_duplicate((*cptr).call);
             if !newcall.is_null() && newcall != R_NilValue() {
                 SETCAR(newcall, method);
+                (*cptr).call = newcall;
             }
         }
+
         let _newcall_guard = protect(newcall);
 
         let mut matchedarg = if !cptr.is_null() {
