@@ -281,6 +281,35 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              res\n\
              }",
         );
+        // GNU kappa.R: public norm/rcond are closures (implicit generics).
+        eval_base_binding(
+            base_env,
+            "norm",
+            "function(x, type = c(\"O\", \"I\", \"F\", \"M\", \"2\")) {\n\
+             if (identical(\"2\", type)) {\n\
+                 if (!length(x)) 0 else if (anyNA(x)) NA_real_ else svd(x, nu = 0L, nv = 0L)$d[1L]\n\
+             } else if (is.numeric(x) || is.logical(x))\n\
+                 .Internal(La_dlange(x, type))\n\
+             else if (is.complex(x))\n\
+                 .Internal(La_zlange(x, type))\n\
+             else stop(sprintf(\"invalid 'x': type \\\"%s\\\"\", typeof(x)))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "rcond",
+            "function(x, norm = c(\"O\", \"I\", \"1\"), triangular = FALSE, uplo = \"U\", ...) {\n\
+             norm <- match.arg(norm)\n\
+             stopifnot(length(d <- dim(x)) == 2L)\n\
+             if (!all(d)) return(1 / 0)\n\
+             if (d[1L] != d[2L])\n\
+                 return(rcond(qr.R(qr(if (d[1L] < d[2L]) t(x) else x)), triangular = TRUE, uplo = \"U\", norm = norm, ...))\n\
+             if (is.complex(x)) {\n\
+                 if (triangular) .Internal(La_zgecon(x, norm)) else .Internal(La_zgecon(x, norm))\n\
+             } else if (triangular) .Internal(La_dgecon(x, norm)) else .Internal(La_dgecon(x, norm))\n\
+             }",
+        );
+
         eval_base_binding(
             base_env,
             "matrix",

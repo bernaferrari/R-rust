@@ -64,18 +64,8 @@ pub unsafe fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let _eval_ctx = crate::sexp::context::begin_context_guard(
-            crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
-            call,
-            _rho,
-            crate::sexp::globals::R_BaseEnv(),
-            None,
-            R_NilValue(),
-            R_NilValue(),
-        );
-
         let expr = CAR(args);
         let envir_arg = CAR(CDR(args));
         if expr.is_null() || expr == R_NilValue() {
@@ -86,6 +76,38 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             envir_arg
         };
+        let caller_call = {
+            let ctx = crate::sexp::context::R_GlobalContext();
+            if ctx.is_null() {
+                call
+            } else {
+                let top = (*ctx).call;
+                if top.is_null() || top == R_NilValue() {
+                    call
+                } else {
+                    top
+                }
+            }
+        };
+        let evalable = TYPEOF(expr) == SEXPTYPE::LANGSXP
+            || TYPEOF(expr) == SEXPTYPE::SYMSXP
+            || TYPEOF(expr) == SEXPTYPE::BCODESXP
+            || TYPEOF(expr) == SEXPTYPE::EXPRSXP;
+        let _eval_ctx = if evalable {
+            Some(crate::sexp::context::begin_context_guard(
+                crate::sexp::context::ctxt_flags::CTXT_RETURN,
+                caller_call,
+                envir,
+                _rho,
+                None,
+                op,
+                args,
+            ))
+        } else {
+            None
+        };
+
+
         // eval.c do_eval(): language/symbol/bytecode values evaluate in
         // `envir`; expression vectors evaluate element-wise returning the
         // last value; any other value is returned unchanged (Rf_eval no

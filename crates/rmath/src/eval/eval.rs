@@ -2672,6 +2672,22 @@ g <- getGeneric("sum")
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
     #[test]
+    fn gnu_norm_rcond_are_closures_with_implicit_methods() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+identical(typeof(norm), "closure") &&
+  identical(names(formals(norm)), c("x", "type")) &&
+  identical(typeof(rcond), "closure") &&
+  identical(names(formals(rcond)), c("x", "norm", "triangular", "uplo", "..."))
+"#,
+        );
+
+        let result = result.expect("norm/rcond implicit methods must match GNU classes-methods.R");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
     fn seq_along_dispatches_length_and_warns_on_coercion() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(

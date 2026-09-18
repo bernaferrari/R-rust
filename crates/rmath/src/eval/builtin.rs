@@ -4140,6 +4140,15 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "La_svd_cmplx",
         handler: crate::mainutils::essentials::do_la_svd_cmplx,
     },
+    EvaluatedBuiltin {
+        name: "La_dlange",
+        handler: crate::mainutils::essentials::do_norm,
+    },
+    EvaluatedBuiltin {
+        name: "La_dgecon",
+        handler: crate::mainutils::essentials::do_rcond,
+    },
+
 
 
     EvaluatedBuiltin {
