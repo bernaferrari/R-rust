@@ -1306,74 +1306,11 @@ unsafe fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) -> SEXP {
 }
 
 /// GNU-style matching: exact names, unique prefixes, then positionals.
-/// `balancePOSIXlt(x, class=FALSE)` binds `class` to `classed`.
-
-unsafe fn match_named_then_positional(args: SEXP, formals: &[&str]) -> Vec<SEXP> {
-    unsafe {
-        let n = formals.len();
-        let mut out = vec![R_NilValue(); n];
-        let mut filled = vec![false; n];
-        let tag_of = |cell: SEXP| -> Option<String> {
-            let tag = TAG(cell);
-            if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
-                None
-            } else {
-                Some(
-                    std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                        .to_string_lossy()
-                        .into_owned(),
-                )
-            }
-        };
-        // Pass 1: exact names.
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            if let Some(name) = tag_of(cell) {
-                if let Some(i) = formals.iter().position(|f| *f == name) {
-                    out[i] = CAR(cell);
-                    filled[i] = true;
-                }
-            }
-            cell = CDR(cell);
-        }
-        // Pass 2: unique partial names (GNU matchArgs).
-        cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            if let Some(name) = tag_of(cell) {
-                if !formals.iter().any(|f| *f == name) {
-                    let hits: Vec<usize> = formals
-                        .iter()
-                        .enumerate()
-                        .filter(|(i, f)| !filled[*i] && f.starts_with(&name))
-                        .map(|(i, _)| i)
-                        .collect();
-                    if hits.len() == 1 {
-                        out[hits[0]] = CAR(cell);
-                        filled[hits[0]] = true;
-                    }
-                }
-            }
-            cell = CDR(cell);
-        }
-        // Pass 3: remaining positional.
-        let mut next = 0usize;
-        cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            if tag_of(cell).is_none() {
-                while next < n && filled[next] {
-                    next += 1;
-                }
-                if next < n {
-                    out[next] = CAR(cell);
-                    filled[next] = true;
-                    next += 1;
-                }
-            }
-            cell = CDR(cell);
-        }
-        out
-    }
+/// Bind `args` to `names` through GNU `matchArgs` (exact, partial, positional).
+unsafe fn match_named_then_positional(call: SEXP, args: SEXP, formals: &[&str]) -> Vec<SEXP> {
+    unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, formals) }
 }
+
 
 
 
@@ -2383,7 +2320,8 @@ pub unsafe fn do_as_character_POSIXt(
     env: SEXP,
 ) -> SEXP {
     unsafe {
-        let matched = match_named_then_positional(args, &["x", "digits", "OutDec"]);
+        let matched = match_named_then_positional(call, args, &["x", "digits", "OutDec"]);
+
         let x = matched[0];
         let digits_arg = matched[1];
         let outdec_arg = matched[2];
@@ -2446,7 +2384,6 @@ pub unsafe fn do_as_character_POSIXt(
             let _nv = protect(nv);
             crate::mainutils::options::SetOptionByName("scipen", nv);
         }
-
         let sec = VECTOR_ELT(lt, 0);
 
         for i in 0..n {
@@ -2891,9 +2828,10 @@ unsafe fn balance_posixlt_fill_only(
 
 
 /// Ported from `do_balancePOSIXlt()` in datetime.c.
-pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let matched = match_named_then_positional(args, &["x", "fill.only", "classed"]);
+        let matched = match_named_then_positional(call, args, &["x", "fill.only", "classed"]);
+
         let x = matched[0];
         let fill_only = logical_arg_true(matched[1], false);
         let keep_class = logical_arg_true(matched[2], true);

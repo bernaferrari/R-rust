@@ -689,17 +689,18 @@ pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SE
     }
 }
 
+/// GNU `IS_GENERIC`: CLOSXP with a non-NULL `generic` attribute/slot.
 fn is_generic_function(value: SEXP) -> bool {
     unsafe {
-        crate::mainutils::objects::inherits2(value, c"genericFunction".as_ptr()) != 0
-            || crate::mainutils::objects::inherits2(value, c"standardGeneric".as_ptr()) != 0
-            || crate::mainutils::objects::inherits2(
-                value,
-                c"nonstandardGenericFunction".as_ptr(),
-            ) != 0
-            || crate::mainutils::objects::inherits2(value, c"groupGenericFunction".as_ptr()) != 0
+        if TYPEOF(value) != SEXPTYPE::CLOSXP {
+            return false;
+        }
+        let generic_sym = crate::sexp::symbol::Rf_install(c"generic".as_ptr());
+        let slot = crate::sexp::attrib_core::getAttrib(value, generic_sym);
+        !slot.is_null() && slot != R_NilValue()
     }
 }
+
 
 /// R_getGeneric - get the generic function definition for a given name.
 /// GNU `get_generic` walks `R_ParentEnv` from `env` and accepts only

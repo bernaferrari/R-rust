@@ -20,6 +20,8 @@ use crate::sexp::globals::*;
 use crate::sexp::memory_ext::{CONS_NR, allocList};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_DotsSymbol;
+use crate::sexp::symbol::Rf_install;
+
 
 // ---------------------------------------------------------------------------
 // Local helper macros and functions
@@ -812,6 +814,33 @@ pub unsafe fn matchArgs_RC(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
         args
     }
 }
+
+/// Bind evaluated `args` to `names` via GNU `matchArgs` (exact, partial, positional).
+pub unsafe fn match_formal_slots(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
+    unsafe {
+        let mut formals = R_NilValue();
+        for name in names.iter().rev() {
+            let mut buf = Vec::with_capacity(name.len() + 1);
+            buf.extend_from_slice(name.as_bytes());
+            buf.push(0);
+            let sym = Rf_install(buf.as_ptr() as *const c_char);
+            let cell = Rf_cons(R_MissingArg(), formals);
+            SETTAG(cell, sym);
+            formals = cell;
+        }
+        let _formals = protect(formals);
+        let matched = matchArgs_RC(formals, args, call);
+        let _matched = protect(matched);
+        let mut out = Vec::with_capacity(names.len());
+        let mut cell = matched;
+        while !cell.is_null() && cell != R_NilValue() {
+            out.push(CAR(cell));
+            cell = CDR(cell);
+        }
+        out
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Tests

@@ -970,30 +970,8 @@ fn missing_required(call: SEXP, name: &str) -> ! {
 }
 
 /// Bind `args` to `names` through GNU `matchArgs` (exact, partial, positional).
-/// `rnorm(1, 0, mean = 10)` leaves the untagged `0` for `sd`.
 unsafe fn match_formals(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
-    unsafe {
-        let mut formals = R_NilValue();
-        for name in names.iter().rev() {
-            let mut buf = Vec::with_capacity(name.len() + 1);
-            buf.extend_from_slice(name.as_bytes());
-            buf.push(0);
-            let sym = crate::sexp::symbol::Rf_install(buf.as_ptr() as *const std::os::raw::c_char);
-            let cell = Rf_cons(R_MissingArg(), formals);
-            SETTAG(cell, sym);
-            formals = cell;
-        }
-        let _formals = protect(formals);
-        let matched = crate::mainutils::match_mod::matchArgs_RC(formals, args, call);
-        let _matched = protect(matched);
-        let mut out = Vec::with_capacity(names.len());
-        let mut cell = matched;
-        while !cell.is_null() && cell != R_NilValue() {
-            out.push(CAR(cell));
-            cell = CDR(cell);
-        }
-        out
-    }
+    unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, names) }
 }
 
 unsafe fn require_slot(call: SEXP, slot: SEXP, name: &str) -> SEXP {
