@@ -2813,6 +2813,52 @@ identical(norm(x, "O"), "O") && identical(norm(x), "O") &&
     }
 
     #[test]
+    fn unlist_empty_lists_keep_gnu_type() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+identical(typeof(unlist(list(list(), list()), recursive=FALSE)), "list") &&
+  identical(length(unlist(list(list(), list()), recursive=FALSE)), 0L) &&
+  identical(typeof(unlist(list(integer(0), integer(0)))), "integer") &&
+  is.null(unlist(list(NULL, NULL)))
+"#,
+        );
+        let result = result.expect("empty unlist must keep GNU AnswerType");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn setclass_contains_empty_slot_superclass() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+foo <- setClass("foo")
+bar <- setClass("bar", contains = "foo")
+isClass("bar") && extends("bar", "foo")
+"#,
+        );
+        let result = result.expect("setClass(contains=) must complete empty slots");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
+    fn methods_namespace_has_no_empty_c_or_rep() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+!exists("rep", envir=asNamespace("methods"), inherits=FALSE) &&
+  !exists("c", envir=asNamespace("methods"), inherits=FALSE)
+"#,
+        );
+        let result = result.expect("methods namespace must not bind empty c/rep");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn gnu_norm_rcond_are_closures_with_implicit_methods() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(

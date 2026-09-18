@@ -3037,10 +3037,12 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let result_type = unlist_result_type(&entries);
         let total = entries.len() as R_xlen_t;
-        // GNU: unlist(list(NULL, NULL)) is NULL, not numeric(0).
-        // apply() uses this when FUN returns NULL on every slice.
+        // GNU AnswerType still records the child type when every element
+        // has length 0. unlist(list(list(), list()), recursive=FALSE) is
+        // list(), unlist(list(integer(0))) is integer(0), and only an
+        // all-NULL walk stays NULL.
         if entries.is_empty() {
-            return R_NilValue();
+            return unlist_empty_result(x, recursive, use_names, call);
         }
 
         let result = Rf_allocVector3(result_type, total);
@@ -3252,8 +3254,38 @@ impl UnlistValue {
             _ => unsafe { R_NilValue() },
         }
     }
-
 }
+
+unsafe fn unlist_empty_result(x: SEXP, recursive: bool, use_names: bool, call: SEXP) -> SEXP {
+    unsafe {
+        let mut data = crate::mainutils::bind::BindData {
+            ans_flags: 0,
+            ans_ptr: std::ptr::null_mut(),
+            ans_length: 0,
+            ans_names: std::ptr::null_mut(),
+            ans_nnames: 0,
+        };
+        if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::EXPRSXP {
+            for i in 0..XLENGTH(x) {
+                crate::mainutils::bind::AnswerType(
+                    VECTOR_ELT(x, i),
+                    recursive,
+                    use_names,
+                    &mut data,
+                    call,
+                );
+            }
+        }
+        if data.ans_flags == 0 {
+            return R_NilValue();
+        }
+        Rf_allocVector3(
+            crate::mainutils::bind::ans_flags_to_mode(data.ans_flags),
+            0,
+        )
+    }
+}
+
 
 fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
     if entries
