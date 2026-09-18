@@ -1467,15 +1467,20 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         }
 
         // Evaluate every handler up front, like upstream tryCatch's
-        // `handlers <- list(...)`, and register the classes so warnings
-        // raised in the body know whether to unwind here.
+        // `handlers <- list(...)`. `finally=` is not a condition handler:
+        // GNU evaluates it after the body (success or error).
         let mut handlers: Vec<(String, SEXP)> = Vec::new();
+        let mut finally_expr = R_NilValue();
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
             if let Some(tag) = tag_name(current) {
-                let handler = crate::eval::eval::Rf_eval(CAR(current), rho);
-                if !handler.is_null() && handler != R_NilValue() {
-                    handlers.push((tag, handler));
+                if tag == "finally" {
+                    finally_expr = CAR(current);
+                } else {
+                    let handler = crate::eval::eval::Rf_eval(CAR(current), rho);
+                    if !handler.is_null() && handler != R_NilValue() {
+                        handlers.push((tag, handler));
+                    }
                 }
             }
             current = CDR(current);
@@ -1490,8 +1495,6 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         struct PopHandlers(*mut crate::sexp::instance::RInstance);
         impl Drop for PopHandlers {
             fn drop(&mut self) {
-                // Scoped within evaluation: the creating session outlives this
-                // guard, even when another session becomes ambient temporarily.
                 unsafe {
                     (*self.0).error_state.try_catch_handler_classes.pop();
                 }
@@ -1500,20 +1503,23 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         let _pop_guard = PopHandlers(crate::sexp::instance::with_required_current_instance(
             |inst| inst,
         ));
+        let run_finally = || {
+            if !finally_expr.is_null() && finally_expr != R_NilValue() {
+                let _ = crate::eval::eval::Rf_eval(finally_expr, rho);
+            }
+        };
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(expr, rho)
         }));
-        // Pop before invoking any handler so a warning raised inside a
-        // handler does not match this frame again.
         drop(_pop_guard);
 
         match result {
-            Ok(val) => val,
+            Ok(val) => {
+                run_finally();
+                val
+            }
             Err(payload) => {
-                // Warning conditions: route to a matching exiting handler
-                // (simpleWarning/warning/condition); otherwise pass the
-                // panic on to outer frames.
                 let payload = match payload.downcast::<crate::sexp::context::RSignal>() {
                     Ok(signal) => match *signal {
                         crate::sexp::context::RSignal::Warning { message } => {
@@ -1524,9 +1530,13 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                             if let Some((_, handler)) = matching {
                                 let condition = simple_warning_condition(&message);
                                 let _cond_guard = protect(condition);
-                                let call = crate::sexp::constructors::Rf_lang2(*handler, condition);
-                                return crate::eval::eval::Rf_eval(call, rho);
+                                let call =
+                                    crate::sexp::constructors::Rf_lang2(*handler, condition);
+                                let handled = crate::eval::eval::Rf_eval(call, rho);
+                                run_finally();
+                                return handled;
                             }
+                            run_finally();
                             std::panic::resume_unwind(Box::new(
                                 crate::sexp::context::RSignal::Warning { message },
                             ));
@@ -1539,20 +1549,20 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 let message = match payload.downcast::<crate::sexp::context::RSignal>() {
                     Ok(signal) => match *signal {
                         crate::sexp::context::RSignal::Error { message } => message,
-                        other => std::panic::panic_any(other),
+                        other => {
+                            run_finally();
+                            std::panic::panic_any(other);
+                        }
                     },
                     Err(payload) => match payload.downcast::<crate::sexp::context::RError>() {
                         Ok(err) => err.message.clone(),
-                        Err(payload) => std::panic::resume_unwind(payload),
+                        Err(payload) => {
+                            run_finally();
+                            std::panic::resume_unwind(payload);
+                        }
                     },
                 };
 
-                // stop(<condition>): when the signalled-condition slot
-                // holds a condition whose message matches this unwind,
-                // deliver the ORIGINAL object — class-selecting handlers,
-                // `identical(c, e)`, and extra fields survive. A slot
-                // whose message does not match is stale (an unrelated
-                // internal error); clear it and rebuild a simpleError.
                 let slot_cond = signalled_condition();
                 let mut original: SEXP = std::ptr::null_mut();
                 if !slot_cond.is_null() {
@@ -1563,11 +1573,6 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     }
                 }
 
-                // Handler selection matches the tag against the
-                // condition's class vector in registration order (first
-                // match wins): tryCatch(stop(e), error=..., port_error=...)
-                // takes `error=`, and the rebuilt simpleError also answers
-                // to `simpleError=`/`condition=` handlers like upstream.
                 let condition = if !original.is_null() {
                     original
                 } else {
@@ -1579,9 +1584,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     .find(|(tag, _)| classes.iter().any(|class| class == tag))
                     .map(|(_, handler)| *handler)
                 else {
-                    // No handler here claims the error: unwind onward.
-                    // The slot stays live so an enclosing tryCatch can
-                    // still claim the original condition.
+                    run_finally();
                     std::panic::panic_any(crate::sexp::context::RError { message });
                 };
                 if !original.is_null() {
@@ -1589,9 +1592,12 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 }
                 let _cond_guard = protect(condition);
                 let call = crate::sexp::constructors::Rf_lang2(handler, condition);
-                crate::eval::eval::Rf_eval(call, rho)
+                let handled = crate::eval::eval::Rf_eval(call, rho);
+                run_finally();
+                handled
             }
         }
+
     }
 }
 

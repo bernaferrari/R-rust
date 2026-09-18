@@ -284,6 +284,31 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
             auto_open_connection(scon, "w");
         }
         let mut auto_guard = temporarily_open.then(|| AutoCloseGuard::new(scon));
+        {
+            let table = connection_table();
+            let Some(conn) = table[i].as_ref() else {
+                r_error("invalid connection");
+            };
+            if !conn.isopen {
+                r_error("connection is not open");
+            }
+            if !conn.canwrite {
+                r_error("cannot write to this connection");
+            }
+            if matches!(&conn.kind, ConnKind::Terminal(name) if name == "stdout") {
+                drop(table);
+                // GNU writeLines(stdout()) follows the sink stack (Rd2txt
+                // uses this under sink(textConnection) in .Rd_get_text).
+                for j in 0..text_len {
+                    let line = string_elt(text, j);
+                    crate::sexp::output::capture_stdout(&format!("{line}{sep_str}"));
+                }
+                if let Some(guard) = auto_guard.as_mut() {
+                    guard.close();
+                }
+                return R_NilValue();
+            }
+        }
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
@@ -325,15 +350,9 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
                 conn.raw_pos = conn.raw_data.len();
             }
             ConnKind::Terminal(name) if name == "stdout" => {
-                let stdout = io::stdout();
-                let mut writer = stdout.lock();
-                for j in 0..text_len {
-                    let line = string_elt(text, j);
-                    if let Err(e) = write!(writer, "{}{}", line, sep_str) {
-                        r_error(&format!("error writing to stdout: {}", e));
-                    }
-                }
+                unreachable!("stdout terminal writes take the capture path above");
             }
+
             ConnKind::Terminal(name) if name == "stderr" => {
                 let stderr = io::stderr();
                 let mut writer = stderr.lock();
