@@ -1054,6 +1054,47 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn methods_null_slot_roundtrips_gnu_sentinel() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); x <- new(\"classRepresentation\"); x@validity <- NULL; is.null(x@validity) && isTRUE(methods:::.hasSlot(x, \"validity\"))",
+        );
+        let result = result.expect("NULL slots must store GNU pseudo_NULL and still count as present");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn language_double_bracket_and_dollar_assign() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "fdef <- quote(function(from, to = TO, strict = TRUE) NULL); fdef[[2L]]$to <- \"C_new_object\"; identical(as.character(fdef[[2L]]$to), \"C_new_object\")",
+        );
+        let result = result.expect("[[ and $<- must work on language/pairlist like GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn methods_new_accepts_named_slots() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); setClass(\"C_new_object\", slots=c(x=\"numeric\")); x <- new(\"C_new_object\", x=4:6); isS4(x) && identical(as.numeric(x@x), c(4,5,6))",
+        );
+        let result = result.expect("new(Class, slot=) must match GNU initialize");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn as_function_defaults_envir_and_returns_functions() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "f <- function(z) z + 1L; identical(as.function(f), f) && identical(as.function(alist(x=, x + 1L))(2L), 3L)",
+        );
+        let result = result.expect("as.function must default envir like GNU parent.frame()");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
     #[test]
     fn class_of_null_is_null_string() {

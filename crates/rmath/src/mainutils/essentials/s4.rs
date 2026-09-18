@@ -934,6 +934,23 @@ unsafe fn raise_slot_miss(obj: SEXP, name: &str) -> ! {
     }
 }
 
+/// GNU `pseudo_NULL` (`attrib.c`): interned `\001NULL\001`. Attributes
+/// cannot store `R_NilValue`, so NULL slots use this sentinel. Pointer
+/// identity is enough because `Rf_install` interns.
+unsafe fn slot_pseudo_null() -> SEXP {
+    unsafe { Rf_install(c"\x01NULL\x01".as_ptr()) }
+}
+
+unsafe fn unmap_slot_pseudo_null(value: SEXP) -> SEXP {
+    unsafe {
+        if !value.is_null() && value == slot_pseudo_null() {
+            R_NilValue()
+        } else {
+            value
+        }
+    }
+}
+
 /// R_do_slot (main/attrib.c) — shared accessor behind `slot()` and `@`.
 ///
 /// The name must be a symbol or a non-NA scalar string. Attribute-stored
@@ -978,7 +995,7 @@ pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
         if crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
             // Port S4: slots live as named vector elements.
             if let Some(value) = s4_named_slot(obj, &name_str) {
-                return value;
+                return unmap_slot_pseudo_null(value);
             }
             // Upstream's only other storage is attributes; "names" never
             // resolves for S4 objects (S4SXP in upstream, and the names
@@ -988,14 +1005,8 @@ pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
                     Rf_install(CString::new(name_str.as_str()).unwrap_or_default().as_ptr());
                 let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
                 if !value.is_null() && value != R_NilValue() {
-                    if TYPEOF(value) == SEXPTYPE::SYMSXP
-                        && elt_to_string(value, 0) == ".__NULL__."
-                    {
-                        return R_NilValue();
-                    }
-                    return value;
+                    return unmap_slot_pseudo_null(value);
                 }
-
             }
             if name_str == ".S3Class" {
                 return crate::eval::attrib_core::R_data_class(obj);
@@ -1007,7 +1018,7 @@ pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
         let name_sym = Rf_install(CString::new(name_str.as_str()).unwrap_or_default().as_ptr());
         let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
         if !value.is_null() && value != R_NilValue() {
-            return value;
+            return unmap_slot_pseudo_null(value);
         }
         if name_str == ".S3Class" {
             return crate::eval::attrib_core::R_data_class(obj);
@@ -1020,11 +1031,41 @@ pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
     }
 }
 
+/// GNU `R_has_slot` (attrib.c) — attribute presence, including NULL sentinels.
+pub unsafe fn R_has_slot(obj: SEXP, name: SEXP) -> SEXP {
+    unsafe {
+        let name_sym = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
+            name
+        } else if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
+            let chars = STRING_ELT(name, 0);
+            if chars.is_null() {
+                std::panic::panic_any(RError {
+                    message: "invalid type or length for slot name".to_string(),
+                });
+            }
+            Rf_install(crate::sexp::accessors::CHAR(chars))
+        } else {
+            std::panic::panic_any(RError {
+                message: "invalid type or length for slot name".to_string(),
+            });
+        };
+        let name_str = elt_to_string(name_sym, 0);
+        if name_str == ".Data" && TYPEOF(obj) != SEXPTYPE::OBJSXP {
+            return Rf_ScalarLogical(TRUE);
+        }
+        let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
+        Rf_ScalarLogical(if !value.is_null() && value != R_NilValue() {
+            TRUE
+        } else {
+            FALSE
+        })
+    }
+}
+
 /// GNU `R_do_slot_assign` — store a slot as an attribute.
 ///
 /// S4 objects (including `new("classRepresentation")`) keep slots in
-/// ATTRIB, not as VECSXP names. `NULL` is stored as a sentinel so
-/// `@<-` can keep a missing slot, matching GNU `pseudo_NULL`.
+/// ATTRIB, not as VECSXP names. `NULL` is stored as GNU `pseudo_NULL`.
 pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
     unsafe {
         if obj.is_null() || obj == R_NilValue() {
@@ -1049,12 +1090,21 @@ pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
         };
         let name_str = elt_to_string(name_sym, 0);
         if name_str == ".Data" {
+            // GNU setDataPart on a function S4 object (.mergeAttrs): the
+            // closure IS the object. Copy formals/body/env from value.
+            if TYPEOF(obj) == SEXPTYPE::CLOSXP && TYPEOF(value) == SEXPTYPE::CLOSXP {
+                crate::sexp::accessors::SET_FORMALS(obj, crate::sexp::accessors::FORMALS(value));
+                crate::sexp::accessors::SET_BODY(obj, crate::sexp::accessors::BODY(value));
+                crate::sexp::accessors::SET_CLOENV(obj, crate::sexp::accessors::CLOENV(value));
+                return obj;
+            }
             crate::sexp::attrib_core::setAttrib(obj, name_sym, value);
             return obj;
         }
+
         // GNU stores NULL slots as a sentinel; setAttrib would drop them.
         let stored = if value.is_null() || value == R_NilValue() {
-            Rf_install(c".__NULL__.".as_ptr())
+            slot_pseudo_null()
         } else {
             value
         };
@@ -1062,6 +1112,7 @@ pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
         obj
     }
 }
+
 
 /// R's `set_slot(object, name, value)` — set the value of a slot.
 pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

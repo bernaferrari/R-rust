@@ -392,9 +392,14 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         if object.is_null() || object == R_NilValue() || field.is_empty() {
             return object;
         }
+        if TYPEOF(object) == SEXPTYPE::LISTSXP || TYPEOF(object) == SEXPTYPE::LANGSXP {
+            let nlist = Rf_install(CString::new(field.as_str()).unwrap_or_default().as_ptr());
+            return crate::mainutils::subassign::R_subassign3_dflt(_call, object, nlist, value);
+        }
         if TYPEOF(object) != SEXPTYPE::VECSXP {
             return object;
         }
+
 
 
         // `$<-.data.frame` recycles a length-1 atomic value to the

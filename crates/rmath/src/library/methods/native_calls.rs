@@ -100,8 +100,9 @@ unsafe extern "C-unwind" fn c_r_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> 
 
 
 unsafe extern "C-unwind" fn c_r_has_slot(obj: SEXP, name: SEXP) -> SEXP {
-    unsafe { super::slot::R_hasSlot(obj, name) }
+    unsafe { crate::mainutils::essentials::R_has_slot(obj, name) }
 }
+
 
 unsafe extern "C-unwind" fn c_r_init_method_dispatch(envir: SEXP) -> SEXP {
     unsafe { super::methods_list_dispatch::R_initMethodDispatch(envir) }

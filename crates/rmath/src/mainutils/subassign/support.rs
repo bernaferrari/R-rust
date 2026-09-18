@@ -132,9 +132,11 @@ pub(crate) unsafe fn isVectorList(x: SEXP) -> bool {
 pub(crate) unsafe fn isPairList(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == LISTSXP || t == NILSXP
+        // GNU Rf_isPairList: NILSXP / LISTSXP / LANGSXP / DOTSXP.
+        t == LISTSXP || t == NILSXP || t == LANGSXP || t == DOTSXP
     }
 }
+
 
 #[inline]
 pub(crate) unsafe fn isList(x: SEXP) -> bool {

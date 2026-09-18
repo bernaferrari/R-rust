@@ -199,7 +199,15 @@ enum ClosurePart {
 unsafe fn replace_closure_part(call: SEXP, args: SEXP, part: ClosurePart) -> SEXP {
     unsafe {
         let fun = CAR(args);
-        let value = CADR(args);
+        // GNU `body(fun, envir = environment(fun)) <- value` has an optional
+        // envir before value. `body(f, environment(def)) <- body(def)` must
+        // not treat the environment as the new body.
+        let third = CDR(CDR(args));
+        let (env_arg, value) = if !third.is_null() && third != R_NilValue() {
+            (CADR(args), CAR(third))
+        } else {
+            (crate::sexp::accessors::CLOENV(fun), CADR(args))
+        };
         if TYPEOF(fun) != SEXPTYPE::CLOSXP {
             crate::mainutils::errors::errorcall_str(call, "use of NULL environment is defunct");
         }
@@ -223,7 +231,14 @@ unsafe fn replace_closure_part(call: SEXP, args: SEXP, part: ClosurePart) -> SEX
                 }
             }
         };
-        let env = crate::sexp::accessors::CLOENV(fun);
+        let env = if !env_arg.is_null()
+            && env_arg != R_NilValue()
+            && crate::mainutils::coerce::isEnvironment(env_arg)
+        {
+            env_arg
+        } else {
+            crate::sexp::accessors::CLOENV(fun)
+        };
         if env.is_null() || env == R_NilValue() {
             crate::mainutils::errors::errorcall_str(call, "use of NULL environment is defunct");
         }

@@ -6,13 +6,32 @@ use super::*;
 
 /// do_asfunction — convert a list to a function (closure).
 /// Matches C's `do_asfunction()` in coerce.c line 1605.
-pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let arglist = CAR(args);
+        if crate::mainutils::coerce::isFunction(arglist) {
+            return arglist;
+        }
         if TYPEOF(arglist) != SEXPTYPE::VECSXP {
             error("list argument expected");
         }
-        let envir = CADR(args);
+        let envir_cell = CDR(args);
+        let envir_arg = if envir_cell.is_null() || envir_cell == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(envir_cell)
+        };
+        let envir = if envir_arg.is_null()
+            || envir_arg == R_NilValue()
+            || envir_arg == crate::sexp::globals::R_MissingArg()
+            || envir_arg == crate::sexp::globals::R_UnboundValue()
+        {
+            // GNU as.function.default: envir = parent.frame(). Binding the
+            // .Internal handler as a builtin must default the same way.
+            rho
+        } else {
+            envir_arg
+        };
         if isNull(envir) {
             error("use of NULL environment is defunct");
         }
@@ -20,6 +39,8 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             error("invalid environment");
         }
         let n = LENGTH(arglist);
+
+
         if n < 1 {
             error("argument must have length at least 1");
         }
