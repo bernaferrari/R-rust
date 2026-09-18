@@ -506,7 +506,7 @@ fn trim_float(s: String) -> String {
 
 
 fn format_r_default_real(v: f64) -> String {
-    let digits = 7i32;
+    let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
     let abs = v.abs();
     if abs == 0.0 {
         return "0".to_string();
@@ -514,8 +514,10 @@ fn format_r_default_real(v: f64) -> String {
 
     let exponent = abs.log10().floor() as i32;
     if !(-4..digits).contains(&exponent) {
-        return trim_float(format!("{v:.6e}"));
+        let decimals = (digits as usize).saturating_sub(1);
+        return trim_float(format!("{v:.decimals$e}"));
     }
+
 
     let decimals = if exponent >= 0 {
         (digits - exponent - 1).max(0) as usize

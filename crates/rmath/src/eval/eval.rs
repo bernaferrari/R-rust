@@ -1337,6 +1337,34 @@ identical(format(m[, 1], digits = 1), format(m[, 2], digits = 1)) &&
         );
     }
 
+    #[test]
+    fn signif_empty_operands_follow_gnu_math2() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+identical(signif(numeric(0), 3), numeric(0)) &&
+  identical(signif(numeric(0)), numeric(0)) &&
+  inherits(tryCatch(signif(1:3, numeric(0)), error = identity), "error")
+"#,
+        );
+        let result = result.expect("signif empty operands must follow GNU math2");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn cat_honors_live_digits_for_scientific() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "options(digits=8); cat(signif(1.234567891234567e27, 8), \"\\n\")\n",
+        );
+        assert!(
+            captured.stdout.contains("1.2345679e+27"),
+            "cat at digits=8 must keep 8 sig digits, got {:?}",
+            captured.stdout
+        );
+    }
+
+
 
 
 

@@ -505,15 +505,22 @@ pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return math2_complex(call, x_arg, digits_arg, 6.0, "signif", z_prec_r);
         }
         let nx = XLENGTH(x_arg);
-        let nd = if digits_arg.is_null()
+        let digits_missing = digits_arg.is_null()
             || digits_arg == R_NilValue()
-            || digits_arg == missing
-        {
+            || digits_arg == missing;
+        if !digits_missing && XLENGTH(digits_arg) == 0 {
+            crate::mainutils::errors::errorcall_str(call, "invalid second argument of length 0");
+        }
+        if nx == 0 {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let nd = if digits_missing {
             0
         } else {
             XLENGTH(digits_arg)
         };
         let n = if nd == 0 { nx } else { nx.max(nd) };
+
         let t = TYPEOF(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
