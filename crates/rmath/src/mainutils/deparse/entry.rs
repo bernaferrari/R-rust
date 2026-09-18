@@ -122,6 +122,11 @@ pub unsafe fn deparse1WithCutoff(
             SET_STRING_ELT(svec, get_browse_lines() as R_xlen_t, ellipsis);
         }
 
+        if (opts & WARNINCOMPLETE) != 0 && local_data.sourceable == 0 {
+            crate::mainutils::errors::Rf_warning1(c"deparse may be incomplete".as_ptr());
+        }
+
+
         R_FreeStringBuffer(&mut local_data.buffer);
         svec
     }
@@ -241,6 +246,13 @@ unsafe fn deparse_call_args(args: SEXP) -> DeparseCallArgs {
                 } else if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::REALSXP {
                     opts = Some(crate::mainutils::coerce::asInteger(value));
                 }
+                pos += 1;
+            }
+        }
+        if let Some(value) = positional.get(pos).copied() {
+            if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::REALSXP {
+                let v = crate::mainutils::coerce::asInteger(value);
+                nlines = if v == NA_INTEGER { -1 } else { v };
             }
         }
         let backtick = backtick.unwrap_or_else(|| deparse_default_backtick(expr));

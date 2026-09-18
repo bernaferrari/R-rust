@@ -1291,6 +1291,43 @@ identical(LNA, eval(pd0(LNA, control = "all")))
     }
 
     #[test]
+    fn dput_quote_expression_wraps_language() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+dPut <- function(x, control = c("quoteExpression", "showAttributes", "niceNames", "keepInteger"))
+    dput(x, control = control)
+A <- function(x) { x }
+identical(paste(capture.output(dPut(body(A))), collapse = "\n"), "quote({\n    x\n})")
+"#,
+        );
+        let result = result.expect("dput(control=quoteExpression) must wrap language in quote()");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn deparse_all_warns_when_sourceable_is_false() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+w <- character()
+withCallingHandlers(
+    deparse(y ~ x, control = "all"),
+    warning = function(e) {
+        w <<- conditionMessage(e)
+        invokeRestart("muffleWarning")
+    }
+)
+identical(w, "deparse may be incomplete")
+"#,
+        );
+        let result = result.expect("deparse(control=all) on a formula must warn incomplete");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+    #[test]
     fn all_equal_s4_formula_subclass_uses_language_path() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(

@@ -153,12 +153,35 @@ pub unsafe fn do_deparse1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-/// R's `dput(x, file)` — dump object using the deparser.
+/// R's `dput(x, file, control)` — dump using the requested deparse options.
 pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let file_arg = arg_by_name_or_position(args, &["file"], 1);
-        let lines = deparse_lines(x);
+        let control_arg = arg_by_name_or_position(args, &["control"], 2);
+        let opts = if control_arg.is_null()
+            || control_arg == R_NilValue()
+            || control_arg == R_MissingArg()
+        {
+            crate::mainutils::deparse::DEFAULT_USER_DEPARSE
+        } else if TYPEOF(control_arg) == SEXPTYPE::INTSXP
+            || TYPEOF(control_arg) == SEXPTYPE::REALSXP
+        {
+            crate::mainutils::coerce::asInteger(control_arg)
+        } else {
+            crate::mainutils::deparse::deparse_opts_from_control(control_arg)
+        };
+        let deparsed = crate::mainutils::deparse::deparse1(x, false, opts);
+        let n = if deparsed.is_null() || deparsed == R_NilValue() {
+            0
+        } else {
+            XLENGTH(deparsed)
+        };
+        let lines: Vec<String> = if n == 0 {
+            vec!["NULL".to_string()]
+        } else {
+            (0..n).map(|i| elt_to_string(deparsed, i)).collect()
+        };
         let output = format!("{}\n", lines.join("\n"));
 
         let file = if file_arg.is_null() || file_arg == R_NilValue() || XLENGTH(file_arg) == 0 {
@@ -199,6 +222,7 @@ fn deparse_lines(expr: SEXP) -> Vec<String> {
         (0..n).map(|i| elt_to_string(deparsed, i)).collect()
     }
 }
+
 
 /// R's `dget(file)` — read, parse, and evaluate a dumped expression.
 pub unsafe fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

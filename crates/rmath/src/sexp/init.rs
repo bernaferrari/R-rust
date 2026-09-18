@@ -476,6 +476,23 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             defineVar(Rf_install_in_current(".leap.seconds"), leap, base_env);
         }
 
+        // GNU New-Internal.R: deparse is a closure so warning() attributes
+        // to `deparse(...)`, not the caller of the primitive. The 4th
+        // `.Internal` argument stays the character `control` vector: our
+        // bit layout is not GNU Defn.h's, so `.deparseOpts()` integers
+        // cannot be forwarded yet.
+        eval_base_binding(
+            base_env,
+            "deparse",
+            r#"function(expr, width.cutoff = 60L,
+         backtick = mode(expr) %in% c("call", "expression", "(", "function"),
+         control = c("keepNA", "keepInteger", "niceNames", "showAttributes"),
+         nlines = -1L)
+    .Internal(deparse(expr, width.cutoff, backtick, control, nlines))"#,
+        );
+
+
+
 
 
 
