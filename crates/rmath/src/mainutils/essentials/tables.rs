@@ -1840,7 +1840,16 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 names,
             );
         }
+        // GNU default is `ordered = is.ordered(x)`.
+        let ordered = match logical_arg_by_name_or_position(args, "ordered", 4) {
+            Some(value) => value,
+            None => inherits_class(x, "ordered"),
+        };
+        if ordered {
+            set_ordered_factor_class(result);
+        }
         result
+
     }
 }
 

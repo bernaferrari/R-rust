@@ -22,6 +22,8 @@ __pycache__/
 .beads-credential-key
 r-source/
 Rplots.pdf
+/tests/upstream-r/vendor/*.pdf
+
 .R
 .Rhistory
 .RData

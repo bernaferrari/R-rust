@@ -1767,7 +1767,13 @@ df <- data.frame(Time=c(1,2,3,4,5,7), demand=c(8.3,10.3,19,16,15.6,19.8))
 attr(df, "reference") <- "A1.4, p. 270"
 str(df)
 f <- ordered(c("Qn1","Qn1","Qn2"), levels=c("Qn1","Qn2","Qn3"))
+g <- factor(c("Qn1","Qn1","Qn2"), levels=c("Qn1","Qn2","Qn3"), ordered=TRUE)
 str(f)
+str(g)
+fm <- uptake ~ conc | Plant
+attr(fm, ".Environment") <- emptyenv()
+str(fm)
+invisible(NULL)
 
 "#,
         );
@@ -1779,10 +1785,20 @@ str(f)
             captured.stdout
         );
         assert!(
-            captured.stdout.contains("Ord.factor w/ 3 levels \"Qn1\"<\"Qn2\"<\"Qn3\": 1 1 2"),
-            "ordered factor must show codes not labels, got {:?}",
+            captured.stdout.matches("Ord.factor w/ 3 levels \"Qn1\"<\"Qn2\"<\"Qn3\": 1 1 2").count()
+                >= 2,
+            "both ordered() and factor(ordered=TRUE) must be Ord.factor, got {:?}",
             captured.stdout
         );
+        assert!(
+            captured.stdout.contains("Class 'formula'  language uptake ~ conc | Plant")
+                && captured.stdout.contains(".Environment")
+                && captured.stdout.contains("R_EmptyEnv"),
+            "formula str must match GNU Class/language header, got {:?}",
+            captured.stdout
+        );
+
+
 
     }
 

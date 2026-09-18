@@ -725,6 +725,10 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool) -> String {
         if sexp_has_class_name(x, "factor") {
             return str_factor_summary(x);
         }
+        if TYPEOF(x) == SEXPTYPE::LANGSXP || sexp_has_class_name(x, "formula") {
+            return str_language_summary(x);
+        }
+
         if sexp_has_class_name(x, "ts") {
             let n = XLENGTH(x);
             let tsp = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"tsp".as_ptr()));
@@ -847,6 +851,48 @@ unsafe fn str_factor_summary(x: SEXP) -> String {
     }
 }
 
+unsafe fn str_language_summary(x: SEXP) -> String {
+    unsafe {
+        let deparsed = crate::mainutils::deparse::deparse_symbolic(x, true);
+        let _deparsed = protect(deparsed);
+        let mut text = String::new();
+        if !deparsed.is_null() && TYPEOF(deparsed) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(deparsed) {
+                if i > 0 {
+                    text.push(' ');
+                }
+                text.push_str(&elt_to_string(deparsed, i));
+            }
+        }
+        let mut out = if sexp_has_class_name(x, "formula") {
+            format!("Class 'formula'  language {text}")
+        } else {
+            format!("language {text}")
+        };
+        let env = crate::sexp::attrib_core::getAttrib(x, Rf_install(c".Environment".as_ptr()));
+        if !env.is_null() && env != R_NilValue() {
+            out.push_str("\n  .. ..- attr(*, \".Environment\")=");
+            out.push_str(&str_environment_brief(env));
+        }
+        out
+    }
+}
+
+unsafe fn str_environment_brief(env: SEXP) -> String {
+    unsafe {
+        if env == crate::sexp::globals::R_EmptyEnv() {
+            "<environment: R_EmptyEnv>".to_string()
+        } else if env == crate::sexp::globals::R_BaseEnv() {
+            "<environment: base>".to_string()
+        } else if env == crate::sexp::globals::R_GlobalEnv() {
+            "<environment: R_GlobalEnv>".to_string()
+        } else {
+            "<environment: 0x0>".to_string()
+        }
+    }
+}
+
+
 
 unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
     unsafe {
@@ -931,6 +977,8 @@ unsafe fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
         let mut w = 0;
         let mut d = 0;
         let mut e = 0;
+
+
         crate::mainutils::format::formatRealS(tmp, show as R_xlen_t, &mut w, &mut d, &mut e, 0);
         let mut parts = Vec::with_capacity(show);
         for i in 0..show {
@@ -981,11 +1029,15 @@ unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
                     .into_owned()
             };
             if !name.is_empty() && !skip.iter().any(|s| *s == name) {
-                str_emit_line(&format!(
-                    " - attr(*, \"{name}\")= {}",
-                    str_atomic_summary(CAR(attrs))
-                ));
+                let summary = str_atomic_summary(CAR(attrs));
+                let sep = if summary.starts_with("Class") || summary.starts_with("language") {
+                    ""
+                } else {
+                    " "
+                };
+                str_emit_line(&format!(" - attr(*, \"{name}\")={sep}{summary}"));
             }
+
             attrs = CDR(attrs);
         }
     }
@@ -1011,6 +1063,11 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // (braced blocks collapsed to "{ ... }" on one line). The generic
         // vector path below must not see these: XLENGTH of a pairlist node
         // is garbage.
+        if sexp_has_class_name(x, "formula") {
+            str_emit_line(&str_language_summary(x));
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP {
             // str.default for expressions: "  expression(...)" with at most
             // three elements shown (round(0.75 * vec.len)) and " ..." when
