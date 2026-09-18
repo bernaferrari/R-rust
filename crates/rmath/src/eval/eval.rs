@@ -1021,6 +1021,43 @@ mod tests {
     }
 
     #[test]
+    fn slot_assign_default_check_does_not_bind_value_as_check() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("SlotChk", slots = c(x = "numeric"))
+o <- new("SlotChk")
+slot(o, "x") <- 1:3
+identical(as.numeric(o@x), c(1, 2, 3))
+"#,
+        );
+        let result = result.expect("slot(obj, name) <- value must not bind value to check=");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn new_copies_slots_from_superclass_object() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("TrackN", slots = c(x = "numeric", y = "numeric"))
+setClass("TrackCurveN", contains = "TrackN", slots = c(smooth = "numeric"))
+t1 <- new("TrackN", x = 1:4, y = 5:8)
+t2 <- new("TrackCurveN", t1, smooth = 9:12)
+identical(as.numeric(t2@x), as.numeric(1:4)) &&
+  identical(as.numeric(t2@y), as.numeric(5:8)) &&
+  identical(as.numeric(t2@smooth), as.numeric(9:12))
+"#,
+
+        );
+        let result = result.expect("new(Class, super, slot=) must copy superclass slots");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn methods_externalptr_typeof_and_class() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(

@@ -6,9 +6,10 @@
 
 use crate::sexp::accessors::ENCLOS;
 use crate::sexp::accessors::{
-    CADR, CAR, CDDR, CDR, CHAR, INTEGER_ELT, LOGICAL_ELT, NAMED, PRINTNAME, REAL_ELT, SET_INTEGER_ELT,
-    SET_LOGICAL_ELT, SET_REAL_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
+    CADR, CADDR, CAR, CDDR, CDR, CHAR, INTEGER_ELT, LOGICAL_ELT, NAMED, PRINTNAME, REAL_ELT,
+    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
+
 use crate::sexp::envir::Environment;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -180,16 +181,14 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let _chain_guard = protect(chain);
             let mut current_rhs = rhs;
             while TYPEOF(CADR(lhs_expr)) == SEXPTYPE::LANGSXP {
-                let assign_fn = get_assign_fcn_sym(CAR(lhs_expr));
-                if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP {
+                let assign_fn = replacement_fun_head(CAR(lhs_expr));
+                if assign_fn == R_NilValue() {
                     break;
                 }
                 crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
                 let repl = replace_tmp_call(assign_fn, tmp_sym, CDDR(lhs_expr), current_rhs);
-
                 let _repl = protect(repl);
                 current_rhs = crate::eval::eval::Rf_eval(repl, rho);
-
                 let _ = protect(current_rhs);
                 let next = CDR(chain);
                 if !next.is_null() && next != R_NilValue() && TYPEOF(next) == SEXPTYPE::LISTSXP {
@@ -198,8 +197,8 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 lhs_expr = CADR(lhs_expr);
             }
             if TYPEOF(lhs_expr) == SEXPTYPE::LANGSXP {
-                let assign_fn = get_assign_fcn_sym(CAR(lhs_expr));
-                if assign_fn != R_NilValue() && TYPEOF(assign_fn) == SEXPTYPE::SYMSXP {
+                let assign_fn = replacement_fun_head(CAR(lhs_expr));
+                if assign_fn != R_NilValue() {
                     crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
                     let repl = replace_tmp_call(assign_fn, tmp_sym, CDDR(lhs_expr), current_rhs);
                     let _repl = protect(repl);
@@ -207,6 +206,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     let _ = protect(current_rhs);
                 }
             }
+
             let var_sym = CADR(lhs_expr);
             if !var_sym.is_null() && TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
                 bind_assignment(var_sym, current_rhs, primval, rho);
@@ -221,15 +221,12 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let func_sym = CAR(lhs);
 
 
-            let assign_fn = if TYPEOF(func_sym) == SEXPTYPE::SYMSXP {
-                get_assign_fcn_sym(func_sym)
-            } else {
-                R_NilValue()
-            };
+            let assign_fn = replacement_fun_head(func_sym);
 
-            if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP {
+            if assign_fn == R_NilValue() {
                 return rhs;
             }
+
 
             let target_expr = Rf_eval(CADR(lhs), rho);
             let _target_guard = protect(target_expr);
@@ -334,8 +331,10 @@ unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP 
             _ => value,
         };
         let mut tail = crate::sexp::constructors::Rf_cons(value, R_NilValue());
+        SETTAG(tail, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
         let mut guards = vec![protect(tail)];
         let mut sub_args = Vec::new();
+
         let mut current = subs;
         while current != R_NilValue() && !current.is_null() {
             sub_args.push((CAR(current), TAG(current)));
@@ -355,16 +354,19 @@ unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP 
 
 unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if TYPEOF(assign_fn) != SEXPTYPE::SYMSXP {
+            return Rf_eval(call, rho);
+        }
         let name = crate::sexp::accessors::CHAR(crate::sexp::accessors::PRINTNAME(assign_fn));
         if name.is_null() {
             return Rf_eval(call, rho);
         }
-
         let Ok(name) = std::ffi::CStr::from_ptr(name).to_str() else {
             return Rf_eval(call, rho);
         };
 
         match name {
+
             "[<-" => crate::mainutils::subset::do_subassign(call, assign_fn, args, rho),
             "[[<-" => crate::mainutils::subset::do_subassign2(call, assign_fn, args, rho),
 
@@ -497,8 +499,10 @@ unsafe fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_
 unsafe fn replace_tmp_call(assign_fn: SEXP, tmp_sym: SEXP, rest: SEXP, rhs: SEXP) -> SEXP {
     unsafe {
         let rhs_cell = crate::sexp::constructors::Rf_cons(rhs, R_NilValue());
+        SETTAG(rhs_cell, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
         let _rhs_cell = protect(rhs_cell);
         let mut tail = rhs_cell;
+
         let mut guards = Vec::new();
         let mut current = rest;
         let mut cells = Vec::new();
@@ -521,6 +525,30 @@ unsafe fn replace_tmp_call(assign_fn: SEXP, tmp_sym: SEXP, rest: SEXP, rhs: SEXP
             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
         }
         call
+    }
+}
+
+/// Convert `f` or `pkg::f` / `pkg:::f` to the assignment function head.
+
+unsafe fn replacement_fun_head(fun: SEXP) -> SEXP {
+    unsafe {
+        if TYPEOF(fun) == SEXPTYPE::SYMSXP {
+            return get_assign_fcn_sym(fun);
+        }
+        if TYPEOF(fun) == SEXPTYPE::LANGSXP {
+            let op = CAR(fun);
+            let op_name = symbol_name(op);
+            if matches!(op_name.as_deref(), Some("::") | Some(":::"))
+                && TYPEOF(CADDR(fun)) == SEXPTYPE::SYMSXP
+            {
+                let assign = get_assign_fcn_sym(CADDR(fun));
+                if assign != R_NilValue() {
+                    let call = crate::sexp::constructors::Rf_lang3(op, CADR(fun), assign);
+                    return call;
+                }
+            }
+        }
+        R_NilValue()
     }
 }
 
