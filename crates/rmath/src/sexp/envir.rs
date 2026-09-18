@@ -838,13 +838,42 @@ fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     // renderPartial closing over partial()'s `key`) must fall through to
     // normal evaluation. Returning true here made evalListKeepMissing
     // substitute R_MissingArg for live free variables.
+    //
+    // GNU keeps MISSING=1 on the *cell* when the formal was not supplied,
+    // even after install_default_promises replaces CAR with a default
+    // promise. `setClass(..., slots=)` relies on `missing(representation)`.
+    if let Some(cell) = frame_binding_cell(rho.clone(), symbol.clone()) {
+        if unsafe { super::accessors::MISSING(cell) } != 0 {
+            return true;
+        }
+        return match unsafe {
+            Sexp::from_raw(super::accessors::CAR(cell))
+        } {
+            Some(val) => value_is_missing(val),
+            None => false,
+        };
+    }
     let val = match find_var_in_frame_safe(rho, symbol) {
         Some(v) => v,
         None => return false,
     };
-
     value_is_missing(val)
 }
+
+fn frame_binding_cell(rho: Sexp<'_>, symbol: Sexp<'_>) -> Option<SEXP> {
+    let frame = rho.try_frame().ok()?;
+    unsafe {
+        let mut cell = frame.as_raw();
+        while !cell.is_null() && cell != R_NilValue() {
+            if symbol_name_bytes_equal(TAG(cell), symbol.clone().as_raw()) {
+                return Some(cell);
+            }
+            cell = CDR(cell);
+        }
+    }
+    None
+}
+
 
 // ---------------------------------------------------------------------------
 // ddfindVar — safe version (dots lookup)

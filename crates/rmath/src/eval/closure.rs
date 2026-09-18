@@ -609,6 +609,14 @@ pub(super) unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result
                 return Err(format!("unused arguments ({})", unused.join(", ")));
             }
         }
+        // GNU matchArgs_NR: unmatched formals keep MISSING=1 on the
+        // frame cell so `missing(x)` stays TRUE after a default promise
+        // is installed (`function(x=1) missing(x)`).
+        for cell in &result_cells {
+            if is_missing_car(*cell) {
+                crate::sexp::accessors::SET_MISSING(*cell, 1);
+            }
+        }
 
         // Return the head of the matched-arguments chain.
         Ok(if result_cells.is_empty() {
@@ -616,6 +624,7 @@ pub(super) unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result
         } else {
             result_cells[0]
         })
+
     }
 }
 

@@ -537,6 +537,17 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
                 return hit;
             }
         }
+        // GNU package/namespace persist: reuse the live namespace so
+        // lazy-loaded closures keep `standardGeneric` and other ns bindings.
+        let package = name.strip_prefix("package:").unwrap_or(name.as_str());
+        if let Some(live) = crate::mainutils::essentials::cached_namespace_by_name(package) {
+            if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
+                crate::sexp::envir::defineVar(name_sym, live, cache);
+            }
+            return live;
+        }
+
+
         let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue());
         let _e = protect(env);
         if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {

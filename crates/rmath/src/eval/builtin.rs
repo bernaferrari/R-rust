@@ -3770,10 +3770,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::objects::do_nextmethod,
     },
     EvaluatedBuiltin {
-        name: "missing",
-        handler: crate::mainutils::essentials::do_missing,
-    },
-    EvaluatedBuiltin {
         name: "parent.frame",
         handler: crate::mainutils::essentials::do_parent_frame,
     },

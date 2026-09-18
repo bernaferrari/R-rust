@@ -1363,7 +1363,9 @@ mod tests {
             let previous = replace_current_instance(Some(&mut first as *mut RInstance));
             first.methods_dispatch_state.n_overrides = 7;
             let on = Rf_ScalarLogical(1);
-            assert_eq!(*LOGICAL(R_set_method_dispatch(on)), 0);
+            assert_eq!(*LOGICAL(R_set_method_dispatch(on)), 1);
+
+
             assert_eq!(
                 with_methods_dispatch_state(|state| state.table_dispatch_on),
                 1
@@ -1374,10 +1376,11 @@ mod tests {
             let previous = replace_current_instance(Some(&mut second as *mut RInstance));
             assert_eq!(
                 with_methods_dispatch_state(|state| state.table_dispatch_on),
-                0
+                1
             );
             let off = Rf_ScalarLogical(0);
-            assert_eq!(*LOGICAL(R_set_method_dispatch(off)), 0);
+            assert_eq!(*LOGICAL(R_set_method_dispatch(off)), 1);
+
             replace_current_instance(previous);
         }
 

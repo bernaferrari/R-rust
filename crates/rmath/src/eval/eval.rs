@@ -925,4 +925,15 @@ mod tests {
         let result = result.expect("missing(..1) should follow GNU Nth-cell rules");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn missing_stays_true_for_unsupplied_default() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "f <- function(x=1, slots) { force(slots); missing(x) }; identical(c(f(slots=0), f(2, slots=0), { y <- 0; g <- function(x=1) { y <- x; missing(x) }; g() }), c(TRUE, FALSE, TRUE))",
+        );
+        let result = result.expect("missing() must follow GNU default-formal rules");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
 }

@@ -403,10 +403,43 @@ pub unsafe fn do_isVirtualClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
-/// GNU `new(Class, ...)` — construct an S4 object.
-pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// Use the GNU `methods::new` closure once that namespace is loaded.
+unsafe fn methods_new_closure() -> Option<SEXP> {
     unsafe {
+        let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
+        let name = Rf_install(c"new".as_ptr());
+        let mut value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+        if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+            return None;
+        }
+        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+            value = crate::sexp::envir::forcePromise(value);
+        }
+        if TYPEOF(value) == SEXPTYPE::CLOSXP {
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+
+
+/// GNU `new(Class, ...)` — construct an S4 object.
+pub unsafe fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if let Some(fun) = methods_new_closure() {
+            return crate::eval::closure::applyClosure(
+                call,
+                fun,
+                args,
+                rho,
+                R_NilValue(),
+                TRUE,
+            );
+        }
         let class_arg = CAR(args);
+
         if class_arg.is_null() || class_arg == R_NilValue() {
             return R_NilValue();
         }

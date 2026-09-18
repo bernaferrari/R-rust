@@ -232,6 +232,32 @@ pub unsafe fn SETLEVELS(x: SEXP, v: c_int) {
     }
 }
 
+/// GNU `MISSING(x)` — gp bit 2 on a pairlist binding cell.
+pub unsafe fn MISSING(x: SEXP) -> c_int {
+    unsafe {
+        if !is_valid_sexp_ptr(x) {
+            return 0;
+        }
+        (((*x).sxpinfo.gp() & 0x04) != 0) as c_int
+    }
+}
+
+/// GNU `SET_MISSING(x, v)` — mark an unmatched formal on its frame cell.
+pub unsafe fn SET_MISSING(x: SEXP, v: c_int) {
+    unsafe {
+        if !is_valid_sexp_ptr(x) {
+            return;
+        }
+        let gp = if v != 0 {
+            (*x).sxpinfo.gp() | 0x04
+        } else {
+            (*x).sxpinfo.gp() & !0x04
+        };
+        (*x).sxpinfo.set_gp(gp);
+    }
+}
+
+
 /// Get the scalar flag.
 pub unsafe fn IS_SCALAR(x: SEXP, _type: c_int) -> c_int {
     unsafe {
