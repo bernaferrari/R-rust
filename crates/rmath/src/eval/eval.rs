@@ -1800,9 +1800,9 @@ TRUE
 a <- alist(x=, y=2)
 stopifnot(identical(names(a), c("x","y")))
 stopifnot(identical(a$y, 2))
-f <- function(x) x+1
-formals(f) <- a
-stopifnot(identical(names(formals(f)), c("x","y")))
+g <- function(x) x+1
+formals(g) <- a
+stopifnot(identical(names(formals(g)), c("x","y")))
 TRUE
 "#,
         );

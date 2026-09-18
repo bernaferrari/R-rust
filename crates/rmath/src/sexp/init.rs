@@ -128,9 +128,21 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         defineVar(Rf_install_in_current("as.list"), as_list_closure, base_env);
         eval_base_binding(
             base_env,
+            "as.list.default",
+            "function (x, ...) if (typeof(x) == \"list\") x else .Internal(as.vector(x, \"list\"))",
+        );
+
+        // GNU formals.R is `as.list(sys.call())[-1L]`. sys.call() forced as
+        // as.list's argument still sees the as.list frame (rport-qc8ct).
+        // Evaluate sys.call in alist first so missing formals stay missing.
+
+        eval_base_binding(
+            base_env,
             "alist",
             "function(...) { sc <- sys.call(); as.list(sc)[-1L] }",
         );
+
+
 
 
         // GNU pairlist.R: closures over .Internal(as.vector(..., "pairlist")).
