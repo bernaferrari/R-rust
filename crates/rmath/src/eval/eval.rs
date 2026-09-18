@@ -1148,6 +1148,41 @@ identical(withVisible(registerS3method("print", "RegInv2", function(x) x))$visib
     }
 
     #[test]
+    fn language_implicit_class_follows_gnu_lang2str() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+identical(class(quote((x))), "(") &&
+  identical(class(quote({1})), "{") &&
+  identical(class(quote(if (TRUE) 1)), "if") &&
+  identical(class(quote(sin(x))), "call") &&
+  identical(class(expression((x))), "expression")
+"#,
+        );
+        let result = result.expect("class() of language objects must use GNU lang2str");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn usemethod_dispatches_on_paren_and_expression() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+abc <- function(x, ...) UseMethod("abc", x)
+abc.default <- function(x, ...) "default"
+"abc.(" <- function(x) "paren"
+abc.expression <- function(x) "expr"
+identical(abc(expression((x))), "expr") &&
+  identical(abc(quote((x))), "paren") &&
+  identical(abc(quote(sin(x))), "default")
+"#,
+        );
+        let result = result.expect("UseMethod must see GNU implicit language classes");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn try_catch_finally_runs_after_body() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(

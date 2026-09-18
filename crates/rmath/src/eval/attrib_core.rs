@@ -10,10 +10,13 @@
 
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, SETCDR, TAG, TYPEOF};
+use crate::sexp::accessors::{
+    ATTRIB, CAR, CDR, CHAR, PRINTNAME, SET_ATTRIB, SETCAR, SETCDR, TAG, TYPEOF,
+};
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -240,6 +243,27 @@ pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
 // R_data_class — get the data class of an object
 // ---------------------------------------------------------------------------
 
+/// GNU `lang2str`: implicit class of a language object is the syntactic
+/// head (`if`, `while`, `for`, `=`, `<-`, `(`, `{`) or `"call"`.
+pub unsafe fn language_implicit_class_chars(obj: SEXP) -> SEXP {
+    unsafe {
+        let symb = CAR(obj);
+        if TYPEOF(symb) == SEXPTYPE::SYMSXP {
+            let pn = PRINTNAME(symb);
+            if !pn.is_null() {
+                let name = std::ffi::CStr::from_ptr(CHAR(pn)).to_bytes();
+                if matches!(
+                    name,
+                    b"if" | b"while" | b"for" | b"=" | b"<-" | b"(" | b"{"
+                ) {
+                    return pn;
+                }
+            }
+        }
+        Rf_mkChar(c"call".as_ptr())
+    }
+}
+
 /// Get the class of an object (returns the first class element).
 ///
 /// This is the equivalent of R's `R_data_class()`.
@@ -250,6 +274,21 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
             || class_val == R_NilValue()
             || TYPEOF(class_val) != SEXPTYPE::STRSXP
         {
+            if TYPEOF(x) == SEXPTYPE::LANGSXP {
+                return Rf_ScalarString(language_implicit_class_chars(x));
+            }
+            if TYPEOF(x) == SEXPTYPE::EXPRSXP {
+                return Rf_mkString(c"expression".as_ptr());
+            }
+            if TYPEOF(x) == SEXPTYPE::SYMSXP {
+                return Rf_mkString(c"name".as_ptr());
+            }
+            if TYPEOF(x) == SEXPTYPE::CLOSXP
+                || TYPEOF(x) == SEXPTYPE::SPECIALSXP
+                || TYPEOF(x) == SEXPTYPE::BUILTINSXP
+            {
+                return Rf_mkString(c"function".as_ptr());
+            }
 
             // Return the default class based on type
             let t = TYPEOF(x);

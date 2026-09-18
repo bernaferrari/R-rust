@@ -397,7 +397,8 @@ pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             } else if t == SEXPTYPE::EXPRSXP {
                 "expression"
             } else if t == SEXPTYPE::LANGSXP {
-                "call"
+                let chars = crate::eval::attrib_core::language_implicit_class_chars(x);
+                return Rf_mkString(CHAR(chars));
             } else if t == SEXPTYPE::SYMSXP {
                 "name"
             } else if t == SEXPTYPE::ENVSXP {
@@ -440,6 +441,12 @@ pub unsafe fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return class;
         }
 
+        if TYPEOF(x) == SEXPTYPE::LANGSXP {
+            let chars = crate::eval::attrib_core::language_implicit_class_chars(x);
+            return Rf_mkString(CHAR(chars));
+        }
+
+
         let implicit: &[&std::ffi::CStr] = match TYPEOF(x) {
             t if t == SEXPTYPE::INTSXP => &[c"integer", c"numeric"],
             t if t == SEXPTYPE::REALSXP => &[c"numeric"],
@@ -448,9 +455,9 @@ pub unsafe fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             t if t == SEXPTYPE::STRSXP => &[c"character"],
             t if t == SEXPTYPE::RAWSXP => &[c"raw"],
             t if t == SEXPTYPE::VECSXP => &[c"list"],
-            t if t == SEXPTYPE::LANGSXP => &[c"call"],
             _ => &[c"NULL"],
         };
+
 
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, implicit.len() as R_xlen_t);
         if result.is_null() {

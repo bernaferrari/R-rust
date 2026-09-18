@@ -72,12 +72,14 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
         let defenv = topenv(R_NilValue(), env);
 
-        // Get the object
+        // GNU do_usemethod: eval the optional object; otherwise GetObject.
         let obj = if !obj_arg.is_null() && obj_arg != R_NilValue() && obj_arg != R_MissingArg() {
-            obj_arg
+            crate::eval::eval::Rf_eval(obj_arg, env)
         } else {
             GetObject(cptr)
         };
+        let _obj = protect(obj);
+
 
         let mut ans: SEXP = ptr::null_mut();
         if usemethod(

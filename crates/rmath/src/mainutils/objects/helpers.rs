@@ -329,16 +329,22 @@ unsafe fn implicit_s3_class(x: SEXP) -> SEXP {
             (c"raw", false)
         } else if t == SEXPTYPE::VECSXP {
             (c"list", false)
+        } else if t == SEXPTYPE::EXPRSXP {
+            (c"expression", false)
         } else if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP {
             (c"function", false)
         } else if t == SEXPTYPE::SYMSXP {
             (c"name", false)
+        } else if t == SEXPTYPE::LANGSXP {
+            return Rf_ScalarString(crate::eval::attrib_core::language_implicit_class_chars(x));
         } else if t == SEXPTYPE::NILSXP {
             (c"NULL", false)
         } else {
             return R_data_class(x);
         };
         let mut names: Vec<&std::ffi::CStr> = Vec::new();
+
+
         if nd == 2 {
             names.push(c"matrix");
             names.push(c"array");
