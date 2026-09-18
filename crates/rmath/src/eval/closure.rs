@@ -62,6 +62,12 @@ pub fn apply_closure_safe<'a>(
     let cloenv = closure
         .try_cloenv()
         .map_err(|err| sexp_err("closure environment lookup", err))?;
+    let cloenv = unsafe {
+        Sexp::from_raw_unchecked(remap_methods_snapshot_cloenv(
+            closure.as_raw(),
+            cloenv.as_raw(),
+        ))
+    };
 
     // Match arguments to formals
     let matched = match_args_safe(formals.clone(), args.clone())?;
@@ -298,7 +304,28 @@ unsafe fn install_frame_vars(mut vars: SEXP, rho: SEXP) {
 
 /// Create the environment for a closure application.
 ///
-unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
+unsafe fn env_on_enclos_chain(mut start: SEXP, needle: SEXP) -> bool {
+    unsafe {
+        if needle.is_null() {
+            return false;
+        }
+        let empty = crate::sexp::globals::R_EmptyEnv();
+        let mut hops = 0;
+        while !start.is_null() && start != crate::sexp::globals::R_NilValue() && hops < 64 {
+            if start == needle {
+                return true;
+            }
+            if start == empty {
+                break;
+            }
+            start = crate::sexp::accessors::ENCLOS(start);
+            hops += 1;
+        }
+        false
+    }
+}
+
+unsafe fn remap_methods_snapshot_cloenv(_op: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
         else {
@@ -307,34 +334,30 @@ unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
         if cloenv.is_null() || cloenv == methods {
             return cloenv;
         }
+        let empty = crate::sexp::globals::R_EmptyEnv();
+        let base = crate::sexp::globals::R_BaseEnv();
+        let global = crate::sexp::globals::R_GlobalEnv();
+        // Never retarget special envs, or any env already on methods'
+        // parent chain (that would cycle methods → … → cloenv → methods).
+        if cloenv == empty || cloenv == base || cloenv == global {
+            return cloenv;
+        }
+        if env_on_enclos_chain(methods, cloenv) {
+            return cloenv;
+        }
         if crate::sexp::accessors::ENCLOS(cloenv) == methods {
             return cloenv;
         }
-        // MethodDefinition closures from the methods package (e.g.
-        // initialize,signature) must see .MakeSignature. Their saved
-        // enclosure is often emptyenv/base, not namespace:methods.
-        if crate::mainutils::coerce::IS_S4_OBJECT(op) != 0
-            && crate::sexp::accessors::TYPEOF(op) == SEXPTYPE::CLOSXP
-        {
-            // Never retarget global/base/empty: that would cycle
-            // methods → imports → base → methods.
-            if cloenv != crate::sexp::globals::R_EmptyEnv()
-                && cloenv != crate::sexp::globals::R_BaseEnv()
-                && cloenv != crate::sexp::globals::R_GlobalEnv()
-            {
-                let parent = crate::sexp::accessors::ENCLOS(cloenv);
-                if parent.is_null()
-                    || parent == crate::sexp::globals::R_EmptyEnv()
-                    || parent == crate::sexp::globals::R_BaseEnv()
-                {
-                    crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
-                    crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
-                    return cloenv;
-                }
-            }
+        // Methods-package snapshot frames (S4 MethodDefinition, compiler
+        // closures, generic tables) often enclose emptyenv/base instead of
+        // namespace:methods, so GETFUN dies before reaching base.
+        let parent = crate::sexp::accessors::ENCLOS(cloenv);
+        if parent.is_null() || parent == empty || parent == base {
+            crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
+            crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
+            return cloenv;
         }
-        // Only generic environments carry .AllMTable. User closures must
-        // keep their lexical enclosure.
+        // Generic environments carry .AllMTable.
         let all_mtable = crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr());
         let tables = crate::sexp::envir::R_findVarInFrame(cloenv, all_mtable);
         if tables.is_null()
@@ -353,6 +376,7 @@ unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
         cloenv
     }
 }
+
 
 fn is_function_sexp(value: SEXP) -> bool {
     let kind = unsafe { TYPEOF(value) };
