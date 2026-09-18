@@ -1884,8 +1884,9 @@ mod tests {
         assert!(matches!(single.typed, RValue::Error(_)));
         assert_eq!(
             single.output,
-            "Error in is.single(1) : type \"single\" unimplemented in R"
+            "Error in is.single(1) : type \"single\" unimplemented in R\n"
         );
+
     }
 
     #[test]

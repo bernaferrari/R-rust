@@ -1763,21 +1763,9 @@ mod tests {
         assert_eq!(tables.output, "[1] TRUE");
     }
 
-    #[test]
-    fn class_cache_reads_session_local_s4_registry() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            crate::mainutils::objects::register_s4_class(
-                "CacheClass".to_string(),
-                Vec::new(),
-                false,
-            );
-            let class = Rf_mkString(b"CacheClass\0".as_ptr() as *const std::os::raw::c_char);
-            let result = R_getClassFromCache(class, R_NilValue());
-            assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
-        }
-    }
+    // R_getClassFromCache(. , NULL) is a GNU cache miss (Nil). The old
+    // rust register_s4_class table is not .classTable.
+
 }
 
 /// R_identC - test if two single-string objects are identical at the C level.

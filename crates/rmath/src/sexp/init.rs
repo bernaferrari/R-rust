@@ -560,11 +560,11 @@ unsafe fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
         let _v = super::protect::protect(value);
         let symbol = Rf_install_in_current(name);
         defineVar(symbol, value, base_env);
-        // GNU installFunTab leaves SYMVALUE unbound for closures. The
-        // port binds primitives there first; deparse uses SYMVALUE to
-        // decide PP_FUNCALL/inlist, so a leftover primitive would wrap
-        // `if` arguments unlike stock R.
-        SET_SYMVALUE(symbol, R_UnboundValue());
+        // GNU defineVar writes the closure into the symbol value slot.
+        // Deparse uses SYMVALUE to distinguish primitives (PP_FUNCALL,
+        // inlist++) from closures (plain call, no inlist++).
+        SET_SYMVALUE(symbol, value);
+
 
     }
 }

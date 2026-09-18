@@ -1057,6 +1057,26 @@ identical(as.numeric(t2@x), as.numeric(1:4)) &&
     }
 
     #[test]
+    fn as_assign_superclass_replace_does_not_crash() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("AsTrk", slots = c(x = "numeric", y = "numeric"))
+setClass("AsCurve", contains = "AsTrk", slots = c(smooth = "numeric"))
+t1 <- new("AsTrk", x = 1:3, y = 4:6)
+o <- new("AsCurve")
+as(o, "AsTrk") <- t1
+identical(as.numeric(o@x), as.numeric(1:3)) &&
+  identical(as.numeric(o@y), as.numeric(4:6))
+"#,
+        );
+        let result = result.expect("as<- superclass replace must not crash");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn register_s3method_is_invisible() {
         let mut session = RSession::new();
         let (result, stdout, _) = session.eval_script_with_output_capture(

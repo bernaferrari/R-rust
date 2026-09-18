@@ -15,6 +15,7 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
 
         print2buff(b"new(\0".as_ptr() as *const c_char, d);
         print_r_string_literal(&class_name, d);
+        print2buff(b", \0".as_ptr() as *const c_char, d);
 
         // GNU deparse.c: names(getClassDef(class)@slots), not the local
         // fallback setClass table. .S3Class formula objects have no .Data
@@ -24,19 +25,32 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
             .or_else(|| crate::mainutils::objects::s4_all_slots(&class_name))
             .unwrap_or_else(|| s4_instance_slot_names(s));
         let has_data = slots.iter().any(|slot| slot == ".Data");
+        let mut slot_values: Vec<(String, SEXP)> = Vec::new();
         for slot_name in &slots {
-            let Some(value) = s4_deparse_slot_value(s, slot_name) else {
-                continue;
-            };
-            print2buff(b", \0".as_ptr() as *const c_char, d);
-
-            print_argument_name(slot_name, d);
-            print2buff(b" = \0".as_ptr() as *const c_char, d);
-            let old_fnarg = (*d).fnarg;
-            (*d).fnarg = true;
-            deparse2buff(value, d);
-            (*d).fnarg = old_fnarg;
+            if let Some(value) = s4_deparse_slot_value(s, slot_name) {
+                slot_values.push((slot_name.clone(), value));
+            }
         }
+        if !slot_values.is_empty() {
+            let n = slot_values.len() as R_xlen_t;
+            let slotlist = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+            let _slotlist = protect(slotlist);
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _names = protect(names);
+            for (i, (slot_name, value)) in slot_values.iter().enumerate() {
+                SET_VECTOR_ELT(slotlist, i as R_xlen_t, *value);
+                if let Ok(c_name) = std::ffi::CString::new(slot_name.as_str()) {
+                    SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(c_name.as_ptr()));
+                }
+            }
+            crate::sexp::attrib_core::setAttrib(
+                slotlist,
+                Rf_install(b"names\0".as_ptr() as *const c_char),
+                names,
+            );
+            vec2buff(slotlist, d, true);
+        }
+
 
         // GNU: non-S4SXP objects without a .Data slot also deparse asS3(s).
         // Restrict to `.S3Class` (formula/oldClass) so slot-only S4 objects
@@ -471,11 +485,16 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 let symval_type = TYPEOF(symval);
                 let is_builtin =
                     symval_type == SEXPTYPE::BUILTINSXP || symval_type == SEXPTYPE::SPECIALSXP;
-                let syntax_pp = if is_builtin {
+                let bound_nonprim = !symval.is_null()
+                    && symval != R_NilValue()
+                    && symval != R_UnboundValue()
+                    && !is_builtin;
+                let syntax_pp = if is_builtin || bound_nonprim {
                     None
                 } else {
                     getPPinfo_for_symbol(op)
                 };
+
                 if is_builtin {
                     userbinop = 0;
                 } else if isUserBinop(op) {
