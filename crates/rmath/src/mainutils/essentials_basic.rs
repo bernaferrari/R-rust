@@ -123,49 +123,85 @@ unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
 // do_cat — print to stdout
 // ---------------------------------------------------------------------------
 
-/// R's `cat(..., file="", sep=" ", append=FALSE)` for stdout or file paths.
+/// GNU `.Internal(cat(list(...), file, sep, fill, labels, append))`,
+/// plus the tagged-primitive form used by `.Primitive("cat")`.
 pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut sep = " ".to_string();
         let mut file: Option<String> = None;
         let mut append = false;
         let mut parts: Vec<String> = Vec::new();
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            match arg_tag_name(current).as_deref() {
-                Some("sep") => sep = elt_to_string(arg, 0),
-                Some("file") => {
-                    let path = elt_to_string(arg, 0);
-                    if path.is_empty() {
-                        file = None;
-                    } else {
-                        file = Some(path);
-                    }
-                }
-                Some("append") => {
-                    if !arg.is_null() && arg != R_NilValue() && XLENGTH(arg) > 0 {
-                        let value =
-                            if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
-                                *INTEGER(arg)
-                            } else {
-                                FALSE
-                            };
-                        append = value != FALSE && value != NA_INTEGER;
-                    }
-                }
-                _ => {
-                    if !arg.is_null() && arg != R_NilValue() {
-                        let n = XLENGTH(arg).max(1);
-                        for i in 0..n {
-                            parts.push(cat_elt_to_string(arg, i));
 
-                        }
+        if is_internal_cat_args(args) {
+            let objs = CAR(args);
+            let file_arg = CAR(CDR(args));
+            let sep_arg = CAR(CDR(CDR(args)));
+            let append_arg = CAR(CDR(CDR(CDR(CDR(CDR(args))))));
+            sep = elt_to_string(sep_arg, 0);
+            let path = elt_to_string(file_arg, 0);
+            if !path.is_empty() {
+                file = Some(path);
+            }
+            if !append_arg.is_null() && append_arg != R_NilValue() && XLENGTH(append_arg) > 0 {
+                let value =
+                    if TYPEOF(append_arg) == SEXPTYPE::LGLSXP || TYPEOF(append_arg) == SEXPTYPE::INTSXP
+                    {
+                        *INTEGER(append_arg)
+                    } else {
+                        FALSE
+                    };
+                append = value != FALSE && value != NA_INTEGER;
+            }
+            if !objs.is_null() && objs != R_NilValue() && TYPEOF(objs) == SEXPTYPE::VECSXP {
+                for i in 0..XLENGTH(objs) {
+                    let elt = VECTOR_ELT(objs, i);
+                    if elt.is_null() || elt == R_NilValue() {
+                        continue;
+                    }
+                    let n = XLENGTH(elt).max(1);
+                    for j in 0..n {
+                        parts.push(cat_elt_to_string(elt, j));
                     }
                 }
             }
-            current = CDR(current);
+        } else {
+            let mut current = args;
+            while !current.is_null() && current != R_NilValue() {
+                let arg = CAR(current);
+                match arg_tag_name(current).as_deref() {
+                    Some("sep") => sep = elt_to_string(arg, 0),
+                    Some("file") => {
+                        let path = elt_to_string(arg, 0);
+                        if path.is_empty() {
+                            file = None;
+                        } else {
+                            file = Some(path);
+                        }
+                    }
+                    Some("append") => {
+                        if !arg.is_null() && arg != R_NilValue() && XLENGTH(arg) > 0 {
+                            let value =
+                                if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
+                                    *INTEGER(arg)
+                                } else {
+                                    FALSE
+                                };
+                            append = value != FALSE && value != NA_INTEGER;
+                        }
+                    }
+                    _ => {
+                        if !arg.is_null() && arg != R_NilValue() {
+                            let n = XLENGTH(arg).max(1);
+                            for i in 0..n {
+                                parts.push(cat_elt_to_string(arg, i));
+                            }
+                        }
+                    }
+                }
+                current = CDR(current);
+            }
         }
+
         let output = parts.join(&sep);
         if let Some(path) = file {
             if let Ok(mut handle) = std::fs::OpenOptions::new()
@@ -185,6 +221,24 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         R_NilValue()
+    }
+}
+
+fn is_internal_cat_args(args: SEXP) -> bool {
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            return false;
+        }
+        if TYPEOF(CAR(args)) != SEXPTYPE::VECSXP {
+            return false;
+        }
+        let mut n = 0;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            n += 1;
+            current = CDR(current);
+        }
+        n >= 6
     }
 }
 

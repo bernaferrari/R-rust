@@ -199,12 +199,28 @@ pub unsafe fn getPPinfo_for_symbol(sym: SEXP) -> Option<PPinfo> {
             return None;
         }
         let name_bytes = std::ffi::CStr::from_ptr(name).to_bytes_with_nul();
-        crate::mainutils::names::R_FunTab
+        let pp = crate::mainutils::names::R_FunTab
             .iter()
             .find(|entry| entry.name == name_bytes)
-            .map(|entry| entry.pp)
+            .map(|entry| entry.pp)?;
+        // FunTab still lists GNU `.Internal` wrappers such as `cat`.
+        // After eval_base_binding installs the closure, deparse must
+        // not treat that name as PP_FUNCALL or `if` arguments wrap
+        // unlike stock R. Syntax (`if`, `{`, `+`) stays on FunTab.
+        if pp.kind == PP_FUNCALL || pp.kind == PP_RETURN {
+            let val = crate::sexp::envir::R_findVarInFrame(
+                crate::sexp::globals::R_BaseEnv(),
+                sym,
+            );
+            if !val.is_null() && TYPEOF(val) == SEXPTYPE::CLOSXP {
+                return None;
+            }
+        }
+        Some(pp)
     }
 }
+
+
 
 /// Resolve the `[` vs `[[` discriminator for a PP_SUBSET call.
 ///

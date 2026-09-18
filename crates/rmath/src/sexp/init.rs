@@ -4,7 +4,8 @@
 //! environment chain itself is owned by `RInstance`; there is intentionally no
 //! process-global fallback interpreter.
 
-use super::accessors::{CDR, SETCAR, SETTAG, TYPEOF};
+use super::accessors::{CDR, SETCAR, SETTAG, SET_SYMVALUE, TYPEOF};
+
 use super::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang3, Rf_lang4, Rf_mkString,
 };
@@ -490,10 +491,21 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
          nlines = -1L)
     .Internal(deparse(expr, width.cutoff, backtick, control, nlines))"#,
         );
+        // GNU cat.R: visible `cat` is a closure so deparse does not treat
+        // it as a primitive (inlist++), matching stock if-as-arg wrapping.
+        eval_base_binding(
+            base_env,
+            "cat",
+            r#"function(..., file = "", sep = " ", fill = FALSE,
+                labels = NULL, append = FALSE)
+    .Internal(cat(list(...), file, sep, fill, labels, append))"#,
+        );
+
         // GNU source.R: withAutoprint is a closure so body()/formals()
         // and eval-etc's withVisible(withAutoprint({...})) match stock.
         eval_base_binding(
             base_env,
+
             "withAutoprint",
             r#"function(exprs, evaluated = FALSE, local = parent.frame(),
                           print. = TRUE, echo = TRUE, max.deparse.length = Inf,
@@ -546,7 +558,14 @@ unsafe fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
         }
         let value = crate::eval::eval::Rf_eval(exprs[0], base_env);
         let _v = super::protect::protect(value);
-        defineVar(Rf_install_in_current(name), value, base_env);
+        let symbol = Rf_install_in_current(name);
+        defineVar(symbol, value, base_env);
+        // GNU installFunTab leaves SYMVALUE unbound for closures. The
+        // port binds primitives there first; deparse uses SYMVALUE to
+        // decide PP_FUNCALL/inlist, so a leftover primitive would wrap
+        // `if` arguments unlike stock R.
+        SET_SYMVALUE(symbol, R_UnboundValue());
+
     }
 }
 

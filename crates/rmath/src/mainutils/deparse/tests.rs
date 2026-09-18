@@ -251,3 +251,25 @@ fn test_ppinfo_values_from_names_rs() {
     assert_eq!(PREC_PERCENT, N_PREC_PERCENT);
     assert_eq!(PREC_SUBSET, N_PREC_SUBSET);
 }
+
+#[test]
+fn cat_is_gnu_closure_so_if_args_wrap() {
+    let mut session = RSession::new();
+    let (result, _, _) = session.eval_script_with_output_capture(
+        r#"
+stopifnot(!is.primitive(cat), is.function(cat))
+cat("ab", "c", sep = "")
+f <- function(obj) {
+    cat("__ not parse()able __:", if (is.environment(obj)) "environment" else "hasMissObj(.) is true", "\n")
+}
+d <- deparse(f)
+identical(d[2], "{") &&
+  grepl("if \\(is.environment\\(obj\\)) $", d[3]) &&
+  grepl("\"environment\"", d[4])
+"#,
+    );
+    let result = result.expect("GNU cat must be a closure and wrap if-as-arg");
+    assert_eq!(result.logical_elt(0), Some(crate::sexp::ffi::TRUE));
+}
+
+
