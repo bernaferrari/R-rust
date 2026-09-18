@@ -3063,6 +3063,25 @@ isS4(parent) && is(parent, "ParentShimForAs") &&
     }
 
     #[test]
+    fn classes_methods_cancoerce_multiclass_s3() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("A", representation(stuff="numeric"))
+setOldClass("foo")
+setAs("foo", "A", function(from) new("A", foo=from))
+o3 <- structure(1:7, class = c("foo", "bar"))
+canCoerce(o3, "A")
+"#,
+        );
+        let result = result.expect("classes-methods.R canCoerce length(class)>1");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+    #[test]
     fn methods_namespace_has_no_empty_c_or_rep() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
