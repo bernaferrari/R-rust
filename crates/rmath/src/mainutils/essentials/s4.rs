@@ -743,10 +743,9 @@ unsafe fn strip_s4_data_part(value: SEXP) -> SEXP {
         if value.is_null() || value == R_NilValue() {
             return value;
         }
-        if crate::mainutils::coerce::IS_S4_OBJECT(value) == 0 {
-            return value;
-        }
-        let data = crate::mainutils::duplicate::shallow_duplicate(value);
+        // Deep-copy so setAttrib on the data part cannot mutate the
+        // original generic's shared attribute pairlist.
+        let data = crate::mainutils::duplicate::Rf_duplicate(value);
         crate::sexp::accessors::UNSET_S4_OBJECT(data);
         crate::sexp::attrib_core::setAttrib(
             data,
@@ -1076,6 +1075,7 @@ unsafe fn raise_slot_miss(obj: SEXP, name: &str) -> ! {
                 name, type_str
             )
         };
+
         std::panic::panic_any(RError { message: msg })
     }
 }

@@ -3156,6 +3156,35 @@ isBaseNamespace(.BaseNamespaceEnv) &&
     }
 
     #[test]
+    fn objects_is_gnu_ls_alias() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+exists("objects", envir=baseenv(), inherits=FALSE) &&
+  identical(objects, ls)
+"#,
+        );
+        let result = result.expect("GNU attach.R: ls <- objects <-");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn methods_onload_populates_class_metadata() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+ns <- asNamespace("methods")
+nC <- sum(startsWith(ls(envir=ns, all.names=TRUE), ".__C__"))
+nC > 0 && exists("cacheMetaData", envir=ns, inherits=FALSE)
+"#,
+        );
+        let result = result.expect("methods .onLoad cacheMetaData must populate .__C__");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn methods_namespace_exports_body_assign() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(

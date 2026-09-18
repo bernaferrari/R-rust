@@ -1955,20 +1955,11 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             cell = CDR(cell);
         }
 
-        let mut names = Vec::new();
-        if TYPEOF(env) == SEXPTYPE::ENVSXP {
-            let mut frame = FRAME(env);
-            while !frame.is_null() && frame != R_NilValue() {
-                let value = CAR(frame);
-                if value != crate::sexp::globals::R_UnboundValue()
-                    && let Some(name) = symbol_name(TAG(frame))
-                    && (all_names || !name.starts_with('.'))
-                {
-                    names.push(name);
-                }
-                frame = CDR(frame);
-            }
-        }
+        let mut names = if TYPEOF(env) == SEXPTYPE::ENVSXP {
+            super::shared::frame_binding_names(env, all_names)
+        } else {
+            Vec::new()
+        };
 
         if sorted {
             names.sort_by(|a, b| super::sets::collate_str(a, b));
