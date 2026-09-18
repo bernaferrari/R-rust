@@ -549,6 +549,7 @@ unsafe fn eval_source_text_with_options(
             }
             let n = XLENGTH(parsed);
             let mut result = R_NilValue();
+            let mut last_visible = FALSE;
             for i in 0..n {
                 let element = VECTOR_ELT(parsed, i);
                 if element.is_null() || element == R_NilValue() {
@@ -569,9 +570,9 @@ unsafe fn eval_source_text_with_options(
                     max_deparse_length,
                 );
 
-
                 result = crate::eval::eval::Rf_eval(element, env);
-                if print_eval && crate::sexp::globals::R_Visible() != FALSE {
+                last_visible = crate::sexp::globals::R_Visible();
+                if print_eval && last_visible != FALSE {
                     let print_args = Rf_cons(result, R_NilValue());
                     let _print_args = protect(print_args);
                     crate::mainutils::essentials_basic::do_print(
@@ -582,8 +583,8 @@ unsafe fn eval_source_text_with_options(
                     );
                 }
             }
-            crate::sexp::globals::set_R_Visible(FALSE);
-            return result;
+            return with_visible_result(result, last_visible);
+
         }
         // GNU source() echo with keep.source: original file text via spans
         // (comments, spacing, skip.echo header).
@@ -609,6 +610,7 @@ unsafe fn eval_source_text_with_options(
         }
         let mut lastshown: i32 = 0;
         let mut result = R_NilValue();
+        let mut last_visible = FALSE;
         for (i, &(expr, start, end)) in spans.iter().enumerate() {
 
             if expr.is_null() || expr == R_NilValue() {
@@ -633,7 +635,8 @@ unsafe fn eval_source_text_with_options(
                 lastshown = lastl;
             }
             result = crate::eval::eval::Rf_eval(expr, env);
-            if print_eval && crate::sexp::globals::R_Visible() != FALSE {
+            last_visible = crate::sexp::globals::R_Visible();
+            if print_eval && last_visible != FALSE {
                 let print_args = Rf_cons(result, R_NilValue());
                 let _print_args = protect(print_args);
                 crate::mainutils::essentials_basic::do_print(
@@ -655,8 +658,8 @@ unsafe fn eval_source_text_with_options(
                 true,
             );
         }
-        crate::sexp::globals::set_R_Visible(FALSE);
-        result
+        with_visible_result(result, last_visible)
+
     }
 }
 
@@ -740,6 +743,7 @@ unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -
                     .map_err(|e| e.to_string())
             });
             let mut result = R_NilValue();
+            let mut last_visible = FALSE;
             if let Ok(spans) = spans {
                 let exprs: Vec<SEXP> = spans.iter().map(|&(e, _, _)| e).collect();
                 let vec_sexp = crate::sexp::constructors::Rf_allocVector3(
@@ -762,6 +766,7 @@ unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -
                         expr, vec_sexp, i as usize,
                     );
                     result = crate::eval::eval::Rf_eval(expr, env);
+                    last_visible = crate::sexp::globals::R_Visible();
                 }
                 crate::mainutils::srcref::set_current_srcref_location(
                     std::ptr::null_mut(),
@@ -769,18 +774,15 @@ unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -
                     0,
                 );
             }
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return result;
+            return with_visible_result(result, last_visible);
         }
         let parsed = parse_source_expression_vector(content);
         let _parsed = protect(parsed);
-        // do_eval()-style element-wise evaluation: Rf_eval returns an
-        // expression vector unchanged, so source() walks the statements
-        // itself (eval.c eval expression loop).
-        let result = if parsed.is_null() || parsed == R_NilValue() {
-            R_NilValue()
+        let (result, last_visible) = if parsed.is_null() || parsed == R_NilValue() {
+            (R_NilValue(), FALSE)
         } else {
             let mut result = R_NilValue();
+            let mut last_visible = FALSE;
             let n = XLENGTH(parsed);
             for i in 0..n {
                 let element = VECTOR_ELT(parsed, i);
@@ -788,12 +790,12 @@ unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -
                     continue;
                 }
                 result = crate::eval::eval::Rf_eval(element, env);
+                last_visible = crate::sexp::globals::R_Visible();
             }
-            result
+            (result, last_visible)
         };
 
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        result
+        with_visible_result(result, last_visible)
     }
 }
 
@@ -835,7 +837,7 @@ pub unsafe fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(fun) = utils_example_closure() {
-            return crate::eval::closure::applyClosure(
+            let result = crate::eval::closure::applyClosure(
                 call,
                 fun,
                 args,
@@ -843,7 +845,10 @@ pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 R_NilValue(),
                 TRUE,
             );
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return result;
         }
+
         let topic_arg = CAR(args);
         if topic_arg.is_null() || topic_arg == R_NilValue() || topic_arg == R_MissingArg() {
             eprintln!("example: no topic specified");

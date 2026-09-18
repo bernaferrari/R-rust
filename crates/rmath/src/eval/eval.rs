@@ -1210,6 +1210,57 @@ tryCatch(test[2:4] <- ls, error = function(e) NULL)
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn source_returns_withvisible_list_invisibly() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+f <- tempfile()
+writeLines("1+1", f)
+r <- source(f, echo = FALSE)
+identical(r, list(value = 2, visible = TRUE)) &&
+  !withVisible(source(f, echo = FALSE))$visible
+"#,
+        );
+        let result = result.expect("source() must return invisible(list(value, visible))");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn s4_class_representations_compare_slots() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("IdentA", contains = "formula")
+setClass("IdentB", contains = "list")
+!identical(getClass("IdentA"), getClass("IdentB"))
+"#,
+        );
+        let result = result.expect("distinct S4 class defs must not be identical");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn formula_s4_subclass_uses_language_typeof() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+mForm <- setClass("mFormIdent", contains = "formula")
+extends("mFormIdent", "oldClass") &&
+  isS4(mf <- mForm(~ f(x))) &&
+  identical(typeof(mf), "language") &&
+  identical(mf, eval(parse(text = deparse(mf))))
+"#,
+        );
+        let result = result.expect("S4 formula subclass must deparse/parse like GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
 
     #[test]
     fn s4_list_dput_includes_data_part() {

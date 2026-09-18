@@ -16,23 +16,21 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
         print2buff(b"new(\0".as_ptr() as *const c_char, d);
         print_r_string_literal(&class_name, d);
 
-        let mut slots = crate::mainutils::objects::s4_all_slots(&class_name)
+        // GNU deparse.c: names(getClassDef(class)@slots), not the local
+        // fallback setClass table. .S3Class formula objects have no .Data
+        // slot; the language body is emitted via asS3() below.
+        let slots = crate::mainutils::objects::gnu_s4_slot_names(&class_name)
+            .filter(|names| !names.is_empty())
+            .or_else(|| crate::mainutils::objects::s4_all_slots(&class_name))
             .unwrap_or_else(|| s4_instance_slot_names(s));
-        // methods::setClass list/expression/etc. objects are the data
-        // part; slotNames includes .Data even when the local class table
-        // was not updated.
-        if crate::mainutils::coerce::IS_S4_OBJECT(s) != 0
-            && TYPEOF(s) != SEXPTYPE::OBJSXP
-            && !slots.iter().any(|slot| slot == ".Data")
-        {
-            slots.insert(0, ".Data".to_string());
-        }
-        for slot_name in slots {
-            let Some(value) = s4_deparse_slot_value(s, &slot_name) else {
+        let has_data = slots.iter().any(|slot| slot == ".Data");
+        for slot_name in &slots {
+            let Some(value) = s4_deparse_slot_value(s, slot_name) else {
                 continue;
             };
             print2buff(b", \0".as_ptr() as *const c_char, d);
-            print_argument_name(&slot_name, d);
+
+            print_argument_name(slot_name, d);
             print2buff(b" = \0".as_ptr() as *const c_char, d);
             let old_fnarg = (*d).fnarg;
             (*d).fnarg = true;
@@ -40,10 +38,46 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
             (*d).fnarg = old_fnarg;
         }
 
+        // GNU: non-S4SXP objects without a .Data slot also deparse asS3(s).
+        // Restrict to `.S3Class` (formula/oldClass) so slot-only S4 objects
+        // do not grow a trailing empty argument.
+        let has_s3_class = {
+            let s3_sym = Rf_install(c".S3Class".as_ptr());
+            let s3 = crate::sexp::attrib_core::getAttrib(s, s3_sym);
+            !s3.is_null() && s3 != R_NilValue()
+        };
+        if has_s3_class && TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int() && !has_data {
+            if let Some(s3) = s4_as_s3_view(s) {
+                print2buff(b", \0".as_ptr() as *const c_char, d);
+                deparse2buff(s3, d);
+            }
+        }
 
 
         print2buff(b")\0".as_ptr() as *const c_char, d);
         true
+    }
+}
+
+/// GNU `asS3(s)` for deparse: drop the S4 bit and restore `.S3Class`.
+unsafe fn s4_as_s3_view(s: SEXP) -> Option<SEXP> {
+    unsafe {
+        let view = crate::mainutils::duplicate::duplicate(s);
+        if view.is_null() {
+            return None;
+        }
+        crate::sexp::accessors::UNSET_S4_OBJECT(view);
+
+        let s3_sym = Rf_install(c".S3Class".as_ptr());
+        let s3_class = crate::sexp::attrib_core::getAttrib(view, s3_sym);
+        if !s3_class.is_null() && s3_class != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                view,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                s3_class,
+            );
+        }
+        Some(view)
     }
 }
 

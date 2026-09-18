@@ -306,9 +306,11 @@ pub fn internal_result_invisible(name: &str) -> bool {
             | "attach"
             | "detach"
             | "source"
+            | "example"
             | "withAutoprint"
             | "dput"
             | "layout"
+
 
     )
 }

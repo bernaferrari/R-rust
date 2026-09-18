@@ -16,10 +16,13 @@ use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
     ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, LENGTH, LOGICAL, PRIMOFFSET,
-    RAW, REAL, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    PRINTNAME, RAW, REAL, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
+use crate::sexp::attrib_core::{R_RowNamesSymbol, getAttrib};
+use crate::sexp::constructors::Rf_length;
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
+
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -231,6 +234,118 @@ fn compute_strictness(flags: c_int) -> c_int {
     str
 }
 
+unsafe fn attr_tag_name(tag: SEXP) -> Option<&'static str> {
+    unsafe {
+        if tag.is_null() || tag == R_NilValue() {
+            return None;
+        }
+        let pname = PRINTNAME(tag);
+        if pname.is_null() || pname == R_NilValue() {
+            return None;
+        }
+        let ptr = CHAR(pname);
+        if ptr.is_null() {
+            return None;
+        }
+        std::ffi::CStr::from_ptr(ptr).to_str().ok()
+    }
+}
+
+/// GNU `identical.c` attribute comparison: tagged pairlists, either by
+/// order (`IDENT_ATTR_BY_ORDER`) or as a set of unique tags.
+unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
+    unsafe {
+        let ax = ATTRIB(x);
+        let ay = ATTRIB(y);
+        let ax_empty = ax.is_null() || ax == R_NilValue();
+        let ay_empty = ay.is_null() || ay == R_NilValue();
+        if ax_empty && ay_empty {
+            return 1;
+        }
+        if ax_empty || ay_empty {
+            return 0;
+        }
+        if TYPEOF(ax) != SEXPTYPE::LISTSXP || TYPEOF(ay) != SEXPTYPE::LISTSXP {
+            return 1;
+        }
+        if flags & IDENT_ATTR_BY_ORDER != 0 {
+            let mut px = ax;
+            let mut py = ay;
+            while !px.is_null() && px != R_NilValue() {
+                if py.is_null() || py == R_NilValue() {
+                    return 0;
+                }
+                let tag = TAG(px);
+                if attr_tag_name(tag) == Some("row.names") {
+                    let atrx = getAttrib(x, R_RowNamesSymbol());
+                    let atry = getAttrib(y, R_RowNamesSymbol());
+                    if R_compute_identical(atrx, atry, flags) == 0 {
+                        return 0;
+                    }
+                } else if R_compute_identical(CAR(px), CAR(py), flags) == 0 {
+                    return 0;
+                }
+                if R_compute_identical(
+                    if TAG(px).is_null() {
+                        R_NilValue()
+                    } else {
+                        PRINTNAME(TAG(px))
+                    },
+                    if TAG(py).is_null() {
+                        R_NilValue()
+                    } else {
+                        PRINTNAME(TAG(py))
+                    },
+                    flags,
+                ) == 0
+                {
+                    return 0;
+                }
+                px = CDR(px);
+                py = CDR(py);
+            }
+            if !py.is_null() && py != R_NilValue() {
+                return 0;
+            }
+            return 1;
+        }
+
+        if Rf_length(ax) != Rf_length(ay) {
+            return 0;
+        }
+        let mut elx = ax;
+        while !elx.is_null() && elx != R_NilValue() {
+            let Some(tx) = attr_tag_name(TAG(elx)) else {
+                return 0;
+            };
+            let mut ely = ay;
+            let mut found = false;
+            while !ely.is_null() && ely != R_NilValue() {
+                if attr_tag_name(TAG(ely)) == Some(tx) {
+                    if tx == "row.names" {
+                        let atrx = getAttrib(x, R_RowNamesSymbol());
+                        let atry = getAttrib(y, R_RowNamesSymbol());
+                        if R_compute_identical(atrx, atry, flags) == 0 {
+                            return 0;
+                        }
+                    } else if R_compute_identical(CAR(elx), CAR(ely), flags) == 0 {
+                        return 0;
+                    }
+                    found = true;
+                    break;
+                }
+                ely = CDR(ely);
+            }
+            if !found {
+                return 0;
+            }
+            elx = CDR(elx);
+        }
+        1
+    }
+}
+
+
 /// Core recursive identical comparison of two SEXP values.
 ///
 /// This is the workhorse behind R's `identical()` function. It compares
@@ -276,24 +391,14 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             return 0;
         }
 
-        // Attribute comparison: both must have attributes or both must not.
-        // Full set comparison would require streql and other helpers; for now
-        // we do a simple check: both null or both non-null.
-        let ax = ATTRIB(x);
-        let ay = ATTRIB(y);
-        if flags & IDENT_ATTR_BY_ORDER != 0 {
-            // Compare attributes by order (simpler)
-            if R_compute_identical(ax, ay, flags) == 0 {
-                return 0;
-            }
-        } else {
-            // Compare as set: both empty or both present (simplified)
-            let ax_empty = ax.is_null() || ax == R_NilValue();
-            let ay_empty = ay.is_null() || ay == R_NilValue();
-            if ax_empty != ay_empty {
-                return 0;
-            }
+        // GNU identical.c: compare tagged pairlist attributes. Default
+        // attrib.as.set=TRUE matches tags regardless of order (S4 slots
+        // live here). The previous "both present" check treated every
+        // pair of S4 objects as identical.
+        if attributes_identical(x, y, flags) == 0 {
+            return 0;
         }
+
 
         let t = TYPEOF(x);
 

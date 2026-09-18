@@ -302,8 +302,8 @@ fn is_basic_s4_data_class(name: &str) -> bool {
     )
 }
 
-
 pub(crate) fn s4_class_extends(class1: &str, class2: &str) -> bool {
+    sync_s4_class_graph_from_gnu(class1);
     with_objects_state(|state| {
         s4_extends_registered(&state.s4_classes, class1, class2, &mut HashSet::new())
     })
@@ -315,6 +315,7 @@ pub(crate) fn s4_class_extends(class1: &str, class2: &str) -> bool {
 /// so that the nearest inherited method wins and `callNextMethod()` can resume
 /// immediately after the method recorded in `.defined`.
 pub(crate) fn s4_class_distance(class1: &str, class2: &str) -> Option<usize> {
+    sync_s4_class_graph_from_gnu(class1);
     with_objects_state(|state| {
         fn distance(
             classes: &HashMap<String, S4ClassDef>,
@@ -341,6 +342,118 @@ pub(crate) fn s4_class_distance(class1: &str, class2: &str) -> Option<usize> {
         distance(&state.s4_classes, class1, class2, &mut HashSet::new())
     })
 }
+
+/// GNU `setClass` writes `.__C__*` metadata; the Rust registry is only
+/// filled by the fallback `do_setClass`. Mirror GNU contains so C
+/// `standardGeneric` can inherit methods the same way `selectMethod` does.
+fn sync_s4_class_graph_from_gnu(name: &str) {
+    let mut pending = vec![name.to_string()];
+    let mut seen = HashSet::new();
+    while let Some(class) = pending.pop() {
+        if !seen.insert(class.clone()) {
+            continue;
+        }
+        let Some(parents) = (unsafe { gnu_class_contains(&class) }) else {
+            continue;
+        };
+
+        with_objects_state(|state| {
+            if let Some(def) = state.s4_classes.get_mut(&class) {
+                for parent in &parents {
+                    if !def.contains.iter().any(|existing| existing == parent) {
+                        def.contains.push(parent.clone());
+                    }
+                }
+            } else {
+                state.s4_classes.insert(
+                    class.clone(),
+                    S4ClassDef {
+                        slots: Vec::new(),
+                        slot_types: HashMap::new(),
+                        contains: parents.clone(),
+                        virtual_class: false,
+                        has_validity: false,
+                    },
+                );
+            }
+        });
+        pending.extend(parents);
+    }
+}
+
+unsafe fn gnu_class_def(name: &str) -> Option<SEXP> {
+    unsafe {
+        let meta = format!(".__C__{name}");
+        let meta_c = std::ffi::CString::new(meta.as_str()).ok()?;
+        let symbol = Rf_install(meta_c.as_ptr());
+        let mut value = crate::sexp::envir::R_findVar(symbol, crate::sexp::globals::R_GlobalEnv());
+        if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+            if let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") {
+                value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
+            }
+        }
+        if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
+            value = crate::sexp::envir::forcePromise(value);
+        }
+        if value.is_null()
+            || value == crate::sexp::globals::R_UnboundValue()
+            || value == crate::sexp::globals::R_NilValue()
+        {
+            None
+        } else {
+            Some(value)
+        }
+    }
+}
+
+unsafe fn named_list_names(list: SEXP) -> Vec<String> {
+    unsafe {
+        if list.is_null() || list == crate::sexp::globals::R_NilValue() {
+            return Vec::new();
+        }
+        let names = getAttrib(list, crate::eval::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == crate::sexp::globals::R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP
+        {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for i in 0..LENGTH(names) {
+            let elt = STRING_ELT(names, i as i64);
+            if elt.is_null() {
+                continue;
+            }
+            let ptr = CHAR(elt);
+            if ptr.is_null() {
+                continue;
+            }
+            let name = std::ffi::CStr::from_ptr(ptr)
+                .to_string_lossy()
+                .into_owned();
+            if !name.is_empty() {
+                out.push(name);
+            }
+        }
+        out
+    }
+}
+
+unsafe fn gnu_class_contains(name: &str) -> Option<Vec<String>> {
+    unsafe {
+        let def = gnu_class_def(name)?;
+        let contains_sym = Rf_install(c"contains".as_ptr());
+        Some(named_list_names(getAttrib(def, contains_sym)))
+    }
+}
+
+pub(crate) unsafe fn gnu_s4_slot_names(name: &str) -> Option<Vec<String>> {
+    unsafe {
+        let def = gnu_class_def(name)?;
+        let slots_sym = Rf_install(c"slots".as_ptr());
+        Some(named_list_names(getAttrib(def, slots_sym)))
+    }
+}
+
+
 
 fn s4_extends_registered(
     classes: &HashMap<String, S4ClassDef>,
