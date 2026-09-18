@@ -29,14 +29,19 @@ fn main() -> ExitCode {
 
     let mut session = RSession::new();
     session.enable_host_process_capabilities();
-
     let result = session.eval_script(&code);
+
     let mut stdout = std::io::stdout();
-    let _ = stdout.write_all(result.output.as_bytes());
+    let _ = stdout.write_all(result.stdout.as_bytes());
     let _ = stdout.flush();
+    let mut stderr = std::io::stderr();
+    let _ = stderr.write_all(result.stderr.as_bytes());
+    let _ = stderr.flush();
 
     if let RValue::Error(message) = &result.typed {
-        eprintln!("Error: {message}");
+        if result.stderr.is_empty() {
+            eprintln!("Error: {message}");
+        }
         return ExitCode::from(1);
     }
     ExitCode::SUCCESS

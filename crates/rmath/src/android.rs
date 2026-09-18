@@ -50,7 +50,10 @@ fn result_from_sexp(sexp: Sexp<'_>) -> RResult {
         value: typed.numeric_scalar_value(),
         typed,
         output: output::format_sexp_direct(sexp),
+        stdout: String::new(),
+        stderr: String::new(),
     }
+
 }
 
 fn result_from_eval(
@@ -67,28 +70,39 @@ fn result_from_eval(
             }
         }
     }
-    let mut display = String::new();
-    display.push_str(&captured.stdout);
-    display.push_str(&captured.stderr);
+    let mut stdout = captured.stdout;
+    if visible {
+        let rendered = output::format_sexp_direct(sexp.clone());
+        if !stdout.is_empty() && !stdout.ends_with('\n') {
+            stdout.push('\n');
+        }
+        stdout.push_str(&rendered);
+    }
+    let captured_stderr_len = captured.stderr.len();
+    let mut stderr = captured.stderr;
+    if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
+        if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
+            stderr.push_str(&block);
+        }
+    }
+    let mut display = captured.interleaved;
     if visible {
         if !display.is_empty() && !display.ends_with('\n') {
             display.push('\n');
         }
         display.push_str(&output::format_sexp_direct(sexp.clone()));
     }
-    // main.c REPL tail: after the auto-printed value of the final top-level
-    // statement, upstream flushes warnings that statement deferred
-    // (PrintWarnings runs post-PrintValueEnv in the REPL loop).
-    if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
-        if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
-            display.push_str(&block);
-        }
+    if stderr.len() > captured_stderr_len {
+        display.push_str(&stderr[captured_stderr_len..]);
     }
+
+    if captured.truncated {
+        stdout.push_str("\n[captured console output truncated by runtime limit]");
+        display.push_str("\n[captured console output truncated by runtime limit]");
+    }
+
     if let Some(limit) = limit {
         result_budget::truncate(&mut display, limit);
-    }
-    if captured.truncated {
-        display.push_str("\n[captured console output truncated by runtime limit]");
     }
     let typed = if export_value {
         RValue::from_sexp(sexp)
@@ -99,7 +113,10 @@ fn result_from_eval(
         value: typed.numeric_scalar_value(),
         typed,
         output: display,
+        stdout,
+        stderr,
     }
+
 }
 
 fn error_result(message: impl Into<String>) -> RResult {
@@ -107,8 +124,11 @@ fn error_result(message: impl Into<String>) -> RResult {
         value: 0.0,
         typed: RValue::Error(message.into()),
         output: String::new(),
+        stdout: String::new(),
+        stderr: String::new(),
     }
     .with_error_output()
+
 }
 
 /// Top-level eval failure: keep the captured output — it already contains the
@@ -565,9 +585,14 @@ pub struct RResult {
     pub value: f64,
     /// Owned typed value for Android/FFI callers that should not parse output.
     pub typed: RValue,
-    /// R-style display output.
+    /// Combined display (stdout then stderr) for embed hosts.
     pub output: String,
+    /// Rscript stdout — print/cat/auto-print only.
+    pub stdout: String,
+    /// Rscript stderr — warnings and REprintf.
+    pub stderr: String,
 }
+
 
 fn saturating_usize(value: u64) -> usize {
     usize::try_from(value).unwrap_or(usize::MAX)

@@ -172,32 +172,17 @@ pub unsafe fn PrintWarnings() {
     }
 }
 
-/// Flush collected warnings at a top-level statement boundary — the port of
-/// main.c's REPL loop tail (`if (R_CollectWarnings) PrintWarnings();` after
-/// each evaluated expression). Upstream writes to stderr and the terminal
-/// interleaves it with stdout in real time; the session model keeps one
-/// output stream, so the block is appended to the interleaved stdout capture
-/// (falling back to real stdout when no capture is active). Deliberately
-/// bypasses `sink()` diversion — warnings are stderr in upstream.
+/// Flush collected warnings at a top-level statement boundary.
+/// GNU writes this block with REprintf (process stderr).
 pub unsafe fn print_warnings_at_statement_boundary() {
     unsafe {
         let Some(block) = take_warnings_block() else {
             return;
         };
-        let routed = instance::with_current_instance(|inst| {
-            let mut capture = (*inst).output_capture.borrow_mut();
-            if capture.is_capturing() {
-                capture.capture_stdout_bypassing_sink(&block);
-                true
-            } else {
-                false
-            }
-        });
-        if routed != Some(true) {
-            print!("{}", block);
-        }
+        crate::sexp::output::capture_stderr(&block);
     }
 }
+
 
 /// do_printDeferredWarnings — print deferred warnings.
 pub unsafe fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {

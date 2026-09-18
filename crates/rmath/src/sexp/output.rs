@@ -17,20 +17,25 @@ use super::object::Sexp;
 pub struct RCapturedOutput {
     pub stdout: String,
     pub stderr: String,
+    /// Chronological stdout+stderr for embed hosts (GNU terminal order).
+    pub interleaved: String,
     pub truncated: bool,
 }
+
 
 /// One capture layer owns its budget, including traffic forwarded to it.
 #[derive(Debug, Default)]
 struct CaptureFrame {
     stdout: Option<String>,
     stderr: Option<String>,
+    interleaved: Option<String>,
     truncated: bool,
     used_bytes: usize,
     split_stdout: bool,
     sink_depth_at_start: usize,
     connection: Option<(*mut RInstance, i32)>,
 }
+
 
 #[derive(Clone, Copy)]
 enum OutputStream {
@@ -74,7 +79,11 @@ impl CaptureFrame {
                 &mut self.used_bytes,
                 &mut self.truncated,
             );
+            if let Some(interleaved) = &mut self.interleaved {
+                interleaved.push_str(msg);
+            }
             return !split;
+
         }
         false
     }
@@ -100,9 +109,11 @@ impl OutputCaptureState {
         let frame = CaptureFrame {
             stdout: stdout.then(String::new),
             stderr: stderr.then(String::new),
+            interleaved: (stdout || stderr).then(String::new),
             split_stdout: split,
             ..CaptureFrame::default()
         };
+
         let outer = std::mem::replace(&mut self.current, frame);
         if outer.active() {
             self.stack.push(outer);
@@ -125,8 +136,10 @@ impl OutputCaptureState {
         RCapturedOutput {
             stdout: frame.stdout.unwrap_or_default(),
             stderr: frame.stderr.unwrap_or_default(),
+            interleaved: frame.interleaved.unwrap_or_default(),
             truncated: frame.truncated,
         }
+
     }
 
     pub(crate) fn is_capturing(&self) -> bool {
