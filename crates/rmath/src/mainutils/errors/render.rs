@@ -35,11 +35,17 @@ pub(super) unsafe fn getCurrentCall() -> SEXP {
             return globals::R_NilValue();
         }
         let mut c = &*ctx;
-        // Skip CTXT_BUILTIN contexts and promise-evaluation contexts
-        // (bare CTXT_RETURN, null call — pushed while forcing a promise)
+        // GNU getCurrentCall: if the top frame is CTXT_BUILTIN, walk past it
+        // once. Ops (`>`, `+`) are builtins, so warning() from DispatchGroup
+        // stores R_NilValue and PrintWarnings omits the `In x > y :` prefix.
+        if (c.callflag & crate::sexp::context::ctxt_flags::CTXT_BUILTIN) != 0
+            && !c.nextcontext.is_null()
+        {
+            c = &*c.nextcontext;
+        }
+        // Skip promise-evaluation contexts (bare CTXT_RETURN, null call)
         // so errors raised during a forced argument keep the attribution
-        // of the enclosing R call, like upstream getCurrentCall's
-        // CTXT_FUNCTION requirement.
+        // of the enclosing R call.
         while (c.callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) == 0
             && !c.nextcontext.is_null()
             && usable_call(c.call) == globals::R_NilValue()
@@ -47,6 +53,7 @@ pub(super) unsafe fn getCurrentCall() -> SEXP {
             c = &*c.nextcontext;
         }
         usable_call(c.call)
+
     }
 }
 

@@ -351,6 +351,10 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 pub unsafe fn do_mode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
+        if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::LANGSXP {
+            let chars = crate::eval::attrib_core::language_implicit_class_chars(x);
+            return Rf_mkString(CHAR(chars));
+        }
         let s = CString::new(mode_name(x)).unwrap_or_default();
         Rf_mkString(s.as_ptr())
     }

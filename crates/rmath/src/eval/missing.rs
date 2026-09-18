@@ -329,36 +329,7 @@ unsafe fn classForGroupDispatch(obj: SEXP) -> SEXP {
         if obj.is_null() || obj == R_NilValue() {
             return R_NilValue();
         }
-
-        let klass = getAttrib(obj, R_ClassSymbol());
-        if !klass.is_null()
-            && klass != R_NilValue()
-            && TYPEOF(klass) == SEXPTYPE::STRSXP
-            && LENGTH(klass) > 0
-        {
-            return klass;
-        }
-
-        // Fall back to implicit class
-        let t = TYPEOF(obj);
-        let type_str = match t {
-            x if x == SEXPTYPE::LGLSXP => "logical",
-            x if x == SEXPTYPE::INTSXP => "integer",
-            x if x == SEXPTYPE::REALSXP => "numeric",
-            x if x == SEXPTYPE::CPLXSXP => "complex",
-            x if x == SEXPTYPE::STRSXP => "character",
-            x if x == SEXPTYPE::RAWSXP => "raw",
-            x if x == SEXPTYPE::VECSXP => "list",
-            x if x == SEXPTYPE::LISTSXP => "list",
-            x if x == SEXPTYPE::NILSXP => "NULL",
-            x if x == SEXPTYPE::CLOSXP => "function",
-            x if x == SEXPTYPE::SPECIALSXP => "function",
-            x if x == SEXPTYPE::BUILTINSXP => "function",
-            _ => "unknown",
-        };
-        Rf_ScalarString(crate::sexp::symbol::Rf_install(
-            type_str.as_ptr() as *const c_char
-        ))
+        crate::eval::attrib_core::R_data_class(obj)
     }
 }
 

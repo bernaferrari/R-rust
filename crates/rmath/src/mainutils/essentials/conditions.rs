@@ -65,10 +65,18 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 set_signalled_condition(std::ptr::null_mut());
                 let silent = as_bool_arg(silent_arg, rho);
 
-                // Stock try() composes "Error in <deparsed call>: msg\n" from
-                // the deparsed try() call (the condition call is the internal
-                // doTryCatch frame, remapped to the try() call for the prefix).
-                let dcall_sexp = crate::mainutils::deparse::deparse1s(_call);
+                // GNU try() prints conditionCall(e). `@` and other
+                // specials attach the failing language object; fall back
+                // to the try() call when that is missing (doTryCatch remap).
+                let display_call = if !expr.is_null()
+                    && expr != R_NilValue()
+                    && TYPEOF(expr) == SEXPTYPE::LANGSXP
+                {
+                    expr
+                } else {
+                    _call
+                };
+                let dcall_sexp = crate::mainutils::deparse::deparse1s(display_call);
                 let dcall: String = if !dcall_sexp.is_null() && dcall_sexp != R_NilValue() {
                     let elt = crate::sexp::accessors::STRING_ELT(dcall_sexp, 0);
                     if elt.is_null() {
@@ -93,7 +101,6 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     .map(str::chars)
                     .map_or(0, |c| c.count());
                 let mut prefix = format!("Error in {dcall} : ");
-                // stock: 14L + 2*nchar(dcall, "w") + nchar(first line, "w") > 75L
                 let width = 14 + 2 * dcall.chars().count() + first_line_len;
                 if width > 75 {
                     prefix.push_str("\n  ");
@@ -101,8 +108,12 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let out_text = format!("{prefix}{message}\n");
 
                 if !silent {
-                    eprint!("{out_text}");
+                    crate::sexp::output::capture_stderr(&out_text);
+                    if crate::mainutils::errors::collect_warnings() > 0 {
+                        crate::mainutils::errors::print_warnings_at_statement_boundary();
+                    }
                 }
+
 
                 // The stored condition keeps the internal doTryCatch frame as
                 // its call, exactly like stock tryCatch (which try() wraps).

@@ -236,7 +236,7 @@ pub unsafe fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 "no applicable method for `@` applied to an object of class \"{}\"",
                 class_str
             );
-            std::panic::panic_any(RError { message: msg });
+            crate::mainutils::errors::errorcall_str(call, &msg);
         }
 
         crate::mainutils::essentials::s4::R_do_slot(object, nlist)

@@ -758,71 +758,9 @@ pub fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupR
 
 }
 
-// ---------------------------------------------------------------------------
-// matchArgs — safe version
-// ---------------------------------------------------------------------------
+// Argument matching for closures lives in eval/closure.rs
+// (`match_closure_args` / GNU matchArgs). Do not add a second matcher here.
 
-/// Match actual arguments to formal parameters.
-#[must_use]
-pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Option<Sexp<'a>> {
-    match_args_result(formals, args).ok().flatten()
-}
-
-/// Checked argument matching.
-pub fn match_args_result<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
-    if !formals.clone().is_pairlist() {
-        return Ok(Some(args));
-    }
-
-    let mut result: Option<Sexp<'a>> = None;
-    let mut result_tail: Option<Sexp<'a>> = None;
-
-    let missing_arg = unsafe { Sexp::from_raw_unchecked(R_MissingArg()) };
-
-    for f in PairlistIter::new(formals) {
-        let ftag = match f
-            .try_tag()
-            .map_err(|err| sexp_err("formal argument tag lookup", err))?
-        {
-            tag if tag.clone().is_nil() => continue,
-            tag => tag,
-        };
-
-        let matched = PairlistIter::new(args.clone())
-            .find(|a| a.clone().try_tag().ok() == Some(ftag.clone()));
-
-        let car_val = match matched {
-            Some(m) => m
-                .try_car()
-                .map_err(|err| sexp_err("matched argument value lookup", err))?,
-            None => missing_arg.clone(),
-        };
-
-        let cell = unsafe { Rf_cons(car_val.as_raw(), R_NilValue()) };
-        if cell.is_null() {
-            return Ok(None);
-        }
-        unsafe { SETTAG(cell, ftag.as_raw()) };
-        let cell = Sexp::try_from_raw(cell).map_err(|err| sexp_err("matched cell", err))?;
-
-        if result.is_none() {
-            result = Some(cell.clone());
-            result_tail = Some(cell);
-        } else {
-            unsafe {
-                SETCDR(
-                    result_tail
-                        .unwrap_or_else(|| panic!("unexpected None"))
-                        .as_raw(),
-                    cell.clone().as_raw(),
-                );
-            }
-            result_tail = Some(cell);
-        }
-    }
-
-    Ok(result.or_else(|| unsafe { Sexp::from_raw(R_NilValue()) }))
-}
 
 // ---------------------------------------------------------------------------
 // isMissing — safe version
@@ -1632,19 +1570,6 @@ mod tests {
         assert!(find_var_in_frame_result(sexp_env, sexp_symbol).is_err());
     }
 
-    #[test]
-    fn test_checked_match_args_reports_malformed_formals() {
-        let _session = crate::sexp::session::RSession::new();
-        let formals = memory::with_arena(|arena| arena.alloc_list_chain(1));
-        let args = unsafe { R_NilValue() };
-        let sexp_formals = Sexp::from_raw(formals).expect("formals");
-        let sexp_args = Sexp::from_raw(args).expect("args");
-
-        let matched = match_args_result(sexp_formals, sexp_args).expect("malformed tag is skipped");
-        assert_eq!(matched.expect("empty match result").as_raw(), unsafe {
-            R_NilValue()
-        });
-    }
 
     #[test]
     fn test_safe_define_and_find_var() {

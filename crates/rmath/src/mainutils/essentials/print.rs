@@ -779,11 +779,19 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 lines = vec![lines[0].clone(), middles.join(";"), lines[last].clone()];
             }
             let prefix = if t == SEXPTYPE::LANGSXP {
-                "language"
+                let mode_chars =
+                    crate::eval::attrib_core::language_implicit_class_chars(x);
+                let mode = std::ffi::CStr::from_ptr(CHAR(mode_chars)).to_string_lossy();
+                if mode.as_ref() == "(" {
+                    " language, mode \"(\":".to_string()
+                } else {
+                    " language".to_string()
+                }
             } else {
-                "symbol"
+                " symbol".to_string()
             };
-            str_emit_line(&format!(" {} {}", prefix, lines.join(" ")));
+            str_emit_line(&format!("{} {}", prefix, lines.join(" ")));
+
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }

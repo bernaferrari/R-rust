@@ -1181,6 +1181,46 @@ identical(abc(expression((x))), "expr") &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn mode_and_str_of_paren_language_follow_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+identical(mode(quote((x))), "(") &&
+  identical(mode(quote(sin(x))), "call") &&
+  identical(mode(quote({1})), "{")
+"#,
+        );
+
+        let result = result.expect("mode() of language objects must use GNU lang2str");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture("str(quote((x)))\n");
+        assert!(
+            captured.stdout.contains(r#"language, mode "(": (x)"#),
+            "str() of paren language must include GNU mode suffix, got {:?}",
+            captured.stdout
+        );
+
+    }
+
+    #[test]
+    fn match_closure_args_follows_gnu_three_pass() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+f <- function(abc, abd, ...) list(abc, abd, list(...))
+identical(f(abc = 1, abd = 2, extra = 3), list(1, 2, list(extra = 3))) &&
+  identical(f(1, 2, 3), list(1, 2, list(3))) &&
+  identical(f(abd = 2, abc = 1), list(1, 2, list())) &&
+  identical(f(abc = 1, ab = 2), list(1, 2, list()))
+"#,
+        );
+        let result = result.expect("closure matching must follow GNU matchArgs");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
     #[test]
     fn try_catch_finally_runs_after_body() {
