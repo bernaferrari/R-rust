@@ -19,7 +19,9 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
+
 
 // ---------------------------------------------------------------------------
 // Pre-interned attribute name symbols
@@ -281,6 +283,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 let nd = XLENGTH(dim);
                 if nd == 2 {
                     let result = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+                    let _result_guard = protect(result);
                     SET_STRING_ELT(result, 0, Rf_mkChar(c"matrix".as_ptr()));
                     SET_STRING_ELT(result, 1, Rf_mkChar(c"array".as_ptr()));
                     return result;
@@ -289,6 +292,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                     return Rf_mkString(c"array".as_ptr());
                 }
             }
+
             if TYPEOF(x) == SEXPTYPE::LANGSXP {
                 return Rf_ScalarString(language_implicit_class_chars(x));
             }
