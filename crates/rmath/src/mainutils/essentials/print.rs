@@ -519,24 +519,37 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
                     _ => na_count += 1,
                 }
             }
-            let names: Vec<&str> = if na_count > 0 {
-                vec!["Mode", "FALSE", "TRUE", "NAs"]
-            } else {
-                vec!["Mode", "FALSE", "TRUE"]
-            };
+            let mut names = vec!["Mode"];
+            if false_count > 0 {
+                names.push("FALSE");
+            }
+            if true_count > 0 {
+                names.push("TRUE");
+            }
+            if na_count > 0 {
+                names.push("NAs");
+            }
             let result = named_summary_result(SEXPTYPE::STRSXP, &names);
             if result.is_null() {
                 return result;
             }
             let _result_guard = protect(result);
-            SET_STRING_ELT(result, 0, Rf_mkChar(c"logical".as_ptr()));
-            let false_text = CString::new(false_count.to_string()).unwrap_or_default();
-            let true_text = CString::new(true_count.to_string()).unwrap_or_default();
-            SET_STRING_ELT(result, 1, Rf_mkChar(false_text.as_ptr()));
-            SET_STRING_ELT(result, 2, Rf_mkChar(true_text.as_ptr()));
+            let mut i = 0;
+            SET_STRING_ELT(result, i, Rf_mkChar(c"logical".as_ptr()));
+            i += 1;
+            if false_count > 0 {
+                let false_text = CString::new(false_count.to_string()).unwrap_or_default();
+                SET_STRING_ELT(result, i, Rf_mkChar(false_text.as_ptr()));
+                i += 1;
+            }
+            if true_count > 0 {
+                let true_text = CString::new(true_count.to_string()).unwrap_or_default();
+                SET_STRING_ELT(result, i, Rf_mkChar(true_text.as_ptr()));
+                i += 1;
+            }
             if na_count > 0 {
                 let na_text = CString::new(na_count.to_string()).unwrap_or_default();
-                SET_STRING_ELT(result, 3, Rf_mkChar(na_text.as_ptr()));
+                SET_STRING_ELT(result, i, Rf_mkChar(na_text.as_ptr()));
             }
             return result;
         }

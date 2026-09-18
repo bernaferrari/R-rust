@@ -1637,6 +1637,24 @@ invisible(NULL)
         );
     }
 
+    #[test]
+    fn summary_true_prints_like_gnu() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "summary(TRUE)\ninvisible(NULL)\n",
+        );
+        assert_eq!(
+            captured.stdout,
+            "   Mode    TRUE \nlogical       1 \n",
+            "summary(TRUE) must match GNU print.summaryDefault, got {:?}",
+            captured.stdout
+        );
+
+    }
+
+
+
+
 
 
 

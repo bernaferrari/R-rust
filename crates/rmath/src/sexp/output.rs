@@ -1878,11 +1878,37 @@ fn format_summary_real_value(x: Sexp<'_>, i: R_xlen_t) -> String {
     "NA".to_string()
 }
 
+fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
+    unsafe {
+        let digits = crate::mainutils::options::GetOptionDigits();
+        let digits = 3.max(digits - 3);
+        let old = crate::mainutils::format::format_get_R_print();
+        let previous = crate::mainutils::format::format_set_R_print(
+            crate::mainutils::format::RPrint {
+                digits,
+                scipen: old.scipen,
+                na_width: old.na_width,
+                na_width_noquote: old.na_width_noquote,
+            },
+        );
+        let rendered = format_vector_stock(x, false);
+        crate::mainutils::format::format_set_R_print(previous);
+        rendered
+    }
+}
+
+
 fn format_summary_default(x: Sexp<'_>) -> Option<String> {
     if !has_class(x.clone(), "summaryDefault") || !has_class(x.clone(), "table") {
         return None;
     }
-    let names = table_names(x.clone())?;
+    let Some(names) = table_names(x.clone()) else {
+        if x.clone().typeof_() != SEXPTYPE::REALSXP {
+            return None;
+        }
+        return Some(format_summary_default_unnamed_numeric(x));
+    };
+
     let values: Vec<String> = match x.clone().typeof_() {
         SEXPTYPE::REALSXP => (0..x.clone().len())
             .map(|i| {
@@ -1939,7 +1965,8 @@ fn format_summary_default(x: Sexp<'_>) -> Option<String> {
         .map(|(value, width)| format!("{value:>width$}"))
         .collect::<Vec<_>>()
         .join(" ");
-    Some(format!("{name_line}\n{value_line}"))
+    Some(format!("{name_line} \n{value_line} "))
+
 }
 
 fn list_names(x: Sexp<'_>) -> Vec<String> {
@@ -3226,9 +3253,13 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_matrix(x.clone()) {
                 return output;
             }
+            if let Some(output) = format_summary_default(x.clone()) {
+                return output;
+            }
             let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
+
 
         SEXPTYPE::RAWSXP => {
             if x.clone().len() == 0 {
