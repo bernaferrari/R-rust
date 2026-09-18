@@ -1059,13 +1059,25 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn methods_definition_data_slot_is_the_closure() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); x <- new(\"MethodDefinition\"); isS4(x) && typeof(x) == \"closure\" && is.function(x@.Data) && isTRUE(validObject(x))",
+        );
+        let result = result.expect("MethodDefinition@.Data is the closure like GNU getDataPart");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
 
-
-
-
-
-
-
+    #[test]
+    fn methods_setmethod_dispatches_on_s4_class() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); setClass(\"foo\", representation(x=\"numeric\", y=\"numeric\")); xx <- new(\"foo\", x=1, y=2); ff <- args(getGeneric(\"$\")); body(ff) <- \"testit\"; setMethod(\"$\", \"foo\", ff); identical(getGeneric(\"$\")(xx), \"testit\")",
+        );
+        let result = result.expect("setMethod + generic dispatch must match GNU primitives.R");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
 
     #[test]
     fn methods_setclass_defines_s4_class() {

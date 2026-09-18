@@ -773,6 +773,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "remove",
+        handler: crate::mainutils::essentials::do_rm,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "substitute",
         handler: crate::mainutils::coerce::do_substitute,
         restore_visibility_always: true,

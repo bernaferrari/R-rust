@@ -102,12 +102,49 @@ pub unsafe fn do_environmentIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 /// defineVar per element, last one wins). Returns the environment.
 pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let envir_arg = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
-            CAR(CDR(args))
+        // GNU user-facing list2env is a closure:
+        //   list2env(x, envir = NULL, parent = parent.frame(), hash, size)
+        //   .Internal(list2env(x, envir))
+        // We are that closure + Internal. Named `hash`/`parent` must not
+        // be taken as `envir`.
+        let mut x = R_NilValue();
+        let mut envir_arg = R_NilValue();
+        let mut parent_arg = if !_rho.is_null() && _rho != R_NilValue() {
+            _rho
         } else {
-            R_NilValue()
+            crate::sexp::globals::R_GlobalEnv()
         };
+        let mut saw_x = false;
+        let envir_tag = Rf_install(c"envir".as_ptr());
+        let parent_tag = Rf_install(c"parent".as_ptr());
+        let x_tag = Rf_install(c"x".as_ptr());
+        let hash_tag = Rf_install(c"hash".as_ptr());
+        let size_tag = Rf_install(c"size".as_ptr());
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let val = CAR(cell);
+            let tag = TAG(cell);
+            if tag == envir_tag {
+                envir_arg = val;
+            } else if tag == parent_tag {
+                if TYPEOF(val) == SEXPTYPE::ENVSXP {
+                    parent_arg = val;
+                }
+            } else if tag == hash_tag || tag == size_tag {
+            } else if tag == x_tag || tag.is_null() || tag == R_NilValue() {
+                if tag == x_tag {
+                    x = val;
+                    saw_x = true;
+                } else if !saw_x {
+                    x = val;
+                    saw_x = true;
+                } else if TYPEOF(val) == SEXPTYPE::ENVSXP || val == R_NilValue() {
+                    envir_arg = val;
+                }
+            }
+            cell = CDR(cell);
+        }
+
 
         let x_type = TYPEOF(x);
         let is_list = x_type == SEXPTYPE::VECSXP.as_c_int();
@@ -118,20 +155,14 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
 
         let envir = if envir_arg.is_null() || envir_arg == R_NilValue() {
-            // envir = NULL: fresh env under parent = parent.frame() (the
-            // caller's evaluation frame for a builtin).
-            let parent = if !_rho.is_null() && _rho != R_NilValue() {
-                _rho
-            } else {
-                crate::sexp::globals::R_GlobalEnv()
-            };
-            let _guard = protect(parent);
-            crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue())
+            let _guard = protect(parent_arg);
+            crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent_arg, R_NilValue())
         } else if TYPEOF(envir_arg) == SEXPTYPE::ENVSXP.as_c_int() {
             envir_arg
         } else {
             base_error("invalid 'envir' argument");
         };
+
         let _envir_guard = protect(envir);
 
         if is_pairlist {

@@ -706,9 +706,25 @@ pub unsafe fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 unsafe fn R_data_part(obj: SEXP) -> SEXP {
     unsafe {
+        let data_sym = Rf_install(c".Data".as_ptr());
+        let attr = crate::sexp::attrib_core::getAttrib(obj, data_sym);
+        if !attr.is_null() && attr != R_NilValue() {
+            return unmap_slot_pseudo_null(attr);
+        }
         if crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
             if let Some(value) = s4_named_slot(obj, ".Data") {
-                return value;
+                return unmap_slot_pseudo_null(value);
+            }
+            // GNU getDataPart: `typeof(object) == "S4"` (OBJSXP) requires an
+            // explicit .Data/.xData attribute. Function S4 objects
+            // (MethodDefinition) have typeof "closure" — the object IS the
+            // data part when no .Data attribute is stored.
+            if TYPEOF(obj) != SEXPTYPE::OBJSXP {
+                return obj;
+            }
+            let xdata = crate::sexp::attrib_core::getAttrib(obj, Rf_install(c".xData".as_ptr()));
+            if !xdata.is_null() && xdata != R_NilValue() {
+                return unmap_slot_pseudo_null(xdata);
             }
             let class_val = crate::sexp::attrib_core::getAttrib(
                 obj,
@@ -732,16 +748,15 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
                                 | "complex"
                                 | "language"
                                 | "vector"
+                                | "function"
                         )
                     })
                 }) {
                     return obj;
                 }
             }
-            let data_sym = Rf_install(c".Data".as_ptr());
-            return crate::sexp::attrib_core::getAttrib(obj, data_sym);
+            return R_NilValue();
         }
-        // GNU methods::getDataPart on a base vector is the object itself.
         obj
     }
 }

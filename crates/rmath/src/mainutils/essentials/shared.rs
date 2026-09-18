@@ -1201,6 +1201,10 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
             "dgettext",
             "asS4",
             ".asS4",
+            "parent.env",
+            "parent.env<-",
+            "list2env",
+            "as.environment",
         ] {
 
             let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
@@ -1224,14 +1228,21 @@ unsafe fn purge_missing_arg_placeholders(env: SEXP) {
     unsafe {
         let missing = crate::sexp::globals::R_MissingArg();
         let mut doomed = Vec::new();
-        let mut cell = FRAME(env);
-        while !cell.is_null() && cell != R_NilValue() {
-            if CAR(cell) == missing
-                && let Some(name) = symbol_name(TAG(cell))
-            {
+        for name in frame_binding_names(env, true) {
+            let Ok(cname) = CString::new(name.as_str()) else {
+                continue;
+            };
+            let symbol = Rf_install(cname.as_ptr());
+            let value = crate::sexp::envir::R_findVarInFrame(env, symbol);
+            if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            let kind = TYPEOF(value);
+            let empty_symbol = kind == SEXPTYPE::SYMSXP
+                && symbol_name(value).is_none_or(|n| n.is_empty());
+            if value == missing || empty_symbol {
                 doomed.push(name);
             }
-            cell = CDR(cell);
         }
         for name in doomed {
             let Ok(cname) = CString::new(name) else {

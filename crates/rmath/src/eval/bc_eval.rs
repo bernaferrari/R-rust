@@ -1481,16 +1481,38 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         bc_error("GNU CALLSPECIAL call does not have a symbol operator");
                     }
                     let result = with_stack_rooted(&stack, call, || {
-                        // GNU getPrimitive resolves the special from the
-                        // primitive table, ignoring shadowing.
-                        let fun = crate::sexp::envir::findFun(
-                            symbol,
-                            super::runtime::base_env(),
-                        );
+                        // GNU getPrimitive: SYMVALUE of the symbol, ignoring
+                        // frame bindings that may shadow the FunTab special.
+                        let mut fun = crate::sexp::accessors::SYMVALUE(symbol);
+                        if !fun.is_null() && TYPEOF(fun) == SEXPTYPE::PROMSXP {
+                            crate::sexp::envir::forcePromise(fun);
+                            fun = crate::sexp::accessors::PRVALUE(fun);
+                        }
+
+                        if fun == R_UnboundValue()
+                            || fun.is_null()
+                            || TYPEOF(fun) != SEXPTYPE::SPECIALSXP
+                        {
+                            fun = crate::sexp::envir::findFun(
+                                symbol,
+                                super::runtime::base_env(),
+                            );
+                        }
                         if fun == R_UnboundValue() || TYPEOF(fun) != SEXPTYPE::SPECIALSXP {
                             let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))
                                 .to_string_lossy();
-                            let kind = if fun == R_UnboundValue() {
+                            fun = super::primitive::make_primitive_binding(
+                                name.as_ref(),
+                                SEXPTYPE::SPECIALSXP,
+                            );
+                        }
+                        if fun.is_null()
+                            || fun == R_UnboundValue()
+                            || TYPEOF(fun) != SEXPTYPE::SPECIALSXP
+                        {
+                            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))
+                                .to_string_lossy();
+                            let kind = if fun.is_null() || fun == R_UnboundValue() {
                                 -1
                             } else {
                                 TYPEOF(fun)
@@ -1499,6 +1521,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                 "GNU CALLSPECIAL symbol did not resolve to a special: {name} has type {kind}"
                             ));
                         }
+
 
 
                         use crate::sexp::object::Sexp;
@@ -1541,7 +1564,19 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             } else {
                                 rho
                             };
-                            crate::sexp::envir::findFun(symbol, lookup_env)
+                            let mut fun = crate::sexp::envir::findFun(symbol, lookup_env);
+                            // Methods snapshot frames can omit the imports
+                            // chain. Fall back to base like GNU findFun
+                            // walking methods → imports → base.
+                            if (fun == R_UnboundValue() || fun.is_null())
+                                && opcode == super::bytecode::GNU_OP_GETFUN
+                            {
+                                fun = crate::sexp::envir::findFun(
+                                    symbol,
+                                    super::runtime::base_env(),
+                                );
+                            }
+                            fun
                         }
                     });
                     if fun == R_UnboundValue() {

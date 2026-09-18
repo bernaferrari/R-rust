@@ -298,7 +298,7 @@ unsafe fn install_frame_vars(mut vars: SEXP, rho: SEXP) {
 
 /// Create the environment for a closure application.
 ///
-unsafe fn remap_methods_snapshot_cloenv(_op: SEXP, cloenv: SEXP) -> SEXP {
+unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
         else {
@@ -309,6 +309,29 @@ unsafe fn remap_methods_snapshot_cloenv(_op: SEXP, cloenv: SEXP) -> SEXP {
         }
         if crate::sexp::accessors::ENCLOS(cloenv) == methods {
             return cloenv;
+        }
+        // MethodDefinition closures from the methods package (e.g.
+        // initialize,signature) must see .MakeSignature. Their saved
+        // enclosure is often emptyenv/base, not namespace:methods.
+        if crate::mainutils::coerce::IS_S4_OBJECT(op) != 0
+            && crate::sexp::accessors::TYPEOF(op) == SEXPTYPE::CLOSXP
+        {
+            // Never retarget global/base/empty: that would cycle
+            // methods → imports → base → methods.
+            if cloenv != crate::sexp::globals::R_EmptyEnv()
+                && cloenv != crate::sexp::globals::R_BaseEnv()
+                && cloenv != crate::sexp::globals::R_GlobalEnv()
+            {
+                let parent = crate::sexp::accessors::ENCLOS(cloenv);
+                if parent.is_null()
+                    || parent == crate::sexp::globals::R_EmptyEnv()
+                    || parent == crate::sexp::globals::R_BaseEnv()
+                {
+                    crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
+                    crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
+                    return cloenv;
+                }
+            }
         }
         // Only generic environments carry .AllMTable. User closures must
         // keep their lexical enclosure.
@@ -326,11 +349,7 @@ unsafe fn remap_methods_snapshot_cloenv(_op: SEXP, cloenv: SEXP) -> SEXP {
         if is_function_sexp(live) && !is_function_sexp(snap) {
             crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
         }
-        // Snapshot frames can hold R_MissingArg placeholders that shadow
-        // base primitives (ngettext). Install the live primitive there.
         crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
-
-
         cloenv
     }
 }
