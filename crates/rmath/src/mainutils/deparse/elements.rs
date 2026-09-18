@@ -166,7 +166,8 @@ pub unsafe fn format_logical_element(val: c_int) -> *const c_char {
     }
 }
 
-/// Format a real element as a string with maximal precision.
+/// GNU default deparse: `formatReal` + `EncodeReal0` (15-digit / options digits),
+/// not `%.17g` (`digits17` / `control="all"` only).
 pub unsafe fn write_real_element(buf: &mut [c_char; 64], val: f64) {
     unsafe {
         if ISNAN(val) && (val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN) {
@@ -180,7 +181,23 @@ pub unsafe fn write_real_element(buf: &mut [c_char; 64], val: f64) {
                 write_cstr(buf, "-Inf");
             }
         } else {
-            r_snprintf_c(buf, b"%.17g", &[val.into()]);
+            let mut w: c_int = 0;
+            let mut d: c_int = 0;
+            let mut e: c_int = 0;
+            crate::mainutils::format::formatReal(&val, 1, &mut w, &mut d, &mut e, 0);
+            let enc = crate::mainutils::printutils::EncodeReal0(
+                val,
+                w,
+                d,
+                e,
+                b".\0".as_ptr() as *const c_char,
+            );
+            if enc.is_null() {
+                write_cstr(buf, "NA");
+            } else {
+                let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("NA");
+                write_cstr(buf, s);
+            }
         }
     }
 }
