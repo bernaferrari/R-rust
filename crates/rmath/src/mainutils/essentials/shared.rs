@@ -1000,6 +1000,7 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
                 bind_methods_base_primitives(package_env);
                 purge_missing_arg_placeholders(package_env);
                 retarget_methods_generics(package_env);
+                unwrap_methods_source_bodies(package_env);
 
 
             }
@@ -1284,6 +1285,42 @@ unsafe fn retarget_methods_generics(ns: SEXP) {
         }
     }
 }
+/// methods.rdb ships GNU bytecode. body() unwraps BCODE_EXPR, but
+/// applyClosure still runs the BCODESXP. matchSignature's compiled
+/// `value == "ANY"` / `unspec[[n]]` path OOBs (rport-iahor). Run the
+/// retained upstream source until that EQ/subassign stream is faithful.
+/// Do not force promises here — lazy-load force at attach hits
+/// ReadItem type 238.
+unsafe fn unwrap_methods_source_bodies(env: SEXP) {
+    unsafe {
+        use crate::sexp::accessors::{BODY, SET_BODY};
+        for name in ["matchSignature", ".isSealedMethod"] {
+            let Ok(cname) = CString::new(name) else {
+                continue;
+            };
+            let symbol = Rf_install(cname.as_ptr());
+            let value = crate::sexp::envir::R_findVarInFrame(env, symbol);
+            if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            if TYPEOF(value) != SEXPTYPE::CLOSXP {
+                continue;
+            }
+            let body = BODY(value);
+            if TYPEOF(body) != SEXPTYPE::BCODESXP {
+                continue;
+            }
+            let source = crate::eval::bc_eval::BCODE_EXPR(body);
+            if !source.is_null()
+                && source != R_NilValue()
+                && TYPEOF(source) == SEXPTYPE::LANGSXP
+            {
+                SET_BODY(value, source);
+            }
+        }
+    }
+}
+
 
 
 
@@ -1357,6 +1394,7 @@ pub(crate) unsafe fn load_package_namespace(
             bind_methods_base_primitives(package_env);
             purge_missing_arg_placeholders(package_env);
             retarget_methods_generics(package_env);
+            unwrap_methods_source_bodies(package_env);
 
 
         }
@@ -2239,6 +2277,7 @@ unsafe fn make_package_attach_env_inner(
             bind_methods_base_primitives(package_env);
             purge_missing_arg_placeholders(package_env);
             retarget_methods_generics(package_env);
+            unwrap_methods_source_bodies(package_env);
 
 
         }
