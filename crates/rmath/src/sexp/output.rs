@@ -894,6 +894,7 @@ where
         })
         .collect();
     let (row_width, lbloff) = matrix_row_geometry(&row_labels, dn.row_title.as_deref());
+    let empty_row_labs = row_labels.iter().all(|s| s.is_empty());
     let mut values = vec![vec![String::new(); ncol]; nrow];
     let mut widths = Vec::with_capacity(ncol);
     for c in 0..ncol {
@@ -906,37 +907,80 @@ where
         widths.push(width);
     }
 
-    let mut lines = Vec::with_capacity(nrow + 2);
-    if let Some(cn) = dn.col_title.as_deref() {
-        lines.push(format!("{:row_width$}{cn}", ""));
-    }
-    let mut header = if let Some(rn) = dn.row_title.as_deref() {
-        format!("{rn:<row_width$}")
-    } else {
-        " ".repeat(row_width)
+    let page_width = unsafe {
+        crate::mainutils::options::GetOptionWidth().max(10) as usize
     };
-    if row_width > 0 {
-        header.push(' ');
+    let mut blocks = Vec::new();
+    let mut start = 0;
+    while start < ncol {
+        let mut used = row_width;
+        let mut end = start;
+        while end < ncol {
+            let extra = widths[end] + if row_width > 0 || end > start || empty_row_labs {
+                1
+            } else {
+                0
+            };
+            if end > start && used + extra > page_width {
+                break;
+            }
+            used += extra;
+            end += 1;
+        }
+        if end == start {
+            end += 1;
+        }
+        blocks.push((start, end));
+        start = end;
     }
-    for (c, width) in widths.iter().enumerate() {
-        header.push_str(&format!("{:>width$}", col_labels[c]));
-        if c + 1 < ncol {
+
+    let mut lines = Vec::new();
+    for &(cs, ce) in &blocks {
+        if let Some(cn) = dn.col_title.as_deref() {
+            lines.push(format!("{:row_width$}{cn}", ""));
+        }
+
+        let mut header = if let Some(rn) = dn.row_title.as_deref() {
+            format!("{rn:<row_width$}")
+        } else {
+            " ".repeat(row_width)
+        };
+        if row_width > 0 {
             header.push(' ');
         }
-    }
-    lines.push(header);
-
-    for r in 0..nrow {
-        let label = format!("{:lbloff$}{}", "", row_labels[r]);
-        let mut line = format!("{label:<row_width$}");
-        for (c, width) in widths.iter().enumerate() {
-            line.push(' ');
-            line.push_str(&format!("{:<width$}", values[r][c]));
+        for c in cs..ce {
+            if c > cs || (row_width == 0 && empty_row_labs) {
+                // leading space is added per cell on data rows; header
+                // matches once the first empty row-label space is emitted.
+            }
+            if c > cs || row_width > 0 {
+                if c > cs {
+                    header.push(' ');
+                }
+            } else if empty_row_labs {
+                header.push(' ');
+            }
+            if empty_row_labs {
+                header.push_str(&format!("{:<width$}", col_labels[c], width = widths[c]));
+            } else {
+                header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
+            }
         }
-        lines.push(line);
+        lines.push(header);
+
+        for r in 0..nrow {
+            let label = format!("{:lbloff$}{}", "", row_labels[r]);
+            let mut line = format!("{label:<row_width$}");
+            for c in cs..ce {
+                line.push(' ');
+                line.push_str(&format!("{:<width$}", values[r][c], width = widths[c]));
+            }
+            lines.push(line);
+        }
     }
     lines.join("\n")
 }
+
 
 fn format_complex_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
     unsafe {
@@ -1002,7 +1046,8 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
         SEXPTYPE::CPLXSXP => Some(format_complex_matrix_gnu(x.clone(), nrow, ncol)),
 
         SEXPTYPE::STRSXP => {
-            let quote = !has_class(x.clone(), "noquote");
+            let quote = !has_class(x.clone(), "noquote") && !has_class(x.clone(), "table");
+
             Some(format_character_matrix_with(
                 x.clone(),
                 nrow,

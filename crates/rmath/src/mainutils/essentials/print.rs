@@ -172,7 +172,24 @@ unsafe fn named_summary_result(ty: SEXPTYPE, names: &[&str]) -> SEXP {
     }
 }
 
-unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>) -> SEXP {
+unsafe fn summary_tagged_int(args: SEXP, name: &str, default: i32) -> i32 {
+    unsafe {
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            if tag_name(cell).as_deref() == Some(name) {
+                let v = crate::main::coerce::asInteger(CAR(cell));
+                if v != NA_INTEGER {
+                    return v;
+                }
+            }
+            cell = CDR(cell);
+        }
+        default
+    }
+}
+
+
+unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum: i32) -> SEXP {
     unsafe {
         let mut counts = vec![0_i32; levels.len()];
         let mut na_count = 0_i32;
@@ -186,27 +203,37 @@ unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>) -> SEXP {
             }
         }
 
-        let include_na = na_count > 0;
-        let result_len = counts.len() + usize::from(include_na);
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, result_len as R_xlen_t);
+        let mut maxsum = maxsum.max(1);
+        if na_count > 0 {
+            maxsum -= 1;
+        }
+        let mut pairs: Vec<(String, i32)> = levels.into_iter().zip(counts).collect();
+        if pairs.len() as i32 > maxsum && maxsum >= 1 {
+            pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            let keep = (maxsum as usize).saturating_sub(1);
+            let other: i32 = pairs.iter().skip(keep).map(|p| p.1).sum();
+            pairs.truncate(keep);
+            pairs.push(("(Other)".to_string(), other));
+        }
+        if na_count > 0 {
+            pairs.push(("NAs".to_string(), na_count));
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
         if result.is_null() {
             return result;
         }
         let _result_guard = protect(result);
-
-        for (i, count) in counts.iter().enumerate() {
+        let mut names = Vec::with_capacity(pairs.len());
+        for (i, (name, count)) in pairs.iter().enumerate() {
             *INTEGER(result).add(i) = *count;
-        }
-
-        let mut names = levels;
-        if include_na {
-            *INTEGER(result).add(counts.len()) = na_count;
-            names.push("NAs".to_string());
+            names.push(name.clone());
         }
         set_string_names(result, &names);
         result
     }
 }
+
 
 pub unsafe fn format_summary_warnings(x: SEXP) -> String {
     unsafe {
@@ -417,14 +444,19 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
                 if name == "lm" || name == "aov" {
                     return crate::mainutils::essentials::do_summary_lm(_call, _op, args, _rho);
                 }
+                if name == "data.frame" {
+                    return do_summary_data_frame(_call, _op, args, _rho);
+                }
             }
         }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
+        let maxsum = summary_tagged_int(args, "maxsum", 100);
 
         if let Some(levels) = aggregate_factor_levels(x) {
-            return summary_factor_result(x, levels);
+            return summary_factor_result(x, levels, maxsum);
         }
+
 
         if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP {
             let mut vals: Vec<f64> = Vec::new();
@@ -1376,92 +1408,171 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
-/// R's `summary.data.frame(x)` — summary for data.frame (prints column summaries).
-pub unsafe fn do_summary_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `summary.data.frame` — character table of per-column summaries.
+pub unsafe fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
         if TYPEOF(x) != SEXPTYPE::VECSXP {
-            return do_summary_default(_call, _op, args, _rho);
+            return do_summary_default(call, op, args, rho);
         }
         let ncol = XLENGTH(x);
-        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
-        let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
+        let maxsum = summary_tagged_int(args, "maxsum", 7);
+        let opt_digits = crate::mainutils::options::GetOptionDigits();
+        let digits = summary_tagged_int(args, "digits", (opt_digits - 3).max(3));
+        let col_names_attr =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
 
+        let mut columns: Vec<Vec<String>> = Vec::with_capacity(ncol as usize);
+        let mut label_widths: Vec<usize> = Vec::with_capacity(ncol as usize);
+        let mut headers: Vec<String> = Vec::with_capacity(ncol as usize);
         for j in 0..ncol {
-            let name = if has_names && j < XLENGTH(names) {
-                elt_to_string(names, j)
+            let header = if !col_names_attr.is_null()
+                && TYPEOF(col_names_attr) == SEXPTYPE::STRSXP
+                && j < XLENGTH(col_names_attr)
+            {
+                elt_to_string(col_names_attr, j)
             } else {
                 format!("[,{}]", j + 1)
             };
-            let col = VECTOR_ELT(x, j as R_xlen_t);
-            println!("      {} ", name);
-            if col.is_null() {
-                println!(" Mode:NULL ");
-            } else {
-                let t = TYPEOF(col);
-                if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP {
-                    let n = XLENGTH(col);
-                    let mut vals: Vec<f64> = Vec::new();
-                    for i in 0..n {
-                        let v = if t == SEXPTYPE::REALSXP {
-                            *REAL(col).add(i as usize)
-                        } else {
-                            let iv = *INTEGER(col).add(i as usize);
-                            if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
-                        };
-                        if v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN && !v.is_nan() {
-                            vals.push(v);
-                        }
-                    }
-                    let na_count = n as usize - vals.len();
-                    if vals.is_empty() {
-                        println!(
-                            " Min. : NA   1st Qu.: NA   Median : NA   Mean : NA   3rd Qu.: NA   Max. : NA   NA's: {}",
-                            n
-                        );
-                    } else {
-                        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                        let min_v = vals[0];
-                        let max_v = vals[vals.len() - 1];
-                        let mean_v: f64 = vals.iter().sum::<f64>() / vals.len() as f64;
-                        let median_idx = vals.len() / 2;
-                        let median_v = if vals.len() % 2 == 1 {
-                            vals[median_idx]
-                        } else {
-                            (vals[median_idx - 1] + vals[median_idx]) / 2.0
-                        };
-                        let q1_idx = vals.len() / 4;
-                        let q3_idx = 3 * vals.len() / 4;
-                        print!(
-                            " Min. :{:.1}   1st Qu.:{:.1}   Median :{:.1}   Mean :{:.1}   3rd Qu.:{:.1}   Max. :{:.1}",
-                            min_v, vals[q1_idx], median_v, mean_v, vals[q3_idx], max_v
-                        );
-                        if na_count > 0 {
-                            print!("   NA's: {}", na_count);
-                        }
-                        println!();
-                    }
-                } else if t == SEXPTYPE::LGLSXP {
-                    println!(" Mode :logical ");
-                } else if t == SEXPTYPE::STRSXP {
-                    println!(" Mode :character ");
-                } else if t == SEXPTYPE::VECSXP {
-                    println!(" Length:{} ", XLENGTH(col));
-                } else {
-                    println!(
-                        " Mode :{} ",
-                        elt_to_string(do_typeof(_call, _op, args, _rho), 0)
-                    );
-                }
+            headers.push(header);
+            let col = VECTOR_ELT(x, j);
+            let sms = summarize_frame_column(col, maxsum, rho);
+            let _sms = protect(sms);
+            let (cells, lw) = format_summary_column(sms, digits, rho);
+
+            label_widths.push(lw);
+            columns.push(cells);
+        }
+        let nrow = columns.iter().map(Vec::len).max().unwrap_or(0);
+        for col in &mut columns {
+            col.resize(nrow, String::new());
+        }
+        let blanks = " ".repeat(label_widths.iter().copied().max().unwrap_or(0) + 2);
+        for (i, header) in headers.iter_mut().enumerate() {
+            let pad = ((label_widths[i] as f64) - (header.chars().count() as f64) / 2.0)
+                .floor()
+                .max(0.0) as usize;
+            let pad = pad.min(blanks.len());
+            *header = format!("{}{header}", &blanks[..pad]);
+        }
+
+
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, (nrow * ncol as usize) as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _r = protect(result);
+        for (j, col) in columns.iter().enumerate() {
+            for (i, cell) in col.iter().enumerate() {
+                let cstr = CString::new(cell.as_str()).unwrap_or_default();
+                SET_STRING_ELT(
+                    result,
+                    (j * nrow + i) as R_xlen_t,
+                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                );
             }
         }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+        crate::mainutils::essentials::set_two_dim_attr(result, nrow as R_xlen_t, ncol);
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, nrow as R_xlen_t);
+        let _rn = protect(rn);
+        for i in 0..nrow {
+            SET_STRING_ELT(rn, i as R_xlen_t, crate::sexp::constructors::Rf_mkChar(c"".as_ptr()));
+        }
+        let cn = string_vector(&headers);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dn,
+        );
+        let class = Rf_mkString(c"table".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+        result
     }
 }
+
+unsafe fn summarize_frame_column(col: SEXP, maxsum: i32, rho: SEXP) -> SEXP {
+    unsafe {
+        if col.is_null() || col == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+        if let Some(levels) = aggregate_factor_levels(col) {
+            return summary_factor_result(col, levels, maxsum);
+        }
+        let args = Rf_cons(col, R_NilValue());
+        let _a = protect(args);
+        do_summary_default(std::ptr::null_mut(), std::ptr::null_mut(), args, rho)
+    }
+}
+
+unsafe fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<String>, usize) {
+    unsafe {
+        if sms.is_null() || sms == R_NilValue() {
+            return (Vec::new(), 0);
+        }
+        let names_attr =
+            crate::sexp::attrib_core::getAttrib(sms, crate::sexp::attrib_core::R_NamesSymbol());
+        let n = XLENGTH(sms);
+        let mut labels = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            labels.push(if !names_attr.is_null()
+                && TYPEOF(names_attr) == SEXPTYPE::STRSXP
+                && i < XLENGTH(names_attr)
+            {
+                elt_to_string(names_attr, i)
+            } else {
+                String::new()
+            });
+        }
+        let lw = labels.iter().map(|s| s.chars().count()).max().unwrap_or(0);
+        let labels: Vec<String> = labels
+            .into_iter()
+            .map(|s| format!("{s:<lw$}"))
+            .collect();
+
+        let digits_s = Rf_ScalarInteger(digits);
+        let _ds = protect(digits_s);
+        let rest = Rf_cons(digits_s, R_NilValue());
+        SETTAG(rest, Rf_install(c"digits".as_ptr()));
+        let _rest = protect(rest);
+        let fmt_args = Rf_cons(sms, rest);
+        let _fa = protect(fmt_args);
+        let formatted = crate::mainutils::essentials::do_format(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            fmt_args,
+            rho,
+        );
+
+        let _f = protect(formatted);
+        let mut cells = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let value = if !formatted.is_null()
+                && TYPEOF(formatted) == SEXPTYPE::STRSXP
+                && i < XLENGTH(formatted)
+            {
+                elt_to_string(formatted, i)
+            } else {
+                String::new()
+            };
+            cells.push(format!("{}:{value}  ", labels.get(i as usize).cloned().unwrap_or_default()));
+        }
+        (cells, lw)
+    }
+}
+
 
 /// R's `format.data.frame(x, ..., justify = "none")`.
 pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

@@ -1450,6 +1450,31 @@ is.data.frame(a) && is.data.frame(b) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn summary_data_frame_returns_gnu_table() {
+
+        let mut session = RSession::new();
+        let (result, captured, _) = session.eval_script_with_output_capture(
+
+            r#"
+dd <- data.frame(event = c(1, 9, 18, 14.74, 20, 23),
+                 station = factor(c("117","1028","113","117","135","117")))
+s <- summary(dd)
+inherits(s, "table") && is.matrix(s) && typeof(s) == "character" &&
+  grepl("Min.", s[1,1], fixed=TRUE)
+"#,
+        );
+
+        let result = result.expect("summary.data.frame must return a table");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(
+            !captured.stdout.contains("[1] \"list\""),
+            "summary(data.frame) must not fall through to typeof, got {:?}",
+            captured.stdout
+        );
+    }
+
+
 
 
 
