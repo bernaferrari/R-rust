@@ -347,6 +347,50 @@ unsafe fn env_on_enclos_chain(mut start: SEXP, needle: SEXP) -> bool {
     }
 }
 
+unsafe fn disconnected_methods_snapshot(cloenv: SEXP, empty: SEXP, base: SEXP) -> bool {
+    unsafe {
+        let parent = crate::sexp::accessors::ENCLOS(cloenv);
+        parent.is_null() || parent == empty || parent == base
+    }
+}
+
+unsafe fn methods_namespace_owns_closure(methods: SEXP, op: SEXP) -> bool {
+    unsafe {
+        if op.is_null() || crate::sexp::accessors::TYPEOF(op) != SEXPTYPE::CLOSXP {
+            return false;
+        }
+        for name in [
+            c"asMethodDefinition",
+            c"makeGeneric",
+            c"setGeneric",
+            c"getGeneric",
+            c"implicitGeneric",
+            c"setMethod",
+            c".derivedDefaultMethod",
+            c"matchSignature",
+            c".isSealedMethod",
+            c".copyMethodDefaults",
+            c"rematchDefinition",
+            c".matchSigLength",
+        ] {
+            let mut bound = crate::sexp::envir::R_findVarInFrame(
+                methods,
+                crate::sexp::symbol::Rf_install(name.as_ptr()),
+            );
+            if bound.is_null() || bound == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            if TYPEOF(bound) == SEXPTYPE::PROMSXP {
+                bound = crate::sexp::envir::forcePromise(bound);
+            }
+            if bound == op {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
@@ -368,6 +412,15 @@ unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
         if crate::sexp::accessors::ENCLOS(cloenv) == methods {
             return cloenv;
         }
+        // Lazy-load sometimes leaves methods helpers in an empty snapshot
+        // whose parent is EmptyEnv/base. asMethodDefinition's default
+        // `list(.anyClassName)` then cannot see the methods namespace.
+        if methods_namespace_owns_closure(methods, op)
+            && disconnected_methods_snapshot(cloenv, empty, base)
+        {
+            crate::sexp::accessors::SET_CLOENV(op, methods);
+            return methods;
+        }
         let all_mtable = crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr());
         let tables = crate::sexp::envir::R_findVarInFrame(cloenv, all_mtable);
         let is_generic_snapshot = !tables.is_null()
@@ -375,10 +428,6 @@ unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
             && crate::sexp::accessors::TYPEOF(tables) == SEXPTYPE::ENVSXP;
         let is_method_def = crate::mainutils::coerce::IS_S4_OBJECT(op) != 0
             && crate::sexp::accessors::TYPEOF(op) == SEXPTYPE::CLOSXP;
-        // Only MethodDefinition / generic-table snapshots. Package
-        // namespaces enclose base directly here; remapping every
-        // empty/base parent would send ordinary package closures
-        // through methods.
         if is_method_def || is_generic_snapshot {
             let parent = crate::sexp::accessors::ENCLOS(cloenv);
             if parent.is_null() || parent == empty || parent == base {

@@ -2704,6 +2704,40 @@ isS4(g) && is(g, "standardGeneric") &&
     }
 
     #[test]
+    fn as_method_definition_sees_methods_namespace() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+m <- methods:::asMethodDefinition(function(x) x)
+identical(environment(methods:::asMethodDefinition), asNamespace("methods")) &&
+  is(m, "MethodDefinition")
+"#,
+        );
+        let result = result.expect("asMethodDefinition must close over methods");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn make_generic_builds_norm_standard_generic() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+fdef <- getFunction("norm", mustFind=FALSE)
+body(fdef) <- substitute(standardGeneric(NAME), list(NAME="norm"))
+g <- methods:::makeGeneric(
+  "norm", fdef,
+  fdefault=getFunction("norm", generic=FALSE, mustFind=FALSE),
+  package="base", signature=c("x","type")
+)
+isS4(g) && is(g, "standardGeneric") && identical(as.character(g@generic)[1], "norm")
+"#,
+        );
+        let result = result.expect("makeGeneric(norm) must produce a standardGeneric");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+    #[test]
     fn gnu_norm_rcond_are_closures_with_implicit_methods() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
