@@ -1306,8 +1306,15 @@ pub(crate) unsafe fn load_package_namespace(
             if package == "methods" {
                 crate::library::methods::native_calls::install_methods_call_symbols(env);
                 retarget_methods_generics(env);
-
             }
+            if package == "tools" {
+                crate::library::tools::native_calls::install_tools_call_symbols(env);
+            }
+            if package == "stats" {
+                crate::library::stats::random::install_stats_call_symbols(env);
+            }
+
+
 
             return Ok((env, read_namespace_directives(package_dir)?));
         }
@@ -1364,10 +1371,15 @@ pub(crate) unsafe fn load_package_namespace(
             bind_methods_base_primitives(package_env);
             purge_missing_arg_placeholders(package_env);
             retarget_methods_generics(package_env);
-
-
-
         }
+        if package == "stats" {
+            crate::library::stats::random::install_stats_call_symbols(package_env);
+        }
+
+        if package == "tools" {
+            crate::library::tools::native_calls::install_tools_call_symbols(package_env);
+        }
+
 
         Ok((package_env, namespace))
     }

@@ -18,6 +18,32 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
+use crate::unix::dynload::DL_FUNC;
+
+fn as_dl<T>(f: T) -> DL_FUNC {
+    Some(unsafe { std::mem::transmute_copy(&f) })
+}
+
+pub fn lookup_call(name: &str) -> DL_FUNC {
+    let bare = name.strip_prefix("C_").unwrap_or(name);
+    match bare {
+        "rnorm" => as_dl(do_rnorm as unsafe fn(SEXP, SEXP, SEXP) -> SEXP),
+        _ => None,
+    }
+}
+pub unsafe fn install_stats_call_symbols(env: SEXP) {
+    unsafe {
+        let cname = std::ffi::CString::new("C_rnorm").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(cname.as_ptr()),
+            crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
+            env,
+        );
+    }
+}
+
+
+
 // ---------------------------------------------------------------------------
 // Type aliases for random number generator function pointers
 // ---------------------------------------------------------------------------

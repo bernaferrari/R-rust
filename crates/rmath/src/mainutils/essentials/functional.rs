@@ -965,6 +965,7 @@ fn apply_fun_to_element(fun: SEXP, elem: SEXP, extra_args: SEXP, rho: SEXP) -> S
 }
 
 
+
 fn simplify_scalar_list(list: SEXP) -> SEXP {
     unsafe {
         if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
@@ -3137,7 +3138,10 @@ enum UnlistValue {
     Complex(Rcomplex),
     String(String),
     Object(SEXP),
+    /// Atomic element still owned by the input vector — materialize at fill.
+    Element { parent: SEXP, index: R_xlen_t },
 }
+
 
 impl UnlistValue {
     fn as_integer(&self) -> i32 {
@@ -3150,7 +3154,10 @@ impl UnlistValue {
                     *value as i32
                 }
             }
-            Self::Complex(_) | Self::String(_) | Self::Object(_) => NA_INTEGER,
+            Self::Complex(_) | Self::String(_) | Self::Object(_) | Self::Element { .. } => {
+                NA_INTEGER
+            }
+
         }
     }
 
@@ -3165,7 +3172,8 @@ impl UnlistValue {
             }
             Self::Real(value) => *value,
             Self::Complex(value) => value.r,
-            Self::String(_) | Self::Object(_) => NA_REAL,
+            Self::String(_) | Self::Object(_) | Self::Element { .. } => NA_REAL,
+
         }
     }
 
@@ -3181,10 +3189,11 @@ impl UnlistValue {
             },
             Self::Real(value) => Rcomplex { r: *value, i: 0.0 },
             Self::Complex(value) => *value,
-            Self::String(_) | Self::Object(_) => Rcomplex {
+            Self::String(_) | Self::Object(_) | Self::Element { .. } => Rcomplex {
                 r: NA_REAL,
                 i: NA_REAL,
             },
+
         }
     }
 
@@ -3217,21 +3226,30 @@ impl UnlistValue {
             ),
             Self::String(value) => value.clone(),
             Self::Object(value) => elt_to_string(*value, 0),
+            Self::Element { parent, index } => unsafe { elt_to_string(*parent, *index) },
         }
     }
 
     fn as_sexp(&self) -> SEXP {
         match self {
             Self::Object(value) => *value,
+            Self::Element { parent, index } => unsafe { unlist_scalar_element(*parent, *index) },
             _ => unsafe { R_NilValue() },
         }
     }
+
 }
 
 fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
     if entries
         .iter()
-        .any(|entry| matches!(entry.value, UnlistValue::Object(_)))
+        .any(|entry| {
+            matches!(
+                entry.value,
+                UnlistValue::Object(_) | UnlistValue::Element { .. }
+            )
+        })
+
     {
         SEXPTYPE::VECSXP
     } else if entries
@@ -3345,9 +3363,10 @@ unsafe fn collect_unlist_entries(
                                     None
                                 };
                                 out.push(UnlistEntry {
-                                    value: UnlistValue::Object(unlist_scalar_element(
-                                        child, j,
-                                    )),
+                                    value: UnlistValue::Element {
+                                        parent: child,
+                                        index: j,
+                                    },
                                     name: leaf_name,
                                 });
                             }

@@ -321,7 +321,8 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
     }
 }
 
-fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
+pub(crate) fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
+
     let name = unsafe { get_symbol_name(symbol.as_raw()) };
     if crate::eval::builtin::is_hidden_builtin_name(&name) {
         return None;

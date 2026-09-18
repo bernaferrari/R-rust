@@ -740,7 +740,22 @@ pub fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupR
             .map_err(|err| sexp_err("enclosing environment lookup", err))?;
     }
 
+    // GNU findFun also sees primitives installed on the symbol itself
+    // (`SYMVALUE`) when no environment frame holds a function binding.
+    let raw = symbol.as_raw();
+    let mut value = unsafe { crate::sexp::accessors::SYMVALUE(raw) };
+    if !value.is_null() && value != unsafe { R_UnboundValue() } {
+        if unsafe { TYPEOF(value) } == SEXPTYPE::PROMSXP {
+            value = unsafe { forcePromise(value) };
+        }
+        let t = unsafe { TYPEOF(value) };
+        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+            return Ok(Sexp::from_raw(value));
+        }
+    }
+
     Ok(None)
+
 }
 
 // ---------------------------------------------------------------------------

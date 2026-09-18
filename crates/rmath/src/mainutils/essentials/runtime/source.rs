@@ -435,6 +435,7 @@ unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -
             return result;
         }
         let parsed = parse_source_expression_vector(content);
+        let _parsed = protect(parsed);
         // do_eval()-style element-wise evaluation: Rf_eval returns an
         // expression vector unchanged, so source() walks the statements
         // itself (eval.c eval expression loop).
@@ -452,6 +453,7 @@ unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -
             }
             result
         };
+
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         result
     }

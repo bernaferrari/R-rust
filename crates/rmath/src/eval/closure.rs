@@ -410,7 +410,14 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
         if CLOENV(op) != methods {
             return false;
         }
-        for name in [c"matchSignature", c".isSealedMethod"] {
+        for name in [
+            c"matchSignature",
+            c".isSealedMethod",
+            c".copyMethodDefaults",
+            c"rematchDefinition",
+            c"setMethod",
+        ] {
+
             let mut bound = crate::sexp::envir::R_findVarInFrame(
                 methods,
                 crate::sexp::symbol::Rf_install(name.as_ptr()),

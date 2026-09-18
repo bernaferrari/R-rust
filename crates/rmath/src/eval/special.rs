@@ -112,6 +112,8 @@ unsafe fn dispatch_special_by_name(
             "@" => crate::mainutils::essentials::do_at(call, op, args, rho),
             "@<-" => crate::mainutils::essentials::do_at_set(call, op, args, rho),
             "$<-" => crate::mainutils::essentials::do_dollar_set(call, op, args, rho),
+            "UseMethod" => crate::mainutils::essentials::do_usemethod(call, op, args, rho),
+
             _ => {
                 if let Some(builtin) = super::builtin::unevaluated_builtin_handler(name) {
                     return (builtin.handler)(call, op, args, rho);

@@ -379,6 +379,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "setNames",
             "function(object = nm, nm) { names(object) <- nm; object }",
         );
+        eval_base_binding(
+            base_env,
+            "lazyLoadDBexec",
+            include_str!("gnu_lazyLoadDBexec.R"),
+        );
+        eval_base_binding(base_env, "lazyLoad", include_str!("gnu_lazyLoad.R"));
+        eval_base_binding(
+            base_env,
+            "%notin%",
+            "function(x, table) match(x, table, nomatch = 0L) == 0L",
+        );
+
+
 
         // GNU datetime.R constructors: class + tzone/units only.
         eval_base_binding(

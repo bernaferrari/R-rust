@@ -975,8 +975,12 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let mut ofun: DL_FUNC = None;
         if let Some(name) = ported_call_name(CAR(args)) {
-            ofun = crate::library::methods::native_calls::lookup(&name);
+            ofun = crate::library::methods::native_calls::lookup(&name)
+                .or_else(|| crate::library::tools::native_calls::lookup(&name))
+                .or_else(|| crate::library::stats::random::lookup_call(&name));
         }
+
+
 
         if ofun.is_none() && native_extension_policy_enabled() {
             native_extension_policy_error(call, ".Call");
@@ -1003,10 +1007,14 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     .and_then(|c| c.to_str().ok())
                     .unwrap_or("");
                 if !name.is_empty() {
-                    ofun = crate::library::methods::native_calls::lookup(name);
+                    ofun = crate::library::methods::native_calls::lookup(name)
+                        .or_else(|| crate::library::tools::native_calls::lookup(name))
+                        .or_else(|| crate::library::stats::random::lookup_call(name));
                 }
             }
         }
+
+
         let mut cargs: [SEXP; MAX_ARGS] = [ptr::null_mut(); MAX_ARGS];
         let mut nargs = 0usize;
         let mut pargs = CDR(args);

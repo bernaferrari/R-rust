@@ -1591,9 +1591,6 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                 rho
                             };
                             let mut fun = crate::sexp::envir::findFun(symbol, lookup_env);
-                            // Methods snapshot frames can omit the imports
-                            // chain. Fall back to base like GNU findFun
-                            // walking methods → imports → base.
                             if (fun == R_UnboundValue() || fun.is_null())
                                 && opcode == super::bytecode::GNU_OP_GETFUN
                             {
@@ -1602,8 +1599,22 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                     super::runtime::base_env(),
                                 );
                             }
+                            if (fun == R_UnboundValue() || fun.is_null())
+                                && opcode == super::bytecode::GNU_OP_GETFUN
+                            {
+                                if let Some(symbol) =
+                                    crate::sexp::object::Sexp::from_raw(symbol)
+                                {
+                                    if let Some(primitive) =
+                                        super::eval::primitive_for_symbol(symbol)
+                                    {
+                                        fun = primitive.as_raw();
+                                    }
+                                }
+                            }
                             fun
                         }
+
                     });
                     if fun == R_UnboundValue() {
                         let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))

@@ -793,6 +793,9 @@ unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
         options.insert("keep.source.pkgs".to_string(), pl(FALSE));
         options.insert("keep.parse.data".to_string(), pl(TRUE));
         options.insert("keep.parse.data.pkgs".to_string(), pl(FALSE));
+        options.insert("example.ask".to_string(), pm(c"default".as_ptr()));
+        options.insert("demo.ask".to_string(), pm(c"default".as_ptr()));
+
         options.insert("warning.length".to_string(), pi(1000));
         options.insert("nwarnings".to_string(), pi(50));
 
