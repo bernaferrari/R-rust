@@ -1290,6 +1290,24 @@ identical(LNA, eval(pd0(LNA, control = "all")))
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn all_equal_s4_formula_subclass_uses_language_path() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+mForm <- setClass("mFormAe", contains = "formula")
+mf <- mForm(~ f(x))
+pd0 <- function(expr, backtick = TRUE, ...) parse(text = deparse(expr, backtick=backtick, ...))
+id_epd <- function(expr, control = "all", ...) eval(pd0(expr, control=control, ...))
+isTRUE(all.equal(mf, id_epd(mf), check.environment = FALSE))
+"#,
+        );
+        let result = result.expect("S4 formula subclass all.equal must follow language/deparse");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
 

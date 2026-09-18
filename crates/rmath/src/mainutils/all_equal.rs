@@ -115,15 +115,23 @@ unsafe fn compare(
             return Err("target and current differ in nullness".into());
         }
 
-
-        // GNU all.equal.formula: same length + identical deparse. It does
-        // not compare `.Environment` (check.environment only applies to
-        // closures).
+        // GNU all.equal.default: is.language → all.equal.language (deparse
+        // only). S4 formula subclasses are LANGSXP with class "mForm", not
+        // "formula", so the class check alone misses them.
+        if TYPEOF(target) == SEXPTYPE::LANGSXP || TYPEOF(current) == SEXPTYPE::LANGSXP {
+            if crate::mainutils::essentials::sexp_has_class(target, "formula")
+                || crate::mainutils::essentials::sexp_has_class(current, "formula")
+            {
+                return compare_formula(target, current);
+            }
+            return compare_language(target, current);
+        }
         if crate::mainutils::essentials::sexp_has_class(target, "formula")
             || crate::mainutils::essentials::sexp_has_class(current, "formula")
         {
             return compare_formula(target, current);
         }
+
 
         if crate::mainutils::essentials::sexp_has_class(target, "POSIXt")
             || crate::mainutils::essentials::sexp_has_class(current, "POSIXt")

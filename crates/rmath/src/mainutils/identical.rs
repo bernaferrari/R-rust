@@ -252,21 +252,22 @@ unsafe fn attr_tag_name(tag: SEXP) -> Option<&'static str> {
     }
 }
 
-fn is_source_attr_name(name: &str) -> bool {
-    matches!(name, "srcref" | "srcfile" | "wholeSrcref")
+fn is_srcref_attr_name(name: &str) -> bool {
+    name == "srcref"
 }
 
-unsafe fn ignore_srcref(flags: c_int) -> bool {
-    flags & IDENT_USE_SRCREF == 0
+unsafe fn ignore_closure_srcref(x: SEXP, flags: c_int) -> bool {
+    unsafe { flags & IDENT_USE_SRCREF == 0 && TYPEOF(x) == SEXPTYPE::CLOSXP }
 }
 
-unsafe fn attr_pairlist_len_filtered(list: SEXP, flags: c_int) -> c_int {
+
+unsafe fn attr_pairlist_len_filtered(object: SEXP, list: SEXP, flags: c_int) -> c_int {
     unsafe {
+        let skip_srcref = ignore_closure_srcref(object, flags);
         let mut n = 0;
         let mut p = list;
         while !p.is_null() && p != R_NilValue() {
-            let skip = ignore_srcref(flags)
-                && attr_tag_name(TAG(p)).is_some_and(is_source_attr_name);
+            let skip = skip_srcref && attr_tag_name(TAG(p)).is_some_and(is_srcref_attr_name);
             if !skip {
                 n += 1;
             }
@@ -309,8 +310,9 @@ unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
     unsafe {
         let ax = ATTRIB(x);
         let ay = ATTRIB(y);
-        let nx = attr_pairlist_len_filtered(ax, flags);
-        let ny = attr_pairlist_len_filtered(ay, flags);
+        let nx = attr_pairlist_len_filtered(x, ax, flags);
+        let ny = attr_pairlist_len_filtered(y, ay, flags);
+
         if nx == 0 && ny == 0 {
             return 1;
         }
@@ -322,24 +324,30 @@ unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
         {
             return 1;
         }
+        // GNU identical.c PROTECTs ax/ay: getAttrib and recursive
+        // R_compute_identical can allocate.
+        let _ax = crate::sexp::protect::protect(ax);
+        let _ay = crate::sexp::protect::protect(ay);
+
         if flags & IDENT_ATTR_BY_ORDER != 0 {
             let mut px = ax;
             let mut py = ay;
             loop {
                 while !px.is_null()
                     && px != R_NilValue()
-                    && ignore_srcref(flags)
-                    && attr_tag_name(TAG(px)).is_some_and(is_source_attr_name)
+                    && ignore_closure_srcref(x, flags)
+                    && attr_tag_name(TAG(px)).is_some_and(is_srcref_attr_name)
                 {
                     px = CDR(px);
                 }
                 while !py.is_null()
                     && py != R_NilValue()
-                    && ignore_srcref(flags)
-                    && attr_tag_name(TAG(py)).is_some_and(is_source_attr_name)
+                    && ignore_closure_srcref(y, flags)
+                    && attr_tag_name(TAG(py)).is_some_and(is_srcref_attr_name)
                 {
                     py = CDR(py);
                 }
+
                 let px_done = px.is_null() || px == R_NilValue();
                 let py_done = py.is_null() || py == R_NilValue();
                 if px_done || py_done {
@@ -384,10 +392,11 @@ unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             let Some(tx) = attr_tag_name(TAG(elx)) else {
                 return 0;
             };
-            if ignore_srcref(flags) && is_source_attr_name(tx) {
+            if ignore_closure_srcref(x, flags) && is_srcref_attr_name(tx) {
                 elx = CDR(elx);
                 continue;
             }
+
             let mut ely = ay;
             let mut found = false;
             while !ely.is_null() && ely != R_NilValue() {
