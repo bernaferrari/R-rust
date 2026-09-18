@@ -216,9 +216,9 @@ unsafe fn summary_warnings(x: SEXP) -> SEXP {
             XLENGTH(x)
         };
         if n == 0 {
-            println!("No warnings");
+            str_emit_line("No warnings");
         } else {
-            println!("Summary of (a total of {n}) warning messages:");
+            str_emit_line(&format!("Summary of (a total of {n}) warning messages:"));
             let names = crate::sexp::attrib_core::getAttrib(
                 x,
                 crate::sexp::attrib_core::R_NamesSymbol(),
@@ -241,12 +241,13 @@ unsafe fn summary_warnings(x: SEXP) -> SEXP {
                     String::new()
                 };
                 if msg.is_empty() {
-                    println!("1x : <warning>");
+                    str_emit_line("1x : <warning>");
                 } else {
-                    println!("1x : {msg}");
+                    str_emit_line(&format!("1x : {msg}"));
                 }
             }
         }
+
         crate::sexp::globals::set_R_Visible(FALSE);
         x
     }
@@ -485,6 +486,15 @@ unsafe fn str_atomic_summary(x: SEXP) -> String {
         let t = TYPEOF(x);
         let n = XLENGTH(x);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let named = !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) > 0;
+        let named_prefix = if named { "Named " } else { "" };
         let type_name = match t {
             t if t == SEXPTYPE::REALSXP => "num",
             t if t == SEXPTYPE::INTSXP => "int",
@@ -500,19 +510,20 @@ unsafe fn str_atomic_summary(x: SEXP) -> String {
                 .map(|i| format!("1:{}", *INTEGER(dim).add(i as usize)))
                 .collect();
             let preview = str_preview_reals_or_ints(x, 6);
-            return format!("{type_name} [{}] {preview}", dims.join(", "));
+            return format!("{named_prefix}{type_name} [{}] {preview}", dims.join(", "));
         }
         if n == 0 {
-            return format!("{type_name}(0)");
+            return format!("{named_prefix}{type_name}(0)");
         }
         let preview = str_preview_reals_or_ints(x, 10);
         if preview.is_empty() {
-            format!("{type_name} [1:{n}]")
+            format!("{named_prefix}{type_name} [1:{n}]")
         } else if n == 1 {
-            format!("{type_name} {preview}")
+            format!("{named_prefix}{type_name} {preview}")
         } else {
-            format!("{type_name} [1:{n}] {preview}")
+            format!("{named_prefix}{type_name} [1:{n}] {preview}")
         }
+
 
 
     }
@@ -695,7 +706,22 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         } else {
             str_emit_line(&format!(" {}", str_atomic_summary(x)));
+            let names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) > 0
+            {
+                str_emit_line(&format!(
+                    " - attr(*, \"names\")= {}",
+                    str_atomic_summary(names)
+                ));
+            }
         }
+
 
 
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
