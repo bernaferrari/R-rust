@@ -219,6 +219,7 @@ pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut
         // warn_len - 7 ("Error: ").
         let warn_len = BUFSIZE.min(r_warn_length().max(0) as usize);
         let has_call = !call.is_null() && isNull(call) == 0;
+        set_error_call_less(!has_call);
         let head_len = if has_call {
             b"Error in ".len()
         } else {

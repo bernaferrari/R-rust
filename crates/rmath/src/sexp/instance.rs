@@ -99,6 +99,10 @@ pub(crate) struct ErrorState {
     /// This is session state so a caught condition cannot leak across
     /// sequential sessions sharing an OS thread.
     pub signalled_condition: SEXP,
+    /// Set by `verrorcall_dflt` when the attributed call is empty
+    /// (`errorcall(R_NilValue)` / `call. = FALSE`). GNU `try()` then
+    /// prints `Error : ` and attaches a condition with a NULL call.
+    pub call_less: bool,
     /// Call used to attribute warnings emitted by an nmath evaluation.
     pub mathlib_warning_call: SEXP,
     /// Previous mathlib warning calls held by nested attribution guards.
@@ -134,6 +138,7 @@ impl Default for ErrorState {
             last_rendered_message: None,
             warning_call: std::ptr::null_mut(),
             signalled_condition: std::ptr::null_mut(),
+            call_less: false,
             mathlib_warning_call: std::ptr::null_mut(),
             mathlib_warning_call_stack: Vec::new(),
             calling_handlers_signaled: false,

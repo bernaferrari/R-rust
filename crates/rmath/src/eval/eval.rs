@@ -3089,16 +3089,35 @@ setGeneric("BaseGeneric", function(x, y, ...) standardGeneric("BaseGeneric"))
 setMethod("BaseGeneric", signature(x = "numeric", y = "numeric"), function(x,y, ...) x + y)
 errXY <- try(BaseGeneric(X = 1, Y = 2))
 err1  <- try(BaseGeneric(1))
+err1Y <- try(BaseGeneric(1, Y = 2))
 identical(3, BaseGeneric(1, 2)) &&
   inherits(errXY, "try-error") &&
   grepl('x = "missing", y = "missing"', attr(errXY,"condition")$message) &&
   inherits(err1,  "try-error") &&
-  grepl('x = "numeric", y = "missing"', attr(err1, "condition")$message)
+  grepl('x = "numeric", y = "missing"', attr(err1, "condition")$message) &&
+  identical(err1, err1Y)
 "#,
         );
         let result = result.expect("classes-methods.R BaseGeneric missing-arg signatures");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn try_call_less_errors_are_identical_across_expressions() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+e1 <- try(stop(simpleError("x")), silent=TRUE)
+e2 <- try((function() stop(simpleError("x")))(), silent=TRUE)
+identical(e1, e2) &&
+  identical(as.character(e1), "Error : x\n") &&
+  is.null(attr(e1, "condition")$call)
+"#,
+        );
+        let result = result.expect("try() call-less errors share GNU Error : prefix");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
 
 
     #[test]

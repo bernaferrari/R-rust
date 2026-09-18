@@ -112,6 +112,22 @@ pub fn clear_last_rendered_message() {
     set_last_rendered_message(None);
 }
 
+/// Record whether the current error was raised with an empty call
+/// (`errorcall(R_NilValue)` / `call. = FALSE`).
+pub fn set_error_call_less(call_less: bool) {
+    with_error_state(|state| state.call_less = call_less);
+}
+
+/// Consume the call-less flag set by the most recent `verrorcall_dflt`.
+pub fn take_error_call_less() -> bool {
+    with_error_state(|state| {
+        let flag = state.call_less;
+        state.call_less = false;
+        flag
+    })
+}
+
+
 pub(super) fn r_show_warn_calls() -> bool {
     with_error_state(|state| state.show_warn_calls)
 }

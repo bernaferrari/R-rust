@@ -36,6 +36,8 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
         }
+        crate::mainutils::errors::set_error_call_less(false);
+
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(expr, rho)
@@ -62,61 +64,67 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // try() swallows the error here; any condition recorded by
                 // a stop(<condition>) inside the expression is consumed
                 // with it (a later unrelated error must not inherit it).
+                // Consume the call-less flag first: verrorcall_dflt records
+                // it on the same error that produced this payload.
+                let call_less = crate::mainutils::errors::take_error_call_less();
                 set_signalled_condition(std::ptr::null_mut());
                 let silent = as_bool_arg(silent_arg, rho);
 
-                // GNU try() prints conditionCall(e). `@` and other
-                // specials attach the failing language object; fall back
-                // to the try() call when that is missing (doTryCatch remap).
-                let display_call = if !expr.is_null()
-                    && expr != R_NilValue()
-                    && TYPEOF(expr) == SEXPTYPE::LANGSXP
-                {
-                    expr
+                // GNU try.default (New-Internal.R): if conditionCall(e)
+                // is empty, prefix is "Error : "; otherwise deparse the
+                // call (doTryCatch remapped to the tried expression).
+                let (prefix, condition) = if call_less {
+                    (
+                        "Error : ".to_string(),
+                        simple_error_condition_at(&message, Some(R_NilValue())),
+                    )
                 } else {
-                    _call
-                };
-                let dcall_sexp = crate::mainutils::deparse::deparse1s(display_call);
-                let dcall: String = if !dcall_sexp.is_null() && dcall_sexp != R_NilValue() {
-                    let elt = crate::sexp::accessors::STRING_ELT(dcall_sexp, 0);
-                    if elt.is_null() {
-                        String::new()
+                    let display_call = if !expr.is_null()
+                        && expr != R_NilValue()
+                        && TYPEOF(expr) == SEXPTYPE::LANGSXP
+                    {
+                        expr
                     } else {
-                        let chars = crate::sexp::accessors::CHAR(elt);
-                        if chars.is_null() {
+                        _call
+                    };
+                    let dcall_sexp = crate::mainutils::deparse::deparse1s(display_call);
+                    let dcall: String = if !dcall_sexp.is_null() && dcall_sexp != R_NilValue() {
+                        let elt = crate::sexp::accessors::STRING_ELT(dcall_sexp, 0);
+                        if elt.is_null() {
                             String::new()
                         } else {
-                            std::ffi::CStr::from_ptr(chars)
-                                .to_string_lossy()
-                                .into_owned()
+                            let chars = crate::sexp::accessors::CHAR(elt);
+                            if chars.is_null() {
+                                String::new()
+                            } else {
+                                std::ffi::CStr::from_ptr(chars)
+                                    .to_string_lossy()
+                                    .into_owned()
+                            }
                         }
-                    }
-                } else {
-                    String::new()
-                };
+                    } else {
+                        String::new()
+                    };
 
-                let first_line_len = message
-                    .split('\n')
-                    .next()
-                    .map(str::chars)
-                    .map_or(0, |c| c.count());
-                let mut prefix = format!("Error in {dcall} : ");
-                // GNU New-Internal.R: 14L + nchar(dcall) + nchar(first line)
-                let width = 14 + dcall.chars().count() + first_line_len;
-                if width > 75 {
-                    prefix.push_str("\n  ");
-                }
+                    let first_line_len = message
+                        .split('\n')
+                        .next()
+                        .map(str::chars)
+                        .map_or(0, |c| c.count());
+                    let mut prefix = format!("Error in {dcall} : ");
+                    // GNU New-Internal.R: 14L + nchar(dcall) + nchar(first line)
+                    let width = 14 + dcall.chars().count() + first_line_len;
+                    if width > 75 {
+                        prefix.push_str("\n  ");
+                    }
+                    (prefix, simple_error_condition(&message))
+                };
                 let out_text = format!("{prefix}{message}\n");
 
                 if !silent {
                     crate::sexp::output::capture_stderr(&out_text);
                 }
 
-
-
-                // The stored condition keeps the internal doTryCatch frame as
-                // its call, exactly like stock tryCatch (which try() wraps).
-                let condition = simple_error_condition(&message);
                 let _cond_guard = protect(condition);
 
                 // structure(class = "try-error", condition = e, msg):
@@ -1372,20 +1380,32 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 unsafe fn simple_error_condition(message: &str) -> SEXP {
+    simple_error_condition_at(message, None)
+}
+
+unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
     unsafe {
         // stock: conditions caught by tryCatch's error handler carry the
         // internal doTryCatch(return(expr), name, parentenv, handler) frame
-        // as their call.
-        let s = |name: &str| Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-        let inner = crate::sexp::constructors::Rf_lang2(s("return"), s("expr"));
-        let call = crate::sexp::constructors::Rf_lang5(
-            s("doTryCatch"),
-            inner,
-            s("name"),
-            s("parentenv"),
-            s("handler"),
-        );
-        let _call_guard = protect(call);
+        // as their call. GNU try() keeps a NULL call when the original
+        // error was raised with call. = FALSE / errorcall(R_NilValue).
+        let mut _call_guard = None;
+        let call = match call {
+            Some(call) => call,
+            None => {
+                let s = |name: &str| Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+                let inner = crate::sexp::constructors::Rf_lang2(s("return"), s("expr"));
+                let call = crate::sexp::constructors::Rf_lang5(
+                    s("doTryCatch"),
+                    inner,
+                    s("name"),
+                    s("parentenv"),
+                    s("handler"),
+                );
+                _call_guard = Some(protect(call));
+                call
+            }
+        };
         let c_msg = CString::new(message).unwrap_or_default();
         crate::mainutils::errors::R_makeErrorCondition(
             call,
