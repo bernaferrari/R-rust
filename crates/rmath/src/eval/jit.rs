@@ -541,10 +541,16 @@ pub unsafe fn R_CheckJIT(op: SEXP) -> c_int {
         if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
             return FALSE;
         }
+        // rport-7i458: matchSignature GNU bytecode mis-executes; apply
+        // unwraps BCODE_EXPR. Do not recompile that source.
+        if super::closure::is_methods_matchsignature_closure(op) {
+            return FALSE;
+        }
         let body = BODY(op);
         if TYPEOF(body) == SEXPTYPE::BCODESXP {
             return FALSE; // Already compiled
         }
+
         let score = JIT_score(op);
         if score >= with_required_current_instance(get_R_min_jit_score_in) {
             if R_cmpfun(op) {

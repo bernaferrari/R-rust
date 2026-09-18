@@ -55,11 +55,22 @@ pub fn apply_closure_safe<'a>(
         .try_formals()
         .clone()
         .map_err(|err| sexp_err("closure formals lookup", err))?;
-    let body = closure
+    let mut body = closure
         .clone()
         .try_body()
         .clone()
         .map_err(|err| sexp_err("closure body lookup", err))?;
+    if unsafe { TYPEOF(body.clone().as_raw()) } == SEXPTYPE::BCODESXP {
+        if let Some(source) =
+            unsafe { methods_matchsignature_source(closure.clone().as_raw(), body.clone().as_raw()) }
+        {
+            unsafe {
+                crate::sexp::accessors::SET_BODY(closure.clone().as_raw(), source);
+                body = Sexp::from_raw_unchecked(source);
+            }
+        }
+    }
+
     let cloenv = closure
         .try_cloenv()
         .map_err(|err| sexp_err("closure environment lookup", err))?;
@@ -69,6 +80,7 @@ pub fn apply_closure_safe<'a>(
             cloenv.as_raw(),
         ))
     };
+
 
     // Match arguments to formals
     let matched = match_args_safe(formals.clone(), args.clone())?;
@@ -184,11 +196,8 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         // and constant pool. Compilation installs BODY(op) only after the
         // complete bytecode object exists; an unsupported body stays source.
         let _op_guard = protect(op);
-        // Do not JIT-compile matchSignature after the source unwrap
-        // (rport-7i458): the port compiler would reinstall a bad stream.
-        if !is_methods_matchsignature_closure(op) {
-            super::jit::R_CheckJIT(op);
-        }
+        super::jit::R_CheckJIT(op);
+
 
 
         // Upstream applyClosure_core passes the *promised* arguments
@@ -392,7 +401,7 @@ unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
     }
 }
 
-unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
+pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
     unsafe {
         let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
         else {
