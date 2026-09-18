@@ -1240,7 +1240,10 @@ unsafe fn purge_missing_arg_placeholders(env: SEXP) {
             let kind = TYPEOF(value);
             let empty_symbol = kind == SEXPTYPE::SYMSXP
                 && symbol_name(value).is_none_or(|n| n.is_empty());
-            if value == missing || empty_symbol {
+            let shadows_base = kind == SEXPTYPE::SYMSXP
+                && (crate::eval::builtin::has_builtin_handler(&name)
+                    || crate::eval::primitive::fun_tab_index_by_name(&name).is_some());
+            if value == missing || empty_symbol || shadows_base {
                 doomed.push(name);
             }
         }

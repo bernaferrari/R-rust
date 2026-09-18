@@ -79,6 +79,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "length",
     "nchar",
     "substr",
+    "Encoding",
+    "Encoding<-",
     "tolower",
     "toupper",
     "enc2native",
@@ -850,6 +852,35 @@ mod tests {
         for name in ALL_FNS {
             assert!(seen.insert(*name), "duplicate builtin name: {name}");
         }
+    }
+
+    #[test]
+    fn replacement_form_handlers_are_in_all_fns() {
+        // `parent.env<-` / `formals<-` had handlers but were missing
+        // from ALL_FNS, so GETFUN could not find them. Language
+        // specials ($<-, @<-) are installed by register_special_forms.
+        // Stats replacements are not base bindings.
+        let all: std::collections::HashSet<&str> = ALL_FNS.iter().copied().collect();
+        let specials: std::collections::HashSet<&str> =
+            crate::sexp::init::LANGUAGE_ELEMENTS.iter().copied().collect();
+        let exceptions: std::collections::HashSet<&str> =
+            ["contrasts<-", "window<-"].into_iter().collect();
+        let mut missing = Vec::new();
+        for name in crate::eval::builtin::builtin_handler_names() {
+            if !name.ends_with("<-") || name.contains('.') {
+                continue;
+            }
+            if specials.contains(name) || exceptions.contains(name) {
+                continue;
+            }
+            if !all.contains(name) {
+                missing.push(name);
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "replacement handlers missing from ALL_FNS: {missing:?}"
+        );
     }
 
     #[test]

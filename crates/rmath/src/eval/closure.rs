@@ -325,7 +325,7 @@ unsafe fn env_on_enclos_chain(mut start: SEXP, needle: SEXP) -> bool {
     }
 }
 
-unsafe fn remap_methods_snapshot_cloenv(_op: SEXP, cloenv: SEXP) -> SEXP {
+unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
         else {
@@ -337,8 +337,6 @@ unsafe fn remap_methods_snapshot_cloenv(_op: SEXP, cloenv: SEXP) -> SEXP {
         let empty = crate::sexp::globals::R_EmptyEnv();
         let base = crate::sexp::globals::R_BaseEnv();
         let global = crate::sexp::globals::R_GlobalEnv();
-        // Never retarget special envs, or any env already on methods'
-        // parent chain (that would cycle methods → … → cloenv → methods).
         if cloenv == empty || cloenv == base || cloenv == global {
             return cloenv;
         }
@@ -348,22 +346,26 @@ unsafe fn remap_methods_snapshot_cloenv(_op: SEXP, cloenv: SEXP) -> SEXP {
         if crate::sexp::accessors::ENCLOS(cloenv) == methods {
             return cloenv;
         }
-        // Methods-package snapshot frames (S4 MethodDefinition, compiler
-        // closures, generic tables) often enclose emptyenv/base instead of
-        // namespace:methods, so GETFUN dies before reaching base.
-        let parent = crate::sexp::accessors::ENCLOS(cloenv);
-        if parent.is_null() || parent == empty || parent == base {
-            crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
-            crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
-            return cloenv;
-        }
-        // Generic environments carry .AllMTable.
         let all_mtable = crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr());
         let tables = crate::sexp::envir::R_findVarInFrame(cloenv, all_mtable);
-        if tables.is_null()
-            || tables == crate::sexp::globals::R_UnboundValue()
-            || crate::sexp::accessors::TYPEOF(tables) != SEXPTYPE::ENVSXP
-        {
+        let is_generic_snapshot = !tables.is_null()
+            && tables != crate::sexp::globals::R_UnboundValue()
+            && crate::sexp::accessors::TYPEOF(tables) == SEXPTYPE::ENVSXP;
+        let is_method_def = crate::mainutils::coerce::IS_S4_OBJECT(op) != 0
+            && crate::sexp::accessors::TYPEOF(op) == SEXPTYPE::CLOSXP;
+        // Only MethodDefinition / generic-table snapshots. Package
+        // namespaces enclose base directly here; remapping every
+        // empty/base parent would send ordinary package closures
+        // through methods.
+        if is_method_def || is_generic_snapshot {
+            let parent = crate::sexp::accessors::ENCLOS(cloenv);
+            if parent.is_null() || parent == empty || parent == base {
+                crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
+                crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
+                return cloenv;
+            }
+        }
+        if !is_generic_snapshot {
             return cloenv;
         }
         let sg = crate::sexp::symbol::Rf_install(c"standardGeneric".as_ptr());
