@@ -2337,6 +2337,15 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::VECSXP => {
+            if has_class(x.clone(), "summary.warnings") {
+                let text = unsafe {
+                    crate::mainutils::essentials::format_summary_warnings(x.as_raw())
+                };
+
+                emit(&text);
+                return;
+            }
+
             if has_class(x.clone(), "POSIXlt") {
                 let n = posixlt_time_length(x.clone());
                 if n == 0 {
@@ -2495,7 +2504,18 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
-        SEXPTYPE::VECSXP => format_list(x),
+        SEXPTYPE::VECSXP => {
+            if has_class(x.clone(), "summary.warnings") {
+                return unsafe {
+                    crate::mainutils::essentials::format_summary_warnings(x.as_raw())
+                        .trim_end_matches('\n')
+                        .to_string()
+                };
+            }
+
+            format_list(x)
+        }
+
         SEXPTYPE::EXPRSXP => format_expression_vector(x),
         SEXPTYPE::SYMSXP
         | SEXPTYPE::LANGSXP

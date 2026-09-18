@@ -1326,6 +1326,44 @@ identical(w, "deparse may be incomplete")
     }
 
 
+    #[test]
+    fn summary_warnings_collapses_identical_deparse_warnings() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+options(warn = 0)
+f <- function(x) deparse(x, control = "all")
+invisible({
+    f(y ~ x)
+    f(a ~ b)
+})
+summary(warnings())
+identical(class(summary(warnings())), "summary.warnings")
+"#,
+        );
+        let result = result.expect("summary(warnings()) must run");
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "class(summary(warnings())) must be summary.warnings, output={output:?}"
+        );
+        assert!(
+            output.stdout.contains("2 identical warnings:"),
+            "expected collapsed identical-warnings header, got {output:?}"
+        );
+        assert!(
+            output.stdout.contains("deparse may be incomplete"),
+            "expected incomplete-deparse text, got {output:?}"
+        );
+        assert!(
+            !output.stdout.contains("1x :"),
+            "identical warnings must not print per-item 1x tags, got {output:?}"
+        );
+
+    }
+
+
+
 
     #[test]
     fn all_equal_s4_formula_subclass_uses_language_path() {

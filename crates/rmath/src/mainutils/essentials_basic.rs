@@ -223,6 +223,13 @@ pub unsafe fn do_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
             return crate::mainutils::essentials::do_print_POSIXct(_call, _op, args, _rho);
         }
+        if crate::mainutils::essentials::sexp_has_class(x, "summary.warnings") {
+            crate::mainutils::essentials::emit_summary_warnings(x);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+
+
 
 
         if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {

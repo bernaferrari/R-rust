@@ -208,50 +208,180 @@ unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>) -> SEXP {
     }
 }
 
-unsafe fn summary_warnings(x: SEXP) -> SEXP {
+pub unsafe fn format_summary_warnings(x: SEXP) -> String {
     unsafe {
-        let n = if x.is_null() || x == R_NilValue() {
+        let n = if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
             0
         } else {
             XLENGTH(x)
         };
         if n == 0 {
-            str_emit_line("No warnings");
-        } else {
-            str_emit_line(&format!("Summary of (a total of {n}) warning messages:"));
-            let names = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
-            for i in 0..n {
-                let msg = if !names.is_null()
-                    && names != R_NilValue()
-                    && TYPEOF(names) == SEXPTYPE::STRSXP
-                    && i < XLENGTH(names)
-                {
-                    let s = STRING_ELT(names, i);
-                    if s.is_null() {
-                        String::new()
-                    } else {
-                        std::ffi::CStr::from_ptr(CHAR(s))
-                            .to_string_lossy()
-                            .into_owned()
-                    }
-                } else {
+            return "No warnings\n".to_string();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let counts = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"counts".as_ptr()));
+        let count_of = |i: R_xlen_t| -> i64 {
+            if !counts.is_null()
+                && counts != R_NilValue()
+                && TYPEOF(counts) == SEXPTYPE::INTSXP
+                && i < XLENGTH(counts)
+            {
+                *INTEGER(counts).add(i as usize) as i64
+            } else {
+                1
+            }
+        };
+        let mut total = 0i64;
+        let mut lines: Vec<(i64, String, String)> = Vec::new();
+        for i in 0..n {
+            let msg = if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && i < XLENGTH(names)
+            {
+                let s = STRING_ELT(names, i);
+                if s.is_null() {
                     String::new()
-                };
-                if msg.is_empty() {
-                    str_emit_line("1x : <warning>");
                 } else {
-                    str_emit_line(&format!("1x : {msg}"));
+                    std::ffi::CStr::from_ptr(CHAR(s))
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            } else {
+                String::new()
+            };
+            let call = VECTOR_ELT(x, i);
+            let dcall = if call.is_null() || call == R_NilValue() {
+                String::new()
+            } else {
+                crate::mainutils::errors::warning_dcall(call)
+            };
+            let count = count_of(i);
+            total += count;
+            lines.push((count, dcall, msg));
+        }
+        let mut out = String::new();
+        if lines.len() == 1 {
+            let (_, dcall, msg) = &lines[0];
+            out.push_str(&format!("{total} identical warnings:\n"));
+            if dcall.is_empty() {
+                out.push_str(msg);
+                out.push('\n');
+            } else {
+                out.push_str(&format!("In {dcall} : {msg}\n"));
+            }
+        } else {
+            out.push_str(&format!(
+                "Summary of (a total of {total}) warning messages:\n"
+            ));
+            for (count, dcall, msg) in &lines {
+                if dcall.is_empty() {
+                    out.push_str(&format!("{count}x : {msg}\n"));
+                } else {
+                    out.push_str(&format!("{count}x : In {dcall} : {msg}\n"));
                 }
             }
         }
-
-        crate::sexp::globals::set_R_Visible(FALSE);
-        x
+        out
     }
 }
+
+pub unsafe fn emit_summary_warnings(x: SEXP) {
+    unsafe {
+        let text = format_summary_warnings(x);
+        for line in text.lines() {
+            str_emit_line(line);
+        }
+    }
+}
+
+
+unsafe fn summary_warnings(x: SEXP) -> SEXP {
+    unsafe {
+        let n = if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
+            0
+        } else {
+            XLENGTH(x)
+        };
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let mut keys: Vec<String> = Vec::new();
+        let mut idxs: Vec<R_xlen_t> = Vec::new();
+        let mut counts: Vec<i32> = Vec::new();
+        for i in 0..n {
+            let msg = if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && i < XLENGTH(names)
+            {
+                let s = STRING_ELT(names, i);
+                if s.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(CHAR(s))
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            } else {
+                String::new()
+            };
+            let call = VECTOR_ELT(x, i);
+            let dcall = if call.is_null() || call == R_NilValue() {
+                String::new()
+            } else {
+                crate::mainutils::errors::warning_dcall(call)
+            };
+            let key = format!("{dcall} |<:>| {msg}");
+            if let Some(pos) = keys.iter().position(|k| k == &key) {
+                counts[pos] += 1;
+            } else {
+                keys.push(key);
+                idxs.push(i);
+                counts.push(1);
+            }
+        }
+        let out_n = idxs.len() as i64;
+        let out = Rf_allocVector3(SEXPTYPE::VECSXP, out_n);
+        let _out = protect(out);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, out_n);
+        let _out_names = protect(out_names);
+        let out_counts = Rf_allocVector3(SEXPTYPE::INTSXP, out_n);
+        let _out_counts = protect(out_counts);
+        for (j, &i) in idxs.iter().enumerate() {
+            SET_VECTOR_ELT(out, j as R_xlen_t, VECTOR_ELT(x, i));
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && i < XLENGTH(names)
+            {
+                SET_STRING_ELT(out_names, j as R_xlen_t, STRING_ELT(names, i));
+            }
+            *INTEGER(out_counts).add(j) = counts[j];
+        }
+        crate::sexp::attrib_core::setAttrib(
+            out,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            out_names,
+        );
+        crate::sexp::attrib_core::setAttrib(out, Rf_install(c"counts".as_ptr()), out_counts);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _class = protect(class);
+        SET_STRING_ELT(
+            class,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"summary.warnings".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        out
+    }
+}
+
+
 
 
 /// R's `summary.default(x)`: return GNU R-shaped summaryDefault/table vectors.
