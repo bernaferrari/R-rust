@@ -2,7 +2,9 @@
 
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{CAR, CDR, CLOENV, PRINTNAME, TYPEOF};
+use crate::sexp::accessors::{CAR, CDR, CHAR, CLOENV, FORMALS, PRINTNAME, TAG, TYPEOF};
+
+
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory::RArena;
@@ -265,6 +267,15 @@ fn apply_unevaluated_builtin<'a>(
     op_name: &str,
 ) -> Option<(SEXP, VisibilityRestore)> {
     let builtin = super::builtin::unevaluated_builtin_handler(op_name)?;
+    unsafe {
+
+        check_prototype_first_arg(
+            op_name,
+            frame.args.clone().as_raw(),
+            frame.call.clone().as_raw(),
+        );
+    }
+
     let result = crate::mainutils::errors::attribute_handler_errors(
         frame.call.clone().as_raw(),
         || unsafe {
@@ -284,23 +295,26 @@ fn apply_unevaluated_builtin<'a>(
     Some((result, restore))
 }
 
+
 fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_args: SEXP) -> SEXP {
     let fun = frame.fun;
     let call = frame.call;
     let args = frame.args;
     let rho = frame.rho;
     if let Some(handler) = super::builtin::evaluated_builtin_handler(op_name) {
+        unsafe {
+            check_prototype_first_arg(op_name, evaled_args, call.clone().as_raw());
+        }
         let result =
             crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
                 handler(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
             });
-        // Stock clears R_Visible for these .Internal results (funtab eval
-        // column); the REPL-level auto-print depends on the exact flag.
         if internal_result_invisible(op_name) {
             super::runtime::set_visible(crate::sexp::ffi::FALSE);
         }
         return result;
     }
+
 
     // Try S3/S4 dispatch for primitive names that are not handled directly.
     if let Some(s3_result) = try_s3_dispatch(
@@ -331,6 +345,94 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
         });
     }
 }
+unsafe fn check_prototype_first_arg(op_name: &str, evaled_args: SEXP, call: SEXP) {
+    unsafe {
+        match first_prototype_formal(op_name) {
+            None => {}
+            Some(None) => {
+                if !evaled_args.is_null() && evaled_args != R_NilValue() {
+                    let n = crate::sexp::constructors::Rf_length(evaled_args);
+                    if n > 0 {
+                        crate::mainutils::errors::errorcall_str(
+                            call,
+                            &format!(
+                                "{n} argument{} passed to '{op_name}' which requires 0",
+                                if n == 1 { "" } else { "s" }
+                            ),
+                        );
+                    }
+                }
+            }
+            Some(Some(formal)) if formal != "..." => {
+                if evaled_args.is_null() || evaled_args == R_NilValue() {
+                    return;
+                }
+                let Ok(cname) = std::ffi::CString::new(formal) else {
+                    return;
+                };
+                crate::mainutils::seq::check1arg(evaled_args, call, cname.as_ptr());
+            }
+            Some(Some(_)) => {}
+        }
+    }
+}
+
+
+
+unsafe fn first_prototype_formal(op_name: &str) -> Option<Option<String>> {
+    unsafe {
+        let base = crate::sexp::globals::R_BaseEnv();
+        let Ok(name_c) = std::ffi::CString::new(op_name) else {
+            return None;
+        };
+        let symbol = crate::sexp::symbol::Rf_install(name_c.as_ptr());
+        for registry in [".GenericArgsEnv", ".ArgsEnv"] {
+            let Ok(reg_c) = std::ffi::CString::new(registry) else {
+                continue;
+            };
+            let env = crate::sexp::envir::R_findVarInFrame(
+                base,
+                crate::sexp::symbol::Rf_install(reg_c.as_ptr()),
+            );
+            if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+                continue;
+            }
+            let mut proto = crate::sexp::envir::R_findVarInFrame(env, symbol);
+            if proto.is_null() || proto == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            if TYPEOF(proto) == SEXPTYPE::PROMSXP {
+                proto = crate::sexp::envir::forcePromise(proto);
+            }
+            if TYPEOF(proto) != SEXPTYPE::CLOSXP {
+                continue;
+            }
+            let formals = FORMALS(proto);
+            if formals.is_null() || formals == R_NilValue() {
+                return Some(None);
+            }
+            let tag = TAG(formals);
+            if tag.is_null() || tag == R_NilValue() {
+                return Some(None);
+            }
+            let pname = PRINTNAME(tag);
+            if pname.is_null() {
+                return Some(None);
+            }
+            let bytes = CHAR(pname);
+            if bytes.is_null() {
+                return Some(None);
+            }
+            return std::ffi::CStr::from_ptr(bytes)
+                .to_str()
+                .ok()
+                .map(|s| Some(s.to_string()));
+        }
+        None
+    }
+}
+
+
 
 // ---------------------------------------------------------------------------
 // S3 Dispatch — method dispatch based on class attribute

@@ -5045,6 +5045,9 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "delayedAssign" => Some(crate::mainutils::builtin::do_delayed),
         "radixsort" => Some(crate::mainutils::radixsort::do_radixsort),
         "save" => Some(crate::mainutils::saveload::do_save),
+        "islistfactor" => Some(crate::mainutils::apply::do_islistfactor),
+
+
         "getRegisteredNamespace" => {
             Some(crate::mainutils::essentials::do_get_registered_namespace)
         }

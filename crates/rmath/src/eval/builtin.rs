@@ -4058,10 +4058,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "unlist",
         handler: crate::mainutils::essentials::do_unlist,
     },
-    EvaluatedBuiltin {
-        name: "islistfactor",
-        handler: crate::mainutils::apply::do_islistfactor,
-    },
 
     EvaluatedBuiltin {
         name: "print.default",

@@ -821,8 +821,10 @@ pub unsafe fn do_tailcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 });
 
         if is_exec {
+            crate::mainutils::seq::check1arg(args, call, c"expr".as_ptr());
             eval_exec_call(args, rho)
         } else {
+
             eval_tailcall_call(args, rho)
         }
     }

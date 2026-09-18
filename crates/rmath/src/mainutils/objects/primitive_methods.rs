@@ -113,19 +113,31 @@ pub unsafe fn R_set_prim_method(
                 op,
                 crate::sexp::symbol::Rf_install(c"internal".as_ptr()),
             );
-            let name = if TYPEOF(internal) == SEXPTYPE::STRSXP && XLENGTH(internal) > 0 {
+            let mut name = if TYPEOF(internal) == SEXPTYPE::STRSXP && XLENGTH(internal) > 0 {
                 crate::sexp::symbol::Rf_install(CHAR(STRING_ELT(internal, 0)))
             } else {
                 R_NilValue()
             };
-            op = crate::sexp::accessors::INTERNAL(name);
-            // GNU extraS4 wrappers (unlist, as.vector, lengths) are
-            // closures. setMethod still calls this hook after installing
-            // the table method; there is no primitive to cache.
+            // GNU resetGeneric passes fname as the generic name. extraS4
+            // wrappers are closures in SYMVALUE; the FunTab INTERNAL slot
+            // still names the .Internal primitive.
+            if name.is_null() || name == R_NilValue() {
+                if TYPEOF(fname) == SEXPTYPE::STRSXP && XLENGTH(fname) > 0 {
+                    name = crate::sexp::symbol::Rf_install(CHAR(STRING_ELT(fname, 0)));
+                } else if TYPEOF(fname) == SEXPTYPE::SYMSXP {
+                    name = fname;
+                }
+            }
+            op = if !name.is_null() && name != R_NilValue() {
+                crate::sexp::accessors::INTERNAL(name)
+            } else {
+                R_NilValue()
+            };
             if op.is_null() || op == R_NilValue() {
                 return fname;
             }
         }
+
 
         do_set_prim_method(op, code_string, fundef, mlist);
         fname

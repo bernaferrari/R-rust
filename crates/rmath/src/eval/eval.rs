@@ -2634,6 +2634,23 @@ identical(typeof(unlist), "closure") &&
         let result = result.expect("unlist/as.vector/lengths must be GNU closures");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+    #[test]
+    fn stop_pastes_arguments_and_primitives_reject_wrong_names() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+sm <- tryCatch(stop("failure on ", "abs"), error=function(e) conditionMessage(e))
+am <- tryCatch(do.call(abs, list(zZ=NULL)), error=function(e) conditionMessage(e))
+nm <- tryCatch(do.call(nargs, list(zZ=NULL)), error=function(e) conditionMessage(e))
+grepl("failure on abs", sm, fixed=TRUE) &&
+  grepl("does not match|unused argument", am) &&
+  grepl("requires 0", nm, fixed=TRUE)
+"#,
+        );
+        let result = result.expect("stop paste and primitive name checks must match GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
 
 
 

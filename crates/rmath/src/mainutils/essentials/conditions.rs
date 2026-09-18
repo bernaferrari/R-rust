@@ -1237,13 +1237,9 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
 
-        let s = elt_to_string(CAR(args), 0);
-        // Upstream `stop()` signals with the call of the frame that invoked
-        // stop (findCall skips stop's own closure frame). stop is a builtin
-        // here, so the innermost context call — R_getCurrentCall() — is that
-        // caller's call; at top level it is R_NilValue and the render stays
-        // "Error: <message>" exactly like stock R.
+        let s = condition_message_text(args, &["call.", "domain"]);
         crate::mainutils::errors::errorcall_str(crate::mainutils::errors::R_getCurrentCall(), &s);
+
     }
 }
 
