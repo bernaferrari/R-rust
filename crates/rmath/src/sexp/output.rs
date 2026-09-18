@@ -644,11 +644,16 @@ fn format_printable_attributes(x: Sexp<'_>) -> String {
 fn format_list_body_with_attributes(body: String, x: Sexp<'_>) -> String {
     let attrs = format_printable_attributes(x);
     if attrs.is_empty() {
-        body
+        format!("{body}\n")
     } else {
-        format!("{body}\n{attrs}")
+        format!("{body}\n{attrs}\n")
     }
 }
+
+
+
+
+
 
 fn format_with_printable_attributes(base: String, x: Sexp<'_>) -> String {
     format!("{base}{}", format_printable_attributes(x))
@@ -1778,7 +1783,6 @@ fn format_list_with_path(x: Sexp<'_>, path: &str) -> String {
     if x.clone().len() == 0 {
         return format_with_printable_attributes("list()".to_string(), x);
     }
-
     let names = list_names(x.clone());
     let mut sections = Vec::with_capacity(x.clone().len() as usize);
     for (index, elem) in x.clone().iter_vector().enumerate() {
@@ -1788,6 +1792,7 @@ fn format_list_with_path(x: Sexp<'_>, path: &str) -> String {
     }
     format_list_body_with_attributes(sections.join("\n\n"), x)
 }
+
 
 
 fn format_pairlist(x: Sexp<'_>) -> String {
@@ -1821,6 +1826,8 @@ fn format_pairlist_with_path(x: Sexp<'_>, path: &str) -> String {
         format_list_body_with_attributes(sections.join("\n\n"), x)
 
 
+
+
     }
 }
 
@@ -1834,27 +1841,19 @@ fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
     }
 }
 
-
 /// Format a value for top-level emission, excluding the caller-owned final
 /// line terminator.
 ///
 /// `printList()` emits a separator newline after every non-empty list
-/// element, including the last one.  String contexts deliberately use
-/// [`format_sexp_direct`] without that trailing separator, while both
-/// `print()` and the REPL/script auto-print path need it before they append
-/// their ordinary final newline.
+/// element, including the last one. Nested lists already include that
+/// separator in their body; the outermost list still needs one more so
+/// the next top-level print is separated by two blanks.
 pub(crate) fn format_sexp_top_level(x: Sexp<'_>) -> String {
-    let mut rendered = format_sexp_direct(x.clone());
-    let needs_list_sep = match x.clone().typeof_() {
-        SEXPTYPE::VECSXP => x.clone().len() != 0 && format_data_frame(x).is_none(),
-        SEXPTYPE::LISTSXP => !x.is_nil(),
-        _ => false,
-    };
-    if needs_list_sep {
-        rendered.push('\n');
-    }
-    rendered
+    format_sexp_direct(x)
 }
+
+
+
 
 
 
