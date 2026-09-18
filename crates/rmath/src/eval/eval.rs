@@ -2924,6 +2924,34 @@ identical(x, y)
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn classes_methods_ops_extra_arg_and_dots() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("MyInteger", representation("integer"))
+i <- new("MyInteger", 1L)
+m <- matrix(1:6, 2, 3)
+setGeneric("genericExtraArg",
+           function(x, y, extra) standardGeneric("genericExtraArg"),
+           signature="x")
+setMethod("genericExtraArg", "ANY", function(x, y=NULL) y)
+f <- function(...) length(list(...))
+setGeneric("f")
+setMethod("f", "character", function(...){ callNextMethod() })
+identical(i*m, m) &&
+  identical(genericExtraArg("foo", 1L), 1L) &&
+  identical(f(1, 2, 3), 3L) &&
+  identical(f("a", "b", "c"), 3L)
+"#,
+        );
+        let result = result.expect("classes-methods.R Ops, rematch NULL default, dots");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
 
 
 
