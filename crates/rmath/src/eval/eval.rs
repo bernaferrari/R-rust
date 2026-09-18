@@ -1505,6 +1505,80 @@ invisible(NULL)
         );
     }
 
+    #[test]
+    fn print_foo_dispatches_inside_lists_and_attributes() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            r#"
+obj <- structure(quote(stop("should not be evaluated")), class = "foo")
+print.foo <- function(x, ...) cat("dispatched\n")
+list(obj)
+structure(list(), attr = obj)
+invisible(NULL)
+"#,
+        );
+        assert!(
+            captured.stdout.contains("dispatched"),
+            "print.foo must run for classed list children, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains("stop(\"should not be evaluated\")"),
+            "default language print must not run after print.foo, got {:?}",
+            captured.stdout
+        );
+    }
+
+    #[test]
+    fn recursive_print_prefers_s4_show_over_print() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            r#"
+print.callS4Class <- function(x, ...) stop("should not be dispatched")
+.CallS4Class <- setClass("callS4Class", slots = c(x = "numeric"))
+setMethod("show", "callS4Class", function(object) cat("S4 show!\n"))
+x <- .CallS4Class(x = 1)
+list(x)
+invisible(NULL)
+"#,
+        );
+        assert!(
+            captured.stdout.contains("S4 show!"),
+            "recursive print must call show() for S4 objects, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains("should not be dispatched"),
+            "print.callS4Class must not run, got {:?}",
+            captured.stdout
+        );
+    }
+
+
+    #[test]
+    fn recursive_print_forwards_user_print_arguments() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            r#"
+obj <- structure(quote(stop("should not be evaluated")), class = "foo")
+print.foo <- function(x, other = FALSE, digits = 0L, ...) {
+    cat("digits: ", digits, "\n")
+    stopifnot(other, digits == 4, !...length())
+}
+print(list(obj), digits = 4, other = TRUE)
+invisible(NULL)
+"#,
+        );
+        assert!(
+            captured.stdout.contains("digits:  4"),
+            "recursive print must forward digits/other, got {:?}",
+            captured.stdout
+        );
+    }
+
+
+
+
 
 
 

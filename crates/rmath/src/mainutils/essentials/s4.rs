@@ -437,9 +437,26 @@ pub unsafe fn do_isVirtualClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
+unsafe fn ensure_methods_namespace() -> Option<SEXP> {
+    unsafe {
+        if let Some(namespace) = crate::mainutils::essentials::cached_namespace_by_name("methods") {
+            return Some(namespace);
+        }
+        let path = crate::mainutils::essentials::find_package_path("methods");
+        if path.is_empty() {
+            return None;
+        }
+        let _ = crate::mainutils::essentials::load_pure_r_package(
+            "methods",
+            std::path::Path::new(&path),
+        );
+        crate::mainutils::essentials::cached_namespace_by_name("methods")
+    }
+}
+
 unsafe fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
     unsafe {
-        let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
+        let namespace = ensure_methods_namespace()?;
         let symbol = Rf_install(name.as_ptr());
         let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
         if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
@@ -455,6 +472,7 @@ unsafe fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
         }
     }
 }
+
 
 /// Use the GNU `methods::new` closure once that namespace is loaded.
 unsafe fn methods_new_closure() -> Option<SEXP> {

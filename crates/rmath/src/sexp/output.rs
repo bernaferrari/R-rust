@@ -230,6 +230,63 @@ fn append_bounded(
     *truncated = true;
 }
 
+thread_local! {
+    static PRINT_DISPATCH_EXTRAS: std::cell::Cell<SEXP> =
+        const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
+
+pub(crate) struct PrintDispatchExtrasGuard {
+    previous: SEXP,
+}
+
+impl Drop for PrintDispatchExtrasGuard {
+    fn drop(&mut self) {
+        PRINT_DISPATCH_EXTRAS.with(|slot| slot.set(self.previous));
+    }
+}
+
+/// Forward extra `print(...)` arguments to recursive `print.<class>` methods.
+pub(crate) fn push_print_dispatch_extras(extras: SEXP) -> PrintDispatchExtrasGuard {
+    let previous = PRINT_DISPATCH_EXTRAS.with(|slot| slot.replace(extras));
+    PrintDispatchExtrasGuard { previous }
+}
+
+fn print_dispatch_extras() -> SEXP {
+    PRINT_DISPATCH_EXTRAS.with(|slot| slot.get())
+}
+
+unsafe fn print_args_except_x(args: SEXP, x: SEXP) -> SEXP {
+    unsafe {
+        let mut head = R_NilValue();
+        let mut tail = R_NilValue();
+        let mut cur = args;
+        let mut skipped_x = false;
+        while !cur.is_null() && cur != R_NilValue() {
+            let value = CAR(cur);
+            if !skipped_x && value == x {
+                skipped_x = true;
+            } else {
+                let cell = crate::sexp::constructors::Rf_cons(value, R_NilValue());
+                crate::sexp::accessors::SETTAG(cell, TAG(cur));
+                if head == R_NilValue() {
+                    head = cell;
+                } else {
+                    crate::sexp::accessors::SETCDR(tail, cell);
+                }
+                tail = cell;
+            }
+            cur = CDR(cur);
+        }
+        head
+    }
+}
+
+/// Copy every `print()` argument except `x` for recursive method dispatch.
+pub(crate) unsafe fn copy_print_dispatch_extras(args: SEXP, x: SEXP) -> SEXP {
+    unsafe { print_args_except_x(args, x) }
+}
+
+
 /// Start capturing R output.
 pub fn start_capture() {
     super::instance::with_required_current_instance(start_capture_in);
@@ -631,7 +688,11 @@ fn format_printable_attributes(x: Sexp<'_>) -> String {
             out.push('\n');
             out.push_str(&format!("attr(,\"{name}\")\n"));
             if let Some(value) = Sexp::from_raw(value) {
-                out.push_str(&format_sexp_direct(value));
+                if let Some(dispatched) = format_dispatched_print(value.clone()) {
+                    out.push_str(&dispatched);
+                } else {
+                    out.push_str(&format_sexp_direct(value));
+                }
             } else {
                 out.push_str("NULL");
             }
@@ -646,7 +707,8 @@ fn format_list_body_with_attributes(body: String, x: Sexp<'_>) -> String {
     if attrs.is_empty() {
         format!("{body}\n")
     } else {
-        format!("{body}\n{attrs}\n")
+        format!("{body}\n{attrs}")
+
     }
 }
 
@@ -1831,7 +1893,88 @@ fn format_pairlist_with_path(x: Sexp<'_>, path: &str) -> String {
     }
 }
 
+fn format_dispatched_show(raw: crate::sexp::ffi::SEXP) -> Option<String> {
+    unsafe {
+        let path = crate::mainutils::essentials::find_package_path("methods");
+        if crate::mainutils::essentials::cached_namespace_by_name("methods").is_none()
+            && !path.is_empty()
+        {
+            let _ = crate::mainutils::essentials::load_pure_r_package(
+                "methods",
+                std::path::Path::new(&path),
+            );
+        }
+        let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
+        let symbol = crate::sexp::symbol::Rf_install(c"show".as_ptr());
+        let mut fun = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
+        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+            return None;
+        }
+        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+            fun = crate::sexp::envir::forcePromise(fun);
+        }
+        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+            return None;
+        }
+        let _fun = crate::sexp::protect::protect(fun);
+        let call = crate::sexp::constructors::Rf_lang2(fun, raw);
+        let _call = crate::sexp::protect::protect(call);
+        let env = crate::sexp::globals::R_GlobalEnv();
+        let guard = OutputCaptureGuard::start();
+        let _ = crate::eval::eval::Rf_eval(call, env);
+        let captured = guard.finish();
+        Some(captured.stdout.trim_end_matches('\n').to_string())
+    }
+}
+
+
+fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
+    unsafe {
+        let raw = x.as_raw();
+        if crate::sexp::accessors::OBJECT(raw) == 0 {
+            return None;
+        }
+        if crate::mainutils::coerce::IS_S4_OBJECT(raw) != 0 {
+            return format_dispatched_show(raw);
+        }
+        let klass = crate::sexp::attrib_core::getAttrib(
+            raw,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let env = crate::sexp::globals::R_GlobalEnv();
+        let method = crate::mainutils::objects::lookup_s3_method_for_classes(
+            "print", klass, env, env, env, false,
+        )?;
+        if TYPEOF(method.method) != SEXPTYPE::CLOSXP {
+            return None;
+        }
+        let extras = print_dispatch_extras();
+        let extras = if extras.is_null() { R_NilValue() } else { extras };
+        let args = crate::sexp::constructors::Rf_cons(raw, extras);
+        let _args = crate::sexp::protect::protect(args);
+        let print_sym = crate::sexp::symbol::Rf_install(c"print".as_ptr());
+        let call = crate::sexp::constructors::Rf_cons(print_sym, args);
+        if !call.is_null() {
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        let _call = crate::sexp::protect::protect(call);
+        let guard = OutputCaptureGuard::start();
+        let Some(_) = crate::mainutils::essentials::apply_s3_closure_method(
+            "print", call, args, env,
+        ) else {
+            return None;
+        };
+
+        let captured = guard.finish();
+        Some(captured.stdout.trim_end_matches('\n').to_string())
+    }
+}
+
+
 fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
+    if let Some(dispatched) = format_dispatched_print(elem.clone()) {
+        return dispatched;
+    }
     match elem.clone().typeof_() {
         SEXPTYPE::VECSXP if format_data_frame(elem.clone()).is_none() => {
             format_list_with_path(elem, path)
@@ -1840,6 +1983,7 @@ fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
         _ => format_sexp_direct(elem),
     }
 }
+
 
 /// Format a value for top-level emission, excluding the caller-owned final
 /// line terminator.

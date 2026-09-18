@@ -71,16 +71,19 @@ fn dots_context_error(message: &str) -> ! {
 unsafe fn current_dots(rho: SEXP) -> SEXP {
     unsafe {
         let dots = R_findVarInFrame(rho, R_DotsSymbol());
-        if dots.is_null()
-            || dots == R_UnboundValue()
-            || dots == R_MissingArg()
-            || TYPEOF(dots) != SEXPTYPE::DOTSXP
-        {
+        if dots.is_null() || dots == R_UnboundValue() || dots == R_MissingArg() {
+            dots_context_error("incorrect context: the current call has no '...' to look in");
+        }
+        if dots == R_NilValue() {
+            return dots;
+        }
+        if TYPEOF(dots) != SEXPTYPE::DOTSXP {
             dots_context_error("incorrect context: the current call has no '...' to look in");
         }
         dots
     }
 }
+
 
 unsafe fn dots_len(dots: SEXP) -> c_int {
     unsafe {

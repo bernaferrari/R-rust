@@ -319,10 +319,13 @@ pub unsafe fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             None
         };
-
+        let extras = crate::sexp::output::copy_print_dispatch_extras(args, x);
+        let _extras = crate::sexp::protect::protect(extras);
+        let _extras_guard = crate::sexp::output::push_print_dispatch_extras(extras);
         if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
             crate::sexp::output::print_value(sexp);
         }
+
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }

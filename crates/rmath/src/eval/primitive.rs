@@ -197,7 +197,9 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "capture.output"
             | "cat"
             | "print"
+            | "print.default"
             | "str"
+
             | "warning"
 
             | "message"
@@ -214,9 +216,12 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "RNGkind"
             // Flow-through evaluation: the result's visibility is whatever
             // the wrapped expression / handler evaluation left behind.
+
             | "eval"
             | "evalq"
+            | "local"
             | "try"
+
             | "tryCatch"
             | "withCallingHandlers"
             | "withCallingHandlers"
