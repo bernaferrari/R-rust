@@ -3171,7 +3171,7 @@ exists(".__NAMESPACE__.", envir=asNamespace("methods"), inherits=FALSE) &&
     }
 
     #[test]
-    fn classes_methods_show_body_assign_backticks() {
+    fn show_getgeneric_body_assign_backticks() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
             r#"
@@ -3179,9 +3179,26 @@ invisible(require(methods, quietly=TRUE))
 any(grepl("showMethods(`body<-`)", capture.output(show(getGeneric("body<-"))), fixed=TRUE))
 "#,
         );
-        let result = result.expect("classes-methods.R show(body<-) backticks");
+        let result = result.expect("show(getGeneric(body<-)) backticks");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn s4_generic_data_part_does_not_clear_live_object() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+obj <- `body<-`
+invisible(obj@.Data)
+isS4(obj) && identical(as.character(obj@generic)[1], "body<-")
+"#,
+        );
+        let result = result.expect("getDataPart must not unset S4 on the live generic");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
 

@@ -1281,6 +1281,8 @@ unsafe fn purge_missing_arg_placeholders(env: SEXP) {
 
 
 
+
+
 unsafe fn retarget_methods_generics(ns: SEXP) {
     unsafe {
         let methods_ns_sym = Rf_install(c".methodsNamespace".as_ptr());
@@ -1328,6 +1330,8 @@ pub(crate) unsafe fn load_package_namespace(
                 crate::library::methods::native_calls::install_methods_call_symbols(env);
                 retarget_methods_generics(env);
             }
+
+
             if package == "tools" {
                 crate::library::tools::native_calls::install_tools_call_symbols(env);
                 crate::library::tools::native_calls::install_tools_assert_closures(env);
@@ -1395,6 +1399,7 @@ pub(crate) unsafe fn load_package_namespace(
             purge_missing_arg_placeholders(package_env);
             retarget_methods_generics(package_env);
         }
+
         if package == "stats" {
             crate::library::stats::random::install_stats_call_symbols(package_env);
         }
@@ -1610,15 +1615,43 @@ unsafe fn ensure_namespace_info(
                 continue;
             };
             let symbol = Rf_install(cname.as_ptr());
-            crate::sexp::envir::defineVar(symbol, Rf_mkString(cname.as_ptr()), exports);
+            let value = crate::sexp::envir::R_findVarInFrame(package_env, symbol);
+            if value.is_null()
+                || value == crate::sexp::globals::R_UnboundValue()
+            {
+                continue;
+            }
+            crate::sexp::envir::defineVar(symbol, value, exports);
         }
 
         crate::sexp::envir::defineVar(Rf_install(c"exports".as_ptr()), exports, info);
 
-        let spec = Rf_mkString(CString::new(package).unwrap_or_default().as_ptr());
-        let _spec = protect(spec);
-        let spec_names = Rf_mkString(c"name".as_ptr());
+        let spec_names = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _spec_names = protect(spec_names);
+        crate::sexp::accessors::SET_STRING_ELT(
+            spec_names,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"name".as_ptr()),
+        );
+        crate::sexp::accessors::SET_STRING_ELT(
+            spec_names,
+            1,
+            crate::sexp::constructors::Rf_mkChar(c"version".as_ptr()),
+        );
+        let spec = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _spec = protect(spec);
+        crate::sexp::accessors::SET_STRING_ELT(
+            spec,
+            0,
+            crate::sexp::constructors::Rf_mkChar(
+                CString::new(package).unwrap_or_default().as_ptr(),
+            ),
+        );
+        crate::sexp::accessors::SET_STRING_ELT(
+            spec,
+            1,
+            crate::sexp::constructors::Rf_mkChar(c"".as_ptr()),
+        );
         crate::sexp::attrib_core::setAttrib(
             spec,
             crate::sexp::attrib_core::R_NamesSymbol(),

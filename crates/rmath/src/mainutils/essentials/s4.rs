@@ -781,9 +781,13 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
                     IN_GET_DATA_PART.with(|flag| flag.set(false));
                     match result {
                         Ok(val) => {
-                            if !val.is_null() && val != R_NilValue() {
-                                crate::sexp::accessors::UNSET_S4_OBJECT(val);
+                            if val.is_null() || val == R_NilValue() {
+                                return val;
                             }
+                            if val == obj {
+                                return strip_s4_data_part(obj);
+                            }
+                            crate::sexp::accessors::UNSET_S4_OBJECT(val);
                             return val;
                         }
                         Err(payload) => std::panic::resume_unwind(payload),
