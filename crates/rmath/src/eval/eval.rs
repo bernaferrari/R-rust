@@ -2983,6 +2983,36 @@ identical(err$message, "error in evaluating the argument 'x' in selecting a meth
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn classes_methods_oldclass_union_recache() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+where <- environment()
+setClass("UnionMemberForOldClassRecache", contains = "VIRTUAL", where = where)
+setClassUnion("UnionForOldClassRecache", "UnionMemberForOldClassRecache",
+              where = where)
+setClass("ParentForOldClassRecache",
+         contains = c("UnionForOldClassRecache", "VIRTUAL"), where = where)
+setClass("ChildForOldClassRecache",
+         contains = c("ParentForOldClassRecache", "VIRTUAL"), where = where)
+setOldClass(c("ChildForOldClassRecache", "oldClass"),
+            S4Class = "ChildForOldClassRecache", where = where)
+union <- getClass("UnionForOldClassRecache", where = where)
+child <- getClass("ChildForOldClassRecache", where = where)
+"ChildForOldClassRecache" %in% names(union@subclasses) &&
+  "UnionForOldClassRecache" %in% names(child@contains)
+"#,
+        );
+        let result = result.expect("classes-methods.R setOldClass union recache");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+
+
+
 
 
 
