@@ -782,6 +782,15 @@ thread_local! {
     static IN_SET_DATA_PART: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+struct SetDataPartGuard;
+
+impl Drop for SetDataPartGuard {
+    fn drop(&mut self) {
+        IN_SET_DATA_PART.with(|flag| flag.set(false));
+    }
+}
+
+
 
 unsafe fn r_data_part_fallback(obj: SEXP) -> SEXP {
     unsafe {
@@ -1211,12 +1220,13 @@ pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
                         crate::mainutils::essentials::cached_namespace_by_name("methods")
                     {
                         IN_SET_DATA_PART.with(|flag| flag.set(true));
+                        let _guard = SetDataPartGuard;
                         let call = Rf_lang3(fun, obj, value);
                         let _call = protect(call);
                         let val = crate::eval::eval::Rf_eval(call, methods);
                         let _val = protect(val);
-                        IN_SET_DATA_PART.with(|flag| flag.set(false));
                         return val;
+
                     }
                 }
             }

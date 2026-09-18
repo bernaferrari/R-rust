@@ -259,6 +259,12 @@ impl RSession {
         });
         self.core.with_active(|| {
             crate::mainutils::rdynload::set_native_extensions_enabled(true);
+            // GNU Rscript calls setlocale(LC_ALL, "") at startup so ls()/sort
+            // follow the host collation (en_US.UTF-8 here, not C).
+            #[cfg(not(target_arch = "wasm32"))]
+            unsafe {
+                libc::setlocale(libc::LC_ALL, c"".as_ptr());
+            }
         });
     }
 

@@ -2024,6 +2024,24 @@ pub(crate) fn charsxp_is_na(value: SEXP) -> bool {
     unsafe { value.is_null() || value == crate::sexp::globals::R_NaString() }
 }
 
+pub(crate) fn collate_str(a: &str, b: &str) -> std::cmp::Ordering {
+    // GNU sortVector / Scollate: strcoll under the current LC_COLLATE.
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let ac = std::ffi::CString::new(a).unwrap_or_default();
+        let bc = std::ffi::CString::new(b).unwrap_or_default();
+        return match unsafe { libc::strcoll(ac.as_ptr(), bc.as_ptr()) } {
+            n if n < 0 => std::cmp::Ordering::Less,
+            n if n > 0 => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        };
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        a.cmp(b)
+    }
+}
+
 fn compare_charsxp_for_sort(a: SEXP, b: SEXP) -> std::cmp::Ordering {
     unsafe {
         let a_is_na = charsxp_is_na(a);
@@ -2046,7 +2064,7 @@ fn compare_charsxp_for_sort(a: SEXP, b: SEXP) -> std::cmp::Ordering {
         } else {
             std::ffi::CStr::from_ptr(b_ptr).to_str().unwrap_or("")
         };
-        a_text.cmp(b_text)
+        collate_str(a_text, b_text)
     }
 }
 

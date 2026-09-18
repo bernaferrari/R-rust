@@ -1945,8 +1945,9 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if sorted {
-            names.sort();
+            names.sort_by(|a, b| super::sets::collate_str(a, b));
         }
+
 
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
         for (i, name) in names.iter().enumerate() {

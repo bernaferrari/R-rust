@@ -145,14 +145,36 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let primval = crate::mainutils::relop::PRIMVAL(op);
         let forcelocal = if primval == 1 || primval == 3 { 1 } else { 0 };
 
-        // Complex assignment: the LHS is a chain of calls, e.g.
-        // `ll$a[1] <- 9` is `[<-`(`$<-`(ll, a), 1, 9).
         if TYPEOF(CADR(expr)) == SEXPTYPE::LANGSXP {
             // GNU applydefine: evalseq the first argument, then
             // `*tmp*` replacement calls while the base is still a call.
             let tmp_sym = Rf_install(c"*tmp*".as_ptr());
             let saved_tmp = crate::sexp::envir::R_findVarInFrame(rho, tmp_sym);
             let _saved_tmp = protect(saved_tmp);
+            struct RestoreTmp {
+                rho: SEXP,
+                tmp_sym: SEXP,
+                saved: SEXP,
+            }
+            impl Drop for RestoreTmp {
+                fn drop(&mut self) {
+                    unsafe {
+                        if !self.saved.is_null()
+                            && self.saved != R_NilValue()
+                            && self.saved != crate::sexp::globals::R_UnboundValue()
+                        {
+                            crate::sexp::envir::defineVar(self.tmp_sym, self.saved, self.rho);
+                        } else {
+                            crate::sexp::envir::remove_binding_raw(self.rho, self.tmp_sym);
+                        }
+                    }
+                }
+            }
+            let _restore_tmp = RestoreTmp {
+                rho,
+                tmp_sym,
+                saved: saved_tmp,
+            };
             let mut lhs_expr = expr;
             let mut chain = crate::eval::missing::evalseq(CADR(lhs_expr), rho, forcelocal);
             let _chain_guard = protect(chain);
@@ -189,20 +211,10 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if !var_sym.is_null() && TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
                 bind_assignment(var_sym, current_rhs, primval, rho);
             }
-            if !saved_tmp.is_null()
-                && saved_tmp != R_NilValue()
-                && saved_tmp != crate::sexp::globals::R_UnboundValue()
-            {
-                crate::sexp::envir::defineVar(tmp_sym, saved_tmp, rho);
-            } else {
-                // GNU applydefine: drop *tmp* when this assignment created it.
-                crate::sexp::envir::remove_binding_raw(rho, tmp_sym);
-            }
-
-
 
             super::runtime::set_visible(FALSE);
             rhs
+
         } else {
             // Simple single-level assignment: x[i] <- val
             let lhs = expr;

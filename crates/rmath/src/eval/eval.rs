@@ -1196,6 +1196,22 @@ names(e2)[2] <- "a b c"
     }
 
     #[test]
+    fn failed_subassign_does_not_leave_tmp_binding() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+test <- 1:10
+tryCatch(test[2:4] <- ls, error = function(e) NULL)
+!exists("*tmp*", inherits = FALSE)
+"#,
+
+        );
+        let result = result.expect("failed [<- must not leave *tmp*");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn s4_list_dput_includes_data_part() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
