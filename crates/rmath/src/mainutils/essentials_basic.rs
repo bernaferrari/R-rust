@@ -156,6 +156,8 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 for i in 0..XLENGTH(objs) {
                     let elt = VECTOR_ELT(objs, i);
                     if elt.is_null() || elt == R_NilValue() {
+                        // GNU cat(NULL, "x") still emits sep: " x"
+                        parts.push(String::new());
                         continue;
                     }
                     let n = XLENGTH(elt).max(1);
@@ -163,6 +165,7 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         parts.push(cat_elt_to_string(elt, j));
                     }
                 }
+
             }
         } else {
             let mut current = args;
@@ -190,13 +193,16 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         }
                     }
                     _ => {
-                        if !arg.is_null() && arg != R_NilValue() {
+                        if arg.is_null() || arg == R_NilValue() {
+                            parts.push(String::new());
+                        } else {
                             let n = XLENGTH(arg).max(1);
                             for i in 0..n {
                                 parts.push(cat_elt_to_string(arg, i));
                             }
                         }
                     }
+
                 }
                 current = CDR(current);
             }

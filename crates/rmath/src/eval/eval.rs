@@ -1260,6 +1260,20 @@ identical(f(abc = 1, abd = 2, extra = 3), list(1, 2, list(extra = 3))) &&
         );
     }
 
+    #[test]
+    fn cat_null_still_emits_sep() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            r#"cat(NULL, "x"); cat("\n"); cat(if (FALSE) "\n", formatC(1, width = 2), ":", "\n")"#,
+        );
+        assert!(
+            captured.stdout.contains(" x\n") && captured.stdout.contains("  1 :"),
+            "cat(NULL, ...) must keep sep, got {:?}",
+            captured.stdout
+        );
+    }
+
+
 
 
 
