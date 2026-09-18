@@ -3079,6 +3079,51 @@ canCoerce(o3, "A")
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn classes_methods_basegeneric_missing_signature() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setGeneric("BaseGeneric", function(x, y, ...) standardGeneric("BaseGeneric"))
+setMethod("BaseGeneric", signature(x = "numeric", y = "numeric"), function(x,y, ...) x + y)
+errXY <- try(BaseGeneric(X = 1, Y = 2))
+err1  <- try(BaseGeneric(1))
+identical(3, BaseGeneric(1, 2)) &&
+  inherits(errXY, "try-error") &&
+  grepl('x = "missing", y = "missing"', attr(errXY,"condition")$message) &&
+  inherits(err1,  "try-error") &&
+  grepl('x = "numeric", y = "missing"', attr(err1, "condition")$message)
+"#,
+        );
+        let result = result.expect("classes-methods.R BaseGeneric missing-arg signatures");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
+    fn classes_methods_sealclass() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("fooSeal", slots = c(name = "character"), sealed = TRUE)
+ok1 <- isSealedClass("fooSeal")
+ok2 <- inherits(try(setClass("fooSeal"), silent=TRUE), "try-error")
+ok3 <- isTRUE(removeClass("fooSeal"))
+setClass("fooSeal")
+sealClass("fooSeal")
+ok4 <- isSealedClass("fooSeal")
+ok5 <- isTRUE(removeClass("fooSeal"))
+ok1 && ok2 && ok3 && ok4 && ok5
+"#,
+        );
+        let result = result.expect("classes-methods.R sealClass");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
 
 
     #[test]

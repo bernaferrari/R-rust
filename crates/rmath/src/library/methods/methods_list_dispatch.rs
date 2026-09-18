@@ -34,6 +34,32 @@ fn r_error(message: impl Into<String>) -> ! {
     });
 }
 
+/// GNU `.InheritForDispatch` (methodsTable.R:744-752): `call. = FALSE`.
+fn no_inherited_method_error(generic: &str, sigargs: SEXP, classes: &[String]) -> ! {
+    unsafe {
+        let mut parts = Vec::with_capacity(classes.len());
+        for (i, class) in classes.iter().enumerate() {
+            let arg_sym = VECTOR_ELT(sigargs, i as R_xlen_t);
+            let arg_name = if arg_sym.is_null() || TYPEOF(arg_sym) != SEXPTYPE::SYMSXP {
+                format!("..{}", i + 1)
+            } else {
+                CStr::from_ptr(CHAR(PRINTNAME(arg_sym)))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            parts.push(format!("{arg_name} = \"{class}\""));
+        }
+        let cnames = parts.join(", ");
+        crate::mainutils::errors::errorcall_str(
+            R_NilValue(),
+            &format!(
+                "unable to find an inherited method for function '{generic}' for signature '{cnames}'"
+            ),
+        );
+    }
+}
+
+
 /// GNU `R_evalHandleError` + `argEvalCleanup`: eval the dispatch argument
 /// and wrap a failure as the method-selection error.
 unsafe fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
@@ -646,10 +672,7 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
         }
         let selected = nearest_method(table_methods(mtable, &classes));
         let Some(selected) = selected else {
-            r_error(format!(
-                "no direct or inherited method for function '{}' for this call",
-                name
-            ));
+            no_inherited_method_error(&name, sigargs, &classes);
         };
         let method = selected.method;
         install_method_context(ev, &name, mtable, &classes, &selected);
