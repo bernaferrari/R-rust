@@ -1262,6 +1262,8 @@ unsafe fn purge_missing_arg_placeholders(env: SEXP) {
 
 unsafe fn retarget_methods_generics(ns: SEXP) {
     unsafe {
+        let methods_ns_sym = Rf_install(c".methodsNamespace".as_ptr());
+        crate::sexp::envir::defineVar(methods_ns_sym, ns, ns);
         for name in ["initialize", "new", "setClass", "getClass", "getClassDef"] {
             let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
             let mut value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
@@ -1293,6 +1295,7 @@ unsafe fn retarget_methods_generics(ns: SEXP) {
 
 
 
+
 pub(crate) unsafe fn load_package_namespace(
     package: &str,
     package_dir: &Path,
@@ -1302,6 +1305,8 @@ pub(crate) unsafe fn load_package_namespace(
         if let Some(env) = cached_package_namespace(package, package_dir) {
             if package == "methods" {
                 crate::library::methods::native_calls::install_methods_call_symbols(env);
+                retarget_methods_generics(env);
+
             }
 
             return Ok((env, read_namespace_directives(package_dir)?));

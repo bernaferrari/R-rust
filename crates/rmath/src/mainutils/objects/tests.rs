@@ -1021,14 +1021,23 @@ mod tests {
     fn test_R_set_prim_method() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
+            let code = Rf_mkString(c"clear".as_ptr());
+            let _code = crate::sexp::protect::protect(code);
             let result = R_set_prim_method(
                 R_NilValue(),
-                ptr::null_mut(),
                 R_NilValue(),
+                code,
                 R_NilValue(),
                 R_NilValue(),
             );
-            assert!(result.is_null() || result == R_NilValue());
+            assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
+            let _ = R_set_prim_method(
+                R_NilValue(),
+                R_NilValue(),
+                Rf_mkString(c"set".as_ptr()),
+                R_NilValue(),
+                R_NilValue(),
+            );
         }
     }
 

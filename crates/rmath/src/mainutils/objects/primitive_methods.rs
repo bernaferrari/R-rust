@@ -29,10 +29,11 @@ pub unsafe fn do_set_prim_method(
         let code = match *code_string as u8 {
             b'c' | b'C' => prim_methods_t::NO_METHODS,
             b'r' | b'R' => prim_methods_t::NEEDS_RESET,
-            b's' => {
-                if *code_string.add(1) as u8 == b'e' {
+            b's' | b'S' => {
+                let next = *code_string.add(1) as u8;
+                if next == b'e' || next == b'E' {
                     prim_methods_t::HAS_METHODS
-                } else if *code_string.add(1) as u8 == b'u' {
+                } else if next == b'u' || next == b'U' {
                     prim_methods_t::SUPPRESSED
                 } else {
                     error(
@@ -44,6 +45,7 @@ pub unsafe fn do_set_prim_method(
                 "invalid primitive methods code: should be \"clear\", \"reset\", \"set\", or \"suppress\"",
             ),
         };
+
 
         let Some(offset) = primitive_offset(op) else {
             error("invalid object: must be a primitive function");
@@ -83,16 +85,44 @@ pub unsafe fn do_set_prim_method(
 /// R_set_prim_method -- public API for setting primitive methods.
 pub unsafe fn R_set_prim_method(
     fname: SEXP,
-    op: SEXP,
+    mut op: SEXP,
     code_vec: SEXP,
     fundef: SEXP,
     mlist: SEXP,
 ) -> SEXP {
     unsafe {
         if code_vec.is_null() || isValidString(code_vec) == FALSE {
-            return R_NilValue();
+            error("argument 'code' must be a character string");
         }
         let code_string = CHAR(STRING_ELT(code_vec, 0));
+        if op.is_null() || op == R_NilValue() {
+            let previous = with_objects_state(|state| state.allow_primitive_methods);
+            match *code_string as u8 {
+                b'c' | b'C' => {
+                    with_objects_state(|state| state.allow_primitive_methods = FALSE);
+                }
+                b's' | b'S' => {
+                    with_objects_state(|state| state.allow_primitive_methods = TRUE);
+                }
+                _ => {}
+            }
+            return Rf_ScalarLogical(previous);
+        }
+        if isPrimitive(op) == FALSE {
+            let internal = crate::mainutils::essentials::R_do_slot(
+                op,
+                crate::sexp::symbol::Rf_install(c"internal".as_ptr()),
+            );
+            let name = if TYPEOF(internal) == SEXPTYPE::STRSXP && XLENGTH(internal) > 0 {
+                crate::sexp::symbol::Rf_install(CHAR(STRING_ELT(internal, 0)))
+            } else {
+                R_NilValue()
+            };
+            op = crate::sexp::accessors::INTERNAL(name);
+            if op.is_null() || op == R_NilValue() {
+                error("'internal' slot does not name an internal function");
+            }
+        }
         do_set_prim_method(op, code_string, fundef, mlist);
         fname
     }

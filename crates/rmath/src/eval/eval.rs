@@ -1097,6 +1097,36 @@ identical(out[1], paste0(getOption("prompt"), "x <- 1:2")) &&
 
 
     #[test]
+    fn unlist_recursive_false_keeps_list_of_lists() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+u <- unlist(list(list(.Data = "list"), list()), recursive = FALSE)
+identical(typeof(u), "list") && identical(names(u), ".Data") && identical(u$.Data, "list")
+"#,
+        );
+        let result = result.expect("unlist(recursive=FALSE) must concatenate lists like GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn set_class_contains_list_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly = TRUE))
+setClass("mListPort", contains = "list")
+s <- getClass("mListPort")@slots
+identical(typeof(s), "list") && identical(names(s), ".Data") && identical(as.character(s$.Data), "list")
+"#,
+        );
+        let result = result.expect("setClass(contains='list') must use GNU methods::setClass");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+    #[test]
     fn utils_namespace_loads_without_windows_s3_methods() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(

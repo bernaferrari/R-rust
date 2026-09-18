@@ -3268,23 +3268,57 @@ unsafe fn collect_unlist_entries(
         if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::EXPRSXP {
             let names =
                 crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            if !recursive && prefix.is_some() {
-                for i in 0..XLENGTH(x) {
-                    let child_name = if use_names {
-                        unlist_element_name(prefix.as_deref(), names, i, XLENGTH(x))
-                    } else {
-                        None
-                    };
-                    out.push(UnlistEntry {
-                        value: UnlistValue::Object(VECTOR_ELT(x, i)),
-                        name: child_name,
-                    });
+            let n = XLENGTH(x);
+            if !recursive {
+                let any_list = (0..n).any(|i| {
+                    let child = VECTOR_ELT(x, i);
+                    TYPEOF(child) == SEXPTYPE::VECSXP || TYPEOF(child) == SEXPTYPE::EXPRSXP
+                });
+                if any_list || prefix.is_some() {
+                    for i in 0..n {
+                        let child = VECTOR_ELT(x, i);
+                        let child_name = if use_names {
+                            unlist_element_name(prefix.as_deref(), names, i, n)
+                        } else {
+                            None
+                        };
+                        if TYPEOF(child) == SEXPTYPE::VECSXP
+                            || TYPEOF(child) == SEXPTYPE::EXPRSXP
+                        {
+                            let child_names = crate::sexp::attrib_core::getAttrib(
+                                child,
+                                crate::sexp::attrib_core::R_NamesSymbol(),
+                            );
+                            let child_n = XLENGTH(child);
+                            for j in 0..child_n {
+                                let leaf_name = if use_names {
+                                    unlist_element_name(
+                                        child_name.as_deref(),
+                                        child_names,
+                                        j,
+                                        child_n,
+                                    )
+                                } else {
+                                    None
+                                };
+                                out.push(UnlistEntry {
+                                    value: UnlistValue::Object(VECTOR_ELT(child, j)),
+                                    name: leaf_name,
+                                });
+                            }
+                        } else {
+                            out.push(UnlistEntry {
+                                value: UnlistValue::Object(child),
+                                name: child_name,
+                            });
+                        }
+                    }
+                    return;
                 }
-                return;
             }
-            for i in 0..XLENGTH(x) {
+            for i in 0..n {
                 let child_name = if use_names {
-                    unlist_element_name(prefix.as_deref(), names, i, XLENGTH(x))
+                    unlist_element_name(prefix.as_deref(), names, i, n)
                 } else {
                     None
                 };
@@ -3292,6 +3326,7 @@ unsafe fn collect_unlist_entries(
             }
             return;
         }
+
         let names =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         for i in 0..XLENGTH(x) {

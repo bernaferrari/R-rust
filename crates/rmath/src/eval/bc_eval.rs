@@ -72,6 +72,31 @@ fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
     )
 }
 
+fn bc_unbound_object_error(symbol: SEXP) -> ! {
+    let name = unsafe {
+        if symbol.is_null() {
+            "???".to_string()
+        } else {
+            let pname = PRINTNAME(symbol);
+            if pname.is_null() {
+                "???".to_string()
+            } else {
+                let chars = CHAR(pname);
+                if chars.is_null() {
+                    "???".to_string()
+                } else {
+                    std::ffi::CStr::from_ptr(chars)
+                        .to_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|_| "???".to_string())
+                }
+            }
+        }
+    };
+    bc_error(format!("object '{name}' not found"));
+}
+
+
 // ---------------------------------------------------------------------------
 // Bytecode opcodes
 // ---------------------------------------------------------------------------
@@ -539,15 +564,16 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
         {
             let value = crate::sexp::envir::ddfindVar(symbol, rho);
             if value == R_UnboundValue() {
-                bc_error("object not found");
+                bc_unbound_object_error(symbol);
             }
             value
         } else {
             R_findVar(symbol, rho)
         };
         if value == R_UnboundValue() {
-            bc_error("object not found");
+            bc_unbound_object_error(symbol);
         }
+
         if value == R_MissingArg() {
             if keep_missing {
                 return value;

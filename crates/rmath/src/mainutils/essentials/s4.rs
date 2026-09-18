@@ -350,9 +350,18 @@ unsafe fn s4_named_arg(args: SEXP, name: &str) -> Option<SEXP> {
 }
 
 
-/// GNU `setClass(Class, ..., contains, validity)`.
-pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_setClass(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(fun) = methods_exported_closure(c"setClass") {
+            return crate::eval::closure::applyClosure(
+                call,
+                fun,
+                args,
+                rho,
+                R_NilValue(),
+                TRUE,
+            );
+        }
         let class_arg = CAR(args);
         if class_arg.is_null() || class_arg == R_NilValue() {
             std::panic::panic_any(RError {
@@ -428,12 +437,11 @@ pub unsafe fn do_isVirtualClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
-/// Use the GNU `methods::new` closure once that namespace is loaded.
-unsafe fn methods_new_closure() -> Option<SEXP> {
+unsafe fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
     unsafe {
         let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
-        let name = Rf_install(c"new".as_ptr());
-        let mut value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+        let symbol = Rf_install(name.as_ptr());
+        let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
         if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
             return None;
         }
@@ -447,6 +455,12 @@ unsafe fn methods_new_closure() -> Option<SEXP> {
         }
     }
 }
+
+/// Use the GNU `methods::new` closure once that namespace is loaded.
+unsafe fn methods_new_closure() -> Option<SEXP> {
+    methods_exported_closure(c"new")
+}
+
 
 
 
