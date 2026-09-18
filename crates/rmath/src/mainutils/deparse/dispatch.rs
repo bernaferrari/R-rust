@@ -16,7 +16,8 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
         print2buff(b"new(\0".as_ptr() as *const c_char, d);
         print_r_string_literal(&class_name, d);
 
-        let slots = crate::mainutils::objects::s4_all_slots(&class_name).unwrap_or_default();
+        let slots = crate::mainutils::objects::s4_all_slots(&class_name)
+            .unwrap_or_else(|| s4_instance_slot_names(s));
         for slot_name in slots {
             let Some(value) = s4_deparse_slot_value(s, &slot_name) else {
                 continue;
@@ -29,6 +30,7 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
             deparse2buff(value, d);
             (*d).fnarg = old_fnarg;
         }
+
 
         print2buff(b")\0".as_ptr() as *const c_char, d);
         true
@@ -53,11 +55,22 @@ unsafe fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
                 crate::sexp::attrib_core::R_ClassSymbol(),
                 R_NilValue(),
             );
+            crate::sexp::attrib_core::setAttrib(
+                data,
+                Rf_install(c"className".as_ptr()),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                data,
+                Rf_install(c"package".as_ptr()),
+                R_NilValue(),
+            );
             return Some(data);
         }
         Some(value)
     }
 }
+
 
 pub unsafe fn s4_class_name(s: SEXP) -> Option<String> {
     unsafe {
@@ -67,6 +80,35 @@ pub unsafe fn s4_class_name(s: SEXP) -> Option<String> {
             .filter(|name| !name.is_empty())
     }
 }
+
+/// Slot names from the object when the class is not in the local setClass table
+/// (methods package classes such as classGeneratorFunction).
+unsafe fn s4_instance_slot_names(s: SEXP) -> Vec<String> {
+    unsafe {
+        let mut slots = Vec::new();
+        if TYPEOF(s) == SEXPTYPE::CLOSXP {
+            slots.push(".Data".to_string());
+        }
+        let mut att = ATTRIB(s);
+        while !att.is_null() && att != R_NilValue() {
+            let tag = TAG(att);
+            if TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let pn = PRINTNAME(tag);
+                if !pn.is_null() && pn != R_NilValue() {
+                    let name = std::ffi::CStr::from_ptr(CHAR(pn))
+                        .to_string_lossy()
+                        .into_owned();
+                    if name != "class" && !slots.iter().any(|existing| existing == &name) {
+                        slots.push(name);
+                    }
+                }
+            }
+            att = CDR(att);
+        }
+        slots
+    }
+}
+
 
 pub unsafe fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<String> {
     unsafe {

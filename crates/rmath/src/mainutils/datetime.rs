@@ -2320,7 +2320,8 @@ pub unsafe fn do_as_character_POSIXt(
     env: SEXP,
 ) -> SEXP {
     unsafe {
-        let matched = match_named_then_positional(call, args, &["x", "digits", "OutDec"]);
+        let matched = match_named_then_positional(call, args, &["x", "digits", "OutDec", "..."]);
+
 
         let x = matched[0];
         let digits_arg = matched[1];

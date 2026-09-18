@@ -151,6 +151,9 @@ unsafe fn compare(
         if is_numeric_type(target_type) && is_numeric_type(current_type) {
             return compare_numeric(target, current, tolerance, scale);
         }
+        if target_type == SEXPTYPE::CLOSXP || current_type == SEXPTYPE::CLOSXP {
+            return compare_language(target, current);
+        }
         if target_type != current_type {
             return Err(format!(
                 "Modes differ: target is {}, current is {}",
@@ -158,6 +161,7 @@ unsafe fn compare(
                 type_name(current_type)
             ));
         }
+
 
         if target_type == SEXPTYPE::STRSXP {
             for index in 0..LENGTH(target) as usize {
@@ -200,6 +204,45 @@ unsafe fn compare(
         }
     }
 }
+
+/// GNU `all.equal.language`: compare deparsed source.
+unsafe fn compare_language(target: SEXP, current: SEXP) -> Result<(), String> {
+    unsafe {
+        let ttxt = deparse_joined(target);
+        let ctxt = deparse_joined(current);
+        if ttxt == ctxt {
+            Ok(())
+        } else {
+            Err("target, current do not match when deparsed".into())
+        }
+    }
+}
+
+unsafe fn deparse_joined(x: SEXP) -> String {
+    unsafe {
+        let dumped = crate::mainutils::deparse::deparse1(
+            x,
+            false,
+            crate::mainutils::deparse::DEFAULTDEPARSE,
+        );
+        let _dumped = crate::sexp::protect::protect(dumped);
+        if dumped.is_null() || dumped == R_NilValue() || TYPEOF(dumped) != SEXPTYPE::STRSXP {
+            return String::new();
+        }
+        let mut text = String::new();
+        for i in 0..LENGTH(dumped) {
+            if i > 0 {
+                text.push('\n');
+            }
+            let elt = STRING_ELT(dumped, i as i64);
+            if !elt.is_null() && elt != R_NilValue() {
+                text.push_str(&CStr::from_ptr(CHAR(elt)).to_string_lossy());
+            }
+        }
+        text
+    }
+}
+
 
 unsafe fn compare_attributes(
     target: SEXP,
