@@ -566,6 +566,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_with_autoprint,
         restore_visibility_always: false,
     },
+    UnevaluatedBuiltin {
+        name: "example",
+        handler: crate::mainutils::essentials::do_example,
+        restore_visibility_always: false,
+    },
+
 
     UnevaluatedBuiltin {
         name: "suppressWarnings",
@@ -5354,10 +5360,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "demo",
         handler: crate::mainutils::essentials::do_demo,
-    },
-    EvaluatedBuiltin {
-        name: "example",
-        handler: crate::mainutils::essentials::do_example,
     },
     EvaluatedBuiltin {
         name: "dlnorm",

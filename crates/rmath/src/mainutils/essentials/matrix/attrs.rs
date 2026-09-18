@@ -734,11 +734,6 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                     return probe;
                 }
             }
-
-
-            std::panic::panic_any(RError {
-                message: format!("object '{lookup_name}' not found in tools namespace"),
-            });
         }
 
         if package_name != "base" {

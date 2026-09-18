@@ -233,21 +233,58 @@ pub unsafe fn do_installed_packages(_call: SEXP, _op: SEXP, _args: SEXP, _rho: S
     }
 }
 
-/// R's `find.package(package, ...)` — find the path to a package.
 pub unsafe fn do_find_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pkg_arg = CAR(args);
-        if pkg_arg.is_null() || pkg_arg == R_NilValue() {
-            return R_NilValue();
+        if pkg_arg.is_null()
+            || pkg_arg == R_NilValue()
+            || pkg_arg == crate::sexp::globals::R_MissingArg()
+        {
+            return attached_package_paths();
         }
-        let package_name = elt_to_string(pkg_arg, 0);
-        let path = find_package_path(&package_name);
-        if path.is_empty() {
-            return R_NilValue();
+        let n = XLENGTH(pkg_arg);
+        if n <= 0 {
+            return attached_package_paths();
         }
-        Rf_mkString(CString::new(path).unwrap_or_default().as_ptr())
+        if n == 1 {
+            let package_name = elt_to_string(pkg_arg, 0);
+            if package_name.is_empty() {
+                return attached_package_paths();
+            }
+            let path = find_package_path(&package_name);
+            if path.is_empty() {
+                return R_NilValue();
+            }
+            return Rf_mkString(CString::new(path).unwrap_or_default().as_ptr());
+        }
+        let mut paths = Vec::new();
+        for i in 0..n {
+            let package_name = elt_to_string(pkg_arg, i);
+            let path = find_package_path(&package_name);
+            if !path.is_empty() {
+                paths.push(path);
+            }
+        }
+        string_vector(&paths)
     }
 }
+
+unsafe fn attached_package_paths() -> SEXP {
+    unsafe {
+        let mut paths = Vec::new();
+        for (label, _) in crate::mainutils::essentials::search_path_entries() {
+            let Some(package) = label.strip_prefix("package:") else {
+                continue;
+            };
+            let path = find_package_path(package);
+            if !path.is_empty() {
+                paths.push(path);
+            }
+        }
+        string_vector(&paths)
+    }
+}
+
 
 /// R's `packageVersion(pkg)` — read a package version from DESCRIPTION.
 pub unsafe fn do_package_version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

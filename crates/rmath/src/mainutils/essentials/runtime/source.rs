@@ -491,16 +491,25 @@ pub unsafe fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `example(topic, ...)` — run an example (simplified).
-pub unsafe fn do_example(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `example(topic)` — `substitute(topic)` unless `character.only`.
+pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(fun) = utils_example_closure() {
+            return crate::eval::closure::applyClosure(
+                call,
+                fun,
+                args,
+                rho,
+                R_NilValue(),
+                TRUE,
+            );
+        }
         let topic_arg = CAR(args);
-        if topic_arg.is_null() || topic_arg == R_NilValue() {
+        if topic_arg.is_null() || topic_arg == R_NilValue() || topic_arg == R_MissingArg() {
             eprintln!("example: no topic specified");
             return R_NilValue();
         }
-        let topic = elt_to_string(topic_arg, 0);
-        // Look for examples in common locations
+        let topic = topic_name_from_arg(topic_arg);
         let example_path = find_package_example(&topic);
         if example_path.is_empty() {
             eprintln!("No examples available for topic '{}'", topic);
@@ -509,7 +518,6 @@ pub unsafe fn do_example(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         match std::fs::read_to_string(&example_path) {
             Ok(_content) => {
                 eprintln!("Examples for topic: {}", topic);
-                // In a full impl, parse and eval example content
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
                 R_NilValue()
             }
@@ -520,3 +528,42 @@ pub unsafe fn do_example(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
     }
 }
+
+unsafe fn utils_example_closure() -> Option<SEXP> {
+    unsafe {
+        let namespace =
+            crate::mainutils::essentials::load_package_namespace_by_name("utils").ok()?;
+        let symbol = Rf_install(c"example".as_ptr());
+        let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
+        if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+            return None;
+        }
+        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+            value = crate::sexp::envir::forcePromise(value);
+        }
+        if TYPEOF(value) == SEXPTYPE::CLOSXP {
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+unsafe fn topic_name_from_arg(topic_arg: SEXP) -> String {
+    unsafe {
+        match TYPEOF(topic_arg) {
+            t if t == SEXPTYPE::SYMSXP => {
+                let pname = PRINTNAME(topic_arg);
+                if pname.is_null() {
+                    String::new()
+                } else {
+                    CStr::from_ptr(CHAR(pname))
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            }
+            _ => elt_to_string(topic_arg, 0),
+        }
+    }
+}
+

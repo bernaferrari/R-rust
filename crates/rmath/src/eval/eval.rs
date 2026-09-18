@@ -1124,6 +1124,55 @@ identical(typeof(s), "list") && identical(names(s), ".Data") && identical(as.cha
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn unlist_recursive_false_splices_mixed_atomic_and_list() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+u <- unlist(list(1:2, list(3)), recursive = FALSE)
+identical(typeof(u), "list") && identical(as.numeric(unlist(u)), c(1, 2, 3))
+"#,
+        );
+        let result = result.expect("unlist(recursive=FALSE) must splice atomics like GNU c()");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn example_uses_unevaluated_topic_name() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly = TRUE))
+w <- tryCatch(example(new), warning = function(e) conditionMessage(e), error = function(e) conditionMessage(e))
+msg <- paste(w, collapse = " ")
+!grepl("topic '3'", msg, fixed = TRUE) &&
+  (grepl("'new'", msg, fixed = TRUE) || grepl("lazyLoadDBexec", msg, fixed = TRUE))
+"#,
+
+        );
+        let result = result.expect("example(new) must look up topic new, not evaluate new");
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "output={output:?}"
+        );
+    }
+
+
+    #[test]
+    fn find_package_null_lists_attached_methods() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly = TRUE))
+any(grepl("/methods$", find.package(NULL)))
+"#,
+        );
+        let result = result.expect("find.package(NULL) must list attached package paths");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
     #[test]

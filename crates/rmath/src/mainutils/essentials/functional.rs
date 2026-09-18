@@ -3254,6 +3254,27 @@ fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
     }
 }
 
+unsafe fn unlist_scalar_element(x: SEXP, index: R_xlen_t) -> SEXP {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(*LOGICAL(x).add(index as usize)),
+            t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(*INTEGER(x).add(index as usize)),
+            t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(*REAL(x).add(index as usize)),
+            t if t == SEXPTYPE::CPLXSXP => {
+                let value = *COMPLEX(x).add(index as usize);
+                crate::sexp::constructors::Rf_ScalarComplex(value)
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                SET_STRING_ELT(out, 0, STRING_ELT(x, index));
+                out
+            }
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => VECTOR_ELT(x, index),
+            _ => x,
+        }
+    }
+}
+
 unsafe fn collect_unlist_entries(
     x: SEXP,
     prefix: Option<String>,
@@ -3307,11 +3328,31 @@ unsafe fn collect_unlist_entries(
                                 });
                             }
                         } else {
-                            out.push(UnlistEntry {
-                                value: UnlistValue::Object(child),
-                                name: child_name,
-                            });
+                            let child_n = XLENGTH(child);
+                            let child_names = crate::sexp::attrib_core::getAttrib(
+                                child,
+                                crate::sexp::attrib_core::R_NamesSymbol(),
+                            );
+                            for j in 0..child_n {
+                                let leaf_name = if use_names {
+                                    unlist_element_name(
+                                        child_name.as_deref(),
+                                        child_names,
+                                        j,
+                                        child_n,
+                                    )
+                                } else {
+                                    None
+                                };
+                                out.push(UnlistEntry {
+                                    value: UnlistValue::Object(unlist_scalar_element(
+                                        child, j,
+                                    )),
+                                    name: leaf_name,
+                                });
+                            }
                         }
+
                     }
                     return;
                 }
