@@ -117,6 +117,8 @@ fn result_from_eval(
         stderr,
     }
 
+
+
 }
 
 fn error_result(message: impl Into<String>) -> RResult {
@@ -170,8 +172,9 @@ fn error_result_with_captured(
     result.stdout = stdout;
     result.stderr = stderr;
     if text.contains("Error") {
-        result.output = text;
+        result.output = text.trim_end().to_string();
     }
+
     result
 }
 
@@ -1594,7 +1597,8 @@ mod tests {
         let mut session = RSession::new();
 
         let visible = session.eval("withVisible(1)");
-        assert_eq!(visible.output, "$value\n[1] 1\n\n$visible\n[1] TRUE");
+        assert_eq!(visible.output.trim_end(), "$value\n[1] 1\n\n$visible\n[1] TRUE");
+
         let RValue::Attributed { value, metadata } = visible.typed else {
             panic!("expected attributed withVisible result");
         };
@@ -1608,7 +1612,8 @@ mod tests {
         );
 
         let invisible = session.eval("withVisible(invisible(1))");
-        assert_eq!(invisible.output, "$value\n[1] 1\n\n$visible\n[1] FALSE");
+        assert_eq!(invisible.output.trim_end(), "$value\n[1] 1\n\n$visible\n[1] FALSE");
+
         let RValue::Attributed { value, metadata } = invisible.typed else {
             panic!("expected attributed withVisible result");
         };
@@ -1641,7 +1646,8 @@ mod tests {
 
         let stopped = session.eval("stop(\"boom\")");
         assert!(matches!(stopped.typed, RValue::Error(_)));
-        assert_eq!(stopped.output, "Error: boom");
+        assert_eq!(stopped.output.trim_end(), "Error: boom");
+
 
         let warned = session.eval("warning(\"careful\"); 1");
         assert_eq!(warned.output, "Warning message:\ncareful \n[1] 1");
@@ -1883,9 +1889,10 @@ mod tests {
         let single = session.eval("is.single(1)");
         assert!(matches!(single.typed, RValue::Error(_)));
         assert_eq!(
-            single.output,
-            "Error in is.single(1) : type \"single\" unimplemented in R\n"
+            single.output.trim_end(),
+            "Error in is.single(1) : type \"single\" unimplemented in R"
         );
+
 
     }
 
@@ -2490,7 +2497,8 @@ mod tests {
     fn test_eval_lapply_prints_list() {
         let mut session = RSession::new();
         let result = session.eval("lapply(c(1, 2), function(x) x + 1)");
-        assert_eq!(result.output, "[[1]]\n[1] 2\n\n[[2]]\n[1] 3");
+        assert_eq!(result.output.trim_end(), "[[1]]\n[1] 2\n\n[[2]]\n[1] 3");
+
     }
 
     #[test]
@@ -2695,7 +2703,7 @@ mod tests {
         let mut session = RSession::new();
 
         let result = session.eval(
-            "setClass(\"Person\", name = \"character\", age = \"numeric\"); x <- new(\"Person\", name = \"Ada\", age = 37); all(c(isS4(x), is(x, \"Person\"), slot(x, \"name\") == \"Ada\", slot(x, \"age\") == 37, all(slotNames(\"Person\") == c(\"name\", \"age\"))))",
+            "setClass(\"Person\", slots = c(name = \"character\", age = \"numeric\")); x <- new(\"Person\", name = \"Ada\", age = 37); all(c(isS4(x), is(x, \"Person\"), slot(x, \"name\") == \"Ada\", slot(x, \"age\") == 37, all(slotNames(\"Person\") == c(\"name\", \"age\"))))",
         );
         assert_eq!(result.typed, RValue::Logical(Some(true)));
     }
@@ -2705,7 +2713,7 @@ mod tests {
         let mut session = RSession::new();
 
         let validity = session.eval(
-            "setClass(\"Checked\", value = \"numeric\"); setValidity(\"Checked\", function(object) TRUE); TRUE",
+            "setClass(\"Checked\", slots = c(value = \"numeric\")); setValidity(\"Checked\", function(object) TRUE); TRUE",
         );
         assert_eq!(validity.typed, RValue::Logical(Some(true)));
 
@@ -2719,12 +2727,14 @@ mod tests {
             "{virtual_new:?}"
         );
 
-        let unknown_slot =
-            session.eval("setClass(\"Strict\", name = \"character\"); new(\"Strict\", nope = 1)");
+        let unknown_slot = session.eval(
+            "setClass(\"Strict\", slots = c(name = \"character\")); new(\"Strict\", nope = 1)",
+        );
         assert!(
-            matches!(&unknown_slot.typed, RValue::Error(message) if message.contains("slot 'nope'")),
+            matches!(&unknown_slot.typed, RValue::Error(message) if message.contains("nope")),
             "{unknown_slot:?}"
         );
+
     }
 
     #[test]

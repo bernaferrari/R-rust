@@ -1324,7 +1324,9 @@ pub(crate) unsafe fn load_package_namespace(
             }
             if package == "tools" {
                 crate::library::tools::native_calls::install_tools_call_symbols(env);
+                crate::library::tools::native_calls::install_tools_assert_closures(env);
             }
+
             if package == "stats" {
                 crate::library::stats::random::install_stats_call_symbols(env);
             }
@@ -1393,7 +1395,9 @@ pub(crate) unsafe fn load_package_namespace(
 
         if package == "tools" {
             crate::library::tools::native_calls::install_tools_call_symbols(package_env);
+            crate::library::tools::native_calls::install_tools_assert_closures(package_env);
         }
+
 
 
         Ok((package_env, namespace))

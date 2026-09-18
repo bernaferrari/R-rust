@@ -4142,12 +4142,37 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "La_dlange",
-        handler: crate::mainutils::essentials::do_norm,
+        handler: crate::mainutils::essentials::do_la_dlange,
     },
     EvaluatedBuiltin {
         name: "La_dgecon",
-        handler: crate::mainutils::essentials::do_rcond,
+        handler: crate::mainutils::essentials::do_la_dgecon,
     },
+    EvaluatedBuiltin {
+        name: "La_zlange",
+        handler: crate::mainutils::essentials::do_la_zlange,
+    },
+    EvaluatedBuiltin {
+        name: "La_zgecon",
+        handler: crate::mainutils::essentials::do_la_zgecon,
+    },
+    EvaluatedBuiltin {
+        name: "La_dtrcon",
+        handler: crate::mainutils::essentials::do_la_dtrcon,
+    },
+    EvaluatedBuiltin {
+        name: "La_dtrcon3",
+        handler: crate::mainutils::essentials::do_la_dtrcon3,
+    },
+    EvaluatedBuiltin {
+        name: "La_ztrcon",
+        handler: crate::mainutils::essentials::do_la_ztrcon,
+    },
+    EvaluatedBuiltin {
+        name: "La_ztrcon3",
+        handler: crate::mainutils::essentials::do_la_ztrcon3,
+    },
+
 
 
 

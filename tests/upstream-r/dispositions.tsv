@@ -43,7 +43,8 @@ method-dispatch.R	pass	-	-
 
 misc-devel.R	skip	rport-2gpp.4	requires localhost sockets and host connection edge behavior
 no-segfault.Rin	skip	rport-2gpp.5	requires configure-time substitution and isolated fatal-error stress execution
-ok-errors.R	skip	rport-2gpp.5	requires bounded recursion, stack overflow, and fatal-error isolation
+ok-errors.R	pass	-	-
+
 p-qbeta-strict-tst.R	skip	rport-2gpp.2	requires exhaustive beta-distribution accuracy contracts
 p-r-random-tests.R	skip	rport-2gpp.5	requires exhaustive random-generator statistical and long-run checks
 primitives.R	pass	-	-

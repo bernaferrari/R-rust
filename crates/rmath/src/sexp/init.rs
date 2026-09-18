@@ -305,10 +305,33 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              if (d[1L] != d[2L])\n\
                  return(rcond(qr.R(qr(if (d[1L] < d[2L]) t(x) else x)), triangular = TRUE, uplo = \"U\", norm = norm, ...))\n\
              if (is.complex(x)) {\n\
-                 if (triangular) .Internal(La_zgecon(x, norm)) else .Internal(La_zgecon(x, norm))\n\
-             } else if (triangular) .Internal(La_dgecon(x, norm)) else .Internal(La_dgecon(x, norm))\n\
+                 if (triangular) switch(uplo,\n\
+                     \"U\" = .Internal(La_ztrcon(x, norm)),\n\
+                     \"L\" = .Internal(La_ztrcon3(x, norm, \"L\")),\n\
+                     stop(\"'uplo' must be \\\"U\\\" or \\\"L\\\"\"))\n\
+                 else .Internal(La_zgecon(x, norm))\n\
+             } else {\n\
+                 if (triangular) switch(uplo,\n\
+                     \"U\" = .Internal(La_dtrcon(x, norm)),\n\
+                     \"L\" = .Internal(La_dtrcon3(x, norm, \"L\")),\n\
+                     stop(\"'uplo' must be \\\"U\\\" or \\\"L\\\"\"))\n\
+                 else .Internal(La_dgecon(x, norm))\n\
+             }\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            ".getNamespace",
+            "function(name) .Internal(getRegisteredNamespace(name))",
+        );
+        eval_base_binding(
+            base_env,
+            "..getNamespace",
+            "function(name, where) {\n\
+             .Internal(getRegisteredNamespace(name)) %||% tryCatch(loadNamespace(name), error = function(e) .GlobalEnv)\n\
+             }",
+        );
+
 
         eval_base_binding(
             base_env,

@@ -2,10 +2,13 @@
 
 use std::ffi::{CString, c_char};
 
+use crate::sexp::accessors::TYPEOF;
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::envir::defineVar;
-use crate::sexp::ffi::SEXP;
+use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::symbol::Rf_install;
+
+
 use crate::unix::dynload::DL_FUNC;
 
 use super::text::doTabExpand;
@@ -42,4 +45,29 @@ pub unsafe fn install_tools_call_symbols(env: SEXP) {
         }
     }
 }
+pub unsafe fn install_tools_assert_closures(env: SEXP) {
+    unsafe {
+        let already = crate::sexp::envir::R_findVarInFrame(
+            env,
+            Rf_install(c"assertError".as_ptr()),
+        );
+        if already != crate::sexp::globals::R_UnboundValue()
+            && crate::sexp::accessors::TYPEOF(already) == crate::sexp::ffi::SEXPTYPE::CLOSXP
+        {
+            return;
+        }
+        let source = include_str!("gnu_assertCondition.R");
+        let parsed = crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse_expressions(source, arena)
+        });
+        crate::eval::parser::flush_literal_warnings();
+        let Ok(exprs) = parsed else {
+            return;
+        };
+        for expr in exprs {
+            let _ = crate::eval::eval::Rf_eval(expr, env);
+        }
+    }
+}
+
 

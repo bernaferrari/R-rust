@@ -675,15 +675,16 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                 || lookup_name == "assertWarning"
                 || lookup_name == "assertCondition"
             {
-                let probe = crate::eval::primitive::make_primitive_binding(
-                    &lookup_name,
-                    SEXPTYPE::SPECIALSXP,
-                );
-                if !probe.is_null() && probe != R_NilValue() {
-                    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-                    return probe;
+                if let Ok(namespace) = load_package_namespace_by_name("tools") {
+                    crate::library::tools::native_calls::install_tools_assert_closures(namespace);
+                    let value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+                    if value != crate::sexp::globals::R_UnboundValue() {
+                        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                        return force_namespace_value(value);
+                    }
                 }
             }
+
         }
 
         if package_name != "base" {
