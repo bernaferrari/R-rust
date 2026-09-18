@@ -1155,26 +1155,26 @@ pub unsafe fn GetMatrixDimnames(
             *cl = VECTOR_ELT(dimnames, 1);
         }
 
-        // names(dimnames)[1] and names(dimnames)[2]
-        // names(dimnames) is the names attribute of dimnames
-        let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
+        // GNU GetMatrixDimnames: names(dimnames) is STRSXP; STRING_ELT
+        // then CHAR. Empty strings stay non-NULL so printarray emits the
+        // title row and R_MIN_LBLOFF indent.
+        let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
         let dn_names = getAttrib(dimnames, names_sym);
 
         if dn_names.is_null() || dn_names == R_NilValue() {
             return;
         }
 
-        // names(dimnames)[[1]] and [[2]] are CHARSXP values
-        if !rn.is_null() {
-            let s = VECTOR_ELT(dn_names, 0);
-            if !s.is_null() && Rf_isNull(s) == 0 {
+        if !rn.is_null() && XLENGTH(dn_names) > 0 {
+            let s = STRING_ELT(dn_names, 0);
+            if !s.is_null() && s != R_NilValue() {
                 *rn = CHAR(s);
             }
         }
 
-        if !cn.is_null() {
-            let s = VECTOR_ELT(dn_names, 1);
-            if !s.is_null() && Rf_isNull(s) == 0 {
+        if !cn.is_null() && XLENGTH(dn_names) > 1 {
+            let s = STRING_ELT(dn_names, 1);
+            if !s.is_null() && s != R_NilValue() {
                 *cn = CHAR(s);
             }
         }

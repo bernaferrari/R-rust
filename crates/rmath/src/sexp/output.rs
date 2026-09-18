@@ -628,22 +628,69 @@ fn matrix_dims(x: Sexp<'_>) -> Option<(usize, usize)> {
     }
 }
 
-fn matrix_dimnames(
-    x: Sexp<'_>,
-    nrow: usize,
-    ncol: usize,
-) -> (Option<Vec<String>>, Option<Vec<String>>) {
+struct MatrixDimnames {
+    rows: Option<Vec<String>>,
+    cols: Option<Vec<String>>,
+    /// `names(dimnames)[1]`; `Some` even when empty (GNU `rn != NULL`).
+    row_title: Option<String>,
+    /// `names(dimnames)[2]`; printed above the first column.
+    col_title: Option<String>,
+}
+
+fn empty_matrix_dimnames() -> MatrixDimnames {
+    MatrixDimnames {
+        rows: None,
+        cols: None,
+        row_title: None,
+        col_title: None,
+    }
+}
+
+/// GNU `GetMatrixDimnames`: `names(dimnames)` is a STRSXP; empty
+/// strings stay present so printarray still emits the title row.
+fn matrix_dimname_titles(dimnames: SEXP) -> (Option<String>, Option<String>) {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(
+            dimnames,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if names.is_null()
+            || names == R_NilValue()
+            || TYPEOF(names) != SEXPTYPE::STRSXP
+            || XLENGTH(names) < 2
+        {
+            return (None, None);
+        }
+        let elt = |i: R_xlen_t| -> String {
+            let s = STRING_ELT(names, i);
+            if s.is_null() || s == R_NilValue() {
+                return String::new();
+            }
+            let p = CHAR(s);
+            if p.is_null() {
+                return String::new();
+            }
+            std::ffi::CStr::from_ptr(p)
+                .to_string_lossy()
+                .into_owned()
+        };
+        (Some(elt(0)), Some(elt(1)))
+    }
+}
+
+fn matrix_dimnames(x: Sexp<'_>, nrow: usize, ncol: usize) -> MatrixDimnames {
     unsafe {
         let dimnames = crate::sexp::attrib_core::getAttrib(
             x.as_raw(),
             crate::sexp::attrib_core::R_DimNamesSymbol(),
         );
         let Some(dimnames) = Sexp::from_raw(dimnames) else {
-            return (None, None);
+            return empty_matrix_dimnames();
         };
         if dimnames.clone().typeof_() != SEXPTYPE::VECSXP || dimnames.clone().len() < 2 {
-            return (None, None);
+            return empty_matrix_dimnames();
         }
+        let (row_title, col_title) = matrix_dimname_titles(dimnames.clone().as_raw());
         let row_names = string_vector_values(crate::sexp::accessors::VECTOR_ELT(
             dimnames.clone().as_raw(),
             0,
@@ -652,8 +699,31 @@ fn matrix_dimnames(
         let col_names =
             string_vector_values(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
                 .filter(|names| names.len() == ncol);
-        (row_names, col_names)
+        MatrixDimnames {
+            rows: row_names,
+            cols: col_names,
+            row_title,
+            col_title,
+        }
     }
+}
+
+/// GNU `init_rl_rn`: a present row title (even `""`) adds `R_MIN_LBLOFF`.
+const R_MIN_LBLOFF: usize = 2;
+
+fn matrix_row_geometry(row_labels: &[String], row_title: Option<&str>) -> (usize, usize) {
+    let mut row_width = row_labels.iter().map(String::len).max().unwrap_or(0);
+    let mut lbloff = 0;
+    if let Some(title) = row_title {
+        let rnw = title.len();
+        lbloff = if rnw < row_width + R_MIN_LBLOFF {
+            R_MIN_LBLOFF
+        } else {
+            rnw.saturating_sub(row_width)
+        };
+        row_width += lbloff;
+    }
+    (row_width, lbloff)
 }
 
 fn gnu_row_index_label(row: usize, nrow: usize) -> String {
@@ -700,10 +770,10 @@ fn format_matrix_with<F>(x: Sexp<'_>, nrow: usize, ncol: usize, value_at: F) -> 
 where
     F: Fn(usize, usize) -> String,
 {
-    let (row_names, col_names) = matrix_dimnames(x, nrow, ncol);
+    let dn = matrix_dimnames(x, nrow, ncol);
     let row_labels: Vec<String> = (0..nrow)
         .map(|r| {
-            row_names
+            dn.rows
                 .as_ref()
                 .and_then(|names| names.get(r))
                 .cloned()
@@ -712,14 +782,14 @@ where
         .collect();
     let col_labels: Vec<String> = (0..ncol)
         .map(|c| {
-            col_names
+            dn.cols
                 .as_ref()
                 .and_then(|names| names.get(c))
                 .cloned()
                 .unwrap_or_else(|| format!("[,{}]", c + 1))
         })
         .collect();
-    let row_width = row_labels.iter().map(String::len).max().unwrap_or(0);
+    let (row_width, lbloff) = matrix_row_geometry(&row_labels, dn.row_title.as_deref());
     let mut values = vec![vec![String::new(); ncol]; nrow];
     let mut widths = Vec::with_capacity(ncol);
     for c in 0..ncol {
@@ -732,8 +802,19 @@ where
         widths.push(width);
     }
 
-    let mut lines = Vec::with_capacity(nrow + 1);
-    let mut header = " ".repeat(row_width + 1);
+    let mut lines = Vec::with_capacity(nrow + 2);
+    // GNU `_PRINT_ROW_LAB`: `"%*s%s\n"` then left-justified `rn`.
+    if let Some(cn) = dn.col_title.as_deref() {
+        lines.push(format!("{:row_width$}{cn}", ""));
+    }
+    let mut header = if let Some(rn) = dn.row_title.as_deref() {
+        format!("{rn:<row_width$}")
+    } else {
+        " ".repeat(row_width)
+    };
+    if row_width > 0 {
+        header.push(' ');
+    }
     for (c, width) in widths.iter().enumerate() {
         header.push_str(&format!("{:>width$}", col_labels[c]));
         if c + 1 < ncol {
@@ -743,7 +824,8 @@ where
     lines.push(header);
 
     for r in 0..nrow {
-        let mut line = format!("{:<row_width$}", row_labels[r]);
+        let label = format!("{:lbloff$}{}", "", row_labels[r]);
+        let mut line = format!("{label:<row_width$}");
         for (c, width) in widths.iter().enumerate() {
             line.push(' ');
             line.push_str(&format!("{:>width$}", values[r][c]));
@@ -753,14 +835,15 @@ where
     lines.join("\n")
 }
 
+
 fn format_character_matrix_with<F>(x: Sexp<'_>, nrow: usize, ncol: usize, value_at: F) -> String
 where
     F: Fn(usize, usize) -> String,
 {
-    let (row_names, col_names) = matrix_dimnames(x, nrow, ncol);
+    let dn = matrix_dimnames(x, nrow, ncol);
     let row_labels: Vec<String> = (0..nrow)
         .map(|r| {
-            row_names
+            dn.rows
                 .as_ref()
                 .and_then(|names| names.get(r))
                 .cloned()
@@ -769,14 +852,14 @@ where
         .collect();
     let col_labels: Vec<String> = (0..ncol)
         .map(|c| {
-            col_names
+            dn.cols
                 .as_ref()
                 .and_then(|names| names.get(c))
                 .cloned()
                 .unwrap_or_else(|| format!("[,{}]", c + 1))
         })
         .collect();
-    let row_width = row_labels.iter().map(String::len).max().unwrap_or(0);
+    let (row_width, lbloff) = matrix_row_geometry(&row_labels, dn.row_title.as_deref());
     let mut values = vec![vec![String::new(); ncol]; nrow];
     let mut widths = Vec::with_capacity(ncol);
     for c in 0..ncol {
@@ -789,8 +872,18 @@ where
         widths.push(width);
     }
 
-    let mut lines = Vec::with_capacity(nrow + 1);
-    let mut header = " ".repeat(row_width + 1);
+    let mut lines = Vec::with_capacity(nrow + 2);
+    if let Some(cn) = dn.col_title.as_deref() {
+        lines.push(format!("{:row_width$}{cn}", ""));
+    }
+    let mut header = if let Some(rn) = dn.row_title.as_deref() {
+        format!("{rn:<row_width$}")
+    } else {
+        " ".repeat(row_width)
+    };
+    if row_width > 0 {
+        header.push(' ');
+    }
     for (c, width) in widths.iter().enumerate() {
         header.push_str(&format!("{:>width$}", col_labels[c]));
         if c + 1 < ncol {
@@ -800,7 +893,8 @@ where
     lines.push(header);
 
     for r in 0..nrow {
-        let mut line = format!("{:<row_width$}", row_labels[r]);
+        let label = format!("{:lbloff$}{}", "", row_labels[r]);
+        let mut line = format!("{label:<row_width$}");
         for (c, width) in widths.iter().enumerate() {
             line.push(' ');
             line.push_str(&format!("{:<width$}", values[r][c]));
@@ -809,6 +903,57 @@ where
     }
     lines.join("\n")
 }
+
+fn format_complex_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
+    unsafe {
+        use crate::mainutils::format::formatComplex;
+        use crate::mainutils::printutils::EncodeComplex;
+        use crate::sexp::accessors::COMPLEX;
+        let data = COMPLEX(x.clone().as_raw());
+        let mut col_fmt = Vec::with_capacity(ncol);
+        for c in 0..ncol {
+            let mut wr = 0;
+            let mut dr = 0;
+            let mut er = 0;
+            let mut wi = 0;
+            let mut di = 0;
+            let mut ei = 0;
+            formatComplex(
+                data.add(c * nrow),
+                nrow as R_xlen_t,
+                &mut wr,
+                &mut dr,
+                &mut er,
+                &mut wi,
+                &mut di,
+                &mut ei,
+                0,
+            );
+            col_fmt.push((wr, dr, er, wi, di, ei));
+        }
+        format_matrix_with(x, nrow, ncol, |r, c| {
+            let (wr, dr, er, wi, di, ei) = col_fmt[c];
+            let encoded = EncodeComplex(
+                *data.add(r + c * nrow),
+                wr,
+                dr,
+                er,
+                wi,
+                di,
+                ei,
+                b".\0".as_ptr() as *const std::os::raw::c_char,
+            );
+            if encoded.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(encoded)
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        })
+    }
+}
+
 
 fn format_matrix(x: Sexp<'_>) -> Option<String> {
     let (nrow, ncol) = matrix_dims(x.clone())?;
@@ -820,9 +965,7 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
         SEXPTYPE::LGLSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
             format_logical_element(x.clone(), (r + c * nrow) as i64)
         })),
-        SEXPTYPE::CPLXSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
-            format_complex_element(x.clone(), (r + c * nrow) as i64)
-        })),
+        SEXPTYPE::CPLXSXP => Some(format_complex_matrix_gnu(x.clone(), nrow, ncol)),
         SEXPTYPE::STRSXP => Some(format_character_matrix_with(
             x.clone(),
             nrow,

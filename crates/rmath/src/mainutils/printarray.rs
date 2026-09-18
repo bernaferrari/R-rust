@@ -331,17 +331,18 @@ unsafe fn init_rl_rn(rl: SEXP, rn: *const c_char, r: c_int) -> RowLabelInfo {
 
 unsafe fn print_row_header(cn: *const c_char, rlabw: c_int, rn: *const c_char) {
     unsafe {
+        // GNU `_PRINT_ROW_LAB`: Rprintf("%*s%s\n", rlabw, "", cn)
+        // then left-justified rn (or rlabw spaces).
         if !cn.is_null() {
-            let cn_cstr = std::ffi::CStr::from_ptr(cn);
-            let s = cn_cstr.to_str().unwrap_or("");
-            eprintln!("{:width$}", s, width = rlabw as usize);
+            let s = std::ffi::CStr::from_ptr(cn).to_str().unwrap_or("");
+            eprint!("{:width$}", "", width = rlabw.max(0) as usize);
+            eprintln!("{s}");
         }
         if !rn.is_null() {
-            let rn_cstr = std::ffi::CStr::from_ptr(rn);
-            let s = rn_cstr.to_str().unwrap_or("");
-            eprint!("{:<width$}", s, width = rlabw as usize);
+            let s = std::ffi::CStr::from_ptr(rn).to_str().unwrap_or("");
+            eprint!("{:<width$}", s, width = rlabw.max(0) as usize);
         } else {
-            eprint!("{:width$}", "", width = rlabw as usize);
+            eprint!("{:width$}", "", width = rlabw.max(0) as usize);
         }
     }
 }
