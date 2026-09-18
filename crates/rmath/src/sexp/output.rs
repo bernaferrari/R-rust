@@ -1000,12 +1000,17 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
             format_logical_element(x.clone(), (r + c * nrow) as i64)
         })),
         SEXPTYPE::CPLXSXP => Some(format_complex_matrix_gnu(x.clone(), nrow, ncol)),
-        SEXPTYPE::STRSXP => Some(format_character_matrix_with(
-            x.clone(),
-            nrow,
-            ncol,
-            |r, c| format_string_element(x.clone(), (r + c * nrow) as i64),
-        )),
+
+        SEXPTYPE::STRSXP => {
+            let quote = !has_class(x.clone(), "noquote");
+            Some(format_character_matrix_with(
+                x.clone(),
+                nrow,
+                ncol,
+                |r, c| format_string_element_maybe_quoted(x.clone(), (r + c * nrow) as i64, quote),
+            ))
+        }
+
         _ => None,
     }
 }
@@ -1099,11 +1104,17 @@ fn string_element_text<'a>(x: Sexp<'a>, i: R_xlen_t) -> Option<Option<&'a str>> 
 }
 
 fn format_string_element(x: Sexp<'_>, i: R_xlen_t) -> String {
+    format_string_element_maybe_quoted(x, i, true)
+}
+
+fn format_string_element_maybe_quoted(x: Sexp<'_>, i: R_xlen_t, quote: bool) -> String {
     match string_element_text(x, i) {
-        Some(Some(value)) => format!("\"{}\"", escape_printed_string(value)),
+        Some(Some(value)) if quote => format!("\"{}\"", escape_printed_string(value)),
+        Some(Some(value)) => value.to_string(),
         Some(None) | None => "NA".to_string(),
     }
 }
+
 
 fn escape_printed_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
@@ -2528,9 +2539,13 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::STRSXP => {
+            if let Some(output) = format_matrix(x.clone()) {
+                return output;
+            }
             let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
+
         SEXPTYPE::RAWSXP => {
             if x.clone().len() == 0 {
                 return format_with_printable_attributes("raw(0)".to_string(), x);

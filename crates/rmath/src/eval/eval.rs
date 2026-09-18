@@ -1364,6 +1364,40 @@ identical(signif(numeric(0), 3), numeric(0)) &&
         );
     }
 
+    #[test]
+    fn print_character_matrix_and_noquote_follow_gnu() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            r#"
+m1 <- matrix(letters[1:24], 6, 4)
+m1
+noquote(m1)
+invisible(NULL)
+"#,
+        );
+        assert!(
+            captured.stdout.contains("[,1]") && captured.stdout.contains("[1,]"),
+            "character matrix must print as a matrix, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            captured.stdout.contains("\"a\""),
+            "default character matrix print must quote cells, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            captured.stdout.contains(" a    ") || captured.stdout.contains("[1,] a"),
+            "noquote character matrix must drop quotes, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains("[1] \"a\" \"b\" \"c\""),
+            "character matrix must not flatten to a quoted vector, got {:?}",
+            captured.stdout
+        );
+    }
+
+
 
 
 

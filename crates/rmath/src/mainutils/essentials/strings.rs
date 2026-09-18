@@ -4701,7 +4701,8 @@ pub unsafe fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             }
             crate::sexp::attrib_core::setAttrib(x, Rf_install(c"class".as_ptr()), class_vec);
         }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+
         x
     }
 }
