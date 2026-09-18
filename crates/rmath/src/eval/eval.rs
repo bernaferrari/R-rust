@@ -976,6 +976,17 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn class_of_null_is_null_string() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "identical(class(NULL), \"NULL\")",
+        );
+        let result = result.expect("class(NULL) must be GNU's implicit NULL class");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
 

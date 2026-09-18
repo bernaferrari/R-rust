@@ -359,8 +359,9 @@ pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
+            return Rf_mkString(c"NULL".as_ptr());
         }
+
         let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if class.is_null() || class == R_NilValue() {
             let dim =
