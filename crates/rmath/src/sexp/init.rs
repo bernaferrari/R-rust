@@ -331,6 +331,41 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Internal(getRegisteredNamespace(name)) %||% tryCatch(loadNamespace(name), error = function(e) .GlobalEnv)\n\
              }",
         );
+        // GNU namespace.R: isBaseNamespace(ns) identical(ns, .BaseNamespaceEnv).
+        // methods::show,genericFunction-method calls .minimalName → this.
+        eval_base_binding(
+            base_env,
+            "isBaseNamespace",
+            "function(ns) identical(ns, .BaseNamespaceEnv)",
+        );
+        // GNU namespace.R: methods::.isExported and show() need these.
+        eval_base_binding(
+            base_env,
+            ".getNamespaceInfo",
+            "function(ns, which) {\n\
+             info <- get(\".__NAMESPACE__.\", envir = ns, inherits = FALSE)\n\
+             get(which, envir = info, inherits = FALSE)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "getNamespaceInfo",
+            "function(ns, which) {\n\
+             ns <- asNamespace(ns)\n\
+             .getNamespaceInfo(ns, which)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "setNamespaceInfo",
+            "function(ns, which, val) {\n\
+             ns <- asNamespace(ns)\n\
+             info <- get(\".__NAMESPACE__.\", envir = ns, inherits = FALSE)\n\
+             assign(which, val, envir = info)\n\
+             }",
+        );
+
+
 
 
         eval_base_binding(

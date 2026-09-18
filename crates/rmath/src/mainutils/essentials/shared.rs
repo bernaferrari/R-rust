@@ -746,6 +746,12 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
         if package.is_empty() || package == "NA" {
             return Err("invalid package name".to_string());
         }
+        // GNU getNamespace("base") / asNamespace("base") is .BaseNamespaceEnv,
+        // not a separately loaded library/base tree.
+        if package == "base" {
+            return Ok(crate::sexp::globals::R_BaseEnv());
+        }
+
 
         #[cfg(feature = "renderplot-device")]
         if package == "grid" {
@@ -1331,9 +1337,9 @@ pub(crate) unsafe fn load_package_namespace(
                 crate::library::stats::random::install_stats_call_symbols(env);
             }
 
-
-
-            return Ok((env, read_namespace_directives(package_dir)?));
+            let directives = read_namespace_directives(package_dir)?;
+            ensure_namespace_info(package, package_dir, env, directives.as_ref());
+            return Ok((env, directives));
         }
 
         let package_env = crate::sexp::memory_ext::NewEnvironment(
@@ -1397,6 +1403,7 @@ pub(crate) unsafe fn load_package_namespace(
             crate::library::tools::native_calls::install_tools_call_symbols(package_env);
             crate::library::tools::native_calls::install_tools_assert_closures(package_env);
         }
+        ensure_namespace_info(package, package_dir, package_env, namespace.as_ref());
 
 
 
@@ -1434,6 +1441,9 @@ pub(crate) fn uncache_package_namespace(package: &str) {
 }
 
 pub(crate) fn cached_namespace_by_name(package: &str) -> Option<SEXP> {
+    if package == "base" {
+        return Some(unsafe { crate::sexp::globals::R_BaseEnv() });
+    }
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         (*inst)
             .package_namespace_cache
@@ -1441,6 +1451,7 @@ pub(crate) fn cached_namespace_by_name(package: &str) -> Option<SEXP> {
             .map(|(_, env)| *env)
     })
 }
+
 
 
 pub(crate) fn package_arg_values(package_arg: SEXP) -> Vec<String> {
@@ -1562,6 +1573,67 @@ pub(crate) unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
         }
     }
 }
+
+/// GNU `makeNamespace` + `namespaceExport`: `.__NAMESPACE__.` holds
+/// `exports` so `.isExported` / `.minimalName` / `show()` work.
+unsafe fn ensure_namespace_info(
+    package: &str,
+    package_dir: &Path,
+    package_env: SEXP,
+    directives: Option<&NamespaceDirectives>,
+) {
+    unsafe {
+        let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
+        let existing = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
+        if !existing.is_null()
+            && existing != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(existing) == SEXPTYPE::ENVSXP
+        {
+            return;
+        }
+
+        let info = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_BaseEnv(),
+            R_NilValue(),
+        );
+        let _info = protect(info);
+        let exports = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_BaseEnv(),
+            R_NilValue(),
+        );
+        let _exports = protect(exports);
+
+        for name in namespace_exports(directives, package_env) {
+            let Ok(cname) = CString::new(name.as_str()) else {
+                continue;
+            };
+            let symbol = Rf_install(cname.as_ptr());
+            crate::sexp::envir::defineVar(symbol, Rf_mkString(cname.as_ptr()), exports);
+        }
+
+        crate::sexp::envir::defineVar(Rf_install(c"exports".as_ptr()), exports, info);
+
+        let spec = Rf_mkString(CString::new(package).unwrap_or_default().as_ptr());
+        let _spec = protect(spec);
+        let spec_names = Rf_mkString(c"name".as_ptr());
+        let _spec_names = protect(spec_names);
+        crate::sexp::attrib_core::setAttrib(
+            spec,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            spec_names,
+        );
+        crate::sexp::envir::defineVar(Rf_install(c"spec".as_ptr()), spec, info);
+
+        let path = Rf_mkString(
+            CString::new(package_dir.to_string_lossy().as_ref()).unwrap_or_default().as_ptr(),
+        );
+        crate::sexp::envir::defineVar(Rf_install(c"path".as_ptr()), path, info);
+        crate::sexp::envir::defineVar(info_sym, info, package_env);
+    }
+}
+
 
 pub(crate) fn reject_unsupported_internal_data(
     package: &str,

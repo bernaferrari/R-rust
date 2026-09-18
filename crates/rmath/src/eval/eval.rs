@@ -3141,6 +3141,53 @@ ok1 && ok2 && ok3 && ok4 && ok5
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn is_base_namespace_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+isBaseNamespace(.BaseNamespaceEnv) &&
+  identical(asNamespace("base"), .BaseNamespaceEnv) &&
+  !isBaseNamespace(asNamespace("methods"))
+"#,
+        );
+        let result = result.expect("isBaseNamespace is GNU namespace.R");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn methods_namespace_exports_body_assign() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+exists(".__NAMESPACE__.", envir=asNamespace("methods"), inherits=FALSE) &&
+  "body<-" %in% names(.getNamespaceInfo(asNamespace("methods"), "exports")) &&
+  identical(methods:::.minimalName("body<-", "methods", qName=TRUE, chkXport=TRUE), "`body<-`")
+"#,
+        );
+        let result = result.expect("methods .__NAMESPACE__. exports include body<-");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn classes_methods_show_body_assign_backticks() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+any(grepl("showMethods(`body<-`)", capture.output(show(getGeneric("body<-"))), fixed=TRUE))
+"#,
+        );
+        let result = result.expect("classes-methods.R show(body<-) backticks");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
+
 
 
 
