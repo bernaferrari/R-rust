@@ -102,8 +102,9 @@ unsafe fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
         };
         let name_sym = Rf_install(cname.as_ptr());
         let value = crate::mainutils::essentials::R_do_slot(s, name_sym);
-        if value.is_null() || value == R_NilValue() {
-            None
+        // GNU stores every class slot, including NULL (pseudo_NULL → Nil).
+        if value.is_null() {
+            Some(R_NilValue())
         } else {
             Some(value)
         }

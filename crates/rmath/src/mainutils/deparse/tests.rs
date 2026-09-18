@@ -190,6 +190,22 @@ fn test_deparse_objsxp_structure_form() {
 }
 
 #[test]
+fn deparse_includes_null_s4_slots() {
+    let mut session = RSession::new();
+    let (result, _, _) = session.eval_script_with_output_capture(
+        r#"
+invisible(require(methods, quietly=TRUE))
+setClass("NullSlotD", slots = c(x = "numeric", lab = "ANY"))
+o <- new("NullSlotD", x = 1)
+grepl("lab = NULL", paste(deparse(o), collapse = "\n"), fixed = TRUE)
+"#,
+    );
+    let result = result.expect("NULL S4 slots must deparse as name = NULL");
+    assert_eq!(result.logical_elt(0), Some(crate::sexp::ffi::TRUE));
+}
+
+
+#[test]
 fn test_browse_lines_initial() {
     let _session = RSession::new();
     assert_eq!(get_browse_lines(), 0);
