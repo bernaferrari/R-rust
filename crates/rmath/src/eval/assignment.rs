@@ -393,6 +393,7 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
             "formals<-" => crate::mainutils::essentials::do_formalsgets(call, assign_fn, args, rho),
             "body<-" => crate::mainutils::essentials::do_bodygets(call, assign_fn, args, rho),
             _ => Rf_eval(call, rho),
+
         }
     }
 }

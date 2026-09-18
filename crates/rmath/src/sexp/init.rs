@@ -153,6 +153,34 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "pairlist",
             "function(...) as.pairlist(list(...))",
         );
+        // GNU formals.R: replacement functions are closures, not primitives.
+        eval_base_binding(
+            base_env,
+            "body<-",
+            "function (fun, envir = environment(fun), value) {\n\
+             if (!is.function(fun)) warning(\"'fun' is not a function\")\n\
+             if (is.expression(value)) {\n\
+                 if (length(value) > 1L)\n\
+                     warning(\"using the first element of 'value' of type \\\"expression\\\"\")\n\
+                 value <- value[[1L]]\n\
+             }\n\
+             as.function(c(formals(fun),\n\
+                 if (is.null(value) || is.atomic(value) || is.list(value)) list(value) else value),\n\
+                 envir)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "formals<-",
+            "function (fun, envir = environment(fun), value) {\n\
+             if (!is.function(fun)) warning(\"'fun' is not a function\")\n\
+             bd <- body(fun)\n\
+             as.function(c(value,\n\
+                 if (is.null(bd) || is.atomic(bd) || is.list(bd)) list(bd) else bd),\n\
+                 envir)\n\
+             }",
+        );
+
 
 
         // GNU apply.R: n-d arrays, empty-extent MARGIN, and FUN=NULL collapse.
@@ -725,8 +753,7 @@ const NON_GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto("enc2native", X, false),
     proto("enc2utf8", X, false),
     proto("environment<-", &[arg("fun"), arg("value")], false),
-    proto("formals<-", &[arg("fun"), arg("value")], false),
-    proto("body<-", &[arg("fun"), arg("value")], false),
+
     proto("expression", DOTS, false),
     proto("forceAndCall", &[arg("n"), arg("FUN"), arg("...")], false),
     proto("gc.time", &[arg_default("on", FormalDefault::True)], false),
@@ -1010,6 +1037,12 @@ pub fn is_accounted_primitive_name(name: &str) -> bool {
         || NON_GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
         || GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
 }
+
+/// GNU internal generics: only these primitives UseMethod on classed args.
+pub fn is_internal_generic_name(name: &str) -> bool {
+    GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
+}
+
 
 
 

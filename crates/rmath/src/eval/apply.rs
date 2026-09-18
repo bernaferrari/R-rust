@@ -354,6 +354,10 @@ fn try_s3_dispatch<'a>(
         if op_name.starts_with(|c: char| !c.is_alphanumeric()) {
             return None;
         }
+        if !crate::sexp::init::is_internal_generic_name(op_name) {
+            return None;
+        }
+
         // Skip if already a method call (contains a dot like "print.default")
         if op_name.contains('.') {
             return None;

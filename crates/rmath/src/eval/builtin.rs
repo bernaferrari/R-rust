@@ -4218,10 +4218,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_formals,
     },
     EvaluatedBuiltin {
-        name: "formals<-",
-        handler: crate::mainutils::essentials::do_formalsgets,
-    },
-    EvaluatedBuiltin {
         name: "body",
         handler: crate::mainutils::essentials::do_body,
     },
@@ -4230,10 +4226,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::srcref::do_remove_source,
     },
 
-    EvaluatedBuiltin {
-        name: "body<-",
-        handler: crate::mainutils::essentials::do_bodygets,
-    },
     EvaluatedBuiltin {
         name: "charmatch",
         handler: crate::mainutils::essentials::do_charmatch,

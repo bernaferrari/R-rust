@@ -1759,6 +1759,27 @@ identical(a, b) && identical(a, c) && isTRUE(all.equal(a, 10)) &&
     }
 
     #[test]
+    fn only_internal_generics_dispatch_s3_on_classed_args() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+x <- structure(pi, class="testit")
+retracemem.testit <- function(x, previous=NULL) 42
+res <- try(retracemem(x), silent=TRUE)
+length.testit <- function(x) 99
+stopifnot(inherits(res, "try-error") || !identical(res, 42))
+stopifnot(identical(length(x), 99))
+stopifnot(identical(typeof(`body<-`), "closure"))
+stopifnot(identical(typeof(`formals<-`), "closure"))
+TRUE
+"#,
+        );
+        let result = result.expect("internal-generic S3 gate");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn str_data_frame_aligns_names_and_omits_column_length() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(

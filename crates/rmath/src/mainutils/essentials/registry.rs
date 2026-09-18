@@ -440,9 +440,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "environmentIsLocked",
     "args",
     "formals",
-    "formals<-",
     "body",
-    "body<-",
+
     "charmatch",
     "pmatch",
     "charToRaw",
