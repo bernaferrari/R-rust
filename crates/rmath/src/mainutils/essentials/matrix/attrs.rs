@@ -120,12 +120,19 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             return ans;
         }
         let mut x = CAR(args);
-        let value = CAR(CDR(args));
+        let mut value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
         x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
         let _x = protect(x);
+        if !value.is_null()
+            && value != R_NilValue()
+            && TYPEOF(value) != SEXPTYPE::STRSXP
+        {
+            value = crate::mainutils::coerce::coerceVector(value, SEXPTYPE::STRSXP.as_c_int());
+        }
+        let _value = protect(value);
 
         let t = TYPEOF(x);
         if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {

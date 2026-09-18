@@ -21,6 +21,11 @@
 #   RPORT_UPSTREAM_TIMEOUT   per-file seconds (default 120)
 #   RPORT_UPSTREAM_REPORT    report dir (default target/upstream-report)
 set -euo pipefail
+# Differential runs must not inherit a host TZ; GNU and rport both
+# emit "unknown timezone" warnings for America/Sao_Paulo otherwise.
+: "${TZ:=UTC}"
+export TZ
+
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TESTS_DIR="$ROOT_DIR/r-source/tests"

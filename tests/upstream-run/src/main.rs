@@ -26,10 +26,16 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if std::env::var_os("TZ").is_none() {
+        unsafe {
+            std::env::set_var("TZ", "UTC");
+        }
+    }
 
     let mut session = RSession::new();
     session.enable_host_process_capabilities();
     let result = session.eval_script(&code);
+
 
     let mut stdout = std::io::stdout();
     let _ = stdout.write_all(result.stdout.as_bytes());

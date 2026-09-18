@@ -1273,6 +1273,39 @@ identical(f(abc = 1, abd = 2, extra = 3), list(1, 2, list(extra = 3))) &&
         );
     }
 
+    #[test]
+    fn format_info_honors_digits_argument() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+x2 <- c(0.099999994, 0.2)
+v <- 6:8
+names(v) <- v
+m <- sapply(v, format.info, x = x2)
+identical(as.vector(m), c(3L, 1L, 0L, 10L, 8L, 0L, 11L, 9L, 0L))
+"#,
+        );
+        let result = result.expect("format.info digits must follow GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn namesgets_coerces_integer_to_character() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+v <- 6:8
+names(v) <- v
+identical(names(v), c("6", "7", "8")) &&
+  identical(dimnames(sapply(v, format.info, x = c(0.099999994, 0.2)))[[2]], c("6", "7", "8"))
+"#,
+        );
+        let result = result.expect("names<- must store character names");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
 
 
 

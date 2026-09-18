@@ -1014,14 +1014,24 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let trim = asLogical(CAR(args_rest));
         args_rest = CDR(args_rest);
 
+        let mut restore_digits = None;
         if !Rf_isNull(CAR(args_rest)) != 0 {
             let digits = asInteger(CAR(args_rest));
             if digits == NA_INTEGER || digits < R_MIN_DIGITS_OPT || digits > R_MAX_DIGITS_OPT {
                 return ptr::null_mut();
             }
-            // R_print.digits = digits; // would need mutable access to R_print
+            let old = crate::mainutils::format::format_set_R_print(
+                crate::mainutils::format::RPrint {
+                    digits,
+                    scipen: crate::mainutils::options::GetOptionScipen(),
+                    na_width: 2,
+                    na_width_noquote: 2,
+                },
+            );
+            restore_digits = Some(FormatInfoRestorePrint { old });
         }
         args_rest = CDR(args_rest);
+
 
         let nsmall = asInteger(CAR(args_rest));
         if nsmall == NA_INTEGER || nsmall < 0 || nsmall > 20 {
@@ -1319,7 +1329,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
             }
         }
-
+        let _ = restore_digits;
         result_y
     }
 }
@@ -1350,12 +1360,21 @@ pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
         let n = XLENGTH(x);
         PrintDefaults();
 
+        let mut restore_digits = None;
         if Rf_isNull(CADR(args)) == 0 {
             let digits = asInteger(CADR(args));
             if digits == NA_INTEGER || digits < R_MIN_DIGITS_OPT || digits > R_MAX_DIGITS_OPT {
                 return ptr::null_mut();
             }
-            // R_print.digits = digits;
+            let old = crate::mainutils::format::format_set_R_print(
+                crate::mainutils::format::RPrint {
+                    digits,
+                    scipen: crate::mainutils::options::GetOptionScipen(),
+                    na_width: 2,
+                    na_width_noquote: 2,
+                },
+            );
+            restore_digits = Some(FormatInfoRestorePrint { old });
         }
 
         let nsmall = asInteger(CADDR(args));
@@ -1437,9 +1456,23 @@ pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             }
         }
 
+        let _ = restore_digits;
         result
     }
 }
+
+struct FormatInfoRestorePrint {
+    old: crate::mainutils::format::RPrint,
+}
+
+impl Drop for FormatInfoRestorePrint {
+    fn drop(&mut self) {
+        unsafe {
+            crate::mainutils::format::format_set_R_print(self.old);
+        }
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Tests

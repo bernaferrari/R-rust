@@ -4367,25 +4367,38 @@ pub unsafe fn do_quarters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     unsafe { calendar_label_builtin(args, CalendarLabel::Quarter) }
 }
 
-/// R's `format.info(x, digits, nsmall)` width metadata.
 pub unsafe fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = arg_by_name_or_position(args, &["x"], 0);
-        if x.is_null() || x == R_NilValue() {
+        let m = crate::mainutils::match_mod::match_formal_slots(
+            call,
+            args,
+            &["x", "digits", "nsmall"],
+        );
+        let missing = crate::sexp::globals::R_MissingArg();
+        let force = |v: SEXP| -> SEXP {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::PROMSXP {
+                crate::sexp::envir::forcePromise(v)
+            } else {
+                v
+            }
+        };
+        let x = force(*m.first().unwrap_or(&R_NilValue()));
+        if x.is_null() || x == R_NilValue() || x == missing {
             return R_NilValue();
         }
-        let digits = arg_by_name_or_position(args, &["digits"], 1);
-        let digits = if digits.is_null() {
+        let digits = force(m.get(1).copied().unwrap_or(missing));
+        let digits = if digits.is_null() || digits == missing {
             R_NilValue()
         } else {
             digits
         };
-        let nsmall = arg_by_name_or_position(args, &["nsmall"], 2);
-        let nsmall = if nsmall.is_null() || nsmall == R_NilValue() {
+        let nsmall = force(m.get(2).copied().unwrap_or(missing));
+        let nsmall = if nsmall.is_null() || nsmall == R_NilValue() || nsmall == missing {
             Rf_ScalarInteger(0)
         } else {
             nsmall
         };
+
 
         let tail = Rf_cons(nsmall, R_NilValue());
         let _tail_guard = protect(tail);
