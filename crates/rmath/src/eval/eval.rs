@@ -2904,6 +2904,28 @@ identical(BAR[1L], FALSE) && identical(BAR[1L, , flag=TRUE], TRUE)
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn classes_methods_as_vector_subassign() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("A", representation(stuff="numeric"))
+as.vector.A <- function (x, mode="any") x@stuff
+v <- c(3.5, 0.1)
+a <- new("A", stuff=v)
+x <- y <- numeric(10)
+x[3:4] <- a
+y[3:4] <- v
+identical(x, y)
+"#,
+        );
+        let result = result.expect("classes-methods.R as.vector S3 method in [<-");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
 
 
 

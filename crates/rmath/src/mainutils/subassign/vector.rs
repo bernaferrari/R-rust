@@ -175,10 +175,40 @@ pub(crate) unsafe fn embedInVector(v: SEXP, _call: SEXP) -> SEXP {
     }
 }
 
-/// Port of `dispatch_asvector()` -- dispatches as.vector method.
-pub(crate) unsafe fn dispatch_asvector(_x: *mut SEXP, _call: SEXP, _rho: SEXP) -> bool {
-    false
+/// Port of `dispatch_asvector()` -- DispatchOrEval("as.vector") on *x.
+pub(crate) unsafe fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> bool {
+    unsafe {
+        if x.is_null() || (*x).is_null() {
+            return false;
+        }
+        let mode = Rf_mkString(c"any".as_ptr());
+        let _mode = protect(mode);
+        let args = Rf_cons(*x, Rf_cons(mode, R_NilValue()));
+        let _args = protect(args);
+        let mut ans = R_NilValue();
+        let op = crate::eval::primitive::make_primitive_binding(
+            "as.vector",
+            SEXPTYPE::BUILTINSXP,
+        );
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"as.vector".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            *x = ans;
+            true
+        } else {
+            false
+        }
+    }
 }
+
 
 /// Port of `SubassignTypeFix()` -- coerces LHS/RHS to compatible types
 /// for subassignment. Returns the type code `100 * TYPEOF(x) + TYPEOF(y)`.
