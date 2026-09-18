@@ -745,6 +745,16 @@ pub fn close_connection_inner(conn: &mut RConn) {
     }
 
     conn.status = 0; // success
+    if matches!(conn.kind, ConnKind::TextConnection) && conn.canwrite {
+        unsafe {
+            conn.assign_text_output();
+            if !conn.text_env.is_null() {
+                crate::sexp::protect::R_ReleaseObject(conn.text_env);
+                conn.text_env = std::ptr::null_mut();
+            }
+        }
+    }
+
     conn.isopen = false;
 
     // Close file handles

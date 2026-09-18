@@ -2392,12 +2392,14 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                 || method_value == R_NilValue()
                 || method_value == crate::sexp::globals::R_UnboundValue()
             {
-                return Err(format!(
-                    "package '{}' declares missing S3 method '{}'",
-                    package, method_name
-                ));
+                // GNU registerS3methods() skips methods that are not bound
+                // in the namespace (Windows-only utils methods on Unix).
+                continue;
             }
+
             define_s3_method(package_env, local_generic, &method.class, method_value)?;
+
+
         }
         Ok(())
     }

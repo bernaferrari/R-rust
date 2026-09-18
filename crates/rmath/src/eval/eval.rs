@@ -1069,6 +1069,27 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn capture_output_writes_local_text_connection() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "identical(utils::capture.output(cat(\"hi\\n\")), \"hi\")",
+        );
+        let result = result.expect("capture.output must assign the local textConnection");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn utils_namespace_loads_without_windows_s3_methods() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "is.environment(asNamespace(\"utils\")) && is.function(utils::getAnywhere)",
+        );
+        let result = result.expect("utils namespace must load with lazy S3 methods");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
     #[test]
     fn rep_is_gnu_special() {

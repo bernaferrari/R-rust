@@ -294,7 +294,7 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
         let top = topenv(R_NilValue(), callrho);
         let _top_guard = protect(top);
 
-        let val = findFunInEnvRange(method, callrho, top);
+        let val = force_s3_method_value(findFunInEnvRange(method, callrho, top));
         if val != R_UnboundValue() {
             return val;
         }
@@ -309,7 +309,7 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
             let table = crate::sexp::envir::R_findVarInFrame(effective_defrho, s3_table_sym);
             if table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP {
                 let _table_guard = protect(table);
-                let val2 = crate::sexp::envir::R_findVarInFrame(table, method);
+                let val2 = force_s3_method_value(crate::sexp::envir::R_findVarInFrame(table, method));
                 if val2 != R_UnboundValue() {
                     let t = TYPEOF(val2);
                     if t == SEXPTYPE::CLOSXP
@@ -351,6 +351,24 @@ pub(crate) fn s3_method_symbol(generic: &str, class: &str) -> Option<SEXP> {
     Some(unsafe { crate::mainutils::names::installS3Signature(generic.as_ptr(), class.as_ptr()) })
 }
 
+unsafe fn force_s3_method_value(method: SEXP) -> SEXP {
+    unsafe {
+        if method.is_null()
+            || method == R_NilValue()
+            || method == R_UnboundValue()
+        {
+            return method;
+        }
+        if TYPEOF(method) == SEXPTYPE::PROMSXP {
+            crate::sexp::envir::forcePromise(method);
+            crate::sexp::accessors::PRVALUE(method)
+        } else {
+            method
+        }
+    }
+}
+
+
 pub(crate) unsafe fn lookup_s3_method_symbol(
     method_symbol: SEXP,
     rho: SEXP,
@@ -358,12 +376,12 @@ pub(crate) unsafe fn lookup_s3_method_symbol(
     defrho: SEXP,
 ) -> SEXP {
     unsafe {
-        let method = R_LookupMethod(method_symbol, rho, callrho, defrho);
+        let method = force_s3_method_value(R_LookupMethod(method_symbol, rho, callrho, defrho));
         if isFunction(method) != FALSE {
             return method;
         }
 
-        let method = lookup_s3_method_in_attached_tables(method_symbol, rho);
+        let method = force_s3_method_value(lookup_s3_method_in_attached_tables(method_symbol, rho));
         if isFunction(method) != FALSE {
             return method;
         }
@@ -392,6 +410,7 @@ pub(crate) unsafe fn lookup_s3_method_symbol(
         R_UnboundValue()
     }
 }
+
 
 
 pub(crate) unsafe fn lookup_s3_method_for_class(

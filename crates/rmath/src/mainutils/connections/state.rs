@@ -95,6 +95,11 @@ pub struct RConn {
     pub text_pos: usize,
     /// Output text lines (for textConnection writing).
     pub text_lines: RefCell<Vec<String>>,
+    /// Write-mode textConnection variable name (`textConnection("rval", "w")`).
+    pub text_var: Option<String>,
+    /// Environment that receives `text_var` updates. Null when unused.
+    pub text_env: SEXP,
+
     /// Child process (for pipe connections).
     pub child: Option<Child>,
     /// File handle (for file connections).
@@ -122,6 +127,9 @@ impl RConn {
             incomplete: false,
             status: NA_INTEGER,
             kind,
+            text_var: None,
+            text_env: ptr::null_mut(),
+
             raw_pos: 0,
             raw_data: Vec::new(),
             text_data: String::new(),
@@ -134,6 +142,39 @@ impl RConn {
             pushback: Vec::new(),
         }
     }
+
+    /// GNU write-mode textConnection: assign captured lines to `object`.
+    pub unsafe fn assign_text_output(&self) {
+        unsafe {
+            let Some(name) = self.text_var.as_deref() else {
+                return;
+            };
+            if self.text_env.is_null() || name.is_empty() {
+                return;
+            }
+            let Ok(cname) = CString::new(name) else {
+                return;
+            };
+            let lines = self.text_lines.borrow();
+            let n = lines.len() as c_int;
+            let ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
+            if ans.is_null() {
+                return;
+            }
+            let _ans = protect(ans);
+            for (i, line) in lines.iter().enumerate() {
+                let ch = Rf_mkChar(CString::new(line.as_str()).unwrap_or_default().as_ptr());
+                SET_STRING_ELT(ans, i as R_xlen_t, ch);
+            }
+            crate::sexp::envir::defineVar(
+                crate::sexp::symbol::Rf_install(cname.as_ptr()),
+                ans,
+                self.text_env,
+            );
+        }
+    }
+
+
 }
 
 // ---------------------------------------------------------------------------
@@ -622,8 +663,27 @@ pub fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
         ConnKind::RawConnection => conn.raw_data.extend_from_slice(bytes),
         ConnKind::TextConnection => {
             let text = String::from_utf8_lossy(bytes);
-            conn.text_lines.borrow_mut().push(text.into_owned());
+            {
+                let mut lines = conn.text_lines.borrow_mut();
+                for (i, piece) in text.split('\n').enumerate() {
+                    if i == 0 {
+                        if let Some(last) = lines.last_mut() {
+                            last.push_str(piece);
+                            continue;
+                        }
+                    }
+                    if i + 1 == text.split('\n').count() && piece.is_empty() && text.ends_with('\n')
+                    {
+                        break;
+                    }
+                    lines.push(piece.to_string());
+                }
+            }
+            unsafe {
+                conn.assign_text_output();
+            }
         }
+
         ConnKind::Terminal(name) if name == "stdout" => {
             let stdout = io::stdout();
             let mut writer = stdout.lock();

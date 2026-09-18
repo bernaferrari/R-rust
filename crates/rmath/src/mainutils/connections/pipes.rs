@@ -163,22 +163,53 @@ pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEX
 // do_textConnection — textConnection(object, open = "r", local = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let sfile = CAR(args);
+        let arg1 = CAR(args);
         args = CDR(args);
-        let stext = CAR(args);
+        let arg2 = CAR(args);
         args = CDR(args);
-        let sopen = CAR(args);
+        let arg3 = CAR(args);
         args = CDR(args);
-        let _local = check_logical_arg(CAR(args), "local");
+        let arg4 = CAR(args);
 
-        let description = check_string_arg(sfile, "description");
-        let open = check_string_arg(sopen, "open");
-        let open_mode = if open.is_empty() {
-            "r".to_string()
+        // .Internal(textConnection(name, object, open, local, type)) vs
+        // the R wrapper textConnection(object, open, local = FALSE).
+        let internal_form = !is_missing_conn_arg(arg4)
+            && TYPEOF(arg4) == SEXPTYPE::LGLSXP
+            && TYPEOF(arg3) == SEXPTYPE::STRSXP;
+
+        let (description, stext, open_mode, local_arg) = if internal_form {
+            (
+                check_string_arg(arg1, "description"),
+                arg2,
+                {
+                    let open = check_string_arg(arg3, "open");
+                    if open.is_empty() {
+                        "r".to_string()
+                    } else {
+                        open
+                    }
+                },
+                arg4,
+            )
         } else {
-            open
+            let open = if is_missing_conn_arg(arg2) {
+                "r".to_string()
+            } else {
+                let open = check_string_arg(arg2, "open");
+                if open.is_empty() {
+                    "r".to_string()
+                } else {
+                    open
+                }
+            };
+            let desc = if TYPEOF(arg1) == SEXPTYPE::STRSXP && LENGTH(arg1) == 1 {
+                check_string_arg(arg1, "description")
+            } else {
+                "textConnection".to_string()
+            };
+            (desc, arg1, open, arg3)
         };
 
         let ncon = next_connection();
@@ -191,7 +222,6 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SE
         conn.canseek = false;
 
         if open_mode.starts_with('r') {
-            // Input text connection: copy text from SEXP
             if !stext.is_null() && TYPEOF(stext) == SEXPTYPE::STRSXP {
                 let len = LENGTH(stext) as R_xlen_t;
                 let mut text = String::new();
@@ -207,10 +237,19 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SE
                 conn.canwrite = false;
             }
         } else {
-            // Output text connection
             conn.isopen = true;
             conn.canread = false;
             conn.canwrite = true;
+            if TYPEOF(stext) == SEXPTYPE::STRSXP && LENGTH(stext) == 1 {
+                conn.text_var = Some(string_elt(stext, 0));
+            } else if !description.is_empty() && description != "textConnection" {
+                conn.text_var = Some(description.clone());
+            }
+            conn.text_env = text_connection_env(local_arg, env);
+            if !conn.text_env.is_null() {
+                crate::sexp::protect::R_PreserveObject(conn.text_env);
+                conn.assign_text_output();
+            }
         }
 
         let mut table = connection_table();
@@ -221,6 +260,34 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SE
         let _ans_guard = protect(ans);
         set_connection_class(ans, "textConnection");
         ans
+    }
+}
+
+unsafe fn is_missing_conn_arg(arg: SEXP) -> bool {
+    arg.is_null() || arg == R_NilValue() || arg == R_MissingArg()
+}
+
+unsafe fn text_connection_env(local_arg: SEXP, caller: SEXP) -> SEXP {
+    unsafe {
+        if is_missing_conn_arg(local_arg) {
+            return crate::sexp::globals::R_GlobalEnv();
+        }
+        if TYPEOF(local_arg) == SEXPTYPE::ENVSXP {
+            return local_arg;
+        }
+        if TYPEOF(local_arg) == SEXPTYPE::LGLSXP {
+            let v = as_logical(local_arg);
+            if v == crate::sexp::ffi::TRUE {
+                if !caller.is_null() && TYPEOF(caller) == SEXPTYPE::ENVSXP {
+                    return caller;
+                }
+                return crate::sexp::globals::R_GlobalEnv();
+            }
+            if v == crate::sexp::ffi::FALSE {
+                return crate::sexp::globals::R_GlobalEnv();
+            }
+        }
+        r_error("invalid 'local' argument");
     }
 }
 

@@ -1870,13 +1870,42 @@ pub unsafe fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP)
     unsafe {
         let generic = elt_to_string(CAR(args), 0);
         let class = elt_to_string(CAR(CDR(args)), 0);
-        let method = CAR(CDR(CDR(args)));
+        let mut method = CAR(CDR(CDR(args)));
         let env_arg = CDR(CDR(CDR(args)));
         let target_env = if !env_arg.is_null() && env_arg != R_NilValue() {
             CAR(env_arg)
         } else {
             rho
         };
+        if TYPEOF(method) == SEXPTYPE::PROMSXP {
+            crate::sexp::envir::forcePromise(method);
+            method = crate::sexp::accessors::PRVALUE(method);
+        }
+        if TYPEOF(method) == SEXPTYPE::SYMSXP {
+            let looked = crate::sexp::envir::findFun(method, target_env);
+            if is_function_value(looked) {
+                method = looked;
+            } else {
+                let looked = crate::sexp::envir::findFun(method, rho);
+                if is_function_value(looked) {
+                    method = looked;
+                }
+            }
+        }
+        if !is_function_value(method) {
+            let composed = format!("{generic}.{class}");
+            if let Ok(cname) = CString::new(composed) {
+                let sym = Rf_install(cname.as_ptr());
+                let mut bound = crate::sexp::envir::R_findVarInFrame(target_env, sym);
+                if TYPEOF(bound) == SEXPTYPE::PROMSXP {
+                    crate::sexp::envir::forcePromise(bound);
+                    bound = crate::sexp::accessors::PRVALUE(bound);
+                }
+                if is_function_value(bound) {
+                    method = bound;
+                }
+            }
+        }
 
         if let Err(message) = define_s3_method(target_env, &generic, &class, method) {
             package_error(message);
@@ -1926,7 +1955,7 @@ pub(crate) unsafe fn define_s3_method(
     method: SEXP,
 ) -> Result<(), String> {
     unsafe {
-        if !is_function_value(method) {
+        if !is_function_value(method) && TYPEOF(method) != SEXPTYPE::PROMSXP {
             return Err(format!(
                 "S3 method '{}.{}' must be a function",
                 generic, class
@@ -1975,6 +2004,7 @@ pub(crate) unsafe fn is_function_value(value: SEXP) -> bool {
             }
     }
 }
+
 
 unsafe fn initialize_generic_dispatch_tables(generic: SEXP) {
     unsafe {
