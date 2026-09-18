@@ -1342,8 +1342,9 @@ unsafe fn read_item_body(
             let _restored_guard = protect(restored);
             ref_table.add(restored);
             return Ok(restored);
-        } else if stype == NILVALUE_SXP {
+        } else if stype == NILVALUE_SXP || stype == SEXPTYPE::NILSXP {
             Ok(R_NilValue())
+
         } else if stype == GLOBALENV_SXP {
             Ok(R_GlobalEnv())
         } else if stype == UNBOUNDVALUE_SXP {
@@ -1359,9 +1360,6 @@ unsafe fn read_item_body(
             ref_table.get(idx)
         } else if stype == SEXPTYPE::ENVSXP {
             let locked = reader.read_i32()?;
-            if locked != 0 && locked != 1 {
-                return Err("invalid environment lock flag".into());
-            }
             let env =
                 crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue());
             let _env = protect(env);
@@ -1617,9 +1615,22 @@ unsafe fn read_item_body(
             };
             crate::eval::bytecode::validate_gnu_bytecode_stream(code_slice)?;
             Err("GNU R BCODESXP is well-framed but execution adapter is unavailable".into())
+        } else if stype == SEXPTYPE::SPECIALSXP || stype == SEXPTYPE::BUILTINSXP {
+            let names = ReadItemInternal(reader, ref_table)?;
+            if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) < 1 {
+                return Err("serialized primitive name is not a string".into());
+            }
+            let nm = CHAR(STRING_ELT(names, 0));
+            let prim = crate::mainutils::names::R_Primitive(nm);
+            if prim.is_null() || prim == R_NilValue() {
+                Ok(R_NilValue())
+            } else {
+                Ok(prim)
+            }
         } else {
             Err(format!("ReadItem: unknown type {}", stype))
         }
+
     }
 }
 

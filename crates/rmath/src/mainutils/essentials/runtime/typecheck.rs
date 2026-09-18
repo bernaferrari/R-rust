@@ -325,7 +325,8 @@ pub unsafe fn do_is_loaded(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 // Complete R runtime — function type checking
 // ---------------------------------------------------------------------------
 
-/// R's `is.primitive(x)` — check if x is a primitive function (BUILTINSXP or SPECIALSXP).
+/// R's `is.primitive(x)` — BUILTINSXP/SPECIALSXP bound under a GNU-accounted
+/// primitive name. Many port builtins have no FunTab PRIMNAME.
 pub unsafe fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -333,11 +334,32 @@ pub unsafe fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             return Rf_ScalarLogical(FALSE);
         }
         let t = TYPEOF(x);
-        Rf_ScalarLogical(if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            TRUE
-        } else {
-            FALSE
-        })
+        if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
+            return Rf_ScalarLogical(FALSE);
+        }
+        let name = crate::eval::primitive::PRIMNAME(x);
+        if crate::sexp::init::is_accounted_primitive_name(name) {
+            return Rf_ScalarLogical(TRUE);
+        }
+        let mut cell = FRAME(crate::sexp::globals::R_BaseEnv());
+        while !cell.is_null() && cell != R_NilValue() {
+            if CAR(cell) == x {
+
+                let tag = TAG(cell);
+                if !tag.is_null() && tag != R_NilValue() {
+                    let raw = CHAR(PRINTNAME(tag));
+                    if !raw.is_null() {
+                        if let Ok(bound) = std::ffi::CStr::from_ptr(raw).to_str() {
+                            if crate::sexp::init::is_accounted_primitive_name(bound) {
+                                return Rf_ScalarLogical(TRUE);
+                            }
+                        }
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
+        Rf_ScalarLogical(FALSE)
     }
 }
 

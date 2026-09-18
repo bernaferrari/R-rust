@@ -3039,6 +3039,7 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "=",
             "if",
             "{",
+            "(",
             "function",
             "while",
             "for",
@@ -3050,7 +3051,19 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "invisible",
             "on.exit",
             "$",
+            "$<-",
+            "[",
+            "[<-",
+            "[[",
+            "[[<-",
+            "@",
+            "@<-",
+            "&&",
+            "||",
+            "~",
+            ":",
         ];
+
 
         let frame = (*env).data.envsxp.frame;
         let mut chain = frame;

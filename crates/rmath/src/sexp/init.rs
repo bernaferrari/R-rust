@@ -94,6 +94,8 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
         crate::mainutils::options::InitOptions();
         initialize_base_functions(base_env);
         initialize_primitive_metadata_in(base_env);
+
+
     }
 }
 
@@ -913,6 +915,16 @@ unsafe fn prototype_closure(prototype: PrimitivePrototype, base_env: SEXP) -> SE
         crate::mainutils::dstruct::mkCLOSXP(formals, body, base_env)
     }
 }
+
+/// Names GNU R accounts as primitives (ArgsEnv + GenericArgsEnv + langElts).
+pub fn is_accounted_primitive_name(name: &str) -> bool {
+    LANGUAGE_ELEMENTS.iter().any(|n| *n == name)
+        || NON_GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
+        || GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
+}
+
+
+
 
 unsafe fn formals_from_specs(specs: &[FormalSpec]) -> SEXP {
     unsafe {
