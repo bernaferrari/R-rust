@@ -246,10 +246,15 @@ fn is_internal_cat_args(args: SEXP) -> bool {
 // do_print — basic print
 // ---------------------------------------------------------------------------
 
-/// R's `print(x)` — basic print with newline. Returns x invisibly.
-pub unsafe fn do_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let m = crate::mainutils::match_mod::match_formal_slots(
+            call,
+            args,
+            &["x", "digits", "..."],
+        );
+
+        let x = *m.first().unwrap_or(&R_NilValue());
         if x.is_null() || x == R_NilValue() {
             if crate::sexp::output::is_capturing() {
                 crate::sexp::output::capture_stdout("NULL\n");
@@ -259,23 +264,19 @@ pub unsafe fn do_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return R_NilValue();
         }
-        // Upstream `print` is `function(x, ...) UseMethod("print")`:
-        // dispatch to a class method when one is registered as a closure
-        // (loaded-package methods like R6's print.R6ClassGenerator); the
-        // port's built-in print.<class> primitives keep the paths below.
         if let Some(result) =
-            crate::mainutils::essentials::apply_s3_closure_method("print", _call, args, _rho)
+            crate::mainutils::essentials::apply_s3_closure_method("print", call, args, _rho)
         {
             return result;
         }
         if crate::mainutils::essentials::sexp_has_class(x, "data.frame") {
-            return crate::mainutils::essentials::do_print_data_frame(_call, _op, args, _rho);
+            return crate::mainutils::essentials::do_print_data_frame(call, _op, args, _rho);
         }
         if crate::mainutils::essentials::sexp_has_class(x, "Date") {
-            return crate::mainutils::essentials::do_print_Date(_call, _op, args, _rho);
+            return crate::mainutils::essentials::do_print_Date(call, _op, args, _rho);
         }
         if crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
-            return crate::mainutils::essentials::do_print_POSIXct(_call, _op, args, _rho);
+            return crate::mainutils::essentials::do_print_POSIXct(call, _op, args, _rho);
         }
         if crate::mainutils::essentials::sexp_has_class(x, "summary.warnings") {
             crate::mainutils::essentials::emit_summary_warnings(x);
@@ -283,11 +284,34 @@ pub unsafe fn do_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return x;
         }
 
-
-
+        let missing = crate::sexp::globals::R_MissingArg();
+        let digits_arg = m.get(1).copied().unwrap_or(missing);
+        let mut restore = None;
+        if !digits_arg.is_null() && digits_arg != R_NilValue() && digits_arg != missing {
+            let d = if TYPEOF(digits_arg) == SEXPTYPE::INTSXP && XLENGTH(digits_arg) > 0 {
+                *INTEGER(digits_arg)
+            } else if TYPEOF(digits_arg) == SEXPTYPE::REALSXP && XLENGTH(digits_arg) > 0 {
+                *REAL(digits_arg) as i32
+            } else {
+                0
+            };
+            if d > 0 {
+                restore = Some(crate::mainutils::format::format_set_R_print(
+                    crate::mainutils::format::RPrint {
+                        digits: d,
+                        scipen: crate::mainutils::options::GetOptionScipen(),
+                        na_width: 2,
+                        na_width_noquote: 2,
+                    },
+                ));
+            }
+        }
 
         if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
             crate::sexp::output::print_value(sexp);
+        }
+        if let Some(old) = restore {
+            crate::mainutils::format::format_set_R_print(old);
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x

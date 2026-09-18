@@ -1234,6 +1234,32 @@ identical(f(abc = 1, abd = 2, extra = 3), list(1, 2, list(extra = 3))) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn formatc_default_width_is_digits_plus_one() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"identical(formatC(2^30, digits = 12), "   1073741824")"#,
+        );
+        let result = result.expect("formatC default width is digits+1");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn print_digits_argument_is_honored() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "print(c(2.44140624e-04, 8), digits = 1)\n",
+        );
+        assert!(
+            captured.stdout.contains("[1] 2e-04 8e+00")
+                || captured.stdout.contains("[1] 0.0002 8"),
+            "print(..., digits=1) must honor digits, got {:?}",
+            captured.stdout
+        );
+    }
+
+
+
 
 
     #[test]

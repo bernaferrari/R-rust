@@ -2587,53 +2587,60 @@ fn formatc_one(v: f64, digits: i32, format: &str) -> String {
 }
 
 /// GNU `formatC(x, digits, width, format)`.
-pub unsafe fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let m = crate::mainutils::match_mod::match_formal_slots(
+            call,
+            args,
+            &["x", "digits", "width", "format", "..."],
+        );
+
+        let x = *m.first().unwrap_or(&R_NilValue());
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
-        let mut digits = 4i32;
+        let missing = crate::sexp::globals::R_MissingArg();
+        let digits_arg = m.get(1).copied().unwrap_or(missing);
+        let width_arg = m.get(2).copied().unwrap_or(missing);
+        let format_arg = m.get(3).copied().unwrap_or(missing);
+
+        let mut digits = if TYPEOF(x) == SEXPTYPE::INTSXP { 2i32 } else { 4 };
+        if !digits_arg.is_null() && digits_arg != R_NilValue() && digits_arg != missing {
+            if TYPEOF(digits_arg) == SEXPTYPE::INTSXP && XLENGTH(digits_arg) > 0 {
+                digits = *INTEGER(digits_arg);
+            } else if TYPEOF(digits_arg) == SEXPTYPE::REALSXP && XLENGTH(digits_arg) > 0 {
+                digits = *REAL(digits_arg) as i32;
+            }
+        }
+        if digits < 0 {
+            digits = 6;
+        }
+
+        let mut width = digits + 1;
+        if !width_arg.is_null() && width_arg != R_NilValue() && width_arg != missing {
+            if TYPEOF(width_arg) == SEXPTYPE::INTSXP && XLENGTH(width_arg) > 0 {
+                width = *INTEGER(width_arg);
+            } else if TYPEOF(width_arg) == SEXPTYPE::REALSXP && XLENGTH(width_arg) > 0 {
+                width = *REAL(width_arg) as i32;
+            }
+        }
+
         let mut format = if TYPEOF(x) == SEXPTYPE::INTSXP {
             "d".to_string()
         } else {
             "g".to_string()
         };
-        let mut cell = CDR(args);
-        let mut positional = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            let value = CAR(cell);
-            let tag = TAG(cell);
-            let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
-            } else {
-                String::new()
-            };
-            if named == "digits" || (named.is_empty() && positional == 0) {
-                if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
-                    digits = *INTEGER(value);
-                } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
-                    digits = *REAL(value) as i32;
-                }
-            } else if named == "format"
-                || (named.is_empty() && positional == 2)
-            {
-                if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
-                    let ch = STRING_ELT(value, 0);
-                    if !ch.is_null() {
-                        format = std::ffi::CStr::from_ptr(CHAR(ch))
-                            .to_string_lossy()
-                            .into_owned();
-                    }
+        if !format_arg.is_null() && format_arg != R_NilValue() && format_arg != missing {
+            if TYPEOF(format_arg) == SEXPTYPE::STRSXP && XLENGTH(format_arg) > 0 {
+                let ch = STRING_ELT(format_arg, 0);
+                if !ch.is_null() {
+                    format = std::ffi::CStr::from_ptr(CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned();
                 }
             }
-            if named.is_empty() {
-                positional += 1;
-            }
-            cell = CDR(cell);
         }
+
         let n = XLENGTH(x);
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
@@ -2655,12 +2662,30 @@ pub unsafe fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             } else {
                 formatc_one(v, digits, &format)
             };
+            let s = pad_formatc_width(s, width);
             let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
             SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
         }
         out
     }
 }
+
+fn pad_formatc_width(s: String, width: i32) -> String {
+    if width == 0 {
+        return s;
+    }
+    let w = width.unsigned_abs() as usize;
+    if s.len() >= w {
+        return s;
+    }
+    let pad = " ".repeat(w - s.len());
+    if width < 0 {
+        format!("{s}{pad}")
+    } else {
+        format!("{pad}{s}")
+    }
+}
+
 
 fn prettynum_group(int_part: &str, mark: &str, interval: usize) -> String {
     if mark.is_empty() || interval == 0 {
