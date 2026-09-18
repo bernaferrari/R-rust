@@ -37,6 +37,29 @@ pub unsafe fn deparse1WithCutoff(
     nlines: c_int,
 ) -> SEXP {
     unsafe {
+        // GNU deparse.c: PrintDefaults(); savedigits = R_print.digits;
+        // R_print.digits = DBL_DIG; restored after the result is built.
+        const DBL_DIG: c_int = 15;
+        let old_print = crate::mainutils::format::format_set_R_print(
+            crate::mainutils::format::RPrint {
+                digits: DBL_DIG,
+                scipen: 0,
+                na_width: 2,
+                na_width_noquote: 2,
+            },
+        );
+        struct RestorePrint {
+            old: crate::mainutils::format::RPrint,
+        }
+        impl Drop for RestorePrint {
+            fn drop(&mut self) {
+                unsafe {
+                    crate::mainutils::format::format_set_R_print(self.old);
+                }
+            }
+        }
+        let _restore = RestorePrint { old: old_print };
+
         let mut local_data = LocalParseData::default();
         local_data.cutoff = cutoff;
         local_data.backtick = if backtick { 1 } else { 0 };

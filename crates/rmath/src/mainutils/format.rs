@@ -47,17 +47,25 @@ impl Default for RPrint {
 }
 
 fn current_R_print() -> RPrint {
-    // R's R_print is kept in sync with options("digits") / options("scipen");
-    // read them live so formatReal and scientific() follow the option.
+    // Live options("digits") / options("scipen"), unless a caller pinned
+    // `format_print.digits` (GNU `R_print.digits = DBL_DIG` around deparse).
     unsafe {
+        let stored = crate::sexp::instance::with_current_instance(|inst| {
+            (*inst).eval_state.format_print
+        });
+        let digits = stored
+            .map(|p| p.digits)
+            .filter(|&d| d > 0)
+            .unwrap_or_else(|| crate::mainutils::options::GetOptionDigits());
         RPrint {
-            digits: crate::mainutils::options::GetOptionDigits(),
+            digits,
             scipen: crate::mainutils::options::GetOptionScipen(),
             na_width: 2,
             na_width_noquote: 2,
         }
     }
 }
+
 
 pub unsafe fn format_set_R_print(p: RPrint) -> RPrint {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {

@@ -1071,6 +1071,28 @@ mod tests {
     }
 
     #[test]
+    fn try_catch_finally_runs_after_body() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "x <- character(); r <- tryCatch({ x <- c(x, \"b\"); 1L }, finally = { x <- c(x, \"f\") }); identical(r, 1L) && identical(x, c(\"b\", \"f\"))",
+        );
+        let result = result.expect("tryCatch finally must run after the body");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn deparse_pi_uses_dbl_dig_not_options_digits() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "identical(deparse(pi), \"3.14159265358979\")",
+        );
+        let result = result.expect("deparse must pin R_print.digits to DBL_DIG");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+    #[test]
     fn capture_output_writes_local_text_connection() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
