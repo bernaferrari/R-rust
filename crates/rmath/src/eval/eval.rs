@@ -1776,6 +1776,10 @@ str(fm)
 labs <- list(x="Ambient carbon dioxide concentration", y="CO2 uptake rate")
 attr(df, "labels") <- labs
 str(df)
+m <- matrix(1:4, 2, 2, dimnames=list(c("a","b"), c("c","d")))
+lst <- list(cov=m, center=c(0,0))
+str(lst)
+
 
 invisible(NULL)
 
@@ -1808,6 +1812,14 @@ invisible(NULL)
             "named list attrs must be List of N with $ children, got {:?}",
             captured.stdout
         );
+        assert!(
+            captured.stdout.contains("$ cov   : int [1:2, 1:2]")
+                && captured.stdout.contains("  ..- attr(*, \"dimnames\")=List of 2")
+                && captured.stdout.contains("$ center:"),
+            "list matrix components must carry nested dimnames, got {:?}",
+            captured.stdout
+        );
+
 
 
 
