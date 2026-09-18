@@ -20,7 +20,8 @@ demos.R	xfail	rport-2gpp.2	executes unmodified but still lacks installed base-pa
 demos2.R	xfail	rport-2gpp.3	executes unmodified but still lacks the complete graphics demo corpus and deterministic devices
 download.file.R	skip	rport-2gpp.4	requires hermetic network and download-method adapters
 eval-etc-2.R	skip	rport-2gpp.1	requires complete evaluator introspection and call-context behavior
-eval-etc.R	xfail	rport-2gpp.1	runEPD_checks e2 call-with-names deparse/parse; named-atomic c() wrap and vapply(as.list.function) now work
+eval-etc.R	xfail	rport-2gpp.1	example(new) second setMethod(initialize, track) recurse-applyClosure after eval-fns; keep.source echo and withAutoprint now work
+
 
 
 
