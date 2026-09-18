@@ -1090,6 +1090,37 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn source_echo_deparses_expression_wrapper_like_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+f <- tempfile()
+writeLines('dPut <- function(x, control = c("quoteExpression", "showAttributes", "niceNames", "keepInteger")) dput(x, control = control)', f)
+out <- capture.output(source(f, echo = TRUE))
+identical(out[grepl("dPut <-", out)][1], '> dPut <- function(x, control = c("quoteExpression", ')
+"#,
+        );
+        let result = result.expect("source(echo=TRUE) must wrap like GNU expression-deparse");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn source_echo_truncates_at_max_deparse_length() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+f <- tempfile()
+writeLines("hasReal <- function(x) { if (is.double(x) || is.complex(x)) !all((x == round(x, 3)) | is.na(x)) else if (is.logical(x) || is.integer(x) || is.symbol(x) || is.call(x) || is.environment(x) || is.character(x)) FALSE else FALSE }", f)
+out <- paste(capture.output(source(f, echo = TRUE)), collapse = "\n")
+grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
+"#,
+        );
+        let result = result.expect("source(echo=TRUE) must honor max.deparse.length=150");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
 
     #[test]

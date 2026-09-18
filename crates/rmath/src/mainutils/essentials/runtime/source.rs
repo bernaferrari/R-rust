@@ -58,7 +58,9 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 &parsed.continue_echo,
                 parsed.cutoff,
                 parsed.deparse_opts,
+                parsed.max_deparse_length,
             );
+
         }
         let file_arg = parsed.file.unwrap_or(R_NilValue());
         if file_arg.is_null() || file_arg == R_NilValue() {
@@ -78,7 +80,11 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 &parsed.continue_echo,
                 parsed.skip_echo,
                 parsed.keep_source,
+                parsed.cutoff,
+                parsed.deparse_opts,
+                parsed.max_deparse_length,
             ),
+
 
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
@@ -111,7 +117,9 @@ pub unsafe fn do_with_autoprint(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
             crate::mainutils::deparse::KEEPNA
                 | crate::mainutils::deparse::KEEPINTEGER
                 | crate::mainutils::deparse::SHOWATTRIBUTES,
+            usize::MAX,
         )
+
     }
 }
 
@@ -128,7 +136,10 @@ struct SourceCallArgs {
     keep_source: bool,
     cutoff: c_int,
     deparse_opts: c_int,
+    /// GNU `source(max.deparse.length=)` default 150.
+    max_deparse_length: usize,
 }
+
 
 
 fn source_call_args(args: SEXP) -> SourceCallArgs {
@@ -142,6 +153,8 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
         let mut continue_echo = None;
         let mut skip_echo: c_int = 0;
         let mut keep_source = None;
+        let mut cutoff = crate::mainutils::deparse::DEFAULT_CUTOFF;
+        let mut max_deparse_length: usize = 150;
         let mut first_positional = None;
         let mut positional = 0usize;
         let mut current = args;
@@ -162,6 +175,21 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
                     }
                 }
                 Some("keep.source") => keep_source = Some(logical_arg(value, false)),
+                Some("width.cutoff") => {
+                    let n = crate::mainutils::coerce::asInteger(value);
+                    if n != NA_INTEGER
+                        && n >= crate::mainutils::deparse::MIN_CUTOFF
+                        && n <= crate::mainutils::deparse::MAX_CUTOFF
+                    {
+                        cutoff = n;
+                    }
+                }
+                Some("max.deparse.length") => {
+                    let n = crate::mainutils::coerce::asInteger(value);
+                    if n != NA_INTEGER && n >= 0 {
+                        max_deparse_length = n as usize;
+                    }
+                }
                 Some(_) => {}
                 None => {
                     if positional == 0 {
@@ -185,8 +213,9 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
             continue_echo: continue_echo.unwrap_or_else(option_continue),
             skip_echo,
             keep_source: keep_source.unwrap_or_else(option_keep_source),
-            cutoff: crate::mainutils::deparse::DEFAULT_CUTOFF,
+            cutoff,
             deparse_opts: crate::mainutils::deparse::SHOWATTRIBUTES,
+            max_deparse_length,
         }
     }
 }
@@ -329,6 +358,7 @@ unsafe fn eval_source_expressions(
     continue_echo: &str,
     cutoff: c_int,
     deparse_opts: c_int,
+    max_deparse_length: usize,
 ) -> SEXP {
     unsafe {
         let n = if exprs.is_null() || exprs == R_NilValue() {
@@ -341,7 +371,14 @@ unsafe fn eval_source_expressions(
         for i in 0..n {
             let expr = VECTOR_ELT(exprs, i);
             if echo {
-                echo_source_expression(expr, prompt, continue_echo, cutoff, deparse_opts);
+                echo_source_expression(
+                    expr,
+                    prompt,
+                    continue_echo,
+                    cutoff,
+                    deparse_opts,
+                    max_deparse_length,
+                );
             }
             last_value = crate::eval::eval::Rf_eval(expr, env);
             last_visible = crate::sexp::globals::R_Visible();
@@ -360,16 +397,28 @@ unsafe fn eval_source_expressions(
     }
 }
 
+/// GNU `source()` echo when there is no srcref: deparse the length-1
+/// `expression(ei)`, drop the `expression(` prefix (substr from 12),
+/// prompt-prefix each line, then `nchar(dep,"c")-1` / `max.deparse.length`.
 unsafe fn echo_source_expression(
     expr: SEXP,
     prompt: &str,
     continue_echo: &str,
     cutoff: c_int,
     deparse_opts: c_int,
+    max_deparse_length: usize,
 ) {
     unsafe {
+        let wrapped = if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
+            expr
+        } else {
+            let one = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
+            let _one = protect(one);
+            SET_VECTOR_ELT(one, 0, expr);
+            one
+        };
         let dumped = crate::mainutils::deparse::deparse1WithCutoff(
-            expr,
+            wrapped,
             false,
             cutoff,
             true,
@@ -382,12 +431,33 @@ unsafe fn echo_source_expression(
             for i in 0..XLENGTH(dumped) {
                 if i > 0 {
                     text.push('\n');
-                    text.push_str(continue_echo);
                 }
                 text.push_str(&elt_to_string(dumped, i));
             }
         }
-        let line = format!("{prompt}{text}\n");
+        // GNU: substr(paste(deparse(ei), collapse="\n"), 12L, 1e6)
+        const EXPR_PREFIX: &str = "expression(";
+        if text.starts_with(EXPR_PREFIX) {
+            text = text[EXPR_PREFIX.len()..].to_string();
+        }
+        let mut dep = String::new();
+        for (i, line) in text.split('\n').enumerate() {
+            if i > 0 {
+                dep.push('\n');
+            }
+            dep.push_str(if i == 0 { prompt } else { continue_echo });
+            dep.push_str(line);
+        }
+        // GNU: nd <- nchar(dep, "c") - 1L; substr to nd unless truncated.
+        let nd = dep.chars().count().saturating_sub(1);
+        let truncated = nd > max_deparse_length;
+        let keep = if truncated { max_deparse_length } else { nd };
+        let trimmed: String = dep.chars().take(keep).collect();
+        let mut line = trimmed;
+        if truncated {
+            line.push_str(" .... [TRUNCATED] ");
+        }
+        line.push('\n');
 
         if crate::sexp::output::is_capturing() {
             crate::sexp::output::capture_stdout(&line);
@@ -396,6 +466,7 @@ unsafe fn echo_source_expression(
         }
     }
 }
+
 
 
 
@@ -456,6 +527,9 @@ unsafe fn eval_source_text_with_options(
     continue_echo: &str,
     skip_echo: c_int,
     keep_source: bool,
+    cutoff: c_int,
+    deparse_opts: c_int,
+    max_deparse_length: usize,
 ) -> SEXP {
     unsafe {
         if !echo {
@@ -485,9 +559,11 @@ unsafe fn eval_source_text_with_options(
                     element,
                     prompt,
                     continue_echo,
-                    crate::mainutils::deparse::DEFAULT_CUTOFF,
-                    crate::mainutils::deparse::SHOWATTRIBUTES,
+                    cutoff,
+                    deparse_opts,
+                    max_deparse_length,
                 );
+
 
                 result = crate::eval::eval::Rf_eval(element, env);
                 if print_eval && crate::sexp::globals::R_Visible() != FALSE {
