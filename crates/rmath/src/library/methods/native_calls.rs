@@ -17,7 +17,9 @@ use crate::unix::dynload::DL_FUNC;
 const METHODS_CALL_NAMES: &[&str] = &[
     "C_R_M_setPrimitiveMethods",
     "C_R_clear_method_selection",
+    "C_R_dummy_extern_place",
     "C_R_el_named",
+    "C_R_externalptr_prototype_object",
     "C_R_getClassFromCache",
     "C_R_getGeneric",
     "C_R_get_slot",
@@ -30,13 +32,17 @@ const METHODS_CALL_NAMES: &[&str] = &[
     "C_R_quick_method_check",
     "C_R_selectMethod",
     "C_R_set_el_named",
+    "C_R_set_method_dispatch",
     "C_R_set_slot",
     "C_R_standardGeneric",
+    "C_Rf_allocS4Object",
     "C_do_substitute_direct",
     "C_R_get_primname",
     "C_new_object",
     "R_M_setPrimitiveMethods",
+    "R_dummy_extern_place",
     "R_el_named",
+    "R_externalptr_prototype_object",
     "R_getClassFromCache",
     "R_getGeneric",
     "R_get_slot",
@@ -49,12 +55,15 @@ const METHODS_CALL_NAMES: &[&str] = &[
     "R_quick_method_check",
     "R_selectMethod",
     "R_set_el_named",
+    "R_set_method_dispatch",
     "R_set_slot",
     "R_standardGeneric",
+    "Rf_allocS4Object",
     "do_substitute_direct",
     "R_get_primname",
     "new_object",
 ];
+
 
 unsafe extern "C" fn c_r_get_generic(name: SEXP, must: SEXP, env: SEXP, pkg: SEXP) -> SEXP {
     unsafe { super::methods_list_dispatch::R_getGeneric(name, must, env, pkg) }
@@ -140,6 +149,23 @@ unsafe extern "C" fn c_new_object(class_def: SEXP) -> SEXP {
     unsafe { super::class_support::new_object(class_def) }
 }
 
+unsafe extern "C" fn c_rf_alloc_s4_object() -> SEXP {
+    unsafe { super::class_support::Rf_allocS4Object() }
+}
+
+unsafe extern "C" fn c_r_externalptr_prototype_object() -> SEXP {
+    unsafe { super::tests::R_externalptr_prototype_object() }
+}
+
+unsafe extern "C" fn c_r_dummy_extern_place() -> SEXP {
+    unsafe { super::tests::R_dummy_extern_place() }
+}
+
+unsafe extern "C" fn c_r_set_method_dispatch(on_off: SEXP) -> SEXP {
+    super::methods_list_dispatch::R_set_method_dispatch(on_off)
+}
+
+
 fn as_dl<T>(f: T) -> DL_FUNC {
     Some(unsafe { std::mem::transmute_copy(&f) })
 }
@@ -182,7 +208,16 @@ pub fn lookup(name: &str) -> DL_FUNC {
         }
         "R_get_primname" => as_dl(c_r_get_primname as unsafe extern "C" fn(SEXP) -> SEXP),
         "new_object" => as_dl(c_new_object as unsafe extern "C" fn(SEXP) -> SEXP),
+        "Rf_allocS4Object" => as_dl(c_rf_alloc_s4_object as unsafe extern "C" fn() -> SEXP),
+        "R_externalptr_prototype_object" => {
+            as_dl(c_r_externalptr_prototype_object as unsafe extern "C" fn() -> SEXP)
+        }
+        "R_dummy_extern_place" => as_dl(c_r_dummy_extern_place as unsafe extern "C" fn() -> SEXP),
+        "R_set_method_dispatch" => {
+            as_dl(c_r_set_method_dispatch as unsafe extern "C" fn(SEXP) -> SEXP)
+        }
         _ => None,
+
     }
 }
 

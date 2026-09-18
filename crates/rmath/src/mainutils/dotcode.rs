@@ -665,159 +665,221 @@ unsafe fn check_retval(call: SEXP, val: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Dispatch a .Call function returning SEXP by argument count.
-///
-/// Uses a macro to generate the repetitive match arms, each transmuting the
-/// DL_FUNC to the correct arity-specific function pointer type.
-macro_rules! define_dotcall_dispatch {
-    ($fun:expr, $args:expr, $($i:literal),*) => {
-        match $args.len() {
-            0 => {
-                let f: unsafe extern "C" fn() -> SEXP = std::mem::transmute_copy(&$fun);
-                f()
-            }
-            $(
-                $i => {
-                    // Build the call by extracting args[0..$i]
-                    define_dotcall_dispatch!(@call $fun, $args, $i)
-                }
-            )*
-            _ if $args.len() <= MAX_ARGS => {
-                let f: unsafe extern "C" fn(*mut c_void) -> SEXP = std::mem::transmute_copy(&$fun);
-                let _ = f;
-                R_NilValue()
-            }
-            _ => {
-                errorcall(ptr::null_mut(), "too many arguments, sorry");
-            }
-        }
-    };
-    (@call $fun:expr, $args:expr, 1) => {{
-        let f: unsafe extern "C" fn(SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0])
-    }};
-    (@call $fun:expr, $args:expr, 2) => {{
-        let f: unsafe extern "C" fn(SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1])
-    }};
-    (@call $fun:expr, $args:expr, 3) => {{
-        let f: unsafe extern "C" fn(SEXP, SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2])
-    }};
-    (@call $fun:expr, $args:expr, 4) => {{
-        let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3])
-    }};
-    (@call $fun:expr, $args:expr, 5) => {{
-        let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4])
-    }};
-    (@call $fun:expr, $args:expr, 6) => {{
-        let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5])
-    }};
-    (@call $fun:expr, $args:expr, 7) => {{
-        let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5], $args[6])
-    }};
-    (@call $fun:expr, $args:expr, 8) => {{
-        let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5], $args[6], $args[7])
-    }};
-    (@call $fun:expr, $args:expr, 9) => {{
-        let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5], $args[6], $args[7], $args[8])
-    }};
-    (@call $fun:expr, $args:expr, 10) => {{
-        let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5], $args[6], $args[7], $args[8], $args[9])
-    }};
-    (@call $fun:expr, $args:expr, $n:tt) => {{
-        let f: unsafe extern "C" fn(SEXP) -> SEXP = std::mem::transmute_copy(&$fun);
-        f($args[0])
-    }};
-}
-
 unsafe fn dispatch_dotcall(fun: DL_FUNC, args: &[SEXP], call: SEXP) -> SEXP {
     unsafe {
         let _ = call;
-        define_dotcall_dispatch!(fun, args, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+        match args.len() {
+            0 => {
+                let f: unsafe extern "C" fn() -> SEXP = std::mem::transmute_copy(&fun);
+                f()
+            }
+            1 => {
+                let f: unsafe extern "C" fn(SEXP) -> SEXP = std::mem::transmute_copy(&fun);
+                f(args[0])
+            }
+            2 => {
+                let f: unsafe extern "C" fn(SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&fun);
+                f(args[0], args[1])
+            }
+            3 => {
+                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP) -> SEXP =
+                    std::mem::transmute_copy(&fun);
+                f(args[0], args[1], args[2])
+            }
+            4 => {
+                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                    std::mem::transmute_copy(&fun);
+                f(args[0], args[1], args[2], args[3])
+            }
+            5 => {
+                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                    std::mem::transmute_copy(&fun);
+                f(args[0], args[1], args[2], args[3], args[4])
+            }
+            6 => {
+                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                    std::mem::transmute_copy(&fun);
+                f(args[0], args[1], args[2], args[3], args[4], args[5])
+            }
+            7 => {
+                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                    std::mem::transmute_copy(&fun);
+                f(
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6],
+                )
+            }
+            8 => {
+                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                    std::mem::transmute_copy(&fun);
+                f(
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
+                )
+            }
+            9 => {
+                let f: unsafe extern "C" fn(
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                ) -> SEXP = std::mem::transmute_copy(&fun);
+                f(
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
+                    args[8],
+                )
+            }
+            10 => {
+                let f: unsafe extern "C" fn(
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                ) -> SEXP = std::mem::transmute_copy(&fun);
+                f(
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
+                    args[8], args[9],
+                )
+            }
+            n if n <= MAX_ARGS => {
+                errorcall(call, "too many arguments in foreign function call");
+            }
+            _ => errorcall(ptr::null_mut(), "too many arguments, sorry"),
+        }
     }
 }
 
-/// Dispatch a .C/.Fortran void function by argument count.
-macro_rules! define_dotcode_dispatch {
-    ($fun:expr, $args:expr, $($i:literal),*) => {
-        match $args.len() {
-            0 => {
-                let f: unsafe extern "C" fn() = std::mem::transmute_copy(&$fun);
-                f()
-            }
-            $(
-                $i => {
-                    define_dotcode_dispatch!(@call $fun, $args, $i)
-                }
-            )*
-            _ if $args.len() <= MAX_ARGS => {
-                let f: unsafe extern "C" fn(*mut c_void) = std::mem::transmute_copy(&$fun);
-                let _ = f;
-            }
-            _ => {
-                errorcall(ptr::null_mut(), "too many arguments, sorry");
-            }
-        }
-    };
-    (@call $fun:expr, $args:expr, 1) => {{
-        let f: unsafe extern "C" fn(*mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0])
-    }};
-    (@call $fun:expr, $args:expr, 2) => {{
-        let f: unsafe extern "C" fn(*mut c_void, *mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1])
-    }};
-    (@call $fun:expr, $args:expr, 3) => {{
-        let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2])
-    }};
-    (@call $fun:expr, $args:expr, 4) => {{
-        let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3])
-    }};
-    (@call $fun:expr, $args:expr, 5) => {{
-        let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4])
-    }};
-    (@call $fun:expr, $args:expr, 6) => {{
-        let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5])
-    }};
-    (@call $fun:expr, $args:expr, 7) => {{
-        let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5], $args[6])
-    }};
-    (@call $fun:expr, $args:expr, 8) => {{
-        let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5], $args[6], $args[7])
-    }};
-    (@call $fun:expr, $args:expr, 9) => {{
-        let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5], $args[6], $args[7], $args[8])
-    }};
-    (@call $fun:expr, $args:expr, 10) => {{
-        let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0], $args[1], $args[2], $args[3], $args[4], $args[5], $args[6], $args[7], $args[8], $args[9])
-    }};
-    (@call $fun:expr, $args:expr, $n:tt) => {{
-        let f: unsafe extern "C" fn(*mut c_void) = std::mem::transmute_copy(&$fun);
-        f($args[0])
-    }};
-}
 
+/// Dispatch a .C/.Fortran void function by argument count.
 unsafe fn dispatch_dotcode(fun: DL_FUNC, args: &[*mut c_void], call: SEXP) {
     unsafe {
         let _ = call;
-        define_dotcode_dispatch!(fun, args, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+        match args.len() {
+            0 => {
+                let f: unsafe extern "C" fn() = std::mem::transmute_copy(&fun);
+                f()
+            }
+            1 => {
+                let f: unsafe extern "C" fn(*mut c_void) = std::mem::transmute_copy(&fun);
+                f(args[0])
+            }
+            2 => {
+                let f: unsafe extern "C" fn(*mut c_void, *mut c_void) =
+                    std::mem::transmute_copy(&fun);
+                f(args[0], args[1])
+            }
+            3 => {
+                let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
+                    std::mem::transmute_copy(&fun);
+                f(args[0], args[1], args[2])
+            }
+            4 => {
+                let f: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void) =
+                    std::mem::transmute_copy(&fun);
+                f(args[0], args[1], args[2], args[3])
+            }
+            5 => {
+                let f: unsafe extern "C" fn(
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                ) = std::mem::transmute_copy(&fun);
+                f(args[0], args[1], args[2], args[3], args[4])
+            }
+            6 => {
+                let f: unsafe extern "C" fn(
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                ) = std::mem::transmute_copy(&fun);
+                f(args[0], args[1], args[2], args[3], args[4], args[5])
+            }
+            7 => {
+                let f: unsafe extern "C" fn(
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                ) = std::mem::transmute_copy(&fun);
+                f(
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6],
+                )
+            }
+            8 => {
+                let f: unsafe extern "C" fn(
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                ) = std::mem::transmute_copy(&fun);
+                f(
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
+                )
+            }
+            9 => {
+                let f: unsafe extern "C" fn(
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                ) = std::mem::transmute_copy(&fun);
+                f(
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
+                    args[8],
+                )
+            }
+            10 => {
+                let f: unsafe extern "C" fn(
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                ) = std::mem::transmute_copy(&fun);
+                f(
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
+                    args[8], args[9],
+                )
+            }
+            n if n <= MAX_ARGS => {
+                errorcall(call, "too many arguments in foreign function call");
+            }
+            _ => errorcall(ptr::null_mut(), "too many arguments, sorry"),
+        }
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // R_doDotCall — the .Call dispatcher
@@ -945,10 +1007,6 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
             }
         }
-
-
-
-        // Collect arguments (skip .NAME)
         let mut cargs: [SEXP; MAX_ARGS] = [ptr::null_mut(); MAX_ARGS];
         let mut nargs = 0usize;
         let mut pargs = CDR(args);
@@ -961,9 +1019,19 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             pargs = CDR(pargs);
         }
 
+
+
         if ofun.is_none() {
+            let name = ported_call_name(CAR(args)).unwrap_or_default();
+            if name.starts_with("C_") || name.starts_with("R_") {
+                errorcall(
+                    call,
+                    &format!("C symbol name \"{name}\" not in load table"),
+                );
+            }
             return R_NilValue();
         }
+
 
         let retval = R_doDotCall(ofun, nargs as c_int, &cargs, call);
         vmaxset(ptr::null_mut()); // simplified

@@ -1696,7 +1696,46 @@ unsafe fn read_item_body(
             } else {
                 Ok(prim)
             }
+        } else if stype == SEXPTYPE::EXTPTRSXP {
+            // GNU serialize.c: HashAdd; WriteItem(PROT); WriteItem(TAG); addr is not serialized.
+            let s = allocSExp(SEXPTYPE::EXTPTRSXP);
+            let _s_guard = protect(s);
+            ref_table.add(s);
+            crate::mainutils::memory_main::R_SetExternalPtrAddr(s, std::ptr::null_mut());
+            let prot = ReadItemInternal(reader, ref_table)?;
+            crate::mainutils::memory_main::R_SetExternalPtrProtected(s, prot);
+            let tag = ReadItemInternal(reader, ref_table)?;
+            crate::mainutils::memory_main::R_SetExternalPtrTag(s, tag);
+            SETLEVELS(s, levs);
+            if isobj != 0 {
+                SET_OBJECT(s, 1);
+            }
+            if hasattr != 0 {
+                let attr = ReadItemInternal(reader, ref_table)?;
+                SET_ATTRIB(s, attr);
+            }
+            Ok(s)
+        } else if stype == SEXPTYPE::WEAKREFSXP {
+            let s = crate::mainutils::memory_main::R_MakeWeakRef(
+                R_NilValue(),
+                R_NilValue(),
+                R_NilValue(),
+                0,
+
+            );
+            let _s_guard = protect(s);
+            ref_table.add(s);
+            SETLEVELS(s, levs);
+            if isobj != 0 {
+                SET_OBJECT(s, 1);
+            }
+            if hasattr != 0 {
+                let attr = ReadItemInternal(reader, ref_table)?;
+                SET_ATTRIB(s, attr);
+            }
+            Ok(s)
         } else if stype == SEXPTYPE::S4SXP {
+
             // GNU serialize.c: S4SXP is attributes-only; allocS4Object + InAttrib.
             let s = allocSExp(SEXPTYPE::S4SXP);
             let _s_guard = protect(s);

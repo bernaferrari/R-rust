@@ -5,12 +5,13 @@
  *  Stubs for class support utilities.
  */
 
-use std::ffi::CString;
-
 use crate::mainutils::errors::Rf_error;
-use crate::sexp::accessors::TYPEOF;
+use crate::sexp::accessors::{SET_S4_OBJECT, TYPEOF};
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::*;
+use crate::sexp::memory_ext::allocSExp;
+
+
 
 /// R_get_primname - get the name of a primitive function.
 /// Delegates to getPRIMNAME in main/names.rs.
@@ -37,3 +38,13 @@ pub unsafe fn R_get_primname(object: SEXP) -> SEXP {
 pub(crate) unsafe fn new_object(class_def: SEXP) -> SEXP {
     unsafe { crate::mainutils::objects::R_do_new_object(class_def) }
 }
+
+/// GNU `Rf_allocS4Object()` — empty S4 object used as `.defaultPrototype`.
+pub unsafe fn Rf_allocS4Object() -> SEXP {
+    unsafe {
+        let s = allocSExp(SEXPTYPE::S4SXP);
+        SET_S4_OBJECT(s);
+        s
+    }
+}
+

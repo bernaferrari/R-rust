@@ -696,7 +696,8 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
             r_error("The argument \"f\" to getGeneric must be a single string or symbol");
         };
         if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            if crate::mainutils::coerce::asLogical(mustFind) == TRUE {
+            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+
                 r_error(format!(
                     "no generic function definition found for '{}'",
                     name_string
@@ -708,7 +709,8 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
         let symbol = crate::sexp::symbol::Rf_install(cname.as_ptr());
         let value = crate::sexp::envir::R_findVarInFrame(env, symbol);
         if value == R_UnboundValue() {
-            if crate::mainutils::coerce::asLogical(mustFind) == TRUE {
+            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+
                 r_error(format!(
                     "no generic function definition found for '{}' in the supplied environment",
                     name_string
@@ -1187,6 +1189,7 @@ pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
 /// Ported from R's R_methodsPackageMetaName() in methods_list_dispatch.c.
 pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
     unsafe {
+
         // Extract strings
         let prefix_str =
             if !prefix.is_null() && TYPEOF(prefix) == SEXPTYPE::STRSXP && LENGTH(prefix) >= 1 {
@@ -1721,19 +1724,64 @@ pub unsafe fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
     }
 }
 
-/// R_getClassFromCache - look up a class definition in the class cache table.
-pub unsafe fn R_getClassFromCache(class: SEXP, _table: SEXP) -> SEXP {
+/// R_getClassFromCache — look up a class definition in `.classTable`.
+pub unsafe fn R_getClassFromCache(class: SEXP, table: SEXP) -> SEXP {
     unsafe {
-        let Some(class_name) = sexp_to_string(class) else {
-            return R_NilValue();
-        };
-        if crate::mainutils::objects::s4_class(&class_name).is_none() {
-            return R_NilValue();
+        if TYPEOF(class) == SEXPTYPE::STRSXP {
+            if LENGTH(class) == 0 {
+                return R_NilValue();
+            }
+            if table.is_null() || TYPEOF(table) != SEXPTYPE::ENVSXP {
+                return R_NilValue();
+            }
+            let elt = STRING_ELT(class, 0);
+            if elt.is_null() {
+                return R_NilValue();
+            }
+            let symbol = crate::sexp::symbol::Rf_install(CHAR(elt));
+            let value = crate::sexp::envir::R_findVarInFrame(table, symbol);
+            if value == R_UnboundValue() {
+                return R_NilValue();
+            }
+            let package_sym = crate::sexp::symbol::Rf_install(c"package".as_ptr());
+            let package = crate::sexp::attrib_core::getAttrib(class, package_sym);
+            if TYPEOF(package) == SEXPTYPE::STRSXP && LENGTH(package) >= 1 {
+                let def_pkg = crate::sexp::attrib_core::getAttrib(value, package_sym);
+                if TYPEOF(def_pkg) == SEXPTYPE::STRSXP
+                    && LENGTH(def_pkg) == 1
+                    && !charsxp_same(STRING_ELT(def_pkg, 0), STRING_ELT(package, 0))
+                {
+                    return R_NilValue();
+                }
+            }
+            value
+        } else if TYPEOF(class) == SEXPTYPE::S4SXP || TYPEOF(class) == SEXPTYPE::OBJSXP {
+            class
+        } else {
+            // GNU errors here; an extern-C .Call frame cannot unwind, so treat
+            // unexpected types as a cache miss (getClassDef falls back to get0).
+            R_NilValue()
         }
-        let cname = CString::new(class_name).unwrap_or_default();
-        Rf_mkString(cname.as_ptr())
+
+
     }
 }
+
+unsafe fn charsxp_same(a: SEXP, b: SEXP) -> bool {
+    if a == b {
+        return true;
+    }
+    if a.is_null() || b.is_null() {
+        return false;
+    }
+    let ca = CHAR(a);
+    let cb = CHAR(b);
+    if ca.is_null() || cb.is_null() {
+        return false;
+    }
+    std::ffi::CStr::from_ptr(ca) == std::ffi::CStr::from_ptr(cb)
+}
+
 
 /// asChar - local helper to coerce to a single CHARSXP.
 unsafe fn asChar(x: SEXP) -> SEXP {
