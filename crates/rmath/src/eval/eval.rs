@@ -960,11 +960,12 @@ mod tests {
     fn colon_builtin_evaluates_integer_range() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            "identical(typeof(1L:3L), \"integer\") && identical(as.integer(1:3), c(1L, 2L, 3L))",
+            "identical(typeof(`:`), \"special\") && identical(typeof(1L:3L), \"integer\") && identical(as.integer(1:3), c(1L, 2L, 3L))",
         );
-        let result = result.expect("':' must be the evaluated colon builtin");
+        let result = result.expect("':' must be GNU's special colon");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
 
     #[test]
     fn methods_new_classrepresentation_is_s4() {

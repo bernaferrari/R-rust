@@ -586,34 +586,16 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
             formal = CDR(formal);
         }
         for symbol in symbols.into_iter().rev() {
-            let value = R_findVarInFrame(rho, symbol);
             if symbol == R_DotsSymbol() {
-                // Do not pass a tagged `...` actual. matchArgs does not
-                // exact-match the dots formal by tag, so that cell would be
-                // gobbled as a named "..." element (initialize's list(...)).
-                if value == R_UnboundValue()
-                    || value == R_MissingArg()
-                    || value == R_NilValue()
-                {
-                    continue;
-                }
-                if TYPEOF(value) == SEXPTYPE::DOTSXP {
-                    let mut cell = value;
-                    let mut dots_cells = Vec::new();
-                    while !cell.is_null() && cell != R_NilValue() {
-                        dots_cells.push(cell);
-                        cell = CDR(cell);
-                    }
-                    for dots_cell in dots_cells.into_iter().rev() {
-                        let copied = Rf_cons(CAR(dots_cell), actuals);
-                        let guard = protect(copied);
-                        SETTAG(copied, TAG(dots_cell));
-                        actuals = copied;
-                        actual_guards.push(guard);
-                    }
-                    continue;
-                }
+                // Encode like a source call's `...` actual: CAR is the
+                // dots symbol, no tag. promiseArgs/evalList splice it.
+                let cell = Rf_cons(R_DotsSymbol(), actuals);
+                let guard = protect(cell);
+                actuals = cell;
+                actual_guards.push(guard);
+                continue;
             }
+            let value = R_findVarInFrame(rho, symbol);
             let cell = Rf_cons(
                 if value == R_UnboundValue() {
                     R_MissingArg()
@@ -627,6 +609,7 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
             actuals = cell;
             actual_guards.push(guard);
         }
+
 
 
         let _actuals_guard = protect(actuals);

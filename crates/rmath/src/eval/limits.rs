@@ -146,6 +146,44 @@ impl Drop for DepthGuard {
         }
     }
 }
+unsafe fn current_call_hint() -> String {
+    unsafe {
+        let mut names = Vec::new();
+        let mut ctx = crate::sexp::context::R_GlobalContext();
+        let mut hops = 0;
+        while !ctx.is_null() && hops < 8 {
+            let call = (*ctx).call;
+            if !call.is_null()
+                && call != crate::sexp::globals::R_NilValue()
+                && crate::sexp::accessors::TYPEOF(call) == crate::sexp::ffi::SEXPTYPE::LANGSXP
+            {
+                let head = crate::sexp::accessors::CAR(call);
+                if crate::sexp::accessors::TYPEOF(head) == crate::sexp::ffi::SEXPTYPE::SYMSXP {
+                    let pname = crate::sexp::accessors::PRINTNAME(head);
+                    if !pname.is_null() {
+                        let chars = crate::sexp::accessors::CHAR(pname);
+                        if !chars.is_null() {
+                            let name = std::ffi::CStr::from_ptr(chars).to_string_lossy();
+                            if names.last().map(String::as_str) != Some(name.as_ref()) {
+                                names.push(name.into_owned());
+                            }
+                        }
+                    }
+                }
+            }
+            ctx = (*ctx).nextcontext;
+            hops += 1;
+        }
+        if names.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", names.join(" -> "))
+        }
+    }
+}
+
+
+
 
 /// Check evaluation depth and time limits, returning a guard that decrements on drop.
 pub fn check_eval_depth() -> Result<DepthGuard, String> {
@@ -163,8 +201,12 @@ pub fn check_eval_depth() -> Result<DepthGuard, String> {
         500
     };
     if depth as usize > max_depth {
-        return Err(EvalError::TooDeeplyNested.to_string());
+        let hint = unsafe { current_call_hint() };
+        return Err(format!(
+            "evaluation nested too deeply: infinite recursion / options(expressions=)?{hint}"
+        ));
     }
+
 
     if limits.max_execution_time_ms > 0 {
         if let Some(elapsed) = elapsed {

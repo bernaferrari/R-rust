@@ -92,9 +92,19 @@ unsafe fn dispatch_special_by_name(
             "Exec" | "Tailcall" => crate::eval::jit::do_tailcall(call, op, args, rho),
             "on.exit" => do_on_exit_from_args(CDR(call), rho),
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
+            ":" => {
+                let left = Rf_eval(CAR(args), rho);
+                let _left = protect(left);
+                let right = Rf_eval(CADR(args), rho);
+                let _right = protect(right);
+                let evaluated = Rf_cons(left, Rf_cons(right, R_NilValue()));
+                let _evaluated = protect(evaluated);
+                crate::mainutils::seq::do_colon(call, op, evaluated, rho)
+            }
             "~" => crate::mainutils::names::do_tilde(call, op, args, rho),
             "&&" | "||" => crate::mainutils::logic::do_logic2(call, op, args, rho),
             "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
+
             "[" => crate::mainutils::subset::do_subset(call, op, args, rho),
             "[[" => crate::mainutils::subset::do_subset2(call, op, args, rho),
             "[<-" => crate::mainutils::subset::do_subassign(call, op, args, rho),
