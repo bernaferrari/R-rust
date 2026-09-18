@@ -185,11 +185,16 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
                     }
                 }
                 Some("max.deparse.length") => {
-                    let n = crate::mainutils::coerce::asInteger(value);
-                    if n != NA_INTEGER && n >= 0 {
-                        max_deparse_length = n as usize;
+                    // GNU example() passes Inf. Compare as a real; asInteger(Inf)
+                    // would warn "NAs introduced by coercion to integer range".
+                    let n = crate::mainutils::coerce::asReal(value);
+                    if n.is_infinite() && n.is_sign_positive() {
+                        max_deparse_length = usize::MAX;
+                    } else if n.is_finite() && n >= 0.0 {
+                        max_deparse_length = n.min(usize::MAX as f64) as usize;
                     }
                 }
+
                 Some(_) => {}
                 None => {
                     if positional == 0 {

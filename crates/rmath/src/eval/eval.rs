@@ -1144,6 +1144,28 @@ identical(capture.output(print(table(r[2,]))), c("", "Levels: a b <NA> ", "     
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn source_max_deparse_length_inf_does_not_warn() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+f <- tempfile()
+writeLines("1+1", f)
+invisible(source(f, echo = TRUE, max.deparse.length = Inf))
+TRUE
+"#,
+        );
+        let result = result.expect("source(max.deparse.length=Inf) must be legal");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(
+            !output.stderr.contains("integer range") && !output.stdout.contains("integer range"),
+            "Inf must not coerce through asInteger: stdout={:?} stderr={:?}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
 
 
