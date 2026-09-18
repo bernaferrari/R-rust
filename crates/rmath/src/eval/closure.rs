@@ -466,6 +466,9 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
             c"rematchDefinition",
             c"setMethod",
             c".matchSigLength",
+            // Private JIT miscompiles S3Class <- c(cl, S3Class) / attr<-
+            // so every setOldClass proto keeps .S3Class="oldClass" (rport-d4jyb).
+            c"setOldClass",
         ] {
 
 

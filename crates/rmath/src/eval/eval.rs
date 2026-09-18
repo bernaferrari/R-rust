@@ -3010,23 +3010,57 @@ child <- getClass("ChildForOldClassRecache", where = where)
     }
 
     #[test]
+    fn classes_methods_setoldclass_s3class_tails() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setOldClass(c("oldClassChildForAs",
+              "oldClassParentForAs",
+              "oldClassGrandParentForAs"))
+identical(attr(getClass("oldClassGrandParentForAs")@prototype, ".S3Class"),
+          "oldClassGrandParentForAs") &&
+  identical(attr(getClass("oldClassParentForAs")@prototype, ".S3Class"),
+            c("oldClassParentForAs", "oldClassGrandParentForAs")) &&
+  identical(attr(getClass("oldClassChildForAs")@prototype, ".S3Class"),
+            c("oldClassChildForAs", "oldClassParentForAs", "oldClassGrandParentForAs"))
+"#,
+        );
+        let result = result.expect("setOldClass must accumulate .S3Class tails");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    #[test]
+    fn classes_methods_as_s4_from_oldclass_upcast() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setOldClass(c("oldClassChildForAs",
+              "oldClassParentForAs",
+              "oldClassGrandParentForAs"))
+setClass("GrandParentShimForAs", contains = "oldClassGrandParentForAs")
+setClass("ParentShimForAs",
+         contains = c("oldClassParentForAs", "GrandParentShimForAs"))
+setClass("S4ChildForAs",
+         slots = list(extra = "character"),
+         contains = "ParentShimForAs")
+object <- new("S4ChildForAs",
+              structure(list(),
+                        class = c("oldClassParentForAs",
+                                  "oldClassGrandParentForAs")),
+              extra = "x")
+parent <- as(object, "ParentShimForAs")
+grandparent <- as(object, "GrandParentShimForAs")
+isS4(parent) && is(parent, "ParentShimForAs") &&
+  identical(as.character(class(parent)), "ParentShimForAs") &&
+  isS4(grandparent) && is(grandparent, "GrandParentShimForAs") &&
+  identical(as.character(class(grandparent)), "GrandParentShimForAs")
+"#,
+        );
+        let result = result.expect("classes-methods.R as() S4-from-old-class upcast");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
 
     #[test]
     fn methods_namespace_has_no_empty_c_or_rep() {
@@ -3041,6 +3075,8 @@ invisible(require(methods, quietly=TRUE))
         let result = result.expect("methods namespace must not bind empty c/rep");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+
 
 
     #[test]
