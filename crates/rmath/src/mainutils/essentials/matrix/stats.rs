@@ -6,7 +6,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's `cbind(...)` — combine vectors/matrices by columns.
-pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut result_type = SEXPTYPE::LGLSXP;
         let mut col_names = Vec::new();
@@ -14,18 +14,30 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut entries = Vec::new();
 
         let mut current = args;
+        let mut expr = if !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+            CDR(call)
+        } else {
+            R_NilValue()
+        };
         while !current.is_null() && current != R_NilValue() {
+            if bind_cell_is_deparse_level(current, expr) {
+                current = CDR(current);
+                expr = next_bind_expr(expr);
+                continue;
+            }
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
                 result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
                 let (arg_nrow, arg_ncol) = bind_dims(arg, true);
-                let name = tag_name(current).unwrap_or_default();
-                if !name.is_empty() {
+                let name = bind_arg_label(current, expr);
+                if !is_bind_matrix(arg) && !name.is_empty() {
                     has_col_names = true;
                 }
+
                 entries.push((arg, arg_nrow, arg_ncol, name));
             }
             current = CDR(current);
+            expr = next_bind_expr(expr);
         }
         if entries
             .iter()
@@ -39,19 +51,30 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             .any(|&(_, nrow, ncol, _)| nrow > 0 && ncol > 0);
         let mut ncols: R_xlen_t = 0;
         let mut nrows: R_xlen_t = 0;
-        for &(_, arg_nrow, arg_ncol, ref name) in &entries {
+        for &(arg, arg_nrow, arg_ncol, ref name) in &entries {
             if has_nonzero_extent && (arg_nrow == 0 || arg_ncol == 0) {
                 continue;
             }
             nrows = nrows.max(arg_nrow);
             ncols += arg_ncol;
-            for j in 0..arg_ncol {
-                if arg_ncol == 1 {
-                    col_names.push(name.clone());
-                } else if name.is_empty() {
-                    col_names.push(String::new());
+            if is_bind_matrix(arg) {
+                if let Some(labels) = matrix_axis_labels(arg, 1, arg_ncol) {
+                    has_col_names = true;
+                    col_names.extend(labels);
                 } else {
-                    col_names.push(format!("{name}.{j_plus}", j_plus = j + 1));
+                    for _ in 0..arg_ncol {
+                        col_names.push(String::new());
+                    }
+                }
+            } else {
+                for j in 0..arg_ncol {
+                    if arg_ncol == 1 {
+                        col_names.push(name.clone());
+                    } else if name.is_empty() {
+                        col_names.push(String::new());
+                    } else {
+                        col_names.push(format!("{name}.{j_plus}", j_plus = j + 1));
+                    }
                 }
             }
         }
@@ -96,7 +119,7 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         set_two_dim_attr(result, nrows, ncols);
-        let row_names = first_vector_names(&entries, nrows);
+        let row_names = first_cbind_rownames(&entries, nrows);
         if has_col_names || (!row_names.is_null() && row_names != R_NilValue()) {
             let cols = if has_col_names {
                 string_vector(&col_names)
@@ -108,6 +131,7 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         result
     }
 }
+
 
 /// R's `rbind(...)` — combine vectors/matrices by rows.
 pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -157,9 +181,14 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
                 let (arg_nrow, arg_ncol) = bind_dims(arg, false);
                 let name = bind_arg_label(current, expr);
-                if !name.is_empty() {
+                if is_bind_matrix(arg) {
+                    if matrix_axis_labels(arg, 0, arg_nrow).is_some() {
+                        has_row_names = true;
+                    }
+                } else if !name.is_empty() {
                     has_row_names = true;
                 }
+
                 entries.push((arg, arg_nrow, arg_ncol, name));
             }
             current = CDR(current);
@@ -171,22 +200,33 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             .any(|&(_, nrow, ncol, _)| nrow > 0 && ncol > 0);
         let mut ncols: R_xlen_t = 0;
         let mut nrows: R_xlen_t = 0;
-        for &(_, arg_nrow, arg_ncol, ref name) in &entries {
+        for &(arg, arg_nrow, arg_ncol, ref name) in &entries {
             if has_nonzero_extent && (arg_nrow == 0 || arg_ncol == 0) {
                 continue;
             }
             ncols = ncols.max(arg_ncol);
             nrows += arg_nrow;
-            for i in 0..arg_nrow {
-                if arg_nrow == 1 {
-                    row_names.push(name.clone());
-                } else if name.is_empty() {
-                    row_names.push(String::new());
+            if is_bind_matrix(arg) {
+                if let Some(labels) = matrix_axis_labels(arg, 0, arg_nrow) {
+                    row_names.extend(labels);
                 } else {
-                    row_names.push(format!("{name}.{i_plus}", i_plus = i + 1));
+                    for _ in 0..arg_nrow {
+                        row_names.push(String::new());
+                    }
+                }
+            } else {
+                for i in 0..arg_nrow {
+                    if arg_nrow == 1 {
+                        row_names.push(name.clone());
+                    } else if name.is_empty() {
+                        row_names.push(String::new());
+                    } else {
+                        row_names.push(format!("{name}.{i_plus}", i_plus = i + 1));
+                    }
                 }
             }
         }
+
 
         let col_names = first_rbind_colnames(&entries, ncols);
         let has_col_names = !col_names.is_null() && col_names != R_NilValue();
@@ -572,6 +612,67 @@ unsafe fn first_vector_names(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)], nro
         R_NilValue()
     }
 }
+
+unsafe fn is_bind_matrix(arg: SEXP) -> bool {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(
+            arg,
+            crate::sexp::attrib_core::R_DimSymbol(),
+        );
+        !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 2
+    }
+}
+
+unsafe fn matrix_axis_labels(arg: SEXP, axis: R_xlen_t, expected: R_xlen_t) -> Option<Vec<String>> {
+    unsafe {
+        let dn = crate::sexp::attrib_core::getAttrib(
+            arg,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if dn.is_null() || TYPEOF(dn) != SEXPTYPE::VECSXP || XLENGTH(dn) <= axis {
+            return None;
+        }
+        let labels = VECTOR_ELT(dn, axis);
+        if labels.is_null()
+            || labels == R_NilValue()
+            || TYPEOF(labels) != SEXPTYPE::STRSXP
+            || XLENGTH(labels) != expected
+        {
+            return None;
+        }
+        Some((0..expected).map(|i| string_at_or_empty(labels, i)).collect())
+    }
+}
+
+unsafe fn first_cbind_rownames(
+    entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
+    nrows: R_xlen_t,
+) -> SEXP {
+    unsafe {
+        for &(arg, arg_nrow, _, _) in entries {
+            if !is_bind_matrix(arg) || arg_nrow != nrows {
+                continue;
+            }
+            let dn = crate::sexp::attrib_core::getAttrib(
+                arg,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            if dn.is_null() || TYPEOF(dn) != SEXPTYPE::VECSXP || XLENGTH(dn) < 1 {
+                continue;
+            }
+            let rows = VECTOR_ELT(dn, 0);
+            if !rows.is_null()
+                && rows != R_NilValue()
+                && TYPEOF(rows) == SEXPTYPE::STRSXP
+                && XLENGTH(rows) == nrows
+            {
+                return rows;
+            }
+        }
+        first_vector_names(entries, nrows)
+    }
+}
+
 
 unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> SEXP {
     unsafe {
@@ -1290,6 +1391,27 @@ mod rbind_data_frame_tests {
         );
         assert!(visible);
     }
+
+    #[test]
+    fn cbind_named_matrices_keep_gnu_dimnames() {
+        assert_r_true(
+            "x <- c(1+1i, 1.2+10i); names(x) <- c('a','b'); \
+             xx <- rbind(x, 2*x); \
+             z <- cbind(xx, xx + 1i*c(1, pi)); \
+             identical(dimnames(z), list(c('x',''), c('a','b','a','b'))) && \
+             identical(dimnames(t(z)), list(c('a','b','a','b'), c('x','')))",
+        );
+    }
+
+    #[test]
+    fn cbind_unnamed_matrices_keep_default_headers() {
+        assert_r_true(
+            "Mm <- pi*outer(c(-1,1), 10^(-5:5)); \
+             Mm <- cbind(Mm, outer(c(-1,1), 10^-(5:1))); \
+             is.null(dimnames(Mm))",
+        );
+    }
+
 
     #[test]
     fn rbind_preserves_data_frame_shape_and_binds_columns_independently() {
