@@ -993,8 +993,9 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
             let attach_env = make_package_attach_env(package, namespace.as_ref(), package_env)?;
             if package == "methods" {
                 bind_methods_base_primitives(package_env);
-
+                purge_missing_arg_placeholders(package_env);
                 retarget_methods_generics(package_env);
+
 
             }
             attach_package_env(attach_env);
@@ -1211,6 +1212,29 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
     }
 }
 
+unsafe fn purge_missing_arg_placeholders(env: SEXP) {
+    unsafe {
+        let missing = crate::sexp::globals::R_MissingArg();
+        let mut doomed = Vec::new();
+        let mut cell = FRAME(env);
+        while !cell.is_null() && cell != R_NilValue() {
+            if CAR(cell) == missing
+                && let Some(name) = symbol_name(TAG(cell))
+            {
+                doomed.push(name);
+            }
+            cell = CDR(cell);
+        }
+        for name in doomed {
+            let Ok(cname) = CString::new(name) else {
+                continue;
+            };
+            crate::sexp::envir::remove_binding_raw(env, Rf_install(cname.as_ptr()));
+        }
+    }
+}
+
+
 
 
 unsafe fn retarget_methods_generics(ns: SEXP) {
@@ -1309,8 +1333,9 @@ pub(crate) unsafe fn load_package_namespace(
         };
         if package == "methods" {
             bind_methods_base_primitives(package_env);
-
+            purge_missing_arg_placeholders(package_env);
             retarget_methods_generics(package_env);
+
 
         }
 
@@ -2190,8 +2215,9 @@ unsafe fn make_package_attach_env_inner(
 
         if package == "methods" {
             bind_methods_base_primitives(package_env);
-
+            purge_missing_arg_placeholders(package_env);
             retarget_methods_generics(package_env);
+
 
         }
         if missing.is_empty() {
