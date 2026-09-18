@@ -743,6 +743,41 @@ unsafe fn strip_s4_data_part(value: SEXP) -> SEXP {
 
 unsafe fn R_data_part(obj: SEXP) -> SEXP {
     unsafe {
+        if !IN_GET_DATA_PART.with(std::cell::Cell::get) {
+            if let Some(fun) = methods_exported_closure(c"getDataPart") {
+                if let Some(methods) =
+                    crate::mainutils::essentials::cached_namespace_by_name("methods")
+                {
+                    IN_GET_DATA_PART.with(|flag| flag.set(true));
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        let flag = Rf_ScalarLogical(TRUE);
+                        let call = Rf_lang3(fun, obj, flag);
+                        let _call = protect(call);
+                        crate::eval::eval::Rf_eval(call, methods)
+                    }));
+                    IN_GET_DATA_PART.with(|flag| flag.set(false));
+                    match result {
+                        Ok(val) => {
+                            if !val.is_null() && val != R_NilValue() {
+                                crate::sexp::accessors::UNSET_S4_OBJECT(val);
+                            }
+                            return val;
+                        }
+                        Err(payload) => std::panic::resume_unwind(payload),
+                    }
+                }
+            }
+        }
+        r_data_part_fallback(obj)
+    }
+}
+
+thread_local! {
+    static IN_GET_DATA_PART: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+unsafe fn r_data_part_fallback(obj: SEXP) -> SEXP {
+    unsafe {
         let data_sym = Rf_install(c".Data".as_ptr());
         let attr = crate::sexp::attrib_core::getAttrib(obj, data_sym);
         if !attr.is_null() && attr != R_NilValue() {
@@ -752,11 +787,6 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
             if let Some(value) = s4_named_slot(obj, ".Data") {
                 return strip_s4_data_part(unmap_slot_pseudo_null(value));
             }
-            // GNU getDataPart: `typeof(object) == "S4"` (OBJSXP) requires an
-            // explicit .Data/.xData attribute. Function S4 objects
-            // (MethodDefinition, classGeneratorFunction) have typeof
-            // "closure" — the object IS the data part when no .Data
-            // attribute is stored.
             if TYPEOF(obj) != SEXPTYPE::OBJSXP {
                 return strip_s4_data_part(obj);
             }
