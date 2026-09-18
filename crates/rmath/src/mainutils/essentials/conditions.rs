@@ -101,7 +101,8 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     .map(str::chars)
                     .map_or(0, |c| c.count());
                 let mut prefix = format!("Error in {dcall} : ");
-                let width = 14 + 2 * dcall.chars().count() + first_line_len;
+                // GNU New-Internal.R: 14L + nchar(dcall) + nchar(first line)
+                let width = 14 + dcall.chars().count() + first_line_len;
                 if width > 75 {
                     prefix.push_str("\n  ");
                 }
@@ -109,10 +110,8 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
                 if !silent {
                     crate::sexp::output::capture_stderr(&out_text);
-                    if crate::mainutils::errors::collect_warnings() > 0 {
-                        crate::mainutils::errors::print_warnings_at_statement_boundary();
-                    }
                 }
+
 
 
                 // The stored condition keeps the internal doTryCatch frame as

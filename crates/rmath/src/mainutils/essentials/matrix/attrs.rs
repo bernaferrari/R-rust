@@ -354,77 +354,13 @@ pub unsafe fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {
     }
 }
 
-/// R's `class(x)` — get class attribute.
 pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_mkString(c"NULL".as_ptr());
         }
-
-        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
-        if class.is_null() || class == R_NilValue() {
-            let dim =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-            if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
-                if XLENGTH(dim) == 2 {
-                    let result = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-                    if result.is_null() {
-                        return result;
-                    }
-                    let _result_guard = protect(result);
-                    SET_STRING_ELT(result, 0, Rf_mkChar(c"matrix".as_ptr()));
-                    SET_STRING_ELT(result, 1, Rf_mkChar(c"array".as_ptr()));
-                    return result;
-                }
-                return Rf_mkString(c"array".as_ptr());
-            }
-            let t = TYPEOF(x);
-            let name = if t == SEXPTYPE::REALSXP {
-                "numeric"
-            } else if t == SEXPTYPE::INTSXP {
-                "integer"
-            } else if t == SEXPTYPE::LGLSXP {
-                "logical"
-            } else if t == SEXPTYPE::STRSXP {
-                "character"
-            } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
-                "list"
-            } else if t == SEXPTYPE::CPLXSXP {
-                "complex"
-            } else if t == SEXPTYPE::RAWSXP {
-                "raw"
-            } else if t == SEXPTYPE::EXPRSXP {
-                "expression"
-            } else if t == SEXPTYPE::LANGSXP {
-                let chars = crate::eval::attrib_core::language_implicit_class_chars(x);
-                return Rf_mkString(CHAR(chars));
-            } else if t == SEXPTYPE::SYMSXP {
-                "name"
-            } else if t == SEXPTYPE::ENVSXP {
-                "environment"
-            } else if t == SEXPTYPE::CLOSXP
-                || t == SEXPTYPE::SPECIALSXP
-                || t == SEXPTYPE::BUILTINSXP
-            {
-                "function"
-            } else if t == SEXPTYPE::EXTPTRSXP {
-                "externalptr"
-            } else if t == SEXPTYPE::WEAKREFSXP {
-                "weakref"
-            } else if t == SEXPTYPE::NILSXP {
-                "NULL"
-            } else if t == SEXPTYPE::OBJSXP {
-                "S4"
-            } else {
-                "NULL"
-            };
-
-            let cstr = CString::new(name).unwrap_or_default();
-            Rf_mkString(cstr.as_ptr())
-        } else {
-            class
-        }
+        crate::eval::attrib_core::R_data_class(x)
     }
 }
 

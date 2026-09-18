@@ -1188,11 +1188,14 @@ identical(abc(expression((x))), "expr") &&
             r#"
 identical(mode(quote((x))), "(") &&
   identical(mode(quote(sin(x))), "call") &&
-  identical(mode(quote({1})), "{")
+  identical(mode(quote({1})), "call") &&
+  identical(mode(quote(if (TRUE) 1)), "call") &&
+  identical(class(formals(function(a = 1) NULL)), "pairlist") &&
+  identical(class(new.env()), "environment")
 "#,
-        );
 
-        let result = result.expect("mode() of language objects must use GNU lang2str");
+        );
+        let result = result.expect("mode() of calls is ( vs call; class uses type2str");
         assert_eq!(result.logical_elt(0), Some(TRUE));
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture("str(quote((x)))\n");
@@ -1201,7 +1204,18 @@ identical(mode(quote((x))), "(") &&
             "str() of paren language must include GNU mode suffix, got {:?}",
             captured.stdout
         );
-
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture("str(quote(if (TRUE) 1))\n");
+        assert!(
+            captured.stdout.contains(" language if (TRUE) 1"),
+            "str() of if-call must not add a mode suffix, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains(r#"mode "if""#),
+            "str() must not treat lang2str heads as mode(), got {:?}",
+            captured.stdout
+        );
     }
 
     #[test]

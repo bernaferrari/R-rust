@@ -11,8 +11,10 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, PRINTNAME, SET_ATTRIB, SETCAR, SETCDR, TAG, TYPEOF,
+    ATTRIB, CAR, CDR, CHAR, PRINTNAME, SET_ATTRIB, SET_STRING_ELT, SETCAR, SETCDR, TAG, TYPEOF,
+    XLENGTH,
 };
+
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -274,6 +276,19 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
             || class_val == R_NilValue()
             || TYPEOF(class_val) != SEXPTYPE::STRSXP
         {
+            let dim = getAttrib(x, R_DimSymbol());
+            if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
+                let nd = XLENGTH(dim);
+                if nd == 2 {
+                    let result = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+                    SET_STRING_ELT(result, 0, Rf_mkChar(c"matrix".as_ptr()));
+                    SET_STRING_ELT(result, 1, Rf_mkChar(c"array".as_ptr()));
+                    return result;
+                }
+                if nd > 0 {
+                    return Rf_mkString(c"array".as_ptr());
+                }
+            }
             if TYPEOF(x) == SEXPTYPE::LANGSXP {
                 return Rf_ScalarString(language_implicit_class_chars(x));
             }
@@ -289,8 +304,17 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
             {
                 return Rf_mkString(c"function".as_ptr());
             }
+            if TYPEOF(x) == SEXPTYPE::LISTSXP {
+                return Rf_mkString(c"pairlist".as_ptr());
+            }
+            if TYPEOF(x) == SEXPTYPE::ENVSXP {
+                return Rf_mkString(c"environment".as_ptr());
+            }
+            if TYPEOF(x) == SEXPTYPE::DOTSXP {
+                return Rf_mkString(c"...".as_ptr());
+            }
 
-            // Return the default class based on type
+            // GNU type2str fallback for remaining SEXPTYPEs.
             let t = TYPEOF(x);
             let name = match t {
                 0 => "NULL",
@@ -306,6 +330,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 25 => "S4",
                 _ => "unknown",
             };
+
 
             return Rf_mkString(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
         }
