@@ -670,53 +670,53 @@ unsafe fn dispatch_dotcall(fun: DL_FUNC, args: &[SEXP], call: SEXP) -> SEXP {
         let _ = call;
         match args.len() {
             0 => {
-                let f: unsafe extern "C" fn() -> SEXP = std::mem::transmute_copy(&fun);
+                let f: unsafe extern "C-unwind" fn() -> SEXP = std::mem::transmute_copy(&fun);
                 f()
             }
             1 => {
-                let f: unsafe extern "C" fn(SEXP) -> SEXP = std::mem::transmute_copy(&fun);
+                let f: unsafe extern "C-unwind" fn(SEXP) -> SEXP = std::mem::transmute_copy(&fun);
                 f(args[0])
             }
             2 => {
-                let f: unsafe extern "C" fn(SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&fun);
+                let f: unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&fun);
                 f(args[0], args[1])
             }
             3 => {
-                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP) -> SEXP =
+                let f: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP =
                     std::mem::transmute_copy(&fun);
                 f(args[0], args[1], args[2])
             }
             4 => {
-                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                let f: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP =
                     std::mem::transmute_copy(&fun);
                 f(args[0], args[1], args[2], args[3])
             }
             5 => {
-                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                let f: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
                     std::mem::transmute_copy(&fun);
                 f(args[0], args[1], args[2], args[3], args[4])
             }
             6 => {
-                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                let f: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
                     std::mem::transmute_copy(&fun);
                 f(args[0], args[1], args[2], args[3], args[4], args[5])
             }
             7 => {
-                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                let f: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
                     std::mem::transmute_copy(&fun);
                 f(
                     args[0], args[1], args[2], args[3], args[4], args[5], args[6],
                 )
             }
             8 => {
-                let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                let f: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
                     std::mem::transmute_copy(&fun);
                 f(
                     args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
                 )
             }
             9 => {
-                let f: unsafe extern "C" fn(
+                let f: unsafe extern "C-unwind" fn(
                     SEXP,
                     SEXP,
                     SEXP,
@@ -733,7 +733,7 @@ unsafe fn dispatch_dotcall(fun: DL_FUNC, args: &[SEXP], call: SEXP) -> SEXP {
                 )
             }
             10 => {
-                let f: unsafe extern "C" fn(
+                let f: unsafe extern "C-unwind" fn(
                     SEXP,
                     SEXP,
                     SEXP,

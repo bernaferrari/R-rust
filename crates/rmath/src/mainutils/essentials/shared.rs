@@ -2455,7 +2455,7 @@ pub(crate) unsafe fn namespace_exports(
         };
 
         let mut exports = directives.exports.clone();
-        for name in frame_binding_names(package_env, false) {
+        for name in frame_binding_names(package_env, true) {
             if directives
                 .export_patterns
                 .iter()
@@ -2464,6 +2464,7 @@ pub(crate) unsafe fn namespace_exports(
                 push_unique(&mut exports, name);
             }
         }
+
         exports
     }
 }
@@ -2471,7 +2472,21 @@ pub(crate) unsafe fn namespace_exports(
 pub(crate) unsafe fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
     unsafe {
         let mut names = Vec::new();
-        let mut frame = FRAME(env);
+        collect_binding_names(FRAME(env), include_hidden, &mut names);
+        let hashtab = HASHTAB(env);
+        if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
+            for i in 0..XLENGTH(hashtab) {
+                collect_binding_names(VECTOR_ELT(hashtab, i), include_hidden, &mut names);
+            }
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+}
+
+unsafe fn collect_binding_names(mut frame: SEXP, include_hidden: bool, names: &mut Vec<String>) {
+    unsafe {
         while !frame.is_null() && frame != R_NilValue() {
             let value = CAR(frame);
             if value != crate::sexp::globals::R_UnboundValue()
@@ -2484,9 +2499,6 @@ pub(crate) unsafe fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec
             }
             frame = CDR(frame);
         }
-        names.sort();
-        names.dedup();
-        names
     }
 }
 
@@ -2532,18 +2544,43 @@ pub(crate) fn simple_namespace_pattern_matches(pattern: &str, name: &str) -> boo
 }
 
 pub(crate) fn clean_namespace_name(raw: &str) -> Option<String> {
-    let name = raw
-        .trim()
-        .trim_matches('"')
-        .trim_matches('\'')
-        .trim_matches('`')
-        .trim();
-    if name.is_empty() {
-        None
+    let trimmed = raw.trim();
+    let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2)
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2);
+    let inner = if quoted {
+        &trimmed[1..trimmed.len() - 1]
     } else {
-        Some(name.to_string())
+        trimmed.trim_matches('`').trim()
+    };
+    if inner.is_empty() {
+        return None;
     }
+    Some(if quoted {
+        unescape_r_string(inner)
+    } else {
+        inner.to_string()
+    })
 }
+
+fn unescape_r_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('r') => out.push('\r'),
+                Some(other) => out.push(other),
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 
 pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
     unsafe {

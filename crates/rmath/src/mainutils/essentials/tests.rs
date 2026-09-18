@@ -140,11 +140,36 @@ fn namespace_parser_handles_strings_comments_and_nested_calls() {
             .exports
             .contains(&"call_like(default = f(a, b))".to_string())
     );
-    assert_eq!(directives.export_patterns, vec!["^as\\\\.".to_string()]);
+    assert_eq!(directives.export_patterns, vec!["^as\\.".to_string()]);
+
     assert_eq!(directives.imports.len(), 2);
     assert_eq!(directives.s3_methods.len(), 2);
     assert_eq!(directives.native_libraries, vec!["nativebits".to_string()]);
 }
+
+#[test]
+fn export_pattern_matches_hidden_class_meta_names() {
+    assert!(super::simple_namespace_pattern_matches(
+        "^\\.__C__",
+        ".__C__numeric"
+    ));
+    assert!(super::simple_namespace_pattern_matches(
+        "^\\.__C__",
+        ".__C__classRepresentation"
+    ));
+    let directives = super::parse_namespace_directives(
+        "exportPattern(\"^\\\\.__C__\")\nexportPattern(\"^\\\\.__M__\")\n",
+    );
+    assert_eq!(
+        directives.export_patterns,
+        vec!["^\\.__C__".to_string(), "^\\.__M__".to_string()]
+    );
+    assert!(directives
+        .export_patterns
+        .iter()
+        .any(|p| super::simple_namespace_pattern_matches(p, ".__C__numeric")));
+}
+
 
 #[test]
 fn adversarial_namespace_inputs_do_not_panic() {

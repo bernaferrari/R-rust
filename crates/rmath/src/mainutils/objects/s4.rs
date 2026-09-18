@@ -223,6 +223,53 @@ pub unsafe fn R_extends(class1: SEXP, class2: SEXP, _env: SEXP) -> c_int {
 
 pub unsafe fn R_do_new_object(class_def: SEXP) -> SEXP {
     unsafe {
+        if class_def.is_null() || class_def == R_NilValue() {
+            error("C level NEW macro called with null class definition pointer");
+        }
+
+        // GNU objects.c: duplicate the classRepresentation prototype.
+        if crate::mainutils::coerce::IS_S4_OBJECT(class_def) != 0
+            || TYPEOF(class_def) == SEXPTYPE::S4SXP
+        {
+            let virtual_sym = crate::sexp::symbol::Rf_install(c"virtual".as_ptr());
+            let prototype_sym = crate::sexp::symbol::Rf_install(c"prototype".as_ptr());
+            let class_name_sym = crate::sexp::symbol::Rf_install(c"className".as_ptr());
+            let virtual_flag =
+                crate::mainutils::essentials::R_do_slot(class_def, virtual_sym);
+            if crate::mainutils::coerce::asLogical(virtual_flag) != 0 {
+                let name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
+                let shown = sexp_to_string(name).unwrap_or_else(|| "<unknown>".to_string());
+                error(&format!(
+                    "trying to generate an object from a virtual class (\"{shown}\")"
+                ));
+            }
+            let class_name =
+                crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
+            let _class_name_guard = protect(class_name);
+            let prototype =
+                crate::mainutils::essentials::R_do_slot(class_def, prototype_sym);
+
+            let value = crate::mainutils::duplicate::duplicate(prototype);
+            let _value_guard = protect(value);
+            let x_data = TYPEOF(value) == SEXPTYPE::ENVSXP
+                || TYPEOF(value) == SEXPTYPE::SYMSXP
+                || TYPEOF(value) == SEXPTYPE::EXTPTRSXP;
+            let package_sym = crate::sexp::symbol::Rf_install(c"package".as_ptr());
+            let has_package = {
+                let pkg = crate::sexp::attrib_core::getAttrib(class_name, package_sym);
+                !pkg.is_null() && pkg != R_NilValue()
+            };
+            if (TYPEOF(value) == SEXPTYPE::S4SXP || has_package) && !x_data {
+                crate::sexp::attrib_core::setAttrib(
+                    value,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    class_name,
+                );
+                SET_S4_OBJECT(value);
+            }
+            return value;
+        }
+
         let Some(class_name) = class_name_from_def(class_def) else {
             return R_NilValue();
         };
@@ -245,6 +292,7 @@ pub unsafe fn R_do_new_object(class_def: SEXP) -> SEXP {
         asS4(out, TRUE, 0)
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // S4 object manipulation

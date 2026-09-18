@@ -552,6 +552,28 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
             SEXPTYPE::PROMSXP => {
                 return s;
             }
+            SEXPTYPE::EXTPTRSXP => {
+                t = crate::mainutils::memory_main::R_MakeExternalPtr(
+                    crate::mainutils::memory_main::R_ExternalPtrAddr(s),
+                    R_NilValue(),
+                    R_NilValue(),
+                );
+                crate::mainutils::memory_main::R_SetExternalPtrProtected(
+                    t,
+                    duplicate_child(
+                        crate::mainutils::memory_main::R_ExternalPtrProtected(s),
+                        deep,
+                    ),
+                );
+                crate::mainutils::memory_main::R_SetExternalPtrTag(
+                    t,
+                    duplicate_child(crate::mainutils::memory_main::R_ExternalPtrTag(s), deep),
+                );
+                DUPLICATE_ATTRIB(t, s, deep);
+            }
+            SEXPTYPE::WEAKREFSXP => {
+                return s;
+            }
             SEXPTYPE::OBJSXP => {
                 t = crate::mainutils::objects::R_allocObject();
                 if !t.is_null() {
@@ -1708,19 +1730,15 @@ mod tests {
     }
 
     #[test]
-    fn test_duplicate_unsupported_type_errors() {
+    fn test_duplicate_extptrsxp() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let extptr = crate::sexp::memory_ext::allocSExp(SEXPTYPE::EXTPTRSXP);
-            let err = std::panic::catch_unwind(|| {
-                let _ = duplicate(extptr);
-            })
-            .expect_err("unsupported duplicate type should raise an RError");
-            let message = err
-                .downcast_ref::<crate::sexp::context::RError>()
-                .map(|err| err.message.as_str())
-                .unwrap_or("");
-            assert!(message.contains("duplicate: unsupported SEXPTYPE"));
+            let d = duplicate(extptr);
+            assert!(!d.is_null());
+            assert_eq!(TYPEOF(d), SEXPTYPE::EXTPTRSXP);
+            assert_ne!(d, extptr);
         }
     }
+
 }

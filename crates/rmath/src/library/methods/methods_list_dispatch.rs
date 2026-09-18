@@ -1152,8 +1152,9 @@ impl Default for MethodsDispatchState {
     fn default() -> Self {
         Self {
             n_overrides: 0,
-            table_dispatch_on: 0,
+            table_dispatch_on: 1,
         }
+
     }
 }
 
