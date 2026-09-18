@@ -1191,8 +1191,10 @@ identical(mode(quote((x))), "(") &&
   identical(mode(quote({1})), "call") &&
   identical(mode(quote(if (TRUE) 1)), "call") &&
   identical(class(formals(function(a = 1) NULL)), "pairlist") &&
+  identical(mode(formals(function(a = 1) NULL)), "pairlist") &&
   identical(class(new.env()), "environment")
 "#,
+
 
         );
         let result = result.expect("mode() of calls is ( vs call; class uses type2str");

@@ -286,8 +286,10 @@ pub unsafe fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let missing = crate::sexp::globals::R_MissingArg();
         let digits_arg = m.get(1).copied().unwrap_or(missing);
-        let mut restore = None;
-        if !digits_arg.is_null() && digits_arg != R_NilValue() && digits_arg != missing {
+        let _restore_digits = if !digits_arg.is_null()
+            && digits_arg != R_NilValue()
+            && digits_arg != missing
+        {
             let d = if TYPEOF(digits_arg) == SEXPTYPE::INTSXP && XLENGTH(digits_arg) > 0 {
                 *INTEGER(digits_arg)
             } else if TYPEOF(digits_arg) == SEXPTYPE::REALSXP && XLENGTH(digits_arg) > 0 {
@@ -296,31 +298,45 @@ pub unsafe fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 0
             };
             if d > 0 {
-                restore = Some(crate::mainutils::format::format_set_R_print(
+                let old = crate::mainutils::format::format_set_R_print(
                     crate::mainutils::format::RPrint {
                         digits: d,
                         scipen: crate::mainutils::options::GetOptionScipen(),
                         na_width: 2,
                         na_width_noquote: 2,
                     },
-                ));
+                );
+                Some(RestorePrint { old })
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
 
         if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
             crate::sexp::output::print_value(sexp);
-        }
-        if let Some(old) = restore {
-            crate::mainutils::format::format_set_R_print(old);
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
 }
 
+struct RestorePrint {
+    old: crate::mainutils::format::RPrint,
+}
+
+impl Drop for RestorePrint {
+    fn drop(&mut self) {
+        unsafe {
+            crate::mainutils::format::format_set_R_print(self.old);
+        }
+    }
+}
 // ---------------------------------------------------------------------------
 // do_typeof — type name
 // ---------------------------------------------------------------------------
+
 
 /// R's `typeof(x)` — returns the type name as STRSXP.
 pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -412,7 +428,9 @@ fn mode_name(x: SEXP) -> &'static str {
             t if t == SEXPTYPE::CPLXSXP => "complex",
             t if t == SEXPTYPE::STRSXP || t == SEXPTYPE::CHARSXP => "character",
             t if t == SEXPTYPE::RAWSXP => "raw",
-            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP => "list",
+            t if t == SEXPTYPE::VECSXP => "list",
+            t if t == SEXPTYPE::LISTSXP => "pairlist",
+
             t if t == SEXPTYPE::EXPRSXP => "expression",
             t if t == SEXPTYPE::SYMSXP => "name",
             t if t == SEXPTYPE::LANGSXP => "call",

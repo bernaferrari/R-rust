@@ -267,38 +267,9 @@ pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
     }
 }
 
-// ---------------------------------------------------------------------------
-// R_data_class — get the data class of an object
-// ---------------------------------------------------------------------------
+// Implicit class lives in eval/attrib_core.rs::R_data_class (GNU lang2str /
+// type2str). Do not add a second table here.
 
-/// Get the class of an object (returns the first class element).
-///
-/// This is the equivalent of R's `R_data_class()`.
-pub unsafe fn R_data_class(x: SEXP) -> SEXP {
-    unsafe {
-        let class_val = getAttrib(x, R_ClassSymbol());
-        if class_val.is_null()
-            || class_val == R_NilValue()
-            || TYPEOF(class_val) != SEXPTYPE::STRSXP
-        {
-
-            // Return the default class based on type
-            let t = TYPEOF(x);
-            let name = match t {
-                10 => c"logical",
-                13 => c"integer",
-                14 => c"numeric",
-                15 => c"complex",
-                16 => c"character",
-                24 => c"raw",
-                19 => c"list",
-                _ => c"unknown",
-            };
-            return Rf_mkString(name.as_ptr());
-        }
-        class_val
-    }
-}
 
 // ---------------------------------------------------------------------------
 // R_length_gets — get the length attribute
@@ -366,9 +337,9 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let class = R_data_class(v);
-            // Should return "integer" or the CHARSXP for it
+            let class = crate::eval::attrib_core::R_data_class(v);
             assert!(!class.is_null());
         }
     }
+
 }
