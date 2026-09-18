@@ -133,9 +133,11 @@ pub unsafe fn usable_nice_names(x: SEXP, isAtomic: bool) -> bool {
         let mut all_0 = true;
         for i in 0..n {
             let elt = STRING_ELT(x, i as R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
+
+            if elt.is_null() || elt == R_NilValue() || elt == R_NaString() {
                 return false;
             }
+
             if isAtomic {
                 let name = CHAR(elt);
                 if !name.is_null() {

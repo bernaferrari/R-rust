@@ -115,6 +115,16 @@ unsafe fn compare(
             return Err("target and current differ in nullness".into());
         }
 
+
+        // GNU all.equal.formula: same length + identical deparse. It does
+        // not compare `.Environment` (check.environment only applies to
+        // closures).
+        if crate::mainutils::essentials::sexp_has_class(target, "formula")
+            || crate::mainutils::essentials::sexp_has_class(current, "formula")
+        {
+            return compare_formula(target, current);
+        }
+
         if crate::mainutils::essentials::sexp_has_class(target, "POSIXt")
             || crate::mainutils::essentials::sexp_has_class(current, "POSIXt")
         {
@@ -217,6 +227,43 @@ unsafe fn compare_language(target: SEXP, current: SEXP) -> Result<(), String> {
         }
     }
 }
+
+unsafe fn compare_formula(target: SEXP, current: SEXP) -> Result<(), String> {
+    unsafe {
+        if !crate::mainutils::essentials::sexp_has_class(target, "formula")
+            || !crate::mainutils::essentials::sexp_has_class(current, "formula")
+        {
+            return Err("target is formula, current is not (or vice versa)".into());
+        }
+        let lt = formula_length(target);
+        let lc = formula_length(current);
+        if lt != lc {
+            return Err(format!(
+                "target, current differ in having response: {}, {}",
+                lt == 3,
+                lc == 3
+            ));
+        }
+        compare_language(target, current)
+    }
+}
+
+unsafe fn formula_length(x: SEXP) -> i32 {
+    unsafe {
+        let mut n = 0;
+        let mut p = x;
+        while !p.is_null()
+            && p != R_NilValue()
+            && (TYPEOF(p) == SEXPTYPE::LANGSXP || TYPEOF(p) == SEXPTYPE::LISTSXP)
+        {
+            n += 1;
+            p = CDR(p);
+        }
+        n
+    }
+}
+
+
 
 unsafe fn deparse_joined(x: SEXP) -> String {
     unsafe {

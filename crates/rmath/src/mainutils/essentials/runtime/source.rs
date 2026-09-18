@@ -514,7 +514,12 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         };
 
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
-            Ok(content) => eval_source_text_with_name(&content, target_env, &file_path),
+            Ok(content) => {
+                let _ = eval_source_text_with_name(&content, target_env, &file_path);
+                crate::sexp::globals::set_R_Visible(FALSE);
+                R_NilValue()
+            }
+
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }

@@ -1227,6 +1227,73 @@ identical(r, list(value = 2, visible = TRUE)) &&
     }
 
     #[test]
+    fn sys_source_returns_invisible_null() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+f <- tempfile()
+writeLines("1+1", f)
+e <- new.env()
+r <- sys.source(f, envir = e)
+is.null(r) && !withVisible(sys.source(f, envir = e))$visible
+"#,
+        );
+        let result = result.expect("sys.source() must return invisible NULL");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn identical_ignores_function_env_and_srcref_by_default_flags() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+A <- function(x, y, ...) {
+    B <- function(a, b, ...) { match.call() }
+    B(x+y, ...)
+}
+pd0 <- function(expr, backtick = TRUE, ...) parse(text = deparse(expr, backtick=backtick, ...))
+id_epd <- function(expr, control = "all", ...) eval(pd0(expr, control=control, ...))
+identical(A, id_epd(A), ignore.environment = TRUE, ignore.bytecode = TRUE, ignore.srcref = TRUE)
+            "#,
+        );
+        let result = result.expect("check_EPD function identical must ignore env/srcref");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+
+    }
+
+    #[test]
+    fn all_equal_formula_ignores_environment() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+fm <- y ~ f(x)
+pd0 <- function(expr, backtick = TRUE, ...) parse(text = deparse(expr, backtick=backtick, ...))
+id_epd <- function(expr, control = "all", ...) eval(pd0(expr, control=control, ...))
+isTRUE(all.equal(fm, id_epd(fm), check.environment = FALSE))
+"#,
+        );
+        let result = result.expect("all.equal.formula must ignore .Environment");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn deparse_all_preserves_na_list_names() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+LNA <- setNames(as.list(c(1,2,99)), c("A", "NA", NA))
+pd0 <- function(expr, backtick = TRUE, ...) parse(text = deparse(expr, backtick=backtick, ...))
+identical(LNA, eval(pd0(LNA, control = "all")))
+"#,
+        );
+        let result = result.expect("deparse(control=all) must keep NA list names");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+    #[test]
     fn s4_class_representations_compare_slots() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(

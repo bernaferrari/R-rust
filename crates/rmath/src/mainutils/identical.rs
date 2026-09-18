@@ -69,17 +69,18 @@ const IDENT_NA_AS_BITS: c_int = 2;
 /// When set, attrib.as.set = FALSE => compare attributes by order.
 const IDENT_ATTR_BY_ORDER: c_int = 4;
 
-/// When set, ignore bytecode differences.
+/// When set, compare bytecode bodies (`ignore.bytecode = FALSE`).
 const IDENT_USE_BYTECODE: c_int = 8;
 
-/// When set, ignore closure environment differences.
+/// When set, compare closure environments (`ignore.environment = FALSE`).
 const IDENT_USE_CLOENV: c_int = 16;
 
-/// When set, ignore srcref differences.
+/// When set, compare srcref attributes (`ignore.srcref = FALSE`).
 const IDENT_USE_SRCREF: c_int = 32;
 
 /// When set, compare external pointers by reference.
 const IDENT_EXTPTR_AS_REF: c_int = 64;
+
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -251,29 +252,98 @@ unsafe fn attr_tag_name(tag: SEXP) -> Option<&'static str> {
     }
 }
 
+fn is_source_attr_name(name: &str) -> bool {
+    matches!(name, "srcref" | "srcfile" | "wholeSrcref")
+}
+
+unsafe fn ignore_srcref(flags: c_int) -> bool {
+    flags & IDENT_USE_SRCREF == 0
+}
+
+unsafe fn attr_pairlist_len_filtered(list: SEXP, flags: c_int) -> c_int {
+    unsafe {
+        let mut n = 0;
+        let mut p = list;
+        while !p.is_null() && p != R_NilValue() {
+            let skip = ignore_srcref(flags)
+                && attr_tag_name(TAG(p)).is_some_and(is_source_attr_name);
+            if !skip {
+                n += 1;
+            }
+            p = CDR(p);
+        }
+        n
+    }
+}
+
+
+/// GNU `R_body_no_src`: `BODY` with srcref/srcfile/wholeSrcref stripped
+/// when `ignore.srcref` is the default.
+unsafe fn body_expr_no_src(fun: SEXP, flags: c_int) -> SEXP {
+    unsafe {
+        let body = BODY(fun);
+        if flags & IDENT_USE_SRCREF != 0 {
+            return body;
+        }
+        let copy = crate::mainutils::duplicate::duplicate(body);
+        if copy.is_null() {
+            return body;
+        }
+        let _g = crate::sexp::protect::protect(copy);
+        for name in [c"srcref", c"srcfile", c"wholeSrcref"] {
+            crate::sexp::attrib_core::setAttrib(
+                copy,
+                crate::sexp::symbol::Rf_install(name.as_ptr()),
+                R_NilValue(),
+            );
+
+        }
+        copy
+    }
+}
+
+
 /// GNU `identical.c` attribute comparison: tagged pairlists, either by
 /// order (`IDENT_ATTR_BY_ORDER`) or as a set of unique tags.
 unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
     unsafe {
         let ax = ATTRIB(x);
         let ay = ATTRIB(y);
-        let ax_empty = ax.is_null() || ax == R_NilValue();
-        let ay_empty = ay.is_null() || ay == R_NilValue();
-        if ax_empty && ay_empty {
+        let nx = attr_pairlist_len_filtered(ax, flags);
+        let ny = attr_pairlist_len_filtered(ay, flags);
+        if nx == 0 && ny == 0 {
             return 1;
         }
-        if ax_empty || ay_empty {
+        if nx == 0 || ny == 0 {
             return 0;
         }
-        if TYPEOF(ax) != SEXPTYPE::LISTSXP || TYPEOF(ay) != SEXPTYPE::LISTSXP {
+        if (!ax.is_null() && ax != R_NilValue() && TYPEOF(ax) != SEXPTYPE::LISTSXP)
+            || (!ay.is_null() && ay != R_NilValue() && TYPEOF(ay) != SEXPTYPE::LISTSXP)
+        {
             return 1;
         }
         if flags & IDENT_ATTR_BY_ORDER != 0 {
             let mut px = ax;
             let mut py = ay;
-            while !px.is_null() && px != R_NilValue() {
-                if py.is_null() || py == R_NilValue() {
-                    return 0;
+            loop {
+                while !px.is_null()
+                    && px != R_NilValue()
+                    && ignore_srcref(flags)
+                    && attr_tag_name(TAG(px)).is_some_and(is_source_attr_name)
+                {
+                    px = CDR(px);
+                }
+                while !py.is_null()
+                    && py != R_NilValue()
+                    && ignore_srcref(flags)
+                    && attr_tag_name(TAG(py)).is_some_and(is_source_attr_name)
+                {
+                    py = CDR(py);
+                }
+                let px_done = px.is_null() || px == R_NilValue();
+                let py_done = py.is_null() || py == R_NilValue();
+                if px_done || py_done {
+                    return if px_done && py_done { 1 } else { 0 };
                 }
                 let tag = TAG(px);
                 if attr_tag_name(tag) == Some("row.names") {
@@ -304,13 +374,9 @@ unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 px = CDR(px);
                 py = CDR(py);
             }
-            if !py.is_null() && py != R_NilValue() {
-                return 0;
-            }
-            return 1;
         }
 
-        if Rf_length(ax) != Rf_length(ay) {
+        if nx != ny {
             return 0;
         }
         let mut elx = ax;
@@ -318,6 +384,10 @@ unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             let Some(tx) = attr_tag_name(TAG(elx)) else {
                 return 0;
             };
+            if ignore_srcref(flags) && is_source_attr_name(tx) {
+                elx = CDR(elx);
+                continue;
+            }
             let mut ely = ay;
             let mut found = false;
             while !ely.is_null() && ely != R_NilValue() {
@@ -567,16 +637,24 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 ly = ny;
             }
         } else if t == SEXPTYPE::CLOSXP {
-            // CLOSXP: compare formals, body, environment
+            // GNU identical.c CLOSXP: formals, then body (expression without
+            // srcref when ignore.bytecode/ignore.srcref), then env pointer.
             if R_compute_identical(FORMALS(x), FORMALS(y), flags) == 0 {
                 return 0;
             }
-            if R_compute_identical(BODY(x), BODY(y), flags) == 0 {
+            let bodies = if flags & IDENT_USE_BYTECODE == 0 {
+                R_compute_identical(
+                    body_expr_no_src(x, flags),
+                    body_expr_no_src(y, flags),
+                    flags,
+                )
+            } else {
+                R_compute_identical(BODY(x), BODY(y), flags)
+            };
+            if bodies == 0 {
                 return 0;
             }
-            if flags & IDENT_USE_CLOENV != 0
-                && R_compute_identical(CLOENV(x), CLOENV(y), flags) == 0
-            {
+            if flags & IDENT_USE_CLOENV != 0 && CLOENV(x) != CLOENV(y) {
                 return 0;
             }
             return 1;
@@ -723,26 +801,28 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             }
         }
 
-        // ignore.bytecode: default TRUE
+        // GNU: use_bytecode = !ignore.bytecode (default ignore = TRUE).
         if let Some(v) = next_arg() {
-            if logical_true(v) {
+            if logical_false(v) {
                 flags |= IDENT_USE_BYTECODE;
             }
         }
 
-        // ignore.environment: default FALSE
+        // GNU: use_cloenv = !ignore.environment (default ignore = FALSE).
+        flags |= IDENT_USE_CLOENV;
         if let Some(v) = next_arg() {
             if logical_true(v) {
-                flags |= IDENT_USE_CLOENV;
+                flags &= !IDENT_USE_CLOENV;
             }
         }
 
-        // ignore.srcref: default TRUE
+        // GNU: use_srcref = !ignore.srcref (default ignore = TRUE).
         if let Some(v) = next_arg() {
-            if logical_true(v) {
+            if logical_false(v) {
                 flags |= IDENT_USE_SRCREF;
             }
         }
+
 
         // extptr.as.ref: default FALSE
         if let Some(v) = next_arg() {
