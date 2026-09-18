@@ -1758,6 +1758,35 @@ identical(a, b) && identical(a, c) && isTRUE(all.equal(a, 10)) &&
         );
     }
 
+    #[test]
+    fn str_data_frame_aligns_names_and_omits_column_length() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            r#"
+df <- data.frame(Time=c(1,2,3,4,5,7), demand=c(8.3,10.3,19,16,15.6,19.8))
+attr(df, "reference") <- "A1.4, p. 270"
+str(df)
+f <- ordered(c("Qn1","Qn1","Qn2"), levels=c("Qn1","Qn2","Qn3"))
+str(f)
+
+"#,
+        );
+        assert!(
+            captured.stdout.contains("$ Time  : num  1 2 3 4 5 7")
+                && captured.stdout.contains("$ demand: num  8.3 10.3 19 16 15.6 19.8")
+                && captured.stdout.contains("- attr(*, \"reference\")= chr \"A1.4, p. 270\""),
+            "data.frame str must align names, omit [1:n], print extra attrs, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            captured.stdout.contains("Ord.factor w/ 3 levels \"Qn1\"<\"Qn2\"<\"Qn3\": 1 1 2"),
+            "ordered factor must show codes not labels, got {:?}",
+            captured.stdout
+        );
+
+    }
+
+
 
 
     #[test]

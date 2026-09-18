@@ -714,33 +714,16 @@ unsafe fn str_numeric_integer_like(x: SEXP, n_check: usize) -> bool {
 
 
 unsafe fn str_atomic_summary(x: SEXP) -> String {
+    unsafe { str_atomic_summary_opts(x, true) }
+}
+
+unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool) -> String {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return "NULL".to_string();
         }
         if sexp_has_class_name(x, "factor") {
-            let n = XLENGTH(x);
-            let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
-            let nlev = if !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP {
-                XLENGTH(levels)
-            } else {
-                0
-            };
-            let shown_levels = nlev.min(2);
-            let mut level_text = String::new();
-            for i in 0..shown_levels {
-                if i > 0 {
-                    level_text.push(',');
-                }
-                level_text.push('"');
-                level_text.push_str(&elt_to_string(levels, i));
-                level_text.push('"');
-            }
-            if nlev > shown_levels {
-                level_text.push_str(",..");
-            }
-            let preview = str_preview_ints(x, 10);
-            return format!("Factor w/ {nlev} levels {level_text}: {preview}");
+            return str_factor_summary(x);
         }
         if sexp_has_class_name(x, "ts") {
             let n = XLENGTH(x);
@@ -793,16 +776,77 @@ unsafe fn str_atomic_summary(x: SEXP) -> String {
         let preview = str_preview_reals_or_ints(x, 10);
         if preview.is_empty() {
             format!("{named_prefix}{type_name} [1:{n}]")
+        } else if !give_length && n != 1 {
+            format!("{named_prefix}{type_name}  {preview}")
         } else if n == 1 {
             format!("{named_prefix}{type_name} {preview}")
         } else {
             format!("{named_prefix}{type_name} [1:{n}] {preview}")
         }
 
-
-
     }
 }
+
+/// GNU str.default factor header: `Factor`/`Ord.factor`, quoted levels,
+/// integer codes after the colon.
+unsafe fn str_factor_summary(x: SEXP) -> String {
+    unsafe {
+        let ordered = sexp_has_class_name(x, "ordered");
+        let kind = if ordered { "Ord.factor" } else { "Factor" };
+        let sep = if ordered { "<" } else { "," };
+        let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
+        let nlev = if !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP {
+            XLENGTH(levels)
+        } else {
+            0
+        };
+        let quoted: Vec<String> = (0..nlev)
+            .map(|i| format!("\"{}\"", elt_to_string(levels, i)))
+            .collect();
+        // GNU: include levels until cumulative `3 + nchar(quoted)-2` exceeds 13.
+        let mut shown = 0usize;
+        let mut acc = 0i32;
+        for q in &quoted {
+            acc += 3 + (q.len() as i32 - 2);
+            shown += 1;
+            if acc > 13 {
+                break;
+            }
+        }
+        if shown == 0 && nlev > 0 {
+            shown = 1;
+        }
+        let mut level_text = quoted[..shown.min(quoted.len())].join(sep);
+        if nlev > shown as i64 {
+            level_text.push_str(sep);
+            level_text.push_str("..");
+        }
+
+
+
+        let n = XLENGTH(x) as usize;
+        let show = n.min(10);
+        let mut parts = Vec::with_capacity(show);
+        for i in 0..show {
+            let v = INTEGER_ELT(x, i as std::os::raw::c_int);
+            if v == NA_INTEGER {
+                parts.push("NA".to_string());
+            } else {
+                parts.push(v.to_string());
+            }
+        }
+        let mut preview = parts.join(" ");
+        if n > show {
+            preview.push_str(" ...");
+        }
+        if nlev > 0 {
+            format!("{kind} w/ {nlev} levels {level_text}: {preview}")
+        } else {
+            format!("{kind} w/ {nlev} levels: {preview}")
+        }
+    }
+}
+
 
 unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
     unsafe {
@@ -923,6 +967,30 @@ fn str_emit_line(line: &str) {
         println!("{line}");
     }
 }
+
+unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
+    unsafe {
+        let mut attrs = crate::sexp::accessors::ATTRIB(x);
+        while !attrs.is_null() && attrs != R_NilValue() {
+            let tag = TAG(attrs);
+            let name = if tag.is_null() || tag == R_NilValue() {
+                String::new()
+            } else {
+                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            if !name.is_empty() && !skip.iter().any(|s| *s == name) {
+                str_emit_line(&format!(
+                    " - attr(*, \"{name}\")= {}",
+                    str_atomic_summary(CAR(attrs))
+                ));
+            }
+            attrs = CDR(attrs);
+        }
+    }
+}
+
 
 /// R's `str(x)` — compact structure display.
 pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1047,18 +1115,47 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 } else {
                     0
                 };
-                str_emit_line(&format!(
-                    "'data.frame':\t{nrow} obs. of  {ncol} variables:"
-                ));
-                for i in 0..ncol {
-                    let name = if has_names && i < XLENGTH(names) {
-                        elt_to_string(names, i)
-                    } else {
-                        format!("{}", i + 1)
-                    };
-                    let elem = VECTOR_ELT(x, i as i64);
-                    str_emit_line(&format!(" ${name}: {}", str_atomic_summary(elem)));
+                let extra_classes: Vec<String> = if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+                    (0..XLENGTH(class))
+                        .map(|i| elt_to_string(class, i))
+                        .filter(|c| c != "data.frame")
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let var_word = if ncol == 1 { "variable" } else { "variables" };
+                let colon = if ncol > 0 { ":" } else { "" };
+                if extra_classes.is_empty() {
+                    str_emit_line(&format!(
+                        "'data.frame':\t{nrow} obs. of  {ncol} {var_word}{colon}"
+                    ));
+                } else {
+                    let quoted: Vec<String> =
+                        extra_classes.iter().map(|c| format!("'{c}'")).collect();
+                    str_emit_line(&format!(
+                        "Classes {} and 'data.frame':\t{nrow} obs. of  {ncol} {var_word}{colon}",
+                        quoted.join(", ")
+                    ));
                 }
+                let raw_names: Vec<String> = (0..ncol)
+                    .map(|i| {
+                        if has_names && i < XLENGTH(names) {
+                            elt_to_string(names, i)
+                        } else {
+                            format!("{}", i + 1)
+                        }
+                    })
+                    .collect();
+                let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
+                for i in 0..ncol {
+                    let name = format!("{:<name_width$}", raw_names[i as usize]);
+                    let elem = VECTOR_ELT(x, i as i64);
+                    str_emit_line(&format!(
+                        " $ {name}: {}",
+                        str_atomic_summary_opts(elem, false)
+                    ));
+                }
+                str_emit_nonstandard_attrs(x, &["names", "class", "row.names"]);
             } else {
                 str_emit_line(&format!("List of {n}"));
                 for i in 0..n.min(6) {
