@@ -2950,6 +2950,43 @@ identical(i*m, m) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn classes_methods_dots_missing_and_forwarding() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+f <- function(x, ..., a = b) { b <- "a"; a }
+setGeneric("f", signature = "...")
+f2 <- function(...) f(...)
+identical(f(a=1), 1) && identical(f(), "a") && identical(f2(a=1), 1)
+"#,
+        );
+        let result = result.expect("classes-methods.R missing-arg dots dispatch");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn classes_methods_method_selection_error() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+f <- function(x) x
+setGeneric("f")
+setMethod("f", signature("NULL"), function(x) NULL)
+err <- tryCatch(f(stop("this is mentioned")), error = identity)
+identical(err$message, "error in evaluating the argument 'x' in selecting a method for function 'f': this is mentioned")
+"#,
+        );
+        let result = result.expect("classes-methods.R method-selection error wrap");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
 
 
 

@@ -13,7 +13,7 @@ use std::ptr;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::context::RError;
+use crate::sexp::context::{RError, RSignal};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::instance::with_required_current_instance;
@@ -33,6 +33,34 @@ fn r_error(message: impl Into<String>) -> ! {
         message: message.into(),
     });
 }
+
+/// GNU `R_evalHandleError` + `argEvalCleanup`: eval the dispatch argument
+/// and wrap a failure as the method-selection error.
+unsafe fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        crate::eval::eval::Rf_eval(arg_sym, ev)
+    }));
+    match result {
+        Ok(value) => value,
+        Err(payload) => {
+            let inner = if let Some(err) = payload.downcast_ref::<RError>() {
+                err.message.clone()
+            } else if let Some(RSignal::Error { message }) = payload.downcast_ref::<RSignal>() {
+                message.clone()
+            } else {
+                std::panic::resume_unwind(payload);
+            };
+            let arg_name = unsafe { CStr::from_ptr(CHAR(PRINTNAME(arg_sym))).to_string_lossy() };
+            let fun_name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+            r_error(format!(
+                "error in evaluating the argument '{}' in selecting a method for function '{}': {}",
+                arg_name, fun_name, inner
+            ));
+        }
+    }
+}
+
+
 
 unsafe fn named_element(object: SEXP, name: &str) -> SEXP {
     unsafe {
@@ -580,17 +608,12 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
             let arg = crate::sexp::envir::R_findVarInFrame(ev, arg_sym);
             if arg == R_UnboundValue() || arg == R_MissingArg() {
                 classes.push("missing".to_string());
-            } else if TYPEOF(arg) == SEXPTYPE::PROMSXP {
-                let forced = crate::sexp::envir::forcePromise(arg);
+            } else {
+                let forced = eval_dispatch_arg(fname, ev, arg_sym);
                 if forced.is_null() {
                     return R_NilValue();
                 }
                 let Some(class) = first_data_class_name(forced) else {
-                    return R_NilValue();
-                };
-                classes.push(class);
-            } else {
-                let Some(class) = first_data_class_name(arg) else {
                     return R_NilValue();
                 };
                 classes.push(class);
@@ -926,7 +949,8 @@ unsafe fn select_method_from_list(
         let class = if arg_value == R_UnboundValue() || arg_value == R_MissingArg() {
             "missing".to_string()
         } else if eval_args {
-            let Some(class) = first_data_class_name(arg_value) else {
+            let forced = eval_dispatch_arg(fname, ev, arg_symbol);
+            let Some(class) = first_data_class_name(forced) else {
                 return R_NilValue();
             };
             class
