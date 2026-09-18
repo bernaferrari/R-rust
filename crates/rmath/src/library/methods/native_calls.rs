@@ -90,12 +90,14 @@ unsafe extern "C-unwind" fn c_r_missing_arg(symbol: SEXP, ev: SEXP) -> SEXP {
 }
 
 unsafe extern "C-unwind" fn c_r_get_slot(obj: SEXP, name: SEXP) -> SEXP {
-    unsafe { super::slot::R_get_slot(obj, name) }
+    unsafe { crate::mainutils::essentials::R_do_slot(obj, name) }
 }
 
 unsafe extern "C-unwind" fn c_r_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
-    unsafe { super::slot::R_set_slot(obj, name, value) }
+    unsafe { crate::mainutils::essentials::R_do_slot_assign(obj, name, value) }
 }
+
+
 
 unsafe extern "C-unwind" fn c_r_has_slot(obj: SEXP, name: SEXP) -> SEXP {
     unsafe { super::slot::R_hasSlot(obj, name) }

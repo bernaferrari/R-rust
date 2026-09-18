@@ -388,11 +388,37 @@ pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 "logical"
             } else if t == SEXPTYPE::STRSXP {
                 "character"
-            } else if t == SEXPTYPE::VECSXP {
+            } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
                 "list"
+            } else if t == SEXPTYPE::CPLXSXP {
+                "complex"
+            } else if t == SEXPTYPE::RAWSXP {
+                "raw"
+            } else if t == SEXPTYPE::EXPRSXP {
+                "expression"
+            } else if t == SEXPTYPE::LANGSXP {
+                "call"
+            } else if t == SEXPTYPE::SYMSXP {
+                "name"
+            } else if t == SEXPTYPE::ENVSXP {
+                "environment"
+            } else if t == SEXPTYPE::CLOSXP
+                || t == SEXPTYPE::SPECIALSXP
+                || t == SEXPTYPE::BUILTINSXP
+            {
+                "function"
+            } else if t == SEXPTYPE::EXTPTRSXP {
+                "externalptr"
+            } else if t == SEXPTYPE::WEAKREFSXP {
+                "weakref"
+            } else if t == SEXPTYPE::NILSXP {
+                "NULL"
+            } else if t == SEXPTYPE::OBJSXP {
+                "S4"
             } else {
                 "NULL"
             };
+
             let cstr = CString::new(name).unwrap_or_default();
             Rf_mkString(cstr.as_ptr())
         } else {

@@ -661,6 +661,24 @@ pub unsafe fn UnpackFlags(
     }
 }
 
+/// Restore GNU serialized gp bits after `SETLEVELS`.
+///
+/// Our `SETLEVELS` only keeps JIT bits (gp 0..1). GNU writes the full
+/// LEVELS word, including S4 (gp bit 4). Methods lazy-load stores
+/// standardGeneric / MethodDefinition as CLOSXP with that bit set.
+unsafe fn restore_serialized_gp(s: SEXP, levs: c_int, isobj: c_int) {
+    unsafe {
+        SETLEVELS(s, levs);
+        if isobj != 0 {
+            SET_OBJECT(s, 1);
+        }
+        if (levs & crate::sexp::accessors::S4_OBJECT_MASK as c_int) != 0 {
+            SET_S4_OBJECT(s);
+        }
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // Reference index packing/unpacking
 // ---------------------------------------------------------------------------
@@ -1508,10 +1526,7 @@ unsafe fn read_item_body(
             SETCAR(s, car);
             let cdr = ReadItemInternal(reader, ref_table)?;
             SETCDR(s, cdr);
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             Ok(s)
         } else if stype == SEXPTYPE::CLOSXP {
             let s = allocSExp(SEXPTYPE::CLOSXP);
@@ -1531,10 +1546,7 @@ unsafe fn read_item_body(
             let body = read_item_body(reader, ref_table, true);
             reader.item_depth -= 1;
             SET_BODY(s, body?);
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             Ok(s)
         } else if stype == SEXPTYPE::CHARSXP {
             let len = reader.read_i32()?;
@@ -1556,10 +1568,7 @@ unsafe fn read_item_body(
             for i in 0..len as isize {
                 *int_data.offset(i) = reader.read_i32()?;
             }
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -1573,10 +1582,7 @@ unsafe fn read_item_body(
             for i in 0..len as isize {
                 *real_data.offset(i) = reader.read_f64()?;
             }
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -1592,10 +1598,7 @@ unsafe fn read_item_body(
                 let im = reader.read_f64()?;
                 *cpx_data.offset(i) = Rcomplex { r, i: im };
             }
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -1609,10 +1612,7 @@ unsafe fn read_item_body(
                 let elt = ReadItemInternal(reader, ref_table)?;
                 SET_STRING_ELT(s, i as R_xlen_t, elt);
             }
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -1626,10 +1626,7 @@ unsafe fn read_item_body(
             for i in 0..len as isize {
                 *raw_data.offset(i) = reader.read_byte()?;
             }
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -1643,10 +1640,7 @@ unsafe fn read_item_body(
                 let elt = ReadItemInternal(reader, ref_table)?;
                 SET_VECTOR_ELT(s, i as R_xlen_t, elt);
             }
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -1706,10 +1700,7 @@ unsafe fn read_item_body(
             crate::mainutils::memory_main::R_SetExternalPtrProtected(s, prot);
             let tag = ReadItemInternal(reader, ref_table)?;
             crate::mainutils::memory_main::R_SetExternalPtrTag(s, tag);
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -1725,10 +1716,7 @@ unsafe fn read_item_body(
             );
             let _s_guard = protect(s);
             ref_table.add(s);
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -1740,10 +1728,7 @@ unsafe fn read_item_body(
             let s = allocSExp(SEXPTYPE::S4SXP);
             let _s_guard = protect(s);
             SET_S4_OBJECT(s);
-            SETLEVELS(s, levs);
-            if isobj != 0 {
-                SET_OBJECT(s, 1);
-            }
+            restore_serialized_gp(s, levs, isobj);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);

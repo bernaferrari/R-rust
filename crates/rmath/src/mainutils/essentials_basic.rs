@@ -262,6 +262,13 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             t if t == SEXPTYPE::SPECIALSXP => "special",
             t if t == SEXPTYPE::ENVSXP => "environment",
             t if t == SEXPTYPE::NILSXP => "NULL",
+            t if t == SEXPTYPE::PROMSXP => "promise",
+            t if t == SEXPTYPE::DOTSXP => "...",
+            t if t == SEXPTYPE::ANYSXP => "any",
+            t if t == SEXPTYPE::BCODESXP => "bytecode",
+            t if t == SEXPTYPE::EXTPTRSXP => "externalptr",
+            t if t == SEXPTYPE::WEAKREFSXP => "weakref",
+            t if t == SEXPTYPE::CHARSXP => "character",
             t if t == SEXPTYPE::OBJSXP => {
                 // R_typeToChar: distinguish S4 objects from bare OBJSXP
                 // (e.g. S7 objects constructed via .OBJSXP()).
@@ -271,9 +278,9 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                     "object"
                 }
             }
-            t if t == SEXPTYPE::CHARSXP => "character",
             _ => "unknown",
         };
+
         let s = CString::new(name).unwrap_or_default();
         Rf_mkString(s.as_ptr())
     }

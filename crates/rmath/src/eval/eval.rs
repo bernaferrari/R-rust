@@ -261,7 +261,9 @@ fn classify_expr(expr: Sexp<'_>) -> EvalKind {
         // them; rejecting them here made `outer(..., paste)` fail while
         // evaluating the constructed call head.
         | SEXPTYPE::BUILTINSXP
-        | SEXPTYPE::SPECIALSXP => EvalKind::SelfEvaluating,
+        | SEXPTYPE::SPECIALSXP
+        | SEXPTYPE::OBJSXP => EvalKind::SelfEvaluating,
+
         SEXPTYPE::SYMSXP => EvalKind::Symbol,
         SEXPTYPE::LANGSXP => EvalKind::Language,
         SEXPTYPE::CLOSXP => EvalKind::Closure,
@@ -976,6 +978,82 @@ mod tests {
         let result = result.expect("GNU new(classRepresentation) must return an S4 object");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn methods_identc_compares_class_name_contents() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); isTRUE(methods:::.identC(\"classRepresentation\", \"classRepresentation\")) && !isTRUE(methods:::.identC(\"classRepresentation\", \"ClassUnionRepresentation\"))",
+        );
+        let result = result.expect(".identC must compare CHARSXP contents like GNU Seql");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn methods_generic_closure_restores_s4_bit() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); g <- getGeneric(\"show\"); isS4(g) && identical(as.character(class(g))[1], \"standardGeneric\") && identical(as.character(g@generic)[1], \"show\")",
+        );
+        let result = result.expect("lazy-loaded generics must keep the GNU S4 bit");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn methods_at_assign_stores_s4_slot() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); x <- new(\"classRepresentation\"); x@virtual <- TRUE; isTRUE(x@virtual)",
+        );
+        let result = result.expect("@<- must persist S4 slots like GNU installAttrib");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn methods_slot_assign_via_call() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); x <- new(\"classRepresentation\"); slot(x, \"virtual\", FALSE) <- TRUE; isTRUE(x@virtual)",
+        );
+        let result = result.expect("slot<- must call GNU R_do_slot_assign");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn methods_externalptr_typeof_and_class() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); p <- methods:::.newExternalptr(); identical(typeof(p), \"externalptr\") && identical(class(p), \"externalptr\") && is(p, \"externalptr\")",
+        );
+        let result = result.expect("externalptr must have GNU typeof/class");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn invisible_is_gnu_builtin() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "identical(typeof(invisible), \"builtin\") && identical(invisible(1L), 1L)",
+        );
+        let result = result.expect("invisible must be GNU's evaluated builtin");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
+
+    #[test]
+    fn methods_setclass_defines_s4_class() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "invisible(require(methods, quietly=TRUE)); setClass(\"C_new_object\", slots=c(x=\"numeric\")); x <- new(\"C_new_object\"); isS4(x) && identical(as.character(class(x))[1], \"C_new_object\")",
+        );
+        let result = result.expect("setClass + new must match GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
 
     #[test]
     fn class_of_null_is_null_string() {

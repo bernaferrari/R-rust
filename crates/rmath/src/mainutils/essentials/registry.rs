@@ -24,7 +24,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "cat",
     "print",
     "typeof",
-    "mode",
+    "invisible",
+
     "storage.mode",
     "storage.mode<-",
     "mode<-",
@@ -69,7 +70,10 @@ pub(super) const ALL_FNS: &[&str] = &[
     "as.list.default",
     "as.list.function",
     "as.vector",
+    "as.function",
+    "as.function.default",
     "as.symbol",
+
     "as.name",
     "as.call",
     "length",
@@ -486,9 +490,12 @@ pub(super) const ALL_FNS: &[&str] = &[
     "simpleWarning",
     "withRestarts",
     "isS4",
+    "asS4",
+    ".asS4",
     ".OBJSXP",
     "is",
     "setClass",
+
     "setValidity",
     "isVirtualClass",
     "new",

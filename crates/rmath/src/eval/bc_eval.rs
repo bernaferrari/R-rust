@@ -1549,8 +1549,13 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if opcode == super::bytecode::GNU_OP_GETBUILTIN
                         && fun_type != SEXPTYPE::BUILTINSXP
                     {
-                        bc_error("GNU GETBUILTIN did not resolve to a builtin");
+                        let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))
+                            .to_string_lossy();
+                        bc_error(format!(
+                            "GNU GETBUILTIN did not resolve to a builtin: {name} has type {fun_type:?}"
+                        ));
                     }
+
                     gnu_call_frames.push(GnuCallFrame {
                         marker: stack.depth(),
                         tags: Vec::new(),

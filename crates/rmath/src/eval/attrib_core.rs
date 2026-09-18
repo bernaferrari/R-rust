@@ -260,10 +260,14 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 14 => "numeric",
                 15 => "complex",
                 16 => "character",
-                24 => "raw",
                 19 => "list",
+                22 => "externalptr",
+                23 => "weakref",
+                24 => "raw",
+                25 => "S4",
                 _ => "unknown",
             };
+
             return Rf_mkString(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
         }
         class_val

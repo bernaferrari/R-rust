@@ -4328,6 +4328,23 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_is,
     },
     EvaluatedBuiltin {
+        name: "asS4",
+        handler: crate::mainutils::objects::do_asS4,
+    },
+    EvaluatedBuiltin {
+        name: ".asS4",
+        handler: crate::mainutils::objects::do_asS4,
+    },
+    EvaluatedBuiltin {
+        name: "as.function",
+        handler: crate::mainutils::coerce::do_asfunction,
+    },
+    EvaluatedBuiltin {
+        name: "as.function.default",
+        handler: crate::mainutils::coerce::do_asfunction,
+    },
+
+    EvaluatedBuiltin {
         name: "setClass",
         handler: crate::mainutils::essentials::do_setClass,
     },

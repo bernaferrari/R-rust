@@ -988,8 +988,14 @@ pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
                     Rf_install(CString::new(name_str.as_str()).unwrap_or_default().as_ptr());
                 let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
                 if !value.is_null() && value != R_NilValue() {
+                    if TYPEOF(value) == SEXPTYPE::SYMSXP
+                        && elt_to_string(value, 0) == ".__NULL__."
+                    {
+                        return R_NilValue();
+                    }
                     return value;
                 }
+
             }
             if name_str == ".S3Class" {
                 return crate::eval::attrib_core::R_data_class(obj);
@@ -1014,6 +1020,49 @@ pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
     }
 }
 
+/// GNU `R_do_slot_assign` — store a slot as an attribute.
+///
+/// S4 objects (including `new("classRepresentation")`) keep slots in
+/// ATTRIB, not as VECSXP names. `NULL` is stored as a sentinel so
+/// `@<-` can keep a missing slot, matching GNU `pseudo_NULL`.
+pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
+    unsafe {
+        if obj.is_null() || obj == R_NilValue() {
+            std::panic::panic_any(RError {
+                message: "attempt to set slot on NULL object".to_string(),
+            });
+        }
+        let name_sym = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
+            name
+        } else if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
+            let chars = STRING_ELT(name, 0);
+            if chars.is_null() {
+                std::panic::panic_any(RError {
+                    message: "invalid type or length for slot name".to_string(),
+                });
+            }
+            Rf_install(crate::sexp::accessors::CHAR(chars))
+        } else {
+            std::panic::panic_any(RError {
+                message: "invalid type or length for slot name".to_string(),
+            });
+        };
+        let name_str = elt_to_string(name_sym, 0);
+        if name_str == ".Data" {
+            crate::sexp::attrib_core::setAttrib(obj, name_sym, value);
+            return obj;
+        }
+        // GNU stores NULL slots as a sentinel; setAttrib would drop them.
+        let stored = if value.is_null() || value == R_NilValue() {
+            Rf_install(c".__NULL__.".as_ptr())
+        } else {
+            value
+        };
+        crate::sexp::attrib_core::setAttrib(obj, name_sym, stored);
+        obj
+    }
+}
+
 /// R's `set_slot(object, name, value)` — set the value of a slot.
 pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1027,35 +1076,10 @@ pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         {
             return object;
         }
-        let slot_name = elt_to_string(name_arg, 0);
-        // Set slot in a VECSXP
-        if TYPEOF(object) == SEXPTYPE::VECSXP {
-            let names_sym = Rf_install(c"names".as_ptr());
-            let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
-            if !names_val.is_null() && names_val != R_NilValue() {
-                let n = LENGTH(names_val);
-                for i in 0..n {
-                    let ns = crate::sexp::accessors::STRING_ELT(names_val, i as R_xlen_t);
-                    if !ns.is_null() {
-                        let s = crate::sexp::accessors::CHAR(ns);
-                        if !s.is_null() {
-                            let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-                            if name_str == slot_name {
-                                crate::sexp::accessors::SET_VECTOR_ELT(
-                                    object,
-                                    i as R_xlen_t,
-                                    value,
-                                );
-                                return value;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        object
+        R_do_slot_assign(object, name_arg, value)
     }
 }
+
 
 /// R's `extends(class1, class2)` — check if class1 extends class2.
 pub unsafe fn do_extends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

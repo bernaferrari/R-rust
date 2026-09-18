@@ -1717,14 +1717,11 @@ pub unsafe fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
             && TYPEOF(e2) == SEXPTYPE::STRSXP
             && LENGTH(e1) == 1
             && LENGTH(e2) == 1
+            && crate::mainutils::relop::Seql(STRING_ELT(e1, 0), STRING_ELT(e2, 0)) != 0
         {
-            let s1 = STRING_ELT(e1, 0);
-            let s2 = STRING_ELT(e2, 0);
-            if s1 == s2 {
-                return scalar_logical(1); // TRUE
-            }
+            return scalar_logical(1);
         }
-        scalar_logical(0) // FALSE
+        scalar_logical(0)
     }
 }
 

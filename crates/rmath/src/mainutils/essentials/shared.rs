@@ -1194,7 +1194,10 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
             "gettext",
             "bindtextdomain",
             "dgettext",
+            "asS4",
+            ".asS4",
         ] {
+
             let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
             let value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
             let kind = TYPEOF(value);
