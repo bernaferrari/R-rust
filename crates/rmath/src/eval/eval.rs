@@ -1671,6 +1671,44 @@ invisible(NULL)
     }
 
     #[test]
+    fn str_ts_uses_digits_d_for_range_and_preview() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            r#"
+z <- ts(c(112,118,132,129,121,135,148,148,136,119, rep(120, 134)), frequency=12, start=c(1949,1))
+str(z)
+y <- ts(c(200.1, 199.5, 199.4, 198.9, 199, 200.2, 198.6, 200, 200.3, 201.2))
+str(y)
+w <- ts(c(10.01, 10.07, 10.32, 9.75, 10.33, 10.13, 10.36, 10.32, 10.13, 10.16))
+str(w)
+invisible(NULL)
+"#,
+        );
+        assert!(
+            captured.stdout.contains("from 1949 to 1961:"),
+            "str.ts must format tsp with digits.d=3, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            captured.stdout.contains("112 118 132 129 121 135 148 148 136 119 ..."),
+            "integer-like ts preview is vec.len*2.5, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            captured.stdout.contains("200 200 199 199 199 ...")
+                && !captured.stdout.contains("200.1"),
+            "non-integer-like ts preview uses digits.d and 1.25*vec.len, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            captured.stdout.contains("10.01 10.07 10.32 9.75 10.33 ..."),
+            "preview slice must share format() decimals, got {:?}",
+            captured.stdout
+        );
+    }
+
+
+    #[test]
     fn summary_mixed_range_shares_common_decimals() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(

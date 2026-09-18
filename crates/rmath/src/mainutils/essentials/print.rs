@@ -617,6 +617,102 @@ unsafe fn sexp_has_class_name(x: SEXP, class_name: &str) -> bool {
     }
 }
 
+/// GNU `strOptions()$digits.d` / `$vec.len` defaults.
+const STR_DIGITS_D: i32 = 3;
+const STR_VEC_LEN: f64 = 4.0;
+const STR_OUT_DEC: *const std::os::raw::c_char = b".\0".as_ptr() as *const std::os::raw::c_char;
+
+fn str_signif(x: f64, digits: i32) -> f64 {
+    if !x.is_finite() || x == 0.0 {
+        return x;
+    }
+    let exp = x.abs().log10().floor();
+    let pow = 10f64.powf(f64::from(digits) - 1.0 - exp);
+    (x * pow).round() / pow
+}
+
+fn str_drop0trailing(s: &str) -> String {
+    if s.contains('e') || s.contains('E') {
+        return s.to_string();
+    }
+    if let Some(_dot) = s.find('.') {
+        let mut t = s.to_string();
+        while t.ends_with('0') {
+            t.pop();
+        }
+        if t.ends_with('.') {
+            t.pop();
+        }
+        return t;
+    }
+    s.to_string()
+}
+
+/// GNU `format(x, trim=TRUE, drop0trailing=TRUE)` under `options(digits=digits.d)`.
+unsafe fn str_format_real(x: f64) -> String {
+    unsafe {
+        if x.is_nan() {
+            return if x.to_bits() == R_NA_BIT_PATTERN {
+                "NA".to_string()
+            } else {
+                "NaN".to_string()
+            };
+        }
+        let tmp = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
+        if tmp.is_null() {
+            return x.to_string();
+        }
+        let _tmp = protect(tmp);
+        *REAL(tmp) = x;
+        let old = crate::mainutils::format::format_get_R_print();
+        crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
+            digits: STR_DIGITS_D,
+            scipen: old.scipen,
+            na_width: old.na_width,
+            na_width_noquote: old.na_width_noquote,
+        });
+        let mut w = 0;
+        let mut d = 0;
+        let mut e = 0;
+        crate::mainutils::format::formatRealS(tmp, 1, &mut w, &mut d, &mut e, 0);
+        let encoded = crate::mainutils::printutils::EncodeReal0(x, w, d, e, STR_OUT_DEC);
+        crate::mainutils::format::format_set_R_print(old);
+        let raw = if encoded.is_null() {
+            String::new()
+        } else {
+            CStr::from_ptr(encoded).to_string_lossy().into_owned()
+        };
+        str_drop0trailing(raw.trim())
+    }
+}
+
+unsafe fn str_numeric_integer_like(x: SEXP, n_check: usize) -> bool {
+    unsafe {
+        if TYPEOF(x) == SEXPTYPE::INTSXP {
+            return true;
+        }
+        if TYPEOF(x) != SEXPTYPE::REALSXP {
+            return false;
+        }
+        let n = (XLENGTH(x) as usize).min(n_check);
+        for i in 0..n {
+            let v = REAL_ELT(x, i as std::os::raw::c_int);
+            if v.is_nan() {
+                continue;
+            }
+            let ao = v.abs();
+            if !(ao > 1e-10 || v == 0.0) || !(ao < 1e10 || v == 0.0) {
+                return false;
+            }
+            if (v - str_signif(v, STR_DIGITS_D)).abs() > 9e-16 * ao {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+
 unsafe fn str_atomic_summary(x: SEXP) -> String {
     unsafe {
         if x.is_null() || x == R_NilValue() {
@@ -651,13 +747,17 @@ unsafe fn str_atomic_summary(x: SEXP) -> String {
             let tsp = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"tsp".as_ptr()));
             let (start, end) = if !tsp.is_null() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 2
             {
-                (*REAL(tsp), *REAL(tsp).add(1))
+                (
+                    str_format_real(*REAL(tsp)),
+                    str_format_real(*REAL(tsp).add(1)),
+                )
             } else {
-                (1.0, n as f64)
+                ("1".to_string(), n.to_string())
             };
-            let preview = str_preview_reals_or_ints(x, 10);
+            let preview = str_preview_reals_or_ints(x, 0);
             return format!("Time-Series [1:{n}] from {start} to {end}: {preview}");
         }
+
         let t = TYPEOF(x);
         let n = XLENGTH(x);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -726,9 +826,93 @@ unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
     }
 }
 
-unsafe fn str_preview_reals_or_ints(x: SEXP, max: usize) -> String {
-    unsafe { str_preview_ints(x, max) }
+unsafe fn str_preview_reals_or_ints(x: SEXP, _max: usize) -> String {
+    unsafe {
+        let n = XLENGTH(x) as usize;
+        if n == 0 {
+            return String::new();
+        }
+        let integer_like = str_numeric_integer_like(x, n.min(round_2_5()));
+        let v_len = if integer_like {
+            round_2_5()
+        } else {
+            (1.25 * STR_VEC_LEN).round() as usize
+        };
+        let show = n.min(v_len);
+        let parts = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            str_format_real_slice(x, show)
+        } else {
+            (0..show)
+                .map(|i| match TYPEOF(x) {
+                    t if t == SEXPTYPE::INTSXP => {
+                        let v = INTEGER_ELT(x, i as std::os::raw::c_int);
+                        if v == NA_INTEGER {
+                            "NA".to_string()
+                        } else {
+                            v.to_string()
+                        }
+                    }
+                    _ => elt_to_string(x, i as R_xlen_t),
+                })
+                .collect()
+        };
+        let mut text = parts.join(" ");
+        if n > show {
+            text.push_str(" ...");
+        }
+        text
+    }
 }
+
+/// GNU `format(object[seq_len(ile)], trim=TRUE, drop0trailing=TRUE)` under digits.d.
+unsafe fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
+    unsafe {
+        let tmp = Rf_allocVector3(SEXPTYPE::REALSXP, show as R_xlen_t);
+        if tmp.is_null() {
+            return (0..show)
+                .map(|i| str_format_real(REAL_ELT(x, i as std::os::raw::c_int)))
+                .collect();
+        }
+        let _tmp = protect(tmp);
+        for i in 0..show {
+            *REAL(tmp).add(i) = REAL_ELT(x, i as std::os::raw::c_int);
+        }
+        let old = crate::mainutils::format::format_get_R_print();
+        crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
+            digits: STR_DIGITS_D,
+            scipen: old.scipen,
+            na_width: old.na_width,
+            na_width_noquote: old.na_width_noquote,
+        });
+        let mut w = 0;
+        let mut d = 0;
+        let mut e = 0;
+        crate::mainutils::format::formatRealS(tmp, show as R_xlen_t, &mut w, &mut d, &mut e, 0);
+        let mut parts = Vec::with_capacity(show);
+        for i in 0..show {
+            let encoded = crate::mainutils::printutils::EncodeReal0(
+                REAL_ELT(tmp, i as std::os::raw::c_int),
+                w,
+                d,
+                e,
+                STR_OUT_DEC,
+            );
+            let raw = if encoded.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(encoded).to_string_lossy().into_owned()
+            };
+            parts.push(str_drop0trailing(raw.trim()));
+        }
+        crate::mainutils::format::format_set_R_print(old);
+        parts
+    }
+}
+
+fn round_2_5() -> usize {
+    (2.5 * STR_VEC_LEN).round() as usize
+}
+
 
 /// Emit a str() line through the session output capture when one is active,
 /// so interleaving with captured print output stays in order.
