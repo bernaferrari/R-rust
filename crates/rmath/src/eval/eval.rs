@@ -1397,6 +1397,31 @@ invisible(NULL)
         );
     }
 
+    #[test]
+    fn format_data_frame_prints_like_gnu() {
+        let mut session = RSession::new();
+        let (result, captured, _) = session.eval_script_with_output_capture(
+            r#"
+zz <- data.frame("(row names)" = c("aaaaa", "b"), check.names = FALSE)
+format(zz)
+invisible(NULL)
+"#,
+        );
+        let _ = result;
+        assert!(
+            captured.stdout.contains("1       aaaaa") && captured.stdout.contains("2           b"),
+            "format(data.frame) must use data.frame layout, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains("$") && !captured.stdout.contains("[1] \"19\""),
+            "format(data.frame) must not list-print, got {:?}",
+            captured.stdout
+        );
+
+    }
+
+
 
 
 

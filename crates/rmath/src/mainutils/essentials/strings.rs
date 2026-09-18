@@ -3558,6 +3558,10 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != FALSE {
             return crate::mainutils::essentials::do_format_Date(_call, _op, args, _rho);
         }
+        if crate::mainutils::objects::inherits2(x, c"data.frame".as_ptr()) != FALSE {
+            return crate::mainutils::essentials::do_format_data_frame(_call, _op, args, _rho);
+        }
+
 
 
         if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {

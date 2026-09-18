@@ -2561,9 +2561,12 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                         .to_string()
                 };
             }
-
+            if let Some(output) = format_data_frame(x.clone()) {
+                return output;
+            }
             format_list(x)
         }
+
 
         SEXPTYPE::EXPRSXP => format_expression_vector(x),
         SEXPTYPE::SYMSXP

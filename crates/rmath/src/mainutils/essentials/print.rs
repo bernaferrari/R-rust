@@ -1463,8 +1463,8 @@ pub unsafe fn do_summary_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
     }
 }
 
-/// R's `format.data.frame(x)` — format data.frame as character matrix.
-pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// R's `format.data.frame(x, ..., justify = "none")`.
+pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1493,49 +1493,64 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
             return result;
         }
 
-        let ncol = XLENGTH(x);
-        let nrow = if ncol > 0 {
-            let first = VECTOR_ELT(x, 0);
-            if first.is_null() { 0 } else { XLENGTH(first) }
-        } else {
-            0
-        };
-
-        // Build a character matrix with ncol columns
-        let total = ncol * nrow;
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, total);
-        if result.is_null() {
+        let rest = format_data_frame_rest_args(args);
+        let _rest_guard = protect(rest);
+        let out = crate::mainutils::duplicate::shallow_duplicate(x);
+        if out.is_null() {
             return R_NilValue();
         }
-        let _result_guard = protect(result);
+        let _out_guard = protect(out);
+        let ncol = XLENGTH(out);
+        for i in 0..ncol {
+            let col = VECTOR_ELT(out, i);
+            let col_args = Rf_cons(col, rest);
+            let _col_args_guard = protect(col_args);
+            let formatted = crate::mainutils::essentials::do_format(call, op, col_args, rho);
+            let formatted = mark_asis_if_character(formatted);
+            SET_VECTOR_ELT(out, i, formatted);
+        }
+        out
+    }
+}
 
-        for i in 0..nrow {
-            for j in 0..ncol {
-                let col = VECTOR_ELT(x, j as R_xlen_t);
-                let val = if col.is_null() {
-                    "NULL".to_string()
-                } else {
-                    elt_to_string(col, i)
-                };
-                let cstr = CString::new(val).unwrap_or_default();
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-                if !charsxp.is_null() {
-                    let data = (*result).gengc_next_node as *mut SEXP;
-                    *data.add((j as R_xlen_t * nrow + i) as usize) = charsxp;
-                }
+unsafe fn format_data_frame_rest_args(args: SEXP) -> SEXP {
+    unsafe {
+        let rest = CDR(args);
+        let mut cell = rest;
+        while !cell.is_null() && cell != R_NilValue() {
+            if tag_name(cell).as_deref() == Some("justify") {
+                return rest;
             }
+            cell = CDR(cell);
         }
+        let none = crate::sexp::constructors::Rf_mkString(c"none".as_ptr());
+        let _none = protect(none);
+        let cell = Rf_cons(none, rest);
+        SETTAG(cell, Rf_install(c"justify".as_ptr()));
+        cell
+    }
+}
 
-        // Set dim attribute
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            let _dim_guard = protect(dim);
-            *INTEGER(dim) = nrow as i32;
-            *INTEGER(dim).add(1) = ncol as i32;
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
+unsafe fn mark_asis_if_character(x: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
+            return x;
         }
-
-        result
+        if crate::mainutils::objects::inherits2(x, c"AsIs".as_ptr()) != FALSE {
+            return x;
+        }
+        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if class_vec.is_null() {
+            return x;
+        }
+        let _c = protect(class_vec);
+        SET_STRING_ELT(class_vec, 0, crate::sexp::constructors::Rf_mkChar(c"AsIs".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class_vec,
+        );
+        x
     }
 }
 
