@@ -1779,6 +1779,11 @@ str(df)
 m <- matrix(1:4, 2, 2, dimnames=list(c("a","b"), c("c","d")))
 lst <- list(cov=m, center=c(0,0))
 str(lst)
+d <- as.Date(c("2007-11-11", NA))
+str(d)
+str(c(1.5, NA_real_))
+str(c("MALE", NA_character_))
+
 
 
 invisible(NULL)
@@ -1819,6 +1824,14 @@ invisible(NULL)
             "list matrix components must carry nested dimnames, got {:?}",
             captured.stdout
         );
+        assert!(
+            captured.stdout.contains("Date[1:2], format: \"2007-11-11\" NA")
+                && captured.stdout.contains("num [1:2] 1.5 NA")
+                && captured.stdout.contains("chr [1:2] \"MALE\" NA"),
+            "Date/NA str must match GNU, got {:?}",
+            captured.stdout
+        );
+
 
 
 

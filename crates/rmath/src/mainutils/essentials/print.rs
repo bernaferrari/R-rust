@@ -739,10 +739,11 @@ unsafe fn str_numeric_integer_like(x: SEXP, n_check: usize) -> bool {
 
 
 unsafe fn str_atomic_summary(x: SEXP) -> String {
-    unsafe { str_atomic_summary_opts(x, true) }
+    unsafe { str_atomic_summary_opts(x, true, false) }
 }
 
-unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool) -> String {
+unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
+
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return "NULL".to_string();
@@ -756,6 +757,10 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool) -> String {
         if TYPEOF(x) == SEXPTYPE::VECSXP {
             return str_list_summary(x);
         }
+        if sexp_has_class_name(x, "Date") {
+            return str_date_summary(x, give_length);
+        }
+
 
 
         if sexp_has_class_name(x, "ts") {
@@ -824,7 +829,8 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool) -> String {
         if n == 0 {
             return format!("{class_prefix}{named_prefix}{type_name}(0)");
         }
-        let preview = str_preview_reals_or_ints(x, 10);
+        let preview = str_preview_reals_or_ints(x, if nested { STR_VEC_LEN as usize } else { 0 });
+
         if preview.is_empty() {
             format!("{class_prefix}{named_prefix}{type_name} [1:{n}]")
         } else if !give_length && n != 1 {
@@ -899,6 +905,45 @@ unsafe fn str_factor_summary(x: SEXP) -> String {
     }
 }
 
+unsafe fn str_date_summary(x: SEXP, give_length: bool) -> String {
+    unsafe {
+        let n = XLENGTH(x);
+        let formatted = crate::mainutils::essentials::do_format_Date(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            Rf_cons(x, R_NilValue()),
+            R_NilValue(),
+        );
+        let _formatted = protect(formatted);
+        let show = if give_length {
+            (n as usize).min(STR_VEC_LEN as usize)
+        } else {
+            (n as usize).min(2)
+        };
+        let mut parts = Vec::with_capacity(show);
+        if !formatted.is_null() && TYPEOF(formatted) == SEXPTYPE::STRSXP {
+            for i in 0..show {
+                let elt = STRING_ELT(formatted, i as R_xlen_t);
+                if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                    parts.push("NA".to_string());
+                } else {
+                    parts.push(format!("\"{}\"", elt_to_string(formatted, i as R_xlen_t)));
+                }
+            }
+        }
+        let mut preview = parts.join(" ");
+        if n as usize > show {
+            preview.push_str(" ...");
+        }
+        let le = if give_length && n > 0 {
+            format!("[1:{n}]")
+        } else {
+            String::new()
+        };
+        format!("Date{le}, format: {preview}")
+    }
+}
+
 unsafe fn str_language_summary(x: SEXP) -> String {
     unsafe {
         let deparsed = crate::mainutils::deparse::deparse_symbolic(x, true);
@@ -969,7 +1014,8 @@ unsafe fn str_list_summary_indent(x: SEXP, child_prefix: &str) -> String {
             let elem = VECTOR_ELT(x, i);
             out.push_str(&format!(
                 "\n{child_prefix}{name}: {}",
-                str_atomic_summary_opts(elem, true)
+                str_atomic_summary_opts(elem, true, true)
+
             ));
         }
         if n > show {
@@ -995,26 +1041,48 @@ unsafe fn str_child_dimnames_lines(x: SEXP) -> Option<String> {
     }
 }
 
-
-
-
-
-
 unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
     unsafe {
         let n = XLENGTH(x) as usize;
-        let show = n.min(max);
         let quote = TYPEOF(x) == SEXPTYPE::STRSXP;
-        let mut parts = Vec::with_capacity(show);
-        for i in 0..show {
-            let s = elt_to_string(x, i as R_xlen_t);
+        let take = n.min(40);
+        let mut encoded: Vec<String> = Vec::with_capacity(take);
+        for i in 0..take {
             if quote {
-                parts.push(format!("\"{s}\""));
+                let elt = STRING_ELT(x, i as R_xlen_t);
+                if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                    encoded.push("NA".to_string());
+                } else {
+                    encoded.push(format!("\"{}\"", elt_to_string(x, i as R_xlen_t)));
+                }
             } else {
-                parts.push(s);
+                encoded.push(elt_to_string(x, i as R_xlen_t));
             }
         }
-        let mut text = parts.join(" ");
+        let show = if quote && max == 0 {
+            let header = 4 + 1 + format!("chr [1:{n}]").len();
+
+            let budget = 80usize.saturating_sub(header);
+            let mut acc = 0usize;
+            let mut count = 0usize;
+            for s in &encoded {
+                acc += 1 + s.len();
+                if acc < budget {
+                    count += 1;
+                } else {
+                    break;
+                }
+            }
+            count.max(1).min(encoded.len())
+        } else if quote {
+            n.min(if max == 0 { STR_VEC_LEN as usize } else { max })
+                .min(encoded.len())
+        } else {
+            n.min(if max == 0 { 10 } else { max }).min(encoded.len())
+        };
+
+
+        let mut text = encoded[..show].join(" ");
         if n > show {
             text.push_str(" ...");
         }
@@ -1022,17 +1090,12 @@ unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
     }
 }
 
+
+
 unsafe fn str_preview_reals_or_ints(x: SEXP, max: usize) -> String {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
-            let show = if TYPEOF(x) == SEXPTYPE::STRSXP {
-                STR_VEC_LEN as usize
-            } else if max == 0 {
-                10
-            } else {
-                max
-            };
-            return str_preview_ints(x, show);
+            return str_preview_ints(x, max);
         }
 
         let n = XLENGTH(x) as usize;
@@ -1096,8 +1159,14 @@ unsafe fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
         crate::mainutils::format::formatRealS(tmp, show as R_xlen_t, &mut w, &mut d, &mut e, 0);
         let mut parts = Vec::with_capacity(show);
         for i in 0..show {
+            let v = REAL_ELT(tmp, i as std::os::raw::c_int);
+            if v.is_nan() {
+                parts.push("NA".to_string());
+                continue;
+            }
+
             let encoded = crate::mainutils::printutils::EncodeReal0(
-                REAL_ELT(tmp, i as std::os::raw::c_int),
+                v,
                 w,
                 d,
                 e,
@@ -1141,21 +1210,19 @@ unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
                     .into_owned()
             };
             if !name.is_empty() && !skip.iter().any(|s| *s == name) {
-                let summary = str_atomic_summary(CAR(attrs));
+                let summary = str_atomic_summary_opts(CAR(attrs), true, true);
                 let sep = if summary.starts_with("Class") || summary.starts_with("List") {
                     ""
                 } else {
                     " "
                 };
-
-
                 str_emit_line(&format!(" - attr(*, \"{name}\")={sep}{summary}"));
             }
-
             attrs = CDR(attrs);
         }
     }
 }
+
 
 
 /// R's `str(x)` — compact structure display.
@@ -1323,7 +1390,8 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let elem = VECTOR_ELT(x, i as i64);
                     str_emit_line(&format!(
                         " $ {name}: {}",
-                        str_atomic_summary_opts(elem, false)
+                        str_atomic_summary_opts(elem, false, true)
+
                     ));
                     if let Some(extra) = str_child_dimnames_lines(elem) {
                         str_emit_line(&extra);
@@ -1345,7 +1413,11 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 for i in 0..n.min(6) {
                     let name = format!("{:<name_width$}", raw_names[i as usize]);
                     let elem = VECTOR_ELT(x, i as i64);
-                    str_emit_line(&format!(" $ {name}: {}", str_atomic_summary(elem)));
+                    str_emit_line(&format!(
+                        " $ {name}: {}",
+                        str_atomic_summary_opts(elem, true, true)
+                    ));
+
                     if let Some(extra) = str_child_dimnames_lines(elem) {
                         str_emit_line(&extra);
                     }
@@ -1354,7 +1426,8 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         } else {
             str_emit_line(&format!(" {}", str_atomic_summary(x)));
-            str_emit_nonstandard_attrs(x, &["class", "tsp", "dim"]);
+            str_emit_nonstandard_attrs(x, &["class", "tsp", "dim", "levels"]);
+
         }
 
 
