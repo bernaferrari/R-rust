@@ -387,8 +387,8 @@ unsafe fn echo_source_expression(
                 text.push_str(&elt_to_string(dumped, i));
             }
         }
-        // GNU file source spaced=TRUE: blank line before each echoed block.
-        let line = format!("\n{prompt}{text}\n");
+        let line = format!("{prompt}{text}\n");
+
         if crate::sexp::output::is_capturing() {
             crate::sexp::output::capture_stdout(&line);
         } else {
@@ -475,6 +475,12 @@ unsafe fn eval_source_text_with_options(
                 if element.is_null() || element == R_NilValue() {
                     continue;
                 }
+
+                if crate::sexp::output::is_capturing() {
+                    crate::sexp::output::capture_stdout("\n");
+                } else {
+                    print!("\n");
+                }
                 echo_source_expression(
                     element,
                     prompt,
@@ -482,6 +488,7 @@ unsafe fn eval_source_text_with_options(
                     crate::mainutils::deparse::DEFAULT_CUTOFF,
                     crate::mainutils::deparse::SHOWATTRIBUTES,
                 );
+
                 result = crate::eval::eval::Rf_eval(element, env);
                 if print_eval && crate::sexp::globals::R_Visible() != FALSE {
                     let print_args = Rf_cons(result, R_NilValue());
