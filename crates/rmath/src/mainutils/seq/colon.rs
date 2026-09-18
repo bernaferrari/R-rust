@@ -14,8 +14,9 @@ use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_allocVector3, Rf_isInteger, Rf_isNull,
     Rf_isReal, Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
 };
-use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP};
+use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
+
 
 // ---------------------------------------------------------------------------
 // cross_colon: cross product of two factors
@@ -590,18 +591,53 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 pub unsafe fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let _ = rho;
         checkArity(op, args);
         check1arg(args, call, b"along.with\0".as_ptr() as *const c_char);
 
         let x = CAR(args);
-        let len = if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
-            && TYPEOF(x) == VECSXP_VAL
-        {
-            crate::mainutils::subassign::posixlt_obs_length(x)
-        } else {
-            XLENGTH(x)
-        };
+        let mut dispatched = false;
+        let mut len: R_xlen_t = 0;
+        if crate::sexp::accessors::OBJECT(x) != 0 {
+            let length_op = crate::sexp::envir::R_findVar(
+                crate::sexp::symbol::Rf_install(c"length".as_ptr()),
+                crate::sexp::globals::R_BaseEnv(),
+            );
+            let mut ans = R_NilValue();
+            if !length_op.is_null()
+                && length_op != crate::sexp::globals::R_UnboundValue()
+                && TYPEOF(length_op) == SEXPTYPE::BUILTINSXP
+                && DispatchOrEval(
+                    call,
+                    length_op,
+                    c"length".as_ptr(),
+                    args,
+                    rho,
+                    &mut ans,
+                    0,
+                    1,
+                ) != 0
+            {
+                let coerced = crate::mainutils::coerce::asInteger(ans);
+                if coerced == NA_INTEGER || coerced < 0 {
+                    errorcall(
+                        call,
+                        b"argument must be coercible to non-negative integer\0".as_ptr()
+                            as *const c_char,
+                    );
+                }
+                len = coerced as R_xlen_t;
+                dispatched = true;
+            }
+        }
+        if !dispatched {
+            len = if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+                && TYPEOF(x) == VECSXP_VAL
+            {
+                crate::mainutils::subassign::posixlt_obs_length(x)
+            } else {
+                XLENGTH(x)
+            };
+        }
 
         if len == 0 {
             Rf_allocVector(INTSXP_VAL, 0)
@@ -610,6 +646,7 @@ pub unsafe fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // do_seq_len: seq_len()

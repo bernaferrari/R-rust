@@ -2650,6 +2650,49 @@ grepl("failure on abs", sm, fixed=TRUE) &&
         let result = result.expect("stop paste and primitive name checks must match GNU");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+    #[test]
+    fn exists_honors_envir_and_implicit_summary_generics() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+e <- new.env(parent=emptyenv())
+invisible(require(methods, quietly=TRUE))
+g <- getGeneric("sum")
+!exists("sum", envir=e, inherits=FALSE) &&
+  !exists("sum", envir=e, inherits=TRUE) &&
+  !exists("sum", envir=.GlobalEnv, inherits=FALSE) &&
+  isTRUE(exists("sum", envir=.GlobalEnv, inherits=TRUE)) &&
+  isTRUE(exists("sum", envir=baseenv(), inherits=FALSE)) &&
+  !is.primitive(g) &&
+  identical(names(formals(g)), c("x", "...", "na.rm")) &&
+  is(g, "genericFunction")
+"#,
+        );
+        let result = result.expect("exists() and getGeneric(sum) must match GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+    #[test]
+    fn seq_along_dispatches_length_and_warns_on_coercion() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+x <- structure(pi, class="testit")
+length.testit <- function(x) "OK"
+w <- NULL
+withCallingHandlers(
+  try(seq_along(x), silent=TRUE),
+  warning = function(e) { w <<- conditionMessage(e); invokeRestart("muffleWarning") }
+)
+isTRUE(grepl("NAs introduced by coercion", w, fixed=TRUE))
+"#,
+        );
+
+        let result = result.expect("seq_along must dispatch length()");
+        assert_eq!(result.logical_elt(0), Some(TRUE), "output={output:?}");
+
+    }
+
+
 
 
 

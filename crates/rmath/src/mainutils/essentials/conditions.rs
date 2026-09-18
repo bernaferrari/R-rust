@@ -1642,11 +1642,11 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 crate::sexp::envir::R_findVarInFrame(env, sym)
             };
-            crate::eval::builtin::has_builtin_handler(&name) || is_function_value(value)
+            is_function_value(value)
         } else {
             crate::sexp::envir::binding_exists_raw(env, sym, inherits)
-                || crate::eval::builtin::has_builtin_handler(&name)
         };
+
         Rf_ScalarLogical(if found { TRUE } else { FALSE })
     }
 }
