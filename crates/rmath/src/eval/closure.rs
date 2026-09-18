@@ -326,6 +326,11 @@ unsafe fn remap_methods_snapshot_cloenv(_op: SEXP, cloenv: SEXP) -> SEXP {
         if is_function_sexp(live) && !is_function_sexp(snap) {
             crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
         }
+        // Snapshot frames can hold R_MissingArg placeholders that shadow
+        // base primitives (ngettext). Install the live primitive there.
+        crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
+
+
         cloenv
     }
 }

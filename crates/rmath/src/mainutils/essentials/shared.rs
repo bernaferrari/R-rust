@@ -992,7 +992,8 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
             let _package_env_guard = crate::sexp::protect::protect(package_env);
             let attach_env = make_package_attach_env(package, namespace.as_ref(), package_env)?;
             if package == "methods" {
-                bind_methods_standardGeneric(package_env);
+                bind_methods_base_primitives(package_env);
+
                 retarget_methods_generics(package_env);
 
             }
@@ -1183,26 +1184,34 @@ pub(crate) fn is_builtin_package_dependency(package: &str) -> bool {
 
     )
 }
-unsafe fn bind_methods_standardGeneric(ns: SEXP) {
+pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
+
     unsafe {
-        let symbol = Rf_install(c"standardGeneric".as_ptr());
-        let value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
-        let kind = TYPEOF(value);
-        if kind == SEXPTYPE::CLOSXP
-            || kind == SEXPTYPE::BUILTINSXP
-            || kind == SEXPTYPE::SPECIALSXP
-        {
-            return;
-        }
-        let prim = crate::eval::primitive::make_primitive_binding(
+        for name in [
             "standardGeneric",
-            SEXPTYPE::BUILTINSXP,
-        );
-        if !prim.is_null() && prim != R_NilValue() {
-            crate::sexp::envir::defineVar(symbol, prim, ns);
+            "ngettext",
+            "gettext",
+            "bindtextdomain",
+            "dgettext",
+        ] {
+            let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
+            let kind = TYPEOF(value);
+            if kind == SEXPTYPE::CLOSXP
+                || kind == SEXPTYPE::BUILTINSXP
+                || kind == SEXPTYPE::SPECIALSXP
+            {
+                continue;
+            }
+            let prim = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
+            if !prim.is_null() && prim != R_NilValue() {
+                crate::sexp::envir::defineVar(symbol, prim, ns);
+            }
         }
     }
 }
+
+
 
 unsafe fn retarget_methods_generics(ns: SEXP) {
     unsafe {
@@ -1299,7 +1308,8 @@ pub(crate) unsafe fn load_package_namespace(
             }
         };
         if package == "methods" {
-            bind_methods_standardGeneric(package_env);
+            bind_methods_base_primitives(package_env);
+
             retarget_methods_generics(package_env);
 
         }
@@ -2179,7 +2189,8 @@ unsafe fn make_package_attach_env_inner(
         }
 
         if package == "methods" {
-            bind_methods_standardGeneric(package_env);
+            bind_methods_base_primitives(package_env);
+
             retarget_methods_generics(package_env);
 
         }
