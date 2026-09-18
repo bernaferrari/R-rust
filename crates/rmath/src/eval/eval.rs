@@ -2737,6 +2737,81 @@ isS4(g) && is(g, "standardGeneric") && identical(as.character(g@generic)[1], "no
         let result = result.expect("makeGeneric(norm) must produce a standardGeneric");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn setter_call_does_not_eval_language_replacement() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+f <- function(e, v) { body(e) <- v; e }
+g <- f(function(x) 1, quote(y))
+identical(body(g), quote(y))
+"#,
+        );
+        let result = result.expect("body<- must store a language value");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn remove_source_does_not_call_standardgeneric_body() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+g <- utils::removeSource(function(x, type, ...) standardGeneric("norm"))
+h <- utils::removeSource(function(x) x + 1)
+identical(body(g), quote(standardGeneric("norm"))) && identical(h(1), 2)
+"#,
+        );
+        let result = result.expect("removeSource must not evaluate language bodies");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn language_subassign_preserves_call() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+e <- quote(x + 1)
+e[2] <- list(e[[2]])
+identical(e, quote(x + 1))
+"#,
+        );
+        let result = result.expect("[<- on language must keep the call");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn setgeneric_norm_uses_implicit_generic() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setGeneric("norm")
+is(norm, "standardGeneric") && identical(as.character(norm@generic)[1], "norm")
+"#,
+        );
+        let result = result.expect("setGeneric(norm) must install the implicit generic");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn setmethod_norm_dispatches_character_type() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("zzz", slots = c(x = "NULL"))
+setMethod("norm", c(x = "zzz", type = "character"), function(x, type, ...) type)
+setMethod("rcond", c(x = "zzz", norm = "character"), function(x, norm, ...) norm)
+x <- new("zzz")
+identical(norm(x, "O"), "O") && identical(norm(x), "O") &&
+  identical(rcond(x, "O"), "O") && identical(rcond(x), "O")
+"#,
+        );
+        let result = result.expect("setMethod(norm/rcond) must dispatch like classes-methods.R");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
     #[test]
     fn gnu_norm_rcond_are_closures_with_implicit_methods() {
         let mut session = RSession::new();

@@ -321,15 +321,17 @@ unsafe fn dollar_field_symbol(field: SEXP) -> Option<SEXP> {
 
 unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP {
     unsafe {
-        let value = match TYPEOF(value) {
+        let wrap_lang = |x: SEXP| match TYPEOF(x) {
             t if t == SEXPTYPE::LANGSXP
                 || t == SEXPTYPE::SYMSXP
                 || t == SEXPTYPE::EXPRSXP =>
             {
-                crate::sexp::memory_ext::R_mkEVPROMISE(R_NilValue(), value)
+                crate::sexp::memory_ext::R_mkEVPROMISE(R_NilValue(), x)
             }
-            _ => value,
+            _ => x,
         };
+        let value = wrap_lang(value);
+        let target = wrap_lang(target);
         let mut tail = crate::sexp::constructors::Rf_cons(value, R_NilValue());
         SETTAG(tail, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
         let mut guards = vec![protect(tail)];

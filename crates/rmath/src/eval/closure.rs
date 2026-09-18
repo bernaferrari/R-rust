@@ -415,8 +415,8 @@ unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
         // Lazy-load sometimes leaves methods helpers in an empty snapshot
         // whose parent is EmptyEnv/base. asMethodDefinition's default
         // `list(.anyClassName)` then cannot see the methods namespace.
-        if methods_namespace_owns_closure(methods, op)
-            && disconnected_methods_snapshot(cloenv, empty, base)
+        if disconnected_methods_snapshot(cloenv, empty, base)
+            && methods_namespace_owns_closure(methods, op)
         {
             crate::sexp::accessors::SET_CLOENV(op, methods);
             return methods;

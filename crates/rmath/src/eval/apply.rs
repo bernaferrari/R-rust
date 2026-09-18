@@ -264,6 +264,44 @@ pub(crate) fn apply_builtin_safe<'a>(
     )
 }
 
+/// Apply a builtin to already-evaluated argument values.
+///
+/// GNU SETTER_CALL / GETTER_CALL push evaluated lhs/rhs. Feeding those
+/// through `apply_builtin_safe` would `evalList` them again and CALL a
+/// LANGSXP value (`body(f) <- quote(standardGeneric("norm"))`).
+pub(crate) fn apply_builtin_values_safe<'a>(
+    fun: Sexp<'a>,
+    call: Sexp<'a>,
+    args: Sexp<'a>,
+    rho: Sexp<'a>,
+) -> Result<Sexp<'a>, String> {
+    let _vmax = unsafe { vmaxget() };
+    let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
+    let flag = primitive
+        .clone()
+        .map(|primitive| primitive.print_flag)
+        .unwrap_or(0);
+    set_visibility_for_print_flag(flag);
+
+    let frame = PrimitiveCall {
+        fun,
+        call: call.clone(),
+        args: args.clone(),
+        rho,
+    };
+    let op_name = primitive_call_name(primitive, frame.fun.clone(), call);
+    let evaled_args = args.as_raw();
+    let _evaled_args = unsafe { crate::sexp::protect::protect(evaled_args) };
+    let result = apply_evaluated_builtin(frame, &op_name, evaled_args);
+    finish_application(
+        result,
+        flag,
+        &op_name,
+        VisibilityRestore::UnlessPrimitiveControlsIt,
+    )
+}
+
+
 fn apply_unevaluated_builtin<'a>(
     frame: PrimitiveCall<'a>,
     op_name: &str,

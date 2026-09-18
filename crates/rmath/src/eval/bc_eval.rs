@@ -923,7 +923,7 @@ unsafe fn eval_gnu_setter_call(
                 let value = Rf_cons(rhs, R_NilValue());
                 crate::sexp::accessors::SETTAG(value, value_sym);
                 crate::sexp::accessors::SETCDR(last, value);
-                super::apply::apply_builtin_safe(
+                super::apply::apply_builtin_values_safe(
                     Sexp::from_raw_unchecked(fun),
                     Sexp::from_raw_unchecked(call),
                     Sexp::from_raw_unchecked(frame_args),
@@ -1001,7 +1001,7 @@ unsafe fn eval_gnu_getter_call(
                     bc_error("GNU GETTER_CALL has no first argument");
                 }
                 crate::sexp::accessors::SETCAR(frame_args, lhs);
-                super::apply::apply_builtin_safe(
+                super::apply::apply_builtin_values_safe(
                     Sexp::from_raw_unchecked(fun),
                     Sexp::from_raw_unchecked(call),
                     Sexp::from_raw_unchecked(frame_args),
