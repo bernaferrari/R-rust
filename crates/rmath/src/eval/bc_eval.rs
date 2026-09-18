@@ -555,6 +555,22 @@ unsafe fn decrement_named_link(value: SEXP) {
     }
 }
 
+/// GNU `findVar` is unforced. `R_findVar` forces promises, which collapses a
+/// supplied empty-name value into `R_MissingArg` and makes GETVAR treat
+/// `recurse(formals(fn)[[i]])` as an unsupplied formal.
+unsafe fn find_var_unforced(symbol: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let symbol = crate::sexp::object::Sexp::from_raw_unchecked(symbol);
+        let rho = crate::sexp::object::Sexp::from_raw_unchecked(rho);
+        match crate::sexp::envir::find_var_binding_result(symbol, rho) {
+            Ok(Some(value)) => value.as_raw(),
+            Ok(None) => R_UnboundValue(),
+            Err(message) => bc_error(message),
+        }
+    }
+}
+
+
 /// GNU GETVAR / GETVAR_MISSOK match eval.c getvar(keepmiss).
 unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: bool) -> SEXP {
     unsafe {
@@ -568,7 +584,7 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
             }
             value
         } else {
-            R_findVar(symbol, rho)
+            find_var_unforced(symbol, rho)
         };
         if value == R_UnboundValue() {
             bc_unbound_object_error(symbol);
@@ -587,11 +603,11 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
             if keep_missing && crate::sexp::envir::R_isMissing(symbol, rho) != 0 {
                 return R_MissingArg();
             }
-            let forced = forcePromise(value);
-            if forced == R_MissingArg() && !keep_missing {
-                bc_missing_arg_error(symbol);
-            }
-            forced
+            // GNU getvar() returns PRVALUE after force with no second
+            // missing check. `recurse(formals(fn)[[i]])` supplies a
+            // promise whose value is the empty name; that is a value,
+            // not an unsupplied formal (eval.c:5855-5868).
+            forcePromise(value)
         } else {
             value
         }
@@ -3200,7 +3216,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     super::runtime::set_visible(TRUE);
                     // Lookup can force a promise or invoke an active binding before
                     // returning; root the operand stack for the lookup itself.
-                    let val = with_stack_rooted(&stack, sym, || R_findVar(sym, rho));
+                    let val = with_stack_rooted(&stack, sym, || find_var_unforced(sym, rho));
                     if val == R_UnboundValue() {
                         bc_error("object not found");
                     } else if val == R_MissingArg() {
@@ -3215,9 +3231,6 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
                         let forced =
                             with_stack_rooted(&stack, val, || unsafe { forcePromise(val) });
-                        if forced == R_MissingArg() {
-                            bc_missing_arg_error(sym);
-                        }
                         stack.push(forced);
                     } else {
                         stack.push(val);

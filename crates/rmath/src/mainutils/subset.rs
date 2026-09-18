@@ -2291,11 +2291,11 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let mut ans = R_findVarInFrame(x, sym);
             if isPromise(ans) {
                 let _promise_guard = protect(ans);
-                /* Force the promise -- in full R this would eval in rho */
-                ans = CAR(ans); /* simplified: just get the value */
+                ans = crate::sexp::envir::forcePromise(ans);
             } else {
                 ENSURE_NAMEDMAX(ans);
             }
+
             if ans == R_UnboundValue() {
                 return R_NilValue();
             }
@@ -2536,11 +2536,10 @@ pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEX
         let _input_guard = protect(input);
         let mut nlist = CADR(args);
 
-        /* Evaluate if promise */
         if isPromise(nlist) {
-            nlist = CAR(nlist); /* simplified: just get the expression */
-            let _ = env;
+            nlist = crate::sexp::envir::forcePromise(nlist);
         }
+
 
         if isSymbol(nlist) {
             if !syminp.is_null() {

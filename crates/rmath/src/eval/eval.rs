@@ -2671,6 +2671,38 @@ g <- getGeneric("sum")
         let result = result.expect("exists() and getGeneric(sum) must match GNU");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn compiled_remove_source_keeps_extracted_missing_formals() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+f <- function(z) is.name(z) && !missing(z)
+g <- utils::removeSource(function(x) 1)
+isTRUE(f(formals(function(x) x)[[1]])) &&
+  identical(names(formals(g)), "x") &&
+  identical(g(1), 1)
+"#,
+        );
+        let result = result.expect("GETVAR must return a supplied empty-name value");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+    #[test]
+    fn implicit_norm_generic_is_standard_generic() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+g <- implicitGeneric("norm")
+isS4(g) && is(g, "standardGeneric") &&
+  identical(as.character(g@generic)[1], "norm") &&
+  identical(as.character(attr(g, "generic"))[1], "norm")
+"#,
+        );
+        let result = result.expect("methods must register the implicit norm generic");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
     #[test]
     fn gnu_norm_rcond_are_closures_with_implicit_methods() {
         let mut session = RSession::new();
