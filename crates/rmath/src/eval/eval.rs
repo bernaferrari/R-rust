@@ -1778,6 +1778,21 @@ TRUE
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn str_prints_nan_and_na_like_gnu() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "str(c(NaN, 1))\nstr(c(NA_real_, 1))\ninvisible(NULL)\n",
+        );
+        assert!(
+            captured.stdout.contains("num [1:2] NaN 1")
+                && captured.stdout.contains("num [1:2] NA 1"),
+            "str() must distinguish NaN from NA, got {:?}",
+            captured.stdout
+        );
+    }
+
+
 
     #[test]
     fn str_data_frame_aligns_names_and_omits_column_length() {

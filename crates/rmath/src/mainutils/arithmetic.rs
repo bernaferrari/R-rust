@@ -52,12 +52,13 @@ pub extern "C" fn R_ValueOfNA() -> f64 {
 
 /// Check if a NaN value is specifically R's NA (not just any NaN).
 pub extern "C" fn R_NaN_is_R_NA(x: f64) -> c_int {
-    if x.is_nan() && x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+    if crate::sexp::ffi::is_na_real(x) {
         1
     } else {
         0
     }
 }
+
 
 /// Check if a value is R's NA.
 pub extern "C" fn R_IsNA(x: f64) -> c_int {

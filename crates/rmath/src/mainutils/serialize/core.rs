@@ -790,8 +790,14 @@ unsafe fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
                 let data = REAL(arg);
                 for i in 0..n as isize {
                     let v = *data.offset(i);
-                    if v.is_nan() {
+                    if crate::sexp::ffi::is_na_real(v) {
                         SET_STRING_ELT(s, i as R_xlen_t, crate::sexp::globals::R_NaString());
+                    } else if v.is_nan() {
+                        SET_STRING_ELT(
+                            s,
+                            i as R_xlen_t,
+                            Rf_mkCharLen(b"NaN".as_ptr() as *const c_char, 3),
+                        );
                     } else {
                         let text = if v.fract() == 0.0 && v.abs() < 1e15 {
                             format!("{}", v as i64)

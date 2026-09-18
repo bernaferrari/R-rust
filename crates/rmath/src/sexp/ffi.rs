@@ -18,12 +18,23 @@ pub const NA_INTEGER: c_int = c_int::MIN;
 /// R's NA_LOGICAL sentinel value.
 pub const NA_LOGICAL: c_int = c_int::MIN;
 
-/// R's NA_REAL bit pattern (IEEE 754 quiet NaN with specific payload).
-/// Must match NA_REAL exactly so that R_IsNA(NA_REAL) returns true.
-pub const R_NA_BIT_PATTERN: u64 = 0x7FF80000000007A2;
+/// GNU `R_ValueOfNA()`: high word `0x7ff00000`, low word `1954`
+/// (`arithmetic.c`). Quiet-NaN variants with the same payload are also NA.
+pub const R_NA_BIT_PATTERN: u64 = 0x7FF00000000007A2;
+
+/// Low 32 bits of GNU `NA_REAL` (`arithmetic.c` `lw = 1954`).
+pub const R_NA_PAYLOAD: u32 = 1954;
 
 /// R's NA_REAL sentinel — derived from R_NA_BIT_PATTERN so they cannot drift.
 pub const NA_REAL: c_double = f64::from_bits(R_NA_BIT_PATTERN);
+
+/// GNU `R_IsNA`: any NaN whose payload is 1954, including both signaling
+/// (`0x7ff00000000007a2`) and quiet (`0x7ff80000000007a2`) encodings.
+#[inline]
+pub fn is_na_real(x: f64) -> bool {
+    x.is_nan() && (x.to_bits() as u32) == R_NA_PAYLOAD
+}
+
 
 /// R's boolean type (0 = FALSE, 1 = TRUE, NA_LOGICAL = NA).
 pub type Rboolean = c_int;

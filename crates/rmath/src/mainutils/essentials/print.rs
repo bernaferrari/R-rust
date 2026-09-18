@@ -677,12 +677,13 @@ fn str_drop0trailing(s: &str) -> String {
 unsafe fn str_format_real(x: f64) -> String {
     unsafe {
         if x.is_nan() {
-            return if x.to_bits() == R_NA_BIT_PATTERN {
+            return if crate::sexp::ffi::is_na_real(x) {
                 "NA".to_string()
             } else {
                 "NaN".to_string()
             };
         }
+
         let tmp = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
         if tmp.is_null() {
             return x.to_string();
@@ -1160,10 +1161,15 @@ unsafe fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
         let mut parts = Vec::with_capacity(show);
         for i in 0..show {
             let v = REAL_ELT(tmp, i as std::os::raw::c_int);
-            if v.is_nan() {
+            if crate::sexp::ffi::is_na_real(v) {
                 parts.push("NA".to_string());
                 continue;
             }
+            if v.is_nan() {
+                parts.push("NaN".to_string());
+                continue;
+            }
+
 
             let encoded = crate::mainutils::printutils::EncodeReal0(
                 v,
