@@ -2384,12 +2384,25 @@ pub unsafe fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `cumvar(x)` — cumulative sample variance by Youngs-Cramer algorithm.
-pub unsafe fn do_cumvar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_cumvar(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+
         if TYPEOF(x) == SEXPTYPE::CPLXSXP {
             base_error("'cumvar' not defined for complex numbers");
         }

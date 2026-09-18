@@ -114,18 +114,33 @@ pub unsafe fn do_cache_class(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-pub unsafe fn do_xtfrm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
         }
-
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"xtfrm".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
+
         if sexp_has_class(x, "Date")
             || sexp_has_class(x, "POSIXct")
             || sexp_has_class(x, "POSIXt")
         {
-            return do_xtfrm_Date(_call, _op, args, _rho);
+            return do_xtfrm_Date(call, op, args, rho);
+
         }
         match TYPEOF(x) {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::LGLSXP => x,

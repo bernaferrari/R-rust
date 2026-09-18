@@ -2458,7 +2458,8 @@ local({
     error = function(e) conditionMessage(e)
   )
   msg <- paste(as.character(w), collapse = " ")
-  !grepl("topic '42'", msg, fixed = TRUE) && !grepl("topic 42", msg, fixed = TRUE)
+  !grepl("42", msg, fixed = TRUE) && (is.character(w) && grepl("new", msg, fixed = TRUE) || !is.character(w))
+
 })
 "#,
 
@@ -2584,6 +2585,33 @@ identical(as.character(s), c("foo","ANY")) &&
         let result = result.expect("setMethod(^) must store foo#ANY and dispatch like GNU");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+    #[test]
+    fn primitives_internal_generics_dispatch_s3_like_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+x <- structure(pi, class="testit")
+xx <- structure("OK", class="testOK")
+ok <- TRUE
+for (f in c("cumvar", "dim", "dimnames", "xtfrm")) {
+  method <- paste(f, "testit", sep=".")
+  ff <- get(f, .GenericArgsEnv)
+  body(ff) <- xx
+  assign(method, ff, .GlobalEnv)
+  res <- eval(substitute(ff(x), list(ff=as.name(f))))
+  ok <- ok && identical(res, xx)
+  rm(list=method, envir=.GlobalEnv)
+}
+assign("levels<-.testit", function(x, value) xx, .GlobalEnv)
+y <- x
+ok <- ok && identical(eval(substitute(`levels<-`(y, value=pi))), xx)
+ok
+"#,
+        );
+        let result = result.expect("internal generics must UseMethod like GNU primitives.R");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
 
 
 

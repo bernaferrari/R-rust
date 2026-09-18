@@ -288,12 +288,27 @@ pub unsafe fn do_ncol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dim(x)` — dimensions as integer vector.
-pub unsafe fn do_dim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_dim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"dim".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+
         if is_data_frame_object(x) {
             let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             if dim.is_null() {
@@ -483,13 +498,26 @@ pub unsafe fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<S
     }
 }
 /// R's `dimnames(x)` — get dimension names of a matrix/array.
-pub unsafe fn do_dimnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_dimnames(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"dimnames".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-
         crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()))
     }
 }

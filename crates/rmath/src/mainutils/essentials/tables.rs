@@ -2357,8 +2357,22 @@ pub unsafe fn do_levels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `levels(x) <- value` — replace factor levels or the raw levels attribute.
-pub unsafe fn do_levels_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_levels_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            call,
+            op,
+            c"levels<-".as_ptr(),
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         let value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
