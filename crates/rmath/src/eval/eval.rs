@@ -1474,6 +1474,38 @@ inherits(s, "table") && is.matrix(s) && typeof(s) == "character" &&
         );
     }
 
+    #[test]
+    fn print_language_objects_keep_class_and_pairlist_cells() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            r#"
+obj <- structure(quote(stop("should not be evaluated")), class = "foo")
+list(obj)
+pairlist(obj)
+structure(list(), attr = obj)
+invisible(NULL)
+"#,
+        );
+        assert!(
+            captured.stdout.contains("stop(\"should not be evaluated\")")
+                && captured.stdout.contains("attr(,\"class\")")
+                && captured.stdout.contains("[1] \"foo\""),
+            "language objects must print deparsed call plus class, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains("[pairlist; length=0]"),
+            "pairlist(obj) must print cells, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            captured.stdout.contains("attr(,\"attr\")"),
+            "list attributes that are language objects must print, got {:?}",
+            captured.stdout
+        );
+    }
+
+
 
 
 

@@ -606,8 +606,9 @@ fn printable_attribute_name(attr: SEXP) -> Option<String> {
 }
 
 fn is_structural_print_attribute(name: &str) -> bool {
-    matches!(name, "names" | "dim" | "dimnames" | "class" | "row.names")
+    matches!(name, "names" | "dim" | "dimnames" | "row.names")
 }
+
 
 fn format_printable_attributes(x: Sexp<'_>) -> String {
     unsafe {
@@ -636,6 +637,16 @@ fn format_printable_attributes(x: Sexp<'_>) -> String {
             }
         }
         out
+    }
+}
+
+
+fn format_list_body_with_attributes(body: String, x: Sexp<'_>) -> String {
+    let attrs = format_printable_attributes(x);
+    if attrs.is_empty() {
+        body
+    } else {
+        format!("{body}\n{attrs}")
     }
 }
 
@@ -1760,21 +1771,69 @@ fn list_element_header(index: usize, names: &[String]) -> String {
 }
 
 fn format_list(x: Sexp<'_>) -> String {
+    format_list_with_path(x, "")
+}
+
+fn format_list_with_path(x: Sexp<'_>, path: &str) -> String {
     if x.clone().len() == 0 {
-        return "list()".to_string();
+        return format_with_printable_attributes("list()".to_string(), x);
     }
 
     let names = list_names(x.clone());
     let mut sections = Vec::with_capacity(x.clone().len() as usize);
-    for (index, elem) in x.iter_vector().enumerate() {
-        sections.push(format!(
-            "{}\n{}",
-            list_element_header(index, &names),
-            format_sexp_direct(elem)
-        ));
+    for (index, elem) in x.clone().iter_vector().enumerate() {
+        let header = format!("{path}{}", list_element_header(index, &names));
+        let body = format_list_child(elem, &header);
+        sections.push(format!("{header}\n{body}"));
     }
-    sections.join("\n\n")
+    format_list_body_with_attributes(sections.join("\n\n"), x)
 }
+
+
+fn format_pairlist(x: Sexp<'_>) -> String {
+    format_pairlist_with_path(x, "")
+}
+
+fn format_pairlist_with_path(x: Sexp<'_>, path: &str) -> String {
+    unsafe {
+        let mut sections = Vec::new();
+        let mut cell = x.clone().as_raw();
+        let mut index = 0usize;
+        while !cell.is_null() && cell != R_NilValue() && TYPEOF(cell) == SEXPTYPE::LISTSXP {
+            let tag = match printable_attribute_name(cell) {
+                Some(name) if !name.is_empty() => format!("${name}"),
+                _ => format!("[[{}]]", index + 1),
+            };
+            let header = format!("{path}{tag}");
+            let body = if let Some(elem) = Sexp::from_raw(CAR(cell)) {
+                format_list_child(elem, &header)
+            } else {
+                "NULL".to_string()
+            };
+            sections.push(format!("{header}\n{body}"));
+            cell = CDR(cell);
+            index += 1;
+        }
+
+        if sections.is_empty() {
+            return format_with_printable_attributes("NULL".to_string(), x);
+        }
+        format_list_body_with_attributes(sections.join("\n\n"), x)
+
+
+    }
+}
+
+fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
+    match elem.clone().typeof_() {
+        SEXPTYPE::VECSXP if format_data_frame(elem.clone()).is_none() => {
+            format_list_with_path(elem, path)
+        }
+        SEXPTYPE::LISTSXP => format_pairlist_with_path(elem, path),
+        _ => format_sexp_direct(elem),
+    }
+}
+
 
 /// Format a value for top-level emission, excluding the caller-owned final
 /// line terminator.
@@ -1786,14 +1845,18 @@ fn format_list(x: Sexp<'_>) -> String {
 /// their ordinary final newline.
 pub(crate) fn format_sexp_top_level(x: Sexp<'_>) -> String {
     let mut rendered = format_sexp_direct(x.clone());
-    if x.clone().typeof_() == SEXPTYPE::VECSXP
-        && x.clone().len() != 0
-        && format_data_frame(x).is_none()
-    {
+    let needs_list_sep = match x.clone().typeof_() {
+        SEXPTYPE::VECSXP => x.clone().len() != 0 && format_data_frame(x).is_none(),
+        SEXPTYPE::LISTSXP => !x.is_nil(),
+        _ => false,
+    };
+    if needs_list_sep {
         rendered.push('\n');
     }
     rendered
 }
+
+
 
 fn deparse_expression_one(expr: SEXP) -> String {
     unsafe {
@@ -2367,11 +2430,13 @@ pub fn print_value(x: Sexp<'_>) {
         | SEXPTYPE::CLOSXP
         | SEXPTYPE::SPECIALSXP
         | SEXPTYPE::BUILTINSXP => {
-            // print.c PrintValueRec deparses these language objects: a
-            // closure prints as `function (x) ...`, a primitive as
-            // `.Primitive("sin")`.
-            emit(&format!("{}\n", deparse_expression_one(x.as_raw())));
+            let base = deparse_expression_one(x.clone().as_raw());
+            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
+        SEXPTYPE::LISTSXP => {
+            emit(&format!("{}\n", format_sexp_top_level(x)));
+        }
+
         SEXPTYPE::NILSXP => {
             emit("NULL\n");
         }
@@ -2691,19 +2756,23 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         | SEXPTYPE::LANGSXP
         | SEXPTYPE::CLOSXP
         | SEXPTYPE::SPECIALSXP
-        | SEXPTYPE::BUILTINSXP => deparse_expression_one(x.as_raw()),
+        | SEXPTYPE::BUILTINSXP => {
+            let base = deparse_expression_one(x.clone().as_raw());
+            format_with_printable_attributes(base, x)
+        }
+        SEXPTYPE::LISTSXP => format_pairlist(x),
         SEXPTYPE::ENVSXP => format_environment(x),
         tp => {
             let type_name = match tp {
                 SEXPTYPE::RAWSXP => "raw",
                 SEXPTYPE::CPLXSXP => "complex",
                 SEXPTYPE::CLOSXP => "closure",
-                SEXPTYPE::LISTSXP => "pairlist",
                 SEXPTYPE::CHARSXP => "charsxp",
                 _ => "unknown",
             };
             format!("[{}; length={}]", type_name, x.len())
         }
+
     }
 }
 /// First class string of an object, for print.condition-style rendering.
