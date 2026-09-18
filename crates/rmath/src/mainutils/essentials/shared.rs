@@ -266,8 +266,8 @@ pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _e2 = protect(evaled);
         let evaled = Rf_cons(object, evaled);
         let _e3 = protect(evaled);
-        let _ = do_set_slot(call, op, evaled, rho);
-        object
+        do_set_slot(call, op, evaled, rho)
+
     }
 }
 

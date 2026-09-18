@@ -1165,6 +1165,25 @@ TRUE
         );
     }
 
+    #[test]
+    fn s4_list_class_new_keeps_unnamed_data_part() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("mp1Port", slots = c(prec = "integer", d = "integer"))
+setClass("mpPort", contains = "list")
+m <- new("mpPort", list(new("mp1Port"), new("mp1Port", prec=1L, d=3:5)))
+identical(length(m), 2L) && identical(typeof(m), "list")
+"#,
+        );
+        let result = result.expect("new(list-class, list(...)) must keep .Data");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
 
 
 

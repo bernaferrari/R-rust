@@ -779,7 +779,9 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
 
 thread_local! {
     static IN_GET_DATA_PART: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static IN_SET_DATA_PART: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
+
 
 unsafe fn r_data_part_fallback(obj: SEXP) -> SEXP {
     unsafe {
@@ -1203,6 +1205,25 @@ pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
         };
         let name_str = elt_to_string(name_sym, 0);
         if name_str == ".Data" {
+            if !IN_SET_DATA_PART.with(std::cell::Cell::get) {
+                if let Some(fun) = methods_exported_closure(c"setDataPart") {
+                    if let Some(methods) =
+                        crate::mainutils::essentials::cached_namespace_by_name("methods")
+                    {
+                        IN_SET_DATA_PART.with(|flag| flag.set(true));
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            let call = Rf_lang3(fun, obj, value);
+                            let _call = protect(call);
+                            crate::eval::eval::Rf_eval(call, methods)
+                        }));
+                        IN_SET_DATA_PART.with(|flag| flag.set(false));
+                        match result {
+                            Ok(val) => return val,
+                            Err(payload) => std::panic::resume_unwind(payload),
+                        }
+                    }
+                }
+            }
             // GNU setDataPart on a function S4 object (.mergeAttrs): the
             // closure IS the object. Copy formals/body/env from value.
             if TYPEOF(obj) == SEXPTYPE::CLOSXP && TYPEOF(value) == SEXPTYPE::CLOSXP {
