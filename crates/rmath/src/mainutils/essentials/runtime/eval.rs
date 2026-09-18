@@ -64,8 +64,18 @@ pub unsafe fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_eval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let _eval_ctx = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
+            call,
+            _rho,
+            crate::sexp::globals::R_BaseEnv(),
+            None,
+            R_NilValue(),
+            R_NilValue(),
+        );
+
         let expr = CAR(args);
         let envir_arg = CAR(CDR(args));
         if expr.is_null() || expr == R_NilValue() {

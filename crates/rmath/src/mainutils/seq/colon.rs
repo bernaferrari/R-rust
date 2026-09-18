@@ -592,7 +592,18 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
+
         check1arg(args, call, b"along.with\0".as_ptr() as *const c_char);
+        let _along_ctx = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
+            call,
+            rho,
+            crate::sexp::globals::R_BaseEnv(),
+            None,
+            R_NilValue(),
+            R_NilValue(),
+        );
+
 
         let x = CAR(args);
         let mut dispatched = false;

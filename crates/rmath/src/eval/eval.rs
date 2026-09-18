@@ -2678,18 +2678,21 @@ g <- getGeneric("sum")
             r#"
 x <- structure(pi, class="testit")
 length.testit <- function(x) "OK"
-w <- NULL
-withCallingHandlers(
-  try(seq_along(x), silent=TRUE),
-  warning = function(e) { w <<- conditionMessage(e); invokeRestart("muffleWarning") }
-)
-isTRUE(grepl("NAs introduced by coercion", w, fixed=TRUE))
+try(eval(substitute(ff(x), list(ff=as.name("seq_along")))), silent=TRUE)
+TRUE
 "#,
         );
-
         let result = result.expect("seq_along must dispatch length()");
-        assert_eq!(result.logical_elt(0), Some(TRUE), "output={output:?}");
-
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        let text = format!("{output:?}");
+        assert!(
+            text.contains("NAs introduced by coercion"),
+            "missing coercion warning: {text}"
+        );
+        assert!(
+            text.contains("In eval"),
+            "missing GNU In-eval attribution: {text}"
+        );
     }
 
 
