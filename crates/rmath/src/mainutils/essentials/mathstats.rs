@@ -486,23 +486,34 @@ pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return dispatched;
         }
-        let x_arg = CAR(args);
-        let digits_arg = CAR(CDR(args));
+        let m = crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "digits"]);
+        let missing = crate::sexp::globals::R_MissingArg();
+        let force = |v: SEXP| -> SEXP {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::PROMSXP {
+                crate::sexp::envir::forcePromise(v)
+            } else {
+                v
+            }
+        };
+        let x_arg = force(*m.first().unwrap_or(&R_NilValue()));
+        let digits_arg = force(m.get(1).copied().unwrap_or(missing));
 
-        if x_arg.is_null() || x_arg == R_NilValue() {
+        if x_arg.is_null() || x_arg == R_NilValue() || x_arg == missing {
             return R_NilValue();
         }
-        // Stock routes complex x to complex_math2 (main/complex.c): apply
-        // fprec (z_prec) to each part with the digits scalar.
         if TYPEOF(x_arg) == SEXPTYPE::CPLXSXP {
             return math2_complex(call, x_arg, digits_arg, 6.0, "signif", z_prec_r);
         }
-        let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
-            6.0
+        let nx = XLENGTH(x_arg);
+        let nd = if digits_arg.is_null()
+            || digits_arg == R_NilValue()
+            || digits_arg == missing
+        {
+            0
         } else {
-            real_or_default(digits_arg, 6.0)
+            XLENGTH(digits_arg)
         };
-        let n = XLENGTH(x_arg);
+        let n = if nd == 0 { nx } else { nx.max(nd) };
         let t = TYPEOF(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
@@ -510,18 +521,26 @@ pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let _result_guard = protect(result);
         let dst = REAL(result);
-        // Mirror if_NA_Math2_set: NA in either operand yields NA (regular
-        // NaN flows through fprec as x + digits, like upstream).
-        let digits_is_na = digits.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
         for i in 0..n {
+            let xi = if nx == 0 { 0 } else { i % nx };
             let v = if t == SEXPTYPE::REALSXP {
-                *REAL(x_arg).add(i as usize)
+                *REAL(x_arg).add(xi as usize)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let iv = *INTEGER(x_arg).add(i as usize);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
+                let iv = *INTEGER(x_arg).add(xi as usize);
+                if iv == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
             } else {
                 NA_REAL
             };
+            let digits = if nd == 0 {
+                6.0
+            } else {
+                real_elt_or_default(digits_arg, i, 6.0)
+            };
+            let digits_is_na = digits.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
             *dst.add(i as usize) =
                 if digits_is_na || v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     NA_REAL

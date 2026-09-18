@@ -1304,6 +1304,41 @@ identical(names(v), c("6", "7", "8")) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn signif_recycles_digits_like_gnu_math2() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+z <- c(2.002566e-308, 2.447581e-308)
+m <- outer(z, 0:3, signif)
+identical(format(m[, 1], digits = 1), format(m[, 2], digits = 1)) &&
+  !identical(format(m[, 2], scientific = TRUE), format(m[, 4], scientific = TRUE))
+"#,
+        );
+        let result = result.expect("signif must recycle a digits vector");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn cat_uses_scientific_for_large_whole_doubles() {
+        let mut session = RSession::new();
+        let (_, captured, _) = session.eval_script_with_output_capture(
+            "cat(signif(1.234567891234567e27, 1), \"\\n\")\n",
+        );
+        assert!(
+            captured.stdout.contains("1e+27"),
+            "cat of signif(1e27, 1) must be scientific, got {:?}",
+            captured.stdout
+        );
+        assert!(
+            !captured.stdout.contains("10000000000000000"),
+            "cat must not dump the full integer mantissa, got {:?}",
+            captured.stdout
+        );
+    }
+
+
+
 
 
 

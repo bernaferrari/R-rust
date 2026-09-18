@@ -418,9 +418,6 @@ fn format_integer_value(v: i32) -> String {
 }
 
 pub(crate) fn format_real_value(v: f64) -> String {
-
-    // IEEE allows signed zeros; print them as plain 0 like stock R's
-    // EncodeReal0 ("if (x == 0.0) x = 0.0").
     let v = if v == 0.0 { 0.0 } else { v };
     if R_IsNA(v) {
         "NA".to_string()
@@ -432,11 +429,20 @@ pub(crate) fn format_real_value(v: f64) -> String {
         } else {
             "Inf".to_string()
         }
-    } else if v.fract() == 0.0 {
+    } else if v.fract() == 0.0 && !needs_scientific(v) {
         format!("{v:.0}")
     } else {
         format_r_default_real(v)
     }
+}
+
+fn needs_scientific(v: f64) -> bool {
+    if !v.is_finite() || v == 0.0 {
+        return false;
+    }
+    let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
+    let exponent = v.abs().log10().floor() as i32;
+    !(-4..digits).contains(&exponent)
 }
 
 fn is_finite_r_number(v: f64) -> bool {
@@ -472,8 +478,8 @@ fn format_real_vector_values(x: Sexp<'_>, limit: R_xlen_t) -> Vec<String> {
 
 fn trim_float(s: String) -> String {
     let (mut mantissa, exponent) = match s.find(['e', 'E']) {
-        Some(idx) => (s[..idx].to_string(), &s[idx..]),
-        None => (s, ""),
+        Some(idx) => (s[..idx].to_string(), s[idx..].to_string()),
+        None => (s, String::new()),
     };
     if mantissa.contains('.') {
         while mantissa.ends_with('0') {
@@ -483,8 +489,21 @@ fn trim_float(s: String) -> String {
             mantissa.pop();
         }
     }
+    let exponent = if exponent.len() >= 2 {
+        let mark = &exponent[..1];
+        let rest = &exponent[1..];
+        if rest.starts_with('+') || rest.starts_with('-') {
+            format!("{mark}{rest}")
+        } else {
+            format!("{mark}+{rest}")
+        }
+    } else {
+        exponent
+    };
     format!("{mantissa}{exponent}")
 }
+
+
 
 fn format_r_default_real(v: f64) -> String {
     let digits = 7i32;
