@@ -11,9 +11,10 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, PRINTNAME, SET_ATTRIB, SET_STRING_ELT, SETCAR, SETCDR, TAG, TYPEOF,
-    XLENGTH,
+    ATTRIB, CAR, CDR, CHAR, PRINTNAME, SET_ATTRIB, SET_NAMED, SET_STRING_ELT, SETCAR, SETCDR, TAG,
+    TYPEOF, XLENGTH,
 };
+
 
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -338,7 +339,11 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
 
             return Rf_mkString(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
         }
+        // GNU returns the attribute SEXP; callers may `x[] <-` it
+        // (.traceClassName). Mark shared so subassign duplicates.
+        SET_NAMED(class_val, 2);
         class_val
+
     }
 }
 

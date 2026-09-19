@@ -3366,6 +3366,47 @@ is(m0, "MethodDefinition") &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn class_attribute_is_namedmax_on_return() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+f <- structure(function(x) x, class = c("myfun", "function"))
+cn <- class(f)
+cn[] <- paste0(cn, "WithTrace")
+identical(class(f), c("myfun", "function")) &&
+  identical(cn, c("myfunWithTrace", "functionWithTrace"))
+"#,
+        );
+        let result = result.expect("class() must not alias the live class attribute");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn classes_methods_trace_multiclass_function() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setOldClass(c("myfun", "function"))
+f <- structure(function(x) x, class = c("myfun", "function"))
+n <- 0
+tr <- try(trace("f", quote(n <<- n + 1), print = FALSE), silent=TRUE)
+inherits(tr, "try-error") &&
+  identical(class(f), c("myfun", "function")) &&
+  identical(f(1), 1) && identical(n, 0)
+"#,
+        );
+        let result = result.expect("GNU 4.6.1: multi-string class() trace fails; class attribute stays put");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
+
+
 
 
 
