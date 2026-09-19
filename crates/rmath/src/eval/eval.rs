@@ -3993,7 +3993,8 @@ s1 <- getMethod("summary", "mle", where = "stats4")
 s2 <- getMethod("summary", "mle", where = "package:stats4")
 is(c1, "classRepresentation") &&
   is(s1, "MethodDefinition") &&
-  identical(c1, c2) && identical(s1, s2)
+  identical(c1, c2) && identical(s1, s2) &&
+  is(getClass("mle"), "classRepresentation")
 "#,
         );
         let result = result.unwrap_or_else(|e| {
@@ -4010,6 +4011,8 @@ is(c1, "classRepresentation") &&
             output.stderr
         );
     }
+
+
 
 
 

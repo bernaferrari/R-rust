@@ -1032,17 +1032,13 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
             attach_package_env(attach_env);
             if package == "methods" {
                 run_methods_onload_cache_metadata(package_env);
-            } else if let Some(methods_ns) = cached_namespace_by_name("methods") {
+            } else {
                 // GNU library() after methods is on: cacheMetaData(env, TRUE).
-                let attach = Rf_ScalarLogical(TRUE);
-                let _attach = protect(attach);
-                eval_methods_ns_fun(
-                    methods_ns,
-                    c"cacheMetaData",
-                    attach_env,
-                    Some(attach),
-                );
+                // Rf_lang3(cacheMetaData, env, TRUE) in the methods ns did
+                // not populate .classTable; methods::: from .GlobalEnv does.
+                cache_attached_package_metadata(package);
             }
+
 
 
             Ok(())
@@ -1305,6 +1301,30 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
 
     }
 }
+
+/// GNU `library()`: `methods:::cacheMetaData(pos.to.env(pos), TRUE)`.
+unsafe fn cache_attached_package_metadata(package: &str) {
+    if package.is_empty() || cached_namespace_by_name("methods").is_none() {
+        return;
+    }
+    let src = format!(
+        "try(methods:::cacheMetaData(as.environment(\"package:{package}\"), TRUE), silent = TRUE)"
+    );
+    let parsed = crate::sexp::memory::with_arena(|arena| {
+        crate::eval::parser::parse_expressions(&src, arena)
+    });
+    crate::eval::parser::flush_literal_warnings();
+    let Ok(exprs) = parsed else {
+        return;
+    };
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        for expr in exprs {
+            let _ = crate::eval::eval::Rf_eval(expr, crate::sexp::globals::R_GlobalEnv());
+        }
+    }));
+}
+
+
 
 /// GNU `.initImplicitGenerics` ends with `registerImplicitGenerics(where)`.
 /// The table entry is package `"stats"`; `implicitGeneric` only finds it
@@ -2624,13 +2644,18 @@ unsafe fn make_package_attach_env_inner(
         }
         // GNU exportMethods also exports the per-generic method tables
         // (.__T__coef:stats4, .__M__...) onto the attached package env.
-        // hasMethods() with missing where walks search() and testEv()
-        // those tables with inherits=FALSE.
+        // exportClasses copies .__C__* class metadata so cacheMetaData
+        // and getClass(where="package:pkg") see the definitions.
         for name in frame_binding_names(package_env, true) {
-            if name.starts_with(".__T__") || name.starts_with(".__M__") {
+            if name.starts_with(".__T__")
+                || name.starts_with(".__M__")
+                || name.starts_with(".__C__")
+            {
                 push_unique(&mut exports, name);
             }
         }
+
+
 
 
         // Crayon-style dynamic exports: top-level package code may
@@ -2714,6 +2739,16 @@ pub(crate) fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
                     push_unique(&mut directives.exports, name);
                 }
             }
+            "exportClasses" => {
+                for name in split_namespace_args(&args)
+                    .into_iter()
+                    .filter_map(clean_namespace_name)
+                {
+                    push_unique(&mut directives.exports, format!(".__C__{name}"));
+                }
+            }
+
+
 
             "exportPattern" => {
                 if let Some(pattern) = split_namespace_args(&args)
