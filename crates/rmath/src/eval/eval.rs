@@ -3663,6 +3663,49 @@ is(m, "MethodDefinition")
         );
     }
 
+    #[test]
+    fn logic_group_brob_and_errors() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+stopifnot(all(getGroupMembers("Logic") %in% c("&", "|")),
+          any(getGroupMembers("Ops") == "Logic"))
+setClass("brob", contains="numeric")
+b <- new("brob", 3.14)
+logic.brob.error <- function(nm)
+    stop("logic operator '", nm, "' not applicable to brobs")
+logic2 <- function(e1,e2) logic.brob.error(.Generic)
+setMethod("Logic", signature("brob", "ANY"), logic2)
+setMethod("Logic", signature("ANY", "brob"), logic2)
+generic_ok <- isTRUE(tryCatch({ getGeneric("&")(b, b); FALSE }, error=function(e)
+    grepl("not applicable to brobs", conditionMessage(e), fixed=TRUE)))
+prim_ok <- isTRUE(tryCatch({ b & b; FALSE }, error=function(e)
+    grepl("not applicable to brobs", conditionMessage(e), fixed=TRUE)))
+generic_ok && prim_ok
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "logic group brob: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
 
 
 

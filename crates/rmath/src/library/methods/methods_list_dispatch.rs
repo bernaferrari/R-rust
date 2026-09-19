@@ -513,6 +513,133 @@ unsafe fn string_vector(values: &[String]) -> SEXP {
     }
 }
 
+/// GNU `do_inherited_table`: `.findInheritedMethods(classes, fdef, mtable)`
+/// with `table` taken from the generic's `.MTable` so group methods apply.
+unsafe fn do_inherited_table(
+    classes: SEXP,
+    fdef: SEXP,
+    mtable: SEXP,
+    ev: SEXP,
+    fname: SEXP,
+) -> SEXP {
+
+    unsafe {
+        let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
+            r_error("methods namespace is not loaded");
+        };
+        let symbol = crate::sexp::symbol::Rf_install(c".findInheritedMethods".as_ptr());
+        let mut fun = crate::sexp::envir::R_findVarInFrame(ns, symbol);
+        if fun.is_null() || fun == R_UnboundValue() {
+            r_error("'.findInheritedMethods' is not in the methods namespace");
+        }
+        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+            fun = crate::sexp::envir::forcePromise(fun);
+        }
+        let mut generic = fdef;
+        let mut f_env = if TYPEOF(generic) == SEXPTYPE::CLOSXP {
+            CLOENV(generic)
+        } else {
+            R_NilValue()
+        };
+        if crate::mainutils::coerce::IS_S4_OBJECT(generic) == FALSE {
+            let mut get_generic = crate::sexp::envir::R_findVarInFrame(
+                ns,
+                crate::sexp::symbol::Rf_install(c"getGeneric".as_ptr()),
+            );
+            if TYPEOF(get_generic) == SEXPTYPE::PROMSXP {
+                get_generic = crate::sexp::envir::forcePromise(get_generic);
+            }
+            if get_generic != R_UnboundValue() && Rf_isFunction(get_generic) != 0 {
+                let gg_call = Rf_lang2(get_generic, fname);
+                let _gg_guard = protect(gg_call);
+                let recovered = crate::eval::eval::Rf_eval(gg_call, ns);
+                if !recovered.is_null()
+                    && recovered != R_NilValue()
+                    && crate::mainutils::coerce::IS_S4_OBJECT(recovered) != FALSE
+                {
+                    generic = recovered;
+                    if TYPEOF(generic) == SEXPTYPE::CLOSXP {
+                        f_env = CLOENV(generic);
+                    }
+                }
+            }
+        }
+
+        if crate::mainutils::coerce::IS_S4_OBJECT(generic) == FALSE {
+            r_error("inherited table dispatch requires an S4 genericFunction");
+        }
+
+        let mut table = if !f_env.is_null() && TYPEOF(f_env) == SEXPTYPE::ENVSXP {
+            crate::sexp::envir::R_findVarInFrame(
+                f_env,
+                crate::sexp::symbol::Rf_install(c".MTable".as_ptr()),
+            )
+        } else {
+            R_UnboundValue()
+        };
+        if table == R_UnboundValue() || TYPEOF(table) != SEXPTYPE::ENVSXP {
+            table = mtable;
+        }
+        let simple_only = Rf_ScalarLogical(FALSE);
+        let _simple_guard = protect(simple_only);
+        let simple_cell = Rf_cons(simple_only, R_NilValue());
+        SETTAG(
+            simple_cell,
+            crate::sexp::symbol::Rf_install(c"simpleOnly".as_ptr()),
+        );
+        let call = Rf_lang5(fun, classes, generic, mtable, table);
+        let _call_guard = protect(call);
+        let mut tail = call;
+        for _ in 0..4 {
+            tail = CDR(tail);
+        }
+        SETCDR(tail, simple_cell);
+        let methods = crate::eval::eval::Rf_eval(call, ev);
+        let _methods_guard = protect(methods);
+        if methods.is_null() || methods == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(methods) == SEXPTYPE::VECSXP || TYPEOF(methods) == SEXPTYPE::LISTSXP {
+            let n = LENGTH(methods);
+            if n == 1 {
+                if TYPEOF(methods) == SEXPTYPE::VECSXP {
+                    VECTOR_ELT(methods, 0)
+                } else {
+                    CAR(methods)
+                }
+            } else if n == 0 {
+                R_NilValue()
+            } else {
+                r_error(
+                    "Internal error in finding inherited methods; didn't return a unique method",
+                );
+            }
+        } else if Rf_isFunction(methods) != 0 {
+            methods
+        } else {
+            R_NilValue()
+        }
+    }
+}
+
+
+
+unsafe fn apply_table_method(method: SEXP, ev: SEXP) -> SEXP {
+    unsafe {
+        if inherits_internal_dispatch_method(method) || is_primitive_function(method) {
+            return crate::mainutils::objects::R_deferred_default_method();
+        }
+        match TYPEOF(method) {
+            kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
+                crate::eval::missing::R_execMethod(method, ev)
+            }
+            _ => r_error("invalid object (non-function) used as method"),
+        }
+    }
+}
+
+
+
 unsafe fn install_method_context(
     ev: SEXP,
     generic_name: &str,
@@ -645,48 +772,30 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
                 classes.push(class);
             }
         }
-        // GNU: findVarInFrame(.AllMTable, "Class#Class") then inherited scan.
+        // GNU: findVarInFrame(.AllMTable, label); on miss, do_inherited_table
+        // (.InheritForDispatch) so Logic-group methods apply to `&` / `|`.
         let label = classes.join("#");
+        let mut method = R_UnboundValue();
         if let Ok(clabel) = CString::new(label.as_str()) {
             let symbol = crate::sexp::symbol::Rf_install(clabel.as_ptr());
-            let exact = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
-            if exact != R_UnboundValue() && exact != R_NilValue() && Rf_isFunction(exact) != 0 {
-                let selected = TableMethod {
-                    signature: classes.clone(),
-                    method: exact,
-                    distances: vec![0; classes.len()],
-                };
-                install_method_context(ev, &name, mtable, &classes, &selected);
-                return match TYPEOF(exact) {
-                    kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
-                        crate::eval::missing::R_execMethod(exact, ev)
-                    }
-                    kind if kind == SEXPTYPE::SPECIALSXP.as_c_int()
-                        || kind == SEXPTYPE::BUILTINSXP.as_c_int() =>
-                    {
-                        crate::mainutils::objects::R_deferred_default_method()
-                    }
-                    _ => r_error("invalid object (non-function) used as method"),
-                };
-            }
+            method = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
         }
-        let selected = nearest_method(table_methods(mtable, &classes));
-        let Some(selected) = selected else {
+        if method == R_UnboundValue() || method == R_NilValue() {
+            let class_vec = string_vector(&classes);
+            let _class_guard = protect(class_vec);
+            method = do_inherited_table(class_vec, fdef, mtable, ev, fname);
+
+        }
+        if method.is_null() || method == R_UnboundValue() || method == R_NilValue() {
             no_inherited_method_error(&name, sigargs, &classes);
-        };
-        let method = selected.method;
-        install_method_context(ev, &name, mtable, &classes, &selected);
-        match TYPEOF(method) {
-            kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
-                crate::eval::missing::R_execMethod(method, ev)
-            }
-            kind if kind == SEXPTYPE::SPECIALSXP.as_c_int()
-                || kind == SEXPTYPE::BUILTINSXP.as_c_int() =>
-            {
-                crate::mainutils::objects::R_deferred_default_method()
-            }
-            _ => r_error("invalid object (non-function) used as method"),
         }
+        let selected = TableMethod {
+            signature: classes.clone(),
+            method,
+            distances: vec![0; classes.len()],
+        };
+        install_method_context(ev, &name, mtable, &classes, &selected);
+        apply_table_method(method, ev)
     }
 }
 
