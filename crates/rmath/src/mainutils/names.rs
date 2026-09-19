@@ -701,6 +701,15 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         1,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
+    FunTabEntry::new(
+        b"isRegisteredNamespace\0",
+        None,
+        1,
+        11,
+        1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+
 
     // ===== Binary Operators (primitives) =====
     FunTabEntry::new(
@@ -5051,6 +5060,10 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "getRegisteredNamespace" => {
             Some(crate::mainutils::essentials::do_get_registered_namespace)
         }
+        "isRegisteredNamespace" => {
+            Some(crate::mainutils::essentials::do_is_registered_namespace)
+        }
+
 
         "load" => Some(crate::mainutils::saveload::do_load),
         "strptime" => Some(crate::mainutils::datetime::do_strptime),

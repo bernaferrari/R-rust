@@ -5364,6 +5364,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_get_registered_namespace,
     },
 
+
     EvaluatedBuiltin {
         name: "data",
         handler: crate::mainutils::essentials::do_data,

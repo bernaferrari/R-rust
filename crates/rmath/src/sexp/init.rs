@@ -383,6 +383,13 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "isBaseNamespace",
             "function(ns) identical(ns, .BaseNamespaceEnv)",
         );
+        // GNU namespace.R: isNamespaceLoaded(name) .Internal(isRegisteredNamespace(name))
+        eval_base_binding(
+            base_env,
+            "isNamespaceLoaded",
+            "function(name) .Internal(isRegisteredNamespace(name))",
+        );
+
         // GNU namespace.R: methods::.isExported and show() need these.
         eval_base_binding(
             base_env,

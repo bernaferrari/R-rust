@@ -441,6 +441,25 @@ pub unsafe fn do_get_registered_namespace(
     }
 }
 
+/// `.Internal(isRegisteredNamespace(name))` — TRUE if the namespace is loaded.
+pub unsafe fn do_is_registered_namespace(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let ns = do_get_registered_namespace(call, op, args, rho);
+        Rf_ScalarLogical(if ns.is_null() || ns == R_NilValue() {
+            FALSE
+        } else {
+            TRUE
+        })
+    }
+}
+
+
+
 
 
 /// R's `data(..., package, envir)` — load package data.

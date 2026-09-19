@@ -725,6 +725,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "asNamespace",
     "loadedNamespaces",
     "getRegisteredNamespace",
+    "isRegisteredNamespace",
+    "isNamespaceLoaded",
 
     "data",
     "attach",

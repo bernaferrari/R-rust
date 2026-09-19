@@ -3615,6 +3615,9 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
             )
 
 
+
+
+
         });
     }
 
@@ -3811,6 +3814,32 @@ TRUE
             output.stderr
         );
     }
+
+    #[test]
+    fn is_namespace_loaded_reports_base() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+identical(isNamespaceLoaded("base"), TRUE) &&
+  identical(isNamespaceLoaded("no_such_namespace_zzz"), FALSE)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "isNamespaceLoaded: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
 
 
