@@ -182,18 +182,52 @@ pub unsafe fn do_setequal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 // do_order — order indices for sorting
 // ---------------------------------------------------------------------------
 
-/// R's `order(...)` — returns permutation of indices that sort the input.
+/// GNU `.Internal(order(na.last, decreasing, ...))`.
 pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = arg_by_name_or_position(args, &["x"], 0);
+        if args.is_null() || args == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+        let nalast = CAR(args);
+        let rest = CDR(args);
+        let decreasing_s = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(rest)
+        };
+        let keys = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CDR(rest)
+        };
+        if keys.is_null() || keys == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+        let mut narg = 0usize;
+        let mut ap = keys;
+        while !ap.is_null() && ap != R_NilValue() {
+            narg += 1;
+            ap = CDR(ap);
+        }
+        if narg > 1 {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "multi-key order() is not yet supported".to_string(),
+            });
+        }
+        let x = CAR(keys);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        let n = XLENGTH(x);
-        let decreasing = named_logical_arg(args, "decreasing").unwrap_or(false);
-        let na_placement = order_na_placement(args, 1);
+        let decreasing = crate::mainutils::coerce::asLogical(decreasing_s) == TRUE;
+        let na_placement = {
+            let raw = crate::mainutils::coerce::asLogical(nalast);
+            match raw {
+                NA_LOGICAL => SortNaPlacement::Remove,
+                FALSE => SortNaPlacement::First,
+                _ => SortNaPlacement::Last,
+            }
+        };
         let ordered_indices = ordered_atomic_indices(x, decreasing, na_placement);
-
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, ordered_indices.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();

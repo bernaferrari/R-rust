@@ -223,6 +223,22 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "AIC.logLik",
             "function(object, ..., k = 2) -2 * as.numeric(object) + k * attr(object, \"df\")",
         );
+        // GNU sort.R: order is a closure over .Internal(order), not a
+        // primitive. methods::setGeneric needs formals (rport-txofy).
+        eval_base_binding(
+            base_env,
+            "order",
+            "function(..., na.last = TRUE, decreasing = FALSE,\n\
+             method = c(\"auto\", \"shell\", \"radix\")) {\n\
+             z <- list(...)\n\
+             if (length(z) == 0L) return(integer())\n\
+             if (length(z) > 1L)\n\
+                 stop(\"multi-key order() is not yet supported\")\n\
+             method <- match.arg(method)\n\
+             .Internal(order(na.last, decreasing, z[[1L]]))\n\
+             }",
+        );
+
 
         eval_base_binding(
             base_env,

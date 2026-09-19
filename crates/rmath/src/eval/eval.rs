@@ -4134,6 +4134,61 @@ a && identical(rbind(1), matrix(1,1,1))
         );
     }
 
+    #[test]
+    fn gnu_order_is_closure_with_formals() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+identical(names(formals(order)), c("...", "na.last", "decreasing", "method")) &&
+  !is.primitive(order) &&
+  identical(order(c(3, 1, 2)), c(2L, 3L, 1L))
+
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "gnu order formals: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_order_setgeneric_dots() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setGeneric("order", signature="...",
+	   function (..., na.last=TRUE, decreasing=FALSE)
+	   standardGeneric("order"))
+identical(rbind(1), matrix(1,1,1))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "order setGeneric dots: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
 
 
 

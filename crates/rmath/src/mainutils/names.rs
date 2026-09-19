@@ -5053,6 +5053,8 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "debug" | "undebug" | "isdebugged" | "debugonce" => Some(crate::mainutils::debug::do_debug),
         "delayedAssign" => Some(crate::mainutils::builtin::do_delayed),
         "radixsort" => Some(crate::mainutils::radixsort::do_radixsort),
+        "order" => Some(crate::mainutils::essentials::do_order),
+
         "save" => Some(crate::mainutils::saveload::do_save),
         "islistfactor" => Some(crate::mainutils::apply::do_islistfactor),
 

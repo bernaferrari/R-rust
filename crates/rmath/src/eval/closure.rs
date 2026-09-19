@@ -485,10 +485,7 @@ unsafe fn collect_unwrap_methods_closures(methods: SEXP) -> Vec<SEXP> {
             // Private JIT / GNU methods bytecode drops attr(funNames, "package")
             // so cacheMetaData's rep(packages, ...) sees a non-vector NULL.
             c".getGenerics",
-            // GNU bytecode for setGeneric drops the signature= default into
-            // ensureGeneric.fdef, so setGeneric("order", signature="...", f)
-            // calls makeGeneric with an empty signature.
-            c"setGeneric",
+
 
         ] {
             let mut bound = crate::sexp::envir::R_findVarInFrame(
