@@ -14551,6 +14551,8 @@ pub unsafe fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
                 message: "using 'as.environment(NULL)' is defunct".to_string(),
             });
         }
+
+
         std::panic::panic_any(RError {
             message: "invalid object for as.environment".to_string(),
         });

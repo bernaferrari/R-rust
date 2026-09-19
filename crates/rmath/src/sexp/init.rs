@@ -208,6 +208,25 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              } else .Internal(unlist(x, recursive, use.names))\n\
              }",
         );
+        // GNU print.R: print is UseMethod, not a primitive. setMethod("print")
+        // uses the closure as the generic skeleton (rport-2gpp.2.3).
+        eval_base_binding(base_env, "print", "function(x, ...) UseMethod(\"print\")");
+        eval_base_binding(
+            base_env,
+            "print.default",
+            "function(x, digits = NULL, quote = TRUE, na.print = NULL,\n\
+             print.gap = NULL, right = FALSE, max = NULL, width = NULL,\n\
+             useSource = TRUE, ...) {\n\
+             args <- pairlist(digits = digits, quote = quote, na.print = na.print,\n\
+                 print.gap = print.gap, right = right, max = max, width = width,\n\
+                 useSource = useSource, ...)\n\
+             missings <- c(missing(digits), missing(quote), missing(na.print),\n\
+                 missing(print.gap), missing(right), missing(max),\n\
+                 missing(width), missing(useSource))\n\
+             .Internal(print.default(x, args, missings))\n\
+             }",
+        );
+
 
         // GNU formals.R: replacement functions are closures, not primitives.
         eval_base_binding(

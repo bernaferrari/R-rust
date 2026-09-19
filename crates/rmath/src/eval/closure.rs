@@ -456,9 +456,6 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
         else {
             return false;
         };
-        if CLOENV(op) != methods {
-            return false;
-        }
         for name in [
             c"matchSignature",
             c".isSealedMethod",
@@ -467,7 +464,7 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
             c"setMethod",
             c".matchSigLength",
             // Private JIT: rep("ANY", n) in .resetTable becomes n, so the
-            // default method is stored as ANY#2 instead of ANY#ANY.
+            // default method is stored as ANY#2 after a 2-arg setMethod.
             c".resetTable",
             c".fillSignatures",
             // Private JIT miscompiles S3Class <- c(cl, S3Class) / attr<-
@@ -477,8 +474,6 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
             // so cacheMetaData's rep(packages, ...) sees a non-vector NULL.
             c".getGenerics",
         ] {
-
-
             let mut bound = crate::sexp::envir::R_findVarInFrame(
                 methods,
                 crate::sexp::symbol::Rf_install(name.as_ptr()),
@@ -487,11 +482,13 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
                 continue;
             }
             if TYPEOF(bound) == SEXPTYPE::PROMSXP {
-                bound = crate::sexp::accessors::PRVALUE(bound);
+                bound = crate::sexp::envir::forcePromise(bound);
             }
             if bound == op {
                 return true;
             }
+
+
         }
         false
     }

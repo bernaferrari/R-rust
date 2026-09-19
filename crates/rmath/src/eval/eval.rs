@@ -3576,18 +3576,86 @@ identical(labs, c("ANY#ANY", "character#character")) &&
     }
 
     #[test]
-    fn reg_s4_head_through_show_method() {
+    fn reg_s4_head_through_print_method() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(90).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(109).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through show method: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through print method: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
     }
+
+
+
+    #[test]
+    fn as_environment_null_is_defunct_like_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+inherits(tryCatch(as.environment(NULL), error=function(e) e), "error") &&
+  grepl("as.environment\\(NULL\\)' is defunct",
+        tryCatch(as.environment(NULL), error=function(e) conditionMessage(e)))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "as.environment(NULL): {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn print_is_usemethod_closure_and_primitive_builtins_match_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+identical(typeof(print), "closure") &&
+  identical(typeof(sum), "builtin") &&
+  isTRUE(is.primitive(sum)) &&
+  isTRUE(!is.primitive(print)) &&
+  isTRUE(!is.primitive(function(x) x))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "print/sum primitive: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn setmethod_print_on_s4_class() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("bar", representation(a="numeric"))
+setMethod("print", "bar", function(x, ...) cat("S4 print method\n"))
+TRUE
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "setMethod(print): {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
+
 
 
 
