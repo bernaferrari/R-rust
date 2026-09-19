@@ -3316,6 +3316,32 @@ exists("toeplitz", envir=baseenv(), inherits=FALSE) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn setmethod_toeplitz_implicit_generic() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("Atoep", slots = c(x = "NULL"))
+x <- c(-1, 0, 0)
+r <- c(-1, 11, 0)
+T3 <- toeplitz(x, r)
+setMethod("toeplitz", "Atoep", function(x, ...) x)
+identical(T3, toeplitz(x, r)) &&
+  is(selectMethod(toeplitz, "numeric"), "MethodDefinition") &&
+  removeGeneric("toeplitz")
+"#,
+        );
+        let result = result.expect("classes-methods.R toeplitz implicit generic");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
+
+
 
     #[test]
     fn classes_methods_trace_coerce_signature() {

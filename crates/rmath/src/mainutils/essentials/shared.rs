@@ -15,9 +15,10 @@ use crate::sexp::accessors::{
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
-    Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_lang2,
+    Rf_lang3, Rf_mkChar, Rf_mkString,
 };
+
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{
     ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, SEXP, SEXPTYPE, TRUE,
@@ -1251,7 +1252,7 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
     }
 }
 
-/// GNU methods `zzz.R` `.onLoad` ends with
+/// GNU methods `zzz.R` `.onLoad`: `.initImplicitGenerics(where)` then
 /// `cacheMetaData(where, TRUE, searchWhere = .GlobalEnv, FALSE)`.
 pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
     unsafe {
@@ -1261,8 +1262,21 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         let Some(ns) = cached_namespace_by_name("methods") else {
             return;
         };
-        let symbol = Rf_install(c"cacheMetaData".as_ptr());
-        let mut fun = crate::sexp::envir::R_findVarInFrame(ns, symbol);
+        eval_methods_ns_fun(ns, c".initImplicitGenerics", where_env, None);
+        let attach = Rf_ScalarLogical(TRUE);
+        let _attach = protect(attach);
+        eval_methods_ns_fun(ns, c"cacheMetaData", where_env, Some(attach));
+    }
+}
+
+unsafe fn eval_methods_ns_fun(
+    ns: SEXP,
+    name: &std::ffi::CStr,
+    where_env: SEXP,
+    attach: Option<SEXP>,
+) {
+    unsafe {
+        let mut fun = crate::sexp::envir::R_findVarInFrame(ns, Rf_install(name.as_ptr()));
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return;
         }
@@ -1272,13 +1286,18 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         if TYPEOF(fun) != SEXPTYPE::CLOSXP {
             return;
         }
-        let attach = Rf_ScalarLogical(TRUE);
-        let _attach = protect(attach);
-        let call = crate::sexp::constructors::Rf_lang3(fun, where_env, attach);
+        let call = if let Some(attach) = attach {
+            crate::sexp::constructors::Rf_lang3(fun, where_env, attach)
+        } else {
+            crate::sexp::constructors::Rf_lang2(fun, where_env)
+        };
         let _call = protect(call);
-        let _ = crate::eval::eval::Rf_eval(call, ns);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(call, ns)
+        }));
     }
 }
+
 
 
 
