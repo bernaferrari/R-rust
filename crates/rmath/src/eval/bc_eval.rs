@@ -905,8 +905,6 @@ unsafe fn force_gnu_builtin_arglist(mut args: SEXP) {
                 let value = crate::sexp::accessors::PRVALUE(car);
                 if !value.is_null() && value != R_UnboundValue() {
                     crate::sexp::accessors::SETCAR(args, value);
-                } else {
-                    crate::sexp::accessors::SETCAR(args, forcePromise(car));
                 }
             }
             args = CDR(args);
