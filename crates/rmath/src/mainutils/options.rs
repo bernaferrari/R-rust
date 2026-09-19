@@ -824,6 +824,8 @@ unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
         options.insert("scipen".to_string(), pi(0));
         options.insert("height".to_string(), pi(60));
         options.insert("add.smooth".to_string(), pl(TRUE));
+        options.insert("ts.eps".to_string(), Rf_ScalarReal(1e-5));
+
     }
 }
 

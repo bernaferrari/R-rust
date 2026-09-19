@@ -118,8 +118,17 @@ unsafe fn dispatch_special_by_name(
                 if let Some(builtin) = super::builtin::unevaluated_builtin_handler(name) {
                     return (builtin.handler)(call, op, args, rho);
                 }
+                // CALLSPECIAL / a mis-kinded primitive may mint SPECIALSXP
+                // for names that are evaluated builtins (GNU round is
+                // BUILTINSXP). Eval args and run the builtin handler.
+                if let Some(handler) = super::builtin::evaluated_builtin_handler(name) {
+                    let evaled = super::dispatch::evalList(args, rho, call, -1);
+                    let _evaled = protect(evaled);
+                    return handler(call, op, evaled, rho);
+                }
                 unimplemented_special_form(name)
             }
+
         }
     }
 }

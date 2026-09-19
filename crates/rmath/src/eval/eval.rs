@@ -3904,6 +3904,50 @@ identical(typeof(unlist(list(TRUE, FALSE))), "logical") &&
     }
 
     #[test]
+    fn s4_containing_array_and_ts() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+t. <- ts(1:10, frequency = 4, start = c(1959, 2))
+setClass("Arr", contains = "array")
+x <- new("Arr", cbind(17))
+setClass("Ts", contains = "ts")
+tt <- new("Ts", t.)
+t2 <- as(t., "Ts")
+setClass("ts2", representation(x = "Ts", y = "ts"))
+tt2 <- new("ts2", x = t2, y = t.)
+stopifnot(isTRUE(all.equal(getOption("ts.eps"), 1e-5)),
+          dim(x) == c(1, 1),
+          is(tt, "ts"), is(t2, "ts"),
+          length(tt) == length(t.),
+          identical(tt2@x, t2), identical(tt2@y, t.))
+TRUE
+"#,
+
+
+
+
+
+
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "Arr/Ts classes: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+    #[test]
     fn getgenerics_stats4_lists_exported_generics() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
