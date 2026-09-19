@@ -3576,18 +3576,20 @@ identical(labs, c("ANY#ANY", "character#character")) &&
     }
 
     #[test]
-    fn reg_s4_head_through_multiple_inheritance() {
+    fn reg_s4_head_through_logic_group() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(185).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(200).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through multiple inheritance: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through Logic group: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
     }
+
+
 
     #[test]
     fn hashed_env_names_include_hash_bindings() {
