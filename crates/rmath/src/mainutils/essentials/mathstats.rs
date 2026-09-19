@@ -14546,9 +14546,17 @@ pub unsafe fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             }
             return env;
         }
+        if TYPEOF(x) == SEXPTYPE::NILSXP {
+            std::panic::panic_any(RError {
+                message: "using 'as.environment(NULL)' is defunct".to_string(),
+            });
+        }
         std::panic::panic_any(RError {
             message: "invalid object for as.environment".to_string(),
         });
+
+
+
     }
 }
 

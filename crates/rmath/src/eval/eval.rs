@@ -1154,6 +1154,28 @@ identical(withVisible(registerS3method("print", "RegInv2", function(x) x))$visib
     }
 
     #[test]
+    fn rnorm_named_mean_after_stats_load_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(stats, quietly=TRUE))
+set.seed(1); a <- rnorm(1, 0, mean = 10)
+set.seed(1); b <- rnorm(1, mean = 10, sd = 0)
+identical(typeof(rnorm), "closure") && identical(a, b) && isTRUE(all.equal(a, 10))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "stats rnorm matching: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+    #[test]
     fn language_implicit_class_follows_gnu_lang2str() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
@@ -3554,18 +3576,41 @@ identical(labs, c("ANY#ANY", "character#character")) &&
     }
 
     #[test]
-    fn reg_s4_head_through_removeGeneric() {
+    fn reg_s4_head_through_show_method() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(70).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(90).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through removeGeneric: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through show method: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
