@@ -3215,6 +3215,33 @@ any(grepl("showMethods(`body<-`)", out, fixed=TRUE))
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn library_binding_is_gnu_default_library() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+exists(".Library", envir=baseenv(), inherits=FALSE) &&
+  is.character(.Library) &&
+  length(.Library) == 1L &&
+  nzchar(.Library)
+"#,
+        );
+        let result = result.expect("GNU .Library is R.home('library')");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn rmpkg_strips_package_prefix() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"identical(.rmpkg("package:methods"), "methods") && identical(.rmpkg("methods"), "methods")"#,
+        );
+        let result = result.expect("GNU attach.R .rmpkg");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
 
 
 

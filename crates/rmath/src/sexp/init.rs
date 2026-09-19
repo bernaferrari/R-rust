@@ -364,6 +364,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              assign(which, val, envir = info)\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            ".rmpkg",
+            "function(pkg) sub(\"package:\", \"\", pkg, fixed=TRUE)",
+        );
+
 
 
 
@@ -744,8 +750,33 @@ unsafe fn initialize_special_environment_bindings(base_env: SEXP) {
             super::globals::R_GlobalEnv(),
             base_env,
         );
+        // GNU startup.c: `.Library` is R_HOME/library. Upstream tests
+        // (`classes-methods.R`, `eval-etc-2.R`) pass it as lib.loc.
+        let library = with_required_current_instance(|inst| {
+            if let Some(home) = std::env::var_os("R_HOME") {
+                return std::path::PathBuf::from(home).join("library");
+            }
+            (*inst)
+                .path_policy
+                .library_paths()
+                .iter()
+                .find(|path| {
+                    path.join("methods").join("DESCRIPTION").is_file()
+                        || path.join("base").join("DESCRIPTION").is_file()
+                })
+                .cloned()
+                .or_else(|| (*inst).path_policy.library_paths().first().cloned())
+                .unwrap_or_else(|| std::path::PathBuf::from("/usr/lib/R/library"))
+        });
+        let library = CString::new(library.to_string_lossy().as_ref()).unwrap_or_default();
+        defineVar(
+            Rf_install_in_current(".Library"),
+            Rf_mkString(library.as_ptr()),
+            base_env,
+        );
     }
 }
+
 
 #[derive(Clone, Copy)]
 enum FormalDefault {
