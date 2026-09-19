@@ -3436,11 +3436,7 @@ identical(md@target@names, "x") && identical(md@defined@names, "x")
         let mut src = String::from("invisible(require(methods, quietly=TRUE))\n");
         for (i, line) in lines.iter().enumerate() {
             let lineno = i + 1;
-            // Matrix 47-120; showMethods Matrix 287-305; trace-multiclass
-            // 344+ still fails initialize/"myfunWithTrace" (rport-hrrat).
-            if lineno > 343 {
-                break;
-            }
+            // Matrix 47-120 and 287-305 omitted (GNU skip when Matrix is absent).
             if (47..=120).contains(&lineno) || (287..=305).contains(&lineno) {
                 continue;
             }
@@ -3451,7 +3447,8 @@ identical(md@target@names, "x") && identical(md@defined@names, "x")
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         let result = result.unwrap_or_else(|e| {
             panic!(
-                "classes-methods.R through toeplitz (Matrix omitted): {e}\nstdout={}\nstderr={}",
+                "classes-methods.R GNU skip path (Matrix omitted): {e}\nstdout={}\nstderr={}",
+
                 output.stdout, output.stderr
             )
         });
@@ -3488,6 +3485,31 @@ isS4(a) && identical(as.character(class(a))[1], "myfunWithTrace")
         let result = result.expect("new() must stamp S4 class on oldClass+function prototype");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn s4_new_trace_class_with_function_def() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setOldClass(c("myfun", "function"))
+setClass("myfunWithTrace", contains = c("myfun", "traceable"))
+f <- structure(function(x) x, class = c("myfun", "function"))
+a <- new("myfunWithTrace", f)
+isS4(a) && identical(as.character(class(a))[1], "myfunWithTrace")
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!("new(myfunWithTrace, def): {e}\nstdout={}\nstderr={}", output.stdout, output.stderr)
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
+
 
 
 
