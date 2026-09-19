@@ -1143,10 +1143,11 @@ pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
             if let Some(value) = s4_named_slot(obj, &name_str) {
                 return unmap_slot_pseudo_null(value);
             }
-            // Upstream's only other storage is attributes; "names" never
-            // resolves for S4 objects (S4SXP in upstream, and the names
-            // attribute here merely lists the slot names).
-            if name_str != "names" {
+            // Port VECSXP S4 stores slot names in the names attribute, so
+            // `@names` must not return that directory. GNU-style S4 with a
+            // data part (e.g. class "signature") keeps the `names` slot as
+            // the names attribute — same as attrib.c R_do_slot.
+            if name_str != "names" || TYPEOF(obj) != SEXPTYPE::VECSXP {
                 let name_sym =
                     Rf_install(CString::new(name_str.as_str()).unwrap_or_default().as_ptr());
                 let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
@@ -1154,6 +1155,7 @@ pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
                     return unmap_slot_pseudo_null(value);
                 }
             }
+
             if name_str == ".S3Class" {
                 return crate::eval::attrib_core::R_data_class(obj);
             }

@@ -619,17 +619,18 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
         }
 
         if !super::env_hash::env_has_hash_table(rho.clone().as_raw()) {
+            let nil = unsafe { R_NilValue() };
             let mut count = 0usize;
             let mut cur = unsafe { super::accessors::FRAME(rho.clone().as_raw()) };
-            while !cur.is_null() {
+            while !cur.is_null() && cur != nil {
                 count += 1;
                 if count >= 100 {
                     let mut bindings = Vec::new();
                     cur = unsafe { super::accessors::FRAME(rho.clone().as_raw()) };
-                    while !cur.is_null() {
+                    while !cur.is_null() && cur != nil {
                         let tag = unsafe { super::accessors::TAG(cur) };
                         let car = unsafe { super::accessors::CAR(cur) };
-                        if !tag.is_null() {
+                        if !tag.is_null() && tag != nil {
                             bindings.push((tag, car));
                         }
                         cur = unsafe { super::accessors::CDR(cur) };

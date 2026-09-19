@@ -309,15 +309,21 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
             },
         }
     } else {
-        eval_safe(fun, rho.clone())?
+        eval_safe(fun.clone(), rho.clone())?
     };
 
-    // Dispatch based on function type
     match fun_val.clone().typeof_() {
         SEXPTYPE::CLOSXP => apply_closure_safe(fun_val, e, args, rho),
         SEXPTYPE::SPECIALSXP => apply_special_safe(fun_val, e, args, rho),
         SEXPTYPE::BUILTINSXP => apply_builtin_safe(fun_val, e, args, rho),
-        _ => Err(format!("cannot call type {:?}", fun_val.typeof_())),
+        kind => {
+            let head = if fun.clone().typeof_() == SEXPTYPE::SYMSXP {
+                unsafe { get_symbol_name(fun.as_raw()) }
+            } else {
+                format!("{:?}", fun.clone().typeof_())
+            };
+            Err(format!("cannot call type {kind:?} for {head}"))
+        }
     }
 }
 
@@ -3404,17 +3410,38 @@ identical(f1, 1) && identical(n, 1) &&
     }
 
     #[test]
-    fn classes_methods_gnu_skip_path_through_sealclass() {
+    fn signature_class_names_slot_is_argument_names() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+f <- function(x) x
+setGeneric("f")
+setMethod("f", "numeric", function(x) x)
+md <- selectMethod("f", "numeric")
+identical(md@target@names, "x") && identical(md@defined@names, "x")
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!("signature@names: {e}\nstdout={}\nstderr={}", output.stdout, output.stderr)
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn classes_methods_gnu_skip_path_without_matrix() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/classes-methods.R");
         let lines: Vec<&str> = vendor.lines().collect();
         let mut src = String::from("invisible(require(methods, quietly=TRUE))\n");
         for (i, line) in lines.iter().enumerate() {
             let lineno = i + 1;
-            if lineno > 285 {
+            // Matrix 47-120; showMethods Matrix 287-305; trace-multiclass
+            // 344+ still fails initialize/"myfunWithTrace" (rport-hrrat).
+            if lineno > 343 {
                 break;
             }
-            if (47..=120).contains(&lineno) {
+            if (47..=120).contains(&lineno) || (287..=305).contains(&lineno) {
                 continue;
             }
             src.push_str(line);
@@ -3424,7 +3451,7 @@ identical(f1, 1) && identical(n, 1) &&
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         let result = result.unwrap_or_else(|e| {
             panic!(
-                "classes-methods.R through sealClass (Matrix skipped): {e}\nstdout={}\nstderr={}",
+                "classes-methods.R through toeplitz (Matrix omitted): {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
