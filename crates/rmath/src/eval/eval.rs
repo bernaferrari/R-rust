@@ -3876,6 +3876,44 @@ identical(AIC(pfit(1:10)), AIC.pfit(pfit(1:10)))
     }
 
     #[test]
+    fn getgenerics_stats4_lists_exported_generics() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+invisible(require(stats4, quietly=TRUE))
+e4 <- as.environment("package:stats4")
+gg4 <- getGenerics(e4)
+stopifnot(c("BIC", "coef", "confint", "logLik", "plot", "profile",
+            "show", "summary", "update", "vcov") %in% gg4,
+          unlist(lapply(gg4, function(g) !is.null(getGeneric(g, where = e4)))),
+          unlist(lapply(gg4, function(g) !is.null(getGeneric(g)))),
+          identical(typeof(get("show", e4)), "closure"),
+          isGeneric("show", where=e4),
+          hasMethods("show", where=e4))
+TRUE
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "getGenerics(stats4): {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+    #[test]
     fn as_double_uses_as_numeric_s4_method() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(

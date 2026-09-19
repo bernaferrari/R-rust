@@ -2399,6 +2399,53 @@ pub(crate) unsafe fn apply_description_depends(
         Ok(())
     }
 }
+
+/// GNU `importFrom(methods, show)` copies the live generic. Builtin
+/// packages are not loaded from a library tree, but their namespaces
+/// are already in the session cache after `require(methods)`.
+unsafe fn bind_cached_builtin_imports(
+    package_env: SEXP,
+    import: &NamespaceImport,
+) -> Result<(), String> {
+    unsafe {
+        let import_package = match import {
+            NamespaceImport::All { package } | NamespaceImport::From { package, .. } => {
+                package.as_str()
+            }
+        };
+        let Some(import_env) = cached_namespace_by_name(import_package) else {
+            return Ok(());
+        };
+        let imported_names = match import {
+            NamespaceImport::All { .. } => {
+                let names = namespace_info_export_names(import_env);
+                if names.is_empty() {
+                    namespace_exports(None, import_env)
+                } else {
+                    names
+                }
+            }
+            NamespaceImport::From { names, .. } => names.clone(),
+        };
+        for name in imported_names {
+            let Ok(symbol_name) = CString::new(name.as_str()) else {
+                continue;
+            };
+            let symbol = Rf_install(symbol_name.as_ptr());
+            let value = crate::sexp::envir::R_findVarInFrame(import_env, symbol);
+            if value.is_null()
+                || value == R_NilValue()
+                || value == crate::sexp::globals::R_UnboundValue()
+            {
+                continue;
+            }
+            crate::sexp::envir::defineVar(symbol, value, package_env);
+        }
+        Ok(())
+    }
+}
+
+
 pub(crate) unsafe fn apply_namespace_imports(
     package: &str,
     package_env: SEXP,
@@ -2413,12 +2460,15 @@ pub(crate) unsafe fn apply_namespace_imports(
                 }
             };
 
-            // Base-distribution packages (grDevices, methods, utils, ...)
-            // are satisfied by the engine itself: like DESCRIPTION Depends,
-            // skip them instead of demanding an installed copy.
+            // Base-distribution packages have no extra library tree, but
+            // `importFrom(methods, show)` still has to copy the live
+            // generic from the cached namespace. Skip only when that
+            // namespace is not in the session yet.
             if is_builtin_package_dependency(import_package) {
+                bind_cached_builtin_imports(package_env, import)?;
                 continue;
             }
+
             if loading.iter().any(|entry| entry == import_package) {
                 return Err(format!(
                     "package '{}' has cyclic namespace import involving '{}'",
