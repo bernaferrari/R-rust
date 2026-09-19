@@ -466,14 +466,16 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
             c"rematchDefinition",
             c"setMethod",
             c".matchSigLength",
+            // Private JIT: rep("ANY", n) in .resetTable becomes n, so the
+            // default method is stored as ANY#2 instead of ANY#ANY.
+            c".resetTable",
+            c".fillSignatures",
             // Private JIT miscompiles S3Class <- c(cl, S3Class) / attr<-
             // so every setOldClass proto keeps .S3Class="oldClass" (rport-d4jyb).
             c"setOldClass",
             // Private JIT / GNU methods bytecode drops attr(funNames, "package")
             // so cacheMetaData's rep(packages, ...) sees a non-vector NULL.
             c".getGenerics",
-
-
         ] {
 
 

@@ -3528,6 +3528,50 @@ on1 && .isMethodsDispatchOn()
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn traced_generic_uses_default_after_setmethod_widens_signature() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+f <- function(x, y) c(x, y)
+setGeneric("f")
+setMethod("f", c("character", "character"), function(x, y) paste(x, y))
+labs <- sort(ls(environment(f)$.AllMTable, all.names=TRUE))
+trace("f", quote(x <- c("A", x)), exit = quote(xy <<- c(x, "Z")), print = FALSE)
+identical(labs, c("ANY#ANY", "character#character")) &&
+  identical(f(4, 5), c("A", "4", "5")) &&
+  identical(xy, c("A", "4", "Z"))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "traced generic default: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn reg_s4_head_through_removeGeneric() {
+        let mut session = RSession::new();
+        let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
+        let src: String = vendor.lines().take(70).collect::<Vec<_>>().join("\n");
+        let (result, output, _) = session.eval_script_with_output_capture(&src);
+        result.unwrap_or_else(|e| {
+            panic!(
+                "reg-S4.R through removeGeneric: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+    }
+
+
+
+
+
+
 
 
 
