@@ -744,6 +744,7 @@ pub(crate) fn package_description_fields(
 
 pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEXP, String> {
     unsafe {
+        let package = package.strip_prefix("package:").unwrap_or(package);
         if package.is_empty() || package == "NA" {
             return Err("invalid package name".to_string());
         }
@@ -752,6 +753,8 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
         if package == "base" {
             return Ok(crate::sexp::globals::R_BaseEnv());
         }
+
+
 
 
         #[cfg(feature = "renderplot-device")]
@@ -1029,8 +1032,18 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
             attach_package_env(attach_env);
             if package == "methods" {
                 run_methods_onload_cache_metadata(package_env);
-
+            } else if let Some(methods_ns) = cached_namespace_by_name("methods") {
+                // GNU library() after methods is on: cacheMetaData(env, TRUE).
+                let attach = Rf_ScalarLogical(TRUE);
+                let _attach = protect(attach);
+                eval_methods_ns_fun(
+                    methods_ns,
+                    c"cacheMetaData",
+                    attach_env,
+                    Some(attach),
+                );
             }
+
 
             Ok(())
 

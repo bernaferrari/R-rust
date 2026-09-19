@@ -3947,6 +3947,79 @@ TRUE
         );
     }
 
+    #[test]
+    fn setmethod_wrong_formals_order_signals() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+invisible(require(tools, quietly=TRUE))
+setGeneric("test1", function(x, printit = TRUE, name = "tmp")
+           standardGeneric("test1"))
+tryCatch({
+  tools::assertCondition(
+    setMethod("test1", "numeric", function(x, name, printit) match.call()),
+    "warning", "error")
+  TRUE
+}, error = function(e) FALSE)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "setMethod formals: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn stats4_getclass_mle_from_where() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+invisible(require(stats4, quietly=TRUE))
+c1 <- getClass("mle", where = "stats4")
+c2 <- getClass("mle", where = "package:stats4")
+s1 <- getMethod("summary", "mle", where = "stats4")
+s2 <- getMethod("summary", "mle", where = "package:stats4")
+is(c1, "classRepresentation") &&
+  is(s1, "MethodDefinition") &&
+  identical(c1, c2) && identical(s1, s2)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "stats4 mle where: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
+
+
 
     #[test]
     fn getgenerics_stats4_lists_exported_generics() {
