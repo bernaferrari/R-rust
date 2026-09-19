@@ -767,16 +767,25 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
         // (.InheritForDispatch) so Logic-group methods apply to `&` / `|`.
         let label = classes.join("#");
         let mut method = R_UnboundValue();
+        let mut exact = false;
+
         if let Ok(clabel) = CString::new(label.as_str()) {
             let symbol = crate::sexp::symbol::Rf_install(clabel.as_ptr());
             method = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
+            if method != R_UnboundValue() && method != R_NilValue() {
+                exact = true;
+            }
         }
-        if method == R_UnboundValue() || method == R_NilValue() {
+        // GNU: S4 generics created from S3 generics still find S3 methods
+        // (AIC.pfit after stats4::setGeneric("AIC")). Exact table hits win;
+        // inherited ANY does not beat generic.class.
+        if !exact {
+            if let Some(ans) = try_s3_method_for_generic(&name, fname, ev, sigargs) {
+                return ans;
+            }
             let class_vec = string_vector(&classes);
             let _class_guard = protect(class_vec);
             method = do_inherited_table(class_vec, fdef, mtable, ev);
-
-
         }
         if method.is_null() || method == R_UnboundValue() || method == R_NilValue() {
             no_inherited_method_error(&name, sigargs, &classes);
@@ -788,8 +797,59 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
         };
         install_method_context(ev, &name, mtable, &classes, &selected);
         apply_table_method(method, ev)
+
     }
 }
+
+unsafe fn try_s3_method_for_generic(
+    name: &str,
+    fname: SEXP,
+    ev: SEXP,
+    sigargs: SEXP,
+) -> Option<SEXP> {
+    unsafe {
+        if LENGTH(sigargs) < 1 {
+            return None;
+        }
+        let arg_sym = VECTOR_ELT(sigargs, 0);
+        if arg_sym.is_null() || TYPEOF(arg_sym) != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let obj = eval_dispatch_arg(fname, ev, arg_sym);
+        if obj.is_null() || crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
+            return None;
+        }
+        let class = crate::eval::attrib_core::getAttrib(
+            obj,
+            crate::eval::attrib_core::R_ClassSymbol(),
+        );
+        if class.is_null() || class == R_NilValue() {
+            return None;
+        }
+        let Ok(cname) = CString::new(name) else {
+            return None;
+        };
+        let callrho = crate::sexp::globals::R_GlobalEnv();
+        let defrho = crate::sexp::globals::R_BaseEnv();
+        let mut ans = R_NilValue();
+        if crate::mainutils::objects::usemethod(
+            cname.as_ptr(),
+            obj,
+            R_NilValue(),
+            R_NilValue(),
+            ev,
+            callrho,
+            defrho,
+            &mut ans,
+        ) == 1
+        {
+            Some(ans)
+        } else {
+            None
+        }
+    }
+}
+
 
 /// R_quick_method_check - quick check if a method exists in the methods list.
 pub unsafe fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP {

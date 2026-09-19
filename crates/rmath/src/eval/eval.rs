@@ -3886,7 +3886,10 @@ setMethod(as.double, "c2", function(x, ...) x@.Data+pi)
 x_c2 <- new("c2", pi)
 identical(as.numeric(x_c1), as.double(x_c1)) &&
   identical(as.double(x_c1), 42+pi) &&
-  identical(as.numeric(x_c2), as.double(x_c2))
+  identical(as.numeric(x_c2), as.double(x_c2)) &&
+  isTRUE(all.equal(as.vector(as.numeric(x_c2)), pi + pi))
+
+
 "#,
         );
         let result = result.unwrap_or_else(|e| {
@@ -3903,6 +3906,45 @@ identical(as.numeric(x_c1), as.double(x_c1)) &&
             output.stderr
         );
     }
+
+    #[test]
+    fn aic_pfit_survives_stats4_generic() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+invisible(require(stats4, quietly=TRUE))
+pfit <- function(data) {
+    m <- mean(data)
+    loglik <- sum(dpois(data, m))
+    ans <- list(par = m, loglik = loglik)
+    class(ans) <- "pfit"
+    ans
+}
+AIC.pfit <- function(object, ..., k = 2) -2 * object$loglik + k
+identical(AIC(pfit(1:10)), AIC.pfit(pfit(1:10)))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "AIC.pfit stats4: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
 
 
 
