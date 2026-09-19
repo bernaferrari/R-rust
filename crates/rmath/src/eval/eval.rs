@@ -3412,8 +3412,10 @@ identical(T, TRUE) && identical(F, FALSE) &&
   identical(
     paste(deparse(substitute(F(), list(F = quote(n <<- n + 1)))), collapse = " "),
     "(n <<- n + 1)()"
-  )
+  ) &&
+  { F <- 5; identical(F, 5) }
 "#,
+
         );
         let result = result.expect("GNU T/F are symbols, not parser keywords");
         assert_eq!(result.logical_elt(0), Some(TRUE));
