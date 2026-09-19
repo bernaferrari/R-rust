@@ -3618,6 +3618,8 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
 
 
 
+
+
         });
     }
 
@@ -3838,6 +3840,43 @@ identical(isNamespaceLoaded("base"), TRUE) &&
             output.stderr
         );
     }
+
+    #[test]
+    fn aic_pfit_uses_s3_method() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+pfit <- function(data) {
+    m <- mean(data)
+    loglik <- sum(dpois(data, m))
+    ans <- list(par = m, loglik = loglik)
+    class(ans) <- "pfit"
+    ans
+}
+AIC.pfit <- function(object, ..., k = 2) -2 * object$loglik + k
+identical(AIC(pfit(1:10)), AIC.pfit(pfit(1:10)))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "AIC.pfit: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
 
 
 

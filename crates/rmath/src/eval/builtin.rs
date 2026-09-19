@@ -2195,9 +2195,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_oneway_test,
     },
     EvaluatedBuiltin {
-        name: "AIC",
+        name: "AIC.default",
         handler: crate::mainutils::essentials::do_aic,
     },
+
     EvaluatedBuiltin {
         name: "BIC",
         handler: crate::mainutils::essentials::do_bic,

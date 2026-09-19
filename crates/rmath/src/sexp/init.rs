@@ -211,6 +211,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // GNU print.R: print is UseMethod, not a primitive. setMethod("print")
         // uses the closure as the generic skeleton (rport-2gpp.2.3).
         eval_base_binding(base_env, "print", "function(x, ...) UseMethod(\"print\")");
+        // GNU stats/R/AIC.R: AIC is UseMethod so AIC.pfit S3 methods run
+        // (reg-S4.R 334-343). The former builtin is AIC.default.
+        eval_base_binding(
+            base_env,
+            "AIC",
+            "function(object, ..., k = 2) UseMethod(\"AIC\")",
+        );
+        eval_base_binding(
+            base_env,
+            "AIC.logLik",
+            "function(object, ..., k = 2) -2 * as.numeric(object) + k * attr(object, \"df\")",
+        );
+
         eval_base_binding(
             base_env,
             "print.default",
