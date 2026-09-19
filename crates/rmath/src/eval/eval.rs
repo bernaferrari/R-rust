@@ -3576,18 +3576,76 @@ identical(labs, c("ANY#ANY", "character#character")) &&
     }
 
     #[test]
-    fn reg_s4_head_through_hasmethods() {
+    fn reg_s4_head_through_multiple_inheritance() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(129).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(185).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through hasMethods: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through multiple inheritance: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
     }
+
+    #[test]
+    fn hashed_env_names_include_hash_bindings() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+e <- new.env(hash=TRUE, parent=emptyenv())
+assign("brob#ANY", 1, envir=e)
+assign(".hidden", 2, envir=e)
+identical(sort(names(e)), sort(c("brob#ANY", ".hidden")))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "hashed env names: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn logic_group_hasmethod_and_after_setmethod() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("brob", contains="numeric")
+logic2 <- function(e1,e2) e1
+setMethod("Logic", signature("brob", "ANY"), logic2)
+isTRUE(hasMethod("Logic", c("brob","ANY"))) && isTRUE(hasMethod("&", c("brob","ANY")))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "logic group hasMethod: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
+
+
 
 
 

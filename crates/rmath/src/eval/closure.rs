@@ -467,12 +467,21 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
             // default method is stored as ANY#2 after a 2-arg setMethod.
             c".resetTable",
             c".fillSignatures",
+            // Private JIT: rep(FALSE, length(found)) in .getGroupMethods
+            // becomes a scalar length, so mget looks up Logic keys in the
+            // member generic's empty table (`value for 'brob#ANY' not found`).
+            c".getGroupMethods",
+            c".findInheritedMethods",
+            c".getAllGroups",
+
+
             // Private JIT miscompiles S3Class <- c(cl, S3Class) / attr<-
             // so every setOldClass proto keeps .S3Class="oldClass" (rport-d4jyb).
             c"setOldClass",
             // Private JIT / GNU methods bytecode drops attr(funNames, "package")
             // so cacheMetaData's rep(packages, ...) sees a non-vector NULL.
             c".getGenerics",
+
         ] {
             let mut bound = crate::sexp::envir::R_findVarInFrame(
                 methods,

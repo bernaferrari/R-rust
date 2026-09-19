@@ -4,10 +4,11 @@ use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, COMPLEX, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_ATTRIB,
-    SET_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
+    CAR, CDR, CHAR, COMPLEX, FRAME, HASHTAB, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL,
+    SET_ATTRIB, SET_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
     VECTOR_ELT, XLENGTH,
 };
+
 
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -649,18 +650,33 @@ pub unsafe fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 unsafe fn names_from_environment(env: SEXP) -> SEXP {
     unsafe {
+        // GNU do_names for ENVSXP is R_lsInternal3(x, TRUE, TRUE).
         let mut names = Vec::new();
-        let mut frame = FRAME(env);
+        collect_env_binding_names(FRAME(env), &mut names);
+        let hashtab = HASHTAB(env);
+        if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
+            for i in 0..XLENGTH(hashtab) {
+                collect_env_binding_names(VECTOR_ELT(hashtab, i), &mut names);
+            }
+        }
+        names.sort();
+        names.dedup();
+        string_vector(&names)
+    }
+}
+
+unsafe fn collect_env_binding_names(mut frame: SEXP, names: &mut Vec<String>) {
+    unsafe {
         while !frame.is_null() && frame != R_NilValue() {
             if let Some(name) = tag_name(TAG(frame)) {
                 names.push(name);
             }
             frame = CDR(frame);
         }
-        names.sort();
-        string_vector(&names)
     }
 }
+
+
 
 unsafe fn names_from_pairlist(list: SEXP) -> SEXP {
     unsafe {

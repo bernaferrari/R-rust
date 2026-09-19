@@ -111,19 +111,42 @@ unsafe fn attach_recommended_package_stub(package: &str) {
         if !lib_path.is_empty() {
             let package_dir = Path::new(&lib_path);
             let mut loading = vec![package.to_string()];
-            if let Ok((namespace, directives)) =
-                load_package_namespace(package, package_dir, &mut loading)
-            {
-                if let Ok(attach_env) = make_package_attach_env_lenient(
-                    package,
-                    directives.as_ref(),
-                    namespace,
-                ) {
-                    attach_package_env(attach_env);
-                    return;
+            match load_package_namespace(package, package_dir, &mut loading) {
 
+                Ok((namespace, directives)) => {
+                    match make_package_attach_env_lenient(
+                        package,
+                        directives.as_ref(),
+                        namespace,
+                    ) {
+                        Ok(attach_env) => {
+                            attach_package_env(attach_env);
+                            return;
+                        }
+                        Err(err) => {
+                            let text = format!(
+                                "Warning: attaching package '{package}' without full namespace: {err}\n"
+                            );
+                            if crate::sexp::output::is_capturing() {
+                                crate::sexp::output::capture_stderr(&text);
+                            } else {
+                                eprint!("{text}");
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    let text = format!(
+                        "Warning: could not load namespace for package '{package}': {err}\n"
+                    );
+                    if crate::sexp::output::is_capturing() {
+                        crate::sexp::output::capture_stderr(&text);
+                    } else {
+                        eprint!("{text}");
+                    }
                 }
             }
+
         }
         let env = crate::sexp::memory_ext::NewEnvironment(
             R_NilValue(),
