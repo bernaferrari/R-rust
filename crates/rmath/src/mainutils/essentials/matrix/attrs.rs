@@ -535,12 +535,17 @@ pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }
-
         if TYPEOF(value) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
                 message: "attributes must be a list or NULL".to_string(),
             });
         }
+        if XLENGTH(value) == 0 {
+            crate::sexp::accessors::UNSET_S4_OBJECT(x);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+
 
         let names =
             crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());

@@ -4023,7 +4023,11 @@ invisible(require(methods, quietly=TRUE))
 setClass("moo", representation("matrix"))
 x <- new("moo", .Data = matrix(1:4, 2))
 attributes(x) <- NULL
-!isS4(x)
+a <- !isS4(x)
+y <- new("moo", .Data = matrix(1:4, 2))
+attributes(y) <- list()
+a && !isS4(y)
+
 "#,
         );
         let result = result.unwrap_or_else(|e| {
@@ -4102,6 +4106,35 @@ all(dim(x) == c(1,1)) && is(tt, "ts") && is(t2, "ts") &&
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_rbind_generic_dots() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+a <- identical(rbind(1), matrix(1,1,1))
+setGeneric("rbind", function(..., deparse.level=1)
+	   standardGeneric("rbind"), signature = "...")
+a && identical(rbind(1), matrix(1,1,1))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "rbind generic dots: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
 
 

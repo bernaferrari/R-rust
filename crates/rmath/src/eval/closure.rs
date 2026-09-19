@@ -7,10 +7,10 @@
 //! 2. Binding formal parameters to actual arguments
 //! 3. Evaluating the body in the new environment
 
-use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::c_int;
 use std::ptr;
+
 
 
 use crate::sexp::accessors::{
@@ -452,11 +452,57 @@ unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
     }
 }
 
-thread_local! {
-    static UNWRAP_METHODS_CLOSURES: RefCell<(SEXP, Vec<SEXP>)> =
-        const { RefCell::new((ptr::null_mut(), Vec::new())) };
+unsafe fn collect_unwrap_methods_closures(methods: SEXP) -> Vec<SEXP> {
+    unsafe {
+        let mut out = Vec::new();
+        for name in [
+            c"matchSignature",
+            c".isSealedMethod",
+            c".copyMethodDefaults",
+            c"rematchDefinition",
+            c"setMethod",
+            c".matchSigLength",
+            // Private JIT: rep("ANY", n) in .resetTable becomes n, so the
+            // default method is stored as ANY#2 after a 2-arg setMethod.
+            c".resetTable",
+            c".fillSignatures",
+            // Private JIT: rep(FALSE, length(found)) in .getGroupMethods
+            // becomes a scalar length, so mget looks up Logic keys in the
+            // member generic's empty table (`value for 'brob#ANY' not found`).
+            c".getGroupMethods",
+            c".findInheritedMethods",
+            c".getAllGroups",
+            // Private JIT: rep(2, length(contains)) in .inhDistances becomes
+            // a scalar, so match() yields NA distances and
+            // if(any(fromGroup[best])) is if(NA).
+            c".inhDistances",
+            c".leastMethodDistance",
+            c".getBestMethods",
+            c".disambiguateMethods",
+            // Private JIT miscompiles S3Class <- c(cl, S3Class) / attr<-
+            // so every setOldClass proto keeps .S3Class="oldClass" (rport-d4jyb).
+            c"setOldClass",
+            // Private JIT / GNU methods bytecode drops attr(funNames, "package")
+            // so cacheMetaData's rep(packages, ...) sees a non-vector NULL.
+            c".getGenerics",
+        ] {
+            let mut bound = crate::sexp::envir::R_findVarInFrame(
+                methods,
+                crate::sexp::symbol::Rf_install(name.as_ptr()),
+            );
+            if bound.is_null() || bound == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            if TYPEOF(bound) == SEXPTYPE::PROMSXP {
+                bound = crate::sexp::envir::forcePromise(bound);
+            }
+            if !bound.is_null() && bound != crate::sexp::globals::R_UnboundValue() {
+                out.push(bound);
+            }
+        }
+        out
+    }
 }
-
 
 pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
     unsafe {
@@ -464,49 +510,25 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
         else {
             return false;
         };
-        UNWRAP_METHODS_CLOSURES.with(|cell| {
-            let mut cached = cell.borrow_mut();
-            if cached.0 != methods {
-                cached.0 = methods;
-                cached.1.clear();
-                for name in [
-                    c"matchSignature",
-                    c".isSealedMethod",
-                    c".copyMethodDefaults",
-                    c"rematchDefinition",
-                    c"setMethod",
-                    c".matchSigLength",
-                    c".resetTable",
-                    c".fillSignatures",
-                    c".getGroupMethods",
-                    c".findInheritedMethods",
-                    c".getAllGroups",
-                    c".inhDistances",
-                    c".leastMethodDistance",
-                    c".getBestMethods",
-                    c".disambiguateMethods",
-                    c"setOldClass",
-                    c".getGenerics",
-                ] {
-                    let mut bound = crate::sexp::envir::R_findVarInFrame(
-                        methods,
-                        crate::sexp::symbol::Rf_install(name.as_ptr()),
-                    );
-                    if bound.is_null() || bound == crate::sexp::globals::R_UnboundValue() {
-                        continue;
-                    }
-                    if TYPEOF(bound) == SEXPTYPE::PROMSXP {
-                        bound = crate::sexp::envir::forcePromise(bound);
-                    }
-                    if !bound.is_null() && bound != crate::sexp::globals::R_UnboundValue() {
-                        cached.1.push(bound);
-                    }
-                }
+        let hit = crate::sexp::instance::with_required_current_instance(|inst| {
+            if (*inst).unwrap_methods_ns == methods {
+                Some((*inst).unwrap_methods_closures.iter().any(|&bound| bound == op))
+            } else {
+                None
             }
-            cached.1.iter().any(|&bound| bound == op)
+        });
+        if let Some(found) = hit {
+            return found;
+        }
+        let built = collect_unwrap_methods_closures(methods);
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            (*inst).unwrap_methods_ns = methods;
+            (*inst).unwrap_methods_closures = built;
+            (*inst).unwrap_methods_closures.iter().any(|&bound| bound == op)
         })
     }
 }
+
 
 unsafe fn methods_matchsignature_source(op: SEXP, body: SEXP) -> Option<SEXP> {
     unsafe {
