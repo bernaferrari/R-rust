@@ -1253,7 +1253,10 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
 }
 
 /// GNU methods `zzz.R` `.onLoad`: `.initImplicitGenerics(where)` then
-/// `cacheMetaData(where, TRUE, searchWhere = .GlobalEnv, FALSE)`.
+/// `cacheMetaData(...)`. The installed image already ran
+/// `.initImplicitGenerics` (table `.__IG__table` has toeplitz, norm, …)
+/// and removed the helper. Re-cache that table into the session so
+/// `implicitGeneric("toeplitz")` finds GNU's `function(x, ...)` form.
 pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
     unsafe {
         if where_env.is_null() || where_env == R_NilValue() {
@@ -1263,11 +1266,47 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
             return;
         };
         eval_methods_ns_fun(ns, c".initImplicitGenerics", where_env, None);
+        register_implicit_generics_table(ns);
         let attach = Rf_ScalarLogical(TRUE);
         let _attach = protect(attach);
         eval_methods_ns_fun(ns, c"cacheMetaData", where_env, Some(attach));
     }
 }
+
+/// GNU `.initImplicitGenerics` ends with `registerImplicitGenerics(where)`.
+/// The table entry is package `"stats"`; `implicitGeneric` only finds it
+/// when `environment(toeplitz)` is the stats namespace (not base).
+unsafe fn register_implicit_generics_table(ns: SEXP) {
+    unsafe {
+        let src = "{\n\
+             registerImplicitGenerics(where = asNamespace(\"methods\"))\n\
+             stats_ns <- try(asNamespace(\"stats\"), silent = TRUE)\n\
+             if (exists(\"toeplitz\", envir = baseenv(), inherits = FALSE)\n\
+                 && is.environment(stats_ns)) {\n\
+               f <- get(\"toeplitz\", envir = baseenv(), inherits = FALSE)\n\
+               environment(f) <- stats_ns\n\
+               assign(\"toeplitz\", f, envir = baseenv())\n\
+               assign(\"toeplitz\", f, envir = stats_ns)\n\
+             }\n\
+             }";
+
+        let parsed = crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse_expressions(src, arena)
+        });
+        crate::eval::parser::flush_literal_warnings();
+        let Ok(exprs) = parsed else {
+            return;
+        };
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            for expr in exprs {
+                let _ = crate::eval::eval::Rf_eval(expr, ns);
+            }
+        }));
+    }
+}
+
+
+
 
 unsafe fn eval_methods_ns_fun(
     ns: SEXP,

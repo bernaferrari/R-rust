@@ -743,7 +743,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "rowMeans",
     "col",
     "row",
-    "toeplitz",
+    ".rport_toeplitz",
+
     "toeplitz2",
 
     "cbind",

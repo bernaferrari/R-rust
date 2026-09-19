@@ -369,28 +369,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             ".rmpkg",
             "function(pkg) sub(\"package:\", \"\", pkg, fixed=TRUE)",
         );
-        // GNU stats::toeplitz is a closure (diffinv.R). A portable builtin
-        // makes is.primitive FALSE and environment NULL, so methods::isBaseFun
-        // is false and implicitGeneric dies in getPackageName(NULL).
+        // GNU stats::toeplitz is a closure (diffinv.R), not a primitive.
+        // Kernel is hidden `.rport_toeplitz`; public formals match GNU
+        // (no `...`). methods onLoad re-caches `.__IG__table` and points
+        // this closure at the stats namespace so implicitGeneric finds
+        // GNU's package="stats" `function(x, ...)` entry.
+
         eval_base_binding(
             base_env,
             "toeplitz",
-            "function(x, r = NULL, symmetric = is.null(r), ...) {\n\
-             if (!is.vector(x)) stop(\"'x' is not a vector\")\n\
-             n <- length(x)\n\
-             if (symmetric) {\n\
-             d <- c(n, n)\n\
-             array(x[abs(col(array(NA, d)) - row(array(NA, d))) + 1L], d)\n\
-             } else {\n\
-             stopifnot(is.vector(r))\n\
-             nc <- length(r)\n\
-             if (n && nc && x[1L] != r[1L])\n\
-             warning(\"x[1] != r[1]; using x[1] for diagonal\")\n\
-             d <- c(n, nc)\n\
-             array(c(r[if (nc >= 2L) nc:2L else 0L], x)[nc - col(array(NA, d)) + row(array(NA, d))], d)\n\
-             }\n\
-             }",
+            "function(x, r = NULL, symmetric = is.null(r))\n\
+             .rport_toeplitz(x, r, symmetric)",
         );
+
 
 
         eval_base_binding(

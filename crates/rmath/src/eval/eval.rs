@@ -3326,8 +3326,12 @@ setClass("Atoep", slots = c(x = "NULL"))
 x <- c(-1, 0, 0)
 r <- c(-1, 11, 0)
 T3 <- toeplitz(x, r)
+g <- implicitGeneric("toeplitz")
+env_ok <- identical(environment(get("toeplitz", envir=baseenv(), inherits=FALSE)), asNamespace("stats"))
 setMethod("toeplitz", "Atoep", function(x, ...) x)
-identical(T3, toeplitz(x, r)) &&
+identical(names(formals(g)), c("x", "...")) &&
+  env_ok &&
+  identical(T3, toeplitz(x, r)) &&
   is(selectMethod(toeplitz, "numeric"), "MethodDefinition") &&
   removeGeneric("toeplitz")
 "#,
@@ -3335,12 +3339,6 @@ identical(T3, toeplitz(x, r)) &&
         let result = result.expect("classes-methods.R toeplitz implicit generic");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
-
-
-
-
 
 
     #[test]

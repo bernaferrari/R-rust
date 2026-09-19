@@ -3363,9 +3363,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_embed,
     },
     EvaluatedBuiltin {
-        name: "toeplitz",
+        name: ".rport_toeplitz",
         handler: crate::mainutils::essentials::do_toeplitz,
     },
+
     EvaluatedBuiltin {
         name: "toeplitz2",
         handler: crate::mainutils::essentials::do_toeplitz2,
