@@ -765,19 +765,24 @@ unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
     }
 }
 
+/// GNU print.default with extra args uses PrintValueRec, so showDefault's
+/// `print(object, useS4=FALSE)` never re-enters show(). If we do re-enter,
+/// print the data part like PrintValueRec, not a class-name stub.
+unsafe fn print_s4_data_part(s: SEXP, data: &R_PrintData) {
+    unsafe {
+        let copy = crate::mainutils::duplicate::Rf_duplicate(s);
+        let _copy = protect(copy);
+        crate::sexp::accessors::UNSET_S4_OBJECT(copy);
+        crate::sexp::attrib_core::setAttrib(copy, R_ClassSymbol(), R_NilValue());
+        PrintValueRec_inner(copy, data);
+    }
+}
+
 unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
     unsafe {
         let depth = with_print_runtime(|state| state.active_values.len());
         if depth > 8 {
-            let klass = getAttrib(s, R_ClassSymbol());
-            let name = if TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) > 0 {
-                CStr::from_ptr(CHAR(STRING_ELT(klass, 0)))
-                    .to_str()
-                    .unwrap_or("S4")
-            } else {
-                "S4"
-            };
-            println!("An object of class \"{name}\"");
+            print_s4_data_part(s, data);
             return;
         }
         let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
@@ -840,18 +845,9 @@ unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
             match enter_print_value(s) {
                 Some(_guard) => PrintObjectS4(s, data),
                 None => {
-                    // show() default calls print(); GNU print.default with
-                    // extra args uses PrintValueRec. Re-entry must not
-                    // eval show() again.
-                    let klass = getAttrib(s, R_ClassSymbol());
-                    let name = if TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) > 0 {
-                        CStr::from_ptr(CHAR(STRING_ELT(klass, 0)))
-                            .to_str()
-                            .unwrap_or("S4")
-                    } else {
-                        "S4"
-                    };
-                    println!("An object of class \"{name}\"");
+                    // showDefault calls print(object, useS4=FALSE). If that
+                    // still reaches PrintObject, do not eval show() again.
+                    print_s4_data_part(s, data);
                 }
             }
         } else {

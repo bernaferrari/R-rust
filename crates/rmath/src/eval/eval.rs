@@ -3663,7 +3663,6 @@ print(m.)
 TRUE
 "#,
         );
-
         let result = result.unwrap_or_else(|e| {
             panic!(
                 "show/print S4 matrix: {e}\nstdout={}\nstderr={}",
@@ -3677,7 +3676,74 @@ TRUE
             output.stdout,
             output.stderr
         );
+        assert!(
+            output.stdout.contains("[,1]") || output.stdout.contains("NA"),
+            "expected matrix PrintValueRec, got stdout={}",
+            output.stdout
+        );
+        assert!(
+            !output.stdout.contains("An object of class \"S4\""),
+            "recursion-guard stub still printed: {}",
+            output.stdout
+        );
+
     }
+
+    #[test]
+    fn cbind_mixed_s4_and_atomic_uses_cbind2_default() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("Num", contains="numeric")
+a <- new("Num", 1:3)
+r <- cbind(a, 4)
+identical(dim(r), c(3L, 2L)) && identical(as.vector(r)[1:3], c(1, 2, 3))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "cbind mixed: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn rbind_null_then_data_frame_binds_columns() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+df <- data.frame(a = 1:2)
+r <- rbind(NULL, df)
+identical(r$a, 1:2)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "rbind NULL df: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
 
 
 
