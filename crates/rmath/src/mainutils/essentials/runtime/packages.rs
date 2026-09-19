@@ -433,13 +433,12 @@ pub unsafe fn do_get_registered_namespace(
         if package.is_empty() {
             return R_NilValue();
         }
-        let package = package
-            .strip_prefix("package:")
-            .unwrap_or(package.as_str());
         if package == "base" {
             return crate::sexp::globals::R_BaseEnv();
         }
-        crate::mainutils::essentials::shared::cached_namespace_by_name(package)
+
+        crate::mainutils::essentials::shared::cached_namespace_by_name(&package)
+
             .unwrap_or_else(|| R_NilValue())
     }
 }

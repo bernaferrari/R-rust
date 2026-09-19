@@ -2,10 +2,12 @@
 //!
 //! These are the most fundamental R functions that every R program uses.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
+
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
@@ -28,6 +30,12 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::*;
+
+
+thread_local! {
+    static CACHING_ATTACHED_S4: Cell<bool> = const { Cell::new(false) };
+}
+
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum DatetimeVectorClass {
@@ -1032,12 +1040,8 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
             attach_package_env(attach_env);
             if package == "methods" {
                 run_methods_onload_cache_metadata(package_env);
-            } else {
-                // GNU library() after methods is on: cacheMetaData(env, TRUE).
-                // Rf_lang3(cacheMetaData, env, TRUE) in the methods ns did
-                // not populate .classTable; methods::: from .GlobalEnv does.
-                cache_attached_package_metadata(package);
             }
+
 
 
 
@@ -1302,27 +1306,53 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
     }
 }
 
-/// GNU `library()`: `methods:::cacheMetaData(pos.to.env(pos), TRUE)`.
-unsafe fn cache_attached_package_metadata(package: &str) {
-    if package.is_empty() || cached_namespace_by_name("methods").is_none() {
-        return;
-    }
-    let src = format!(
-        "try(methods:::cacheMetaData(as.environment(\"package:{package}\"), TRUE), silent = TRUE)"
-    );
-    let parsed = crate::sexp::memory::with_arena(|arena| {
-        crate::eval::parser::parse_expressions(&src, arena)
-    });
-    crate::eval::parser::flush_literal_warnings();
-    let Ok(exprs) = parsed else {
-        return;
-    };
-    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        for expr in exprs {
-            let _ = crate::eval::eval::Rf_eval(expr, crate::sexp::globals::R_GlobalEnv());
+/// GNU `library()`/`attach()`: `methods:::cacheMetaData(env, TRUE)`.
+/// GNU bytecode for cacheMetaData GETFUN/CALL-loops on a package attach
+/// env; run the stored source for that one call and restore BODY after.
+pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
+    unsafe {
+        if attach_env.is_null() {
+            return;
         }
-    }));
+        let Some(methods_ns) = cached_namespace_by_name("methods") else {
+            return;
+        };
+        let mut fun = crate::sexp::envir::R_findVarInFrame(
+            methods_ns,
+            Rf_install(c"cacheMetaData".as_ptr()),
+        );
+        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+            return;
+        }
+        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+            fun = crate::sexp::envir::forcePromise(fun);
+        }
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+            return;
+        }
+        let body = crate::sexp::accessors::BODY(fun);
+        let _body = protect(body);
+        if TYPEOF(body) == SEXPTYPE::BCODESXP {
+            let source = crate::eval::bc_eval::BCODE_EXPR(body);
+            if !source.is_null()
+                && source != crate::sexp::globals::R_NilValue()
+                && TYPEOF(source) == SEXPTYPE::LANGSXP
+            {
+                crate::sexp::accessors::SET_BODY(fun, source);
+            }
+        }
+        let attach = Rf_ScalarLogical(TRUE);
+        let _attach = protect(attach);
+        let call = crate::sexp::constructors::Rf_lang3(fun, attach_env, attach);
+        let _call = protect(call);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv())
+        }));
+        crate::sexp::accessors::SET_BODY(fun, body);
+    }
 }
+
+
 
 
 
@@ -3220,15 +3250,43 @@ fn unescape_r_string(s: &str) -> String {
     out
 }
 
-
 pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
     unsafe {
         let global = crate::sexp::globals::R_GlobalEnv();
         let old_enclos = crate::sexp::accessors::ENCLOS(global);
         crate::sexp::accessors::SET_ENCLOS(global, package_env);
         crate::sexp::accessors::SET_ENCLOS(package_env, old_enclos);
+        // methods onLoad already ran cacheMetaData on the namespace.
+        // Re-running it on package:methods walks every methods generic.
+        if attached_search_name(package_env).as_deref() == Some("package:methods") {
+            return;
+        }
+        CACHING_ATTACHED_S4.with(|flag| {
+            if flag.get() {
+                return;
+            }
+            flag.set(true);
+            cache_attached_package_metadata(package_env);
+            flag.set(false);
+        });
     }
 }
+
+unsafe fn attached_search_name(package_env: SEXP) -> Option<String> {
+    unsafe {
+        let name = crate::sexp::attrib_core::getAttrib(package_env, name_symbol());
+        if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) < 1 {
+            return None;
+        }
+        let raw = CHAR(STRING_ELT(name, 0));
+        if raw.is_null() {
+            return None;
+        }
+        CStr::from_ptr(raw).to_str().ok().map(str::to_string)
+    }
+}
+
+
 
 /// Try to find a demo file for a topic.
 pub(crate) fn find_package_demo(topic: &str) -> String {
