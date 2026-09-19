@@ -3070,6 +3070,9 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 t if t == SEXPTYPE::VECSXP => {
                     SET_VECTOR_ELT(result, idx as R_xlen_t, entry.value.as_sexp());
                 }
+                t if t == SEXPTYPE::LGLSXP => {
+                    *LOGICAL(result).add(idx) = entry.value.as_logical();
+                }
                 _ => {
                     *INTEGER(result).add(idx) = entry.value.as_integer();
                 }
@@ -3159,9 +3162,9 @@ enum UnlistValue {
     Element { parent: SEXP, index: R_xlen_t },
 }
 
-
 impl UnlistValue {
     fn as_integer(&self) -> i32 {
+
         match self {
             Self::Logical(value) | Self::Integer(value) => *value,
             Self::Real(value) => {
@@ -3174,9 +3177,13 @@ impl UnlistValue {
             Self::Complex(_) | Self::String(_) | Self::Object(_) | Self::Element { .. } => {
                 NA_INTEGER
             }
-
         }
     }
+
+    fn as_logical(&self) -> i32 {
+        self.as_integer()
+    }
+
 
     fn as_real(&self) -> f64 {
         match self {
@@ -3314,9 +3321,20 @@ fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
         .any(|entry| matches!(entry.value, UnlistValue::Real(_)))
     {
         SEXPTYPE::REALSXP
+    } else if entries
+        .iter()
+        .any(|entry| matches!(entry.value, UnlistValue::Integer(_)))
+    {
+        SEXPTYPE::INTSXP
+    } else if entries
+        .iter()
+        .any(|entry| matches!(entry.value, UnlistValue::Logical(_)))
+    {
+        SEXPTYPE::LGLSXP
     } else {
         SEXPTYPE::INTSXP
     }
+
 }
 
 unsafe fn unlist_scalar_element(x: SEXP, index: R_xlen_t) -> SEXP {

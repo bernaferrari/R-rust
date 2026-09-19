@@ -3623,6 +3623,8 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
 
 
 
+
+
         });
     }
 
@@ -3876,6 +3878,31 @@ identical(AIC(pfit(1:10)), AIC.pfit(pfit(1:10)))
     }
 
     #[test]
+    fn unlist_of_logicals_stays_logical() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+identical(typeof(unlist(list(TRUE, FALSE))), "logical") &&
+  identical(unlist(list(TRUE, FALSE)), c(TRUE, FALSE)) &&
+  identical(typeof(unlist(list(TRUE, 1L))), "integer")
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "unlist logicals: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
     fn getgenerics_stats4_lists_exported_generics() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
@@ -3884,13 +3911,21 @@ invisible(require(methods, quietly=TRUE))
 invisible(require(stats4, quietly=TRUE))
 e4 <- as.environment("package:stats4")
 gg4 <- getGenerics(e4)
+em <- as.environment("package:methods")
+ggm <- getGenerics(em)
+gms <- c("addNextMethod", "body<-", "cbind2", "initialize",
+	 "loadMethod", "Ops", "rbind2", "show")
 stopifnot(c("BIC", "coef", "confint", "logLik", "plot", "profile",
             "show", "summary", "update", "vcov") %in% gg4,
           unlist(lapply(gg4, function(g) !is.null(getGeneric(g, where = e4)))),
           unlist(lapply(gg4, function(g) !is.null(getGeneric(g)))),
-          identical(typeof(get("show", e4)), "closure"),
           isGeneric("show", where=e4),
-          hasMethods("show", where=e4))
+          hasMethods("show", where=e4),
+          unlist(lapply(ggm, function(g) !is.null(getGeneric(g, where = em)))),
+          gms %in% ggm,
+          gms %in% tools:::get_S4_generics_with_methods(em),
+          identical(as.character(gg4),
+                    tools:::get_S4_generics_with_methods(e4)))
 TRUE
 "#,
         );
@@ -3908,6 +3943,9 @@ TRUE
             output.stderr
         );
     }
+
+
+
 
 
 
