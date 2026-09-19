@@ -119,6 +119,7 @@ fn namespace_parser_handles_strings_comments_and_nested_calls() {
     let directives = parse_namespace_directives(
         r#"
             export(foo, "bar,baz", `quux`)
+            exportMethods(coef, logLik)
             exportPattern("^as\\.")
             import(stats)
             importFrom(utils, head, tail)
@@ -135,6 +136,9 @@ fn namespace_parser_handles_strings_comments_and_nested_calls() {
     assert!(directives.exports.contains(&"bar,baz".to_string()));
     assert!(directives.exports.contains(&"quux".to_string()));
     assert!(directives.exports.contains(&"hash#inside".to_string()));
+    assert!(directives.exports.contains(&"coef".to_string()));
+    assert!(directives.exports.contains(&"logLik".to_string()));
+
     assert!(
         directives
             .exports

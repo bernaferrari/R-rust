@@ -2461,6 +2461,20 @@ unsafe fn make_package_attach_env_inner(
         for name in lazy_data_names_binding(package_env) {
             push_unique(&mut exports, name);
         }
+        for name in namespace_info_export_names(package_env) {
+            push_unique(&mut exports, name);
+        }
+        // GNU exportMethods also exports the per-generic method tables
+        // (.__T__coef:stats4, .__M__...) onto the attached package env.
+        // hasMethods() with missing where walks search() and testEv()
+        // those tables with inherits=FALSE.
+        for name in frame_binding_names(package_env, true) {
+            if name.starts_with(".__T__") || name.starts_with(".__M__") {
+                push_unique(&mut exports, name);
+            }
+        }
+
+
         // Crayon-style dynamic exports: top-level package code may
         // `assign(name, value, envir = asNamespace("pkg"))` AFTER the
         // files are sourced (its `sapply(names(builtin_styles), ...)`
@@ -2534,7 +2548,7 @@ pub(crate) fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
     let uncommented = strip_namespace_comments(content);
     for (directive, args) in parse_namespace_calls(&uncommented) {
         match directive.as_str() {
-            "export" => {
+            "export" | "exportMethods" => {
                 for name in split_namespace_args(&args)
                     .into_iter()
                     .filter_map(clean_namespace_name)
@@ -2542,6 +2556,7 @@ pub(crate) fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
                     push_unique(&mut directives.exports, name);
                 }
             }
+
             "exportPattern" => {
                 if let Some(pattern) = split_namespace_args(&args)
                     .first()
@@ -2862,6 +2877,43 @@ pub(crate) unsafe fn namespace_exports(
         exports
     }
 }
+
+unsafe fn namespace_info_export_names(package_env: SEXP) -> Vec<String> {
+    unsafe {
+        let mut info = crate::sexp::envir::R_findVarInFrame(
+            package_env,
+            Rf_install(c".__NAMESPACE__.".as_ptr()),
+        );
+        if TYPEOF(info) == SEXPTYPE::PROMSXP {
+            info = crate::sexp::envir::forcePromise(info);
+        }
+        if info.is_null()
+            || info == crate::sexp::globals::R_UnboundValue()
+            || TYPEOF(info) != SEXPTYPE::ENVSXP
+        {
+            return Vec::new();
+        }
+        export_env_binding_names(info)
+    }
+}
+
+
+unsafe fn export_env_binding_names(info: SEXP) -> Vec<String> {
+    unsafe {
+        let mut exports = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"exports".as_ptr()));
+        if TYPEOF(exports) == SEXPTYPE::PROMSXP {
+            exports = crate::sexp::envir::forcePromise(exports);
+        }
+        if exports.is_null()
+            || exports == crate::sexp::globals::R_UnboundValue()
+            || TYPEOF(exports) != SEXPTYPE::ENVSXP
+        {
+            return Vec::new();
+        }
+        frame_binding_names(exports, true)
+    }
+}
+
 
 pub(crate) unsafe fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
     unsafe {

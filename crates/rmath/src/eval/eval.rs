@@ -3576,14 +3576,14 @@ identical(labs, c("ANY#ANY", "character#character")) &&
     }
 
     #[test]
-    fn reg_s4_head_through_classunion() {
+    fn reg_s4_head_through_hasmethods() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(124).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(129).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through setClassUnion: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through hasMethods: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
@@ -3591,12 +3591,38 @@ identical(labs, c("ANY#ANY", "character#character")) &&
 
 
 
+    #[test]
+    fn stats4_hasmethods_coef_after_require() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+invisible(require(stats4, quietly=TRUE))
+isTRUE(isGeneric("coef")) && isTRUE(hasMethods("coef"))
+"#,
 
 
+        );
+        let result = result.unwrap_or_else(|e| {
+
+            panic!(
+                "stats4 hasMethods(coef): {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
 
 
     #[test]
     fn as_environment_null_is_defunct_like_gnu() {
+
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
             r#"
