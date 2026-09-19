@@ -22,12 +22,7 @@ unsafe fn try_methods_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) ->
         if !any_s4 {
             return None;
         }
-        let mut rest = args;
-        while !rest.is_null() && rest != R_NilValue() {
-            let obj = force_bind_arg(rest);
-            crate::sexp::accessors::SETCAR(rest, obj);
-            rest = CDR(rest);
-        }
+
 
         let ns = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
         let mut fun = crate::sexp::envir::R_findVarInFrame(

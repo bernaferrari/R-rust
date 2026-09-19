@@ -3766,6 +3766,42 @@ identical(colnames(cbind(x)), "x") && identical(rownames(rbind(x)), "x")
         );
     }
 
+    #[test]
+    fn rematch_definition_wraps_extra_formals_in_local() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setGeneric("Gfun", function(x, ...) standardGeneric("Gfun"),
+           useAsDefault = function(x, ...) sum(x, ...))
+setClass("mmat2", contains="matrix")
+setMethod(Gfun, signature(x = "mmat2"),
+          function(x, extrarg = TRUE) {
+              x <- unclass(x)
+              callGeneric()
+          })
+isRematched(getMethod("Gfun", "mmat2"))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "rematch: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
 
 
 
