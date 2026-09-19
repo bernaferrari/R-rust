@@ -1267,6 +1267,14 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         };
         eval_methods_ns_fun(ns, c".initImplicitGenerics", where_env, None);
         register_implicit_generics_table(ns);
+        // GNU zzz.R: initMethodDispatch(where); .Call(C_R_set_method_dispatch, TRUE).
+        // The installed image already ran onLoad, so the session must still
+        // install the standardGeneric pointer or .isMethodsDispatchOn() stays FALSE.
+        crate::library::methods::methods_list_dispatch::R_initMethodDispatch(ns);
+        let on = Rf_ScalarLogical(TRUE);
+        let _on = protect(on);
+        crate::library::methods::methods_list_dispatch::R_set_method_dispatch(on);
+
 
         let attach = Rf_ScalarLogical(TRUE);
         let _attach = protect(attach);

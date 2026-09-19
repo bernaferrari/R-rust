@@ -3505,6 +3505,37 @@ isS4(a) && identical(as.character(class(a))[1], "myfunWithTrace")
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn methods_dispatch_on_after_require_and_reload() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+options(useFancyQuotes=FALSE)
+invisible(require(methods, quietly=TRUE))
+on1 <- .isMethodsDispatchOn()
+invisible(require(stats4, quietly=TRUE))
+detach("package:methods")
+invisible(require("methods", quietly=TRUE))
+on1 && .isMethodsDispatchOn()
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                ".isMethodsDispatchOn after require/reload: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
+
+
+
+
 
 
 
