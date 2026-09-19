@@ -164,11 +164,24 @@ pub unsafe fn do_trace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, rho);
-        let s = CAR(args);
-        let state: c_int = if TYPEOF(s) == SEXPTYPE::LGLSXP {
+        let s = if args.is_null() || args == crate::sexp::globals::R_NilValue() {
+            crate::sexp::globals::R_NilValue()
+        } else {
+            CAR(args)
+        };
+        let query_only = s.is_null()
+            || s == crate::sexp::globals::R_NilValue()
+            || s == crate::sexp::globals::R_MissingArg();
+        let state: c_int = if query_only {
+            -1
+        } else if TYPEOF(s) == SEXPTYPE::LGLSXP {
             if !s.is_null() {
                 let data = (*s).gengc_next_node as *mut c_int;
-                if !data.is_null() { *data } else { 0 }
+                if !data.is_null() {
+                    *data
+                } else {
+                    0
+                }
             } else {
                 0
             }
@@ -176,29 +189,20 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             0
         };
 
-        match PRIMVAL(op) {
-            0 => {
-                // tracingState
-                let prev = crate::sexp::instance::with_required_current_instance(|inst| {
-                    let prev = (*inst).eval_state.tracing_state;
-                    (*inst).eval_state.tracing_state = state;
-                    prev
-                });
-                return Rf_ScalarLogical(prev);
+        let name = crate::eval::builtin::PRIMNAME(op);
+        let tracing = name == "tracingState" || PRIMVAL(op) == 0;
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let slot = if tracing {
+                &mut (*inst).eval_state.tracing_state
+            } else {
+                &mut (*inst).eval_state.debugging_state
+            };
+            let prev = *slot;
+            if !query_only {
+                *slot = state;
             }
-            1 => {
-                // debuggingState
-                let prev = crate::sexp::instance::with_required_current_instance(|inst| {
-                    let prev = (*inst).eval_state.debugging_state;
-                    (*inst).eval_state.debugging_state = state;
-                    prev
-                });
-                return Rf_ScalarLogical(prev);
-            }
-            _ => {} // intentionally unhandled: unknown debug state operation
-        }
-
-        R_NilValue()
+            Rf_ScalarLogical(prev)
+        })
     }
 }
 

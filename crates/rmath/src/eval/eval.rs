@@ -3240,6 +3240,51 @@ exists(".Library", envir=baseenv(), inherits=FALSE) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn trace_is_gnu_base_wrapper() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+exists("trace", envir=baseenv(), inherits=FALSE) &&
+  is.function(trace) &&
+  exists("untrace", envir=baseenv(), inherits=FALSE) &&
+  is.function(untrace)
+"#,
+        );
+        let result = result.expect("GNU methodsSupport.R: trace/untrace");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn classes_methods_trace_coerce_signature() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+trr <- quote(list(.Generic, .Method, .defined, .target))
+sig <- c("ANY", "logical")
+m0 <- selectMethod(coerce, signature = sig)
+a0 <- as(0, "logical")
+trace(coerce, tracer = trr, signature = sig)
+m1 <- selectMethod(coerce, signature = sig)
+a1 <- as(0, "logical")
+untrace(coerce, signature = sig)
+m2 <- selectMethod(coerce, signature = sig)
+is(m0, "MethodDefinition") &&
+  !is(m0, "MethodDefinitionWithTrace") &&
+  is(m1, "MethodDefinitionWithTrace") &&
+  identical(m0, m2) && identical(a0, a1)
+"#,
+        );
+        let result = result.expect("classes-methods.R PR#18823 trace(coerce)");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
+
 
 
 

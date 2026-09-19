@@ -111,6 +111,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "unique",
     ".primTrace",
     ".primUntrace",
+    "tracingState",
+
     ".cache_class",
     "...elt",
     "...length",

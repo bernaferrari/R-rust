@@ -369,6 +369,65 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             ".rmpkg",
             "function(pkg) sub(\"package:\", \"\", pkg, fixed=TRUE)",
         );
+        eval_base_binding(
+            base_env,
+            "trace",
+            "function(what, tracer, exit, at, print, signature,\n\
+             where = topenv(parent.frame()), edit = FALSE)\n\
+             {\n\
+             if(nargs() > 1L && !.isMethodsDispatchOn()) {\n\
+             ns <- try(loadNamespace(\"methods\"))\n\
+             if(isNamespace(ns))\n\
+             message(\"(loaded the methods namespace)\", domain = NA)\n\
+             else\n\
+             stop(\"tracing functions requires the 'methods' package, but unable to load the 'methods' namespace\")\n\
+             }\n\
+             else if(nargs() == 1L)\n\
+             return(.primTrace(what))\n\
+             tState <- tracingState(FALSE)\n\
+             on.exit(tracingState(tState))\n\
+             call <- sys.call()\n\
+             call[[1L]] <- quote(methods:::.TraceWithMethods)\n\
+             call$where <- where\n\
+             eval.parent(call)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "untrace",
+            "function(what, signature = NULL, where = topenv(parent.frame())) {\n\
+             if(!.isMethodsDispatchOn())\n\
+             return(.primUntrace(what))\n\
+             tState <- tracingState(FALSE)\n\
+             on.exit(tracingState(tState))\n\
+             call <- sys.call()\n\
+             call[[1L]] <- quote(methods:::.TraceWithMethods)\n\
+             call$where <- where\n\
+             call$untrace <- TRUE\n\
+             invisible(eval.parent(call))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            ".doTrace",
+            "function(expr, msg) {\n\
+             on <- tracingState(FALSE)\n\
+             if(on) {\n\
+             on.exit(tracingState(TRUE))\n\
+             if(!missing(msg)) {\n\
+             call <- deparse(sys.call(sys.parent(1L)))\n\
+             if(length(call) > 1L)\n\
+             call <- paste(call[[1]], \"....\")\n\
+             cat(\"Tracing\", call, msg, \"\\n\")\n\
+             }\n\
+             exprObj <- substitute(expr)\n\
+             eval.parent(exprObj)\n\
+             }\n\
+             NULL\n\
+             }",
+        );
+
+
 
 
 

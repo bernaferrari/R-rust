@@ -972,6 +972,16 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::debug::do_trace,
     },
     EvaluatedBuiltin {
+        name: "tracingState",
+        handler: crate::mainutils::debug::do_traceOnOff,
+    },
+    EvaluatedBuiltin {
+        name: ".isMethodsDispatchOn",
+        handler: crate::mainutils::objects::do_S4on,
+    },
+
+
+    EvaluatedBuiltin {
         name: ".cache_class",
         handler: crate::mainutils::essentials::do_cache_class,
     },
