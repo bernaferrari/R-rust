@@ -4014,6 +4014,69 @@ s2 <- getMethod("summary", "mle", where = "package:stats4")
         );
     }
 
+    #[test]
+    fn attributes_null_clears_s4_bit() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("moo", representation("matrix"))
+x <- new("moo", .Data = matrix(1:4, 2))
+attributes(x) <- NULL
+!isS4(x)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "attributes<- NULL S4: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_moo_matrix_data_slot() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("moo", representation("matrix"))
+m <- matrix(1:4, 2, dimnames= list(NULL, c("A","B")))
+nf <- new("moo", .Data = m)
+n2 <- new("moo", 3:1, 3,2)
+n3 <- new("moo", 1:6, ncol=2)
+identical(m, as(nf, "matrix")) &&
+  identical(matrix(3:1,3,2), as(n2, "matrix")) &&
+  identical(matrix(1:6,ncol=2), as(n3, "matrix"))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "moo matrix .Data: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
 
     #[test]
     fn getgenerics_stats4_lists_exported_generics() {

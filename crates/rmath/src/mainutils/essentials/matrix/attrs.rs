@@ -527,7 +527,11 @@ pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         let _x = protect(x);
 
         crate::sexp::accessors::SET_ATTRIB(x, R_NilValue());
+        // GNU attrib.c do_attributesgets: emptying the list drops OBJECT;
+        // a NULL replacement also drops the S4 bit.
+        crate::sexp::accessors::SET_OBJECT(x, 0);
         if value.is_null() || value == R_NilValue() {
+            crate::sexp::accessors::UNSET_S4_OBJECT(x);
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }
