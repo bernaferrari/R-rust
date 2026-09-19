@@ -4072,6 +4072,40 @@ identical(m, as(nf, "matrix")) &&
         );
     }
 
+    #[test]
+    fn reg_s4_arr_ts_contains() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+t. <- ts(1:10, frequency = 4, start = c(1959, 2))
+setClass("Arr", contains= "array"); x <- new("Arr", cbind(17))
+setClass("Ts",  contains= "ts");   tt <- new("Ts", t.); t2 <- as(t., "Ts")
+setClass("ts2", representation(x = "Ts", y = "ts"))
+tt2 <- new("ts2", x=t2, y=t.)
+all(dim(x) == c(1,1)) && is(tt, "ts") && is(t2, "ts") &&
+  length(tt) == length(t.) &&
+  identical(tt2@x, t2) && identical(tt2@y, t.)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "Arr/Ts contains: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
 
 
 
