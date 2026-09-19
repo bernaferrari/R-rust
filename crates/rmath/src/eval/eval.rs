@@ -3606,13 +3606,14 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(353).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(377).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through virtual dCMat: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through nested callGeneric ...: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
+
 
 
 
