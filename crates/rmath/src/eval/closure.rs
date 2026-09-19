@@ -485,6 +485,11 @@ unsafe fn collect_unwrap_methods_closures(methods: SEXP) -> Vec<SEXP> {
             // Private JIT / GNU methods bytecode drops attr(funNames, "package")
             // so cacheMetaData's rep(packages, ...) sees a non-vector NULL.
             c".getGenerics",
+            // GNU bytecode for setGeneric drops the signature= default into
+            // ensureGeneric.fdef, so setGeneric("order", signature="...", f)
+            // calls makeGeneric with an empty signature.
+            c"setGeneric",
+
         ] {
             let mut bound = crate::sexp::envir::R_findVarInFrame(
                 methods,
@@ -512,8 +517,15 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
         };
         let hit = crate::sexp::instance::with_required_current_instance(|inst| {
             if (*inst).unwrap_methods_ns == methods {
-                Some((*inst).unwrap_methods_closures.iter().any(|&bound| bound == op))
+                Some(
+                    (*inst)
+                        .unwrap_methods_closures
+                        .iter()
+                        .any(|&bound| bound == op),
+                )
             } else {
+                (*inst).unwrap_methods_ns = methods;
+                (*inst).unwrap_methods_closures.clear();
                 None
             }
         });
@@ -522,10 +534,13 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
         }
         let built = collect_unwrap_methods_closures(methods);
         crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).unwrap_methods_ns = methods;
             (*inst).unwrap_methods_closures = built;
-            (*inst).unwrap_methods_closures.iter().any(|&bound| bound == op)
+            (*inst)
+                .unwrap_methods_closures
+                .iter()
+                .any(|&bound| bound == op)
         })
+
     }
 }
 
