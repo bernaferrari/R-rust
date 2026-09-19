@@ -1441,9 +1441,12 @@ pub unsafe fn do_as_integer(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// R's `as.double(x)` — coerce to REALSXP.
+///
+/// GNU: the primitive is named `as.double`, but S4 methods are set on
+/// `as.numeric` (methods/R/RMethodUtils.R `.getGeneric` / `.primname`).
 pub unsafe fn do_as_double(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if let Some(ans) = dispatch_as(call, op, args, rho, b"as.double\0") {
+        if let Some(ans) = dispatch_as(call, op, args, rho, b"as.numeric\0") {
             return ans;
         }
         coerce_to_type(args, SEXPTYPE::REALSXP.as_c_int())

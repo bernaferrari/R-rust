@@ -3872,6 +3872,44 @@ identical(AIC(pfit(1:10)), AIC.pfit(pfit(1:10)))
         );
     }
 
+    #[test]
+    fn as_double_uses_as_numeric_s4_method() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("c1", "numeric")
+setClass("c2", "numeric")
+x_c1 <- new("c1")
+setMethod("as.numeric", "c1", function(x, ...) 42+pi)
+setMethod(as.double, "c2", function(x, ...) x@.Data+pi)
+x_c2 <- new("c2", pi)
+identical(as.numeric(x_c1), as.double(x_c1)) &&
+  identical(as.double(x_c1), 42+pi) &&
+  identical(as.numeric(x_c2), as.double(x_c2))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "as.double/as.numeric: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
 
 
 
