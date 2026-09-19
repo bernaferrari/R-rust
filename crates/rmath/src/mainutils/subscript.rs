@@ -30,7 +30,8 @@ use std::ptr;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_MissingArg, R_NilValue};
+
 use crate::sexp::protect::protect;
 
 unsafe fn error(msg: &str) -> ! {
@@ -437,6 +438,10 @@ pub unsafe fn get1index(
                 }
             }
         } else if stype == SEXPTYPE::SYMSXP {
+            if s == R_MissingArg() {
+                error("missing subscript");
+            }
+
             // Symbol subscript: match against names
             let _vmax = crate::sexp::memory_ext::vmaxget();
             let sname = CHAR(PRINTNAME(s));

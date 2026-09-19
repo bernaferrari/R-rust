@@ -52,5 +52,11 @@ fn multidispatch_prefers_non_dominated_inherited_method() {
 fn subclass_method_wins_despite_shortcut_to_ancestor() {
     let mut session = RSession::new().unwrap();
     let result = session.eval("local({setClass('A');setClass('B',contains='A');setClass('C',contains='B');setClass('D',contains=c('A','C'));setGeneric('f',function(x)standardGeneric('f'));setMethod('f','C',function(x)'C');setMethod('f','A',function(x)'A');f(new('D'))})").unwrap();
-    assert_eq!(result.trim(), "[1] \"C\"");
+    // GNU also warns about inconsistent superclass order for D; rport
+    // may emit that on the same stream as the value.
+    assert!(
+        result.contains("[1] \"C\""),
+        "subclass C method must win, got {result}"
+    );
 }
+

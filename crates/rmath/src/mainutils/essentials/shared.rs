@@ -1270,10 +1270,17 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         // GNU zzz.R: initMethodDispatch(where); .Call(C_R_set_method_dispatch, TRUE).
         // The installed image already ran onLoad, so the session must still
         // install the standardGeneric pointer or .isMethodsDispatchOn() stays FALSE.
-        crate::library::methods::methods_list_dispatch::R_initMethodDispatch(ns);
+        // Set table_dispatch_on first: R_initMethodDispatch reads that bit to
+        // choose R_dispatchGeneric / R_quick_dispatch (GNU post-onload state).
         let on = Rf_ScalarLogical(TRUE);
         let _on = protect(on);
         crate::library::methods::methods_list_dispatch::R_set_method_dispatch(on);
+        crate::library::methods::methods_list_dispatch::R_initMethodDispatch(ns);
+
+
+
+
+
 
 
         let attach = Rf_ScalarLogical(TRUE);
