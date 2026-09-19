@@ -3576,18 +3576,22 @@ identical(labs, c("ANY#ANY", "character#character")) &&
     }
 
     #[test]
-    fn reg_s4_head_through_print_method() {
+    fn reg_s4_head_through_classunion() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(109).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(124).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through print method: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through setClassUnion: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
     }
+
+
+
+
 
 
 
