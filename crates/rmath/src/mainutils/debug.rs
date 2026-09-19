@@ -161,9 +161,14 @@ pub unsafe fn do_trace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // Returns ScalarLogical of the previous state.
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+/// GNU `tracingState(on=NULL)` — query or set session tracing.
+/// Dedicated so portable PRIMVAL/PRIMNAME cannot divert this to debuggingState.
+pub unsafe fn do_tracing_state(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { trace_or_debug_state(args, true) }
+}
+
+unsafe fn trace_or_debug_state(args: SEXP, tracing: bool) -> SEXP {
     unsafe {
-        let _ = (call, rho);
         let s = if args.is_null() || args == crate::sexp::globals::R_NilValue() {
             crate::sexp::globals::R_NilValue()
         } else {
@@ -174,23 +179,16 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             || s == crate::sexp::globals::R_MissingArg();
         let state: c_int = if query_only {
             -1
-        } else if TYPEOF(s) == SEXPTYPE::LGLSXP {
-            if !s.is_null() {
-                let data = (*s).gengc_next_node as *mut c_int;
-                if !data.is_null() {
-                    *data
-                } else {
-                    0
-                }
+        } else if TYPEOF(s) == SEXPTYPE::LGLSXP && !s.is_null() {
+            let data = (*s).gengc_next_node as *mut c_int;
+            if !data.is_null() {
+                *data
             } else {
                 0
             }
         } else {
             0
         };
-
-        let name = crate::eval::builtin::PRIMNAME(op);
-        let tracing = name == "tracingState" || PRIMVAL(op) == 0;
         crate::sexp::instance::with_required_current_instance(|inst| {
             let slot = if tracing {
                 &mut (*inst).eval_state.tracing_state
@@ -205,6 +203,15 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         })
     }
 }
+
+
+pub unsafe fn do_traceOnOff(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let debugging = PRIMVAL(op) == 1;
+        trace_or_debug_state(args, !debugging)
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // R_current_debug_state — return this session's debugging state

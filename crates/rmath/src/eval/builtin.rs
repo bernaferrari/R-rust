@@ -973,8 +973,9 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "tracingState",
-        handler: crate::mainutils::debug::do_traceOnOff,
+        handler: crate::mainutils::debug::do_tracing_state,
     },
+
     EvaluatedBuiltin {
         name: ".isMethodsDispatchOn",
         handler: crate::mainutils::objects::do_S4on,

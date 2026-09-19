@@ -1147,33 +1147,104 @@ pub unsafe fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `toeplitz(x)` symmetric Toeplitz matrix.
-pub unsafe fn do_toeplitz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `toeplitz(x, r = NULL, symmetric = is.null(r))`.
+pub unsafe fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let n = XLENGTH(x) as isize;
-        if n < 1 {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'x' is not a vector of adequate length",
-            );
+        let m = crate::mainutils::match_mod::match_formal_slots(
+            call,
+            args,
+            &["x", "r", "symmetric"],
+        );
+        let x = m[0];
+        if x.is_null() || x == R_NilValue() {
+            crate::mainutils::errors::errorcall_str(call, "'x' is not a vector");
         }
-        let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), n as i32, n as i32);
+        let n = XLENGTH(x) as isize;
+        let r = m[1];
+        let r_absent = r.is_null()
+            || r == R_NilValue()
+            || r == crate::sexp::globals::R_MissingArg();
+        let symmetric = if m[2].is_null()
+            || m[2] == R_NilValue()
+            || m[2] == crate::sexp::globals::R_MissingArg()
+        {
+            r_absent
+        } else {
+            real_or_default(m[2], 0.0) != 0.0
+        };
+        if n < 1 && symmetric {
+            crate::mainutils::errors::errorcall_str(call, "'x' is not a vector of adequate length");
+        }
+        if symmetric {
+            let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), n as i32, n as i32);
+            let _a = protect(ans);
+            for col in 0..n {
+                for row in 0..n {
+                    let k = (row - col).unsigned_abs() as isize;
+                    copy_atomic_elt(x, k, ans, row + col * n);
+                }
+            }
+            return ans;
+        }
+        if r_absent {
+            crate::mainutils::errors::errorcall_str(call, "'r' is not a vector");
+        }
+        let nc = XLENGTH(r) as isize;
+        if n > 0 && nc > 0 && !atomic_elt_equal(x, 0, r, 0) {
+            let msg = std::ffi::CString::new("x[1] != r[1]; using x[1] for diagonal")
+                .unwrap_or_default();
+            crate::mainutils::errors::warningcall(call, msg.as_ptr());
+        }
+        let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), n as i32, nc as i32);
         let _a = protect(ans);
-        for col in 0..n {
+        for col in 0..nc {
             for row in 0..n {
-                let k = (row - col).unsigned_abs() as usize;
-                let dst = (row + col * n) as usize;
-                if TYPEOF(x) == SEXPTYPE::INTSXP {
-                    *INTEGER(ans).add(dst) = *INTEGER(x).add(k);
+                let dst = row + col * n;
+                if row >= col {
+                    copy_atomic_elt(x, row - col, ans, dst);
                 } else {
-                    *REAL(ans).add(dst) = *REAL(x).add(k);
+                    copy_atomic_elt(r, col - row, ans, dst);
                 }
             }
         }
         ans
     }
 }
+
+unsafe fn copy_atomic_elt(from: SEXP, fi: isize, to: SEXP, ti: isize) {
+    unsafe {
+        match TYPEOF(from) {
+            t if t == SEXPTYPE::INTSXP => {
+                *INTEGER(to).add(ti as usize) = *INTEGER(from).add(fi as usize);
+            }
+            t if t == SEXPTYPE::LGLSXP => {
+                *LOGICAL(to).add(ti as usize) = *LOGICAL(from).add(fi as usize);
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                *REAL(to).add(ti as usize) = *REAL(from).add(fi as usize);
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                SET_STRING_ELT(to, ti as R_xlen_t, STRING_ELT(from, fi as R_xlen_t));
+            }
+            _ => {
+                *REAL(to).add(ti as usize) = *REAL(from).add(fi as usize);
+            }
+        }
+    }
+}
+
+unsafe fn atomic_elt_equal(a: SEXP, ai: isize, b: SEXP, bi: isize) -> bool {
+    unsafe {
+        if TYPEOF(a) == SEXPTYPE::REALSXP && TYPEOF(b) == SEXPTYPE::REALSXP {
+            *REAL(a).add(ai as usize) == *REAL(b).add(bi as usize)
+        } else if TYPEOF(a) == SEXPTYPE::INTSXP && TYPEOF(b) == SEXPTYPE::INTSXP {
+            *INTEGER(a).add(ai as usize) == *INTEGER(b).add(bi as usize)
+        } else {
+            true
+        }
+    }
+}
+
 
 /// GNU `toeplitz2(x, nrow)` — banded Toeplitz, ncol = length(x)+1-nrow.
 pub unsafe fn do_toeplitz2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

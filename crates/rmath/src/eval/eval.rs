@@ -3256,6 +3256,68 @@ exists("trace", envir=baseenv(), inherits=FALSE) &&
     }
 
     #[test]
+    fn tracing_state_toggles_do_trace() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+old <- tracingState(TRUE)
+n <- 0L
+tracingState(FALSE)
+.doTrace(n <- 1L)
+off <- n
+tracingState(TRUE)
+.doTrace(n <- 2L)
+on <- n
+tracingState(old)
+identical(off, 0L) && identical(on, 2L)
+"#,
+        );
+        let result = result.expect("tracingState must gate .doTrace");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
+    fn classes_methods_setis_simple_as() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("A", slots = c(x = "NULL"))
+setClass("B", slots = c(x = "NULL"))
+setIs("A", "B",
+      test = function(.) { TRUE },
+      coerce = function(.) new("B"),
+      replace = function(., value) new("B"))
+B <- as(new("A"), "B")
+identical(B, new("B"))
+"#,
+        );
+        match result {
+            Ok(v) => assert_eq!(v.logical_elt(0), Some(TRUE)),
+            Err(err) => panic!("setIs/as: {err}\nstdout={}", output.stdout),
+        }
+    }
+
+    #[test]
+    fn classes_methods_toeplitz_two_arg() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+exists("toeplitz", envir=baseenv(), inherits=FALSE) &&
+  identical(
+    as.vector(toeplitz(c(-1, 0, 0), c(-1, 11, 0))),
+    c(-1, 0, 0, 11, -1, 0, 0, 11, -1)
+  ) &&
+  identical(as.vector(toeplitz(1:3)), c(1L, 2L, 3L, 2L, 1L, 2L, 3L, 2L, 1L))
+"#,
+        );
+        let result = result.expect("GNU toeplitz(x, r) first column/row");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn classes_methods_trace_coerce_signature() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
