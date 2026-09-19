@@ -226,6 +226,21 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Internal(print.default(x, args, missings))\n\
              }",
         );
+        // GNU New-Internal.R: cbind/rbind are closures around .Internal
+        // so the first argument is always deparse.level. cbind2 defaults
+        // pass -1L to disable S4 redispatch (bind.c tryS4).
+        eval_base_binding(
+            base_env,
+            "cbind",
+            "function(..., deparse.level = 1) .Internal(cbind(deparse.level, ...))",
+        );
+        eval_base_binding(
+            base_env,
+            "rbind",
+            "function(..., deparse.level = 1) .Internal(rbind(deparse.level, ...))",
+        );
+
+
 
 
         // GNU formals.R: replacement functions are closures, not primitives.

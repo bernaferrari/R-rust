@@ -783,11 +783,10 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
                             if val.is_null() || val == R_NilValue() {
                                 return val;
                             }
-                            if val == obj {
-                                return strip_s4_data_part(obj);
-                            }
-                            crate::sexp::accessors::UNSET_S4_OBJECT(val);
-                            return val;
+                            // GNU data_part is a base vector, never an S4
+                            // object. Returning the original Foo made
+                            // showDefault's show(slot(.Data)) recurse.
+                            return strip_s4_data_part(val);
                         }
                         Err(payload) => std::panic::resume_unwind(payload),
                     }

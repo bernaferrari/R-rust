@@ -1286,6 +1286,9 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         let attach = Rf_ScalarLogical(TRUE);
         let _attach = protect(attach);
         eval_methods_ns_fun(ns, c"cacheMetaData", where_env, Some(attach));
+        register_matrix_initialize_helpers(ns);
+
+
 
     }
 }
@@ -1323,6 +1326,98 @@ unsafe fn register_implicit_generics_table(ns: SEXP) {
         }));
     }
 }
+
+/// GNU `.InitBasicClassMethods` closes `initialize,matrix` over local
+/// `initMatrix`/`initArray`. If that call frame is not the method
+/// environment, `new("Foo", matrix())` fails with `initMatrix` not found.
+unsafe fn register_matrix_initialize_helpers(ns: SEXP) {
+    unsafe {
+        let src = r#"{
+initMatrix <- function(.Object, data = NA, nrow = 1, ncol = 1,
+                       byrow = FALSE, dimnames = NULL, ...) {
+    na <- nargs()
+    if(length(dots <- list(...)) && ".Data" %in% names(dots)) {
+        if(na == 2)
+            .Object <- .mergeAttrs(dots$.Data, .Object)
+        else {
+            dat <- dots$.Data
+            dots <- dots[names(dots) != ".Data"]
+            if(na == 2 + length(dots))
+                .Object <- .mergeAttrs(as.matrix(dat), .Object, dots)
+            else
+                stop("cannot specify matrix() arguments when specifying '.Data'")
+        }
+    }
+    else if(is.matrix(data) && na == 2 + length(dots))
+        .Object <- .mergeAttrs(data, .Object, dots)
+    else {
+        if (missing(nrow))
+            nrow <- ceiling(length(data)/ncol)
+        else if (missing(ncol))
+            ncol <- ceiling(length(data)/nrow)
+        value <- matrix(data, nrow, ncol, byrow, dimnames)
+        .Object <- .mergeAttrs(value, .Object, dots)
+    }
+    validObject(.Object)
+    .Object
+}
+initArray <- function(.Object, data = NA, dim = length(data),
+                      dimnames = NULL, ...) {
+    na <- nargs()
+    if(length(dots <- list(...)) && ".Data" %in% names(dots)) {
+        if(na == 2)
+            .Object <- .mergeAttrs(dots$.Data, .Object)
+        else {
+            dat <- dots$.Data
+            dots <- dots[names(dots) != ".Data"]
+            if(na == 2 + length(dots))
+                .Object <- .mergeAttrs(as.array(dat), .Object, dots)
+            else
+                stop("cannot specify array() arguments when specifying '.Data'")
+        }
+    }
+    else if(is.array(data) && na == 2 + length(dots))
+        .Object <- .mergeAttrs(data, .Object, dots)
+    else {
+        value <- array(data, dim, dimnames)
+        .Object <- .mergeAttrs(value, .Object, dots)
+    }
+    validObject(.Object)
+    .Object
+}
+assign("initMatrix", initMatrix, envir = asNamespace("methods"))
+assign("initArray", initArray, envir = asNamespace("methods"))
+for (sig in c("matrix", "array")) {
+    mm <- try(getMethod("initialize", sig, where = asNamespace("methods"),
+                       optional = TRUE), silent = TRUE)
+    if (inherits(mm, "try-error") || is.null(mm)) next
+    fun <- if (is(mm, "MethodDefinition")) mm@.Data else mm
+    if (!is.function(fun)) next
+    e <- environment(fun)
+    if (!is.environment(e) || !exists("initMatrix", envir = e, inherits = TRUE)
+        || !exists("initArray", envir = e, inherits = TRUE)) {
+        environment(fun) <- asNamespace("methods")
+        if (is(mm, "MethodDefinition")) mm@.Data <- fun
+    }
+}
+}
+"#;
+        let parsed = crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse_expressions(src, arena)
+        });
+        crate::eval::parser::flush_literal_warnings();
+        let Ok(exprs) = parsed else {
+            return;
+        };
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            for expr in exprs {
+                let _ = crate::eval::eval::Rf_eval(expr, ns);
+            }
+        }));
+    }
+}
+
+
 
 
 

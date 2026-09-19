@@ -33,6 +33,41 @@ fn r_error(message: impl Into<String>) -> ! {
         message: message.into(),
     });
 }
+thread_local! {
+    static SHOW_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+struct ShowDepthGuard {
+    active: bool,
+}
+
+impl Drop for ShowDepthGuard {
+    fn drop(&mut self) {
+        if self.active {
+            SHOW_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+        }
+    }
+}
+
+/// GNU showDefault calls show() on the data part. If that data part is
+/// still the same S4 object, dispatch would recurse forever.
+unsafe fn enter_show_generic(name: &str) -> Option<ShowDepthGuard> {
+    if name != "show" {
+        return Some(ShowDepthGuard { active: false });
+    }
+    let depth = SHOW_DEPTH.with(|d| {
+        let next = d.get().saturating_add(1);
+        d.set(next);
+        next
+    });
+    if depth > 8 {
+        SHOW_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+        return None;
+    }
+    Some(ShowDepthGuard { active: true })
+}
+
+
 
 /// GNU `.InheritForDispatch` (methodsTable.R:744-752): `call. = FALSE`.
 fn no_inherited_method_error(generic: &str, sigargs: SEXP, classes: &[String]) -> ! {
@@ -306,6 +341,11 @@ pub fn standard_generic_dispatch() -> unsafe fn(SEXP, SEXP, SEXP) -> SEXP {
 pub unsafe fn R_standardGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
     unsafe {
         let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+        let Some(_show_guard) = enter_show_generic(&name) else {
+            return R_NilValue();
+        };
+
+
         let mlist = match TYPEOF(fdef) {
             kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
                 let dot_methods = crate::sexp::symbol::Rf_install(c".Methods".as_ptr());
@@ -653,6 +693,12 @@ unsafe fn install_method_context(
 pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
     unsafe {
         let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+        let Some(_show_guard) = enter_show_generic(&name) else {
+            return R_NilValue();
+        };
+        // GNU methods_list_dispatch.c rebinds fdef = R_primitive_generic(fdef)
+        // for SPECIALSXP/BUILTINSXP before table lookup or inherited search.
+
         // GNU methods_list_dispatch.c rebinds fdef = R_primitive_generic(fdef)
         // for SPECIALSXP/BUILTINSXP before table lookup or inherited search.
         let mut fdef = fdef;

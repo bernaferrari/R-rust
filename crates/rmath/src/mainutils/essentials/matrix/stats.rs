@@ -52,13 +52,61 @@ unsafe fn try_methods_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) ->
     }
 }
 
+unsafe fn eval_if_needed(x: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return x;
+        }
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::SYMSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::PROMSXP => {
+                crate::eval::eval::Rf_eval(x, rho)
+            }
+            _ => x,
+        }
+    }
+}
+
+/// GNU `.Internal(cbind(deparse.level, ...))` / rbind: evaluate the
+/// sentinel, then the data arguments. cbind2 defaults pass `-1L`.
+unsafe fn eval_bind_internal_args(call: SEXP, args: SEXP, rho: SEXP) -> (i32, SEXP) {
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            return (1, args);
+        }
+        let dl_val = eval_if_needed(CAR(args), rho);
+        let _dl_guard = protect(dl_val);
+        let dl = crate::mainutils::coerce::asInteger(dl_val);
+        let dl = if dl == crate::sexp::ffi::NA_INTEGER {
+            1
+        } else {
+            dl
+        };
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            return (dl, rest);
+        }
+        let evaluated = crate::eval::dispatch::evalList(rest, rho, call, -1);
+        (dl, evaluated)
+    }
+}
+
+
+
+
+
 
 /// R's `cbind(...)` — combine vectors/matrices by columns.
 pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if let Some(ans) = try_methods_bind(call, args, rho, b"cbind\0") {
+        let (deparse_level, args) = eval_bind_internal_args(call, args, rho);
+        let _args_guard = protect(args);
+        if deparse_level >= 0
+            && let Some(ans) = try_methods_bind(call, args, rho, b"cbind\0")
+        {
             return ans;
         }
+
+
 
         let mut result_type = SEXPTYPE::LGLSXP;
         let mut col_names = Vec::new();
@@ -188,9 +236,14 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `rbind(...)` — combine vectors/matrices by rows.
 pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if let Some(ans) = try_methods_bind(call, args, rho, b"rbind\0") {
+        let (deparse_level, args) = eval_bind_internal_args(call, args, rho);
+        let _args_guard = protect(args);
+        if deparse_level >= 0
+            && let Some(ans) = try_methods_bind(call, args, rho, b"rbind\0")
+        {
             return ans;
         }
+
 
         // GNU R dispatches `rbind` through S3.  This runtime registers a
         // direct builtin, so retain the key dispatch boundary explicitly:

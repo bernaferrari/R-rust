@@ -3603,18 +3603,83 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     }
 
     #[test]
-    fn reg_s4_head_through_cbind2() {
+    fn reg_s4_head_through_show_on_s4_matrix() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(207).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(221).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through cbind2: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through show-on-S4-matrix: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
     }
+
+
+
+    #[test]
+    fn cbind2_default_negative_deparse_level_does_not_redispatch() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("Num", contains="numeric")
+a <- new("Num", 1:3)
+identical(as.vector(cbind(a)), 1:3) && identical(as.vector(cbind2(a)), 1:3)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "cbind2 -1L: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+    #[test]
+    fn show_print_s4_bit_on_matrix_does_not_recurse() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("Foo", representation(name="character"), contains="matrix")
+(f <- new("Foo", name="Sam", matrix()))
+m <- as(f, "matrix")
+stopifnot(isS4(m. <- asS4(m)), identical(m, f@.Data), .hasSlot(f, "name"))
+show(m.)
+print(m.)
+TRUE
+"#,
+        );
+
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "show/print S4 matrix: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
 
 
