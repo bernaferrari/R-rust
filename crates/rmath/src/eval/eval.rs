@@ -3606,14 +3606,14 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(292).collect::<Vec<_>>().join("\n");
-
+        let src: String = vendor.lines().take(332).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through Gf wrap2: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through as.* / ! dispatch: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
+
 
         });
     }
@@ -3787,10 +3787,14 @@ stopifnot(identical(names(mc[-1L]), "x"))
 mc[-1L] <- lapply(names(mc[-1L]), as.name)
 stopifnot(identical(deparse(mc), "Gfun(x = x)"))
 stopifnot(identical(deparse(`names<-`(quote(f(x = 1)), NULL)), "f(1)"))
+e <- quote(f(x = 1))
+names(e) <- NULL
+stopifnot(identical(deparse(e), "f(1)"))
 qq <- quote(f(a))
 err <- tryCatch({ qq[-1L] <- list(); "NOERROR" }, error = function(e) e$message)
 stopifnot(identical(err, "replacement has length zero"))
 TRUE
+
 "#,
         );
         let result = result.unwrap_or_else(|e| {

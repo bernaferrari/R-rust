@@ -105,6 +105,20 @@ pub unsafe fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// as cell tags (including the head of a call as `""`).
 pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        // applydefine wraps LANGSXP targets as EVPROMISEs so a later
+        // Rf_eval of the replacement call does not treat the call as
+        // code. Direct handler dispatch never forces those promises,
+        // so TYPEOF stays PROMSXP and tag-clearing is skipped.
+        let mut x = CAR(args);
+        if TYPEOF(x) == SEXPTYPE::PROMSXP {
+            x = crate::sexp::envir::forcePromise(x);
+            crate::sexp::accessors::SETCAR(args, x);
+        }
+        let mut value = CAR(CDR(args));
+        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+            value = crate::sexp::envir::forcePromise(value);
+            crate::sexp::accessors::SETCAR(CDR(args), value);
+        }
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
             call,
@@ -119,8 +133,8 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         {
             return ans;
         }
-        let mut x = CAR(args);
-        let mut value = CAR(CDR(args));
+        x = CAR(args);
+        value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
