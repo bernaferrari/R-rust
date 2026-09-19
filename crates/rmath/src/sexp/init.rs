@@ -364,10 +364,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              assign(which, val, envir = info)\n\
              }",
         );
-        // GNU attach.R: `ls <- objects <- function(...)`. cacheMetaData
-        // and methods .onLoad call objects(); without this binding
-        // .onLoad dies at zzz.R:80.
-        eval_base_binding(base_env, "objects", "ls");
 
 
 

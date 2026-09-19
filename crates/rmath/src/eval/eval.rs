@@ -3161,27 +3161,65 @@ isBaseNamespace(.BaseNamespaceEnv) &&
         let (result, _, _) = session.eval_script_with_output_capture(
             r#"
 exists("objects", envir=baseenv(), inherits=FALSE) &&
-  identical(objects, ls)
+  typeof(objects) == "builtin" &&
+  identical(objects(envir=baseenv()), ls(envir=baseenv()))
 "#,
         );
-        let result = result.expect("GNU attach.R: ls <- objects <-");
+        let result = result.expect("GNU attach.R: objects is an ls primitive");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
     #[test]
-    fn methods_onload_populates_class_metadata() {
+    fn methods_namespace_lists_class_metadata_bindings() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
             r#"
 invisible(require(methods, quietly=TRUE))
 ns <- asNamespace("methods")
-nC <- sum(startsWith(ls(envir=ns, all.names=TRUE), ".__C__"))
-nC > 0 && exists("cacheMetaData", envir=ns, inherits=FALSE)
+sum(startsWith(ls(envir=ns, all.names=TRUE), ".__C__")) > 0 &&
+  exists("cacheMetaData", envir=ns, inherits=FALSE)
 "#,
         );
-        let result = result.expect("methods .onLoad cacheMetaData must populate .__C__");
+        let result = result.expect("methods ns lists sourced .__C__ class bindings");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn getgenerics_keeps_package_attribute() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+gens <- methods:::.getGenerics(asNamespace("methods"))
+length(gens) > 0 && identical(typeof(attr(gens, "package")), "character") &&
+  length(attr(gens, "package")) == length(gens)
+"#,
+        );
+        let result = result.expect(".getGenerics must keep the package attribute");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn show_body_assign_after_methods_onload_cache() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+out <- capture.output(show(`body<-`))
+any(grepl("showMethods(`body<-`)", out, fixed=TRUE))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!("show(`body<-`) after methods load: {e}\nstdout={}", output.stdout)
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+
+
+
 
 
     #[test]

@@ -1026,6 +1026,11 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
 
             }
             attach_package_env(attach_env);
+            if package == "methods" {
+                run_methods_onload_cache_metadata(package_env);
+
+            }
+
             Ok(())
 
         })();
@@ -1246,6 +1251,37 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
     }
 }
 
+/// GNU methods `zzz.R` `.onLoad` ends with
+/// `cacheMetaData(where, TRUE, searchWhere = .GlobalEnv, FALSE)`.
+pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
+    unsafe {
+        if where_env.is_null() || where_env == R_NilValue() {
+            return;
+        }
+        let Some(ns) = cached_namespace_by_name("methods") else {
+            return;
+        };
+        let symbol = Rf_install(c"cacheMetaData".as_ptr());
+        let mut fun = crate::sexp::envir::R_findVarInFrame(ns, symbol);
+        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+            return;
+        }
+        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+            fun = crate::sexp::envir::forcePromise(fun);
+        }
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+            return;
+        }
+        let attach = Rf_ScalarLogical(TRUE);
+        let _attach = protect(attach);
+        let call = crate::sexp::constructors::Rf_lang3(fun, where_env, attach);
+        let _call = protect(call);
+        let _ = crate::eval::eval::Rf_eval(call, ns);
+    }
+}
+
+
+
 unsafe fn purge_missing_arg_placeholders(env: SEXP) {
     unsafe {
         let missing = crate::sexp::globals::R_MissingArg();
@@ -1398,6 +1434,8 @@ pub(crate) unsafe fn load_package_namespace(
             bind_methods_base_primitives(package_env);
             purge_missing_arg_placeholders(package_env);
             retarget_methods_generics(package_env);
+            run_methods_onload_cache_metadata(package_env);
+
         }
 
         if package == "stats" {

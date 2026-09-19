@@ -469,6 +469,11 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
             // Private JIT miscompiles S3Class <- c(cl, S3Class) / attr<-
             // so every setOldClass proto keeps .S3Class="oldClass" (rport-d4jyb).
             c"setOldClass",
+            // Private JIT / GNU methods bytecode drops attr(funNames, "package")
+            // so cacheMetaData's rep(packages, ...) sees a non-vector NULL.
+            c".getGenerics",
+            c"cacheMetaData",
+
         ] {
 
 

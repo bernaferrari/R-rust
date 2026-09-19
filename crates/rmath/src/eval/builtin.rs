@@ -5823,6 +5823,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ls,
     },
     EvaluatedBuiltin {
+        name: "objects",
+        handler: crate::mainutils::essentials::do_ls,
+    },
+
+    EvaluatedBuiltin {
         name: "%in%",
         handler: crate::mainutils::essentials::do_in_operator,
     },

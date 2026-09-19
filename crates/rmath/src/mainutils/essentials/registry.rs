@@ -564,6 +564,9 @@ pub(super) const ALL_FNS: &[&str] = &[
     "find",
     "get",
     "assign",
+    "ls",
+    "objects",
+
     "rm",
     "remove",
     "dyn.load",
