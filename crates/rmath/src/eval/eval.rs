@@ -3404,6 +3404,35 @@ identical(f1, 1) && identical(n, 1) &&
     }
 
     #[test]
+    fn classes_methods_gnu_skip_path_through_sealclass() {
+        let mut session = RSession::new();
+        let vendor = include_str!("../../../../tests/upstream-r/vendor/classes-methods.R");
+        let lines: Vec<&str> = vendor.lines().collect();
+        let mut src = String::from("invisible(require(methods, quietly=TRUE))\n");
+        for (i, line) in lines.iter().enumerate() {
+            let lineno = i + 1;
+            if lineno > 285 {
+                break;
+            }
+            if (47..=120).contains(&lineno) {
+                continue;
+            }
+            src.push_str(line);
+            src.push('\n');
+        }
+        src.push_str("TRUE\n");
+        let (result, output, _) = session.eval_script_with_output_capture(&src);
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "classes-methods.R through sealClass (Matrix skipped): {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn methods_package_slot_assign_sets_attribute() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
