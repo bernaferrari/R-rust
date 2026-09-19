@@ -29,12 +29,13 @@ use std::ptr;
 
 use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, R_SrcFileSymbol, getAttrib};
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, LENGTH, NAMED, PRINTNAME, SET_NAMED,
+    CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, FRAME, LENGTH, NAMED, PRINTNAME, SET_NAMED,
     SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
+
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::instance::{RInstance, with_required_current_instance};
@@ -56,11 +57,26 @@ pub struct R_varloc_t {
     pub cell: SEXP,
 }
 
-unsafe fn R_findVarLocInFrame(_rho: SEXP, _symbol: SEXP) -> R_varloc_t {
-    R_varloc_t {
-        cell: ptr::null_mut(),
+pub(crate) unsafe fn R_findVarLocInFrame(rho: SEXP, symbol: SEXP) -> R_varloc_t {
+    unsafe {
+        if rho.is_null() || symbol.is_null() {
+            return R_varloc_t {
+                cell: ptr::null_mut(),
+            };
+        }
+        let mut cell = FRAME(rho);
+        while !cell.is_null() && cell != R_NilValue() {
+            if crate::sexp::symbol::symbol_name_bytes_equal(TAG(cell), symbol) {
+                return R_varloc_t { cell };
+            }
+            cell = CDR(cell);
+        }
+        R_varloc_t {
+            cell: ptr::null_mut(),
+        }
     }
 }
+
 
 fn dots_context_error(message: &str) -> ! {
     std::panic::panic_any(RError {

@@ -3391,21 +3391,49 @@ invisible(require(methods, quietly=TRUE))
 setOldClass(c("myfun", "function"))
 f <- structure(function(x) x, class = c("myfun", "function"))
 n <- 0
-tryCatch({
-  suppressMessages(trace("f", quote(n <<- n + 1), print = FALSE))
-  f1 <- f(1)
-  untrace("f")
-  identical(f1, 1) && identical(n, 1) &&
-    identical(class(f), c("myfun", "function")) &&
-    identical(f(2), 2) && identical(n, 1)
-}, error = function(e) {
-  grepl("object 'n' not found", conditionMessage(e), fixed = TRUE)
-})
+suppressMessages(trace("f", quote(n <<- n + 1), print = FALSE))
+f1 <- f(1)
+untrace("f")
+identical(f1, 1) && identical(n, 1) &&
+  identical(class(f), c("myfun", "function")) &&
+  identical(f(2), 2) && identical(n, 1)
 "#,
         );
-        let result = result.expect("trace(S3 function) currently dies in initialize,function");
+        let result = result.expect("classes-methods.R trace multi-string class()");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn methods_package_slot_assign_sets_attribute() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+w <- `packageSlot<-`("a", ".GlobalEnv")
+identical(attr(w, "package"), ".GlobalEnv")
+"#,
+        );
+        let result = result.expect("methods::packageSlot<- must set the package attribute");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn s4_new_oldclass_function_trace_class_name() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setOldClass(c("myfun", "function"))
+setClass("myfunWithTrace", contains = c("myfun", "traceable"))
+a <- new("myfunWithTrace")
+isS4(a) && identical(as.character(class(a))[1], "myfunWithTrace")
+"#,
+        );
+        let result = result.expect("new() must stamp S4 class on oldClass+function prototype");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
     #[test]
     fn t_and_f_are_symbols_bound_to_logicals() {

@@ -894,9 +894,29 @@ unsafe fn eval_gnu_logic(
     }
 }
 
+/// GNU bytecode pushes PUSHCONSTARG as values. This adapter wraps those
+/// entries in forced promises for CLOSXP calls; builtin handlers still
+/// expect the forced PRVALUE.
+unsafe fn force_gnu_builtin_arglist(mut args: SEXP) {
+    unsafe {
+        while !args.is_null() && args != R_NilValue() {
+            let car = CAR(args);
+            if TYPEOF(car) == SEXPTYPE::PROMSXP {
+                let value = crate::sexp::accessors::PRVALUE(car);
+                if !value.is_null() && value != R_UnboundValue() {
+                    crate::sexp::accessors::SETCAR(args, value);
+                } else {
+                    crate::sexp::accessors::SETCAR(args, forcePromise(car));
+                }
+            }
+            args = CDR(args);
+        }
+    }
+}
 
 /// GNU SETTER_CALL matches eval.c: replace the first call argument with lhs,
 /// append rhs tagged `value`, and apply the replacement function.
+
 unsafe fn eval_gnu_setter_call(
     fun: SEXP,
     call: SEXP,
@@ -923,6 +943,9 @@ unsafe fn eval_gnu_setter_call(
                 let value = Rf_cons(rhs, R_NilValue());
                 crate::sexp::accessors::SETTAG(value, value_sym);
                 crate::sexp::accessors::SETCDR(last, value);
+                // PUSHCONSTARG stores forced promises so CLOSXP calls keep
+                // literals. Builtin handlers take values (GNU PUSHCONSTARG).
+                force_gnu_builtin_arglist(frame_args);
                 super::apply::apply_builtin_values_safe(
                     Sexp::from_raw_unchecked(fun),
                     Sexp::from_raw_unchecked(call),
@@ -1001,6 +1024,7 @@ unsafe fn eval_gnu_getter_call(
                     bc_error("GNU GETTER_CALL has no first argument");
                 }
                 crate::sexp::accessors::SETCAR(frame_args, lhs);
+                force_gnu_builtin_arglist(frame_args);
                 super::apply::apply_builtin_values_safe(
                     Sexp::from_raw_unchecked(fun),
                     Sexp::from_raw_unchecked(call),
@@ -1010,6 +1034,7 @@ unsafe fn eval_gnu_getter_call(
                 .unwrap_or_else(|error| bc_error(error))
                 .as_raw()
             }
+
             kind if kind == SEXPTYPE::SPECIALSXP => {
                 let args = crate::mainutils::duplicate::duplicate(CDR(call));
                 let _args = crate::sexp::protect::protect(args);
@@ -2165,6 +2190,21 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     crate::sexp::globals::set_R_Visible(TRUE);
                     stack.push(result);
                 }
+                super::bytecode::GNU_OP_ISNULL
+                | super::bytecode::GNU_OP_ISLOGICAL
+                | super::bytecode::GNU_OP_ISINTEGER
+                | super::bytecode::GNU_OP_ISDOUBLE
+                | super::bytecode::GNU_OP_ISCOMPLEX
+                | super::bytecode::GNU_OP_ISCHARACTER
+                | super::bytecode::GNU_OP_ISSYMBOL
+                | super::bytecode::GNU_OP_ISOBJECT
+                | super::bytecode::GNU_OP_ISNUMERIC => {
+                    let value = stack_pop_checked(&mut stack, "GNU ISTYPE");
+                    let result = with_stack_rooted(&stack, value, || eval_gnu_istype(opcode, value));
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+
                 super::bytecode::GNU_OP_NOT => {
                     let call = VECTOR_ELT(consts, words[pc] as i64);
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
@@ -2294,25 +2334,34 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         ));
                     }
                     let rhs = stack_top_checked(&stack, "GNU STARTASSIGN rhs");
+                    let mut loc = super::missing::R_varloc_t {
+                        cell: ptr::null_mut(),
+                    };
                     let lhs = with_stack_rooted(&stack, symbol, || {
-                        let value = R_findVar(symbol, rho);
-                        if value == R_UnboundValue() {
-                            bc_error("object not found");
-                        }
-                        if TYPEOF(value) == SEXPTYPE::PROMSXP {
-                            forcePromise(value)
+                        // GNU STARTASSIGN: BINDING_VALUE is unforced. Promises
+                        // go through EnsureLocal so the frame cell is a local
+                        // value before SETTER_CALL (eval.c:8237-8254).
+                        let bound = find_var_unforced(symbol, rho);
+                        let value = if bound == R_UnboundValue()
+                            || TYPEOF(bound) == SEXPTYPE::PROMSXP
+                        {
+                            super::missing::EnsureLocal(symbol, rho, &mut loc)
+                        } else {
+                            loc = super::missing::R_findVarLocInFrame(rho, symbol);
+                            bound
+                        };
+                        if crate::sexp::accessors::NAMED(value) > 1 {
+                            crate::mainutils::duplicate::shallow_duplicate(value)
                         } else {
                             value
                         }
                     });
-                    let lhs = if crate::sexp::accessors::NAMED(lhs) > 1 {
-                        with_stack_rooted(&stack, lhs, || {
-                            crate::mainutils::duplicate::shallow_duplicate(lhs)
-                        })
+                    let cell = if loc.cell.is_null() {
+                        R_NilValue()
                     } else {
-                        lhs
+                        loc.cell
                     };
-                    stack.push(R_NilValue());
+                    stack.push(cell);
                     stack.push(lhs);
                     stack.push(rhs);
                 }
@@ -2326,8 +2375,19 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         ));
                     }
                     let value = stack_pop_checked(&mut stack, "GNU ENDASSIGN value");
-                    let _cell = stack_pop_checked(&mut stack, "GNU ENDASSIGN cell");
-                    with_stack_rooted(&stack, value, || defineVar(symbol, value, rho));
+                    let cell = stack_pop_checked(&mut stack, "GNU ENDASSIGN cell");
+                    with_stack_rooted(&stack, value, || {
+                        // GNU SET_BINDING_VALUE on the STARTASSIGN cell; fall
+                        // back to defineVar when the cell was not recorded.
+                        if !cell.is_null()
+                            && cell != R_NilValue()
+                            && TYPEOF(cell) == SEXPTYPE::LISTSXP
+                        {
+                            crate::sexp::accessors::SETCAR(cell, value);
+                            crate::sexp::accessors::SET_MISSING(cell, 0);
+                        }
+                        defineVar(symbol, value, rho);
+                    });
                     super::runtime::set_visible(FALSE);
                 }
                 super::bytecode::GNU_OP_STARTASSIGN2 => {
@@ -2757,22 +2817,6 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_ISNULL
-                | super::bytecode::GNU_OP_ISLOGICAL
-                | super::bytecode::GNU_OP_ISINTEGER
-                | super::bytecode::GNU_OP_ISDOUBLE
-                | super::bytecode::GNU_OP_ISCOMPLEX
-                | super::bytecode::GNU_OP_ISCHARACTER
-                | super::bytecode::GNU_OP_ISSYMBOL
-                | super::bytecode::GNU_OP_ISOBJECT
-                | super::bytecode::GNU_OP_ISNUMERIC => {
-                    let value = stack_pop_checked(&mut stack, "GNU is-type opcode");
-                    let result = with_stack_rooted(&stack, value, || {
-                        eval_gnu_istype(opcode, value)
-                    });
-                    super::runtime::set_visible(TRUE);
-                    stack.push(result);
-                }
                 super::bytecode::GNU_OP_SETTER_CALL => {
                     let call_index = words[pc] as usize;
                     let vexpr_index = words[pc + 1] as usize;
@@ -2804,10 +2848,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         lhs = with_stack_rooted(&stack, lhs, || {
                             crate::mainutils::duplicate::shallow_duplicate(lhs)
                         });
-                        stack.set(marker - 2, lhs);
                     }
+                    let fun = stack.at(marker);
                     let result = with_stack_rooted(&stack, call_expr, || {
-                        let fun = stack.at(marker);
                         let mut args = R_NilValue();
                         let mut argument_roots = Vec::new();
                         let _tag_roots = frame
@@ -2815,7 +2858,6 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             .iter()
                             .map(|(_, tag)| crate::sexp::protect::protect(*tag))
                             .collect::<Vec<_>>();
-                        let _vexpr = crate::sexp::protect::protect(vexpr);
                         for index in (marker + 1..depth).rev() {
                             args = Rf_cons(stack.at(index), args);
                             argument_roots.push(crate::sexp::protect::protect(args));
@@ -2830,6 +2872,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     stack.set_depth(marker - 2);
                     stack.push(result);
                 }
+
                 super::bytecode::GNU_OP_GETTER_CALL => {
                     let call_index = words[pc] as usize;
                     pc += 1;
