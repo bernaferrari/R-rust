@@ -11,14 +11,14 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, PRINTNAME, SET_ATTRIB, SET_NAMED, SET_STRING_ELT, SETCAR, SETCDR, TAG,
-    TYPEOF, XLENGTH,
+    ATTRIB, CAR, CDR, CHAR, PRINTNAME, SET_ATTRIB, SET_NAMED, SET_STRING_ELT, SETCAR, SETCDR,
+    SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 
 
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::globals::{R_NaString, R_NilValue};
 
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -133,7 +133,17 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
             value
         };
 
-
+        // GNU namesgets: pairlist/language names are cell tags, not a
+        // stored `names` attribute. `quote(f(x=1))[-1]` copies VECSXP
+        // names back through setAttrib; without tags, `names()` is NULL
+        // and callGeneric's `lapply(names(call[-1]), as.name)` panics.
+        let xtype = TYPEOF(x);
+        if which == R_NamesSymbol()
+            && (xtype == SEXPTYPE::LISTSXP || xtype == SEXPTYPE::LANGSXP)
+        {
+            namesgets_pairlist(x, value);
+            return;
+        }
 
         let attrib = ATTRIB(x);
 
@@ -186,6 +196,47 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         update_class_object_flag(x, which, value);
     }
 }
+
+/// GNU `namesgets` for LISTSXP/LANGSXP: install tags from a STRSXP (or
+/// clear them). Empty / NA / missing labels become untagged cells.
+unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            let mut cell = list;
+            while !cell.is_null() && cell != R_NilValue() {
+                SETTAG(cell, R_NilValue());
+                cell = CDR(cell);
+            }
+            return;
+        }
+        if TYPEOF(value) != SEXPTYPE::STRSXP {
+            return;
+        }
+        let n = XLENGTH(value);
+        let mut cell = list;
+        let mut i: R_xlen_t = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            if i >= n {
+                SETTAG(cell, R_NilValue());
+            } else {
+                let elt = STRING_ELT(value, i);
+                if elt.is_null() || elt == R_NilValue() || elt == R_NaString() {
+                    SETTAG(cell, R_NilValue());
+                } else {
+                    let chars = CHAR(elt);
+                    if chars.is_null() || *chars == 0 {
+                        SETTAG(cell, R_NilValue());
+                    } else {
+                        SETTAG(cell, Rf_install(chars));
+                    }
+                }
+            }
+            i += 1;
+            cell = CDR(cell);
+        }
+    }
+}
+
 
 unsafe fn update_class_object_flag(x: SEXP, which: SEXP, value: SEXP) {
     unsafe {

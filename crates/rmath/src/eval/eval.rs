@@ -3618,6 +3618,10 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
 
 
 
+
+
+
+
     #[test]
     fn cbind2_default_negative_deparse_level_does_not_redispatch() {
         let mut session = RSession::new();
@@ -3765,6 +3769,81 @@ identical(colnames(cbind(x)), "x") && identical(rownames(rbind(x)), "x")
             output.stderr
         );
     }
+
+    #[test]
+    fn language_subset_minus_one_names_assign() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+f <- function(x, extrarg = TRUE) NULL
+cl <- quote(Gfun(m2))
+mc <- match.call(f, cl, expand.dots = FALSE)
+stopifnot(identical(deparse(mc), "Gfun(x = m2)"))
+stopifnot(identical(names(mc[-1L]), "x"))
+mc[-1L] <- lapply(names(mc[-1L]), as.name)
+stopifnot(identical(deparse(mc), "Gfun(x = x)"))
+TRUE
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "lang subset names assign: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+    #[test]
+    fn callgeneric_after_unclass_uses_default() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setGeneric("Gfun", function(x, ...) standardGeneric("Gfun"),
+           useAsDefault = function(x, ...) sum(x, ...))
+setClass("mmat2", contains="matrix")
+setMethod(Gfun, signature(x = "mmat2"),
+          function(x, extrarg = TRUE) {
+              x <- unclass(x)
+              callGeneric()
+          })
+m2 <- new("mmat2", matrix(1:12, 3,4))
+identical(Gfun(m2), 78L)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "callGeneric: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
 
     #[test]
     fn rematch_definition_wraps_extra_formals_in_local() {

@@ -525,17 +525,15 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
         let nx = XLENGTH(x);
         let _x_guard = protect(x);
 
-        let is_list_target = TYPEOF(x) == VECSXP || TYPEOF(x) == EXPRSXP;
-        if !is_list_target {
-            // Check length compatibility (the list+NULL delete case was
-            // handled above; non-list targets with a zero-length
-            // replacement are an error).
-            if n > 0 && ny == 0 {
-                crate::mainutils::errors::Rf_error(
-                    b"replacement has length zero\0".as_ptr() as *const core::ffi::c_char
-                );
-            }
+        // GNU VectorAssign errors for every type when n>0 and ny==0.
+        // NULL-to-list deletion is handled above; an empty VECSXP is not
+        // NULL and must not VECTOR_ELT(y, 0) on a zero-length pool.
+        if n > 0 && ny == 0 {
+            crate::mainutils::errors::Rf_error(
+                b"replacement has length zero\0".as_ptr() as *const core::ffi::c_char,
+            );
         }
+
 
         // Warn about non-multiple recycling
         if ny != 0 && n % ny != 0 {
