@@ -3741,6 +3741,35 @@ identical(r$a, 1:2)
         );
     }
 
+    #[test]
+    fn cbind_untagged_symbol_names_the_column() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+x <- 1:3
+identical(colnames(cbind(x)), "x") && identical(rownames(rbind(x)), "x")
+"#,
+
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "cbind names: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
 
 
 

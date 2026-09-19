@@ -12,7 +12,7 @@ unsafe fn try_methods_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) ->
         let mut any_s4 = false;
         let mut a = args;
         while !a.is_null() && a != R_NilValue() {
-            let obj = CAR(a);
+            let obj = force_bind_arg(a);
             if crate::mainutils::objects::isS4(obj) != 0 {
                 any_s4 = true;
                 break;
@@ -22,6 +22,13 @@ unsafe fn try_methods_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) ->
         if !any_s4 {
             return None;
         }
+        let mut rest = args;
+        while !rest.is_null() && rest != R_NilValue() {
+            let obj = force_bind_arg(rest);
+            crate::sexp::accessors::SETCAR(rest, obj);
+            rest = CDR(rest);
+        }
+
         let ns = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
         let mut fun = crate::sexp::envir::R_findVarInFrame(
             ns,
@@ -67,7 +74,8 @@ unsafe fn eval_if_needed(x: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `.Internal(cbind(deparse.level, ...))` / rbind: evaluate the
-/// sentinel, then the data arguments. cbind2 defaults pass `-1L`.
+/// sentinel, then promise the data arguments so `...` expansion keeps
+/// the original expressions for deparse.level=1 names.
 unsafe fn eval_bind_internal_args(call: SEXP, args: SEXP, rho: SEXP) -> (i32, SEXP) {
     unsafe {
         if args.is_null() || args == R_NilValue() {
@@ -85,10 +93,21 @@ unsafe fn eval_bind_internal_args(call: SEXP, args: SEXP, rho: SEXP) -> (i32, SE
         if rest.is_null() || rest == R_NilValue() {
             return (dl, rest);
         }
-        let evaluated = crate::eval::dispatch::evalList(rest, rho, call, -1);
-        (dl, evaluated)
+        let promised = crate::eval::dispatch::promiseArgs(rest, rho);
+        (dl, promised)
     }
 }
+
+unsafe fn force_bind_arg(cell: SEXP) -> SEXP {
+    unsafe {
+        let mut arg = CAR(cell);
+        while !arg.is_null() && TYPEOF(arg) == SEXPTYPE::PROMSXP {
+            arg = crate::sexp::envir::forcePromise(arg);
+        }
+        arg
+    }
+}
+
 
 
 
@@ -114,31 +133,29 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut entries = Vec::new();
 
         let mut current = args;
-        let mut expr = if !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
-            CDR(call)
-        } else {
-            R_NilValue()
-        };
+        let mut expr = bind_call_data_exprs(call);
+
         while !current.is_null() && current != R_NilValue() {
             if bind_cell_is_deparse_level(current, expr) {
                 current = CDR(current);
                 expr = next_bind_expr(expr);
                 continue;
             }
-            let arg = CAR(current);
+            let name = bind_arg_label(current, expr);
+            let arg = force_bind_arg(current);
             if !arg.is_null() && arg != R_NilValue() {
                 result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
                 let (arg_nrow, arg_ncol) = bind_dims(arg, true);
-                let name = bind_arg_label(current, expr);
                 if !is_bind_matrix(arg) && !name.is_empty() {
                     has_col_names = true;
                 }
-
                 entries.push((arg, arg_nrow, arg_ncol, name));
             }
+
             current = CDR(current);
             expr = next_bind_expr(expr);
         }
+
         if entries
             .iter()
             .any(|(arg, _, _, _)| sexp_has_class(*arg, "data.frame"))
@@ -243,26 +260,20 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return ans;
         }
-
-
-        // GNU R dispatches `rbind` through S3.  This runtime registers a
-        // direct builtin, so retain the key dispatch boundary explicitly:
-        // a data-frame first argument must be bound column-by-column rather
-        // than flattened as the VECSXP storage of an atomic matrix.
-        // GNU R's rbind finds the dispatching object after skipping NULL
-        // arguments, so `rbind(NULL, df)` binds column-by-column too —
-        // read.fortunes() seeds its accumulation with exactly that call.
         let mut dispatch = args;
-        while !dispatch.is_null()
-            && dispatch != R_NilValue()
-            && (CAR(dispatch).is_null() || CAR(dispatch) == R_NilValue())
-        {
-            dispatch = CDR(dispatch);
+        while !dispatch.is_null() && dispatch != R_NilValue() {
+            let value = force_bind_arg(dispatch);
+            if value.is_null() || value == R_NilValue() {
+                dispatch = CDR(dispatch);
+                continue;
+            }
+            break;
         }
+
         let first = if dispatch.is_null() || dispatch == R_NilValue() {
             R_NilValue()
         } else {
-            CAR(dispatch)
+            force_bind_arg(dispatch)
         };
         if sexp_has_class(first, "data.frame") && TYPEOF(first) == SEXPTYPE::VECSXP {
             return rbind_data_frame(dispatch);
@@ -274,22 +285,19 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut entries = Vec::new();
 
         let mut current = args;
-        let mut expr = if !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
-            CDR(call)
-        } else {
-            R_NilValue()
-        };
+        let mut expr = bind_call_data_exprs(call);
+
         while !current.is_null() && current != R_NilValue() {
             if bind_cell_is_deparse_level(current, expr) {
                 current = CDR(current);
                 expr = next_bind_expr(expr);
                 continue;
             }
-            let arg = CAR(current);
+            let name = bind_arg_label(current, expr);
+            let arg = force_bind_arg(current);
             if !arg.is_null() && arg != R_NilValue() {
                 result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
                 let (arg_nrow, arg_ncol) = bind_dims(arg, false);
-                let name = bind_arg_label(current, expr);
                 if is_bind_matrix(arg) {
                     if matrix_axis_labels(arg, 0, arg_nrow).is_some() {
                         has_row_names = true;
@@ -297,12 +305,12 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 } else if !name.is_empty() {
                     has_row_names = true;
                 }
-
                 entries.push((arg, arg_nrow, arg_ncol, name));
             }
             current = CDR(current);
             expr = next_bind_expr(expr);
         }
+
 
         let has_nonzero_extent = entries
             .iter()
@@ -410,7 +418,18 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// row and are matched by name when every element is named.
 unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
     unsafe {
-        let template = CAR(args);
+        let mut template_cell = args;
+        let mut template = force_bind_arg(template_cell);
+        while (template.is_null() || template == R_NilValue())
+            && !template_cell.is_null()
+            && template_cell != R_NilValue()
+        {
+            template_cell = CDR(template_cell);
+            if template_cell.is_null() || template_cell == R_NilValue() {
+                return R_NilValue();
+            }
+            template = force_bind_arg(template_cell);
+        }
         let ncols = XLENGTH(template);
         let template_names = crate::sexp::attrib_core::getAttrib(
             template,
@@ -420,6 +439,7 @@ unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
             .map(|i| string_at_or_empty(template_names, i))
             .collect();
 
+
         // A source vector and index for every result cell, grouped by column.
         let mut cells: Vec<Vec<(SEXP, R_xlen_t)>> = vec![Vec::new(); ncols as usize];
         let mut result_row_names = Vec::new();
@@ -427,8 +447,9 @@ unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
         let mut current = args;
 
         while !current.is_null() && current != R_NilValue() {
-            let value = CAR(current);
+            let value = force_bind_arg(current);
             if value.is_null() || value == R_NilValue() {
+
                 current = CDR(current);
                 continue;
             }
@@ -605,32 +626,65 @@ unsafe fn next_bind_expr(expr: SEXP) -> SEXP {
     }
 }
 
+unsafe fn bind_call_data_exprs(call: SEXP) -> SEXP {
+    unsafe {
+        if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+            return R_NilValue();
+        }
+        let mut expr = CDR(call);
+        // `.Internal(cbind(deparse.level, ...))`: first positional is the
+        // sentinel, not a data argument to name.
+        if bind_expr_cell_is_deparse_level(expr) {
+            expr = CDR(expr);
+        }
+        expr
+    }
+}
+
+unsafe fn bind_expr_cell_is_deparse_level(expr_cell: SEXP) -> bool {
+    unsafe {
+        if expr_cell.is_null() || expr_cell == R_NilValue() {
+            return false;
+        }
+        if tag_name(expr_cell).as_deref() == Some("deparse.level") {
+            return true;
+        }
+        let expr = CAR(expr_cell);
+        if expr.is_null() || TYPEOF(expr) != SEXPTYPE::SYMSXP {
+            return false;
+        }
+        let pname = PRINTNAME(expr);
+        if pname.is_null() {
+            return false;
+        }
+        let chars = CHAR(pname);
+        if chars.is_null() {
+            return false;
+        }
+        std::ffi::CStr::from_ptr(chars)
+            .to_str()
+            .is_ok_and(|s| s == "deparse.level")
+    }
+}
+
 unsafe fn bind_cell_is_deparse_level(eval_cell: SEXP, expr_cell: SEXP) -> bool {
     unsafe {
         tag_name(eval_cell).as_deref() == Some("deparse.level")
-            || (!expr_cell.is_null()
-                && expr_cell != R_NilValue()
-                && tag_name(expr_cell).as_deref() == Some("deparse.level"))
+            || bind_expr_cell_is_deparse_level(expr_cell)
     }
 }
+
+
 
 /// GNU `rbind` deparse.level=1: a tag, else the argument symbol.
 unsafe fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP) -> String {
     unsafe {
         if let Some(name) = tag_name(eval_cell) {
-            if name != "deparse.level" {
+            if name != "deparse.level" && name != "..." {
                 return name;
             }
         }
-        if expr_cell.is_null() || expr_cell == R_NilValue() {
-            return String::new();
-        }
-        if let Some(name) = tag_name(expr_cell) {
-            if name != "deparse.level" {
-                return name;
-            }
-        }
-        let expr = CAR(expr_cell);
+        let expr = bind_label_expr(eval_cell, expr_cell);
         if expr.is_null() || TYPEOF(expr) != SEXPTYPE::SYMSXP {
             return String::new();
         }
@@ -640,15 +694,47 @@ unsafe fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP) -> String {
         }
         let chars = CHAR(pname);
         if chars.is_null() {
+            return String::new();
+        }
+        let name = std::ffi::CStr::from_ptr(chars)
+            .to_str()
+            .unwrap_or("")
+            .to_string();
+        if name == "deparse.level" || name == "..." {
             String::new()
         } else {
-            std::ffi::CStr::from_ptr(chars)
-                .to_str()
-                .unwrap_or("")
-                .to_string()
+            name
         }
     }
 }
+
+unsafe fn bind_label_expr(eval_cell: SEXP, expr_cell: SEXP) -> SEXP {
+    unsafe {
+        let value = if eval_cell.is_null() {
+            std::ptr::null_mut()
+        } else {
+            CAR(eval_cell)
+        };
+        let from_promise = unwrap_promise_expr(value);
+        if !from_promise.is_null() && TYPEOF(from_promise) == SEXPTYPE::SYMSXP {
+            return from_promise;
+        }
+        if expr_cell.is_null() || expr_cell == R_NilValue() {
+            return from_promise;
+        }
+        unwrap_promise_expr(CAR(expr_cell))
+    }
+}
+
+unsafe fn unwrap_promise_expr(mut x: SEXP) -> SEXP {
+    unsafe {
+        while !x.is_null() && TYPEOF(x) == SEXPTYPE::PROMSXP {
+            x = crate::sexp::accessors::PRCODE(x);
+        }
+        x
+    }
+}
+
 
 unsafe fn first_rbind_colnames(
     entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
