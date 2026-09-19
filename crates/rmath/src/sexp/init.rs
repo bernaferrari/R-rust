@@ -118,6 +118,17 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             base_env,
         );
 
+        // GNU: T and F are ordinary symbols bound to TRUE/FALSE, not parser
+        // keywords. `quote(F())` and `substitute(F(), list(F=...))` need
+        // the symbol, while bare `F` still evaluates to FALSE.
+        let t = Rf_ScalarLogical(TRUE);
+        let _t = super::protect::protect(t);
+        defineVar(Rf_install_in_current("T"), t, base_env);
+        let f = Rf_ScalarLogical(FALSE);
+        let _f = super::protect::protect(f);
+        defineVar(Rf_install_in_current("F"), f, base_env);
+
+
         // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
         // Installed after as.list so parse/eval can see the generic.
 

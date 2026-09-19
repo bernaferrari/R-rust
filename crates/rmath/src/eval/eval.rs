@@ -3401,6 +3401,24 @@ inherits(tr, "try-error") &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn t_and_f_are_symbols_bound_to_logicals() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+identical(T, TRUE) && identical(F, FALSE) &&
+  identical(typeof(quote(F())[[1]]), "symbol") &&
+  identical(quote(F())[[1]], as.symbol("F")) &&
+  identical(
+    paste(deparse(substitute(F(), list(F = quote(n <<- n + 1)))), collapse = " "),
+    "(n <<- n + 1)()"
+  )
+"#,
+        );
+        let result = result.expect("GNU T/F are symbols, not parser keywords");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
 
 
 

@@ -2625,8 +2625,9 @@ impl<'arena> Parser<'arena> {
                 let name = name.clone();
                 self.advance();
                 match name.as_str() {
-                    "TRUE" | "T" => self.scalar_logical(TRUE),
-                    "FALSE" | "F" => self.scalar_logical(FALSE),
+                    "TRUE" => self.scalar_logical(TRUE),
+                    "FALSE" => self.scalar_logical(FALSE),
+
                     "NULL" => unsafe { Ok(R_NilValue()) },
                     "NA" => self.scalar_logical(NA_LOGICAL),
                     "Inf" => self.scalar_real(f64::INFINITY),
@@ -2944,6 +2945,20 @@ mod tests {
             assert_eq!(n, R_NilValue());
         }
     }
+
+    #[test]
+    fn t_and_f_parse_as_symbols_not_logicals() {
+        unsafe {
+            let t = must(parse_str("T"));
+            assert_eq!(TYPEOF(t), SEXPTYPE::SYMSXP);
+            let f = must(parse_str("F"));
+            assert_eq!(TYPEOF(f), SEXPTYPE::SYMSXP);
+            let call = must(parse_str("F()"));
+            assert_eq!(TYPEOF(call), SEXPTYPE::LANGSXP);
+            assert_eq!(TYPEOF(CAR(call)), SEXPTYPE::SYMSXP);
+        }
+    }
+
 
     #[test]
     fn test_identifier() {
