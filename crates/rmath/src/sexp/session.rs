@@ -857,9 +857,19 @@ impl RSession {
                 // value.
                 if index != last_index && self.inst().eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
-                        let rendered = super::output::format_sexp_top_level(value.clone());
-                        super::output::capture_stdout(&format!("{rendered}\n"));
+                        if unsafe {
+                            crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw())
+                        } != 0
+                        {
+                            super::output::print_value(value.clone());
+                        } else {
+                            let rendered = super::output::format_sexp_top_level(value.clone());
+                            super::output::capture_stdout(&format!("{rendered}\n"));
+                        }
                     }
+
+
+
                 }
                 // main.c REPL tail: after each top-level expression, upstream
                 // flushes deferred warnings so they interleave with printed
@@ -986,9 +996,19 @@ impl RSession {
                 // assembly.
                 if index != last_index && self.inst().eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
-                        let rendered = super::output::format_sexp_top_level(value.clone());
-                        super::output::capture_stdout(&format!("{rendered}\n"));
+                        if unsafe {
+                            crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw())
+                        } != 0
+                        {
+                            super::output::print_value(value.clone());
+                        } else {
+                            let rendered = super::output::format_sexp_top_level(value.clone());
+                            super::output::capture_stdout(&format!("{rendered}\n"));
+                        }
                     }
+
+
+
                 }
                 // Same main.c REPL-tail flush as the plain script loop; the
                 // final statement's warnings flush at result assembly.

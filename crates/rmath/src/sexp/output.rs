@@ -2989,6 +2989,18 @@ pub fn print_value(x: Sexp<'_>) {
         unsafe { emit(&format!("{}\n", format_condition(x))) };
         return;
     }
+    // GNU auto-print of S4 objects goes through PrintValueEnv -> show().
+    if unsafe { crate::mainutils::objects::IS_S4_OBJECT(x.clone().as_raw()) } != 0 {
+        unsafe {
+            crate::mainutils::print::PrintValueEnv(
+                x.clone().as_raw(),
+                crate::sexp::globals::R_GlobalEnv(),
+            );
+        }
+        return;
+    }
+
+
     match x.clone().typeof_() {
         SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP | SEXPTYPE::CLOSXP => {
             let base = deparse_expression_one(x.clone().as_raw());

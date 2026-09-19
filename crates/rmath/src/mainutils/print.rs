@@ -310,13 +310,14 @@ unsafe fn isDataFrame(_x: SEXP) -> c_int {
     0
 }
 
-unsafe fn IS_S4_OBJECT(_x: SEXP) -> c_int {
-    0
+unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
+    unsafe { crate::mainutils::objects::IS_S4_OBJECT(x) }
 }
 
 unsafe fn isMethodsDispatchOn() -> c_int {
-    0
+    unsafe { crate::mainutils::objects::isMethodsDispatchOn() }
 }
+
 
 unsafe fn isByteCode(_x: SEXP) -> c_int {
     0
@@ -727,44 +728,108 @@ unsafe fn PrintDispatch(s: SEXP, data: &R_PrintData) {
 
 unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
     unsafe {
-        if inherits_cstr(s, b"data.frame\0".as_ptr() as *const c_char) != 0 {
-            let args = Rf_cons(s, R_NilValue());
-            let _args_guard = protect(args);
-            crate::mainutils::essentials::do_print_data_frame(
+        let xsym = Rf_install(c"x".as_ptr());
+        let parent = if data.env.is_null() || data.env == R_NilValue() {
+            R_GlobalEnv()
+        } else {
+            data.env
+        };
+        let mask = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
+        let _mask_guard = protect(mask);
+        crate::sexp::envir::defineVar(xsym, s, mask);
+        let fun = crate::sexp::envir::findFun(Rf_install(c"print".as_ptr()), R_BaseEnv());
+        if fun.is_null() || fun == R_UnboundValue() {
+            crate::mainutils::essentials::do_print(
                 R_NilValue(),
                 R_NilValue(),
-                args,
-                R_NilValue(),
+                crate::sexp::output::cons_print_args(s),
+                parent,
             );
+            crate::sexp::envir::defineVar(xsym, R_NilValue(), mask);
             return;
         }
-        // Reuse the public print dispatcher so registered print.<class>
-        // closures run with the same environment and capture semantics as
-        // ordinary `print()`.  The protected one-element call is acyclic;
-        // custom methods may return a value, which is intentionally ignored
-        // by this value-printing entry point.
-        let args = crate::sexp::output::cons_print_args(s);
-        let _args_guard = protect(args);
-        crate::mainutils::essentials::do_print(R_NilValue(), R_NilValue(), args, data.env);
+        let call = crate::sexp::constructors::Rf_lang2(fun, xsym);
+        let _call_guard = protect(call);
+        crate::eval::eval::Rf_eval(call, mask);
+        crate::sexp::envir::defineVar(xsym, R_NilValue(), mask);
 
     }
 }
 
-// ---------------------------------------------------------------------------
-// Internal: PrintObject
-// ---------------------------------------------------------------------------
+unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
+    unsafe {
+        let depth = with_print_runtime(|state| state.active_values.len());
+        if depth > 4 {
+            let klass = getAttrib(s, R_ClassSymbol());
+            let name = if TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) > 0 {
+                CStr::from_ptr(CHAR(STRING_ELT(klass, 0)))
+                    .to_str()
+                    .unwrap_or("S4")
+            } else {
+                "S4"
+            };
+            println!("An object of class \"{name}\"");
+            return;
+        }
+        let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
+        else {
+            PrintObjectS3(s, data);
+            return;
+        };
+        let mut fun = R_findVarInFrame(methods, Rf_install(c"show".as_ptr()));
+        if fun.is_null() || fun == R_UnboundValue() {
+            PrintObjectS3(s, data);
+            return;
+        }
+        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+            fun = crate::sexp::envir::forcePromise(fun);
+        }
+        let env = if data.env.is_null() || data.env == R_NilValue() {
+            R_GlobalEnv()
+        } else {
+            data.env
+        };
+        let call = crate::sexp::constructors::Rf_lang2(fun, s);
+        let _call_guard = protect(call);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(call, env);
+        }));
+
+    }
+}
+
 
 unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
     unsafe {
         let mut save = [0u8; TAGBUFLEN0 * 2];
         save_tagbuf(&mut save);
-
-        PrintObjectS3(s, data);
-
+        if isMethodsDispatchOn() != 0 && IS_S4_OBJECT(s) != 0 {
+            match enter_print_value(s) {
+                Some(_guard) => PrintObjectS4(s, data),
+                None => {
+                    // show() default calls print(); GNU print.default with
+                    // extra args uses PrintValueRec. Re-entry must not
+                    // eval show() again.
+                    let klass = getAttrib(s, R_ClassSymbol());
+                    let name = if TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) > 0 {
+                        CStr::from_ptr(CHAR(STRING_ELT(klass, 0)))
+                            .to_str()
+                            .unwrap_or("S4")
+                    } else {
+                        "S4"
+                    };
+                    println!("An object of class \"{name}\"");
+                }
+            }
+        } else {
+            PrintObjectS3(s, data);
+        }
         set_current_print_data(data);
         restore_tagbuf(&save);
     }
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Internal: PrintGenericVector

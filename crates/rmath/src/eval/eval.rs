@@ -3651,6 +3651,53 @@ TRUE
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
+    #[test]
+    fn s4_autoprint_uses_show_method() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("bar", representation(a="numeric"))
+foo <- new("bar", a=pi)
+setMethod("show", "bar", function(object){cat("show method\n")})
+foo
+TRUE
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "S4 auto-print show: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(
+            output.stdout.contains("show method"),
+            "auto-print of S4 bar must call show(); stdout={:?}",
+            output.stdout
+        );
+        assert!(
+            !output.stdout.contains("[object; length=0]")
+                && !output.stdout.contains("[unknown; length=0]"),
+            "auto-print must not emit port object stub; stdout={:?}",
+            output.stdout
+        );
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
