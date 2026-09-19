@@ -5,9 +5,61 @@ use super::*;
 // Complete R runtime — cbind, rbind, t (transpose), and other critical functions
 // ---------------------------------------------------------------------------
 
-/// R's `cbind(...)` — combine vectors/matrices by columns.
-pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU bind.c: if any argument is S4 and no S3 cbind./rbind. method was
+/// found, call methods:::cbind / methods:::rbind (which use cbind2/rbind2).
+unsafe fn try_methods_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) -> Option<SEXP> {
     unsafe {
+        let mut any_s4 = false;
+        let mut a = args;
+        while !a.is_null() && a != R_NilValue() {
+            let obj = CAR(a);
+            if crate::mainutils::objects::isS4(obj) != 0 {
+                any_s4 = true;
+                break;
+            }
+            a = CDR(a);
+        }
+        if !any_s4 {
+            return None;
+        }
+        let ns = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
+        let mut fun = crate::sexp::envir::R_findVarInFrame(
+            ns,
+            crate::sexp::symbol::Rf_install(generic.as_ptr() as *const std::os::raw::c_char),
+        );
+        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+            return None;
+        }
+        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+            fun = crate::sexp::envir::forcePromise(fun);
+        }
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP
+            && TYPEOF(fun) != SEXPTYPE::BUILTINSXP
+            && TYPEOF(fun) != SEXPTYPE::SPECIALSXP
+        {
+            return None;
+        }
+
+        let _fun_guard = protect(fun);
+        Some(crate::eval::closure::applyClosure(
+            call,
+            fun,
+            args,
+            rho,
+            crate::sexp::globals::R_NilValue(),
+            TRUE,
+        ))
+    }
+}
+
+
+/// R's `cbind(...)` — combine vectors/matrices by columns.
+pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if let Some(ans) = try_methods_bind(call, args, rho, b"cbind\0") {
+            return ans;
+        }
+
         let mut result_type = SEXPTYPE::LGLSXP;
         let mut col_names = Vec::new();
         let mut has_col_names = false;
@@ -134,8 +186,12 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 
 /// R's `rbind(...)` — combine vectors/matrices by rows.
-pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some(ans) = try_methods_bind(call, args, rho, b"rbind\0") {
+            return ans;
+        }
+
         // GNU R dispatches `rbind` through S3.  This runtime registers a
         // direct builtin, so retain the key dispatch boundary explicitly:
         // a data-frame first argument must be bound column-by-column rather

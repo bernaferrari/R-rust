@@ -3576,18 +3576,47 @@ identical(labs, c("ANY#ANY", "character#character")) &&
     }
 
     #[test]
-    fn reg_s4_head_through_logic_group() {
+    fn cbind2_s4_method_used_by_cbind() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("myMat", representation(x = "numeric"))
+setMethod("cbind2", signature(x = "myMat", y = "missing"), function(x,y) x)
+m <- new("myMat", x = c(1, pi))
+identical(m, methods:::cbind(m)) && identical(m, cbind(m))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "cbind2: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_head_through_cbind2() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(200).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(207).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through Logic group: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through cbind2: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
     }
+
+
 
 
 
