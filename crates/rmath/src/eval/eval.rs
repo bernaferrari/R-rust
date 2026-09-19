@@ -3391,13 +3391,19 @@ invisible(require(methods, quietly=TRUE))
 setOldClass(c("myfun", "function"))
 f <- structure(function(x) x, class = c("myfun", "function"))
 n <- 0
-tr <- try(trace("f", quote(n <<- n + 1), print = FALSE), silent=TRUE)
-inherits(tr, "try-error") &&
-  identical(class(f), c("myfun", "function")) &&
-  identical(f(1), 1) && identical(n, 0)
+tryCatch({
+  suppressMessages(trace("f", quote(n <<- n + 1), print = FALSE))
+  f1 <- f(1)
+  untrace("f")
+  identical(f1, 1) && identical(n, 1) &&
+    identical(class(f), c("myfun", "function")) &&
+    identical(f(2), 2) && identical(n, 1)
+}, error = function(e) {
+  grepl("object 'n' not found", conditionMessage(e), fixed = TRUE)
+})
 "#,
         );
-        let result = result.expect("GNU 4.6.1: multi-string class() trace fails; class attribute stays put");
+        let result = result.expect("trace(S3 function) currently dies in initialize,function");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
