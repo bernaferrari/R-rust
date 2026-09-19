@@ -473,6 +473,15 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
             c".getGroupMethods",
             c".findInheritedMethods",
             c".getAllGroups",
+            // Private JIT: rep(2, length(contains)) in .inhDistances becomes
+            // a scalar, so match() yields NA distances and
+            // if(any(fromGroup[best])) is if(NA).
+            c".inhDistances",
+            c".leastMethodDistance",
+            c".getBestMethods",
+            c".disambiguateMethods",
+
+
 
 
             // Private JIT miscompiles S3Class <- c(cl, S3Class) / attr<-

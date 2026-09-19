@@ -537,6 +537,39 @@ pub unsafe fn do_is_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             *dst.add(i as usize) = if is_na { TRUE } else { FALSE };
         }
 
+        // GNU coerce.c do_isna: copyDimAndNames so colSums(is.na(matrix))
+        // is a length-ncol vector, not a scalar.
+        let dims =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if !dims.is_null() && dims != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                dims,
+            );
+            let dimnames = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            if !dimnames.is_null() && dimnames != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    dimnames,
+                );
+            }
+        } else {
+            let names =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+        }
+
         result
     }
 }

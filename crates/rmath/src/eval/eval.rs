@@ -3610,20 +3610,18 @@ identical(sort(names(e)), sort(c("brob#ANY", ".hidden")))
     }
 
     #[test]
-    fn logic_group_hasmethod_and_after_setmethod() {
+    fn is_na_preserves_matrix_dim() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
             r#"
-invisible(require(methods, quietly=TRUE))
-setClass("brob", contains="numeric")
-logic2 <- function(e1,e2) e1
-setMethod("Logic", signature("brob", "ANY"), logic2)
-isTRUE(hasMethod("Logic", c("brob","ANY"))) && isTRUE(hasMethod("&", c("brob","ANY")))
+m <- matrix(c(1L, NA_integer_, 3L, 4L), 2, 2)
+identical(dim(is.na(m)), c(2L, 2L)) &&
+  identical(as.integer(colSums(is.na(m))), c(1L, 0L))
 "#,
         );
         let result = result.unwrap_or_else(|e| {
             panic!(
-                "logic group hasMethod: {e}\nstdout={}\nstderr={}",
+                "is.na dim: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
@@ -3635,6 +3633,45 @@ isTRUE(hasMethod("Logic", c("brob","ANY"))) && isTRUE(hasMethod("&", c("brob","A
             output.stderr
         );
     }
+
+    #[test]
+    fn logic_group_selectmethod_inherited_and() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("brob", contains="numeric")
+logic2 <- function(e1,e2) e1
+setMethod("Logic", signature("brob", "ANY"), logic2)
+setMethod("Logic", signature("ANY", "brob"), logic2)
+m <- selectMethod("&", c("brob","brob"), optional=TRUE)
+is(m, "MethodDefinition")
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "selectMethod &: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
+
 
 
 
