@@ -15,14 +15,12 @@ use crate::sexp::accessors::{
     SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 
-
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
-
 
 // ---------------------------------------------------------------------------
 // Pre-interned attribute name symbols
@@ -137,10 +135,10 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         // stored `names` attribute. `quote(f(x=1))[-1]` copies VECSXP
         // names back through setAttrib; without tags, `names()` is NULL
         // and callGeneric's `lapply(names(call[-1]), as.name)` panics.
+        // GNU removeAttrib(names) on a pairlist/language also walks
+        // cells and SET_TAG(t, R_NilValue) (`names(e) <- NULL` → `f(1)`).
         let xtype = TYPEOF(x);
-        if which == R_NamesSymbol()
-            && (xtype == SEXPTYPE::LISTSXP || xtype == SEXPTYPE::LANGSXP)
-        {
+        if which == R_NamesSymbol() && (xtype == SEXPTYPE::LISTSXP || xtype == SEXPTYPE::LANGSXP) {
             namesgets_pairlist(x, value);
             return;
         }
@@ -197,8 +195,8 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
     }
 }
 
-/// GNU `namesgets` for LISTSXP/LANGSXP: install tags from a STRSXP (or
-/// clear them). Empty / NA / missing labels become untagged cells.
+/// GNU `namesgets` / `removeAttrib(names)` for LISTSXP/LANGSXP.
+/// Non-NULL values install tags (coerced to STRSXP). NULL clears tags.
 unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
     unsafe {
         if value.is_null() || value == R_NilValue() {
@@ -209,9 +207,17 @@ unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
             }
             return;
         }
-        if TYPEOF(value) != SEXPTYPE::STRSXP {
+
+        let value = if TYPEOF(value) == SEXPTYPE::STRSXP {
+            value
+        } else {
+            crate::mainutils::coerce::coerceVector(value, SEXPTYPE::STRSXP.0)
+        };
+        let _value_guard = protect(value);
+        if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP {
             return;
         }
+
         let n = XLENGTH(value);
         let mut cell = list;
         let mut i: R_xlen_t = 0;
@@ -236,7 +242,6 @@ unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
         }
     }
 }
-
 
 unsafe fn update_class_object_flag(x: SEXP, which: SEXP, value: SEXP) {
     unsafe {
@@ -308,10 +313,7 @@ pub unsafe fn language_implicit_class_chars(obj: SEXP) -> SEXP {
             let pn = PRINTNAME(symb);
             if !pn.is_null() {
                 let name = std::ffi::CStr::from_ptr(CHAR(pn)).to_bytes();
-                if matches!(
-                    name,
-                    b"if" | b"while" | b"for" | b"=" | b"<-" | b"(" | b"{"
-                ) {
+                if matches!(name, b"if" | b"while" | b"for" | b"=" | b"<-" | b"(" | b"{") {
                     return pn;
                 }
             }
@@ -326,9 +328,7 @@ pub unsafe fn language_implicit_class_chars(obj: SEXP) -> SEXP {
 pub unsafe fn R_data_class(x: SEXP) -> SEXP {
     unsafe {
         let class_val = getAttrib(x, R_ClassSymbol());
-        if class_val.is_null()
-            || class_val == R_NilValue()
-            || TYPEOF(class_val) != SEXPTYPE::STRSXP
+        if class_val.is_null() || class_val == R_NilValue() || TYPEOF(class_val) != SEXPTYPE::STRSXP
         {
             let dim = getAttrib(x, R_DimSymbol());
             if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
@@ -387,14 +387,12 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 _ => "unknown",
             };
 
-
             return Rf_mkString(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
         }
         // GNU returns the attribute SEXP; callers may `x[] <-` it
         // (.traceClassName). Mark shared so subassign duplicates.
         SET_NAMED(class_val, 2);
         class_val
-
     }
 }
 

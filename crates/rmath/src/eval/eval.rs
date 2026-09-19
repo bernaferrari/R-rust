@@ -3603,18 +3603,20 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     }
 
     #[test]
-    fn reg_s4_head_through_show_on_s4_matrix() {
+    fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(221).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(263).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through show-on-S4-matrix: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through callGeneric/.local: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
     }
+
+
 
 
 
@@ -3782,6 +3784,10 @@ stopifnot(identical(deparse(mc), "Gfun(x = m2)"))
 stopifnot(identical(names(mc[-1L]), "x"))
 mc[-1L] <- lapply(names(mc[-1L]), as.name)
 stopifnot(identical(deparse(mc), "Gfun(x = x)"))
+stopifnot(identical(deparse(`names<-`(quote(f(x = 1)), NULL)), "f(1)"))
+qq <- quote(f(a))
+err <- tryCatch({ qq[-1L] <- list(); "NOERROR" }, error = function(e) e$message)
+stopifnot(identical(err, "replacement has length zero"))
 TRUE
 "#,
         );
@@ -3835,6 +3841,41 @@ identical(Gfun(m2), 78L)
             output.stderr
         );
     }
+
+    #[test]
+    fn callgeneric_passes_extra_formals() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setGeneric("Gfun", function(x, ...) standardGeneric("Gfun"),
+           useAsDefault = function(x, ...) sum(x, ...))
+setClass("mmat2", contains="matrix")
+setMethod(Gfun, signature(x = "mmat2"),
+          function(x, extrarg = TRUE) {
+              x <- unclass(x)
+              callGeneric()
+          })
+m2 <- new("mmat2", diag(3))
+identical(Gfun(m2, extrarg = FALSE), 3)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "callGeneric extrarg: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
 
 
