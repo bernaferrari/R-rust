@@ -749,9 +749,18 @@ unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
             return;
         }
         let call = crate::sexp::constructors::Rf_lang2(fun, xsym);
+        let extra = if data.callArgs.is_null() {
+            R_NilValue()
+        } else {
+            data.callArgs
+        };
+        if extra != R_NilValue() {
+            SETCDR(CDR(call), extra);
+        }
         let _call_guard = protect(call);
         crate::eval::eval::Rf_eval(call, mask);
         crate::sexp::envir::defineVar(xsym, R_NilValue(), mask);
+
 
     }
 }
@@ -759,7 +768,7 @@ unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
 unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
     unsafe {
         let depth = with_print_runtime(|state| state.active_values.len());
-        if depth > 4 {
+        if depth > 8 {
             let klass = getAttrib(s, R_ClassSymbol());
             let name = if TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) > 0 {
                 CStr::from_ptr(CHAR(STRING_ELT(klass, 0)))
@@ -791,9 +800,33 @@ unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
         };
         let call = crate::sexp::constructors::Rf_lang2(fun, s);
         let _call_guard = protect(call);
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(call, env);
-        }));
+        })) {
+            // Temporary: auto-print must not abort the REPL. Tracked as
+            // rport-2gpp.2.5 — GNU prints the error and continues.
+            let message = payload
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|e| e.message.clone())
+                .or_else(|| {
+                    payload
+                        .downcast_ref::<crate::sexp::context::RSignal>()
+                        .and_then(|s| match s {
+                            crate::sexp::context::RSignal::Error { message } => {
+                                Some(message.clone())
+                            }
+                            _ => None,
+                        })
+                })
+                .unwrap_or_else(|| "error during show()".to_string());
+            let text = format!("Error: {message}\n");
+            if crate::sexp::output::is_capturing() {
+                crate::sexp::output::capture_stdout(&text);
+            } else {
+                eprint!("{text}");
+            }
+        }
+
 
     }
 }

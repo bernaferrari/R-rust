@@ -166,6 +166,33 @@ where
     }
 }
 
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(err) = payload.downcast_ref::<RError>() {
+        err.message.clone()
+    } else if let Some(RSignal::Error { message }) = payload.downcast_ref::<RSignal>() {
+        message.clone()
+    } else {
+        "error during auto-print".to_string()
+    }
+}
+
+fn auto_print_visible(value: Sexp<'_>) {
+    if unsafe { crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw()) } != 0 {
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| {
+            super::output::print_value(value);
+        })) {
+            super::output::capture_stdout(&format!(
+                "Error: {}\n",
+                panic_payload_message(payload.as_ref())
+            ));
+        }
+    } else {
+        let rendered = super::output::format_sexp_top_level(value);
+        super::output::capture_stdout(&format!("{rendered}\n"));
+    }
+}
+
+
 fn expr_or_nil(expr: SEXP) -> SEXP {
     if expr.is_null() {
         unsafe { R_NilValue() }
@@ -857,16 +884,9 @@ impl RSession {
                 // value.
                 if index != last_index && self.inst().eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
-                        if unsafe {
-                            crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw())
-                        } != 0
-                        {
-                            super::output::print_value(value.clone());
-                        } else {
-                            let rendered = super::output::format_sexp_top_level(value.clone());
-                            super::output::capture_stdout(&format!("{rendered}\n"));
-                        }
+                        auto_print_visible(value.clone());
                     }
+
 
 
 
@@ -996,16 +1016,9 @@ impl RSession {
                 // assembly.
                 if index != last_index && self.inst().eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
-                        if unsafe {
-                            crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw())
-                        } != 0
-                        {
-                            super::output::print_value(value.clone());
-                        } else {
-                            let rendered = super::output::format_sexp_top_level(value.clone());
-                            super::output::capture_stdout(&format!("{rendered}\n"));
-                        }
+                        auto_print_visible(value.clone());
                     }
+
 
 
 
