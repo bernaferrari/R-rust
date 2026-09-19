@@ -82,6 +82,39 @@ fn imported_gnu_attr_setter_call_assigns_and_is_visible() {
 }
 
 #[test]
+fn imported_gnu_attr_makeprom_name_assigns() {
+    let mut session = RSession::new().unwrap();
+    load(
+        &mut session,
+        include_bytes!("fixtures/gnu-bytecode-setter-call/var-name.rds"),
+    );
+    assert_eq!(
+        session
+            .eval("identical(attr(f(1:2, 'a', 9L), 'a'), 9L)")
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+}
+
+#[test]
+fn imported_gnu_attr_class_loop_copies_function_class() {
+    let mut session = RSession::new().unwrap();
+    load(
+        &mut session,
+        include_bytes!("fixtures/gnu-bytecode-setter-call/class-loop.rds"),
+    );
+    assert_eq!(
+        session
+            .eval("identical(class(f(structure(function(z) z, class=c('myfun','function')), structure(function(z) z, class='myfunWithTrace'))), 'myfunWithTrace')")
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+}
+
+
+#[test]
 fn gnu_setter_call_assigns_names_on_returned_value() {
     let mut session = RSession::new().unwrap();
     load(

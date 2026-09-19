@@ -894,18 +894,17 @@ unsafe fn eval_gnu_logic(
     }
 }
 
-/// GNU bytecode pushes PUSHCONSTARG as values. This adapter wraps those
-/// entries in forced promises for CLOSXP calls; builtin handlers still
-/// expect the forced PRVALUE.
+/// GNU bytecode wraps PUSHCONSTARG in already-forced promises for CLOSXP
+/// calls. Builtin handlers take values. MAKEPROM args (e.g. `attr(x, n) <-`)
+/// are unforced; GNU SPECIAL `attr<-` evaluates them, and a BUILTIN port
+/// must force them before `apply_builtin_values_safe`.
 unsafe fn force_gnu_builtin_arglist(mut args: SEXP) {
     unsafe {
         while !args.is_null() && args != R_NilValue() {
             let car = CAR(args);
             if TYPEOF(car) == SEXPTYPE::PROMSXP {
-                let value = crate::sexp::accessors::PRVALUE(car);
-                if !value.is_null() && value != R_UnboundValue() {
-                    crate::sexp::accessors::SETCAR(args, value);
-                }
+                let value = forcePromise(car);
+                crate::sexp::accessors::SETCAR(args, value);
             }
             args = CDR(args);
         }

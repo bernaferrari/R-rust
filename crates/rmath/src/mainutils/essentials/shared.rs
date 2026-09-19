@@ -1267,7 +1267,7 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         };
         eval_methods_ns_fun(ns, c".initImplicitGenerics", where_env, None);
         register_implicit_generics_table(ns);
-        install_s3part_set(ns);
+
         let attach = Rf_ScalarLogical(TRUE);
         let _attach = protect(attach);
         eval_methods_ns_fun(ns, c"cacheMetaData", where_env, Some(attach));
@@ -1309,51 +1309,6 @@ unsafe fn register_implicit_generics_table(ns: SEXP) {
     }
 }
 
-/// methods::`S3Part<-` from the GNU sources returns the RHS with its original
-/// S3 class when invoked as a call (formals are promises). The same body
-/// evaluated against direct bindings preserves `class(object)`. Install an
-/// equivalent closure that uses explicit `methods:::` lookups so
-/// `as(traceable, oldClass) <- def` keeps the WithTrace class.
-unsafe fn install_s3part_set(ns: SEXP) {
-    unsafe {
-        let src = "{\n\
-ns <- asNamespace('methods')\n\
-if (bindingIsLocked('S3Part<-', ns)) unlockBinding('S3Part<-', ns)\n\
-assign('S3Part<-', function(object, strictS3 = FALSE, needClass, value) {\n\
-  if (missing(needClass)) needClass <- methods:::.S3Class(object)\n\
-  S3Class <- methods:::.S3Class(value)\n\
-  def <- getClassDef(S3Class[[1L]])\n\
-  if (is.null(def) || !extends(def, needClass[[1L]]))\n\
-    stop(gettextf('replacement value must extend class %s, got %s',\n\
-                  dQuote(needClass), dQuote(S3Class[[1L]])), domain = NA)\n\
-  slots <- slotNames(class(object))\n\
-  if (!strictS3) {\n\
-    fromValue <- names(attributes(value))\n\
-    slots <- slots[is.na(match(slots, fromValue))]\n\
-  }\n\
-  slots <- c('class', slots)\n\
-  for (slot in slots) attr(value, slot) <- attr(object, slot)\n\
-  if (extends(def, 'oldClass'))\n\
-    attr(value, '.S3Class') <- S3Class\n\
-  if (isS4(object))\n\
-    value <- asS4(value)\n\
-  value\n\
-}, envir = ns)\n\
-}";
-        let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(src, arena)
-        });
-        crate::eval::parser::flush_literal_warnings();
-        let Ok(exprs) = parsed else {
-            return;
-        };
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            for expr in exprs {
-                let _ = crate::eval::eval::Rf_eval(expr, ns);
-            }
-        }));
-    }
-}
 
 
 
