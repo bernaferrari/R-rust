@@ -147,7 +147,9 @@ fn error_result_with_captured(
     // error and trailing "In addition:" warnings go to stderr.
     let mut stdout = String::new();
     if !captured.stdout.is_empty() {
-        stdout.push_str(captured.stdout.trim_end());
+        // GNU Rscript keeps spaces on the last printed line (source()
+        // echo's " .... [TRUNCATED] "). Only drop extra trailing newlines.
+        stdout.push_str(captured.stdout.trim_end_matches(['\n', '\r']));
         stdout.push('\n');
     }
     let mut stderr = result.output.trim_end().to_string();
@@ -920,6 +922,28 @@ mod tests {
         std::fs::write(pkg.join("NAMESPACE"), namespace).expect("namespace");
         std::fs::write(r_dir.join(format!("{name}.R")), r_source).expect("R source");
         pkg
+    }
+
+    #[test]
+    fn source_echo_truncation_keeps_trailing_space_on_script_error() {
+        let mut session = RSession::new();
+        let result = session.eval_script(
+            r#"
+f <- tempfile()
+writeLines("hasReal <- function(x) { if (is.double(x) || is.complex(x)) !all((x == round(x, 3)) | is.na(x)) else if (is.logical(x) || is.integer(x) || is.symbol(x) || is.call(x) || is.environment(x) || is.character(x)) FALSE else FALSE }", f)
+source(f, echo = TRUE)
+stop("after-echo")
+"#,
+        );
+        let idx = result
+            .stdout
+            .rfind("[TRUNCATED]")
+            .expect("source(echo=TRUE) must truncate");
+        assert!(
+            result.stdout[idx..].starts_with("[TRUNCATED] "),
+            "GNU keeps a trailing space after [TRUNCATED] when the script later errors; stdout={:?}",
+            result.stdout
+        );
     }
 
     #[test]
