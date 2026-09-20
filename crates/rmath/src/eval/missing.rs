@@ -29,9 +29,10 @@ use std::ptr;
 
 use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, R_SrcFileSymbol, getAttrib};
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, FRAME, LENGTH, NAMED, PRINTNAME, SET_NAMED,
-    SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
+    CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, FRAME, HASHTAB, LENGTH, NAMED, PRINTNAME, SET_NAMED,
+    SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
+
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
@@ -64,16 +65,34 @@ pub(crate) unsafe fn R_findVarLocInFrame(rho: SEXP, symbol: SEXP) -> R_varloc_t 
                 cell: ptr::null_mut(),
             };
         }
-        let mut cell = FRAME(rho);
-        while !cell.is_null() && cell != R_NilValue() {
-            if crate::sexp::symbol::symbol_name_bytes_equal(TAG(cell), symbol) {
-                return R_varloc_t { cell };
+        let found = find_binding_cell(FRAME(rho), symbol);
+        if !found.is_null() {
+            return R_varloc_t { cell: found };
+        }
+        let hashtab = HASHTAB(rho);
+        if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
+            for i in 0..XLENGTH(hashtab) {
+                let found = find_binding_cell(VECTOR_ELT(hashtab, i), symbol);
+                if !found.is_null() {
+                    return R_varloc_t { cell: found };
+                }
             }
-            cell = CDR(cell);
         }
         R_varloc_t {
             cell: ptr::null_mut(),
         }
+    }
+}
+
+unsafe fn find_binding_cell(mut cell: SEXP, symbol: SEXP) -> SEXP {
+    unsafe {
+        while !cell.is_null() && cell != R_NilValue() {
+            if crate::sexp::symbol::symbol_name_bytes_equal(TAG(cell), symbol) {
+                return cell;
+            }
+            cell = CDR(cell);
+        }
+        ptr::null_mut()
     }
 }
 

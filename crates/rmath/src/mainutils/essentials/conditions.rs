@@ -66,8 +66,14 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // with it (a later unrelated error must not inherit it).
                 // Consume the call-less flag first: verrorcall_dflt records
                 // it on the same error that produced this payload.
-                let call_less = crate::mainutils::errors::take_error_call_less();
+                let call_less = crate::mainutils::errors::take_error_call_less()
+                    || {
+                        let buf = crate::mainutils::errors::R_GetErrorBuf();
+                        crate::mainutils::errors::error_was_last_rendered(&message)
+                            && buf.starts_with("Error: ")
+                    };
                 set_signalled_condition(std::ptr::null_mut());
+
                 let silent = as_bool_arg(silent_arg, rho);
 
                 // GNU try.default (New-Internal.R): if conditionCall(e)
@@ -1210,6 +1216,22 @@ unsafe fn is_restart_object(value: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 /// R's `stop(...)` — raise error.
+/// GNU `stop(..., call. = TRUE)`: `call.` is a named argument after `...`.
+/// Default TRUE (include the current call). `call. = FALSE` is `errorcall(R_NilValue)`.
+unsafe fn named_call_dot(args: SEXP) -> bool {
+    unsafe {
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if tag_name(cell).as_deref() == Some("call.") {
+                return crate::mainutils::coerce::asLogical(CAR(cell)) != 0;
+            }
+            cell = CDR(cell);
+        }
+        true
+    }
+}
+
+
 pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // stop(<condition>): upstream signals the condition's own object
@@ -1246,7 +1268,13 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         let s = condition_message_text(args, &["call.", "domain"]);
-        crate::mainutils::errors::errorcall_str(crate::mainutils::errors::R_getCurrentCall(), &s);
+        let call = if named_call_dot(args) {
+            crate::mainutils::errors::R_getCurrentCall()
+        } else {
+            R_NilValue()
+        };
+        crate::mainutils::errors::errorcall_str(call, &s);
+
 
     }
 }

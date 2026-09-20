@@ -3110,7 +3110,7 @@ canCoerce(o3, "A")
     #[test]
     fn classes_methods_basegeneric_missing_signature() {
         let mut session = RSession::new();
-        let (result, _, _) = session.eval_script_with_output_capture(
+        let (result, output, _) = session.eval_script_with_output_capture(
             r#"
 invisible(require(methods, quietly=TRUE))
 setGeneric("BaseGeneric", function(x, y, ...) standardGeneric("BaseGeneric"))
@@ -3125,10 +3125,24 @@ identical(3, BaseGeneric(1, 2)) &&
   grepl('x = "numeric", y = "missing"', attr(err1, "condition")$message) &&
   identical(err1, err1Y)
 "#,
+
+
         );
-        let result = result.expect("classes-methods.R BaseGeneric missing-arg signatures");
-        assert_eq!(result.logical_elt(0), Some(TRUE));
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "classes-methods.R BaseGeneric missing-arg signatures: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
     }
+
 
     #[test]
     fn try_call_less_errors_are_identical_across_expressions() {
@@ -3643,18 +3657,22 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn classes_methods_head_through_implicit_norm() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/classes-methods.R");
-        let src: String = vendor.lines().take(193).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(284).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "classes-methods.R through method-selection errors: {e}\nstdout={}\nstderr={}",
-
-
-
+                "classes-methods.R through sealClass: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
     }
+
+
+
+
+
+
+
 
 
 

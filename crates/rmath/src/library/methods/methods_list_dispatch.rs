@@ -815,6 +815,11 @@ unsafe fn try_s3_method_for_generic(
         if arg_sym.is_null() || TYPEOF(arg_sym) != SEXPTYPE::SYMSXP {
             return None;
         }
+        // GNU table miss still reports `x = "missing"`; forcing a missing
+        // first argument here would replace that with `argument "x" is missing`.
+        if is_missing_arg(arg_sym, ev) {
+            return None;
+        }
         let obj = eval_dispatch_arg(fname, ev, arg_sym);
         if obj.is_null() || crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
             return None;
@@ -849,6 +854,7 @@ unsafe fn try_s3_method_for_generic(
         }
     }
 }
+
 
 
 /// R_quick_method_check - quick check if a method exists in the methods list.
@@ -1043,6 +1049,9 @@ pub unsafe fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package
 /// Default promises (`function(drop=TRUE)`) keep MISSING=1 until forced.
 unsafe fn is_missing_arg(symbol: SEXP, ev: SEXP) -> bool {
     unsafe {
+        if crate::sexp::envir::R_isMissing(symbol, ev) != 0 {
+            return true;
+        }
         let loc = crate::eval::missing::R_findVarLocInFrame(ev, symbol);
         if !loc.cell.is_null() {
             return MISSING(loc.cell) != 0 || CAR(loc.cell) == R_MissingArg();
@@ -1051,6 +1060,7 @@ unsafe fn is_missing_arg(symbol: SEXP, ev: SEXP) -> bool {
         val == R_UnboundValue() || val == R_MissingArg()
     }
 }
+
 
 /// R_missingArg - check if an argument is missing in a method call.
 /// Ported from R's R_missingArg() in methods_list_dispatch.c.
