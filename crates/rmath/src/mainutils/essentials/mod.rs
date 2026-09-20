@@ -11,7 +11,8 @@ use std::os::raw::c_int;
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
     LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    SET_SYMVALUE, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -75,6 +76,10 @@ pub use self::environment_bindings::*;
 // Register essentials builtins
 // ---------------------------------------------------------------------------
 
+fn is_rport_private_base_name(name: &str) -> bool {
+    name.starts_with(".rport_") || matches!(name, ".asS4" | ".OBJSXP")
+}
+
 /// Register essential builtins in the base environment.
 pub unsafe fn register_essentials_builtins(env: SEXP) {
     unsafe {
@@ -95,7 +100,16 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             };
 
             let prim = crate::eval::primitive::make_primitive_binding(name, kind);
+            let _p = protect(prim);
             let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            // GNU baseenv has no .rport_* / .asS4 / .OBJSXP. Keep the
+            // handlers on SYMVALUE so `f(...)` still resolves via findFun,
+            // but omit them from the environment frame so is.primitive /
+            // as.list(baseenv()) match GNU's inventory.
+            if is_rport_private_base_name(name) {
+                SET_SYMVALUE(sym, prim);
+                continue;
+            }
             let cell = Rf_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;
             chain = cell;

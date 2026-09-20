@@ -1330,7 +1330,8 @@ unsafe fn posixlt_usetz_zone(
             if s.is_null() || TYPEOF(s) != SEXPTYPE::STRSXP || XLENGTH(s) <= 0 {
                 return None;
             }
-            let ch = STRING_ELT(s, idx % XLENGTH(s));
+            let n = XLENGTH(s);
+            let ch = STRING_ELT(s, idx % n);
             if ch.is_null() || ch == R_NaString() {
                 return None;
             }
@@ -1345,10 +1346,11 @@ unsafe fn posixlt_usetz_zone(
                 Some(t.into_owned())
             }
         };
+        // GNU datetime.c: have_zone = LENGTH(x) >= 10. When the $zone
+        // component exists, UseTZ uses only that (empty → no suffix);
+        // tzone is the fallback solely when have_zone is false.
         if nn >= 10 {
-            if let Some(zone) = charsxp_str(VECTOR_ELT(x, 9), i as R_xlen_t) {
-                return Some(zone);
-            }
+            return charsxp_str(VECTOR_ELT(x, 9), i as R_xlen_t);
         }
         if tzone.is_null() || tzone == R_NilValue() || TYPEOF(tzone) != SEXPTYPE::STRSXP {
             return None;
@@ -1357,8 +1359,14 @@ unsafe fn posixlt_usetz_zone(
         if ntz <= 0 {
             return None;
         }
-        let idx = if ntz >= 3 && isdst >= 0 {
-            1 + if isdst > 0 { 1 } else { 0 }
+        let idx = if ntz == 3 {
+            if isdst > 0 {
+                2
+            } else if isdst == 0 {
+                1
+            } else {
+                0
+            }
         } else {
             0
         };
