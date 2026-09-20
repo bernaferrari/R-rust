@@ -2520,6 +2520,39 @@ any(grepl('Class "genericFunction", directly', out, fixed=TRUE))
         );
     }
 
+    #[test]
+    fn envrefclass_as_environment_uses_xdata() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+x <- new("envRefClass")
+is.environment(x) &&
+  identical(typeof(as.environment(x)), "environment") &&
+  identical(typeof(x$show), "closure")
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "envRefClass as.environment: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
 
 
 

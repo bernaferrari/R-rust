@@ -4669,18 +4669,28 @@ pub unsafe fn do_is_expression(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
-/// R's `is.environment(x)` — TRUE for ENVSXP.
+/// R's `is.environment(x)` — TRUE for ENVSXP and S4 environment subclasses.
 pub unsafe fn do_is_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::ENVSXP {
-            TRUE
-        } else {
-            FALSE
-        })
+        if TYPEOF(x) == SEXPTYPE::ENVSXP {
+            return Rf_ScalarLogical(TRUE);
+        }
+        if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && TYPEOF(x) == SEXPTYPE::OBJSXP {
+            let data = crate::mainutils::subassign::R_getS4DataSlot(
+                x,
+                SEXPTYPE::ENVSXP.as_c_int(),
+            );
+            return Rf_ScalarLogical(if TYPEOF(data) == SEXPTYPE::ENVSXP {
+                TRUE
+            } else {
+                FALSE
+            });
+        }
+        Rf_ScalarLogical(FALSE)
     }
 }
 

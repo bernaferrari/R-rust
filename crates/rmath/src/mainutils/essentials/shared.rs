@@ -1600,6 +1600,17 @@ unsafe fn purge_missing_arg_placeholders(env: SEXP) {
 unsafe fn retarget_methods_generics(ns: SEXP) {
     unsafe {
         let methods_ns_sym = Rf_install(c".methodsNamespace".as_ptr());
+        let old_ns = crate::sexp::envir::R_findVarInFrame(ns, methods_ns_sym);
+        // `.InitRefClasses` captured this stub as envRefClass@refMethods$.objectParent.
+        if !old_ns.is_null()
+            && old_ns != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(old_ns) == SEXPTYPE::ENVSXP
+            && old_ns != ns
+            && !env_chain_contains(ns, old_ns)
+        {
+            SET_ENCLOS(old_ns, ns);
+        }
+
         crate::sexp::envir::defineVar(methods_ns_sym, ns, ns);
         for name in ["initialize", "new", "setClass", "getClass", "getClassDef"] {
             let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
@@ -1624,6 +1635,29 @@ unsafe fn retarget_methods_generics(ns: SEXP) {
         }
     }
 }
+
+
+unsafe fn env_chain_contains(mut env: SEXP, target: SEXP) -> bool {
+    unsafe {
+        for _ in 0..64 {
+            if env.is_null() || env == R_NilValue() {
+                return false;
+            }
+            if env == target {
+                return true;
+            }
+            if TYPEOF(env) != SEXPTYPE::ENVSXP {
+                return false;
+            }
+            env = crate::sexp::accessors::ENCLOS(env);
+        }
+        false
+    }
+}
+
+
+
+
 
 
 

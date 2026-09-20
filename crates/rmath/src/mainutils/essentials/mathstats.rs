@@ -14551,11 +14551,23 @@ pub unsafe fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
                 message: "using 'as.environment(NULL)' is defunct".to_string(),
             });
         }
-
+        if TYPEOF(x) == SEXPTYPE::OBJSXP {
+            let data = crate::mainutils::subassign::R_getS4DataSlot(
+                x,
+                SEXPTYPE::ENVSXP.as_c_int(),
+            );
+            if TYPEOF(data) == SEXPTYPE::ENVSXP {
+                return data;
+            }
+            std::panic::panic_any(RError {
+                message: "S4 object does not extend class \"environment\"".to_string(),
+            });
+        }
 
         std::panic::panic_any(RError {
             message: "invalid object for as.environment".to_string(),
         });
+
 
 
 

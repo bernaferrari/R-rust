@@ -686,17 +686,31 @@ pub(crate) unsafe fn DispatchOrEval(
     0 // FALSE
 }
 
-/// R_getS4DataSlot: get S4 data slot.
-///
-/// For S4 objects, returns the `.Data` attribute which holds the
-/// underlying data. For non-S4 objects, returns the input unchanged.
-pub unsafe fn R_getS4DataSlot(x: SEXP, _type_: c_int) -> SEXP {
+/// GNU `R_getS4DataSlot` (attrib.c): `.Data`, then `.xData` for abnormal types.
+pub unsafe fn R_getS4DataSlot(x: SEXP, type_: c_int) -> SEXP {
     unsafe {
-        if isNull(x) || IS_S4_OBJECT(x) == 0 {
+        if isNull(x) {
             return x;
         }
-        let data_sym = Rf_install(b".Data\x00".as_ptr() as *const c_char);
-        let slot = getAttrib(x, data_sym);
-        if isNull(slot) { x } else { slot }
+        if IS_S4_OBJECT(x) == 0 {
+            return x;
+        }
+        let mut value = R_NilValue();
+        if TYPEOF(x) == SEXPTYPE::OBJSXP && type_ != OBJSXP {
+            let data_sym = Rf_install(b".Data\0".as_ptr() as *const c_char);
+            value = getAttrib(x, data_sym);
+            if isNull(value) || value == R_NilValue() {
+                let xdata_sym = Rf_install(b".xData\0".as_ptr() as *const c_char);
+                value = getAttrib(x, xdata_sym);
+            }
+        }
+        if !value.is_null()
+            && value != R_NilValue()
+            && (type_ == ANYSXP || TYPEOF(value) == type_)
+        {
+            return value;
+        }
+        R_NilValue()
+
     }
 }
