@@ -3606,11 +3606,12 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(689).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(730).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through identical S4 bit: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through its cbind/rbind: {e}\nstdout={}\nstderr={}",
+
 
 
 
@@ -4124,6 +4125,62 @@ foo_ok && eq_ok && mismatch_ok && identical(a, b) && isS4(a)
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_rbind2_a_and_its_matrix() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("A", representation(a = "matrix"))
+setMethod("initialize", signature(.Object = "A"),
+    function(.Object, y) {
+      .Object@a <- y
+      .Object
+    })
+setMethod("rbind2", signature(x = "A", y = "matrix"),
+    function(x, y, ...) {
+      x@a <- rbind(x@a, y)
+      x
+    })
+setMethod("dim", "A", function(x) dim(x@a))
+mat1 <- matrix(1:9, nrow = 3)
+obj1 <- new("A", 10*mat1)
+om1 <- rbind(obj1, mat1)
+a_ok <- identical(om1, rbind2(obj1, mat1))
+removeClass("A")
+setClass("its", representation("matrix", dates="POSIXt"))
+m <- outer(1:3, setNames(1:5, LETTERS[1:5]))
+im <- new("its", m, dates=as.POSIXct(Sys.Date()))
+ii  <- rbind(im, im-1)
+i.i <- cbind(im, im-7)
+its_ok <- identical(m, im@.Data) &&
+  identical(m, rbind(im)) && identical(m, cbind(im)) &&
+  identical(ii, rbind(m, m-1)) && identical(i.i, cbind(m, m-7))
+a_ok && its_ok
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "rbind2/its: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
 
 
 
