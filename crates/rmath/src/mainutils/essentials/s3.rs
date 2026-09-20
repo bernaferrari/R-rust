@@ -555,7 +555,7 @@ pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);

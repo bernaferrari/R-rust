@@ -3002,42 +3002,44 @@ pub(crate) unsafe fn format_vector_stock_n(
     }
 }
 
-/// Names used by stock printNamedVector: the `names` attribute, or
-/// `dimnames[[1]]` for a 1-d array (GNU PrintValueRec).
+/// Names used by stock printNamedVector.
+///
+/// GNU PrintValueRec for a 1-d array uses **only** `dimnames[[1]]`.
+/// A 1-d array with a `names` attribute but empty dimnames prints
+/// without a header. Fall back to the names attribute for non-arrays.
 fn names_sexp(x: Sexp<'_>) -> Option<Sexp<'_>> {
     unsafe {
-        let names = crate::sexp::attrib_core::getAttrib(
-            x.clone().as_raw(),
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
-        if let Some(names) = Sexp::from_raw(names)
-            && names.clone().typeof_() == SEXPTYPE::STRSXP
-            && names.clone().len() == x.clone().len()
-        {
-            return Some(names);
-        }
         let dim = crate::sexp::attrib_core::getAttrib(
             x.clone().as_raw(),
             crate::sexp::attrib_core::R_DimSymbol(),
         );
-        if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 1 {
+        if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
+            let dimnames = crate::sexp::attrib_core::getAttrib(
+                x.clone().as_raw(),
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            if !dimnames.is_null()
+                && dimnames != crate::sexp::globals::R_NilValue()
+                && TYPEOF(dimnames) == SEXPTYPE::VECSXP
+                && XLENGTH(dimnames) >= 1
+            {
+                let row = VECTOR_ELT(dimnames, 0);
+                if let Some(row) = Sexp::from_raw(row)
+                    && row.clone().typeof_() == SEXPTYPE::STRSXP
+                    && row.clone().len() == x.len()
+                {
+                    return Some(row);
+                }
+            }
             return None;
         }
-        let dimnames = crate::sexp::attrib_core::getAttrib(
+        let names = crate::sexp::attrib_core::getAttrib(
             x.clone().as_raw(),
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            crate::sexp::attrib_core::R_NamesSymbol(),
         );
-        if dimnames.is_null()
-            || dimnames == crate::sexp::globals::R_NilValue()
-            || TYPEOF(dimnames) != SEXPTYPE::VECSXP
-            || XLENGTH(dimnames) < 1
-        {
-            return None;
-        }
-        let row = VECTOR_ELT(dimnames, 0);
-        let row = Sexp::from_raw(row)?;
-        if row.clone().typeof_() == SEXPTYPE::STRSXP && row.clone().len() == x.len() {
-            Some(row)
+        let names = Sexp::from_raw(names)?;
+        if names.clone().typeof_() == SEXPTYPE::STRSXP && names.clone().len() == x.len() {
+            Some(names)
         } else {
             None
         }
