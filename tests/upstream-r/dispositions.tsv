@@ -5,7 +5,7 @@ any-all.R	pass	-	-
 arith-true.R	pass	-	-
 arith.R	pass	-	-
 array-subset.R	pass	-	-
-classes-methods.R	skip	rport-2gpp.2	requires complete S3 and S4 method dispatch
+classes-methods.R	xfail	rport-2gpp.2	executes unmodified through EOF but printed output is not yet compared to the GNU oracle
 complex.R	pass	-	-
 conditions.R	pass	-	-
 d-p-q-r-tests.R	skip	rport-2gpp.2	requires the complete stats distribution family and test helpers

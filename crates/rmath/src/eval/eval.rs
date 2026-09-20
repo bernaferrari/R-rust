@@ -3760,6 +3760,23 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
         });
     }
 
+    #[test]
+    fn classes_methods_unmodified_gnu_file() {
+        let mut session = RSession::new();
+        let vendor = include_str!("../../../../tests/upstream-r/vendor/classes-methods.R");
+        let (result, output, _) = session.eval_script_with_output_capture(vendor);
+        result.unwrap_or_else(|e| {
+            panic!(
+                "unmodified classes-methods.R: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+    }
+
+
+
+
+
 
 
 

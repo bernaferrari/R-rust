@@ -2389,11 +2389,16 @@ impl<'arena> Parser<'arena> {
                 Ok(call)
             }
         } else {
+            // Newlines after a complete if-body are statement terminators,
+            // not postfix call openers: `if (c) f()\n(x)` is two expressions
+            // (gram.y), not `f()(x)`.
+            self.pos = body_end;
             unsafe {
                 let if_sym = Rf_install(c"if".as_ptr());
                 self.lang3(if_sym, cond, body)
             }
         }
+
     }
 
     /// for (var in seq) body
@@ -3317,6 +3322,26 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
+
+    #[test]
+    fn if_body_newline_paren_is_next_expression() {
+        let mut session = RSession::new();
+
+        let exprs = session
+            .with_arena(|arena| parse_expressions("if (FALSE)\n    identity(1)\n(2)\n", arena))
+            .unwrap_or_else(|| panic!("test session is closed"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            exprs.len(),
+            2,
+            "if-body newline then (2) must be two top-level expressions"
+        );
+        unsafe {
+            assert_eq!(call_head_name(exprs[0]), "if");
+            assert_eq!(call_head_name(exprs[1]), "(");
+        }
+    }
+
 
     #[test]
     fn test_for_loop() {
