@@ -456,6 +456,31 @@ pub(crate) unsafe fn lookup_s3_method_for_class(
     }
 }
 
+/// GNU `usemethod` skips `sort.list` from the base namespace: it is a
+/// permutation helper, not an S3 method of `sort`.
+unsafe fn is_base_sort_list_kludge(method_symbol: SEXP, sxp: SEXP) -> bool {
+    unsafe {
+        if method_symbol.is_null() || sxp.is_null() {
+            return false;
+        }
+        if method_symbol != Rf_install(c"sort.list".as_ptr()) {
+            return false;
+        }
+        match TYPEOF(sxp) {
+            t if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP => true,
+            t if t == SEXPTYPE::CLOSXP => {
+                let env = CLOENV(sxp);
+                env == R_BaseEnv()
+                    || crate::mainutils::essentials::cached_namespace_by_name("base")
+                        .is_some_and(|ns| env == ns)
+            }
+            _ => false,
+        }
+    }
+}
+
+
+
 pub(crate) unsafe fn lookup_s3_method_for_classes(
     generic: &str,
     classes: SEXP,
@@ -487,12 +512,17 @@ pub(crate) unsafe fn lookup_s3_method_for_classes(
                 crate::mainutils::names::installS3Signature(generic_cstr.as_ptr(), class);
             let method = lookup_s3_method_symbol(method_symbol, rho, callrho, defrho);
             if isFunction(method) != FALSE {
+                // GNU objects.c usemethod: sort.list in base is not a sort method.
+                if is_base_sort_list_kludge(method_symbol, method) {
+                    continue;
+                }
                 return Some(S3MethodMatch {
                     method_symbol,
                     method,
                     class_index: Some(i),
                 });
             }
+
         }
 
         if include_default {
@@ -646,9 +676,13 @@ pub unsafe fn findmethod(
             let m = crate::mainutils::names::installS3Signature(generic, ss);
             let sxp = R_LookupMethod(m, ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
             if isFunction(sxp) != FALSE {
+                if is_base_sort_list_kludge(m, sxp) {
+                    continue;
+                }
                 *method = sxp;
                 return i + 1; // 1-based index
             }
+
         }
 
         // Try default

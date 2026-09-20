@@ -113,13 +113,23 @@ pub unsafe fn do_cache_class(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
 
         let class = CAR(args);
-        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP
+            || XLENGTH(class) < 1
+        {
             std::panic::panic_any(RError {
                 message: "invalid class argument to internal .class_cache".to_string(),
             });
         }
-
-        CADR(args)
+        let class_chars = STRING_ELT(class, 0);
+        if class_chars.is_null() {
+            std::panic::panic_any(RError {
+                message: "invalid class argument to internal .class_cache".to_string(),
+            });
+        }
+        let name = std::ffi::CStr::from_ptr(CHAR(class_chars))
+            .to_string_lossy()
+            .into_owned();
+        crate::mainutils::objects::cache_class(&name, CADR(args))
     }
 }
 

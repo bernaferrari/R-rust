@@ -299,11 +299,131 @@ pub(crate) unsafe fn R_data_class2(x: SEXP) -> SEXP {
         }
         let class_val = getAttrib(x, R_ClassSymbol());
         if !class_val.is_null() && class_val != R_NilValue() && XLENGTH(class_val) > 0 {
+            if crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE {
+                return S4_extends(class_val, true);
+            }
             return class_val;
         }
         implicit_s3_class(x)
     }
 }
+
+unsafe fn ensure_s4_extends_table() -> SEXP {
+    unsafe {
+        let existing = with_objects_state(|state| state.s4_extends_table);
+        if !existing.is_null() && existing != R_NilValue() {
+            return existing;
+        }
+        let table = crate::sexp::envir::R_NewHashedEnv(R_NilValue(), 0);
+        crate::sexp::protect::R_PreserveObject(table);
+        with_objects_state(|state| state.s4_extends_table = table);
+        table
+    }
+}
+
+/// GNU `cache_class`: store or drop the `.extendsForS3` vector for a class.
+pub(crate) unsafe fn cache_class(class: &str, klass: SEXP) -> SEXP {
+    unsafe {
+        let table = ensure_s4_extends_table();
+        let Ok(cname) = std::ffi::CString::new(class) else {
+            return klass;
+        };
+        let symbol = Rf_install(cname.as_ptr());
+        if klass.is_null() || klass == R_NilValue() {
+            crate::sexp::envir::remove_binding_raw(table, symbol);
+        } else {
+            crate::sexp::envir::defineVar(symbol, klass, table);
+        }
+        klass
+    }
+}
+
+/// GNU `S4_extends`: class plus superclasses via `.extendsForS3`, cached.
+unsafe fn S4_extends(klass: SEXP, use_tab: bool) -> SEXP {
+    unsafe {
+        if isMethodsDispatchOn() == FALSE {
+            return klass;
+        }
+        if klass.is_null() || TYPEOF(klass) != SEXPTYPE::STRSXP || XLENGTH(klass) < 1 {
+            return klass;
+        }
+        let class_chars = STRING_ELT(klass, 0);
+        if class_chars.is_null() {
+            return klass;
+        }
+        let class = std::ffi::CStr::from_ptr(CHAR(class_chars))
+            .to_string_lossy()
+            .into_owned();
+        if class.is_empty() {
+            return klass;
+        }
+        if use_tab {
+            let table = ensure_s4_extends_table();
+            let Ok(cname) = std::ffi::CString::new(class.as_str()) else {
+                return klass;
+            };
+            let cached = crate::sexp::envir::R_findVarInFrame(table, Rf_install(cname.as_ptr()));
+            if !cached.is_null()
+                && cached != R_UnboundValue()
+                && cached != R_NilValue()
+            {
+                return cached;
+            }
+        }
+        let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
+            return klass;
+        };
+        let mut fun =
+            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".extendsForS3".as_ptr()));
+        if fun.is_null() || fun == R_UnboundValue() {
+            return S4_extends_from_contains(klass, &class);
+        }
+        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+            fun = crate::sexp::envir::forcePromise(fun);
+        }
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+            return S4_extends_from_contains(klass, &class);
+        }
+        let call = Rf_lang2(fun, klass);
+        let _call = protect(call);
+        let evaled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(call, ns)));
+        match evaled {
+            Ok(val) if !val.is_null() && val != R_NilValue() && TYPEOF(val) == SEXPTYPE::STRSXP => {
+                cache_class(&class, val);
+                val
+            }
+            _ => S4_extends_from_contains(klass, &class),
+        }
+    }
+}
+
+unsafe fn S4_extends_from_contains(klass: SEXP, class: &str) -> SEXP {
+    unsafe {
+        sync_s4_class_graph_from_gnu(class);
+        let Some(def) = s4_class(class) else {
+            return klass;
+        };
+        if def.contains.is_empty() {
+            return klass;
+        }
+        let mut names = Vec::with_capacity(def.contains.len() + 1);
+        names.push(class.to_string());
+        for parent in &def.contains {
+            if parent != class && !names.iter().any(|n| n == parent) {
+                names.push(parent.clone());
+            }
+        }
+        let out = Rf_allocVector(SEXPTYPE::STRSXP, names.len() as c_int);
+        let _out = protect(out);
+        for (i, name) in names.iter().enumerate() {
+            let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(out, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        }
+        cache_class(class, out);
+        out
+    }
+}
+
 
 /// GNU `Type2DefaultClass` implicit S3 classes for unclassed objects.
 unsafe fn implicit_s3_class(x: SEXP) -> SEXP {

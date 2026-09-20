@@ -3606,11 +3606,19 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(763).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(788).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through mondate cbind: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through formula slots: {e}\nstdout={}\nstderr={}",
+
+
+
+
+
+
+
+
 
 
 
@@ -3627,6 +3635,72 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
             )
         });
     }
+
+    #[test]
+    fn reg_s4_rbind_after_setgeneric_dots() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setGeneric("rbind", function(..., deparse.level=1)
+           standardGeneric("rbind"), signature = "...")
+identical(rbind(1), matrix(1,1,1))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "rbind after setGeneric: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+    #[test]
+    fn reg_s4_median_list_subclass() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            concat!(
+                "invisible(require(methods, quietly=TRUE))\n",
+                "setClass(\"L\", contains = \"list\")\n",
+                "setMethod(\"Compare\", signature(e1=\"L\", e2=\"ANY\"),\n",
+                "          function(e1,e2) sapply(e1, .Generic, e2=e2))\n",
+                "setMethod(\"Summary\", \"L\",\n",
+                "          function(x, ..., na.rm=FALSE) {x <- unlist(x); callNextMethod()})\n",
+                "setMethod(\"[\", signature(x=\"L\", i=\"ANY\", j=\"missing\",drop=\"missing\"),\n",
+                "          function(x,i,j,drop) new(class(x), x@.Data[i]))\n",
+                "setMethod(\"xtfrm\", \"L\", function(x) xtfrm(unlist(x@.Data)))\n",
+                "mean.L <- function(x, ...) new(\"L\", mean(unlist(x@.Data), ...))\n",
+                "x <- new(\"L\", 1:3); x2 <- x[-2]\n",
+                "all(unlist(x2) == (1:3)[-2]) && is(mx <- median(x), \"L\") && mx == 2 && median(x2) == x[2]\n",
+            ),
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "median L: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
 
     #[test]
     fn reg_s4_list_class_subset_keeps_class() {
@@ -4208,6 +4282,310 @@ identical(colnames(cbind(m1+1, deparse.level=2)), "m1 + 1") &&
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_formula_and_dataframe_slots() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("A", representation(slot1="numeric", slot2="logical"))
+setClass("D1", contains="A", representation(design="data.frame"))
+setClass("D2", contains="D1")
+validObject(a <- new("A", slot1=77, slot2=TRUE))
+validObject(D. <- new("D2", a, design = data.frame(x = 1)))
+setClass("B", contains="A", representation(design="formula"))
+setClass("C", contains="B")
+a <- new("A", slot1=77, slot2=TRUE)
+validObject(C1 <- new("C", a, design = x ~ y))
+C2 <- new("C", slot1=a@slot1, slot2=a@slot2, design=x ~ y)
+identical(C1, C2) &&
+  identical(formula(), formula(NULL)) &&
+  length(N <- new("formula")) == 0 && inherits(N, "formula") &&
+  length(N <- new("table")) == 0 && is.table(N) &&
+  validObject(N <- new("summary.table")) &&
+  length(N <- new("ordered")) == 0 && is.ordered(N)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "formula slots: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_stats4_mle_classes() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+ok <- require("stats4", quietly=TRUE)
+if (!isTRUE(ok)) {
+  FALSE
+} else {
+  validObject(sig <- new("signature", obj = "mle"))
+  cl4 <- getClasses("package:stats4")
+  all(c("package", "names") %in% slotNames(sig)) &&
+    identical(getClasses(which(search() == "package:stats4")), cl4) &&
+    all(c("mle", "profile.mle", "summary.mle") %in% cl4)
+}
+"#,
+
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "stats4: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+    #[test]
+    fn reg_s4_slot_assign_without_methods() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("A", representation(slot1="numeric", slot2="logical"))
+setClass("B", contains="A", representation(design="formula"))
+setClass("C", contains="B")
+a <- new("A", slot1=77, slot2=TRUE)
+C1 <- new("C", a, design = x ~ y)
+detach("package:methods", force=TRUE)
+C1@slot1 <- pi
+identical(C1@slot1, pi)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "slot assign without methods: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_generic_warning_handler_pr16111() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+f <- function() {
+    signal <- FALSE
+    withCallingHandlers({ g(sqrt(-1)) }, warning = function(w) {
+        signal <<- TRUE
+        invokeRestart("muffleWarning")
+    })
+    signal
+}
+g <- function(x) x
+op <- options(warn = 2)
+ok1 <- isTRUE(f())
+setGeneric("g")
+ok2 <- isTRUE(f())
+options(op)
+ok1 && ok2
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "PR16111: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_as_vector_unlist_generic_formals() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+identical(formals(getGeneric("as.vector")), formals(base::as.vector)) &&
+  identical(formals(getGeneric("unlist")), formals(base::unlist))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "as.vector/unlist formals: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_virtual_integer_subclass() {
+
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("myInteger", contains=c("integer", "VIRTUAL"))
+setClass("mySubInteger", contains="myInteger")
+x <- new("mySubInteger", 1L)
+y <- new("mySubInteger")
+TRUE
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "virtual integer: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+    #[test]
+    fn reg_s4_s3_dispatch_without_methods_attached() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+methods::setClass("test1", methods::representation(date="POSIXct"))
+methods::setClass("test2", contains="test1")
+test <- function(x) UseMethod("test", x)
+test.test1 <- function(x) "Hi"
+detach("package:methods", force=TRUE)
+out <- test(methods::new("test2", date=as.POSIXct("2003-10-09")))
+identical(out, "Hi")
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "S3 dispatch without methods: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_coerce_method_uses_methods_new() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("A", slots = c(foo = "numeric"))
+setClass("Ap", contains = "A", slots = c(p = "character"))
+cd <- getClassDef("Ap")
+identical(deparse(body(cd@contains[["A"]]@coerce)[[2]])[1], "value <- methods::new(\"A\")")
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "coerce method body: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_resolve_class_list_package_conflict() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("htest1", slots=c(a="numeric",b="data.frame"), package="package1")
+setClass("htest2", slots=c(a="logical"), package="package2")
+class_env1 <- .GlobalEnv
+class_env2 <- .GlobalEnv
+class.list = list(
+    package1=getClassDef("htest1", where=class_env1),
+    package2=getClassDef("htest2", where=class_env2)
+)
+firstclass  <- methods:::.resolveClassList(class.list,.GlobalEnv, package="package1")
+secondclass <- methods:::.resolveClassList(class.list,.GlobalEnv, package="package2")
+alsofirstclass <- methods:::.resolveClassList(class.list,.GlobalEnv, package="package3")
+!identical(firstclass, secondclass) &&
+  identical(firstclass, class.list[[1]]) &&
+  identical(secondclass, class.list[[2]]) &&
+  identical(alsofirstclass, class.list[[1]])
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "resolveClassList: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
 
 
 

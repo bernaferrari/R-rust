@@ -385,48 +385,11 @@ pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-/// R's `.class2(x)` — class vector including implicit primitive inheritance.
+/// R's `.class2(x)` — GNU `R_data_class2`, including S4 extends.
 pub unsafe fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_mkString(c"NULL".as_ptr());
-        }
-
-        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
-        if !class.is_null() && class != R_NilValue() {
-            return class;
-        }
-
-        if TYPEOF(x) == SEXPTYPE::LANGSXP {
-            let chars = crate::eval::attrib_core::language_implicit_class_chars(x);
-            return Rf_mkString(CHAR(chars));
-        }
-
-
-        let implicit: &[&std::ffi::CStr] = match TYPEOF(x) {
-            t if t == SEXPTYPE::INTSXP => &[c"integer", c"numeric"],
-            t if t == SEXPTYPE::REALSXP => &[c"numeric"],
-            t if t == SEXPTYPE::LGLSXP => &[c"logical"],
-            t if t == SEXPTYPE::CPLXSXP => &[c"complex"],
-            t if t == SEXPTYPE::STRSXP => &[c"character"],
-            t if t == SEXPTYPE::RAWSXP => &[c"raw"],
-            t if t == SEXPTYPE::VECSXP => &[c"list"],
-            _ => &[c"NULL"],
-        };
-
-
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, implicit.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _guard = protect(result);
-        for (i, name) in implicit.iter().enumerate() {
-            SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(name.as_ptr()));
-        }
-        result
-    }
+    unsafe { crate::mainutils::objects::R_data_class2(CAR(args)) }
 }
+
 pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);

@@ -257,6 +257,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // GNU funprog.R: identity <- function(x) x. setMethod(..., identity)
         // needs a closure, not a primitive (reg-S4.R PR#15691).
         eval_base_binding(base_env, "identity", "function(x) x");
+        // GNU table.R: is.table <- function(x) inherits(x, "table")
+        eval_base_binding(base_env, "is.table", "function(x) inherits(x, \"table\")");
+
         // GNU utils/R/sourceutils.R: getSrcref for rematched S4 methods
         // (reg-S4.R 638). Lives in utils; install in base so source() tests
         // see it without attaching utils.

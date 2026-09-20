@@ -98,7 +98,10 @@ pub(crate) struct ObjectsRuntimeState {
     pub(crate) deferred_default_object: SEXP,
     s4_classes: HashMap<String, S4ClassDef>,
     s4_validity: HashMap<String, SEXP>,
+    /// GNU `R_S4_extends_table`: cached `.extendsForS3` class vectors.
+    pub(crate) s4_extends_table: SEXP,
 }
+
 
 #[derive(Clone, Default)]
 pub(crate) struct S4ClassDef {
@@ -125,6 +128,7 @@ impl Default for ObjectsRuntimeState {
             deferred_default_object: ptr::null_mut(),
             s4_classes: HashMap::new(),
             s4_validity: HashMap::new(),
+            s4_extends_table: ptr::null_mut(),
 
         }
     }
@@ -342,11 +346,11 @@ pub(crate) fn s4_class_distance(class1: &str, class2: &str) -> Option<usize> {
         distance(&state.s4_classes, class1, class2, &mut HashSet::new())
     })
 }
-
 /// GNU `setClass` writes `.__C__*` metadata; the Rust registry is only
 /// filled by the fallback `do_setClass`. Mirror GNU contains so C
 /// `standardGeneric` can inherit methods the same way `selectMethod` does.
-fn sync_s4_class_graph_from_gnu(name: &str) {
+pub(crate) fn sync_s4_class_graph_from_gnu(name: &str) {
+
     let mut pending = vec![name.to_string()];
     let mut seen = HashSet::new();
     while let Some(class) = pending.pop() {
