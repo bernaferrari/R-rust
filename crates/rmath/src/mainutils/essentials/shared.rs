@@ -1073,11 +1073,10 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
             attach_package_env(attach_env);
             if package == "methods" {
                 run_methods_onload_cache_metadata(package_env);
-                // GNU methods NAMESPACE exportPattern("^\\.__C__") etc. copies
-                // class/method metadata onto package:methods. onLoad creates
-                // those bindings in the namespace after attach_env was built.
                 export_s4_metadata_to_package_env(package_env, attach_env);
+                retarget_envref_object_parent(package_env);
             }
+
 
 
 
@@ -1341,11 +1340,22 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         if let Some(attach_env) = attached_package_env("methods") {
             export_s4_metadata_to_package_env(ns, attach_env);
         }
-
-
-
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::mainutils::gram_main::R_ParseEvalString(
+                c"cd <- tryCatch(getClassDef(\"envRefClass\"), error=function(e) NULL)
+if (!is.null(cd) && is.environment(cd@refMethods)) {
+  op <- cd@refMethods$.objectParent
+  ns <- asNamespace(\"methods\")
+  if (is.environment(op) && !identical(op, ns)) parent.env(op) <- ns
+}
+NULL"
+                    .as_ptr(),
+                ns,
+            )
+        }));
     }
 }
+
 
 /// GNU `library()`/`attach()`: `methods:::cacheMetaData(env, TRUE)`.
 /// GNU bytecode for cacheMetaData GETFUN/CALL-loops on a package attach
@@ -1655,6 +1665,42 @@ unsafe fn env_chain_contains(mut env: SEXP, target: SEXP) -> bool {
     }
 }
 
+/// After methods `.onLoad`, the captured `.objectParent` stub must enclose
+/// the methods namespace so ref methods see unexported helpers (`classLabel`).
+unsafe fn retarget_envref_object_parent(ns: SEXP) {
+    unsafe {
+        let class_def =
+            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".__C__envRefClass".as_ptr()));
+        if class_def.is_null()
+            || class_def == crate::sexp::globals::R_UnboundValue()
+            || class_def == R_NilValue()
+            || TYPEOF(class_def) == SEXPTYPE::PROMSXP
+        {
+            return;
+        }
+        let ref_methods = crate::eval::attrib_core::getAttrib(
+            class_def,
+            Rf_install(c"refMethods".as_ptr()),
+        );
+        if TYPEOF(ref_methods) != SEXPTYPE::ENVSXP {
+            return;
+        }
+        let object_parent =
+            crate::sexp::envir::R_findVarInFrame(ref_methods, Rf_install(c".objectParent".as_ptr()));
+        if object_parent.is_null()
+            || object_parent == crate::sexp::globals::R_UnboundValue()
+            || TYPEOF(object_parent) != SEXPTYPE::ENVSXP
+            || object_parent == ns
+            || env_chain_contains(ns, object_parent)
+        {
+            return;
+        }
+        SET_ENCLOS(object_parent, ns);
+    }
+}
+
+
+
 
 
 
@@ -1747,8 +1793,9 @@ pub(crate) unsafe fn load_package_namespace(
             purge_missing_arg_placeholders(package_env);
             retarget_methods_generics(package_env);
             run_methods_onload_cache_metadata(package_env);
-
+            retarget_envref_object_parent(package_env);
         }
+
 
         if package == "stats" {
             crate::library::stats::random::install_stats_call_symbols(package_env);

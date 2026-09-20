@@ -2528,12 +2528,16 @@ any(grepl('Class "genericFunction", directly', out, fixed=TRUE))
 x <- new("envRefClass")
 is.environment(x) &&
   identical(typeof(as.environment(x)), "environment") &&
-  identical(typeof(x$show), "closure")
+  identical(typeof(x$show), "closure") &&
+  identical(
+    capture.output(x$show()),
+    "Reference class object of class \"envRefClass\""
+  )
 "#,
         );
         let result = result.unwrap_or_else(|e| {
             panic!(
-                "envRefClass as.environment: {e}\nstdout={}\nstderr={}",
+                "envRefClass $show: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
@@ -2545,6 +2549,8 @@ is.environment(x) &&
             output.stderr
         );
     }
+
+
 
 
 

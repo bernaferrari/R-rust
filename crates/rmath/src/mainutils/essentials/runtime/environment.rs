@@ -66,8 +66,11 @@ pub unsafe fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let parent_arg = arg_by_name_or_position(args, &["parent"], 1);
-        let parent = if parent_arg.is_null() || parent_arg == R_NilValue() {
-            // parent = parent.frame() — the caller's evaluation frame
+        let missing = parent_arg.is_null()
+            || parent_arg == R_NilValue()
+            || parent_arg == R_MissingArg();
+        let parent = if missing {
+            // GNU `parent = parent.frame()`: for a builtin, the caller frame.
             if _rho.is_null() || _rho == R_NilValue() {
                 crate::sexp::globals::R_GlobalEnv()
             } else {
@@ -78,6 +81,7 @@ pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         } else {
             crate::sexp::globals::R_GlobalEnv()
         };
+
 
         // Create a new environment with empty frame and parent
         let env = crate::sexp::memory_ext::NewEnvironment(
