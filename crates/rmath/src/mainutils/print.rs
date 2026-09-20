@@ -765,18 +765,45 @@ unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
     }
 }
 
-/// GNU print.default with extra args uses PrintValueRec, so showDefault's
-/// `print(object, useS4=FALSE)` never re-enters show(). If we do re-enter,
-/// print the data part like PrintValueRec, not a class-name stub.
-unsafe fn print_s4_data_part(s: SEXP, data: &R_PrintData) {
+/// GNU `print(object, useS4=FALSE)` / `PrintValueRec` on an S4 basic object
+/// prints the data part. `format_matrix` / `print_value` go through the
+/// capture sink (stdout); `printMatrix` currently writes stderr.
+unsafe fn print_s4_data_part(s: SEXP, _data: &R_PrintData) {
     unsafe {
         let copy = crate::mainutils::duplicate::Rf_duplicate(s);
         let _copy = protect(copy);
         crate::sexp::accessors::UNSET_S4_OBJECT(copy);
         crate::sexp::attrib_core::setAttrib(copy, R_ClassSymbol(), R_NilValue());
-        PrintValueRec_inner(copy, data);
+        if let Some(sexp) = crate::sexp::object::Sexp::from_raw(copy) {
+            crate::sexp::output::print_value(sexp);
+        }
     }
 }
+
+/// `do_printdefault` body: S4 with no extra args uses `show()`; extra args
+/// (GNU `useS4=FALSE`) print the data part; non-S4 uses `print_value` so
+/// `capture.output(print(m))` sees the same matrix layout as auto-print.
+unsafe fn emit_print_default(x: SEXP, data: &R_PrintData, show_s4: bool) {
+    unsafe {
+        if show_s4 && IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
+            PrintObject(x, data);
+        } else if IS_S4_OBJECT(x) != 0 {
+            print_s4_data_part(x, data);
+        } else if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
+            let extras = if data.callArgs.is_null() {
+                R_NilValue()
+            } else {
+                data.callArgs
+            };
+            let _extras = protect(extras);
+            let _guard = crate::sexp::output::push_print_dispatch_extras(extras);
+            crate::sexp::output::print_value(sexp);
+        } else {
+            PrintValueRec_inner(x, data);
+        }
+    }
+}
+
 
 unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
     unsafe {
@@ -1576,6 +1603,14 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             return;
         }
 
+        // GNU showDefault's `print(object, useS4 = FALSE)` lands here.
+        // Printing the data part must not re-enter show() (active_values)
+        // and must use the capture-aware printer.
+        if IS_S4_OBJECT(s) != 0 {
+            print_s4_data_part(s, data);
+            return;
+        }
+
         let _recursion_guard = match enter_print_value(s) {
             Some(guard) => guard,
             None => {
@@ -1585,10 +1620,11 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             }
         };
 
-        if isMethodsDispatchOn() == 0 && (IS_S4_OBJECT(s) != 0 || TYPEOF(s) == SEXPTYPE(25).0) {
-            println!("<S4 object>");
+        if isMethodsDispatchOn() == 0 && TYPEOF(s) == SEXPTYPE(25).0 {
+            println!("<object>");
             return;
         }
+
 
         match TYPEOF(s) {
             t if t == SEXPTYPE::NILSXP => {
@@ -1830,11 +1866,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         if args_rest == R_NilValue() || CDR(args_rest) == R_NilValue() {
             set_current_print_data(&data);
             tagbuf_clear();
-            if IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
-                PrintObject(x, &data);
-            } else {
-                PrintValueRec_inner(x, &data);
-            }
+            emit_print_default(x, &data, true);
             PrintDefaults();
             return x;
         }
@@ -1844,11 +1876,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         if missings_vec.is_null() || TYPEOF(missings_vec) != SEXPTYPE::LGLSXP {
             set_current_print_data(&data);
             tagbuf_clear();
-            if IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
-                PrintObject(x, &data);
-            } else {
-                PrintValueRec_inner(x, &data);
-            }
+            emit_print_default(x, &data, true);
             PrintDefaults();
             return x;
         }
@@ -1999,11 +2027,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 
         tagbuf_clear();
 
-        if no_params != 0 && IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
-            PrintObject(x, &data);
-        } else {
-            PrintValueRec_inner(x, &data);
-        }
+        emit_print_default(x, &data, no_params != 0);
 
         PrintDefaults();
         x

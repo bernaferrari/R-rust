@@ -1961,7 +1961,8 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 
         /// GNU `[.data.frame` row-subsets a column as
         /// `if (length(dim(xj)) != 2L) xj[i] else xj[i, , drop = FALSE]`.
-        /// `[.AsIs` then re-wraps with `I()`, so copy the source class.
+        /// `[.factor` / `[.POSIXct` / `[.AsIs` restore class plus levels/tzone;
+        /// `copyMostAttrib` is that transfer (names/dim/dimnames already set).
         unsafe fn subset_frame_column(col: SEXP, sr: SEXP, call: SEXP) -> SEXP {
             unsafe {
                 let result = if isMatrix(col) {
@@ -1974,10 +1975,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     VectorSubset(col, sr, call)
                 };
                 let _result_guard = protect(result);
-                let class = getAttrib(col, sym_Class());
-                if !isNull(class) {
-                    setAttrib(result, sym_Class(), class);
-                }
+                crate::mainutils::array::copyMostAttrib(col, result);
                 result
             }
         }

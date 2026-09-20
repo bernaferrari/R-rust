@@ -850,6 +850,20 @@ mod as_data_frame_tests {
         assert!(output.stdout.is_empty());
         assert!(visible);
     }
+
+    #[test]
+    fn data_frame_drop_keeps_factor_levels() {
+        let mut session = RSession::new();
+        let (result, output, visible) = session.eval_code_with_output_capture(
+            "df <- data.frame(f = factor(c('a','b','c'), levels=c('a','b','c','d'))); \
+             identical(levels(df[2, 1]), levels(df$f)) && \
+             identical(as.character(df[2, 1]), 'b')",
+        );
+        let result = result.expect("factor column subset should evaluate");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(output.stdout.is_empty());
+        assert!(visible);
+    }
 }
 
 /// R's `as.list(x)` — generic list conversion.

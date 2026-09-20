@@ -1545,10 +1545,12 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // S3 print/summary dispatch
 // ---------------------------------------------------------------------------
 
-/// R's `print.default(x, ...)` — default print method.
-/// Equivalent to the existing do_print but named for S3 dispatch.
-pub unsafe fn do_print_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_print(_call, _op, args, _rho) }
+/// GNU `.Internal(print.default(x, args, missings))`. Extra arguments
+/// (including `print(x, useS4 = FALSE)` from `showDefault`) set
+/// `noParams = 0` so S4 objects print via `PrintValueRec` instead of
+/// re-entering `show()`.
+pub unsafe fn do_print_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::print::do_printdefault(call, op, args, rho) }
 }
 
 /// GNU `print.Date(x, max = NULL, ...)`.

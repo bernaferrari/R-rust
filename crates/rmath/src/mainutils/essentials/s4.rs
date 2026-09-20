@@ -679,28 +679,63 @@ pub unsafe fn do_validObject(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 
-/// R's `show(object)` — display an S4 object (simplified).
+/// R's `show(object)` — GNU `showDefault`.
+///
+/// S4 objects whose class is a basic type (`matrix`, implicit atomic, …)
+/// print via `print(object, useS4 = FALSE)`: the data part, not slots.
+/// `asS4(matrix())` has no class attribute; the implicit class is basic.
 pub unsafe fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let object = CAR(args);
         if object.is_null() || object == R_NilValue() {
             println!("NULL");
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return R_NilValue();
         }
         let class_sym = Rf_install(c"class".as_ptr());
         let class_val = crate::sexp::attrib_core::getAttrib(object, class_sym);
-        if !class_val.is_null()
+        let class_name = if !class_val.is_null()
             && class_val != R_NilValue()
             && TYPEOF(class_val) == SEXPTYPE::STRSXP
+            && XLENGTH(class_val) > 0
         {
             let charsxp = crate::sexp::accessors::STRING_ELT(class_val, 0);
             if !charsxp.is_null() {
                 let s = crate::sexp::accessors::CHAR(charsxp);
                 if !s.is_null() {
-                    let class_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("unknown");
-                    println!("An object of class \"{}\"", class_str);
+                    Some(
+                        std::ffi::CStr::from_ptr(s)
+                            .to_str()
+                            .unwrap_or("unknown")
+                            .to_string(),
+                    )
+                } else {
+                    None
                 }
+            } else {
+                None
             }
+        } else {
+            None
+        };
+        let is_s4 = crate::mainutils::objects::IS_S4_OBJECT(object) != 0;
+        let basic = class_name
+            .as_deref()
+            .map(is_basic_show_class)
+            .unwrap_or(true);
+        if is_s4 && basic {
+            // GNU showDefault else: print(object, useS4 = FALSE)
+            let copy = crate::mainutils::duplicate::Rf_duplicate(object);
+            let _copy = protect(copy);
+            crate::sexp::accessors::UNSET_S4_OBJECT(copy);
+            if let Some(sexp) = crate::sexp::object::Sexp::from_raw(copy) {
+                crate::sexp::output::print_value(sexp);
+            }
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return object;
+        }
+        if let Some(class_str) = class_name.as_deref() {
+            println!("An object of class \"{}\"", class_str);
         }
         if TYPEOF(object) == SEXPTYPE::VECSXP {
             let n = XLENGTH(object);
@@ -734,6 +769,37 @@ pub unsafe fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         object
     }
+}
+
+fn is_basic_show_class(name: &str) -> bool {
+    matches!(
+        name,
+        "logical"
+            | "numeric"
+            | "character"
+            | "complex"
+            | "integer"
+            | "raw"
+            | "list"
+            | "expression"
+            | "vector"
+            | "matrix"
+            | "array"
+            | "factor"
+            | "data.frame"
+            | "function"
+            | "environment"
+            | "double"
+            | "name"
+            | "language"
+            | "call"
+            | "NULL"
+            | "S4"
+            | "externalptr"
+            | "single"
+            | "table"
+            | "ts"
+    )
 }
 
 /// GNU `data_part()`: `getDataPart(obj, TRUE)` then `UNSET_S4_OBJECT`.

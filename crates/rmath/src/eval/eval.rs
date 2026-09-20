@@ -2642,6 +2642,36 @@ identical(names(d2), "b") &&
     }
 
     #[test]
+    fn s4_bit_matrix_show_and_print_match_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+setClass("Foo", representation(name="character"), contains="matrix")
+f <- new("Foo", name="Sam", matrix())
+m <- as(f, "matrix")
+m. <- asS4(m)
+gnu <- c("     [,1]", "[1,]   NA")
+identical(capture.output(show(m.)), gnu) &&
+  identical(capture.output(print(m.)), gnu)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "S4-bit matrix show/print: {e}\nstdout={:?}\nstderr={:?}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={:?}\nstderr={:?}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+    #[test]
     fn str_s4_formal_class_matches_gnu() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
