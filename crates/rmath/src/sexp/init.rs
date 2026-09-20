@@ -4,7 +4,7 @@
 //! environment chain itself is owned by `RInstance`; there is intentionally no
 //! process-global fallback interpreter.
 
-use super::accessors::{CDR, SETCAR, SETTAG, SET_SYMVALUE, TYPEOF};
+use super::accessors::{CDR, SETCAR, SETTAG, SET_SYMVALUE, SYMVALUE, TYPEOF};
 
 use super::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang3, Rf_lang4, Rf_mkString,
@@ -683,7 +683,10 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         {
             let seq_sym = Rf_install_in_current("seq");
-            let seq_prim = R_findVarInFrame(base_env, seq_sym);
+            let mut seq_prim = R_findVarInFrame(base_env, seq_sym);
+            if seq_prim.is_null() || seq_prim == R_UnboundValue() {
+                seq_prim = SYMVALUE(seq_sym);
+            }
             if !seq_prim.is_null() && seq_prim != R_UnboundValue() {
                 SET_SYMVALUE(Rf_install_in_current(".rport_seq"), seq_prim);
             }

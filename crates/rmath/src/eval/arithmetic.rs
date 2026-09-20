@@ -2041,6 +2041,7 @@ unsafe fn copy_all_attrib(dst: SEXP, src: SEXP) {
 /// ceiling, floor, trunc, round, sign.
 pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
         if let Some(result) = try_group_dispatch(b"Math\0", call, op, args, rho) {
             return result;
         }

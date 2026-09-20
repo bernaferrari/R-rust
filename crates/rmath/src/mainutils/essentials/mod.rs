@@ -102,11 +102,12 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             let prim = crate::eval::primitive::make_primitive_binding(name, kind);
             let _p = protect(prim);
             let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-            // GNU baseenv has no .rport_* / .asS4 / .OBJSXP. Keep the
-            // handlers on SYMVALUE so `f(...)` still resolves via findFun,
-            // but omit them from the environment frame so is.primitive /
-            // as.list(baseenv()) match GNU's inventory.
-            if is_rport_private_base_name(name) {
+            // GNU baseenv lists only FunTab primitives. Extra rport builtins
+            // stay on SYMVALUE so `f(...)` still resolves via findFun, but
+            // `as.list(baseenv())` / `is.primitive` match GNU's inventory.
+            if is_rport_private_base_name(name)
+                || !crate::sexp::init::is_accounted_primitive_name(name)
+            {
                 SET_SYMVALUE(sym, prim);
                 continue;
             }

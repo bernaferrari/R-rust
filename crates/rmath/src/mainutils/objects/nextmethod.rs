@@ -16,6 +16,7 @@ use super::*;
 /// full UseMethod dispatch protocol.
 pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        crate::mainutils::seq::check1arg(args, call, c"generic".as_ptr());
         // UseMethod takes two arguments: generic and (optionally) object
         let generic_arg = CAR(args);
         let obj_arg = if !CDR(args).is_null() && CDR(args) != R_NilValue() {

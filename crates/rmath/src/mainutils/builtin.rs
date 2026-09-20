@@ -368,6 +368,7 @@ pub unsafe fn do_envir(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
+        crate::mainutils::seq::check1arg(args, call, c"fun".as_ptr());
         let first = CAR(args);
         let second = CADR(args);
         let (x, val) = if Rf_isEnvironment(second) != 0 {

@@ -167,6 +167,7 @@ unsafe fn get_this_generic(args: SEXP) -> SEXP {
 /// Ported from objects.c:1324-1370.
 pub unsafe fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        crate::mainutils::seq::check1arg(args, call, c"f".as_ptr());
         if args.is_null() || args == R_NilValue() {
             error("'standardGeneric' requires a generic function name");
         }

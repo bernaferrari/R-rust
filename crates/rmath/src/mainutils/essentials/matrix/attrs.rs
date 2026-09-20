@@ -2,8 +2,9 @@
 use super::*;
 
 /// R's `storage.mode(x) <- value` — coerce storage while preserving attributes.
-pub unsafe fn do_storage_mode_set(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_storage_mode_set(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
         let x = CAR(args);
         let value = CAR(CDR(args));
         let allow_numeric = crate::eval::eval::PRIMNAME(op) == "mode<-";

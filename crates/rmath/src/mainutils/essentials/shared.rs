@@ -104,14 +104,14 @@ pub(crate) unsafe fn integer_or_logical_elt(value: SEXP, index: c_int) -> c_int 
     }
 }
 
-pub unsafe fn do_cache_class(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_cache_class(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        crate::mainutils::seq::check1arg(args, call, c"class".as_ptr());
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
             std::panic::panic_any(RError {
                 message: "invalid class argument to internal .class_cache".to_string(),
             });
         }
-
         let class = CAR(args);
         if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP
             || XLENGTH(class) < 1
