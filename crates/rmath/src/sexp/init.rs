@@ -288,6 +288,78 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "I",
             "function(x) { class(x) <- unique.default(c(\"AsIs\", oldClass(x))); x }",
         );
+        // GNU dataframe.R: closures, not primitives.
+        eval_base_binding(
+            base_env,
+            "as.data.frame",
+            "function(x, row.names = NULL, optional = FALSE, ...) {\n\
+             if (is.null(x)) return(as.data.frame(list()))\n\
+             UseMethod(\"as.data.frame\")\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "as.data.frame.default",
+            "function(x, ...) {\n\
+             if (is.atomic(x)) as.data.frame.vector(x, ...)\n\
+             else stop(gettextf(\"cannot coerce class %s to a data.frame\",\n\
+                                sQuote(deparse(class(x))[1L])), domain = NA)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "as.data.frame.vector",
+            include_str!("gnu_as_data_frame_vector.R"),
+        );
+        eval_base_binding(base_env, "as.data.frame.raw", "as.data.frame.vector");
+        eval_base_binding(base_env, "as.data.frame.factor", "as.data.frame.vector");
+        eval_base_binding(base_env, "as.data.frame.ordered", "as.data.frame.vector");
+        eval_base_binding(base_env, "as.data.frame.integer", "as.data.frame.vector");
+        eval_base_binding(base_env, "as.data.frame.logical", "as.data.frame.vector");
+        eval_base_binding(base_env, "as.data.frame.numeric", "as.data.frame.vector");
+        eval_base_binding(base_env, "as.data.frame.complex", "as.data.frame.vector");
+        eval_base_binding(
+            base_env,
+            "as.data.frame.character",
+            "function(x, ..., stringsAsFactors = FALSE) {\n\
+             nm <- deparse1(substitute(x))\n\
+             if (stringsAsFactors) x <- factor(x)\n\
+             if (!\"nm\" %in% ...names())\n\
+                 as.data.frame.vector(x, ..., nm = nm)\n\
+             else as.data.frame.vector(x, ...)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "as.data.frame.data.frame",
+            "function(x, row.names = NULL, ...) {\n\
+             cl <- oldClass(x)\n\
+             i <- match(\"data.frame\", cl)\n\
+             if (i > 1L) class(x) <- cl[-(1L:(i - 1L))]\n\
+             if (!is.null(row.names)) {\n\
+                 nr <- .row_names_info(x, 2L)\n\
+                 if (length(row.names) == nr) attr(x, \"row.names\") <- row.names\n\
+                 else stop(\"invalid 'row.names' length\")\n\
+             }\n\
+             x\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            ".rowNamesDF<-",
+            include_str!("gnu_rowNamesDF.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "as.data.frame.matrix",
+            include_str!("gnu_as_data_frame_matrix.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "as.data.frame.list",
+            include_str!("gnu_as_data_frame_list.R"),
+        );
+        eval_base_binding(base_env, "data.frame", include_str!("gnu_data_frame.R"));
         // GNU array.R / sapply.R: closures over .Internal, not primitives.
         // paste.R: .Internal(paste(list(...), sep, collapse, recycle0)).
         eval_base_binding(
@@ -607,10 +679,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "row.names<-.data.frame",
-            "function(x, value) {\n\
-             attr(x, \"row.names\") <- if (is.null(value)) NULL else as.character(value)\n\
-             x\n\
-             }",
+            "function(x, value) `.rowNamesDF<-`(x, value = value)",
         );
         {
             let seq_sym = Rf_install_in_current("seq");
