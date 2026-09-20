@@ -375,6 +375,9 @@ unsafe fn errorcallNotSubsettable(_x: SEXP, _call: SEXP) {
     });
 }
 
+
+
+
 /// Report missing subscript error.
 unsafe fn errorcallMissingSubs(_x: SEXP, _call: SEXP) {
     std::panic::panic_any(RError {
@@ -2626,6 +2629,7 @@ unsafe fn warn_partial_match_dollar_condition(call: SEXP, input: SEXP, target: S
 pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let _input_guard = protect(input);
+        let mut x = x;
         let _x_guard = protect(x);
 
         /* Get the length of the input string for partial matching */
@@ -2637,6 +2641,18 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
                 std::ffi::CStr::from_ptr(c).to_bytes().len()
             }
         };
+
+        // GNU subset.c: S4 classes extending environment store the env in .xData.
+        if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && TYPEOF(x) == SEXPTYPE::OBJSXP {
+            x = crate::mainutils::subassign::R_getS4DataSlot(x, SEXPTYPE::ANYSXP.as_c_int());
+            if x.is_null() || x == R_NilValue() {
+                std::panic::panic_any(RError {
+                    message: "$ operator not defined for this S4 class".to_string(),
+                });
+            }
+            let _extracted = protect(x);
+        }
+
 
         /* Pair-list / language / nil case */
         if isPairListOrNil(x) {

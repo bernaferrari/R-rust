@@ -2530,14 +2530,14 @@ is.environment(x) &&
   identical(typeof(as.environment(x)), "environment") &&
   identical(typeof(x$show), "closure") &&
   identical(
-    capture.output(x$show()),
+    capture.output(show(x)),
     "Reference class object of class \"envRefClass\""
   )
 "#,
         );
         let result = result.unwrap_or_else(|e| {
             panic!(
-                "envRefClass $show: {e}\nstdout={}\nstderr={}",
+                "envRefClass show: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });
@@ -2549,6 +2549,8 @@ is.environment(x) &&
             output.stderr
         );
     }
+
+
 
 
 
