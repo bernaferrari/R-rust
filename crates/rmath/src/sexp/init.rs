@@ -401,7 +401,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "NCOL",
-            "function(x) if (length(d <- dim(x))) d[2L] else 1L",
+            "function(x) if (is.null(x)) 0L else if (length(d <- dim(x)) > 1L) d[2L] else 1L",
         );
         eval_base_binding(
             base_env,
@@ -536,20 +536,44 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              x\n\
              }",
         );
+        eval_base_binding(base_env, "row.names", "function(x) UseMethod(\"row.names\")");
+        eval_base_binding(
+            base_env,
+            "row.names.data.frame",
+            "function(x) as.character(attr(x, \"row.names\"))",
+        );
+        eval_base_binding(
+            base_env,
+            "row.names.default",
+            "function(x) if (!is.null(dim(x))) rownames(x)",
+        );
+        eval_base_binding(
+            base_env,
+            "row.names<-",
+            "function(x, value) UseMethod(\"row.names<-\")",
+        );
+        eval_base_binding(
+            base_env,
+            "row.names<-.default",
+            "function(x, value) { rownames(x) <- value; x }",
+        );
         {
             let seq_sym = Rf_install_in_current("seq");
             let seq_prim = R_findVarInFrame(base_env, seq_sym);
             if !seq_prim.is_null() && seq_prim != R_UnboundValue() {
-                let def = Rf_install_in_current("seq.default");
-                defineVar(def, seq_prim, base_env);
-                SET_SYMVALUE(def, seq_prim);
+                SET_SYMVALUE(Rf_install_in_current(".rport_seq"), seq_prim);
             }
         }
         eval_base_binding(base_env, "seq", "function(...) UseMethod(\"seq\")");
         eval_base_binding(
             base_env,
-            "NCOL",
-            "function(x) if (is.null(x)) 0L else if (length(d <- dim(x)) > 1L) d[2L] else 1L",
+            "seq.default",
+            "function(from = 1, to = 1, by = ((to - from)/(length.out - 1)),\n\
+             length.out = NULL, along.with = NULL, ...) {\n\
+             cl <- match.call()\n\
+             cl[[1L]] <- quote(.rport_seq)\n\
+             eval.parent(cl)\n\
+             }",
         );
         eval_base_binding(
             base_env,
@@ -1159,20 +1183,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
 
 
 
-        // `%||%` <- function(x, y) if (is.null(x)) y else x
-        let formals = formals_from_specs(&[arg("x"), arg("y")]);
-        let _formals_guard = super::protect::protect(formals);
-
-        let x = Rf_install_in_current("x");
-        let y = Rf_install_in_current("y");
-        let condition = Rf_lang2(Rf_install_in_current("is.null"), x);
-        let _condition_guard = super::protect::protect(condition);
-        let body = Rf_lang4(Rf_install_in_current("if"), condition, y, x);
-        let _body_guard = super::protect::protect(body);
-        let closure = crate::mainutils::dstruct::mkCLOSXP(formals, body, base_env);
-        let _closure_guard = super::protect::protect(closure);
-
-        defineVar(Rf_install_in_current("%||%"), closure, base_env);
 
         // `identical` is an ordinary base closure in GNU R, not the internal
         // primitive itself. Keeping that wrapper matters for argument
@@ -1238,6 +1248,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // the class follows the evaluator's normal copy-on-modify path.
         let as_is_formals = formals_from_specs(&[arg("x")]);
         let _as_is_formals_guard = super::protect::protect(as_is_formals);
+        let x = Rf_install_in_current("x");
 
         let as_is = Rf_mkString(c"AsIs".as_ptr());
         let _as_is_guard = super::protect::protect(as_is);
