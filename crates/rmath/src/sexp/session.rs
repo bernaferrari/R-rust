@@ -26,7 +26,7 @@
 //! [`RSession::close`]. Once closed, evaluation and variable definition
 //! operations become no-ops or return errors.
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(test)]
@@ -177,7 +177,28 @@ fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
 }
 
 fn auto_print_visible(value: Sexp<'_>) {
-    if unsafe { crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw()) } != 0 {
+    let s4 = unsafe { crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw()) } != 0;
+    let srcref = unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(
+            value.clone().as_raw(),
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if class.is_null()
+            || class == crate::sexp::globals::R_NilValue()
+            || crate::sexp::accessors::TYPEOF(class) != crate::sexp::ffi::SEXPTYPE::STRSXP
+        {
+            false
+        } else {
+            let n = crate::sexp::accessors::XLENGTH(class);
+            (0..n).any(|i| {
+                let elt = crate::sexp::accessors::STRING_ELT(class, i);
+                !elt.is_null()
+                    && CStr::from_ptr(crate::sexp::accessors::CHAR(elt)).to_bytes()
+                        == b"srcref"
+            })
+        }
+    };
+    if s4 || srcref {
         if let Err(payload) = catch_unwind(AssertUnwindSafe(|| {
             super::output::print_value(value);
         })) {
@@ -191,6 +212,7 @@ fn auto_print_visible(value: Sexp<'_>) {
         super::output::capture_stdout(&format!("{rendered}\n"));
     }
 }
+
 
 
 fn expr_or_nil(expr: SEXP) -> SEXP {

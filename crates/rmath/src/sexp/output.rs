@@ -3005,6 +3005,16 @@ pub fn print_value(x: Sexp<'_>) {
         unsafe { emit(&format!("{}\n", format_condition(x))) };
         return;
     }
+    if has_class(x.clone(), "srcref") {
+        unsafe {
+            crate::mainutils::print::PrintValueEnv(
+                x.clone().as_raw(),
+                crate::sexp::globals::R_GlobalEnv(),
+            );
+        }
+        return;
+    }
+
     // GNU auto-print of S4 objects goes through PrintValueEnv -> show().
     if unsafe { crate::mainutils::objects::IS_S4_OBJECT(x.clone().as_raw()) } != 0 {
         unsafe {

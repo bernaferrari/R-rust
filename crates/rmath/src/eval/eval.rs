@@ -4740,8 +4740,8 @@ identical(x, 42L)
             r#"
 invisible(require(methods, quietly=TRUE))
 source(textConnection("f <- function(x) x\n"), keep.source = TRUE)
-invisible(getSrcref(f))
-is.function(getSrcref)
+!is.null(getSrcref(f)) &&
+  identical(paste(as.character.srcref(getSrcref(f)), collapse = "\n"), "function(x) x")
 "#,
         );
         let result = result.unwrap_or_else(|e| {
@@ -4758,6 +4758,42 @@ is.function(getSrcref)
             output.stderr
         );
     }
+
+    #[test]
+    fn gnu_getsrcref_rematched_method_prints_source() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+text <- '
+setClass("MyClass", representation(val = "numeric"))
+setMethod("initialize", signature = "MyClass",
+    function(.Object, value) {
+        # comment
+	.Object@val <- value
+	return(.Object)
+    })
+'
+source(textConnection(text), keep.source = TRUE)
+out <- paste(capture.output(getSrcref(getMethod("initialize", "MyClass"))), collapse = "\n")
+grepl('# comment', out, fixed = TRUE) && grepl('.Object@val', out, fixed = TRUE)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "getSrcref rematch: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
     #[test]
     fn reg_s4_help_try_and_identical_s4_bit() {
         let mut session = RSession::new();

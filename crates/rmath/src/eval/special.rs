@@ -79,7 +79,7 @@ unsafe fn dispatch_special_by_name(
             "repeat" => do_repeat(CDR(call), rho),
             "break" => do_break(rho),
             "next" => do_next(rho),
-            "function" => do_function(CDR(call), rho),
+            "function" => do_function(call, CDR(call), rho),
             "return" => do_return(CDR(call), rho),
             "switch" => crate::mainutils::builtin::do_switch(call, op, args, rho),
             "call" => crate::mainutils::coerce::do_call(call, op, args, rho),
@@ -709,12 +709,12 @@ pub unsafe fn do_next(rho: SEXP) -> SEXP {
 
 /// Implement the `function` special form.
 ///
-/// Creates a closure (CLOSXP) from formals and body.
-unsafe fn do_function(args: SEXP, rho: SEXP) -> SEXP {
+/// GNU `do_function` (eval.c): `mkCLOSXP(formals, body, rho)` then copy
+/// the optional fourth language argument (the parse `srcref`) onto the
+/// closure so `getSrcref` / `print.srcref` recover source.
+unsafe fn do_function(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let formals = CAR(args);
-        // GNU function calls carry formals, one body expression, and optional
-        // source-reference metadata. The latter is not executable body code.
         let body = CAR(CDR(args));
         let clos = crate::sexp::memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
         let _clos = crate::sexp::protect::protect(clos);
@@ -723,7 +723,20 @@ unsafe fn do_function(args: SEXP, rho: SEXP) -> SEXP {
             (*clos).data.closxp.body = body;
             (*clos).data.closxp.env = rho;
         }
-
+        let mut sr = CADDR(args);
+        if sr.is_null() || sr == R_NilValue() || TYPEOF(sr) != SEXPTYPE::INTSXP {
+            sr = crate::sexp::attrib_core::getAttrib(
+                call,
+                crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+            );
+        }
+        if !sr.is_null() && sr != R_NilValue() && TYPEOF(sr) == SEXPTYPE::INTSXP {
+            crate::sexp::attrib_core::setAttrib(
+                clos,
+                crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+                sr,
+            );
+        }
         clos
     }
 }

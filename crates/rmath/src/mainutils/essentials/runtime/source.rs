@@ -553,7 +553,7 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(content) => {
-                let _ = eval_source_text_with_name(&content, target_env, &file_path);
+                let _ = eval_source_text_with_name(&content, target_env, &file_path, option_keep_source());
                 crate::sexp::globals::set_R_Visible(FALSE);
                 R_NilValue()
             }
@@ -581,7 +581,7 @@ unsafe fn eval_source_text_with_options(
 ) -> SEXP {
     unsafe {
         if !echo {
-            return eval_source_text_with_name(content, env, filename);
+            return eval_source_text_with_name(content, env, filename, keep_source);
         }
         if !keep_source {
             let parsed = parse_source_expression_vector(content);
@@ -639,7 +639,7 @@ unsafe fn eval_source_text_with_options(
                 .map_err(|e| e.to_string())
         });
         let Ok(spans) = spans else {
-            return eval_source_text_with_name(content, env, filename);
+            return eval_source_text_with_name(content, env, filename, keep_source);
         };
         let lines: Vec<&str> = content.lines().collect();
         let nlines = lines.len() as i32;
@@ -767,17 +767,14 @@ fn echo_original_lines(
 }
 
 
-unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -> SEXP {
+unsafe fn eval_source_text_with_name(
+    content: &str,
+    env: SEXP,
+    filename: &str,
+    keep_source: bool,
+) -> SEXP {
     unsafe {
-        // keep.source = TRUE: parse with byte spans and attach srcrefs
-        // (upstream source() keeps source refs when the option is on, so
-        // show.error.locations renders `(from <file>#<line>)`).
-        let keep_source = {
-            let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
-                c"keep.source".as_ptr(),
-            ));
-            !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
-        };
+        let keep_source = keep_source || option_keep_source();
         if keep_source {
             let spans = crate::sexp::memory::with_arena(|arena| {
                 let mut parser = crate::eval::parser::Parser::new(content, arena);
@@ -843,7 +840,7 @@ unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -
 }
 
 unsafe fn eval_source_text(content: &str, env: SEXP) -> SEXP {
-    unsafe { eval_source_text_with_name(content, env, "") }
+    unsafe { eval_source_text_with_name(content, env, "", option_keep_source()) }
 }
 
 /// R's `demo(topic, ...)` — run a demo (simplified).

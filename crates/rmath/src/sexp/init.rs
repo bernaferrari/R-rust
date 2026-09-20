@@ -275,6 +275,39 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  getSrcref(unclass(methods::unRematchDefinition(x)))\n\
              }",
         );
+        // GNU base/R/srcfile.R: print/as.character of parse srcrefs
+        // (reg-S4.R getSrcref of rematched methods).
+        eval_base_binding(
+            base_env,
+            "as.character.srcref",
+            "function(x, useSource = TRUE, to = x, ...) {\n\
+             srcfile <- attr(x, \"srcfile\")\n\
+             lines <- if (!is.null(srcfile)) srcfile$lines\n\
+             if (!isTRUE(useSource) || is.null(lines) || !length(lines)) {\n\
+               fn <- if (is.null(srcfile)) \"\" else srcfile$filename\n\
+               return(paste0(\"<srcref: file \\\"\", fn, \"\\\">\"))\n\
+             }\n\
+             first <- as.integer(x[1L]); last <- as.integer(x[3L])\n\
+             last <- min(last, length(lines))\n\
+             if (is.na(first) || is.na(last) || first < 1L || first > last)\n\
+               return(character())\n\
+             out <- lines[first:last]\n\
+             if (length(out)) {\n\
+               out[length(out)] <- substring(out[length(out)], 1L, as.integer(x[4L]))\n\
+               out[1L] <- substring(out[1L], as.integer(x[2L]))\n\
+             }\n\
+             out\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "print.srcref",
+            "function(x, useSource = TRUE, ...) {\n\
+             cat(as.character.srcref(x, useSource = useSource), sep = \"\\n\")\n\
+             invisible(x)\n\
+             }",
+        );
+
 
 
 

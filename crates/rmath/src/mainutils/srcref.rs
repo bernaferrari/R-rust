@@ -28,10 +28,19 @@ fn line_col(src: &str, byte: usize) -> (i32, i32) {
     (line, col)
 }
 
-/// Build the srcfile environment for a parsed source (class "srcfile",
-/// `filename` binding; `lines` left empty — the renderer only reads the
-/// filename).
-unsafe fn make_srcfile(filename: &str, copy: bool) -> SEXP {
+/// GNU 8-integer lloc for a byte span. Safe to call while the parse arena
+/// is held; allocation happens on the caller.
+pub(crate) fn srcref_lloc(src: &str, start: usize, end: usize) -> [i32; 8] {
+    let (fl, fc) = line_col(src, start);
+    let (ll, lc) = line_col(src, end.saturating_sub(1));
+    [fl, fc, ll, lc, fc, lc, fl, ll]
+}
+
+
+/// Build the srcfile environment. `copy` produces class `srcfilecopy`
+/// with a `lines` binding so `as.character.srcref` can recover text
+/// (GNU `srcfilecopy()`, used by `source(textConnection, keep.source)`).
+unsafe fn make_srcfile(filename: &str, copy: bool, src: &str) -> SEXP {
     unsafe {
         let env = crate::sexp::memory_ext::NewEnvironment(
             std::ptr::null_mut(),
@@ -50,9 +59,29 @@ unsafe fn make_srcfile(filename: &str, copy: bool) -> SEXP {
             fname,
             env,
         );
-        let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _cg = crate::sexp::protect::protect(class);
         if copy {
+            let mut lines: Vec<&str> = src.split('\n').collect();
+            if lines.last() == Some(&"") {
+                lines.pop();
+            }
+            let line_vec = crate::sexp::constructors::Rf_allocVector3(
+                SEXPTYPE::STRSXP,
+                lines.len() as i64,
+            );
+            let _lg = crate::sexp::protect::protect(line_vec);
+            for (i, line) in lines.iter().enumerate() {
+                let c = std::ffi::CString::new(*line).unwrap_or_default();
+                SET_STRING_ELT(
+                    line_vec,
+                    i as i64,
+                    crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+                );
+            }
+            crate::sexp::envir::defineVar(
+                crate::sexp::symbol::Rf_install(c"lines".as_ptr()),
+                line_vec,
+                env,
+            );
             let copy_class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             let _ccg = crate::sexp::protect::protect(copy_class);
             SET_STRING_ELT(
@@ -71,6 +100,8 @@ unsafe fn make_srcfile(filename: &str, copy: bool) -> SEXP {
                 copy_class,
             );
         } else {
+            let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            let _cg = crate::sexp::protect::protect(class);
             SET_STRING_ELT(
                 class,
                 0,
@@ -86,6 +117,48 @@ unsafe fn make_srcfile(filename: &str, copy: bool) -> SEXP {
     }
 }
 
+/// GNU 8-integer `srcref`: line/byte/column/parse. Bytes are 1-based
+/// columns in the first/last line (`as.character.srcref` substring).
+pub(crate) unsafe fn make_srcref(src: &str, start: usize, end: usize, srcfile: SEXP) -> SEXP {
+    unsafe {
+        let (fl, fc) = line_col(src, start);
+        let last = end.saturating_sub(1);
+        let (ll, lc) = line_col(src, last);
+        let srcref = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 8);
+        let _g = crate::sexp::protect::protect(srcref);
+        let p = INTEGER(srcref);
+        *p.add(0) = fl;
+        *p.add(1) = fc;
+        *p.add(2) = ll;
+        *p.add(3) = lc;
+        *p.add(4) = fc;
+        *p.add(5) = lc;
+        *p.add(6) = fl;
+        *p.add(7) = ll;
+        let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _cg = crate::sexp::protect::protect(class);
+        SET_STRING_ELT(
+            class,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"srcref".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            srcref,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        if !srcfile.is_null() && srcfile != crate::sexp::globals::R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                srcref,
+                crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
+                srcfile,
+            );
+        }
+        srcref
+    }
+}
+
+
 /// Attach srcrefs using explicit byte spans (parser's
 /// parse_top_level_with_spans output).
 pub(crate) unsafe fn attach_srcrefs_with_spans(
@@ -98,53 +171,17 @@ pub(crate) unsafe fn attach_srcrefs_with_spans(
         if spans.is_empty() || exprs_vector.is_null() {
             return;
         }
-        let srcfile = make_srcfile(filename, true);
+        let srcfile = make_srcfile(filename, true, src);
         let _sf_guard = crate::sexp::protect::protect(srcfile);
 
-        // Upstream layout: the expression VECTOR carries a LIST-valued
-        // `srcref` attribute (one entry per expression; per-ELEMENT
-        // srcref attributes stay NULL) and the `srcfile` attribute; each
-        // srcref also references the srcfile. Eval loops (eval.c) read
-        // the vector's list by index.
         let srcref_list =
             crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, spans.len() as i64);
         let _sl_guard = crate::sexp::protect::protect(srcref_list);
 
         for (i, &(expr, start, end)) in spans.iter().enumerate() {
-            let _ = expr;
-            let (fl, fc) = line_col(src, start);
-            let (ll, lc) = line_col(src, end.saturating_sub(1));
-            let srcref = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 8);
-            let _g = crate::sexp::protect::protect(srcref);
-            let p = INTEGER(srcref);
-            *p.add(0) = fl;
-            *p.add(1) = start as i32; // first byte (0-based, upstream)
-            *p.add(2) = ll;
-            *p.add(3) = end as i32; // last byte
-            *p.add(4) = fc;
-            *p.add(5) = lc;
-            // GNU srcref[7]/[8] are first/last parsed *lines*.
-            *p.add(6) = fl;
-            *p.add(7) = ll;
-
-            let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-            let _cg = crate::sexp::protect::protect(class);
-            SET_STRING_ELT(
-                class,
-                0,
-                crate::sexp::constructors::Rf_mkChar(c"srcref".as_ptr()),
-            );
-            crate::sexp::attrib_core::setAttrib(
-                srcref,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-            crate::sexp::attrib_core::setAttrib(
-                srcref,
-                crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
-                srcfile,
-            );
+            let srcref = make_srcref(src, start, end, srcfile);
             crate::sexp::accessors::SET_VECTOR_ELT(srcref_list, i as i64, srcref);
+            attach_srcfile_to_function_srcrefs(expr, srcfile);
         }
 
         crate::sexp::attrib_core::setAttrib(
@@ -159,6 +196,68 @@ pub(crate) unsafe fn attach_srcrefs_with_spans(
         );
     }
 }
+
+/// GNU parse attaches a `srcref` to each `function()` call. Bind the
+/// enclosing `srcfilecopy` so `as.character.srcref` can recover text.
+unsafe fn attach_srcfile_to_function_srcrefs(expr: SEXP, srcfile: SEXP) {
+    unsafe {
+        if expr.is_null() || expr == crate::sexp::globals::R_NilValue() {
+            return;
+        }
+        let ty = TYPEOF(expr);
+        if ty == SEXPTYPE::LANGSXP {
+            let head = CAR(expr);
+            if !head.is_null()
+                && TYPEOF(head) == SEXPTYPE::SYMSXP
+                && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(head)))
+                    .to_bytes()
+                    == b"function"
+            {
+                let sr = CADDDR(expr);
+                if !sr.is_null()
+                    && sr != crate::sexp::globals::R_NilValue()
+                    && TYPEOF(sr) == SEXPTYPE::INTSXP
+                {
+                    let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                    let _cg = crate::sexp::protect::protect(class);
+                    SET_STRING_ELT(
+                        class,
+                        0,
+                        crate::sexp::constructors::Rf_mkChar(c"srcref".as_ptr()),
+                    );
+                    crate::sexp::attrib_core::setAttrib(
+                        sr,
+                        crate::sexp::attrib_core::R_ClassSymbol(),
+                        class,
+                    );
+                    crate::sexp::accessors::SET_OBJECT(sr, 1);
+                    crate::sexp::attrib_core::setAttrib(
+                        sr,
+                        crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
+                        srcfile,
+                    );
+                }
+            }
+            let mut cell = CDR(expr);
+            while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+                attach_srcfile_to_function_srcrefs(CAR(cell), srcfile);
+                cell = CDR(cell);
+            }
+        } else if ty == SEXPTYPE::LISTSXP {
+            let mut cell = expr;
+            while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+                attach_srcfile_to_function_srcrefs(CAR(cell), srcfile);
+                cell = CDR(cell);
+            }
+        } else if ty == SEXPTYPE::VECSXP || ty == SEXPTYPE::EXPRSXP {
+            let n = XLENGTH(expr);
+            for i in 0..n {
+                attach_srcfile_to_function_srcrefs(VECTOR_ELT(expr, i), srcfile);
+            }
+        }
+    }
+}
+
 
 /// Record the srcref location of the top-level expression about to be
 /// evaluated (None clears it) for the error renderer.

@@ -24,7 +24,7 @@
 
 use std::ffi::CString;
 
-use crate::sexp::accessors::{CADR, CAR, CDR, CHAR, PRINTNAME, SETCAR, TAG, TYPEOF};
+use crate::sexp::accessors::{CADR, CAR, CDR, CHAR, INTEGER, PRINTNAME, SETCAR, TAG, TYPEOF};
 use crate::sexp::builder::{
     scalar_complex_in, scalar_integer_in, scalar_logical_in, scalar_real_in, scalar_string_in,
 };
@@ -2466,6 +2466,11 @@ impl<'arena> Parser<'arena> {
 
     /// function(args) body — also handles R 4.1+ `\(...)` lambda syntax.
     fn parse_function(&mut self) -> Result<SEXP, ParseError> {
+        let tok_start = self
+            .spans
+            .get(self.pos)
+            .map(|&(a, _)| a)
+            .unwrap_or(0);
         match self.peek() {
             Token::KwFunction | Token::KwLambda => {
                 self.advance();
@@ -2479,11 +2484,31 @@ impl<'arena> Parser<'arena> {
 
         self.skip_newlines();
         let body = self.parse_expr()?;
+        let tok_end = if self.pos > 0 {
+            self.spans
+                .get(self.pos - 1)
+                .map(|&(_, b)| b)
+                .unwrap_or(tok_start)
+        } else {
+            tok_start
+        };
 
         unsafe {
+            let src: String = self.source.iter().collect();
+            let lloc = crate::mainutils::srcref::srcref_lloc(&src, tok_start, tok_end);
+            let srcref = self.arena.alloc_vector(SEXPTYPE::INTSXP, 8);
+            if srcref.is_null() {
+                return Err(self.allocation_error());
+            }
+            let p = INTEGER(srcref);
+            for (i, v) in lloc.iter().enumerate() {
+                *p.add(i) = *v;
+            }
             let fn_sym = Rf_install(c"function".as_ptr());
             let nil = R_NilValue();
-            let body_cell = self.cons(body, nil)?;
+            // GNU gram.y: lang4(function, formals, body, srcref)
+            let srcref_cell = self.cons(srcref, nil)?;
+            let body_cell = self.cons(body, srcref_cell)?;
             let formals_cell = self.cons(formals, body_cell)?;
             let call = self.cons(fn_sym, formals_cell)?;
             if !call.is_null() {
@@ -2492,6 +2517,7 @@ impl<'arena> Parser<'arena> {
             Ok(call)
         }
     }
+
 
     /// Parse formal arguments: name [= default], name [= default], ...
     /// Returns a pairlist of (name default) pairs.

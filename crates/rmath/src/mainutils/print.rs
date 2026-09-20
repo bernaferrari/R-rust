@@ -16,8 +16,8 @@ use crate::eval::attrib_core::{
 };
 use crate::mainutils::r_format::{CArg, r_sprintf};
 use crate::sexp::accessors::{
-    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL,
-    SET_STRING_ELT, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
+    PRINTNAME, REAL, SET_STRING_ELT, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_cons, Rf_mkChar};
 use crate::sexp::envir::R_findVarInFrame;
@@ -714,13 +714,93 @@ unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
 unsafe fn PrintDispatch(s: SEXP, data: &R_PrintData) {
     unsafe {
         validate_print_chain(ATTRIB(s));
-        if isObject_fn(s) != 0 {
+        if sexp_class_is(s, "srcref") {
+            print_srcref_value(s);
+        } else if isObject_fn(s) != 0 {
             PrintObject(s, data);
         } else {
             PrintValueRec_inner(s, data);
         }
     }
 }
+
+/// GNU `print.srcref`: `cat(as.character(x), sep="\n")`.
+unsafe fn print_srcref_value(s: SEXP) {
+    unsafe {
+        let srcfile = getAttrib(s, Rf_install(c"srcfile".as_ptr()));
+        let lines = if !srcfile.is_null()
+            && srcfile != R_NilValue()
+            && TYPEOF(srcfile) == SEXPTYPE::ENVSXP
+        {
+            crate::sexp::envir::R_findVarInFrame(srcfile, Rf_install(c"lines".as_ptr()))
+        } else {
+            R_NilValue()
+        };
+        if lines.is_null()
+            || lines == R_NilValue()
+            || lines == R_UnboundValue()
+            || TYPEOF(lines) != SEXPTYPE::STRSXP
+            || XLENGTH(s) < 4
+        {
+            PrintValueRec_inner(s, &R_PRINT_INIT);
+            return;
+        }
+        let first = INTEGER_ELT(s, 0);
+        let mut last = INTEGER_ELT(s, 2);
+        let n = XLENGTH(lines);
+        if first < 1 || last < first {
+            return;
+        }
+        last = last.min(n as i32);
+        let first_byte = INTEGER_ELT(s, 1).max(1) as usize;
+        let last_byte = INTEGER_ELT(s, 3).max(1) as usize;
+        for i in first..=last {
+            let elt = STRING_ELT(lines, (i - 1) as i64);
+            if elt.is_null() {
+                continue;
+            }
+            let mut text = std::ffi::CStr::from_ptr(CHAR(elt))
+                .to_string_lossy()
+                .into_owned();
+            if i == last {
+                let take = last_byte.min(text.len());
+                text.truncate(take);
+            }
+            if i == first {
+                let skip = first_byte.saturating_sub(1).min(text.len());
+                text = text[skip..].to_string();
+            }
+            if crate::sexp::output::is_capturing() {
+                crate::sexp::output::capture_stdout(&format!("{text}\n"));
+            } else {
+                println!("{text}");
+            }
+        }
+    }
+}
+
+
+unsafe fn sexp_class_is(s: SEXP, name: &str) -> bool {
+    unsafe {
+        let class = getAttrib(s, R_ClassSymbol());
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        let n = XLENGTH(class);
+        for i in 0..n {
+            let elt = STRING_ELT(class, i);
+            if elt.is_null() {
+                continue;
+            }
+            let ptr = CHAR(elt);
+            if !ptr.is_null() && std::ffi::CStr::from_ptr(ptr).to_bytes() == name.as_bytes() {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Internal: PrintObjectS3
