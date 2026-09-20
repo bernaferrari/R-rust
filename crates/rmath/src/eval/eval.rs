@@ -2056,7 +2056,14 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
             ))
             stopifnot(identical(withVisible(print(fx))$visible, FALSE))
             r <- replicate(3, capture.output(print(fx)))
-            identical(dim(r), c(2L, 3L))
+            stopifnot(identical(dim(r), c(2L, 3L)))
+            print.foo <- function(x) x
+            stopifnot(identical(
+                withVisible(print(structure(1, class="foo")))$visible,
+                TRUE
+            ))
+            print.bar <- function(x) invisible(x)
+            identical(withVisible(print(structure(1, class="bar")))$visible, FALSE)
             "#,
         );
         let result = result.expect("print.factor must pad to <NA> width");
