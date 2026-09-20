@@ -283,16 +283,25 @@ pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
         }
-        let object = crate::eval::eval::Rf_eval(CAR(args), rho);
+        let mut object = crate::eval::eval::Rf_eval(CAR(args), rho);
         let _object = protect(object);
         let name = CADR(args);
+        let slot = replacement_name(name);
+        if crate::sexp::accessors::NAMED(object) > 0
+            && TYPEOF(object) == SEXPTYPE::CLOSXP
+            && crate::mainutils::coerce::IS_S4_OBJECT(object) != 0
+            && (slot == "target" || slot == "defined")
+        {
+            object = crate::mainutils::duplicate::shallow_duplicate(object);
+            crate::sexp::accessors::SET_NAMED(object, 0);
+        }
+        let _dup = protect(object);
         let value_cell = CDR(CDR(args));
         let value = if value_cell.is_null() || value_cell == R_NilValue() {
             R_NilValue()
         } else {
             crate::eval::eval::Rf_eval(CAR(value_cell), rho)
         };
-
         let _value = protect(value);
         let evaled = Rf_cons(value, R_NilValue());
         let _e1 = protect(evaled);
@@ -301,7 +310,6 @@ pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let evaled = Rf_cons(object, evaled);
         let _e3 = protect(evaled);
         do_set_slot(call, op, evaled, rho)
-
     }
 }
 

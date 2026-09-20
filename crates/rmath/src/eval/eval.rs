@@ -3386,7 +3386,7 @@ identical(names(formals(g)), c("x", "...")) &&
     #[test]
     fn classes_methods_trace_coerce_signature() {
         let mut session = RSession::new();
-        let (result, _, _) = session.eval_script_with_output_capture(
+        let (result, output, _) = session.eval_script_with_output_capture(
             r#"
 invisible(require(methods, quietly=TRUE))
 trr <- quote(list(.Generic, .Method, .defined, .target))
@@ -3404,9 +3404,21 @@ is(m0, "MethodDefinition") &&
   identical(m0, m2) && identical(a0, a1)
 "#,
         );
-        let result = result.expect("classes-methods.R PR#18823 trace(coerce)");
-        assert_eq!(result.logical_elt(0), Some(TRUE));
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "classes-methods.R PR#18823 trace(coerce): {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
     }
+
 
     #[test]
     fn class_attribute_is_namedmax_on_return() {
@@ -3662,6 +3674,8 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
         result.unwrap_or_else(|e| {
             panic!(
                 "classes-methods.R through sealClass: {e}\nstdout={}\nstderr={}",
+
+
                 output.stdout, output.stderr
             )
         });
