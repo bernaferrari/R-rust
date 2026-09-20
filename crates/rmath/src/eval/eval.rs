@@ -3606,11 +3606,12 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(612).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(620).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through S4 mapply length: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through is.unsorted S4: {e}\nstdout={}\nstderr={}",
+
 
 
 
@@ -3946,9 +3947,11 @@ a <- new("A", aa=aa)
 setMethod(length, "A", function(x) length(x@aa))
 setMethod(`[[`,   "A", function(x, i, j, ...) x@aa[[i]])
 setMethod(`[`,    "A", function(x, i, j, ...) new("A", aa = x@aa[i]))
-len_ok <- length(a) == 6 && identical(a[[5]], aa[[5]]) && identical(a, rev(rev(a)))
+len_ok <- length(a) == 6 && identical(a[[5]], aa[[5]]) &&
+  identical(a, rev(rev(a))) && identical(rev(a)@aa, rev(aa))
 map_ok <- identical(mapply(`*`, aa, rep(1:3, 2)), mapply(`*`, a,  rep(1:3, 2)))
 len_ok && map_ok
+
 "#,
         );
         let result = result.unwrap_or_else(|e| {
@@ -3965,6 +3968,43 @@ len_ok && map_ok
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_is_unsorted_method() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("A", representation(aa="integer"))
+aa <- 11:16
+a <- new("A", aa=aa)
+setMethod(length, "A", function(x) length(x@aa))
+setMethod(`[`, "A", function(x, i, j, ...) new("A", aa = x@aa[i]))
+setMethod("is.unsorted", "A", function(x, na.rm, strictly)
+    is.unsorted(x@aa, na.rm=na.rm, strictly=strictly))
+!is.unsorted(a) && is.unsorted(rev(a)) &&
+  identical(rev(a)@aa, rev(aa))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "is.unsorted S4: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
 
 
 

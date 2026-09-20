@@ -242,6 +242,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "rev.default",
             "function(x) if (length(x)) x[length(x):1L] else x",
         );
+        // GNU New-Internal.R: closure over .Internal(is.unsorted), not a primitive.
+        // setMethod("is.unsorted", "A", ...) needs that skeleton (reg-S4.R 616).
+        eval_base_binding(
+            base_env,
+            "is.unsorted",
+            "function(x, na.rm = FALSE, strictly = FALSE) {\n\
+             if (length(x) <= 1L) return(FALSE)\n\
+             if (!na.rm && anyNA(x)) return(NA)\n\
+             if (na.rm && any(ii <- is.na(x))) x <- x[!ii]\n\
+             .Internal(is.unsorted(x, na.rm, strictly))\n\
+             }",
+        );
+
 
 
         // GNU print.R: print is UseMethod, not a primitive. setMethod("print")
