@@ -3640,6 +3640,29 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     }
 
     #[test]
+    fn classes_methods_head_through_implicit_norm() {
+        let mut session = RSession::new();
+        let vendor = include_str!("../../../../tests/upstream-r/vendor/classes-methods.R");
+        let src: String = vendor.lines().take(193).collect::<Vec<_>>().join("\n");
+        let (result, output, _) = session.eval_script_with_output_capture(&src);
+        result.unwrap_or_else(|e| {
+            panic!(
+                "classes-methods.R through method-selection errors: {e}\nstdout={}\nstderr={}",
+
+
+
+                output.stdout, output.stderr
+            )
+        });
+    }
+
+
+
+
+
+
+
+    #[test]
     fn reg_s4_rbind_after_setgeneric_dots() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(

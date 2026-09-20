@@ -55,7 +55,7 @@ reg-BLAS.R	skip	rport-2gpp.2	requires complete BLAS backend and numerical error 
 reg-IO.R	skip	rport-2gpp.4	requires complete file, compression, FIFO, and connection behavior
 reg-IO2.R	skip	rport-2gpp.4	requires complete file-system and connection edge behavior
 reg-S4-examples.R	skip	rport-2gpp.2	requires installed methods examples and complete S4 dispatch
-reg-S4.R	skip	rport-2gpp.2	requires complete S4 classes, slots, inheritance, and dispatch
+reg-S4.R	xfail	rport-2gpp.2	executes unmodified through EOF but printed output is not yet compared to the GNU oracle
 reg-encodings.R	skip	rport-2gpp.4	requires platform encoding tables and locale matrices
 reg-examples1.R	skip	rport-2gpp.2	requires installed base package examples and datasets
 reg-examples2.R	skip	rport-2gpp.2	requires installed package examples and namespace machinery
