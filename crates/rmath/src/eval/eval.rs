@@ -2080,7 +2080,12 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
             ff <- get("as.double", .GenericArgsEnv)
             body(ff) <- xx
             assign("as.double.testit", ff, .GlobalEnv)
-            identical(as.double(x), xx)
+            stopifnot(identical(as.double(x), xx))
+            nn <- get("as.numeric", .GenericArgsEnv)
+            body(nn) <- xx
+            assign("as.numeric.testit", nn, .GlobalEnv)
+            stopifnot(identical(as.numeric(x), xx))
+            identical(do.call(as.numeric, list(x)), xx)
             "#,
         );
         let result = result.expect("as.double must dispatch S3 on classed numeric");

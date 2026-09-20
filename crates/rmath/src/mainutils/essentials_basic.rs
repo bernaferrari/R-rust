@@ -1524,21 +1524,13 @@ unsafe fn dispatch_as(
     }
 }
 
-/// GNU `as.double` / `as.numeric` share `do_asatomic` but DispatchOrEval
-/// uses PRIMNAME of the called entry, so `as.double.testit` is not
-/// `as.numeric.testit`.
-unsafe fn as_double_generic(call: SEXP) -> &'static [u8] {
-    unsafe {
-        let head = CAR(call);
-        if !head.is_null() && TYPEOF(head) == SEXPTYPE::SYMSXP {
-            let pname = PRINTNAME(head);
-            if !pname.is_null() {
-                let bytes = CStr::from_ptr(CHAR(pname)).to_bytes();
-                if bytes == b"as.numeric" {
-                    return b"as.numeric\0";
-                }
-            }
-        }
+/// GNU `as.double` / `as.numeric` are separate FunTab entries sharing
+/// `do_asatomic`. DispatchOrEval uses PRIMNAME(op), so `do.call(as.numeric,
+/// list(x))` looks up `as.numeric.*` not the call-head spelling.
+unsafe fn as_double_generic(op: SEXP) -> &'static [u8] {
+    if unsafe { crate::eval::eval::PRIMNAME(op) } == "as.numeric" {
+        b"as.numeric\0"
+    } else {
         b"as.double\0"
     }
 }
@@ -1559,7 +1551,7 @@ pub unsafe fn do_as_integer(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 /// `as.numeric` (methods/R/RMethodUtils.R `.getGeneric` / `.primname`).
 pub unsafe fn do_as_double(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if let Some(ans) = dispatch_as(call, op, args, rho, as_double_generic(call)) {
+        if let Some(ans) = dispatch_as(call, op, args, rho, as_double_generic(op)) {
             return ans;
         }
         coerce_to_type(args, SEXPTYPE::REALSXP.as_c_int())

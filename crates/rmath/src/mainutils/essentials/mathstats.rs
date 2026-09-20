@@ -14469,26 +14469,29 @@ pub unsafe fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 /// R's `as.environment(x)` — convert to environment.
 pub unsafe fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let mut ans = R_NilValue();
-        if crate::eval::dispatch::DispatchOrEval(
-            call,
-            op,
-            c"as.environment".as_ptr(),
-            args,
-            rho,
-            &mut ans,
-            0,
-            1,
-        ) != 0
-        {
-            return ans;
-        }
         let x = CAR(args);
         if x.is_null() {
             return R_NilValue();
         }
+        // GNU envir.c: ENVSXP before DispatchOrEval so a classed environment
+        // is returned as-is and does not look up as.environment.<class>.
         if TYPEOF(x) == SEXPTYPE::ENVSXP {
             return x;
+        }
+        let mut ans = R_NilValue();
+        if crate::eval::attrib_core::isObject(x) != 0
+            && crate::eval::dispatch::DispatchOrEval(
+                call,
+                op,
+                c"as.environment".as_ptr(),
+                args,
+                rho,
+                &mut ans,
+                0,
+                1,
+            ) != 0
+        {
+            return ans;
         }
         if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::REALSXP {
             let pos = if TYPEOF(x) == SEXPTYPE::INTSXP {

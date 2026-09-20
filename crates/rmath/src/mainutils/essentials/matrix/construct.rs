@@ -1086,14 +1086,11 @@ pub unsafe fn do_data_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
     }
 }
 
-/// R's `as.numeric(x)` — GNU alias of `as.double`. S4 methods are stored
-/// on `as.numeric` but primitive-generic dispatch is keyed by the
-/// `as.double` primitive (methods `.primname`).
-pub unsafe fn do_as_numeric(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let double_op = crate::mainutils::names::R_Primitive(c"as.double".as_ptr());
-        do_as_double(call, double_op, args, rho)
-    }
+/// R's `as.numeric(x)` — GNU alias of `as.double`. S3 dispatch uses
+/// PRIMNAME(op) (`as.numeric.*`); S4 methods on `as.numeric` go through
+/// `R_possible_dispatch(op)` inside DispatchOrEval.
+pub unsafe fn do_as_numeric(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_as_double(call, op, args, rho) }
 }
 
 
