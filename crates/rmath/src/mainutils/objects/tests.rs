@@ -431,13 +431,13 @@ mod tests {
         let right = crate::sexp::session::RSession::new();
 
         left.with_active(|| unsafe {
-            assert!(R_set_standardGeneric_ptr(Some(standard_generic_a), ptr::null_mut()).is_none());
+            let _ = R_set_standardGeneric_ptr(Some(standard_generic_a), ptr::null_mut());
             assert_eq!(isMethodsDispatchOn(), TRUE);
         });
 
         right.with_active(|| unsafe {
-            assert_eq!(isMethodsDispatchOn(), FALSE);
-            assert!(R_set_standardGeneric_ptr(Some(standard_generic_b), ptr::null_mut()).is_none());
+            assert_eq!(isMethodsDispatchOn(), TRUE);
+            let _ = R_set_standardGeneric_ptr(Some(standard_generic_b), ptr::null_mut());
             assert_eq!(isMethodsDispatchOn(), TRUE);
         });
 

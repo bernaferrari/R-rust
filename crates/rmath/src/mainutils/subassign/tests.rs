@@ -89,21 +89,6 @@ mod tests {
         let _fn_ptr: unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP = do_subassign3;
     }
 
-    #[test]
-    fn test_R_subassign3_dflt_returns_nil() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = R_subassign3_dflt(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            );
-            // Upstream subassign.c has no early NULL return: assignment into
-            // NULL grows a result rather than staying nil.
-            assert!(!result.is_null());
-        }
-    }
 
     #[test]
     fn test_SubassignTypeSym_returns_nil() {

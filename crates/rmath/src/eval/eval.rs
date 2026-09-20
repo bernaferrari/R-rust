@@ -3563,6 +3563,27 @@ identical(md@target@names, "x") && identical(md@defined@names, "x")
     }
 
     #[test]
+    fn classes_methods_show_backticked_replacement() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+stopifnot(is.function(`body<-`))
+any(grepl("showMethods(`body<-`)", capture.output(show(`body<-`)), fixed=TRUE))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "show(`body<-`): {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+
+    #[test]
     fn methods_package_slot_assign_sets_attribute() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
@@ -6189,6 +6210,18 @@ TRUE
         let result = result.expect("[[ and $<- must work on language/pairlist like GNU");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
+
+    #[test]
+    fn null_dollar_assign_grows_named_list() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "x <- NULL; x$foo <- 1L; identical(x, list(foo = 1L))",
+        );
+        let result = result.expect("NULL$foo <- must coerce to a named list like GNU");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
 
     #[test]
     fn methods_new_accepts_named_slots() {

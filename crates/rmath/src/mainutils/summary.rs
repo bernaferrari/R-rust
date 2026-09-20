@@ -918,6 +918,15 @@ unsafe fn real_mean_sexp(x: SEXP) -> SEXP {
             return Rf_ScalarReal(NA_REAL);
         }
 
+        // GNU .Internal(mean): first NA/NaN is returned with its bits.
+        // Adding NA_REAL into a running sum collapses it to a generic NaN.
+        for k in 0..n {
+            let v = *ptr.add(k as usize);
+            if ISNAN(v) {
+                return Rf_ScalarReal(v);
+            }
+        }
+
         // First pass: sum
         let mut s: f64 = 0.0;
         for k in 0..n {
