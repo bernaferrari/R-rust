@@ -2419,6 +2419,27 @@ length(out) >= 1L && grepl("^function", out[1])
     }
 
     #[test]
+    fn character_matrix_colnames_left_align_like_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+m <- matrix(c("numeric", "ANY"), 2, 1, dimnames=list(c("target","defined"), "x"))
+out <- capture.output(print(m))
+identical(out[1], "        x        ")
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "print.matrix colnames: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE), "stdout={}", output.stdout);
+    }
+
+
+
+    #[test]
     fn message_writes_stderr_not_stdout() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(

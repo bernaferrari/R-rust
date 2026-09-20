@@ -2382,9 +2382,14 @@ pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
             }
         }
         let env = crate::sexp::accessors::CLOENV(x);
-        if !env.is_null() && env != R_NilValue() {
-            rendered.push_str(&format!("<environment: {:p}>\n", env));
+        if !env.is_null() && env != R_NilValue() && env != crate::sexp::globals::R_GlobalEnv() {
+            let enc = crate::mainutils::printutils::EncodeEnvironment(env);
+            if !enc.is_null() {
+                rendered.push_str(std::ffi::CStr::from_ptr(enc).to_str().unwrap_or(""));
+                rendered.push('\n');
+            }
         }
+
         emit_print_text(&rendered);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x

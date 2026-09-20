@@ -183,9 +183,6 @@ impl OutputCaptureState {
     pub(crate) fn capture_stderr(&mut self, msg: &str) -> bool {
         self.route(OutputStream::Stderr, msg)
     }
-    pub(crate) fn capture_stdout_bypassing_sink(&mut self, msg: &str) {
-        self.route(OutputStream::Message, msg);
-    }
     pub(crate) fn set_max_bytes(&mut self, max_bytes: Option<usize>) {
         self.max_bytes = max_bytes;
     }
@@ -1157,11 +1154,9 @@ where
             } else if empty_row_labs {
                 header.push(' ');
             }
-            if empty_row_labs {
-                header.push_str(&format!("{:<width$}", col_labels[c], width = widths[c]));
-            } else {
-                header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
-            }
+            // GNU printStringMatrix uses LeftMatrixColumnLabel.
+            header.push_str(&format!("{:<width$}", col_labels[c], width = widths[c]));
+
         }
         lines.push(header);
 

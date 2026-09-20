@@ -757,17 +757,27 @@ pub unsafe fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
 // SEXP-dependent functions
 // ---------------------------------------------------------------------------
 
-/// Encode an environment SEXP for display.
-pub unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
+/// Encode an environment SEXP for display (GNU printutils.c EncodeEnvironment).
+pub unsafe fn EncodeEnvironment(x: SEXP) -> *const c_char {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         let buf = &mut (*inst).eval_state.printutils.encode_environment;
-        let s = "<environment: 0x0>";
+        let s = if x == crate::sexp::globals::R_GlobalEnv() {
+            "<environment: R_GlobalEnv>".to_string()
+        } else if x == crate::sexp::globals::R_BaseEnv() {
+            "<environment: base>".to_string()
+        } else if x == crate::sexp::globals::R_EmptyEnv() {
+            "<environment: R_EmptyEnv>".to_string()
+        } else {
+            format!("<environment: {:p}>", x)
+        };
         let bytes = s.as_bytes();
-        buf[..bytes.len()].copy_from_slice(bytes);
-        buf[bytes.len()] = 0;
+        let n = bytes.len().min(buf.len() - 1);
+        buf[..n].copy_from_slice(&bytes[..n]);
+        buf[n] = 0;
         buf.as_ptr() as *const c_char
     })
 }
+
 
 /// Encode an external pointer SEXP for display.
 pub unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
