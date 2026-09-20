@@ -5080,6 +5080,8 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "data" => Some(crate::mainutils::essentials::do_data),
         "attach" => Some(crate::mainutils::envir::do_attach),
         "as.vector" => Some(crate::mainutils::essentials::do_as_vector),
+        "seq" => Some(crate::mainutils::seq::do_seq),
+
 
 
 

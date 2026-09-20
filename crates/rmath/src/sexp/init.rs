@@ -442,6 +442,117 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "%||%",
+            "function(x, y) if (is.null(x)) y else x",
+        );
+        eval_base_binding(
+            base_env,
+            "structure",
+            "function(.Data, ...) {\n\
+             if (is.null(.Data)) stop(\"attempt to set an attribute on NULL\")\n\
+             attrib <- list(...)\n\
+             if (length(attrib)) {\n\
+                 specials <- c(\".Dim\", \".Dimnames\", \".Names\", \".Tsp\", \".Label\")\n\
+                 attrnames <- names(attrib)\n\
+                 m <- match(attrnames, specials)\n\
+                 ok <- !is.na(m)\n\
+                 if (any(ok)) {\n\
+                     replace <- c(\"dim\", \"dimnames\", \"names\", \"tsp\", \"levels\")\n\
+                     names(attrib)[ok] <- replace[m[ok]]\n\
+                 }\n\
+                 if (any(attrib[[\"class\", exact = TRUE]] == \"factor\")\n\
+                     && typeof(.Data) == \"double\")\n\
+                     storage.mode(.Data) <- \"integer\"\n\
+                 attributes(.Data) <- c(attributes(.Data), attrib)\n\
+             }\n\
+             .Data\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "rownames",
+            "function(x, do.NULL = TRUE, prefix = \"row\") {\n\
+             dn <- dimnames(x)[[1L]]\n\
+             if (!is.null(dn)) dn else if (do.NULL) NULL else {\n\
+                 nr <- NROW(x)\n\
+                 if (nr > 0L) paste0(prefix, seq_len(nr)) else character()\n\
+             }\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "colnames",
+            "function(x, do.NULL = TRUE, prefix = \"col\") {\n\
+             if (is.data.frame(x) && do.NULL) names(x) else {\n\
+                 dn <- dimnames(x)[[2L]]\n\
+                 if (!is.null(dn)) dn else if (do.NULL) NULL else {\n\
+                     nc <- NCOL(x)\n\
+                     if (nc > 0L) paste0(prefix, seq_len(nc)) else character()\n\
+                 }\n\
+             }\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "rownames<-",
+            "function(x, value) {\n\
+             if (is.data.frame(x)) {\n\
+                 row.names(x) <- value\n\
+             } else {\n\
+                 dn <- dimnames(x)\n\
+                 if (is.null(dn)) {\n\
+                     if (is.null(value)) return(x)\n\
+                     if ((nd <- length(dim(x))) < 1L)\n\
+                         stop(\"attempt to set 'rownames' on an object with no dimensions\")\n\
+                     dn <- vector(\"list\", nd)\n\
+                 }\n\
+                 if (length(dn) < 1L)\n\
+                     stop(\"attempt to set 'rownames' on an object with no dimensions\")\n\
+                 if (is.null(value)) dn[1L] <- list(NULL) else dn[[1L]] <- value\n\
+                 dimnames(x) <- dn\n\
+             }\n\
+             x\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "colnames<-",
+            "function(x, value) {\n\
+             if (is.data.frame(x)) {\n\
+                 names(x) <- value\n\
+             } else {\n\
+                 dn <- dimnames(x)\n\
+                 if (is.null(dn)) {\n\
+                     if (is.null(value)) return(x)\n\
+                     if ((nd <- length(dim(x))) < 2L)\n\
+                         stop(\"attempt to set 'colnames' on an object with less than two dimensions\")\n\
+                     dn <- vector(\"list\", nd)\n\
+                 }\n\
+                 if (length(dn) < 2L)\n\
+                     stop(\"attempt to set 'colnames' on an object with less than two dimensions\")\n\
+                 if (is.null(value)) dn[2L] <- list(NULL) else dn[[2L]] <- value\n\
+                 dimnames(x) <- dn\n\
+             }\n\
+             x\n\
+             }",
+        );
+        {
+            let seq_sym = Rf_install_in_current("seq");
+            let seq_prim = R_findVarInFrame(base_env, seq_sym);
+            if !seq_prim.is_null() && seq_prim != R_UnboundValue() {
+                let def = Rf_install_in_current("seq.default");
+                defineVar(def, seq_prim, base_env);
+                SET_SYMVALUE(def, seq_prim);
+            }
+        }
+        eval_base_binding(base_env, "seq", "function(...) UseMethod(\"seq\")");
+        eval_base_binding(
+            base_env,
+            "NCOL",
+            "function(x) if (is.null(x)) 0L else if (length(d <- dim(x)) > 1L) d[2L] else 1L",
+        );
+        eval_base_binding(
+            base_env,
             "factor",
             "function(x = character(), levels, labels = levels,\n\
              exclude = NA, ordered = is.ordered(x), nmax = NA) {\n\
