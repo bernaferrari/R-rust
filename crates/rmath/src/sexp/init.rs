@@ -254,6 +254,26 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Internal(is.unsorted(x, na.rm, strictly))\n\
              }",
         );
+        // GNU funprog.R: identity <- function(x) x. setMethod(..., identity)
+        // needs a closure, not a primitive (reg-S4.R PR#15691).
+        eval_base_binding(base_env, "identity", "function(x) x");
+        // GNU utils/R/sourceutils.R: getSrcref for rematched S4 methods
+        // (reg-S4.R 638). Lives in utils; install in base so source() tests
+        // see it without attaching utils.
+        eval_base_binding(
+            base_env,
+            "getSrcref",
+            "function(x) {\n\
+             if (inherits(x, \"srcref\")) x\n\
+             else if (!is.null(srcref <- attr(x, \"srcref\")) ||\n\
+                      is.function(x) && !is.null(srcref <- getSrcref(body(x))))\n\
+                 srcref\n\
+             else if (methods::is(x, \"MethodDefinition\"))\n\
+                 getSrcref(unclass(methods::unRematchDefinition(x)))\n\
+             }",
+        );
+
+
 
 
 

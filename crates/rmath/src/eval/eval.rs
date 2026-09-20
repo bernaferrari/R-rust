@@ -3606,11 +3606,12 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(620).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(650).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through is.unsorted S4: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through callGeneric fun(1): {e}\nstdout={}\nstderr={}",
+
 
 
 
@@ -4000,6 +4001,96 @@ setMethod("is.unsorted", "A", function(x, na.rm, strictly)
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_callgeneric_do_call() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setGeneric("fun", function(x, ...) standardGeneric("fun"))
+setMethod("fun", "character", identity)
+setMethod("fun", "numeric", function(x) {
+  x <- as.character(x)
+  callGeneric()
+})
+identical(fun(1), do.call(fun, list(1)))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "callGeneric: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_source_textconnection_srcref() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+source(textConnection("x <- 42L\n"))
+identical(x, 42L)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "source textConnection: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
+
+    #[test]
+    fn reg_s4_getsrcref_on_sourced_function() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+source(textConnection("f <- function(x) x\n"), keep.source = TRUE)
+invisible(getSrcref(f))
+is.function(getSrcref)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "getSrcref: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
 
 
 

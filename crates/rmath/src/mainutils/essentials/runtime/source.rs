@@ -67,8 +67,38 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             eprintln!("source: no file specified");
             return R_NilValue();
         }
-        let file_path = elt_to_string(file_arg, 0);
         let env = source_eval_env(parsed.local, rho, false);
+        // GNU source() accepts an open connection (textConnection in
+        // reg-S4.R getSrcref). Character paths still go through the
+        // host/browser file reader.
+        if crate::mainutils::connections::inherits_class(file_arg, "connection") {
+            let idx = crate::mainutils::coerce::asInteger(file_arg);
+            let mut bytes = Vec::new();
+            loop {
+                let b = crate::mainutils::connections::connection_fgetc(idx);
+                if b < 0 {
+                    break;
+                }
+                bytes.push(b as u8);
+            }
+            let content = String::from_utf8_lossy(&bytes).into_owned();
+            let srcname = format!("<connection {}>", idx);
+            return eval_source_text_with_options(
+                &content,
+                env,
+                &srcname,
+                parsed.echo,
+                parsed.print_eval.unwrap_or(parsed.echo),
+                &parsed.prompt,
+                &parsed.continue_echo,
+                parsed.skip_echo,
+                parsed.keep_source,
+                parsed.cutoff,
+                parsed.deparse_opts,
+                parsed.max_deparse_length,
+            );
+        }
+        let file_path = elt_to_string(file_arg, 0);
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(content) => eval_source_text_with_options(
                 &content,
@@ -84,12 +114,11 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 parsed.deparse_opts,
                 parsed.max_deparse_length,
             ),
-
-
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }
         }
+
     }
 }
 
