@@ -831,10 +831,17 @@ unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
                 eprint!("{text}");
             }
         }
-
-
     }
 }
+
+
+
+
+
+
+
+
+
 
 
 unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
@@ -1817,22 +1824,38 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         let mut data = R_PRINT_INIT.clone();
         PrintInit(&mut data as *mut R_PrintData as *mut std::ffi::c_void, rho);
 
-        // Simplified: if not enough args, just print directly
+        // GNU: x = CAR(args); args = CDR(args);
+        // missingArg = LOGICAL(CADR(args)); args = CAR(args);
+        // .Internal(print.default(x, wrapped_args, missings))
         if args_rest == R_NilValue() || CDR(args_rest) == R_NilValue() {
             set_current_print_data(&data);
             tagbuf_clear();
-            PrintValueRec_inner(x, &data);
+            if IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
+                PrintObject(x, &data);
+            } else {
+                PrintValueRec_inner(x, &data);
+            }
             PrintDefaults();
             return x;
         }
 
-        // Full path: .Internal(print.default(x, args, missings))
-        let missings_vec = CAR(args_rest);
-        args_rest = CDR(args_rest);
-
         let wrapped_args = CAR(args_rest);
+        let missings_vec = CAR(CDR(args_rest));
+        if missings_vec.is_null() || TYPEOF(missings_vec) != SEXPTYPE::LGLSXP {
+            set_current_print_data(&data);
+            tagbuf_clear();
+            if IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
+                PrintObject(x, &data);
+            } else {
+                PrintValueRec_inner(x, &data);
+            }
+            PrintDefaults();
+            return x;
+        }
         let mut missing_arg_ptr = LOGICAL(missings_vec);
         let mut all_missing: c_int = 1;
+
+
 
         let orig = Rf_cons(R_NilValue(), wrapped_args);
         let _orig_guard = protect(orig);
