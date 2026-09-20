@@ -260,7 +260,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             base_env,
             "library",
             "function(package, help, pos = 2, lib.loc = NULL, character.only = FALSE,\n\
-             logical.return = FALSE, warn.conflicts = TRUE, quietly = FALSE,\n\
+             logical.return = FALSE, warn.conflicts, quietly = FALSE,\n\
              verbose = getOption(\"verbose\"), mask.ok, exclude, include.only,\n\
              attach.required = missing(include.only)) {\n\
              if (!missing(help)) stop(\"library help is not supported\")\n\
@@ -273,10 +273,89 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "require",
-            "function(package, lib.loc = NULL, quietly = FALSE, warn.conflicts = TRUE,\n\
-             character.only = FALSE, ...) {\n\
+            "function(package, lib.loc = NULL, quietly = FALSE, warn.conflicts,\n\
+             character.only = FALSE, mask.ok, exclude, include.only,\n\
+             attach.required = missing(include.only)) {\n\
              if (!character.only) package <- as.character(substitute(package))\n\
              invisible(.rport_require(package))\n\
+             }",
+        );
+        // GNU duplicated.R / factor.R: closures, not primitives.
+        eval_base_binding(base_env, "is.factor", "function(x) inherits(x, \"factor\")");
+        eval_base_binding(base_env, "is.ordered", "function(x) inherits(x, \"ordered\")");
+        eval_base_binding(
+            base_env,
+            "unique",
+            "function(x, incomparables = FALSE, ...) UseMethod(\"unique\")",
+        );
+        eval_base_binding(
+            base_env,
+            "unique.default",
+            "function(x, incomparables = FALSE, fromLast = FALSE, nmax = NA, ...) {\n\
+             if (!is.object(x))\n\
+                 return(.Internal(unique(x, incomparables, fromLast, nmax)))\n\
+             if (is.factor(x)) {\n\
+                 z <- .Internal(unique(x, incomparables, fromLast,\n\
+                                       min(length(x), nlevels(x) + 1L)))\n\
+                 return(factor(z, levels = seq_len(nlevels(x)), labels = levels(x),\n\
+                               ordered = is.ordered(x)))\n\
+             }\n\
+             .Internal(unique(x, incomparables, fromLast, nmax))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "factor",
+            "function(x = character(), levels, labels = levels,\n\
+             exclude = NA, ordered = is.ordered(x), nmax = NA) {\n\
+             if (is.null(x)) x <- character()\n\
+             nx <- names(x)\n\
+             matchAsChar <- is.object(x) ||\n\
+                 !(is.character(x) || is.integer(x) || is.logical(x))\n\
+             if (missing(levels)) {\n\
+                 y <- unique(x, nmax = nmax)\n\
+                 ind <- order(y)\n\
+                 if (matchAsChar) y <- as.character(y)\n\
+                 levels <- unique(y[ind])\n\
+             }\n\
+             force(ordered)\n\
+             if (matchAsChar) x <- as.character(x)\n\
+             levels <- levels[is.na(match(levels, exclude))]\n\
+             f <- match(x, levels)\n\
+             if (!is.null(nx)) names(f) <- nx\n\
+             if (missing(labels)) {\n\
+                 levels(f) <- as.character(levels)\n\
+             } else {\n\
+                 nlab <- length(labels)\n\
+                 if (nlab == length(levels)) {\n\
+                     nlevs <- unique(xlevs <- as.character(labels))\n\
+                     at <- attributes(f)\n\
+                     at$levels <- nlevs\n\
+                     f <- match(xlevs, nlevs)[f]\n\
+                     attributes(f) <- at\n\
+                 } else if (nlab == 1L) {\n\
+                     levels(f) <- paste0(labels, seq_along(levels))\n\
+                 } else stop(sprintf(\"invalid 'labels'; length %d should be 1 or %d\",\n\
+                                     nlab, length(levels)))\n\
+             }\n\
+             class(f) <- c(if (ordered) \"ordered\", \"factor\")\n\
+             f\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "as.factor",
+            "function(x) {\n\
+             if (is.factor(x)) x\n\
+             else if (!is.object(x) && is.integer(x)) {\n\
+                 levels <- unique.default(x)\n\
+                 if (length(levels)) levels <- levels[order(levels)]\n\
+                 f <- match(x, levels)\n\
+                 levels(f) <- as.character(levels)\n\
+                 if (!is.null(nx <- names(x))) names(f) <- nx\n\
+                 class(f) <- \"factor\"\n\
+                 f\n\
+             } else factor(x)\n\
              }",
         );
         eval_base_binding(

@@ -208,8 +208,6 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "options"
             | "par"
             | "data"
-            | "library"
-            | "require"
             | "system"
             | "suppressWarnings"
             | "suppressMessages"

@@ -5073,6 +5073,8 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "vapply" => Some(crate::mainutils::apply::do_vapply),
         "array" => Some(crate::mainutils::array::do_array),
         "paste" | "paste0" => Some(crate::mainutils::paste_impl::do_paste),
+        "unique" => Some(crate::mainutils::essentials::do_unique),
+
 
 
         "getRegisteredNamespace" => {

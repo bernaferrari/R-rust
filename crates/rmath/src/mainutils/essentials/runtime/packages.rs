@@ -78,29 +78,7 @@ pub unsafe fn do_library_dynam(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) 
     )
 }
 
-/// Preserve the non-standard evaluation of library's package argument.
-pub unsafe fn do_library_frontend(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "library",
-            "function(package, help, pos=2, lib.loc=NULL, character.only=FALSE, logical.return=FALSE, warn.conflicts=TRUE, quietly=FALSE, verbose=FALSE, mask.ok, exclude, include.only, attach.required=missing(include.only)) { if(!missing(help)) stop('library help is not supported'); if(!character.only) package<-as.character(substitute(package)); if(logical.return) return(invisible(.rport_require(package))); .rport_library(package); invisible(NULL) }",
-            args,
-            rho,
-            false,
-        )
-    }
-}
-pub unsafe fn do_require_frontend(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "require",
-            "function(package, lib.loc=NULL, quietly=FALSE, warn.conflicts=TRUE, character.only=FALSE, ...) { if(!character.only) package<-as.character(substitute(package)); invisible(.rport_require(package)) }",
-            args,
-            rho,
-            false,
-        )
-    }
-}
+
 
 unsafe fn attach_recommended_package_stub(package: &str) {
     unsafe {
