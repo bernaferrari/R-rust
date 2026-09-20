@@ -241,6 +241,36 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              else answer\n\
              }",
         );
+        // GNU array.R / sapply.R: closures over .Internal, not primitives.
+        // paste stays a primitive until paste_impl Internal arity is wired.
+        eval_base_binding(
+            base_env,
+            "array",
+            "function (data = NA, dim = length(data), dimnames = NULL) {\n\
+             if (is.atomic(data) && !is.object(data))\n\
+                 return(.Internal(array(data, dim, dimnames)))\n\
+             data <- as.vector(data)\n\
+             if (is.object(data)) {\n\
+                 dim <- as.integer(dim)\n\
+                 if (!length(dim)) stop(\"'dim' cannot be of length 0\")\n\
+                 vl <- prod(dim)\n\
+                 if (length(data) != vl) {\n\
+                     if (vl > .Machine$integer.max)\n\
+                         stop(\"'dim' specifies too large an array\")\n\
+                     data <- rep_len(data, vl)\n\
+                 }\n\
+                 if (length(dim)) dim(data) <- dim\n\
+                 if (is.list(dimnames) && length(dimnames)) dimnames(data) <- dimnames\n\
+                 data\n\
+             } else .Internal(array(data, dim, dimnames))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "simplify2array",
+            include_str!("../mainutils/base_wrappers/simplify2array.R"),
+        );
+
 
 
         // GNU sample.R: closures over .Internal(sample)/sample2, not primitives.

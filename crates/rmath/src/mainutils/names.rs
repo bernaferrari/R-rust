@@ -5071,6 +5071,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "islistfactor" => Some(crate::mainutils::apply::do_islistfactor),
         "lapply" => Some(crate::mainutils::apply::do_lapply),
         "vapply" => Some(crate::mainutils::apply::do_vapply),
+        "array" => Some(crate::mainutils::array::do_array),
 
 
         "getRegisteredNamespace" => {

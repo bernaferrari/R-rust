@@ -32,9 +32,11 @@ push-state.json
 redirect
 
 # Sync state (local-only, per-machine)
-# These files are machine-specific and should not be shared across clones
 .sync.lock
 export-state/
+export-state.json
+hooks/
+metadata.json
 
 # Ephemeral store (SQLite - wisps/molecules, intentionally not versioned)
 ephemeral.sqlite3
