@@ -108,7 +108,8 @@ printf 'file\tverdict\treason\ttrunk_exit\trport_exit\tstock_exit\tstdout=trunk\
 
 # normalize <file> : strip CRs, trailing whitespace, trailing blank lines.
 normalize() {
-    tr -d '\r' <"$1" | sed -e 's/[[:space:]]\+$//' \
+    # -E: macOS BSD sed has no BRE \+; GNU sed accepts -E too.
+    tr -d '\r' <"$1" | sed -E -e 's/[[:space:]]+$//' \
         -e 's/^Time elapsed:.*/Time elapsed: <t>/' \
         -e 's/<environment: 0x[0-9a-fA-F]*>/<environment: 0x*>/' \
         -e :a -e '/^$/{$d;N;ba' -e '}'

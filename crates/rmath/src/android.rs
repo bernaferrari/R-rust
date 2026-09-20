@@ -78,6 +78,9 @@ fn result_from_eval(
         }
         stdout.push_str(&rendered);
     }
+    if !stdout.is_empty() && !stdout.ends_with('\n') {
+        stdout.push('\n');
+    }
     let captured_stderr_len = captured.stderr.len();
     let mut stderr = captured.stderr;
     if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
@@ -944,6 +947,19 @@ stop("after-echo")
             "GNU keeps a trailing space after [TRUNCATED] when the script later errors; stdout={:?}",
             result.stdout
         );
+    }
+
+
+    #[test]
+    fn eval_script_stdout_ends_with_newline_like_rscript() {
+        let mut session = RSession::new();
+        let result = session.eval_script("1 + 1");
+        assert!(
+            result.stdout.ends_with('\n'),
+            "GNU Rscript ends printed output with a newline; stdout={:?}",
+            result.stdout
+        );
+        assert!(result.stdout.contains("[1] 2"));
     }
 
     #[test]
