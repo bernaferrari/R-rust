@@ -915,7 +915,8 @@ unsafe fn real_mean_sexp(x: SEXP) -> SEXP {
         let n = XLENGTH(x);
         let ptr = REAL(x);
         if n == 0 {
-            return Rf_ScalarReal(NA_REAL);
+            // GNU summary.c do_summary mean: ScalarReal(R_NaN)
+            return Rf_ScalarReal(f64::NAN);
         }
 
         // GNU .Internal(mean): first NA/NaN is returned with its bits.

@@ -72,11 +72,9 @@ fn result_from_eval(
     }
     let mut stdout = captured.stdout;
     if visible {
-        let rendered = output::format_sexp_direct(sexp.clone());
-        if !stdout.is_empty() && !stdout.ends_with('\n') {
-            stdout.push('\n');
-        }
-        stdout.push_str(&rendered);
+        // GNU concatenates auto-print onto a prior cat() that had no
+        // trailing newline (`cat(deparse(x)); TRUE` → `...)[1] TRUE`).
+        stdout.push_str(&output::format_sexp_direct(sexp.clone()));
     }
     if !stdout.is_empty() && !stdout.ends_with('\n') {
         stdout.push('\n');
@@ -90,10 +88,10 @@ fn result_from_eval(
     }
     let mut display = captured.interleaved;
     if visible {
-        if !display.is_empty() && !display.ends_with('\n') {
-            display.push('\n');
-        }
         display.push_str(&output::format_sexp_direct(sexp.clone()));
+    }
+    if !display.is_empty() && !display.ends_with('\n') {
+        display.push('\n');
     }
     if stderr.len() > captured_stderr_len {
         display.push_str(&stderr[captured_stderr_len..]);
@@ -960,6 +958,14 @@ stop("after-echo")
             result.stdout
         );
         assert!(result.stdout.contains("[1] 2"));
+    }
+
+
+    #[test]
+    fn eval_script_concatenates_cat_without_newline_onto_next_print() {
+        let mut session = RSession::new();
+        let result = session.eval_script("cat('x'); TRUE");
+        assert_eq!(result.stdout, "x[1] TRUE\n");
     }
 
     #[test]

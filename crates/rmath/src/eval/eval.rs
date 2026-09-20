@@ -2045,6 +2045,20 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
     }
 
     #[test]
+    fn mean_of_empty_numeric_is_nan_like_gnu() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+            is.nan(mean(numeric(0))) &&
+              is.nan(mean(rep(NA_real_, 2), trim = 0.1, na.rm = TRUE))
+            "#,
+        );
+        let result = result.expect("mean(numeric(0)) must be NaN");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn print_factor_pads_to_widest_label_like_gnu() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
