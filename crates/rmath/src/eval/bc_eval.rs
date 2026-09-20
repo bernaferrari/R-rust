@@ -463,27 +463,26 @@ unsafe fn eval_gnu_dollar(call: SEXP, symbol: SEXP, x: SEXP, rho: SEXP) -> SEXP 
     unsafe {
         if crate::sexp::accessors::OBJECT(x) != 0 {
             let dollar = crate::sexp::symbol::Rf_install(c"$".as_ptr());
-            let op = crate::sexp::accessors::SYMVALUE(dollar);
-
+            let mut op = crate::mainutils::names::R_Primitive(c"$".as_ptr());
+            if op.is_null() || op == R_NilValue() {
+                op = crate::sexp::accessors::SYMVALUE(dollar);
+            }
             let name = crate::sexp::constructors::Rf_ScalarString(PRINTNAME(symbol));
             let _name = crate::sexp::protect::protect(name);
             let args = Rf_cons(x, Rf_cons(name, R_NilValue()));
             let _args = crate::sexp::protect::protect(args);
-            let call = if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
-                let ncall = Rf_cons(dollar, args);
-                if !ncall.is_null() {
-                    (*ncall).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                }
-                ncall
-            } else {
-                call
-            };
-            let _call = crate::sexp::protect::protect(call);
-            return crate::mainutils::subset::do_subset3(call, op, args, rho);
+            let ncall = crate::sexp::constructors::Rf_lang3(dollar, x, name);
+            let _ncall = crate::sexp::protect::protect(ncall);
+            let _ = call;
+            return crate::mainutils::subset::do_subset3(ncall, op, args, rho);
         }
         crate::mainutils::subset::R_subset3_dflt(x, PRINTNAME(symbol), call)
     }
 }
+
+
+
+
 
 
 /// GNU DOLLARGETS matches eval.c: dispatch `$<-` on objects, else R_subassign3_dflt.
@@ -497,9 +496,6 @@ unsafe fn eval_gnu_dollargets(call: SEXP, symbol: SEXP, mut x: SEXP, rhs: SEXP, 
             let _ncall = crate::sexp::protect::protect(ncall);
             let name = crate::sexp::constructors::Rf_ScalarString(PRINTNAME(symbol));
             let _name = crate::sexp::protect::protect(name);
-            // GNU SETCAR(CDDR(ncall), ScalarString(PRINTNAME(symbol))).
-            // A compiled x$a call may have no second cell; create one so
-            // $.class methods receive the field name as their second formal.
             let field_cell = crate::sexp::accessors::CDDR(ncall);
             if field_cell.is_null() || field_cell == R_NilValue() {
                 let extra = Rf_cons(name, R_NilValue());
@@ -525,6 +521,10 @@ unsafe fn eval_gnu_dollargets(call: SEXP, symbol: SEXP, mut x: SEXP, rhs: SEXP, 
         crate::mainutils::subassign::R_subassign3_dflt(call, x, symbol, rhs)
     }
 }
+
+
+
+
 
 /// GNU INCREMENT_LINKS for NAMED-tracking values: raise NAMED toward the
 /// maximum so in-place modification of the protected value duplicates.

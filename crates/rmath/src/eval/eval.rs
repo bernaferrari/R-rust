@@ -2550,6 +2550,43 @@ is.environment(x) &&
         );
     }
 
+    #[test]
+    fn envrefclass_cold_show_and_print_match_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+x <- new("envRefClass")
+gnu <- "Reference class object of class \"envRefClass\""
+identical(capture.output(show(x)), gnu) &&
+  identical(capture.output(print(x)), gnu)
+"#,
+
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "envRefClass cold show/print: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -391,11 +391,13 @@ pub(crate) unsafe fn tryDispatch(
 ) -> c_int {
     unsafe {
         let generic_sym = Rf_install(generic);
+        // GNU eval.c: op = SYMVALUE(install(generic)); R_has_methods(op)
+        // requires the primitive, not the symbol.
+        let op = crate::sexp::accessors::SYMVALUE(generic_sym);
 
         let pargs = promiseArgs(CDR(call), rho);
         let _pargs_guard = protect(pargs);
 
-        // Set the first promise value to x
         if !pargs.is_null() && pargs != R_NilValue() {
             let first_promise = CAR(pargs);
             if TYPEOF(first_promise) == SEXPTYPE::PROMSXP {
@@ -403,14 +405,12 @@ pub(crate) unsafe fn tryDispatch(
             }
         }
 
-        // Check for S4 methods
         if crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE
-            && crate::mainutils::objects::R_has_methods(generic_sym) != FALSE
+            && crate::mainutils::objects::R_has_methods(op) != FALSE
         {
             let value =
-                crate::mainutils::objects::R_possible_dispatch(call, generic_sym, pargs, rho, TRUE);
+                crate::mainutils::objects::R_possible_dispatch(call, op, pargs, rho, TRUE);
             if !value.is_null() {
-
                 if !pv.is_null() {
                     *pv = value;
                 }
@@ -418,10 +418,8 @@ pub(crate) unsafe fn tryDispatch(
             }
         }
 
-        // Try S3 dispatch
-        let rho1 = NewEnvironment(R_NilValue(), R_NilValue(), rho);
+        let rho1 = NewEnvironment(R_NilValue(), rho, R_NilValue());
         let _rho1_guard = protect(rho1);
-        let op = crate::sexp::accessors::SYMVALUE(generic_sym);
         let _ctx = crate::sexp::context::begin_context_guard(
             crate::sexp::context::ctxt_flags::CTXT_RETURN,
             call,
@@ -454,6 +452,8 @@ pub(crate) unsafe fn tryDispatch(
         if dispatched != FALSE { TRUE } else { FALSE }
     }
 }
+
+
 
 // ---------------------------------------------------------------------------
 // tryAssignDispatch -- try S3 method dispatch for assignment
