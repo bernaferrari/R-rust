@@ -1105,7 +1105,7 @@ pub unsafe fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let append = asLogical(CAR(args));
         args = CDR(args);
 
-        if !isNull(CAR(args)) != 0 {
+        if isNull(CAR(args)) == 0 {
             SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
             if isValidString(CAR(args)) != 0 {
                 let msg = translateChar(STRING_ELT(CAR(args), 0));

@@ -24,7 +24,7 @@ pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let args = CDR(args);
 
-        if !isNull(CAR(args)) != 0 {
+        if isNull(CAR(args)) == 0 {
             // Has a message
             SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
             if isValidString(CAR(args)) == 0 {
@@ -97,7 +97,7 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         args = CDR(args);
 
         let message = CAR(args);
-        if !isNull(message) != 0 {
+        if isNull(message) == 0 {
             SETCAR(args, coerceVector(message, SEXPTYPE::STRSXP.as_c_int()));
             let message = CAR(args);
             if isValidString(message) == 0 {
