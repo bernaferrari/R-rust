@@ -3606,11 +3606,12 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(730).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(763).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through its cbind/rbind: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through mondate cbind: {e}\nstdout={}\nstderr={}",
+
 
 
 
@@ -4174,6 +4175,41 @@ a_ok && its_ok
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_mondate_cbind_colnames() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("mondate",
+         slots = c(timeunits = "character"), contains = "numeric")
+m1 <- new("mondate", 1:4, timeunits = "hrs")
+m2 <- new("mondate", 7:8, timeunits = "min")
+identical(colnames(cbind(m1+1, deparse.level=2)), "m1 + 1") &&
+  is.null(colnames(cbind(m1+1, deparse.level=0))) &&
+  is.null(colnames(cbind(m1+1, deparse.level=1))) &&
+  identical(colnames(cbind(m1)), "m1") &&
+  identical(colnames(cbind(m1, M2 = 2, deparse.level=0)), c("", "M2")) &&
+  identical(colnames(cbind(m1, M2 = 2)), c("m1", "M2"))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "mondate cbind: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
 
 

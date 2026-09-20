@@ -580,8 +580,21 @@ pub unsafe fn cbind(
                         SET_STRING_ELT(nam, j as R_xlen_t, PRINTNAME(CAR(t)));
                         j += 1;
                     } else if deparse_level == 2 {
-                        // deparse1line not available; use blank
-                        SET_STRING_ELT(nam, j as R_xlen_t, R_BlankString());
+                        let expr = if TYPEOF(CAR(t)) == SEXPTYPE::PROMSXP {
+                            crate::sexp::accessors::PRCODE(CAR(t))
+                        } else {
+                            CAR(t)
+                        };
+                        let lines = crate::mainutils::deparse::deparse1line(expr, true);
+                        let _lines = protect(lines);
+                        if !lines.is_null()
+                            && TYPEOF(lines) == SEXPTYPE::STRSXP
+                            && XLENGTH(lines) > 0
+                        {
+                            SET_STRING_ELT(nam, j as R_xlen_t, STRING_ELT(lines, 0));
+                        } else {
+                            SET_STRING_ELT(nam, j as R_xlen_t, R_BlankString());
+                        }
                         j += 1;
                     } else if have_cnames {
                         SET_STRING_ELT(nam, j as R_xlen_t, R_BlankString());
@@ -590,6 +603,7 @@ pub unsafe fn cbind(
                 }
                 t = CDR(t);
             }
+
 
             setAttrib(result, dimnames_sym, dn);
         }

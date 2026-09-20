@@ -7,7 +7,13 @@ use super::*;
 
 /// GNU bind.c: if any argument is S4 and no S3 cbind./rbind. method was
 /// found, call methods:::cbind / methods:::rbind (which use cbind2/rbind2).
-unsafe fn try_methods_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) -> Option<SEXP> {
+unsafe fn try_methods_bind(
+    call: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    generic: &[u8],
+    deparse_level: i32,
+) -> Option<SEXP> {
     unsafe {
         let mut any_s4 = false;
         let mut a = args;
@@ -22,7 +28,6 @@ unsafe fn try_methods_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) ->
         if !any_s4 {
             return None;
         }
-
 
         let ns = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
         let mut fun = crate::sexp::envir::R_findVarInFrame(
@@ -43,10 +48,20 @@ unsafe fn try_methods_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) ->
         }
 
         let _fun_guard = protect(fun);
+        // GNU do_bind tags the evaluated deparse.level cell so methods:::cbind
+        // sees deparse.level=0/2 instead of the formal default 1.
+        let dl = crate::sexp::constructors::Rf_ScalarInteger(deparse_level);
+        let _dl = protect(dl);
+        let wrapped = Rf_cons(dl, args);
+        let _wrapped = protect(wrapped);
+        SETTAG(
+            wrapped,
+            crate::sexp::symbol::Rf_install(c"deparse.level".as_ptr()),
+        );
         Some(crate::eval::closure::applyClosure(
             call,
             fun,
-            args,
+            wrapped,
             rho,
             crate::sexp::globals::R_NilValue(),
             TRUE,
@@ -115,12 +130,10 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let (deparse_level, args) = eval_bind_internal_args(call, args, rho);
         let _args_guard = protect(args);
         if deparse_level >= 0
-            && let Some(ans) = try_methods_bind(call, args, rho, b"cbind\0")
+            && let Some(ans) = try_methods_bind(call, args, rho, b"cbind\0", deparse_level)
         {
             return ans;
         }
-
-
 
         let mut result_type = SEXPTYPE::LGLSXP;
         let mut col_names = Vec::new();
@@ -136,7 +149,8 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 expr = next_bind_expr(expr);
                 continue;
             }
-            let name = bind_arg_label(current, expr);
+            let name = bind_arg_label(current, expr, deparse_level);
+
             let arg = force_bind_arg(current);
             if !arg.is_null() && arg != R_NilValue() {
                 result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
@@ -251,10 +265,11 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let (deparse_level, args) = eval_bind_internal_args(call, args, rho);
         let _args_guard = protect(args);
         if deparse_level >= 0
-            && let Some(ans) = try_methods_bind(call, args, rho, b"rbind\0")
+            && let Some(ans) = try_methods_bind(call, args, rho, b"rbind\0", deparse_level)
         {
             return ans;
         }
+
         let mut dispatch = args;
         while !dispatch.is_null() && dispatch != R_NilValue() {
             let value = force_bind_arg(dispatch);
@@ -288,7 +303,8 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 expr = next_bind_expr(expr);
                 continue;
             }
-            let name = bind_arg_label(current, expr);
+            let name = bind_arg_label(current, expr, deparse_level);
+
             let arg = force_bind_arg(current);
             if !arg.is_null() && arg != R_NilValue() {
                 result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
@@ -670,20 +686,41 @@ unsafe fn bind_cell_is_deparse_level(eval_cell: SEXP, expr_cell: SEXP) -> bool {
 }
 
 
-
-/// GNU `rbind` deparse.level=1: a tag, else the argument symbol.
-unsafe fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP) -> String {
+/// GNU cbind/rbind names: tag always; else level 1 = symbol, level 2 = deparse.
+unsafe fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP, deparse_level: i32) -> String {
     unsafe {
         if let Some(name) = tag_name(eval_cell) {
             if name != "deparse.level" && name != "..." {
                 return name;
             }
         }
-        let expr = bind_label_expr(eval_cell, expr_cell);
-        if expr.is_null() || TYPEOF(expr) != SEXPTYPE::SYMSXP {
+        if deparse_level <= 0 {
             return String::new();
         }
-        let pname = PRINTNAME(expr);
+        let expr = bind_label_expr(eval_cell, expr_cell);
+        if expr.is_null() {
+            return String::new();
+        }
+        if deparse_level == 1 {
+            if TYPEOF(expr) != SEXPTYPE::SYMSXP {
+                return String::new();
+            }
+            return symbol_printname(expr);
+        }
+        // deparse.level == 2
+        let lines = crate::mainutils::deparse::deparse1line(expr, true);
+        let _lines = protect(lines);
+        if lines.is_null() || TYPEOF(lines) != SEXPTYPE::STRSXP || XLENGTH(lines) < 1 {
+            return String::new();
+        }
+        crate::mainutils::essentials::elt_to_string(lines, 0)
+    }
+}
+
+
+unsafe fn symbol_printname(sym: SEXP) -> String {
+    unsafe {
+        let pname = PRINTNAME(sym);
         if pname.is_null() {
             return String::new();
         }
