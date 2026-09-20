@@ -129,20 +129,23 @@ unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
 pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut sep = " ".to_string();
-        let mut file: Option<String> = None;
+        let mut dest = CatDest::Stdout;
         let mut append = false;
+        let mut fill = false;
         let mut parts: Vec<String> = Vec::new();
+
+
 
         if is_internal_cat_args(args) {
             let objs = CAR(args);
             let file_arg = CAR(CDR(args));
             let sep_arg = CAR(CDR(CDR(args)));
+            let fill_arg = CAR(CDR(CDR(CDR(args))));
             let append_arg = CAR(CDR(CDR(CDR(CDR(CDR(args))))));
             sep = elt_to_string(sep_arg, 0);
-            let path = elt_to_string(file_arg, 0);
-            if !path.is_empty() {
-                file = Some(path);
-            }
+            dest = cat_file_dest(file_arg);
+            fill = cat_fill_enabled(fill_arg);
+
             if !append_arg.is_null() && append_arg != R_NilValue() && XLENGTH(append_arg) > 0 {
                 let value =
                     if TYPEOF(append_arg) == SEXPTYPE::LGLSXP || TYPEOF(append_arg) == SEXPTYPE::INTSXP
@@ -166,7 +169,6 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         parts.push(cat_elt_to_string(elt, j));
                     }
                 }
-
             }
         } else {
             let mut current = args;
@@ -174,15 +176,10 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let arg = CAR(current);
                 match arg_tag_name(current).as_deref() {
                     Some("sep") => sep = elt_to_string(arg, 0),
-                    Some("file") => {
-                        let path = elt_to_string(arg, 0);
-                        if path.is_empty() {
-                            file = None;
-                        } else {
-                            file = Some(path);
-                        }
-                    }
+                    Some("file") => dest = cat_file_dest(arg),
+                    Some("fill") => fill = cat_fill_enabled(arg),
                     Some("append") => {
+
                         if !arg.is_null() && arg != R_NilValue() && XLENGTH(arg) > 0 {
                             let value =
                                 if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
@@ -203,14 +200,80 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                             }
                         }
                     }
-
                 }
                 current = CDR(current);
             }
         }
 
-        let output = parts.join(&sep);
-        if let Some(path) = file {
+        let mut output = parts.join(&sep);
+        if fill && !output.ends_with('\n') {
+            output.push('\n');
+        }
+        emit_cat_output(&output, dest, append);
+
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
+    }
+}
+
+enum CatDest {
+    Stdout,
+    Stderr,
+    Path(String),
+}
+
+unsafe fn cat_file_dest(file_arg: SEXP) -> CatDest {
+    unsafe {
+        if file_arg.is_null() || file_arg == R_NilValue() {
+            return CatDest::Stdout;
+        }
+        if crate::mainutils::connections::inherits_class(file_arg, "connection") {
+            let idx = if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) > 0 {
+                *INTEGER(file_arg)
+            } else {
+                1
+            };
+            return if idx == 2 {
+                CatDest::Stderr
+            } else {
+                CatDest::Stdout
+            };
+        }
+        let path = elt_to_string(file_arg, 0);
+        if path.is_empty() {
+            CatDest::Stdout
+        } else {
+            CatDest::Path(path)
+        }
+    }
+}
+
+unsafe fn cat_fill_enabled(fill_arg: SEXP) -> bool {
+    unsafe {
+        if fill_arg.is_null() || fill_arg == R_NilValue() {
+            return false;
+        }
+        if TYPEOF(fill_arg) == SEXPTYPE::LGLSXP && XLENGTH(fill_arg) > 0 {
+            let v = *INTEGER(fill_arg);
+            return v != FALSE && v != NA_INTEGER;
+        }
+        if TYPEOF(fill_arg) == SEXPTYPE::INTSXP && XLENGTH(fill_arg) > 0 {
+            let v = *INTEGER(fill_arg);
+            return v > 0 && v != NA_INTEGER;
+        }
+        if TYPEOF(fill_arg) == SEXPTYPE::REALSXP && XLENGTH(fill_arg) > 0 {
+            let v = *REAL(fill_arg);
+            return v.is_finite() && v > 0.0;
+        }
+        false
+    }
+}
+
+
+
+fn emit_cat_output(output: &str, dest: CatDest, append: bool) {
+    match dest {
+        CatDest::Path(path) => {
             if let Ok(mut handle) = std::fs::OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -221,15 +284,24 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 use std::io::Write;
                 let _ = handle.write_all(output.as_bytes());
             }
-        } else if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stdout(&output);
-        } else {
-            print!("{}", output);
         }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
+        CatDest::Stderr => {
+            if crate::sexp::output::is_capturing() {
+                crate::sexp::output::capture_stderr(output);
+            } else {
+                eprint!("{output}");
+            }
+        }
+        CatDest::Stdout => {
+            if crate::sexp::output::is_capturing() {
+                crate::sexp::output::capture_stdout(output);
+            } else {
+                print!("{output}");
+            }
+        }
     }
 }
+
 
 fn is_internal_cat_args(args: SEXP) -> bool {
     unsafe {

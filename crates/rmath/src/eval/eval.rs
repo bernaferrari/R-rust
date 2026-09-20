@@ -2472,6 +2472,61 @@ identical(out, c(
         );
     }
 
+    #[test]
+    fn cat_file_stdout_writes_to_captured_stdout() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+out <- capture.output(cat("hello-stdout", file=stdout()))
+identical(out, "hello-stdout")
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "cat(file=stdout()): {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn showclass_extends_uses_stdout_connection() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+out <- capture.output(showClass("standardGeneric"))
+any(grepl('Class "genericFunction", directly', out, fixed=TRUE))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "showClass Extends: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
 
     #[test]
     fn message_writes_stderr_not_stdout() {
