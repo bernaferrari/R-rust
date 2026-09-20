@@ -330,26 +330,29 @@ pub unsafe fn R_possible_dispatch(
                             a = CDR(a);
                             b = CDR(b);
                         }
-                        let value = crate::eval::closure::applyClosure(
+                        let value = crate::eval::closure::applyClosureWithFrameVars(
                             call,
                             value,
                             s,
                             rho,
+                            R_NilValue(),
                             suppliedvars,
                             TRUE,
                         );
                         return value;
                     } else {
-                        let value = crate::eval::closure::applyClosure(
+                        let value = crate::eval::closure::applyClosureWithFrameVars(
                             call,
                             value,
                             args,
                             rho,
+                            R_NilValue(),
                             suppliedvars,
                             FALSE,
                         );
                         return value;
                     }
+
                 }
             }
         }

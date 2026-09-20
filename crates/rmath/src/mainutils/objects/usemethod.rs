@@ -340,7 +340,22 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
             }
         }
 
+        // GNU UseMethod also finds methods on the search path / .GlobalEnv
+        // (`mean.L` assigned at the top level, called from median.default).
+        let global = crate::sexp::globals::R_GlobalEnv();
+        if !global.is_null() && global != R_NilValue() {
+            let val4 = force_s3_method_value(crate::sexp::envir::R_findVar(method, global));
+            if !val4.is_null()
+                && val4 != R_UnboundValue()
+                && val4 != R_NilValue()
+                && isFunction(val4) != FALSE
+            {
+                return val4;
+            }
+        }
+
         R_UnboundValue()
+
     }
 }
 

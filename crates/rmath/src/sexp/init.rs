@@ -256,7 +256,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(x, decreasing = FALSE, na.last = NA, ...) {\n\
              if (is.object(x))\n\
                  x[order(x, na.last = na.last, decreasing = decreasing)]\n\
-             else .Internal(sort(x, decreasing))\n\
+             else .Internal(sort(x, decreasing, na.last))\n\
              }",
         );
         eval_base_binding(
@@ -268,6 +268,10 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             base_env,
             "mean.default",
             "function(x, trim = 0, na.rm = FALSE, ...) {\n\
+             if (!is.numeric(x) && !is.complex(x) && !is.logical(x)) {\n\
+                 warning(\"argument is not numeric or logical: returning NA\")\n\
+                 return(NA_real_)\n\
+             }\n\
              if (isTRUE(na.rm)) x <- x[!is.na(x)]\n\
              .Internal(mean(x))\n\
              }",

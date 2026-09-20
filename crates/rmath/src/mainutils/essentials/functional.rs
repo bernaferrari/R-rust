@@ -38,7 +38,8 @@ use crate::sexp::symbol::Rf_install;
 pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
-        let fun = callable_arg_by_name_or_position(args, &["FUN"], 1);
+        let fun = callable_arg_by_name_or_position(args, &["FUN"], 1, rho);
+
         if x.is_null() || x == R_NilValue() || fun.is_null() {
             return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         }
@@ -228,17 +229,13 @@ unsafe fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP, bo
                 let value = if is_x {
                     x
                 } else if is_fun {
-                    let expr = CAR(current);
-                    if TYPEOF(expr) == SEXPTYPE::LANGSXP || TYPEOF(expr) == SEXPTYPE::PROMSXP {
-                        let fun = crate::eval::eval::Rf_eval(expr, rho);
-                        guards.push(protect(fun));
-                        fun
-                    } else {
-                        expr
-                    }
+                    let fun = match_fun_arg(CAR(current), rho);
+                    guards.push(protect(fun));
+                    fun
                 } else {
                     CAR(current)
                 };
+
                 cells.push((value, TAG(current)));
 
             }
@@ -291,7 +288,8 @@ pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
         let _x_guard = protect(x);
-        let fun = callable_arg_by_name_or_position(args, &["FUN"], 1);
+        let fun = callable_arg_by_name_or_position(args, &["FUN"], 1, rho);
+
         let _fun_guard = protect(fun);
         // Root the template FIRST: the output type, dimensions and
         // row-name policy all read it, and it must survive every FUN
@@ -708,7 +706,8 @@ fn sexp_type_name(t: SEXPTYPE) -> &'static str {
 /// R's `Map(f, ...)` — apply f element-wise.
 pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let fun = callable_arg_by_name_or_position(args, &["f", "FUN"], 0);
+        let fun = callable_arg_by_name_or_position(args, &["f", "FUN"], 0, rho);
+
         let x = eval_arg_by_name_or_position(args, &[], 1, rho);
         if fun.is_null() || x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -876,9 +875,55 @@ pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
-fn callable_arg_by_name_or_position(args: SEXP, names: &[&str], position: usize) -> SEXP {
-    unsafe { callable_expr(arg_by_name_or_position(args, names, position)) }
+fn callable_arg_by_name_or_position(
+    args: SEXP,
+    names: &[&str],
+    position: usize,
+    rho: SEXP,
+) -> SEXP {
+    unsafe { match_fun_arg(arg_by_name_or_position(args, names, position), rho) }
 }
+
+unsafe fn match_fun_arg(expr: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() {
+            return expr;
+        }
+        let t = TYPEOF(expr);
+        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+            return expr;
+        }
+        let val = if t == SEXPTYPE::SYMSXP
+            || t == SEXPTYPE::LANGSXP
+            || t == SEXPTYPE::PROMSXP
+            || t == SEXPTYPE::BCODESXP
+        {
+            crate::eval::eval::Rf_eval(expr, rho)
+        } else {
+            expr
+        };
+        let vt = TYPEOF(val);
+        if vt == SEXPTYPE::CLOSXP || vt == SEXPTYPE::BUILTINSXP || vt == SEXPTYPE::SPECIALSXP {
+            return val;
+        }
+        if vt == SEXPTYPE::STRSXP && XLENGTH(val) > 0 {
+            let charsxp = STRING_ELT(val, 0);
+            if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
+                return R_NilValue();
+            }
+            let name = CHAR(charsxp);
+            if name.is_null() {
+                return R_NilValue();
+            }
+            return crate::eval::eval::Rf_eval(Rf_install(name), rho);
+        }
+        if vt == SEXPTYPE::SYMSXP {
+            return crate::eval::eval::Rf_eval(val, rho);
+        }
+        val
+    }
+}
+
 
 fn eval_arg_by_name_or_position(args: SEXP, names: &[&str], position: usize, rho: SEXP) -> SEXP {
     unsafe {
@@ -1228,7 +1273,8 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
         let margin_arg = eval_arg_by_name_or_position(args, &["MARGIN"], 1, rho);
-        let fun = callable_arg_by_name_or_position(args, &["FUN"], 2);
+        let fun = callable_arg_by_name_or_position(args, &["FUN"], 2, rho);
+
         if x.is_null() || x == R_NilValue() || fun.is_null() {
             return R_NilValue();
         }
