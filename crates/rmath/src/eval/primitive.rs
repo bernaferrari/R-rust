@@ -207,7 +207,6 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "stopifnot"
             | "options"
             | "par"
-            | "data"
             | "system"
             | "suppressWarnings"
             | "suppressMessages"

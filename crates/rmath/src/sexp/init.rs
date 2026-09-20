@@ -357,6 +357,89 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Internal(data(dots, package, envir))\n\
              }",
         );
+        eval_base_binding(base_env, "levels", "function(x) UseMethod(\"levels\")");
+        eval_base_binding(base_env, "levels.default", "function(x) attr(x, \"levels\")");
+        eval_base_binding(base_env, "nlevels", "function(x) length(levels(x))");
+        eval_base_binding(
+            base_env,
+            "droplevels",
+            "function(x, ...) UseMethod(\"droplevels\")",
+        );
+        eval_base_binding(
+            base_env,
+            "droplevels.factor",
+            "function(x, exclude = if (anyNA(levels(x))) NULL else NA, ...)\n\
+             factor(x, exclude = exclude)",
+        );
+        eval_base_binding(
+            base_env,
+            "ordered",
+            "function(x = character(), ...) factor(x, ..., ordered = TRUE)",
+        );
+        eval_base_binding(
+            base_env,
+            "as.ordered",
+            "function(x) if (is.ordered(x)) x else ordered(x)",
+        );
+        eval_base_binding(
+            base_env,
+            "attach",
+            "function(what, pos = 2L, name = deparse1(substitute(what)),\n\
+             warn.conflicts = TRUE) {\n\
+             if (pos == 1L)\n\
+                 stop(\"'pos=1' is not possible and has been warned about for years\")\n\
+             invisible(.Internal(attach(what, pos, name)))\n\
+             }",
+        );
+        eval_base_binding(base_env, "nrow", "function(x) dim(x)[1L]");
+        eval_base_binding(base_env, "ncol", "function(x) dim(x)[2L]");
+        eval_base_binding(
+            base_env,
+            "NROW",
+            "function(x) if (length(d <- dim(x))) d[1L] else length(x)",
+        );
+        eval_base_binding(
+            base_env,
+            "NCOL",
+            "function(x) if (length(d <- dim(x))) d[2L] else 1L",
+        );
+        eval_base_binding(
+            base_env,
+            "%in%",
+            "function(x, table) match(x, table, nomatch = 0L) > 0L",
+        );
+        eval_base_binding(
+            base_env,
+            "isTRUE",
+            "function(x) is.logical(x) && length(x) == 1L && !is.na(x) && x",
+        );
+        eval_base_binding(
+            base_env,
+            "isFALSE",
+            "function(x) is.logical(x) && length(x) == 1L && !is.na(x) && !x",
+        );
+        eval_base_binding(base_env, "force", "function(x) x");
+        eval_base_binding(
+            base_env,
+            "is.primitive",
+            "function(x) switch(typeof(x), special = , builtin = TRUE, FALSE)",
+        );
+        eval_base_binding(
+            base_env,
+            "as.symbol",
+            "function(x) .Internal(as.vector(x, \"symbol\"))",
+        );
+        eval_base_binding(base_env, "as.name", "as.symbol");
+        eval_base_binding(
+            base_env,
+            "unname",
+            "function(obj, force = FALSE) {\n\
+             if (!is.null(names(obj))) names(obj) <- NULL\n\
+             if (!is.null(dimnames(obj)) && (force || !is.data.frame(obj)))\n\
+                 dimnames(obj) <- NULL\n\
+             obj\n\
+             }",
+        );
         eval_base_binding(
             base_env,
             "factor",

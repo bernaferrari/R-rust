@@ -5078,6 +5078,10 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "anyDuplicated" => Some(crate::mainutils::essentials::do_anyDuplicated),
         "detach" => Some(crate::mainutils::envir::do_detach),
         "data" => Some(crate::mainutils::essentials::do_data),
+        "attach" => Some(crate::mainutils::envir::do_attach),
+        "as.vector" => Some(crate::mainutils::essentials::do_as_vector),
+
+
 
 
 
