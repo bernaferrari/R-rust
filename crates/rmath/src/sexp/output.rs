@@ -912,6 +912,30 @@ fn print_max_cells() -> usize {
     }
 }
 
+/// GNU `print.default(..., quote=)` default TRUE; NA becomes TRUE.
+fn print_quote_flag() -> bool {
+    unsafe {
+        let extras = print_dispatch_extras();
+        let mut cur = extras;
+        while !cur.is_null() && cur != R_NilValue() {
+            if printable_attribute_name(cur).as_deref() == Some("quote") {
+                let value = CAR(cur);
+                if !value.is_null() && value != R_NilValue() {
+                    let q = crate::mainutils::coerce::asLogical(value);
+                    if q != crate::sexp::ffi::NA_LOGICAL {
+                        return q != 0;
+                    }
+                }
+                return true;
+            }
+            cur = CDR(cur);
+        }
+        true
+    }
+}
+
+
+
 fn matrix_print_window(nrow: usize, ncol: usize, max: usize) -> (usize, usize) {
     let c_pr = ncol.min(max);
     let mut r_pr = nrow;
@@ -1239,7 +1263,9 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
         })),
         SEXPTYPE::CPLXSXP => Some(format_complex_matrix_gnu(x.clone(), nrow, ncol)),
         SEXPTYPE::STRSXP => {
-            let quote = !has_class(x.clone(), "noquote") && !has_class(x.clone(), "table");
+            let quote = print_quote_flag()
+                && !has_class(x.clone(), "noquote")
+                && !has_class(x.clone(), "table");
             Some(format_character_matrix_with(
                 x.clone(),
                 nrow,
@@ -1247,6 +1273,7 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
                 |r, c| format_string_element_maybe_quoted(x.clone(), (r + c * nrow) as i64, quote),
             ))
         }
+
         _ => None,
     }
 }
@@ -3285,6 +3312,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
+
         SEXPTYPE::CPLXSXP => {
             if let Some(output) = format_matrix(x.clone()) {
                 return output;
@@ -3303,9 +3331,12 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_summary_default(x.clone()) {
                 return output;
             }
-            let quote = !has_class(x.clone(), "noquote") && !has_class(x.clone(), "table");
+            let quote = print_quote_flag()
+                && !has_class(x.clone(), "noquote")
+                && !has_class(x.clone(), "table");
             let base = unsafe { format_vector_stock(x.clone(), quote) };
             format_with_printable_attributes(base, x)
+
         }
 
 

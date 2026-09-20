@@ -320,9 +320,25 @@ pub unsafe fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             None
         };
-        let extras = crate::sexp::output::copy_print_dispatch_extras(args, x);
+        // GNU `.Internal(print.default(x, args, missings))`: `args` is a
+        // named pairlist (`quote`, `digits`, `max`, ...). Direct `print(x, ...)`
+        // keeps the remaining formals as extras.
+        let extras = {
+            let rest = CDR(args);
+            if !rest.is_null() && rest != R_NilValue() {
+                let opts = CAR(rest);
+                if TYPEOF(opts) == SEXPTYPE::LISTSXP {
+                    opts
+                } else {
+                    crate::sexp::output::copy_print_dispatch_extras(args, x)
+                }
+            } else {
+                crate::sexp::output::copy_print_dispatch_extras(args, x)
+            }
+        };
         let _extras = crate::sexp::protect::protect(extras);
         let _extras_guard = crate::sexp::output::push_print_dispatch_extras(extras);
+
         if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
             crate::sexp::output::print_value(sexp);
         }

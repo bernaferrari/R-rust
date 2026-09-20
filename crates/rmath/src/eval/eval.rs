@@ -2439,6 +2439,40 @@ identical(out[1], "        x        ")
 
 
 
+
+    #[test]
+    fn print_character_matrix_honors_quote_false() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+x <- c(.Data="function", generic="character")
+text <- format(c(names(x), as.character(x)), justify="right")
+text <- matrix(text, nrow=2L, ncol=2L, byrow=TRUE)
+dimnames(text) <- list(c("Name:", "Class:"), rep.int("", 2))
+out <- capture.output(print(text, quote=FALSE))
+identical(out, c(
+  "                          ",
+  "Name:      .Data   generic",
+  "Class:  function character"
+))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "quote=FALSE matrix: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
     #[test]
     fn message_writes_stderr_not_stdout() {
         let mut session = RSession::new();
