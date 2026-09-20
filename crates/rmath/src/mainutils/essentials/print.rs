@@ -1827,9 +1827,19 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         };
 
         let show_row_names = print_data_frame_show_row_names(args);
-        let (headers, columns) = print_data_frame_column_texts(x, ncol, nrow);
+        // GNU formats x[seq_len(n0),] so column/label widths ignore omitted rows.
+        let max_print = crate::mainutils::options::GetOptionMaxPrint().max(1) as R_xlen_t;
+        let n0 = if ncol > 0 {
+            (max_print / ncol) as usize
+        } else {
+            nrow as usize
+        };
+        let print_rows = (nrow as usize).min(n0);
+        let (headers, columns) =
+            print_data_frame_column_texts(x, ncol, print_rows as R_xlen_t);
         let row_labels = data_frame_row_labels(x, nrow);
-        let row_width = row_labels
+        let shown_labels = &row_labels[..print_rows.min(row_labels.len())];
+        let row_width = shown_labels
             .iter()
             .map(|label| label.len())
             .max()
@@ -1863,14 +1873,6 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             emit_print_data_frame_line(&format!("{label_pad} {header}"));
         }
 
-        // GNU print.data.frame: n0 <- max %/% length(x); omit if n0 < nrow.
-        let max_print = crate::mainutils::options::GetOptionMaxPrint().max(1) as R_xlen_t;
-        let n0 = if ncol > 0 {
-            (max_print / ncol) as usize
-        } else {
-            nrow as usize
-        };
-        let print_rows = (nrow as usize).min(n0);
         for row in 0..print_rows {
             let mut cells = Vec::with_capacity(headers.len() + usize::from(show_row_names));
             // Stock left-justifies row labels (auto 1..n, explicit numeric,
