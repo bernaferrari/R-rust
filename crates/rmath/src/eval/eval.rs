@@ -3606,11 +3606,12 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(650).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(689).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through callGeneric fun(1): {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through identical S4 bit: {e}\nstdout={}\nstderr={}",
+
 
 
 
@@ -4079,6 +4080,39 @@ is.function(getSrcref)
         let result = result.unwrap_or_else(|e| {
             panic!(
                 "getSrcref: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+    #[test]
+    fn reg_s4_help_try_and_identical_s4_bit() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("Foo", representation(name="character"), contains="matrix")
+f <- new("Foo", name="Sam", matrix())
+m <- as(f, "matrix")
+foo_ok <- isS4(m. <- asS4(m)) && identical(m, f@.Data) && .hasSlot(f, "name") && !isS4(m)
+a <- 1:5
+b <- setClass("B", "integer")(a)
+eq_ok <- is.character(all.equal(a, b))
+attributes(a) <- attributes(b)
+mismatch_ok <- if (!isS4(a)) !identical(a, b) else TRUE
+if (!isS4(a)) a <- asS4(a)
+foo_ok && eq_ok && mismatch_ok && identical(a, b) && isS4(a)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "identical S4 bit: {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
             )
         });

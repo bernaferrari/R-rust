@@ -340,13 +340,16 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
             return s;
         }
         let _s_guard = protect(s);
+        // GNU asS4: MAYBE_SHARED → shallow_duplicate so SET_S4_OBJECT
+        // does not flip the bit on the caller's binding (reg-S4.R asS4(m)
+        // must leave m non-S4 for identical(m, f@.Data)).
+        let mut s = crate::mainutils::duplicate::shallow_duplicate_if_shared(s);
+        let _dup = protect(s);
 
         if flag != FALSE {
             SET_S4_OBJECT(s);
         } else {
             if complete != FALSE {
-                // Check for S4 data slot
-                // Full implementation would call R_getS4DataSlot
                 if complete == 1 {
                     let klass = R_data_class(s);
                     let class_str = if !klass.is_null() && LENGTH(klass) > 0 {
@@ -365,7 +368,6 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
                     );
                     std::panic::panic_any(crate::sexp::context::RError { message: msg });
                 } else {
-                    // complete == 2: conditional, return unchanged
                     return s;
                 }
             }

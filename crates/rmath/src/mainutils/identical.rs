@@ -97,16 +97,17 @@ unsafe fn OBJECT(x: SEXP) -> c_int {
     }
 }
 
-/// Check if an SEXP has the S4 bit set in gp (local helper).
+/// Check if an SEXP has the S4 bit set in gp (GNU `S4_OBJECT_MASK` = 1<<4).
 #[inline]
 unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
         }
-        ((*x).sxpinfo.gp() & 0x04) as c_int
+        ((*x).sxpinfo.gp() >> 4) as c_int & 1
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // neWithNaN — not-equal with NaN awareness
