@@ -305,6 +305,60 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "duplicated",
+            "function(x, incomparables = FALSE, ...) UseMethod(\"duplicated\")",
+        );
+        eval_base_binding(
+            base_env,
+            "duplicated.default",
+            "function(x, incomparables = FALSE, fromLast = FALSE, nmax = NA, ...) \n\
+             .Internal(duplicated(x, incomparables, fromLast,\n\
+                 if (is.factor(x)) min(length(x), nlevels(x) + 1L) else nmax))",
+        );
+        eval_base_binding(
+            base_env,
+            "anyDuplicated",
+            "function(x, incomparables = FALSE, ...) UseMethod(\"anyDuplicated\")",
+        );
+        eval_base_binding(
+            base_env,
+            "anyDuplicated.default",
+            "function(x, incomparables = FALSE, fromLast = FALSE, ...)\n\
+             .Internal(anyDuplicated(x, incomparables, fromLast))",
+        );
+        eval_base_binding(
+            base_env,
+            "deparse1",
+            "function(expr, collapse = \" \", width.cutoff = 500L, ...)\n\
+             paste(deparse(expr, width.cutoff, ...), collapse = collapse)",
+        );
+        eval_base_binding(
+            base_env,
+            "detach",
+            "function(name, pos = 2L, unload = FALSE, character.only = FALSE, force = FALSE) {\n\
+             if (!missing(name)) {\n\
+                 if (!character.only) name <- substitute(name)\n\
+                 pos <- if (is.numeric(name)) name else {\n\
+                     if (!is.character(name)) name <- deparse1(name)\n\
+                     match(name, search())\n\
+                 }\n\
+                 if (is.na(pos)) stop(\"invalid 'name' argument\")\n\
+             }\n\
+             invisible(.Internal(detach(pos)))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "data",
+            "function(..., list = character(), package = NULL, lib.loc = NULL,\n\
+             verbose = getOption(\"verbose\"), envir = .GlobalEnv, overwrite = TRUE) {\n\
+             dots <- as.character(substitute(list(...)))[-1L]\n\
+             if (length(list)) dots <- c(dots, list)\n\
+             .Internal(data(dots, package, envir))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "factor",
             "function(x = character(), levels, labels = levels,\n\
              exclude = NA, ordered = is.ordered(x), nmax = NA) {\n\

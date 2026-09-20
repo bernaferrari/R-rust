@@ -5074,6 +5074,11 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "array" => Some(crate::mainutils::array::do_array),
         "paste" | "paste0" => Some(crate::mainutils::paste_impl::do_paste),
         "unique" => Some(crate::mainutils::essentials::do_unique),
+        "duplicated" => Some(crate::mainutils::essentials::do_duplicated),
+        "anyDuplicated" => Some(crate::mainutils::essentials::do_anyDuplicated),
+        "detach" => Some(crate::mainutils::envir::do_detach),
+        "data" => Some(crate::mainutils::essentials::do_data),
+
 
 
 
