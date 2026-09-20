@@ -3606,11 +3606,13 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(565).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(612).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through sample implicit generic: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through S4 mapply length: {e}\nstdout={}\nstderr={}",
+
+
 
 
 
@@ -3868,6 +3870,111 @@ is(sample,"standardGeneric") &&
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_qqplot_generic_and_nested_slot_subassign() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+qq_ok <- is.function(qqplot) && identical(class(qqplot), "function")
+setGeneric("qqplot", function(x, y, ...) standardGeneric("qqplot"))
+qq_gen <- is(qqplot, "standardGeneric") && identical(qqplot@signature, c("x","y"))
+setClass("foo", representation(x = "numeric"))
+f <- new("foo", x = pi*1:2)
+L <- list()
+L$A <- f
+L$A@x[] <- 7
+dup_ok <- !identical(f, L$A) && identical(L$A@x, c(7, 7)) &&
+  isTRUE(all.equal(f@x, pi*1:2))
+qq_ok && qq_gen && dup_ok
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "qqplot/nested slot: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_classunion_prototype_intorchar() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClassUnion("OptionalPOSIXct", c("POSIXct", "NULL"))
+setClassUnion("IntOrChar", c("integer", "character"))
+is.null(getClass("OptionalPOSIXct")@prototype) &&
+  is.integer(getClass("IntOrChar")@prototype) &&
+  "IntOrChar" %in% extends(getClass("character")) &&
+  "IntOrChar" %in% extends(getClass("integer")) &&
+  identical(isGeneric("&&"), FALSE)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "classUnion prototype: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+    #[test]
+    fn reg_s4_mapply_length_method() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("A", representation(aa="integer"))
+aa <- 11:16
+a <- new("A", aa=aa)
+setMethod(length, "A", function(x) length(x@aa))
+setMethod(`[[`,   "A", function(x, i, j, ...) x@aa[[i]])
+setMethod(`[`,    "A", function(x, i, j, ...) new("A", aa = x@aa[i]))
+len_ok <- length(a) == 6 && identical(a[[5]], aa[[5]]) && identical(a, rev(rev(a)))
+map_ok <- identical(mapply(`*`, aa, rep(1:3, 2)), mapply(`*`, a,  rep(1:3, 2)))
+len_ok && map_ok
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "S4 mapply length: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
+
 
 
 

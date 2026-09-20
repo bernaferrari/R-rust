@@ -235,6 +235,14 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              } else .Internal(sample(n, size, replace, prob))\n\
              }",
         );
+        // GNU rev.R: UseMethod so S4 `[` / length methods run (reg-S4.R mapply).
+        eval_base_binding(base_env, "rev", "function(x) UseMethod(\"rev\")");
+        eval_base_binding(
+            base_env,
+            "rev.default",
+            "function(x) if (length(x)) x[length(x):1L] else x",
+        );
+
 
         // GNU print.R: print is UseMethod, not a primitive. setMethod("print")
         // uses the closure as the generic skeleton (rport-2gpp.2.3).

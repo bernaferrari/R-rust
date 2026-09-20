@@ -29,12 +29,13 @@
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CAR, CDR, SET_VECTOR_ELT, SETCDR, SETTAG, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, OBJECT, SET_VECTOR_ELT, SETCDR, SETTAG, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
+use crate::sexp::constructors::{Rf_allocVector3, Rf_cons, Rf_lang3, Rf_ScalarInteger};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{ProtectGuard, protect};
+
 
 /// True for types whose payload really is `{length, truelength}` followed by
 /// element data, so `XLENGTH` is meaningful.
@@ -55,34 +56,83 @@ fn is_vector_type(t: SEXPTYPE) -> bool {
 /// Pairlist-family nodes are walked; vector types use `XLENGTH`; `NULL` is
 /// length 0; any other object (closure, environment, symbol, ...) is a
 /// scalar of length 1, matching R's `length()` contract for non-vectors.
-unsafe fn varying_length(v: SEXP) -> R_xlen_t {
+/// Classed objects then get GNU `do_mapply` DispatchOrEval on `length`.
+unsafe fn varying_length(v: SEXP, rho: SEXP) -> R_xlen_t {
     unsafe {
         if v.is_null() || v == R_NilValue() {
             return 0;
         }
         let t = SEXPTYPE(TYPEOF(v));
-        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
-            let mut len: R_xlen_t = 0;
+        let mut len: R_xlen_t = if t == SEXPTYPE::LISTSXP
+            || t == SEXPTYPE::LANGSXP
+            || t == SEXPTYPE::DOTSXP
+        {
+            let mut n: R_xlen_t = 0;
             let mut p = v;
             while !p.is_null() && p != R_NilValue() {
-                len += 1;
+                n += 1;
                 p = CDR(p);
             }
-            len
+            n
         } else if is_vector_type(t) {
             XLENGTH(v)
         } else {
             1
+        };
+        if OBJECT(v) != 0 && !rho.is_null() && rho != R_NilValue() {
+            let length_op = crate::sexp::envir::R_findVar(
+                crate::sexp::symbol::Rf_install(c"length".as_ptr()),
+                crate::sexp::globals::R_BaseEnv(),
+            );
+            if !length_op.is_null()
+                && length_op != crate::sexp::globals::R_UnboundValue()
+                && TYPEOF(length_op) == SEXPTYPE::BUILTINSXP
+            {
+                let args = Rf_cons(v, R_NilValue());
+                let _args = protect(args);
+                let mut ans = R_NilValue();
+                if crate::eval::dispatch::DispatchOrEval(
+                    R_NilValue(),
+                    length_op,
+                    c"length".as_ptr(),
+                    args,
+                    rho,
+                    &mut ans,
+                    0,
+                    1,
+                ) != 0
+                {
+                    if TYPEOF(ans) == SEXPTYPE::REALSXP {
+                        len = crate::mainutils::coerce::asReal(ans) as R_xlen_t;
+                    } else {
+                        len = crate::mainutils::coerce::asInteger(ans) as R_xlen_t;
+                    }
+                }
+            }
         }
+        len
     }
 }
+
 
 /// Element `idx` of a varying argument, recycled by the caller.
 ///
 /// Vector and pairlist inputs reuse the shared extractor (which boxes atomic
 /// elements); a non-vector object is the whole argument (scalar semantics).
-unsafe fn varying_element(v: SEXP, idx: R_xlen_t) -> SEXP {
+/// Classed objects go through `[[` so S4 methods fire (GNU `dots[[j]][[i]]`).
+unsafe fn varying_element(v: SEXP, idx: R_xlen_t, rho: SEXP) -> SEXP {
     unsafe {
+        if OBJECT(v) != 0 && !rho.is_null() && rho != R_NilValue() {
+            let i = Rf_ScalarInteger((idx + 1) as i32);
+            let _i = protect(i);
+            let call = Rf_lang3(
+                crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
+                v,
+                i,
+            );
+            let _call = protect(call);
+            return crate::eval::eval::Rf_eval(call, rho);
+        }
         let t = SEXPTYPE(TYPEOF(v));
         if t == SEXPTYPE::DOTSXP {
             let mut p = v;
@@ -108,6 +158,7 @@ unsafe fn varying_element(v: SEXP, idx: R_xlen_t) -> SEXP {
         }
     }
 }
+
 
 /// `mapply(FUN, ..., MoreArgs=NULL, SIMPLIFY=TRUE, USE.NAMES=TRUE)` — apply
 /// a function to multiple lists/vectors, recycling the shorter ones.
@@ -172,7 +223,8 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // --- Lengths: any zero-length varying short-circuits to list(). ---
-        let lengths: Vec<R_xlen_t> = varyings.iter().map(|&(v, _)| varying_length(v)).collect();
+        let lengths: Vec<R_xlen_t> = varyings.iter().map(|&(v, _)| varying_length(v, rho)).collect();
+
         let mut longest: R_xlen_t = 0;
         let mut zero = false;
         for &l in &lengths {
@@ -317,7 +369,8 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             for (k, &(v, vtag)) in varyings.iter().enumerate() {
                 let idx = i % lengths[k];
                 push_cell(
-                    varying_element(v, idx),
+                    varying_element(v, idx, rho),
+
                     vtag,
                     &mut call_args,
                     &mut tail,
