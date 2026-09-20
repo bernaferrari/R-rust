@@ -358,24 +358,9 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(x) }
 }
 
-/// isValidName stub.
+/// GNU `isValidName` (gram.y): PrintGenericVector / printList tag quoting.
 unsafe fn isValidName(s: *const c_char) -> bool {
-    unsafe {
-        if s.is_null() {
-            return false;
-        }
-        let bytes = CStr::from_ptr(s).to_bytes();
-        if bytes.is_empty() {
-            return false;
-        }
-        let first = bytes[0];
-        if !(first.is_ascii_alphabetic() || first == b'.') {
-            return false;
-        }
-        bytes
-            .iter()
-            .all(|&b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_')
-    }
+    unsafe { crate::mainutils::deparse::isValidName(s) }
 }
 
 /// NA_STRING accessor.
@@ -2559,7 +2544,12 @@ mod tests {
             assert!(isValidName(b"foo\0".as_ptr() as *const c_char));
             assert!(isValidName(b".foo\0".as_ptr() as *const c_char));
             assert!(isValidName(b"foo_bar\0".as_ptr() as *const c_char));
+            assert!(isValidName(b".\0".as_ptr() as *const c_char));
+            assert!(isValidName(b"...\0".as_ptr() as *const c_char));
             assert!(!isValidName(b"123\0".as_ptr() as *const c_char));
+            assert!(!isValidName(b".1\0".as_ptr() as *const c_char));
+            assert!(!isValidName(b"if\0".as_ptr() as *const c_char));
+            assert!(!isValidName(b"TRUE\0".as_ptr() as *const c_char));
             assert!(!isValidName(b"\0".as_ptr() as *const c_char));
             assert!(!isValidName(ptr::null()));
         }

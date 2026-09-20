@@ -111,39 +111,63 @@ pub fn isVectorAtomic(x: SEXP) -> bool {
     crate::sexp::object::raw_is_atomic_vector(x)
 }
 
-/// Check if a name is a valid R identifier.
-/// R identifiers must start with [a-zA-Z.] and contain only [a-zA-Z0-9._].
+/// GNU `gram.y` `isValidName`: identifier characters, then reserved keywords.
+/// `...` is a valid name; `.` + digit (`.1`, `.12`) is not.
 pub unsafe fn isValidName(s: *const c_char) -> bool {
     unsafe {
         if s.is_null() {
             return false;
         }
-        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-        if bytes.is_empty() {
-            return false;
-        }
-        let mut i = 0;
-        // First char: letter, dot, or underscore-like patterns
-        let first = bytes[0];
-        if !((first >= b'a' && first <= b'z') || (first >= b'A' && first <= b'Z') || first == b'.')
-        {
-            return false;
-        }
-        i = 1;
-        while i < bytes.len() {
-            let c = bytes[i];
-            if !((c >= b'a' && c <= b'z')
-                || (c >= b'A' && c <= b'Z')
-                || (c >= b'0' && c <= b'9')
-                || c == b'.'
-                || c == b'_')
-            {
-                return false;
-            }
-            i += 1;
-        }
-        true
+        is_valid_r_name_bytes(std::ffi::CStr::from_ptr(s).to_bytes())
     }
+}
+
+pub(crate) fn is_valid_r_name_bytes(bytes: &[u8]) -> bool {
+    if bytes == b"..." {
+        return true;
+    }
+    if bytes.is_empty() {
+        return false;
+    }
+    let first = bytes[0];
+    if !(first.is_ascii_alphabetic() || first == b'.') {
+        return false;
+    }
+    if first == b'.' && bytes.get(1).is_some_and(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    if !bytes
+        .iter()
+        .all(|&c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_')
+    {
+        return false;
+    }
+    !is_gnu_reserved_name(bytes)
+}
+
+fn is_gnu_reserved_name(bytes: &[u8]) -> bool {
+    matches!(
+        bytes,
+        b"NULL"
+            | b"NA"
+            | b"TRUE"
+            | b"FALSE"
+            | b"Inf"
+            | b"NaN"
+            | b"NA_integer_"
+            | b"NA_real_"
+            | b"NA_character_"
+            | b"NA_complex_"
+            | b"function"
+            | b"while"
+            | b"repeat"
+            | b"for"
+            | b"if"
+            | b"in"
+            | b"else"
+            | b"next"
+            | b"break"
+    )
 }
 
 /// Check if a symbol is a user-defined binary operator (%...%).

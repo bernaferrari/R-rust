@@ -2266,6 +2266,9 @@ fn is_reserved_r_name(name: &str) -> bool {
 
 fn is_syntactic_r_name(name: &str) -> bool {
     let bytes = name.as_bytes();
+    if bytes == b"..." {
+        return true;
+    }
     if bytes.is_empty() || is_reserved_r_name(name) {
         return false;
     }

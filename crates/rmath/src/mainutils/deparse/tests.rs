@@ -219,8 +219,19 @@ fn test_is_valid_name() {
         assert!(isValidName(b"foo_bar\0".as_ptr() as *const c_char));
         assert!(isValidName(b"foo.bar\0".as_ptr() as *const c_char));
         assert!(isValidName(b"foo1\0".as_ptr() as *const c_char));
+        assert!(isValidName(b".\0".as_ptr() as *const c_char));
+        assert!(isValidName(b"...\0".as_ptr() as *const c_char));
+        assert!(isValidName(b"..1\0".as_ptr() as *const c_char));
         assert!(!isValidName(b"1foo\0".as_ptr() as *const c_char));
         assert!(!isValidName(b"foo bar\0".as_ptr() as *const c_char));
+        assert!(!isValidName(b".1\0".as_ptr() as *const c_char));
+        assert!(!isValidName(b".12\0".as_ptr() as *const c_char));
+        assert!(!isValidName(b".1a\0".as_ptr() as *const c_char));
+        assert!(!isValidName(b"if\0".as_ptr() as *const c_char));
+        assert!(!isValidName(b"TRUE\0".as_ptr() as *const c_char));
+        assert!(!isValidName(b"NULL\0".as_ptr() as *const c_char));
+        assert!(!isValidName(b"Inf\0".as_ptr() as *const c_char));
+        assert!(!isValidName(b"NA_integer_\0".as_ptr() as *const c_char));
         assert!(!isValidName(b"\0".as_ptr() as *const c_char));
         assert!(!isValidName(ptr::null()));
     }
