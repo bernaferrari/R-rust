@@ -159,7 +159,18 @@ pub unsafe fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             || sexp_has_class(x, "POSIXt")
         {
             return do_xtfrm_Date(call, op, args, rho);
-
+        }
+        // GNU sort.c do_xtfrm: DispatchOrEval miss → xtfrm.default.
+        let fn_ = crate::sexp::envir::findFun(Rf_install(c"xtfrm.default".as_ptr()), rho);
+        if !fn_.is_null()
+            && fn_ != crate::sexp::globals::R_UnboundValue()
+            && (TYPEOF(fn_) == SEXPTYPE::CLOSXP
+                || TYPEOF(fn_) == SEXPTYPE::BUILTINSXP
+                || TYPEOF(fn_) == SEXPTYPE::SPECIALSXP)
+        {
+            let expr = Rf_lang2(fn_, x);
+            let _expr = protect(expr);
+            return crate::eval::eval::Rf_eval(expr, rho);
         }
         match TYPEOF(x) {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::LGLSXP => x,

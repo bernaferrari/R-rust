@@ -2670,6 +2670,37 @@ identical(capture.output(show(m.)), gnu) &&
         );
     }
 
+    #[test]
+    fn num_with_id_xtfrm_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+setClass("numWithId", representation(id = "character"), contains = "numeric")
+x <- new("numWithId", 1:3, id = "An Example")
+first <- trimws(capture.output(xtfrm(x)))
+setMethod("xtfrm", "numWithId", function(x) x@.Data)
+second <- trimws(capture.output(xtfrm(x)))
+identical(first, c("[1] 1 2 3", 'attr(,"id")', '[1] "An Example"')) &&
+  identical(second, "[1] 1 2 3") &&
+  identical(xtfrm(x), 1:3)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "numWithId xtfrm: {e}\nstdout={:?}\nstderr={:?}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={:?}\nstderr={:?}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
     #[test]
     fn str_s4_formal_class_matches_gnu() {

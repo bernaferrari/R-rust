@@ -765,6 +765,9 @@ pub unsafe fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             crate::sexp::attrib_core::R_ClassSymbol(),
             R_NilValue(),
         );
+        // GNU setAttrib(class, NULL) drops the S4 bit; otherwise auto-print
+        // of unclass(S4) still goes through show().
+        crate::sexp::accessors::UNSET_S4_OBJECT(result);
         result
     }
 }

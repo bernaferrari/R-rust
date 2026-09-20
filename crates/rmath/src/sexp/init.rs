@@ -295,6 +295,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "AIC.logLik",
             "function(object, ..., k = 2) -2 * as.numeric(object) + k * attr(object, \"df\")",
         );
+        // GNU sort.R: xtfrm is a primitive internal generic; the default
+        // method is this closure (unclass numeric, else rank).
+        eval_base_binding(
+            base_env,
+            "xtfrm.default",
+            "function(x) {\n\
+             y <- if (is.numeric(x)) unclass(x) else as.vector(rank(x, ties.method = \"min\", na.last = \"keep\"))\n\
+             if (!is.numeric(y) || ((length(y) != length(x)) && !inherits(x, \"data.frame\")))\n\
+                 stop(\"cannot xtfrm 'x'\")\n\
+             y\n\
+             }",
+        );
+
         // GNU sort.R: order is a closure over .Internal(order), not a
         // primitive. methods::setGeneric needs formals (rport-txofy).
         eval_base_binding(

@@ -809,17 +809,23 @@ unsafe fn strip_s4_data_part(value: SEXP) -> SEXP {
         if value.is_null() || value == R_NilValue() {
             return value;
         }
-        // Deep-copy so setAttrib on the data part cannot mutate the
-        // original generic's shared attribute pairlist.
         let data = crate::mainutils::duplicate::Rf_duplicate(value);
         crate::sexp::accessors::UNSET_S4_OBJECT(data);
-        crate::sexp::attrib_core::setAttrib(
-            data,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            R_NilValue(),
-        );
-        crate::sexp::attrib_core::setAttrib(data, Rf_install(c"className".as_ptr()), R_NilValue());
-        crate::sexp::attrib_core::setAttrib(data, Rf_install(c"package".as_ptr()), R_NilValue());
+        let dim = crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimSymbol());
+        let keep_dim = TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2;
+        if keep_dim {
+            // GNU getDataPart for matrix/array: drop slots/class, keep dim.
+            crate::sexp::attrib_core::setAttrib(
+                data,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(data, Rf_install(c"className".as_ptr()), R_NilValue());
+            crate::sexp::attrib_core::setAttrib(data, Rf_install(c"package".as_ptr()), R_NilValue());
+        } else {
+            // GNU getDataPart for numeric/integer/...: attributes(object) <- NULL
+            crate::sexp::accessors::SET_ATTRIB(data, R_NilValue());
+        }
         data
     }
 }
