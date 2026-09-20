@@ -879,9 +879,10 @@ impl RSession {
                                 &err.message,
                             )
                             .unwrap_or_else(|| format!("Error: {}\n", err.message));
-                            super::output::capture_stdout(&text);
+                            // GNU prints the error on stderr and continues.
+                            super::output::capture_stderr(&text);
                             if !text.ends_with('\n') {
-                                super::output::capture_stdout("\n");
+                                super::output::capture_stderr("\n");
                             }
                             if crate::mainutils::errors::collect_warnings() > 0 {
                                 unsafe {

@@ -391,6 +391,18 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  return(NA_real_)\n\
              }\n\
              if (isTRUE(na.rm)) x <- x[!is.na(x)]\n\
+             if (!is.numeric(trim) || length(trim) != 1L)\n\
+                 stop(\"'trim' must be numeric of length one\")\n\
+             n <- length(x)\n\
+             if (trim > 0 && n) {\n\
+                 if (is.complex(x))\n\
+                     stop(\"trimmed means are not defined for complex data\")\n\
+                 if (anyNA(x)) return(NA_real_)\n\
+                 if (trim >= 0.5) return(median(x, na.rm = FALSE))\n\
+                 lo <- floor(n * trim) + 1\n\
+                 hi <- n + 1 - lo\n\
+                 x <- sort(x)[lo:hi]\n\
+             }\n\
              .Internal(mean(x))\n\
              }",
         );

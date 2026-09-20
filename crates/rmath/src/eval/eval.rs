@@ -2050,11 +2050,36 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
         let (result, _, _) = session.eval_script_with_output_capture(
             r#"
             is.nan(mean(numeric(0))) &&
-              is.nan(mean(rep(NA_real_, 2), trim = 0.1, na.rm = TRUE))
+              is.nan(mean(rep(NA_real_, 2), trim = 0.1, na.rm = TRUE)) &&
+              identical(mean(c(1:10, 100), trim = 0.1), 6)
             "#,
         );
         let result = result.expect("mean(numeric(0)) must be NaN");
         assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn catch_script_errors_prints_on_stderr_and_continues() {
+        let mut session = RSession::new();
+        let (result, captured, _) = session.eval_script_with_output_capture(
+            r#"
+            options(catch.script.errors = TRUE)
+            stop("test of 'options(catch.script.errors = TRUE)'")
+            TRUE
+            "#,
+        );
+        let result = result.expect("catch.script.errors must continue after stop()");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(
+            !captured.stdout.contains("Error"),
+            "GNU writes the caught error on stderr; stdout={:?}",
+            captured.stdout
+        );
+        assert!(
+            captured.stderr.contains("Error: test of 'options(catch.script.errors = TRUE)'"),
+            "stderr={:?}",
+            captured.stderr
+        );
     }
 
 
