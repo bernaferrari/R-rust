@@ -2519,10 +2519,15 @@ mod tests {
         let sequence = session.eval("mean(1:4)");
         let na = session.eval("mean(c(1, NA))");
         let na_removed = session.eval("mean(c(1, NA), na.rm = TRUE)");
+        let nan_then_na = session.eval("mean(c(NaN, NA))");
+        let na_then_nan = session.eval("mean(c(NA, NaN))");
         assert_eq!(numeric.output, "[1] 2");
         assert_eq!(sequence.output, "[1] 2.5");
         assert_eq!(na.output, "[1] NA");
         assert_eq!(na_removed.output, "[1] 1");
+        // GNU .Internal(mean) keeps the first ISNAN payload; NA does not trump NaN.
+        assert_eq!(nan_then_na.output, "[1] NaN");
+        assert_eq!(na_then_nan.output, "[1] NA");
     }
 
     #[test]

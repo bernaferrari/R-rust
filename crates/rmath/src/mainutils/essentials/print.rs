@@ -1202,6 +1202,15 @@ fn str_emit_line(line: &str) {
     }
 }
 
+fn emit_print_text(text: &str) {
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(text);
+    } else {
+        print!("{text}");
+    }
+}
+
+
 
 unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
     unsafe {
@@ -2340,25 +2349,24 @@ pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            println!("NULL");
+            emit_print_text("NULL\n");
             return R_NilValue();
         }
         let t = TYPEOF(x);
         if t != SEXPTYPE::CLOSXP && t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
             return do_print(_call, _op, args, _rho);
         }
-        // Print function signature
         let formals = if t == SEXPTYPE::CLOSXP {
             crate::sexp::accessors::FORMALS(x)
         } else {
             R_NilValue()
         };
-        print!("function(");
+        let mut rendered = String::from("function(");
         let mut first = true;
         let mut cur = formals;
         while !cur.is_null() && cur != R_NilValue() {
             if !first {
-                print!(", ");
+                rendered.push_str(", ");
             }
             first = false;
             let tag = crate::sexp::accessors::TAG(cur);
@@ -2368,22 +2376,22 @@ pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
                     let s = crate::sexp::accessors::CHAR(pname);
                     if !s.is_null() {
                         let name = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("?");
-                        print!("{}", name);
+                        rendered.push_str(name);
                     }
                 }
             }
             cur = CDR(cur);
         }
-        println!(")");
-        // Print body (simplified: just show it's a body)
+        rendered.push_str(")\n");
         if t == SEXPTYPE::CLOSXP {
             let body = crate::sexp::accessors::BODY(x);
             if !body.is_null() {
-                println!("{{ ... }}");
+                rendered.push_str("{ ... }\n");
             }
         } else {
-            println!("<primitive>");
+            rendered.push_str("<primitive>\n");
         }
+        emit_print_text(&rendered);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }

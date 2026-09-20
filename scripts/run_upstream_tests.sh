@@ -89,14 +89,15 @@ if ! command -v timeout >/dev/null 2>&1; then
     exit 2
 fi
 
-# Build the rport file-runner helper (standalone crate; shares nothing with
-# the root workspace so this never collides with sibling builds).
+# Build the rport file-runner helper (standalone crate). Rebuild when the
+# helper or rmath sources are newer — otherwise oracle runs a stale rmath.
 HELPER_BIN="$HELPER_CRATE/target/release/rport-upstream-run"
-if [[ ! -x "$HELPER_BIN" ]] || [[ -n "$(find "$HELPER_CRATE/src" "$HELPER_CRATE/Cargo.toml" -newer "$HELPER_BIN" 2>/dev/null)" ]]; then
+if [[ ! -x "$HELPER_BIN" ]] || [[ -n "$(find "$HELPER_CRATE/src" "$HELPER_CRATE/Cargo.toml" "$ROOT_DIR/crates/rmath/src" "$ROOT_DIR/crates/rmath/Cargo.toml" -newer "$HELPER_BIN" 2>/dev/null)" ]]; then
     echo "INFO: building rport upstream helper (release)..." >&2
     (cd "$HELPER_CRATE" && cargo build --release --offline >/dev/null) ||
         (cd "$HELPER_CRATE" && cargo build --release >/dev/null)
 fi
+
 
 mkdir -p "$REPORT_DIR"
 SUMMARY_TSV="$REPORT_DIR/summary.tsv"

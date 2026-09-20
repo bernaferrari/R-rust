@@ -2400,6 +2400,26 @@ grepl(".Data", out, fixed = TRUE) && grepl("prec = 1L", out, fixed = TRUE)
     }
 
     #[test]
+    fn capture_output_print_function_does_not_leak() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+out <- capture.output(print(function(fun, envir, value) NULL))
+identical(out[1], "function(fun, envir, value)")
+"#,
+        );
+        let result = result.expect("capture.output(print.function) must capture the signature");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(
+            !output.stdout.contains("function(fun, envir, value)"),
+            "print.function leaked past capture.output:\n{}",
+            output.stdout
+        );
+    }
+
+
+
+    #[test]
     fn with_autoprint_capture_output_splits_gnu_lines() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
