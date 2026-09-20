@@ -1863,7 +1863,14 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             emit_print_data_frame_line(&format!("{label_pad} {header}"));
         }
 
-        let print_rows = nrow.min(100) as usize; // increased for better visibility/polish (was 20 hard cap per review feedback on df print); R uses max.print option
+        // GNU print.data.frame: n0 <- max %/% length(x); omit if n0 < nrow.
+        let max_print = crate::mainutils::options::GetOptionMaxPrint().max(1) as R_xlen_t;
+        let n0 = if ncol > 0 {
+            (max_print / ncol) as usize
+        } else {
+            nrow as usize
+        };
+        let print_rows = (nrow as usize).min(n0);
         for row in 0..print_rows {
             let mut cells = Vec::with_capacity(headers.len() + usize::from(show_row_names));
             // Stock left-justifies row labels (auto 1..n, explicit numeric,
@@ -1883,10 +1890,10 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             }
             emit_print_data_frame_line(&cells.join(" "));
         }
-        if nrow > 20 {
+        if (nrow as usize) > n0 {
             emit_print_data_frame_line(&format!(
-                "  [ reached 'max' / getOption(\"max.print\") -- omitted {} rows ]",
-                nrow - 20
+                " [ reached 'max' / getOption(\"max.print\") -- omitted {} rows ]",
+                (nrow as usize) - n0
             ));
         }
 
