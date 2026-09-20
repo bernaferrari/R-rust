@@ -255,6 +255,30 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function (..., collapse = NULL, recycle0 = FALSE)\n\
              .Internal(paste0(list(...), collapse, recycle0))",
         );
+        // GNU library.R / require.R: closures with substitute() NSE, not primitives.
+        eval_base_binding(
+            base_env,
+            "library",
+            "function(package, help, pos = 2, lib.loc = NULL, character.only = FALSE,\n\
+             logical.return = FALSE, warn.conflicts = TRUE, quietly = FALSE,\n\
+             verbose = getOption(\"verbose\"), mask.ok, exclude, include.only,\n\
+             attach.required = missing(include.only)) {\n\
+             if (!missing(help)) stop(\"library help is not supported\")\n\
+             if (!character.only) package <- as.character(substitute(package))\n\
+             if (logical.return) return(invisible(.rport_require(package)))\n\
+             .rport_library(package)\n\
+             invisible(NULL)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "require",
+            "function(package, lib.loc = NULL, quietly = FALSE, warn.conflicts = TRUE,\n\
+             character.only = FALSE, ...) {\n\
+             if (!character.only) package <- as.character(substitute(package))\n\
+             invisible(.rport_require(package))\n\
+             }",
+        );
         eval_base_binding(
             base_env,
             "array",

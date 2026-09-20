@@ -155,16 +155,7 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::seq::do_rep,
         restore_visibility_always: false,
     },
-    UnevaluatedBuiltin {
-        name: "library",
-        handler: crate::mainutils::essentials::do_library_frontend,
-        restore_visibility_always: false,
-    },
-    UnevaluatedBuiltin {
-        name: "require",
-        handler: crate::mainutils::essentials::do_require_frontend,
-        restore_visibility_always: false,
-    },
+
     UnevaluatedBuiltin {
         name: "pretty.default",
         handler: crate::mainutils::pretty::do_pretty_default,
@@ -6191,7 +6182,9 @@ mod tests {
         }
         assert!(evaluated_builtin_handler("if").is_none());
         assert!(evaluated_builtin_handler("require").is_none());
-        assert!(unevaluated_builtin_handler("require").is_some());
+        assert!(evaluated_builtin_handler("library").is_none());
+        assert!(unevaluated_builtin_handler("require").is_none());
+        assert!(unevaluated_builtin_handler("library").is_none());
     }
 
     #[test]
