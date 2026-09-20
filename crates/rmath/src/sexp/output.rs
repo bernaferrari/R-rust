@@ -2240,9 +2240,58 @@ fn format_data_frame(x: Sexp<'_>) -> Option<String> {
     Some(lines.join("\n"))
 }
 
+fn is_reserved_r_name(name: &str) -> bool {
+    matches!(
+        name,
+        "if" | "else"
+            | "repeat"
+            | "while"
+            | "function"
+            | "for"
+            | "in"
+            | "next"
+            | "break"
+            | "TRUE"
+            | "FALSE"
+            | "NULL"
+            | "Inf"
+            | "NaN"
+            | "NA"
+            | "NA_integer_"
+            | "NA_real_"
+            | "NA_complex_"
+            | "NA_character_"
+    )
+}
+
+fn is_syntactic_r_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || is_reserved_r_name(name) {
+        return false;
+    }
+    let first = bytes[0];
+    if !(first.is_ascii_alphabetic() || first == b'.') {
+        return false;
+    }
+    if first == b'.' && bytes.get(1).is_some_and(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    bytes
+        .iter()
+        .all(|&c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_')
+}
+
+fn list_name_tag(name: &str) -> String {
+    if is_syntactic_r_name(name) {
+        format!("${name}")
+    } else {
+        format!("$`{name}`")
+    }
+}
+
 fn list_element_header(index: usize, names: &[String]) -> String {
     match names.get(index) {
-        Some(name) if !name.is_empty() => format!("${name}"),
+        Some(name) if !name.is_empty() => list_name_tag(name),
         _ => format!("[[{}]]", index + 1),
     }
 }
@@ -2278,7 +2327,7 @@ fn format_pairlist_with_path(x: Sexp<'_>, path: &str) -> String {
         let mut index = 0usize;
         while !cell.is_null() && cell != R_NilValue() && TYPEOF(cell) == SEXPTYPE::LISTSXP {
             let tag = match printable_attribute_name(cell) {
-                Some(name) if !name.is_empty() => format!("${name}"),
+                Some(name) if !name.is_empty() => list_name_tag(&name),
                 _ => format!("[[{}]]", index + 1),
             };
             let header = format!("{path}{tag}");
