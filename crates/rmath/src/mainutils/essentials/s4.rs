@@ -1272,7 +1272,8 @@ pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
         } else {
             value
         };
-        crate::sexp::attrib_core::setAttrib(obj, name_sym, stored);
+        crate::sexp::attrib_core::installAttrib(obj, name_sym, stored);
+
         obj
     }
 }

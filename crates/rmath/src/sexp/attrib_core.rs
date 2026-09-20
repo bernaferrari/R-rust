@@ -107,6 +107,42 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
 // setAttrib — set an attribute value
 // ---------------------------------------------------------------------------
 
+/// GNU `installAttrib` — store a named attribute without dim/names/class
+/// special cases. `R_do_slot_assign` uses this so a slot named `"dim"` can
+/// hold a character vector (reg-S4.R reserved slot names).
+pub unsafe fn installAttrib(vec: SEXP, name: SEXP, val: SEXP) {
+    unsafe {
+        if vec.is_null() || name.is_null() {
+            return;
+        }
+        let attrib = ATTRIB(vec);
+        let mut previous = R_NilValue();
+        let mut current = attrib;
+        while !current.is_null() && current != R_NilValue() {
+            if TAG(current) == name {
+                SETCAR(current, val);
+                return;
+            }
+            previous = current;
+            current = CDR(current);
+        }
+        let _vec_guard = super::protect::protect(vec);
+        let _name_guard = super::protect::protect(name);
+        let _val_guard = super::protect::protect(val);
+        let new_attr = Rf_cons(val, R_NilValue());
+        if new_attr.is_null() {
+            return;
+        }
+        super::accessors::SETTAG(new_attr, name);
+        if attrib.is_null() || attrib == R_NilValue() {
+            SET_ATTRIB(vec, new_attr);
+        } else {
+            SETCDR(previous, new_attr);
+        }
+    }
+}
+
+
 /// Set an attribute on an object.
 ///
 /// This is the equivalent of R's `setAttrib()` from attrib.c.

@@ -3606,11 +3606,12 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(512).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(565).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through xtfrm numWithId: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through sample implicit generic: {e}\nstdout={}\nstderr={}",
+
 
 
 
@@ -3794,6 +3795,85 @@ grepl("drop in C1-[ : FALSE", o1, fixed=TRUE) &&
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_reserved_slot_names_except_class() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+problNames <- c("names", "dimnames", "row.names",
+                "class", "comment", "dim", "tsp")
+myTry <- function(expr, ...) tryCatch(expr, error = function(e) e)
+tstSlotname <- function(nm) {
+    r <- myTry(setClass("foo", representation =
+                        structure(list("character"), names = nm)))
+    if(is(r, "error")) return(r$message)
+    ch <- LETTERS[1:5]
+    x <- myTry(do.call(new, structure(list("foo", ch), names=c("", nm))))
+    if(is(x, "error")) return(x$message)
+    y <- myTry(new("foo"));		 if(is(y, "error")) return(y$message)
+    r <- myTry(capture.output(show(x))); if(is(r, "error")) return(r$message)
+    r <- myTry(capture.output(show(y))); if(is(r, "error")) return(r$message)
+    slot(y, nm) <- slot(x, nm)
+    stopifnot(validObject(x), identical(x,y), identical(slot(x, nm), ch))
+    return(TRUE)
+}
+R <- sapply(problNames, tstSlotname, simplify = FALSE)
+is.character(R[["class"]]) && all(vapply(R[names(R) != "class"], isTRUE, NA))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "reserved slot names: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_sample_implicit_generic_from_base() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("C1", representation(a = "numeric"))
+setClass("C2", contains = "C1")
+setMethod("sample", "C2",
+          function(x, size, replace=FALSE, prob=NULL) {"sample.C2"})
+is(sample,"standardGeneric") &&
+  identical(sample@signature, c("x", "size")) &&
+  identical(packageSlot(sample), "base") &&
+  identical({set.seed(3); sample(3)}, 1:3)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "sample implicit generic: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
 
 
 

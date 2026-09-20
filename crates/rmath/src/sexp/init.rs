@@ -208,6 +208,34 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              } else .Internal(unlist(x, recursive, use.names))\n\
              }",
         );
+        // GNU sample.R: closures over .Internal(sample)/sample2, not primitives.
+        // setMethod("sample", ...) needs a function skeleton (rport-2gpp.2).
+        eval_base_binding(
+            base_env,
+            "sample",
+            "function(x, size, replace = FALSE, prob = NULL) {\n\
+             if (length(x) == 1L && is.numeric(x) && is.finite(x) && x >= 1) {\n\
+                 if (missing(size)) size <- x\n\
+                 sample.int(x, size, replace, prob)\n\
+             } else {\n\
+                 if (missing(size)) size <- length(x)\n\
+                 x[sample.int(length(x), size, replace, prob)]\n\
+             }\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "sample.int",
+            "function(n, size = n, replace = FALSE, prob = NULL,\n\
+                      useHash = (n > 1e7 && !replace && is.null(prob) && size <= n/2)) {\n\
+             stopifnot(length(n) == 1L)\n\
+             if (useHash) {\n\
+                 stopifnot(is.null(prob), !replace)\n\
+                 .Internal(sample2(n, size))\n\
+             } else .Internal(sample(n, size, replace, prob))\n\
+             }",
+        );
+
         // GNU print.R: print is UseMethod, not a primitive. setMethod("print")
         // uses the closure as the generic skeleton (rport-2gpp.2.3).
         eval_base_binding(base_env, "print", "function(x, ...) UseMethod(\"print\")");
