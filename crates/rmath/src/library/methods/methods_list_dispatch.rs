@@ -749,8 +749,7 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
             if arg_sym.is_null() || TYPEOF(arg_sym) != SEXPTYPE::SYMSXP {
                 return R_NilValue();
             }
-            let arg = crate::sexp::envir::R_findVarInFrame(ev, arg_sym);
-            if arg == R_UnboundValue() || arg == R_MissingArg() {
+            if is_missing_arg(arg_sym, ev) {
                 classes.push("missing".to_string());
             } else {
                 let forced = eval_dispatch_arg(fname, ev, arg_sym);
@@ -762,6 +761,7 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
                 };
                 classes.push(class);
             }
+
         }
         // GNU: findVarInFrame(.AllMTable, label); on miss, do_inherited_table
         // (.InheritForDispatch) so Logic-group methods apply to `&` / `|`.
@@ -879,9 +879,12 @@ pub unsafe fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP
     }
 }
 
-/// R_quick_dispatch - quick table-based dispatch for primitives.
 pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SEXP {
     unsafe {
+        let mut generic_env = generic_env;
+        if TYPEOF(generic_env) == SEXPTYPE::CLOSXP {
+            generic_env = CLOENV(generic_env);
+        }
         if generic_env.is_null()
             || generic_env == R_NilValue()
             || TYPEOF(generic_env) != SEXPTYPE::ENVSXP
@@ -905,7 +908,10 @@ pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SE
         let mut classes = Vec::with_capacity(nsig as usize);
         let mut current = args;
         while !current.is_null() && current != R_NilValue() && classes.len() < nsig as usize {
-            let object = CAR(current);
+            let mut object = CAR(current);
+            if TYPEOF(object) == SEXPTYPE::PROMSXP {
+                object = crate::eval::eval::Rf_eval(object, crate::sexp::globals::R_BaseEnv());
+            }
             let class = if object == R_MissingArg() {
                 "missing".to_string()
             } else {
@@ -1033,6 +1039,19 @@ pub unsafe fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package
     }
 }
 
+/// GNU `is_missing_arg`: MISSING bit on the frame cell, not the bound value.
+/// Default promises (`function(drop=TRUE)`) keep MISSING=1 until forced.
+unsafe fn is_missing_arg(symbol: SEXP, ev: SEXP) -> bool {
+    unsafe {
+        let loc = crate::eval::missing::R_findVarLocInFrame(ev, symbol);
+        if !loc.cell.is_null() {
+            return MISSING(loc.cell) != 0 || CAR(loc.cell) == R_MissingArg();
+        }
+        let val = crate::sexp::envir::R_findVarInFrame(ev, symbol);
+        val == R_UnboundValue() || val == R_MissingArg()
+    }
+}
+
 /// R_missingArg - check if an argument is missing in a method call.
 /// Ported from R's R_missingArg() in methods_list_dispatch.c.
 pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
@@ -1048,17 +1067,11 @@ pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
         }
         let res = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
         let _res_guard = protect(res);
-        let ip = LOGICAL(res);
-
-        let val = crate::sexp::envir::R_findVarInFrame(ev, symbol);
-        if val == crate::sexp::globals::R_MissingArg() {
-            *ip.add(0) = 1; // TRUE
-        } else {
-            *ip.add(0) = 0; // FALSE
-        }
+        *LOGICAL(res).add(0) = if is_missing_arg(symbol, ev) { TRUE } else { FALSE };
         res
     }
 }
+
 
 /// R_selectMethod - select a method for the given call.
 pub unsafe fn R_selectMethod(fname: SEXP, _ev: SEXP, mlist: SEXP, _evalArgs: SEXP) -> SEXP {
@@ -1129,8 +1142,7 @@ unsafe fn select_method_from_list(
         let arg_symbol = crate::sexp::symbol::Rf_install(
             CString::new(arg_name.as_str()).unwrap_or_default().as_ptr(),
         );
-        let arg_value = crate::sexp::envir::R_findVarInFrame(ev, arg_symbol);
-        let class = if arg_value == R_UnboundValue() || arg_value == R_MissingArg() {
+        let class = if is_missing_arg(arg_symbol, ev) {
             "missing".to_string()
         } else if eval_args {
             let forced = eval_dispatch_arg(fname, ev, arg_symbol);
@@ -1139,11 +1151,13 @@ unsafe fn select_method_from_list(
             };
             class
         } else {
+            let arg_value = crate::sexp::envir::R_findVarInFrame(ev, arg_symbol);
             let Some(class) = sexp_to_string(arg_value) else {
                 return R_NilValue();
             };
             class
         };
+
         let methods = all_methods_slot(mlist);
         if methods.is_null() || methods == R_NilValue() {
             return R_NilValue();

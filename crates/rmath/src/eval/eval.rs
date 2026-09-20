@@ -3616,6 +3616,46 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
         });
     }
 
+    #[test]
+    fn reg_s4_list_class_subset_keeps_class() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("L", contains = "list")
+setMethod("[", signature(x="L", i="ANY", j="missing",drop="missing"),
+          function(x,i,j,drop) new(class(x), x@.Data[i]))
+x <- new("L", 1:3)
+x2 <- x[-2]
+isS4(x2) && identical(as.character(class(x2))[1], "L") &&
+  identical(unlist(x2), (1:3)[-2]) &&
+  identical(unlist(x[2]), 2L)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "S4 list [ method: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
+
 
     #[test]
     fn cbind2_default_negative_deparse_level_does_not_redispatch() {
