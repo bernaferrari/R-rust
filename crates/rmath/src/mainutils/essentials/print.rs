@@ -769,32 +769,41 @@ unsafe fn str_s4_formal_class(x: SEXP) {
             ".GlobalEnv".to_string()
         };
         let names: Vec<String> = {
-
             let class_name = if cl.is_empty() { None } else { Some(cl.as_str()) };
+            let from_gnu = class_name.and_then(|name| {
+                crate::mainutils::objects::gnu_s4_slot_names(name)
+                    .filter(|slots| !slots.is_empty())
+            });
             let from_def = class_name.and_then(|name| {
                 crate::mainutils::objects::s4_all_slots(name)
                     .filter(|slots| !slots.is_empty())
             });
-            from_def.unwrap_or_else(|| {
-                let mut names = Vec::new();
-                let mut a = ATTRIB(x);
-                while !a.is_null() && a != R_NilValue() {
-                    let tag = TAG(a);
-                    if !tag.is_null()
-                        && tag != R_NilValue()
-                        && TYPEOF(tag) == SEXPTYPE::SYMSXP
-                    {
-                        let nm = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                            .to_string_lossy()
-                            .into_owned();
-                        if nm != "class" {
-                            names.push(nm);
-                        }
-                    }
-                    a = CDR(a);
-                }
-                names
-            })
+            let mut names = from_gnu.or(from_def).unwrap_or_default();
+            // GNU class "signature": `names` is the names attribute of the
+            // character data part, not a tagged ATTRIB slot.
+            let names_attr = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names_attr.is_null()
+                && names_attr != R_NilValue()
+                && !names.iter().any(|existing| existing == "names")
+            {
+                let idx = names
+                    .iter()
+                    .position(|n| n == ".Data")
+                    .map(|i| i + 1)
+                    .unwrap_or(0);
+                names.insert(idx, "names".to_string());
+            }
+            let pkg_slot = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"package".as_ptr()));
+            if !pkg_slot.is_null()
+                && pkg_slot != R_NilValue()
+                && !names.iter().any(|existing| existing == "package")
+            {
+                names.push("package".to_string());
+            }
+            names
         };
         let n_slots = names.len() as i64;
         let slot_word = if n_slots == 1 { "slot" } else { "slots" };
@@ -1130,7 +1139,7 @@ unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
                 if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
                     encoded.push("NA".to_string());
                 } else {
-                    encoded.push(format!("\"{}\"", elt_to_string(x, i as R_xlen_t)));
+                    encoded.push(str_encode_quoted(&elt_to_string(x, i as R_xlen_t)));
                 }
             } else {
                 encoded.push(elt_to_string(x, i as R_xlen_t));
@@ -1269,6 +1278,24 @@ unsafe fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
 fn round_2_5() -> usize {
     (2.5 * STR_VEC_LEN).round() as usize
 }
+
+/// GNU encodeString: wrap in `"` and escape `\`, `"`.
+fn str_encode_quoted(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 
 fn str_emit_line(line: &str) {
     if crate::sexp::output::is_capturing() {
@@ -1502,8 +1529,10 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 str_emit_nonstandard_attrs(x, &["names", "class", "row.names"]);
             } else {
+                // GNU str.default list.len = 99
+                let show = n.min(99);
                 str_emit_line(&format!("List of {n}"));
-                let raw_names: Vec<String> = (0..n.min(6))
+                let raw_names: Vec<String> = (0..show)
                     .map(|i| {
                         if has_names && i < XLENGTH(names) {
                             elt_to_string(names, i)
@@ -1513,7 +1542,7 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     })
                     .collect();
                 let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
-                for i in 0..n.min(6) {
+                for i in 0..show {
                     let name = format!("{:<name_width$}", raw_names[i as usize]);
                     let elem = VECTOR_ELT(x, i as i64);
                     str_emit_line(&format!(

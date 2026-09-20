@@ -449,13 +449,22 @@ unsafe fn gnu_class_contains(name: &str) -> Option<Vec<String>> {
     }
 }
 
+/// GNU `classRepresentation@slots` names via attributes (not `R_do_slot`,
+/// which panics/recurses when the metadata object is incomplete).
 pub(crate) unsafe fn gnu_s4_slot_names(name: &str) -> Option<Vec<String>> {
     unsafe {
         let def = gnu_class_def(name)?;
         let slots_sym = Rf_install(c"slots".as_ptr());
-        Some(named_list_names(getAttrib(def, slots_sym)))
+        let names = named_list_names(getAttrib(def, slots_sym));
+        if names.is_empty() {
+            None
+        } else {
+            Some(names)
+        }
     }
 }
+
+
 
 
 

@@ -2736,6 +2736,41 @@ identical(
         );
     }
 
+    #[test]
+    fn gnu_signature_str_has_names_and_package_slots() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+sig <- new("signature", obj = "mle")
+out <- capture.output(str(sig))
+identical(
+  out,
+  c(
+    "Formal class 'signature' [package \"methods\"] with 3 slots",
+    "  ..@ .Data  : chr \"mle\"",
+    "  ..@ names  : chr \"obj\"",
+    "  ..@ package: chr \"\""
+  )
+)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "signature str: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
 
 
@@ -4452,7 +4487,12 @@ tstSlotname <- function(nm) {
     return(TRUE)
 }
 R <- sapply(problNames, tstSlotname, simplify = FALSE)
-is.character(R[["class"]]) && all(vapply(R[names(R) != "class"], isTRUE, NA))
+out <- capture.output(str(R))
+is.character(R[["class"]]) &&
+  all(vapply(R[names(R) != "class"], isTRUE, NA)) &&
+  identical(R[["class"]], "\"class\" is a reserved slot name and cannot be redefined") &&
+  any(grepl("tsp", out, fixed = TRUE)) &&
+  any(grepl('chr "\\\\"class\\\\" is a reserved', out))
 "#,
         );
         let result = result.unwrap_or_else(|e| {
