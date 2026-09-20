@@ -1535,13 +1535,34 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                     };
 
                     if res == 0 {
-                        let cstr = c"";
+                        // GNU datetime.c: overflow is an error except formats
+                        // that may legitimately produce zero bytes.
+                        if fmt_exp != "%Z"
+                            && fmt_exp != "%z"
+                            && fmt_exp != "%P"
+                            && fmt_exp != "%p"
+                        {
+                            std::panic::panic_any(RError {
+                                message: "output string exceeded 2048 bytes".to_string(),
+                            });
+                        }
+                        let mut out = String::new();
+                        if usetz {
+                            if let Some(zone) =
+                                posixlt_usetz_zone(x, tzone, iu, ctm.tm_isdst, nn)
+                            {
+                                out.push(' ');
+                                out.push_str(&zone);
+                            }
+                        }
+                        let cstr = CString::new(out).unwrap_or_default();
                         SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
                     } else {
                         let s = std::str::from_utf8(&buf[..res as usize]).unwrap_or("");
                         let mut out = s.to_string();
                         if usetz {
-                            if let Some(zone) = posixlt_usetz_zone(x, tzone, iu, ctm.tm_isdst, nn)
+                            if let Some(zone) =
+                                posixlt_usetz_zone(x, tzone, iu, ctm.tm_isdst, nn)
                             {
                                 out.push(' ');
                                 out.push_str(&zone);

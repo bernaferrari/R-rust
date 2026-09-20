@@ -218,6 +218,30 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Internal(lapply(X, FUN))\n\
              }",
         );
+        // GNU sapply.R: vapply is .Internal; sapply is lapply + simplify2array.
+        eval_base_binding(
+            base_env,
+            "vapply",
+            "function (X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE) {\n\
+             FUN <- match.fun(FUN)\n\
+             if (!is.vector(X) || is.object(X)) X <- as.list(X)\n\
+             .Internal(vapply(X, FUN, FUN.VALUE, USE.NAMES))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "sapply",
+            "function (X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE) {\n\
+             FUN <- match.fun(FUN)\n\
+             answer <- lapply(X = X, FUN = FUN, ...)\n\
+             if (USE.NAMES && is.character(X) && is.null(names(answer)))\n\
+                 names(answer) <- X\n\
+             if (!isFALSE(simplify))\n\
+                 simplify2array(answer, higher = (simplify == \"array\"))\n\
+             else answer\n\
+             }",
+        );
+
 
         // GNU sample.R: closures over .Internal(sample)/sample2, not primitives.
         // setMethod("sample", ...) needs a function skeleton (rport-2gpp.2).
