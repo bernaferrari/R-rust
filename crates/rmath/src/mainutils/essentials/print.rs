@@ -739,6 +739,82 @@ unsafe fn str_numeric_integer_like(x: SEXP, n_check: usize) -> bool {
 }
 
 
+
+/// GNU str.default S4 non-envRefClass header + `..@ slot :` lines.
+unsafe fn str_s4_formal_class(x: SEXP) {
+    unsafe {
+        let class_val =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        let cl = if !class_val.is_null()
+            && class_val != R_NilValue()
+            && TYPEOF(class_val) == SEXPTYPE::STRSXP
+            && XLENGTH(class_val) > 0
+        {
+            (0..XLENGTH(class_val))
+                .map(|i| elt_to_string(class_val, i))
+                .collect::<Vec<_>>()
+                .join("', '")
+        } else {
+            String::new()
+        };
+        let pkg_sym = Rf_install(c"package".as_ptr());
+        let pkg_val = crate::sexp::attrib_core::getAttrib(class_val, pkg_sym);
+        let pkg = if !pkg_val.is_null()
+            && pkg_val != R_NilValue()
+            && TYPEOF(pkg_val) == SEXPTYPE::STRSXP
+            && XLENGTH(pkg_val) > 0
+        {
+            elt_to_string(pkg_val, 0)
+        } else {
+            ".GlobalEnv".to_string()
+        };
+        let names: Vec<String> = {
+
+            let class_name = if cl.is_empty() { None } else { Some(cl.as_str()) };
+            let from_def = class_name.and_then(|name| {
+                crate::mainutils::objects::s4_all_slots(name)
+                    .filter(|slots| !slots.is_empty())
+            });
+            from_def.unwrap_or_else(|| {
+                let mut names = Vec::new();
+                let mut a = ATTRIB(x);
+                while !a.is_null() && a != R_NilValue() {
+                    let tag = TAG(a);
+                    if !tag.is_null()
+                        && tag != R_NilValue()
+                        && TYPEOF(tag) == SEXPTYPE::SYMSXP
+                    {
+                        let nm = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                            .to_string_lossy()
+                            .into_owned();
+                        if nm != "class" {
+                            names.push(nm);
+                        }
+                    }
+                    a = CDR(a);
+                }
+                names
+            })
+        };
+        let n_slots = names.len() as i64;
+        let slot_word = if n_slots == 1 { "slot" } else { "slots" };
+        str_emit_line(&format!(
+            "Formal class '{cl}' [package \"{pkg}\"] with {n_slots} {slot_word}"
+        ));
+        let width = names.iter().map(|n| n.len()).max().unwrap_or(0);
+        for name in &names {
+            let cname = CString::new(name.as_str()).unwrap_or_default();
+            let sym = Rf_install(cname.as_ptr());
+            let value = crate::mainutils::essentials::R_do_slot(x, sym);
+            let _value = protect(value);
+            let summary = str_atomic_summary(value);
+            str_emit_line(&format!("  ..@ {name:width$}: {summary}"));
+        }
+
+    }
+}
+
+
 unsafe fn str_atomic_summary(x: SEXP) -> String {
     unsafe { str_atomic_summary_opts(x, true, false) }
 }
@@ -1240,6 +1316,7 @@ unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
 
 
 
+
 /// R's `str(x)` — compact structure display.
 pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1251,6 +1328,17 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             str_emit_line(" NULL");
             return R_NilValue();
         }
+        if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0
+            && !sexp_has_class_name(x, "envRefClass")
+        {
+            str_s4_formal_class(x);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+
+
+
+
         let t = TYPEOF(x);
         let n = crate::sexp::constructors::Rf_length(x) as R_xlen_t;
 

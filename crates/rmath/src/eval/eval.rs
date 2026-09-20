@@ -2577,6 +2577,44 @@ identical(capture.output(show(x)), gnu) &&
         );
     }
 
+    #[test]
+    fn str_s4_formal_class_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+cn <- "integer or NULL"
+setClassUnion(cn, members = c("integer", "NULL"))
+setClass("c1", representation(x = "integer", code = cn))
+nc <- new("c1", x = 1:2)
+identical(
+  capture.output(str(nc)),
+  c(
+    "Formal class 'c1' [package \".GlobalEnv\"] with 2 slots",
+    "  ..@ x   : int [1:2] 1 2",
+    "  ..@ code: NULL"
+  )
+)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "S4 str Formal class: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
 
 
 
