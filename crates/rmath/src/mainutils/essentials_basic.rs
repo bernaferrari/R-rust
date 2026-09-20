@@ -346,6 +346,10 @@ pub unsafe fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if let Some(result) =
             crate::mainutils::essentials::apply_s3_closure_method("print", call, args, _rho)
         {
+            // GNU `print` is invisible; S3 methods (including builtin
+            // `print.factor`) must not leak visibility back to
+            // `capture.output`'s withVisible reprint.
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return result;
         }
         if crate::mainutils::essentials::sexp_has_class(x, "data.frame") {

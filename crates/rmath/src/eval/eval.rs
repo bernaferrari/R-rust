@@ -2048,7 +2048,16 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
     fn print_factor_pads_to_widest_label_like_gnu() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            r#"identical(capture.output(print(factor(c("a", NA, "b"), exclude=""))), c("[1] a    <NA> b   ", "Levels: a b <NA>"))"#,
+            r#"
+            fx <- factor(c("a", NA, "b"), exclude="")
+            stopifnot(identical(
+                capture.output(print(fx)),
+                c("[1] a    <NA> b   ", "Levels: a b <NA>")
+            ))
+            stopifnot(identical(withVisible(print(fx))$visible, FALSE))
+            r <- replicate(3, capture.output(print(fx)))
+            identical(dim(r), c(2L, 3L))
+            "#,
         );
         let result = result.expect("print.factor must pad to <NA> width");
         assert_eq!(result.logical_elt(0), Some(TRUE));

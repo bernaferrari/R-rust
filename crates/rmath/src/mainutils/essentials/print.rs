@@ -2011,7 +2011,7 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            println!("NULL");
+            emit_print_text("NULL\n");
             return R_NilValue();
         }
 
@@ -2020,7 +2020,7 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         let has_levels = !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP;
 
         if n == 0 {
-            println!("factor(0)");
+            emit_print_text("factor(0)\n");
         } else {
             let t = TYPEOF(x);
             let mut labels: Vec<String> = Vec::with_capacity(n as usize);
@@ -2050,19 +2050,17 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                 .map(|s| s.chars().count())
                 .max()
                 .unwrap_or(0);
-            for (i, val) in labels.iter().enumerate() {
-                let padded = format!("{val:<width$}");
-                if i == 0 {
-                    print!("[1] {padded}");
-                } else {
-                    print!(" {padded}");
-                }
+            let mut line = String::from("[1]");
+            for val in &labels {
+                line.push(' ');
+                line.push_str(&format!("{val:<width$}"));
             }
-            println!();
+            line.push('\n');
+            emit_print_text(&line);
 
             if has_levels {
                 let nl = XLENGTH(levels);
-                print!("Levels:");
+                let mut lv = String::from("Levels:");
                 for i in 0..nl {
                     let charsxp = STRING_ELT(levels, i);
                     let lvl = if charsxp == crate::sexp::globals::R_NaString() {
@@ -2070,9 +2068,11 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                     } else {
                         elt_to_string(levels, i)
                     };
-                    print!(" {lvl}");
+                    lv.push(' ');
+                    lv.push_str(&lvl);
                 }
-                println!();
+                lv.push('\n');
+                emit_print_text(&lv);
             }
         }
 
