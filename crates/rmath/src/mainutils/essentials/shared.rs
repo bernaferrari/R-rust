@@ -998,6 +998,21 @@ pub(crate) unsafe fn package_attached(package: &str) -> bool {
     }
 }
 
+unsafe fn attached_package_env(package: &str) -> Option<SEXP> {
+    unsafe {
+        let mut env = crate::sexp::accessors::ENCLOS(crate::sexp::globals::R_GlobalEnv());
+        let base = crate::sexp::globals::R_BaseEnv();
+        while !env.is_null() && env != base {
+            if package_name_binding(env).as_deref() == Some(package) {
+                return Some(env);
+            }
+            env = crate::sexp::accessors::ENCLOS(env);
+        }
+        None
+    }
+}
+
+
 pub(crate) unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), String> {
     let mut loading = Vec::<String>::new();
     unsafe { load_pure_r_package_recursive(package, package_dir, &mut loading) }
@@ -1050,7 +1065,12 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
             attach_package_env(attach_env);
             if package == "methods" {
                 run_methods_onload_cache_metadata(package_env);
+                // GNU methods NAMESPACE exportPattern("^\\.__C__") etc. copies
+                // class/method metadata onto package:methods. onLoad creates
+                // those bindings in the namespace after attach_env was built.
+                export_s4_metadata_to_package_env(package_env, attach_env);
             }
+
 
 
 
@@ -1310,6 +1330,9 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         let _attach = protect(attach);
         eval_methods_ns_fun(ns, c"cacheMetaData", where_env, Some(attach));
         register_matrix_initialize_helpers(ns);
+        if let Some(attach_env) = attached_package_env("methods") {
+            export_s4_metadata_to_package_env(ns, attach_env);
+        }
 
 
 
@@ -3260,6 +3283,48 @@ fn unescape_r_string(s: &str) -> String {
     out
 }
 
+/// GNU `exportPattern("^\\.__C__")` / `.__M__` / `.__T__`: class and method
+/// metadata live in the methods namespace and must also be visible on the
+/// attached `package:methods` env so `findClass` / `.findAll` / `exists(...,
+/// inherits=FALSE)` see them. Without this, `setClass(..., contains="signature")`
+/// copies `.__C__signature` into `.GlobalEnv`, and a later `removeClass` of
+/// global classes uncaches `initialize,signature`.
+unsafe fn export_s4_metadata_to_package_env(namespace: SEXP, attach_env: SEXP) {
+    unsafe {
+        if namespace.is_null()
+            || attach_env.is_null()
+            || namespace == R_NilValue()
+            || attach_env == R_NilValue()
+        {
+            return;
+        }
+        for name in frame_binding_names(namespace, true) {
+            if !(name.starts_with(".__C__")
+                || name.starts_with(".__M__")
+                || name.starts_with(".__T__"))
+            {
+                continue;
+            }
+            let Ok(cname) = CString::new(name.as_str()) else {
+                continue;
+            };
+            let symbol = Rf_install(cname.as_ptr());
+            let value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
+            if value.is_null()
+                || value == R_NilValue()
+                || value == crate::sexp::globals::R_UnboundValue()
+            {
+                continue;
+            }
+            crate::sexp::envir::defineVar(symbol, value, attach_env);
+        }
+    }
+}
+
+
+
+
+
 pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
     unsafe {
         let global = crate::sexp::globals::R_GlobalEnv();
@@ -3268,7 +3333,19 @@ pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
         crate::sexp::accessors::SET_ENCLOS(package_env, old_enclos);
         // methods onLoad already ran cacheMetaData on the namespace.
         // Re-running it on package:methods walks every methods generic.
+        // Still copy GNU exportPattern class/method metadata onto the
+        // attached env so findClass/exists(inherits=FALSE) see .__C__*.
         if attached_search_name(package_env).as_deref() == Some("package:methods") {
+            let ns = crate::sexp::envir::R_findVarInFrame(package_env, namespace_env_symbol());
+            if !ns.is_null()
+                && ns != crate::sexp::globals::R_UnboundValue()
+                && TYPEOF(ns) == SEXPTYPE::ENVSXP
+            {
+
+                export_s4_metadata_to_package_env(ns, package_env);
+            } else if let Some(ns) = cached_namespace_by_name("methods") {
+                export_s4_metadata_to_package_env(ns, package_env);
+            }
             return;
         }
         CACHING_ATTACHED_S4.with(|flag| {
@@ -3281,6 +3358,7 @@ pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
         });
     }
 }
+
 
 unsafe fn attached_search_name(package_env: SEXP) -> Option<String> {
     unsafe {

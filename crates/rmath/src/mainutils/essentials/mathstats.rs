@@ -14570,7 +14570,8 @@ pub unsafe fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-unsafe fn search_env_from_position(pos: c_int) -> SEXP {
+pub(crate) unsafe fn search_env_from_position(pos: c_int) -> SEXP {
+
     unsafe {
         if pos > 0
             && let Some((_, env)) = search_path_entries().get((pos - 1) as usize)
@@ -14583,7 +14584,8 @@ unsafe fn search_env_from_position(pos: c_int) -> SEXP {
     }
 }
 
-unsafe fn search_env_from_name(name: &str) -> SEXP {
+pub(crate) unsafe fn search_env_from_name(name: &str) -> SEXP {
+
     for (label, env) in unsafe { search_path_entries() } {
         if label == name || (name == "base" && label == "package:base") {
             return env;

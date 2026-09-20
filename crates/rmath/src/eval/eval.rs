@@ -3606,11 +3606,12 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(788).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(798).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through formula slots: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through stats4: {e}\nstdout={}\nstderr={}",
+
 
 
 
@@ -4356,6 +4357,43 @@ if (!isTRUE(ok)) {
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_signature_obj_after_removeclass() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            concat!(
+                "invisible(require(methods, quietly=TRUE))\n",
+                "setClass(\"SIG\", contains=\"signature\")\n",
+                "invisible(lapply(getClasses(globalenv()), removeClass))\n",
+                "validObject(new(\"signature\", obj = \"mle\"))\n",
+            ),
+
+
+
+
+
+
+
+
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "signature after removeClass: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
 
 

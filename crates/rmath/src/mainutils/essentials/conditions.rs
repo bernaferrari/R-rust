@@ -1627,13 +1627,49 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `exists`/`ls`: `where`/`pos` may be an environment, 1-based search
+/// index, or search-path name (`"package:methods"`). `-1` means the caller env.
+unsafe fn coerce_search_envir(arg: SEXP, default: SEXP) -> SEXP {
+    unsafe {
+        if arg.is_null() || arg == R_NilValue() {
+            return default;
+        }
+        if TYPEOF(arg) == SEXPTYPE::ENVSXP {
+            return arg;
+        }
+        if TYPEOF(arg) == SEXPTYPE::INTSXP || TYPEOF(arg) == SEXPTYPE::REALSXP {
+            if XLENGTH(arg) < 1 {
+                return default;
+            }
+            let pos = if TYPEOF(arg) == SEXPTYPE::INTSXP {
+                INTEGER_ELT(arg, 0)
+            } else {
+                REAL_ELT(arg, 0) as c_int
+            };
+            if pos == -1 {
+                return default;
+            }
+            return super::mathstats::search_env_from_position(pos);
+        }
+        if TYPEOF(arg) == SEXPTYPE::STRSXP && XLENGTH(arg) > 0 {
+            return super::mathstats::search_env_from_name(&elt_to_string(arg, 0));
+        }
+        default
+    }
+}
+
+
 /// R's `exists(x, envir)` — check name exists.
 pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
         let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
-        let env = environment_arg_or_default(args, &["envir", "where", "frame"], 1, rho);
+        let env = coerce_search_envir(
+            arg_by_name_or_position(args, &["envir", "where", "frame"], 1),
+            rho,
+        );
+
         let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
         let mode_arg = {
             let named = arg_by_name_or_position(args, &["mode"], 2);
@@ -1943,17 +1979,22 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let name = symbol_name(TAG(cell));
             match name.as_deref() {
                 Some("name") | Some("pos") | Some("envir") => {
-                    if TYPEOF(arg) == SEXPTYPE::ENVSXP {
-                        env = arg;
-                    }
+                    env = coerce_search_envir(arg, env);
                 }
                 Some("all.names") => all_names = logical_arg(arg, all_names),
                 Some("sorted") => sorted = logical_arg(arg, sorted),
-                _ if TYPEOF(arg) == SEXPTYPE::ENVSXP => env = arg,
+                _ if TYPEOF(arg) == SEXPTYPE::ENVSXP
+                    || TYPEOF(arg) == SEXPTYPE::INTSXP
+                    || TYPEOF(arg) == SEXPTYPE::REALSXP
+                    || TYPEOF(arg) == SEXPTYPE::STRSXP =>
+                {
+                    env = coerce_search_envir(arg, env);
+                }
                 _ => {}
             }
             cell = CDR(cell);
         }
+
 
         let mut names = if TYPEOF(env) == SEXPTYPE::ENVSXP {
             super::shared::frame_binding_names(env, all_names)
