@@ -2606,9 +2606,40 @@ identical(
         );
     }
 
-
-
-
+    #[test]
+    fn asis_matrix_data_frame_subset_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+d2 <- data.frame(b = I(matrix(1:6, 3, 2)))
+identical(names(d2), "b") &&
+  identical(dim(d2[2,]), c(1L, 2L)) &&
+  identical(as.vector(d2[2,]), c(2L, 5L)) &&
+  identical(d2[-1,], d2[2:3,]) &&
+  identical(
+    capture.output(d2[2,]),
+    c("     [,1] [,2]", "[1,]    2    5")
+  ) &&
+  identical(
+    capture.output(d2[1:2,]),
+    c("     [,1] [,2]", "[1,]    1    4", "[2,]    2    5")
+  )
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "AsIs matrix data.frame subset: {e}\nstdout={:?}\nstderr={:?}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={:?}\nstderr={:?}",
+            output.stdout,
+            output.stderr
+        );
+    }
 
     #[test]
     fn str_s4_formal_class_matches_gnu() {

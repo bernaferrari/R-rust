@@ -1937,6 +1937,51 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             }
         }
 
+        /// GNU `.row_names_info(x, 2L)`: compact `c(NA, ±n)` stores nrow in
+        /// `|n|`. A 2-D AsIs column has length nrow*ncol, so `length(x[[1]])`
+        /// is the wrong unit.
+        unsafe fn data_frame_nrows(x: SEXP, first: SEXP) -> c_int {
+            unsafe {
+                let rownames = getAttrib(x, sym_RowNames());
+                if TYPEOF(rownames) == SEXPTYPE::INTSXP
+                    && length_int(rownames) == 2
+                    && INTEGER_ELT(rownames, 0) == NA_INTEGER
+                {
+                    return INTEGER_ELT(rownames, 1).abs();
+                }
+                if !isNull(rownames) && length_int(rownames) > 0 {
+                    return length_int(rownames);
+                }
+                if isMatrix(first) {
+                    return nrows(first);
+                }
+                length_int(first)
+            }
+        }
+
+        /// GNU `[.data.frame` row-subsets a column as
+        /// `if (length(dim(xj)) != 2L) xj[i] else xj[i, , drop = FALSE]`.
+        /// `[.AsIs` then re-wraps with `I()`, so copy the source class.
+        unsafe fn subset_frame_column(col: SEXP, sr: SEXP, call: SEXP) -> SEXP {
+            unsafe {
+                let result = if isMatrix(col) {
+                    let jcell = Rf_cons(R_MissingArg(), R_NilValue());
+                    let _j_guard = protect(jcell);
+                    let icell = Rf_cons(sr, jcell);
+                    let _i_guard = protect(icell);
+                    MatrixSubset(col, icell, call, 0)
+                } else {
+                    VectorSubset(col, sr, call)
+                };
+                let _result_guard = protect(result);
+                let class = getAttrib(col, sym_Class());
+                if !isNull(class) {
+                    setAttrib(result, sym_Class(), class);
+                }
+                result
+            }
+        }
+
         /// Subset a data.frame's row.names for `df[i, ]`, handling the compact
         /// automatic form `c(NA_integer_, -n)` the way stock does: a contiguous
         /// `1..k` selection keeps the compact form, anything else expands to the
@@ -1986,7 +2031,8 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         rows and columns. Both subscripts may be missing (`df[1,]`,
         `df[,1]`). */
         if data_frame_subset_2(x, nsubs) {
-            let nrows = length_int(VECTOR_ELT(ax, 0));
+            let first = VECTOR_ELT(ax, 0);
+            let nrows = data_frame_nrows(x, first);
             let ncols = length_int(ax);
             let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             let _dims_guard = protect(dims);
@@ -2024,7 +2070,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             if LENGTH(sc) == 1 && drop != 0 {
                 let col = VECTOR_ELT(ax, (*INTEGER(sc) as R_xlen_t) - 1);
                 let _col_guard = protect(col);
-                return VectorSubset(col, sr, call);
+                return subset_frame_column(col, sr, call);
             }
 
             let ncol = LENGTH(sc);
@@ -2033,7 +2079,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             for j in 0..ncol {
                 let col = VECTOR_ELT(ax, (*INTEGER(sc).add(j as usize) as R_xlen_t) - 1);
                 let _col_guard = protect(col);
-                SET_VECTOR_ELT(ans, j as R_xlen_t, VectorSubset(col, sr, call));
+                SET_VECTOR_ELT(ans, j as R_xlen_t, subset_frame_column(col, sr, call));
             }
             if !isNull(colnames) {
                 let new_names = ExtractSubset(colnames, sc, call);

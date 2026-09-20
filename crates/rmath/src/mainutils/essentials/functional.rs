@@ -2747,7 +2747,14 @@ fn repair_data_frame_names(names: &mut [String]) {
 
 pub(crate) unsafe fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
     unsafe {
-        let len = XLENGTH(x);
+        // GNU recycles data.frame columns by *rows*. A 2-D AsIs / model.matrix
+        // column has length nrow*ncol, so XLENGTH is the wrong unit.
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let len = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+            *INTEGER(dim) as R_xlen_t
+        } else {
+            XLENGTH(x)
+        };
         if len == target_len || target_len == 0 {
             return x;
         }
@@ -2885,15 +2892,22 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 if nr != 0 || nc == 0 {
                     nrow = Some(nrow.unwrap_or(nr));
                 }
-                for j in 0..nc {
-                    columns.push(super::s3::matrix_column(value, nr, j));
-                    names.push(if arg_name.is_empty() {
-                        format!("V{}", j + 1)
-                    } else if nc == 1 {
-                        arg_name.clone()
-                    } else {
-                        format!("{arg_name}.{}", j + 1)
-                    });
+                // GNU `as.data.frame.AsIs` (and `as.data.frame.model.matrix`):
+                // a 2-D AsIs object stays one list column. Bare matrices split.
+                if sexp_has_class(value, "AsIs") {
+                    columns.push(value);
+                    names.push(arg_name);
+                } else {
+                    for j in 0..nc {
+                        columns.push(super::s3::matrix_column(value, nr, j));
+                        names.push(if arg_name.is_empty() {
+                            format!("V{}", j + 1)
+                        } else if nc == 1 {
+                            arg_name.clone()
+                        } else {
+                            format!("{arg_name}.{}", j + 1)
+                        });
+                    }
                 }
             } else {
                 let value = if sexp_has_class(value, "POSIXlt") && TYPEOF(value) == SEXPTYPE::VECSXP

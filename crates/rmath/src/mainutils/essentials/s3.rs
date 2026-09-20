@@ -735,6 +735,11 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         }
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+            // GNU `as.data.frame.AsIs` for a 2-D object calls
+            // `as.data.frame.model.matrix`: keep the matrix as one list column.
+            if crate::mainutils::essentials::sexp_has_class(x, "AsIs") {
+                return asis_matrix_as_data_frame(x, dim);
+            }
             return matrix_as_data_frame(x, dim);
         }
         if TYPEOF(x) == SEXPTYPE::VECSXP && !crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
@@ -788,6 +793,22 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
+unsafe fn asis_matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
+    unsafe {
+        let nrow = INTEGER_ELT(dim, 0) as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        if result.is_null() {
+            return result;
+        }
+        let _result_guard = protect(result);
+        SET_VECTOR_ELT(result, 0, x);
+        set_string_names(result, &["x".to_string()]);
+        set_compact_row_names(result, nrow);
+        set_data_frame_class(result);
+        result
+    }
+}
+
 #[cfg(test)]
 mod as_data_frame_tests {
     use crate::sexp::ffi::TRUE;
@@ -807,6 +828,24 @@ mod as_data_frame_tests {
              identical(y[, 'cd'], c(3L, 4L))",
         );
         let result = result.expect("matrix conversion should evaluate");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(output.stdout.is_empty());
+        assert!(visible);
+    }
+
+    #[test]
+    fn asis_matrix_stays_one_column() {
+        let mut session = RSession::new();
+        let (result, output, visible) = session.eval_code_with_output_capture(
+            "d2 <- data.frame(b = I(matrix(1:6, 3, 2))); \
+             identical(names(d2), 'b') && \
+             identical(dim(d2), c(3L, 1L)) && \
+             identical(dim(d2$b), c(3L, 2L)) && \
+             identical(dim(d2[2,]), c(1L, 2L)) && \
+             identical(as.vector(d2[2,]), c(2L, 5L)) && \
+             identical(d2[-1,], d2[2:3,])",
+        );
+        let result = result.expect("AsIs matrix data.frame should evaluate");
         assert_eq!(result.logical_elt(0), Some(TRUE));
         assert!(output.stdout.is_empty());
         assert!(visible);
