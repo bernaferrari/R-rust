@@ -1318,6 +1318,54 @@ unsafe fn match_named_then_positional(call: SEXP, args: SEXP, formals: &[&str]) 
 // do_formatPOSIXlt -- .Internal(format.POSIXlt(x, format, usetz, ...))
 // ---------------------------------------------------------------------------
 
+unsafe fn posixlt_usetz_zone(
+    x: SEXP,
+    tzone: SEXP,
+    i: usize,
+    isdst: c_int,
+    nn: c_int,
+) -> Option<String> {
+    unsafe {
+        let charsxp_str = |s: SEXP, idx: R_xlen_t| -> Option<String> {
+            if s.is_null() || TYPEOF(s) != SEXPTYPE::STRSXP || XLENGTH(s) <= 0 {
+                return None;
+            }
+            let ch = STRING_ELT(s, idx % XLENGTH(s));
+            if ch.is_null() || ch == R_NaString() {
+                return None;
+            }
+            let p = CHAR(ch);
+            if p.is_null() {
+                return None;
+            }
+            let t = CStr::from_ptr(p).to_string_lossy();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.into_owned())
+            }
+        };
+        if nn >= 10 {
+            if let Some(zone) = charsxp_str(VECTOR_ELT(x, 9), i as R_xlen_t) {
+                return Some(zone);
+            }
+        }
+        if tzone.is_null() || tzone == R_NilValue() || TYPEOF(tzone) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let ntz = XLENGTH(tzone);
+        if ntz <= 0 {
+            return None;
+        }
+        let idx = if ntz >= 3 && isdst >= 0 {
+            1 + if isdst > 0 { 1 } else { 0 }
+        } else {
+            0
+        };
+        charsxp_str(tzone, idx.min(ntz - 1))
+    }
+}
+
 /// Format a POSIXlt object as a character string using strftime.
 ///
 /// Ported from `do_formatPOSIXlt()` in datetime.c.
@@ -1361,6 +1409,11 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         } else {
             crate::mainutils::coerce::asInteger(digits_arg)
         };
+        let usetz = {
+            let u = CADDR(args);
+            !u.is_null() && u != R_NilValue() && crate::mainutils::coerce::asLogical(u) == TRUE
+        };
+        let tzone = getAttrib(x, Rf_install(c"tzone".as_ptr()));
         let mut ns0 = -1i32;
 
         let ans = Rf_allocVector3(SEXPTYPE::STRSXP, N);
@@ -1478,7 +1531,15 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                         SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
                     } else {
                         let s = std::str::from_utf8(&buf[..res as usize]).unwrap_or("");
-                        let cstr = CString::new(s).unwrap_or_default();
+                        let mut out = s.to_string();
+                        if usetz {
+                            if let Some(zone) = posixlt_usetz_zone(x, tzone, iu, ctm.tm_isdst, nn)
+                            {
+                                out.push(' ');
+                                out.push_str(&zone);
+                            }
+                        }
+                        let cstr = CString::new(out).unwrap_or_default();
                         SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
                     }
                 }

@@ -1676,34 +1676,32 @@ pub(crate) fn format_posixct_vector_max(
         return "POSIXct of length 0".to_string();
     }
     unsafe {
+        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_cons, Rf_mkString};
+        use crate::sexp::ffi::TRUE;
+        use crate::sexp::protect::protect;
         let n = x.clone().len();
         let opt_max = crate::mainutils::options::GetOptionMaxPrint() as i64;
         let max = max_override.unwrap_or(opt_max).max(0);
-        let n_show = n.min(max as R_xlen_t);
-        let force_time = posixct_vector_needs_time(x.clone());
-        let formatted = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, n_show);
+        let format = Rf_mkString(c"".as_ptr());
+        let _fmt = protect(format);
+        let usetz = Rf_ScalarLogical(if include_tz { TRUE } else { 0 });
+        let _u = protect(usetz);
+        let args = Rf_cons(
+            x.as_raw(),
+            Rf_cons(format, Rf_cons(R_NilValue(), Rf_cons(usetz, R_NilValue()))),
+        );
+        let _a = protect(args);
+        let formatted = crate::mainutils::datetime::do_format_POSIXct(
+            R_NilValue(),
+            R_NilValue(),
+            args,
+            crate::sexp::globals::R_BaseEnv(),
+        );
         if formatted.is_null() {
             return String::new();
         }
-        let _g = crate::sexp::protect::protect(formatted);
-        for i in 0..n_show {
-            let text = x
-                .clone()
-                .try_real_elt(i)
-                .ok()
-                .and_then(|seconds| {
-                    crate::mainutils::essentials::posix_seconds_to_iso_with_time(
-                        seconds, include_tz, force_time,
-                    )
-                })
-                .unwrap_or_else(|| "NA".to_string());
-            let c = std::ffi::CString::new(text).unwrap_or_default();
-            crate::sexp::accessors::SET_STRING_ELT(
-                formatted,
-                i,
-                crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
-            );
-        }
+        let _f = protect(formatted);
+        let n_show = XLENGTH(formatted).min(n.min(max as R_xlen_t));
         let sexp = Sexp::from_raw_unchecked(formatted);
         let print_max = if n_show < n { n_show as i64 + 1 } else { max };
         let mut out = format_vector_stock_n(sexp, true, Some(print_max));
@@ -1735,6 +1733,43 @@ fn posixlt_time_length(x: Sexp<'_>) -> R_xlen_t {
         n
     }
 }
+
+fn format_posixlt_vector(x: Sexp<'_>) -> String {
+    let n = posixlt_time_length(x.clone());
+    if n == 0 {
+        return "POSIXlt of length 0".to_string();
+    }
+    unsafe {
+        use crate::sexp::constructors::{
+            Rf_ScalarInteger, Rf_ScalarLogical, Rf_cons, Rf_mkString,
+        };
+        use crate::sexp::ffi::{NA_INTEGER, TRUE};
+        use crate::sexp::protect::protect;
+        let format = Rf_mkString(c"".as_ptr());
+        let _fmt = protect(format);
+        let usetz = Rf_ScalarLogical(TRUE);
+        let _u = protect(usetz);
+        let digits = Rf_ScalarInteger(NA_INTEGER);
+        let _d = protect(digits);
+        let args = Rf_cons(
+            x.as_raw(),
+            Rf_cons(format, Rf_cons(usetz, Rf_cons(digits, R_NilValue()))),
+        );
+        let _a = protect(args);
+        let formatted = crate::mainutils::datetime::do_format_POSIXlt(
+            R_NilValue(),
+            R_NilValue(),
+            args,
+            crate::sexp::globals::R_BaseEnv(),
+        );
+        if formatted.is_null() {
+            return String::new();
+        }
+        let _f = protect(formatted);
+        format_vector_stock_n(Sexp::from_raw_unchecked(formatted), true, None)
+    }
+}
+
 
 
 
@@ -3186,14 +3221,7 @@ pub fn print_value(x: Sexp<'_>) {
             }
 
             if has_class(x.clone(), "POSIXlt") {
-                let n = posixlt_time_length(x.clone());
-                if n == 0 {
-                    emit("POSIXlt of length 0\n");
-                    return;
-                }
-            }
-            if let Some(output) = format_data_frame(x.clone()) {
-                emit(&format!("{output}\n"));
+                emit(&format!("{}\n", format_posixlt_vector(x)));
                 return;
             }
             emit(&format!("{}\n", format_sexp_top_level(x)));
@@ -3365,6 +3393,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                         .to_string()
                 };
             }
+            if has_class(x.clone(), "POSIXlt") {
+                return format_posixlt_vector(x);
+            }
             if let Some(output) = format_data_frame(x.clone()) {
                 return output;
             }
@@ -3393,9 +3424,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             };
             format!("[{}; length={}]", type_name, x.len())
         }
-
     }
 }
+
 /// First class string of an object, for print.condition-style rendering.
 unsafe fn first_class_string(x: Sexp<'_>) -> Option<String> {
     unsafe {
