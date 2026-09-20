@@ -3606,11 +3606,13 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(798).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(889).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through stats4: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through EOF: {e}\nstdout={}\nstderr={}",
+
+
 
 
 
@@ -4392,6 +4394,34 @@ if (!isTRUE(ok)) {
             output.stderr
         );
     }
+
+    #[test]
+    fn exists_search_name_is_where_not_mode() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            concat!(
+                "invisible(require(methods, quietly=TRUE))\n",
+                "exists(\".__C__signature\", \"package:methods\", inherits=FALSE) &&\n",
+                "  exists(\"pi\", \"package:base\") &&\n",
+                "  !exists(\".__C__signature\", \".GlobalEnv\", inherits=FALSE)\n",
+            ),
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "exists where-string: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
 
 
 

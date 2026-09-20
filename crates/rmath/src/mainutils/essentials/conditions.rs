@@ -1671,25 +1671,17 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         );
 
         let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
-        let mode_arg = {
-            let named = arg_by_name_or_position(args, &["mode"], 2);
-            if !named.is_null() && named != R_NilValue() {
-                named
-            } else {
-                let second = arg_by_name_or_position(args, &[], 1);
-                if !second.is_null() && second != R_NilValue() && TYPEOF(second) == SEXPTYPE::STRSXP
-                {
-                    second
-                } else {
-                    R_NilValue()
-                }
-            }
-        };
+        // GNU exists(x, where, envir, frame, mode, inherits). A string at
+        // position 1 is `where` (search-path name), not `mode`.
+        let mode_arg = arg_by_name_or_position(args, &["mode"], 4);
         let mode = if mode_arg.is_null() || mode_arg == R_NilValue() || XLENGTH(mode_arg) == 0 {
             "any".to_string()
-        } else {
+        } else if TYPEOF(mode_arg) == SEXPTYPE::STRSXP {
             elt_to_string(mode_arg, 0)
+        } else {
+            "any".to_string()
         };
+
         let found = if crate::eval::builtin::is_hidden_builtin_name(&name) {
             false
         } else if mode == "function" {
