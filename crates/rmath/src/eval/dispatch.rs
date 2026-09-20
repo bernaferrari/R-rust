@@ -635,7 +635,8 @@ pub unsafe fn DispatchOrEval(
                     let value = crate::mainutils::objects::R_possible_dispatch(
                         call, op, pargs, rho, TRUE,
                     );
-                    if !value.is_null() && value != R_NilValue() {
+                    if !value.is_null() {
+
                         *ans = value;
                         return 1;
                     }
@@ -819,7 +820,8 @@ pub unsafe fn DispatchGroup(
                 let value = crate::mainutils::objects::R_possible_dispatch(
                     call, op, args, rho, FALSE,
                 );
-                if !value.is_null() && value != R_NilValue() {
+                if !value.is_null() {
+
                     *ans = value;
                     return 1;
                 }

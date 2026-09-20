@@ -3606,11 +3606,12 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(481).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(512).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through median S4 list class: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through xtfrm numWithId: {e}\nstdout={}\nstderr={}",
+
 
 
 
@@ -3715,6 +3716,92 @@ identical(unlist(x2), (1:3)[-2]) &&
             output.stderr
         );
     }
+
+    #[test]
+    fn reg_s4_sig_as_packageslot_and_factor_validity() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+assertError <- tools::assertError
+setClass("SIG", contains="signature")
+pkg_ok <- packageSlot(class(S <- new("SIG"))) == ".GlobalEnv" &&
+  packageSlot(class(ss <- new("signature"))) == "methods" &&
+  packageSlot(class(as(S, "signature"))) == "methods"
+ok.f <- gl(3,5, labels = letters[1:3])
+bad.f <- structure(rep(1:3, each=5), levels=c("a","a","b"), class="factor")
+validObject(ok.f)
+bad_ok <- inherits(tryCatch(validObject(bad.f), error=function(e) e), "error")
+setClass("myF", contains = "factor")
+validObject(new("myF", ok.f))
+myf_bad <- inherits(tryCatch(validObject(new("myF", bad.f)), error=function(e) e), "error")
+removeClass("myF")
+as_ok <- is.vector(as(structure(1:3, class = "foobar"), "vector"))
+setClass("numWithId", representation(id = "character"), contains = "numeric")
+x <- new("numWithId", 1:3, id = "An Example")
+setMethod("xtfrm", "numWithId", function(x) x@.Data)
+pkg_ok && bad_ok && myf_bad && as_ok && identical(xtfrm(x), 1:3)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "SIG/factor/xtfrm: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_subset_callnextmethod_drop_and_slot_names() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("C1", representation(a = "numeric"))
+setClass("C2", contains = "C1")
+setMethod("[", "C1", function(x,i,j,...,drop=TRUE)
+	  cat("drop in C1-[ :", drop, "\n"))
+setMethod("[", "C2", function(x,i,j,...,drop=TRUE) {
+    cat("drop in C2-[ :", drop, "\n")
+    callNextMethod()
+})
+x <- new("C1"); y <- new("C2")
+o1 <- paste(capture.output(x[1, drop=FALSE]), collapse="\n")
+o2 <- paste(capture.output(y[1, drop=FALSE]), collapse="\n")
+grepl("drop in C1-[ : FALSE", o1, fixed=TRUE) &&
+  grepl("drop in C2-[ : FALSE", o2, fixed=TRUE) &&
+  grepl("drop in C1-[ : FALSE", o2, fixed=TRUE)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "callNextMethod drop: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
 
 
 

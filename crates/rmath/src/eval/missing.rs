@@ -315,7 +315,8 @@ pub unsafe fn DispatchAnyOrEval(
                     let value = crate::mainutils::objects::R_possible_dispatch(
                         call, op, argValue, rho, TRUE,
                     );
-                    if !value.is_null() && value != R_NilValue() {
+                    if !value.is_null() {
+
                         if !ans.is_null() {
                             *ans = value;
                         }
@@ -389,7 +390,8 @@ pub(crate) unsafe fn tryDispatch(
         {
             let value =
                 crate::mainutils::objects::R_possible_dispatch(call, generic_sym, pargs, rho, TRUE);
-            if !value.is_null() && value != R_NilValue() {
+            if !value.is_null() {
+
                 if !pv.is_null() {
                     *pv = value;
                 }
