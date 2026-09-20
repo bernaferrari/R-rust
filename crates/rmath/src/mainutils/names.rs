@@ -5054,6 +5054,9 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "delayedAssign" => Some(crate::mainutils::builtin::do_delayed),
         "radixsort" => Some(crate::mainutils::radixsort::do_radixsort),
         "order" => Some(crate::mainutils::essentials::do_order),
+        "sort" => Some(crate::mainutils::essentials::do_sort),
+        "mean" => Some(crate::mainutils::summary::do_mean),
+
 
         "save" => Some(crate::mainutils::saveload::do_save),
         "islistfactor" => Some(crate::mainutils::apply::do_islistfactor),

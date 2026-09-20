@@ -308,8 +308,9 @@ pub unsafe fn R_possible_dispatch(
                     SETCAR(suppliedvars, Rf_mkString(prim_name_ptr));
                     SETTAG(
                         suppliedvars,
-                        Rf_install(b"Generic\x00".as_ptr() as *const c_char),
+                        Rf_install(c".Generic".as_ptr()),
                     );
+
 
                     if promisedArgs == FALSE {
                         let s = crate::eval::dispatch::promiseArgs(CDR(call), rho);

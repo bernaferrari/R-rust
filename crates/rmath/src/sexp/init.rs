@@ -235,9 +235,63 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              if (length(z) > 1L)\n\
                  stop(\"multi-key order() is not yet supported\")\n\
              method <- match.arg(method)\n\
-             .Internal(order(na.last, decreasing, z[[1L]]))\n\
+             x <- z[[1L]]\n\
+             if (is.object(x)) x <- as.vector(xtfrm(x))\n\
+             .Internal(order(na.last, decreasing, x))\n\
              }",
         );
+        // GNU sort.R / mean.R / stats median.R: closures, not primitives.
+        eval_base_binding(
+            base_env,
+            "sort",
+            "function(x, decreasing = FALSE, ...) {\n\
+             if (!is.logical(decreasing) || length(decreasing) != 1L)\n\
+                 stop(\"'decreasing' must be a length-1 logical vector.\\nDid you intend to set 'partial'?\")\n\
+             UseMethod(\"sort\")\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "sort.default",
+            "function(x, decreasing = FALSE, na.last = NA, ...) {\n\
+             if (is.object(x))\n\
+                 x[order(x, na.last = na.last, decreasing = decreasing)]\n\
+             else .Internal(sort(x, decreasing))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "mean",
+            "function(x, ...) UseMethod(\"mean\")",
+        );
+        eval_base_binding(
+            base_env,
+            "mean.default",
+            "function(x, trim = 0, na.rm = FALSE, ...) {\n\
+             if (isTRUE(na.rm)) x <- x[!is.na(x)]\n\
+             .Internal(mean(x))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "median",
+            "function(x, na.rm = FALSE, ...) UseMethod(\"median\")",
+        );
+        eval_base_binding(
+            base_env,
+            "median.default",
+            "function(x, na.rm = FALSE, ...) {\n\
+             if (is.factor(x) || is.data.frame(x)) stop(\"need numeric data\")\n\
+             if (length(names(x))) names(x) <- NULL\n\
+             if (na.rm) x <- x[!is.na(x)] else if (any(is.na(x))) return(x[NA_integer_])\n\
+             n <- length(x)\n\
+             if (n == 0L) return(x[NA_integer_])\n\
+             half <- (n + 1L) %/% 2L\n\
+             if (n %% 2L == 1L) sort(x, partial = half)[half]\n\
+             else mean(sort(x, partial = half + 0L:1L)[half + 0L:1L])\n\
+             }",
+        );
+
 
 
         eval_base_binding(

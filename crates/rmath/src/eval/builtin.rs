@@ -1231,10 +1231,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: super::arithmetic::do_summary,
     },
     EvaluatedBuiltin {
-        name: "mean",
-        handler: super::arithmetic::do_mean,
-    },
-    EvaluatedBuiltin {
         name: "is.numeric",
         handler: super::arithmetic::do_is_type,
     },
@@ -5495,14 +5491,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_sd,
     },
     EvaluatedBuiltin {
-        name: "median",
-        handler: crate::mainutils::essentials::do_median,
-    },
-    EvaluatedBuiltin {
-        name: "median.default",
-        handler: crate::mainutils::essentials::do_median,
-    },
-    EvaluatedBuiltin {
         name: "IQR",
         handler: crate::mainutils::essentials::do_iqr,
     },
@@ -5722,10 +5710,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "diff",
         handler: crate::mainutils::essentials::do_diff,
-    },
-    EvaluatedBuiltin {
-        name: "sort",
-        handler: crate::mainutils::essentials::do_sort,
     },
     EvaluatedBuiltin {
         name: "rev",

@@ -3647,6 +3647,76 @@ isS4(x2) && identical(as.character(class(x2))[1], "L") &&
         );
     }
 
+    #[test]
+    fn gnu_median_is_closure_with_default() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+identical(typeof(median), "closure") &&
+  identical(typeof(median.default), "closure") &&
+  identical(median(1:3), 2L) &&
+  identical(median(c(1, 3)), 2)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "gnu median wrapper: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn reg_s4_median_simple_list_class() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("L", contains = "list")
+setMethod("Compare", signature(e1="L", e2="ANY"),
+          function(e1,e2) sapply(e1, as.character(.Generic), e2=e2))
+setMethod("[", signature(x="L", i="ANY", j="missing",drop="missing"),
+          function(x,i,j,drop) new(class(x), x@.Data[i]))
+setMethod("xtfrm", "L", function(x) xtfrm(unlist(x@.Data)))
+mean.L <- function(x, ...) new("L", mean(unlist(x@.Data), ...))
+x <- new("L", 1:3)
+x2 <- x[-2]
+mx <- median(x)
+is(mx, "L") && identical(unlist(mx), 2L) &&
+  identical(unlist(x2), (1:3)[-2]) &&
+  isS4(x2)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "median S4 L: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+
+
+
+
 
 
 
