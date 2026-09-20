@@ -213,7 +213,13 @@ unsafe fn attach_srcfile_to_function_srcrefs(expr: SEXP, srcfile: SEXP) {
                     .to_bytes()
                     == b"function"
             {
-                let sr = CADDDR(expr);
+                let mut sr = crate::sexp::attrib_core::getAttrib(
+                    expr,
+                    crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+                );
+                if sr.is_null() || sr == crate::sexp::globals::R_NilValue() {
+                    sr = CADDDR(expr);
+                }
                 if !sr.is_null()
                     && sr != crate::sexp::globals::R_NilValue()
                     && TYPEOF(sr) == SEXPTYPE::INTSXP

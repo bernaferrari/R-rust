@@ -24,7 +24,9 @@
 
 use std::ffi::CString;
 
-use crate::sexp::accessors::{CADR, CAR, CDR, CHAR, INTEGER, PRINTNAME, SETCAR, TAG, TYPEOF};
+use crate::sexp::accessors::{
+    CADR, CAR, CDR, CHAR, INTEGER, PRINTNAME, SETCAR, SETTAG, SET_ATTRIB, TAG, TYPEOF,
+};
 use crate::sexp::builder::{
     scalar_complex_in, scalar_integer_in, scalar_logical_in, scalar_real_in, scalar_string_in,
 };
@@ -964,6 +966,9 @@ pub struct Parser<'arena> {
     strict_newline_else: bool,
     /// L-suffix warnings produced while tokenizing, keyed by token index.
     token_literal_warnings: Vec<(usize, String)>,
+    /// GNU `parse(keep.source=TRUE)` / `source(keep.source=TRUE)`: attach
+    /// `srcref` attributes on `function()` language objects.
+    keep_srcrefs: bool,
 }
 
 impl<'arena> Parser<'arena> {
@@ -1032,6 +1037,7 @@ impl<'arena> Parser<'arena> {
             group_opener,
             strict_newline_else: false,
             token_literal_warnings,
+            keep_srcrefs: false,
         }
     }
 
@@ -1319,6 +1325,7 @@ impl<'arena> Parser<'arena> {
     }
 
     pub fn parse_top_level_with_spans(&mut self) -> Result<Vec<(SEXP, usize, usize)>, ParseError> {
+        self.keep_srcrefs = true;
         begin_parsed_expr_warnings();
         let mut spans = Vec::new();
         loop {
@@ -2506,13 +2513,21 @@ impl<'arena> Parser<'arena> {
             }
             let fn_sym = Rf_install(c"function".as_ptr());
             let nil = R_NilValue();
-            // GNU gram.y: lang4(function, formals, body, srcref)
-            let srcref_cell = self.cons(srcref, nil)?;
+            // GNU gram.y: lang4(function, formals, body, R_NilValue) plus
+            // a `srcref` attribute. Putting the integer vector in the 4th
+            // language slot made inner `function()` AST cells differ under
+            // `identical(..., ignore.srcref=TRUE)`.
+            let srcref_cell = self.cons(nil, nil)?;
             let body_cell = self.cons(body, srcref_cell)?;
             let formals_cell = self.cons(formals, body_cell)?;
             let call = self.cons(fn_sym, formals_cell)?;
             if !call.is_null() {
                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                if self.keep_srcrefs {
+                    let attr_cell = self.cons(srcref, nil)?;
+                    SETTAG(attr_cell, Rf_install(c"srcref".as_ptr()));
+                    SET_ATTRIB(call, attr_cell);
+                }
             }
             Ok(call)
         }
