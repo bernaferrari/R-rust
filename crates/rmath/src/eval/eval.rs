@@ -3606,11 +3606,12 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
     fn reg_s4_head_through_callgeneric_local() {
         let mut session = RSession::new();
         let vendor = include_str!("../../../../tests/upstream-r/vendor/reg-S4.R");
-        let src: String = vendor.lines().take(457).collect::<Vec<_>>().join("\n");
+        let src: String = vendor.lines().take(481).collect::<Vec<_>>().join("\n");
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         result.unwrap_or_else(|e| {
             panic!(
-                "reg-S4.R through order/rbind setGeneric: {e}\nstdout={}\nstderr={}",
+                "reg-S4.R through median S4 list class: {e}\nstdout={}\nstderr={}",
+
 
 
                 output.stdout, output.stderr
@@ -3657,7 +3658,10 @@ isS4(x2) && identical(as.character(class(x2))[1], "L") &&
 identical(typeof(median), "closure") &&
   identical(typeof(median.default), "closure") &&
   identical(median(1:3), 2L) &&
-  identical(median(c(1, 3)), 2)
+  identical(median(c(1, 3)), 2) &&
+  identical(sort(c(3, 1, NA)), c(1, 3)) &&
+  isTRUE(2 == list(2)) &&
+  identical(as.vector(2 == list(1, 2, 3)), c(FALSE, TRUE, FALSE))
 "#,
         );
         let result = result.unwrap_or_else(|e| {
@@ -3693,7 +3697,8 @@ mean.L <- function(x, ...) new("L", mean(unlist(x@.Data), ...))
 x <- new("L", 1:3); x2 <- x[-2]
 identical(unlist(x2), (1:3)[-2]) &&
   is(mx <- median(x), "L") && isTRUE(mx == 2) &&
-  is(median(x2), "L")
+  isTRUE(median(x2) == x[2])
+
 "#,
         );
         let result = result.unwrap_or_else(|e| {

@@ -1527,20 +1527,41 @@ unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
         if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
             return complex_relop(op_name, a, b);
         }
-        if TYPEOF(a) == SEXPTYPE::RAWSXP || TYPEOF(b) == SEXPTYPE::RAWSXP {
-            let a = if TYPEOF(a) == SEXPTYPE::RAWSXP {
-                crate::mainutils::coerce::coerceVector(a, SEXPTYPE::REALSXP.into())
-            } else {
-                a
-            };
-            let b = if TYPEOF(b) == SEXPTYPE::RAWSXP {
-                crate::mainutils::coerce::coerceVector(b, SEXPTYPE::REALSXP.into())
-            } else {
-                b
-            };
+        if (TYPEOF(a) == SEXPTYPE::INTSXP || TYPEOF(a) == SEXPTYPE::REALSXP || TYPEOF(a) == SEXPTYPE::LGLSXP)
+            && (TYPEOF(b) == SEXPTYPE::INTSXP || TYPEOF(b) == SEXPTYPE::REALSXP || TYPEOF(b) == SEXPTYPE::LGLSXP)
+        {
             return binary_compare(op_name, a, b);
         }
-        binary_compare(op_name, a, b)
+        if TYPEOF(a) == SEXPTYPE::REALSXP || TYPEOF(b) == SEXPTYPE::REALSXP {
+            let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::REALSXP.into());
+            let _a = protect(a);
+            let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::REALSXP.into());
+            let _b = protect(b);
+            return binary_compare(op_name, a, b);
+        }
+        if TYPEOF(a) == SEXPTYPE::INTSXP || TYPEOF(b) == SEXPTYPE::INTSXP {
+            let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::INTSXP.into());
+            let _a = protect(a);
+            let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::INTSXP.into());
+            let _b = protect(b);
+            return binary_compare(op_name, a, b);
+        }
+        if TYPEOF(a) == SEXPTYPE::LGLSXP || TYPEOF(b) == SEXPTYPE::LGLSXP {
+            let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::LGLSXP.into());
+            let _a = protect(a);
+            let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::LGLSXP.into());
+            let _b = protect(b);
+            return binary_compare(op_name, a, b);
+        }
+        if TYPEOF(a) == SEXPTYPE::RAWSXP || TYPEOF(b) == SEXPTYPE::RAWSXP {
+            let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::REALSXP.into());
+            let _a = protect(a);
+            let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::REALSXP.into());
+            let _b = protect(b);
+            return binary_compare(op_name, a, b);
+        }
+        arithmetic_error("comparison of these types is not implemented");
+
     }
 }
 

@@ -130,19 +130,48 @@ pub unsafe fn isLanguage(x: SEXP) -> bool {
     unsafe { TYPEOF(x) == SEXPTYPE::LANGSXP }
 }
 
-/// Check if an SEXP is "vectorizable" (atomic vector types).
+/// Check if an SEXP is "vectorizable" (atomic, or a list of length-1 atomics).
 #[inline]
 pub unsafe fn isVectorizable(x: SEXP) -> bool {
     unsafe {
+        if x.is_null() {
+            return true;
+        }
         let t = TYPEOF(x);
-        t == SEXPTYPE::LGLSXP
+        if t == SEXPTYPE::LGLSXP
             || t == SEXPTYPE::INTSXP
             || t == SEXPTYPE::REALSXP
             || t == SEXPTYPE::CPLXSXP
             || t == SEXPTYPE::STRSXP
             || t == SEXPTYPE::RAWSXP
+        {
+            return true;
+        }
+        if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
+            let n = crate::sexp::accessors::XLENGTH(x);
+            for i in 0..n {
+                let elt = crate::sexp::accessors::VECTOR_ELT(x, i);
+                if elt.is_null() {
+                    return false;
+                }
+                let et = TYPEOF(elt);
+                if !(et == SEXPTYPE::LGLSXP
+                    || et == SEXPTYPE::INTSXP
+                    || et == SEXPTYPE::REALSXP
+                    || et == SEXPTYPE::CPLXSXP
+                    || et == SEXPTYPE::STRSXP
+                    || et == SEXPTYPE::RAWSXP)
+                    || crate::sexp::accessors::XLENGTH(elt) > 1
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+        false
     }
 }
+
 
 /// Check if a SEXP is numeric (integer or real, but not logical).
 #[inline]

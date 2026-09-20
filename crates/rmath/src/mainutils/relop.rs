@@ -923,6 +923,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
                 let _yg = protect(yf);
                 x = string_relop(PRIMVAL(op), xf, yf);
             } else if isString(x) != 0 || isString(y) != 0 {
+
                 x = string_relop(PRIMVAL(op), x, y);
             } else if isComplex(x) != 0 || isComplex(y) != 0 {
                 x = complex_relop(PRIMVAL(op), x, y, call);
@@ -930,11 +931,30 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
                 && (isNumeric(y) != 0 || isLogical(y) != 0)
             {
                 x = numeric_relop(PRIMVAL(op), x, y);
+            } else if isReal(x) != 0 || isReal(y) != 0 {
+                let xc = coerceVector(x, SEXPTYPE::REALSXP.into());
+                let _xg = protect(xc);
+                let yc = coerceVector(y, SEXPTYPE::REALSXP.into());
+                let _yg = protect(yc);
+                x = numeric_relop(PRIMVAL(op), xc, yc);
+            } else if isInteger(x) != 0 || isInteger(y) != 0 {
+                let xc = coerceVector(x, SEXPTYPE::INTSXP.into());
+                let _xg = protect(xc);
+                let yc = coerceVector(y, SEXPTYPE::INTSXP.into());
+                let _yg = protect(yc);
+                x = numeric_relop(PRIMVAL(op), xc, yc);
+            } else if isLogical(x) != 0 || isLogical(y) != 0 {
+                let xc = coerceVector(x, SEXPTYPE::LGLSXP.into());
+                let _xg = protect(xc);
+                let yc = coerceVector(y, SEXPTYPE::LGLSXP.into());
+                let _yg = protect(yc);
+                x = numeric_relop(PRIMVAL(op), xc, yc);
             } else if TYPEOF(x) == SEXPTYPE::RAWSXP || TYPEOF(y) == SEXPTYPE::RAWSXP {
                 x = raw_relop(PRIMVAL(op), x, y);
             } else {
                 relop_error("comparison of these types is not implemented");
             }
+
         } else {
             x = Rf_allocVector(SEXPTYPE::LGLSXP, 0);
         }
