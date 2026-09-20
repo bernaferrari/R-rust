@@ -368,42 +368,41 @@ pub unsafe fn do_envir(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        crate::mainutils::seq::check1arg(args, call, c"fun".as_ptr());
-        let first = CAR(args);
-        let second = CADR(args);
-        let (x, val) = if Rf_isEnvironment(second) != 0 {
-            (first, second)
-        } else {
-            (second, first)
-        };
-        if TYPEOF(x) == SEXPTYPE::CLOSXP {
-            if Rf_isEnvironment(val) == 0 {
-                errorcall(call, "invalid replacement for 'environment'");
+        // GNU: no check1arg. CAR is the object, CADR the replacement env.
+        let s = CAR(args);
+        let env = CADR(args);
+        let env_is_null = env.is_null() || env == R_NilValue();
+        let env_is_env = Rf_isEnvironment(env) != 0;
+        if TYPEOF(s) == SEXPTYPE::CLOSXP && (env_is_env || env_is_null) {
+            if env_is_null {
+                errorcall(call, "use of NULL environment is defunct");
             }
-            // Upstream do_envirgets shallow-duplicates the closure before
-            // reparenting it (builtin.c): `environment(f) <- e` must
-            // rebind the target to a NEW closure sharing formals/body, so
-            // other references to the original (e.g. one function object
-            // copied into several R6 generator environments by
-            // assign_func_envs) keep their own enclosing environments.
-            let _x_guard = crate::sexp::protect::protect(x);
-            let dup = crate::mainutils::duplicate::shallow_duplicate(x);
+            let _s_guard = crate::sexp::protect::protect(s);
+            let dup = crate::mainutils::duplicate::shallow_duplicate(s);
             if dup.is_null() || dup == R_NilValue() {
-                return x;
+                return s;
             }
-            SET_CLOENV(dup, val);
+            SET_CLOENV(dup, env);
             return dup;
-        }
-        if Rf_isEnvironment(val) != 0 {
-            setAttrib(
-                x,
-                Rf_install(b".Environment\0".as_ptr() as *const c_char),
-                val,
-            );
+        } else if env_is_null || env_is_env {
+            if !env_is_null
+                && (TYPEOF(s) == SEXPTYPE::BUILTINSXP || TYPEOF(s) == SEXPTYPE::SPECIALSXP)
+            {
+                warningcall(
+                    call,
+                    "setting environment(<primitive function>) is not possible and trying it is deprecated",
+                );
+            } else {
+                setAttrib(
+                    s,
+                    Rf_install(b".Environment\0".as_ptr() as *const c_char),
+                    env,
+                );
+            }
         } else {
-            errorcall(call, "invalid replacement for 'environment'");
+            errorcall(call, "replacement object is not an environment");
         }
-        x
+        s
     }
 }
 

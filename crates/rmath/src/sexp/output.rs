@@ -2240,52 +2240,8 @@ fn format_data_frame(x: Sexp<'_>) -> Option<String> {
     Some(lines.join("\n"))
 }
 
-fn is_reserved_r_name(name: &str) -> bool {
-    matches!(
-        name,
-        "if" | "else"
-            | "repeat"
-            | "while"
-            | "function"
-            | "for"
-            | "in"
-            | "next"
-            | "break"
-            | "TRUE"
-            | "FALSE"
-            | "NULL"
-            | "Inf"
-            | "NaN"
-            | "NA"
-            | "NA_integer_"
-            | "NA_real_"
-            | "NA_complex_"
-            | "NA_character_"
-    )
-}
-
-fn is_syntactic_r_name(name: &str) -> bool {
-    let bytes = name.as_bytes();
-    if bytes == b"..." {
-        return true;
-    }
-    if bytes.is_empty() || is_reserved_r_name(name) {
-        return false;
-    }
-    let first = bytes[0];
-    if !(first.is_ascii_alphabetic() || first == b'.') {
-        return false;
-    }
-    if first == b'.' && bytes.get(1).is_some_and(|c| c.is_ascii_digit()) {
-        return false;
-    }
-    bytes
-        .iter()
-        .all(|&c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_')
-}
-
 fn list_name_tag(name: &str) -> String {
-    if is_syntactic_r_name(name) {
+    if crate::mainutils::deparse::is_valid_r_name_bytes(name.as_bytes()) {
         format!("${name}")
     } else {
         format!("$`{name}`")
