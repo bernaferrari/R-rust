@@ -102,7 +102,7 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         while !t.is_null() && t != R_NilValue() {
             let value = resolve_promise(CAR(t));
             if usenames && data.ans_nnames == 0 {
-                if !Rf_isNull(TAG(t)) != 0 {
+                if Rf_isNull(TAG(t)) == 0 {
                     data.ans_nnames = 1;
                 } else {
                     data.ans_nnames = HasNames(value) as R_xlen_t;
@@ -258,7 +258,7 @@ pub unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 
         if isNewList(x_arg) {
             n = xlength(x_arg);
-            if usenames && !Rf_isNull(getAttrib(x_arg, names_sym)) != 0 {
+            if usenames && Rf_isNull(getAttrib(x_arg, names_sym)) == 0 {
                 data.ans_nnames = 1;
             }
             for i in 0..n {
@@ -271,7 +271,7 @@ pub unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
             let mut t = x_arg;
             while !t.is_null() && t != R_NilValue() {
                 if usenames && data.ans_nnames == 0 {
-                    if !Rf_isNull(TAG(t)) != 0 {
+                    if Rf_isNull(TAG(t)) == 0 {
                         data.ans_nnames = 1;
                     } else {
                         data.ans_nnames = HasNames(CAR(t)) as R_xlen_t;

@@ -586,13 +586,13 @@ pub unsafe fn HasNames(x: SEXP) -> c_int {
         }
         if isVector(x) != 0 {
             let names_sym = crate::eval::attrib_core::R_NamesSymbol();
-            if !Rf_isNull(getAttrib(x, names_sym)) != 0 {
+            if Rf_isNull(getAttrib(x, names_sym)) == 0 {
                 return 1;
             }
         } else if isList(x) != 0 {
             let mut current = x;
             while !current.is_null() && current != R_NilValue() {
-                if !Rf_isNull(TAG(current)) != 0 {
+                if Rf_isNull(TAG(current)) == 0 {
                     return 1;
                 }
                 current = CDR(current);

@@ -649,7 +649,13 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
 
                 if Rf_isString(VECTOR_ELT(x, j)) == 0 {
-                    return ptr::null_mut();
+                    let name = std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op))
+                        .to_string_lossy();
+                    let msg = std::ffi::CString::new(format!(
+                        "non-string argument to .Internal({name})"
+                    ))
+                    .unwrap_or_default();
+                    error(msg.as_ptr(), 0, 0, 0);
                 }
             }
             if recycle_0 && !has_0_len && XLENGTH(VECTOR_ELT(x, j)) == 0 {
@@ -1015,7 +1021,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         args_rest = CDR(args_rest);
 
         let mut restore_digits = None;
-        if !Rf_isNull(CAR(args_rest)) != 0 {
+        if Rf_isNull(CAR(args_rest)) == 0 {
             let digits = asInteger(CAR(args_rest));
             if digits == NA_INTEGER || digits < R_MIN_DIGITS_OPT || digits > R_MAX_DIGITS_OPT {
                 return ptr::null_mut();

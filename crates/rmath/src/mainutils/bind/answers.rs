@@ -80,7 +80,7 @@ pub unsafe fn AnswerType(x: SEXP, recurse: bool, usenames: bool, data: *mut Bind
                     let n = xlength(x);
                     if usenames && (*data).ans_nnames == 0 {
                         let names_sym = crate::eval::attrib_core::R_NamesSymbol();
-                        if !Rf_isNull(getAttrib(x, names_sym)) != 0 {
+                        if Rf_isNull(getAttrib(x, names_sym)) == 0 {
                             (*data).ans_nnames = 1;
                         }
                     }
@@ -104,7 +104,7 @@ pub unsafe fn AnswerType(x: SEXP, recurse: bool, usenames: bool, data: *mut Bind
                     let mut current = x;
                     while !current.is_null() && current != R_NilValue() {
                         if usenames && (*data).ans_nnames == 0 {
-                            if !Rf_isNull(TAG(current)) != 0 {
+                            if Rf_isNull(TAG(current)) == 0 {
                                 (*data).ans_nnames = 1;
                             } else {
                                 (*data).ans_nnames = HasNames(CAR(current)) as R_xlen_t;

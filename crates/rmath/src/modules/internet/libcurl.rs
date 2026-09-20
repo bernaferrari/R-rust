@@ -469,7 +469,7 @@ unsafe fn download_cleanup_url(i: c_int, c: *mut download_cleanup_info) {
                 );
             }
 
-            if !Rf_isNull(c_ref.sfile) != 0 {
+            if Rf_isNull(c_ref.sfile) == 0 {
                 let mut status: c_long = 0;
                 if !c_ref.hnd.is_null() && !(*c_ref.hnd.add(i as usize)).is_null() {
                     curl_easy_getinfo(

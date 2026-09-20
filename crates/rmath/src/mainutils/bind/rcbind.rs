@@ -349,10 +349,10 @@ pub unsafe fn cbind(
             if length(dims) == 2 {
                 let dn = getAttrib(u_val, dimnames_sym);
                 if length(dn) == 2 {
-                    if !Rf_isNull(VECTOR_ELT(dn, 1)) != 0 {
+                    if Rf_isNull(VECTOR_ELT(dn, 1)) == 0 {
                         have_cnames = true;
                     }
-                    if !Rf_isNull(VECTOR_ELT(dn, 0)) != 0 {
+                    if Rf_isNull(VECTOR_ELT(dn, 0)) == 0 {
                         mnames = mrows;
                     }
                 }
@@ -364,7 +364,7 @@ pub unsafe fn cbind(
                 }
                 let dn = getAttrib(u_val, names_sym);
                 if k >= lenmin
-                    && (!Rf_isNull(TAG(t)) != 0
+                    && (Rf_isNull(TAG(t)) == 0
                         || deparse_level == 2
                         || (deparse_level == 1 && isSymbol(CAR(t))))
                 {
@@ -551,7 +551,7 @@ pub unsafe fn cbind(
                     }
 
                     let tnam = GetColNames(v);
-                    if !Rf_isNull(tnam) != 0 {
+                    if Rf_isNull(tnam) == 0 {
                         for i in 0..length(tnam) {
                             SET_STRING_ELT(nam, j as R_xlen_t, STRING_ELT(tnam, i as R_xlen_t));
                             j += 1;
@@ -567,13 +567,13 @@ pub unsafe fn cbind(
 
                     if have_rnames
                         && GetRowNames(dn) == R_NilValue()
-                        && !Rf_isNull(u_names) != 0
+                        && Rf_isNull(u_names) == 0
                         && length(u_names) == rows
                     {
                         SetRowNames(dn, lazy_duplicate(u_names));
                     }
 
-                    if !Rf_isNull(TAG(t)) != 0 {
+                    if Rf_isNull(TAG(t)) == 0 {
                         SET_STRING_ELT(nam, j as R_xlen_t, PRINTNAME(TAG(t)));
                         j += 1;
                     } else if deparse_level == 1 && isSymbol(CAR(t)) {
@@ -693,10 +693,10 @@ pub unsafe fn rbind(
             if length(dims) == 2 {
                 let dn = getAttrib(u, dimnames_sym);
                 if length(dn) == 2 {
-                    if !Rf_isNull(VECTOR_ELT(dn, 0)) != 0 {
+                    if Rf_isNull(VECTOR_ELT(dn, 0)) == 0 {
                         have_rnames = true;
                     }
-                    if !Rf_isNull(VECTOR_ELT(dn, 1)) != 0 {
+                    if Rf_isNull(VECTOR_ELT(dn, 1)) == 0 {
                         mnames = mcols;
                     }
                 }
@@ -708,7 +708,7 @@ pub unsafe fn rbind(
                 }
                 let _dn = getAttrib(u, names_sym);
                 if k >= lenmin
-                    && (!Rf_isNull(TAG(t)) != 0
+                    && (Rf_isNull(TAG(t)) == 0
                         || deparse_level == 2
                         || (deparse_level == 1 && isSymbol(CAR(t))))
                 {
@@ -953,7 +953,7 @@ pub unsafe fn rbind(
 
                     let tnam = GetRowNames(v);
                     if have_rnames {
-                        if !Rf_isNull(tnam) != 0 {
+                        if Rf_isNull(tnam) == 0 {
                             for i in 0..length(tnam) {
                                 SET_STRING_ELT(nam, j as R_xlen_t, STRING_ELT(tnam, i as R_xlen_t));
                                 j += 1;
@@ -970,13 +970,13 @@ pub unsafe fn rbind(
 
                     if have_cnames
                         && GetColNames(dn) == R_NilValue()
-                        && !Rf_isNull(u_names) != 0
+                        && Rf_isNull(u_names) == 0
                         && length(u_names) == cols
                     {
                         SetColNames(dn, lazy_duplicate(u_names));
                     }
 
-                    if !Rf_isNull(TAG(t)) != 0 {
+                    if Rf_isNull(TAG(t)) == 0 {
                         SET_STRING_ELT(nam, j as R_xlen_t, PRINTNAME(TAG(t)));
                         j += 1;
                     } else if deparse_level == 1 && isSymbol(CAR(t)) {

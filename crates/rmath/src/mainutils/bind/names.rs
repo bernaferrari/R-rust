@@ -349,7 +349,7 @@ pub unsafe fn c_Extract_opt(
             next = CDR(a);
 
             // Check for "recursive" argument
-            if !n.is_null() && n != R_NilValue() && !Rf_isNull(n) != 0 && TYPEOF(n) == SYMSXP_I {
+            if !n.is_null() && n != R_NilValue() && Rf_isNull(n) == 0 && TYPEOF(n) == SYMSXP_I {
                 let name = CHAR(PRINTNAME(n));
                 if !name.is_null() {
                     let name_str = std::ffi::CStr::from_ptr(name).to_str().unwrap_or("");
