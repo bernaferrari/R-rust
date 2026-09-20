@@ -2071,6 +2071,24 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
     }
 
     #[test]
+    fn as_double_dispatches_s3_on_classed_numeric() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"
+            x <- structure(pi, class="testit")
+            xx <- structure("OK", class="testOK")
+            ff <- get("as.double", .GenericArgsEnv)
+            body(ff) <- xx
+            assign("as.double.testit", ff, .GlobalEnv)
+            identical(as.double(x), xx)
+            "#,
+        );
+        let result = result.expect("as.double must dispatch S3 on classed numeric");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+
+    #[test]
     fn print_table_1d_keeps_gnu_trailing_column_space() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
