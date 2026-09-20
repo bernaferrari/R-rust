@@ -39,20 +39,9 @@ unsafe fn warning(msg: &str) {
     eprintln!("Warning: {}", msg);
 }
 
-/// Check if SEXP is a factor (has class "factor" or "ordered").
+/// GNU `isFactor`: OBJECT with class "factor" (length-1 class is valid).
 unsafe fn isFactor(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            return 0;
-        }
-        let klass = getAttrib(s, R_ClassSymbol());
-        if klass.is_null() || TYPEOF(klass) != SEXPTYPE::STRSXP || LENGTH(klass) < 2 {
-            return 0;
-        }
-        let c1 = CHAR(STRING_ELT(klass, 0));
-        let c1_str = std::ffi::CStr::from_ptr(c1).to_str().unwrap_or("");
-        (c1_str == "factor" || c1_str == "ordered") as c_int
-    }
+    unsafe { crate::mainutils::apply::isFactor(s) }
 }
 
 /// Return the number of levels in a factor.

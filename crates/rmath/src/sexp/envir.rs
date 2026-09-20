@@ -773,6 +773,9 @@ pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     if let Some(n) = dd_val(symbol.clone()) {
         return dd_missing_in_frame(n, rho, false);
     }
+    if symbol == dots_symbol() {
+        return dots_formal_is_missing(rho, false);
+    }
     ordinary_frame_is_missing(symbol, rho)
 }
 
@@ -780,12 +783,33 @@ pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
 ///
 /// For `..N`, this uses the Nth dots cell. If the current frame has no
 /// `...` formal, it raises `'missing(...)' did not find an argument`.
+/// Empty `...` (no extras in the call) is missing, matching GNU
+/// `split.default` / `missing(...)`.
 #[must_use]
 pub fn r_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     if let Some(n) = dd_val(symbol.clone()) {
         return dd_missing_in_frame(n, rho, true);
     }
+    if symbol == dots_symbol() {
+        return dots_formal_is_missing(rho, true);
+    }
     ordinary_frame_is_missing(symbol, rho)
+}
+
+fn dots_formal_is_missing(rho: Sexp<'_>, error_if_absent: bool) -> bool {
+    let Some(dots) = find_var_in_frame_safe(rho.clone(), dots_symbol()) else {
+        if error_if_absent {
+            binding_error("'missing(...)' did not find an argument");
+        }
+        return false;
+    };
+    if is_empty_dots_value(dots) {
+        return true;
+    }
+    if let Some(cell) = frame_binding_cell(rho, dots_symbol()) {
+        return unsafe { super::accessors::MISSING(cell) } != 0;
+    }
+    false
 }
 
 fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {

@@ -5081,6 +5081,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "attach" => Some(crate::mainutils::envir::do_attach),
         "as.vector" => Some(crate::mainutils::essentials::do_as_vector),
         "seq" => Some(crate::mainutils::seq::do_seq),
+        "split" => Some(crate::mainutils::split::do_split),
 
 
 

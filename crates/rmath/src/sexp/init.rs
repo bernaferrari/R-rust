@@ -241,6 +241,53 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              else answer\n\
              }",
         );
+        // GNU split.R / tapply.R: closures over .Internal(split), not primitives.
+        eval_base_binding(
+            base_env,
+            ".NotYetUsed",
+            "function(arg, error = TRUE) {\n\
+             msg <- gettextf(\"argument '%s' is not used (yet)\", arg)\n\
+             if (error) stop(msg, domain = NA, call. = FALSE)\n\
+             else warning(msg, domain = NA, call. = FALSE)\n\
+             }",
+        );
+        eval_base_binding(base_env, "split", "function(x, f, drop = FALSE, ...) UseMethod(\"split\")");
+        eval_base_binding(
+            base_env,
+            "split.default",
+            include_str!("gnu_split_default.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "split.data.frame",
+            "function(x, f, drop = FALSE, ...) {\n\
+             lapply(split(x = seq_len(nrow(x)), f = f, drop = drop, ...),\n\
+                    function(ind) x[ind, , drop = FALSE])\n\
+             }",
+        );
+        eval_base_binding(base_env, "tapply", include_str!("gnu_tapply.R"));
+        eval_base_binding(base_env, "is.data.frame", "function(x) inherits(x, \"data.frame\")");
+        eval_base_binding(
+            base_env,
+            ".set_row_names",
+            "function(n) if (n > 0) c(NA_integer_, -n) else integer()",
+        );
+        eval_base_binding(
+            base_env,
+            ".row_names_info",
+            "function(x, type = 1L) {\n\
+             rn <- attr(x, \"row.names\")\n\
+             if (type == 0L) return(rn)\n\
+             if (is.integer(rn) && length(rn) == 2L && is.na(rn[1L])) {\n\
+                 if (type == 1L) rn[2L] else abs(rn[2L])\n\
+             } else if (is.character(rn) || is.integer(rn)) length(rn) else 0L\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "I",
+            "function(x) { class(x) <- unique.default(c(\"AsIs\", oldClass(x))); x }",
+        );
         // GNU array.R / sapply.R: closures over .Internal, not primitives.
         // paste.R: .Internal(paste(list(...), sep, collapse, recycle0)).
         eval_base_binding(
@@ -555,7 +602,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "row.names<-.default",
-            "function(x, value) { rownames(x) <- value; x }",
+            "function(x, value) `rownames<-`(x, value)",
         );
         eval_base_binding(
             base_env,
