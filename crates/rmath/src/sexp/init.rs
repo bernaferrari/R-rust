@@ -208,6 +208,17 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              } else .Internal(unlist(x, recursive, use.names))\n\
              }",
         );
+        // GNU lapply.R: closure over .Internal(lapply), not a primitive.
+        eval_base_binding(
+            base_env,
+            "lapply",
+            "function (X, FUN, ...) {\n\
+             FUN <- match.fun(FUN)\n\
+             if (!is.vector(X) || is.object(X)) X <- as.list(X)\n\
+             .Internal(lapply(X, FUN))\n\
+             }",
+        );
+
         // GNU sample.R: closures over .Internal(sample)/sample2, not primitives.
         // setMethod("sample", ...) needs a function skeleton (rport-2gpp.2).
         eval_base_binding(
