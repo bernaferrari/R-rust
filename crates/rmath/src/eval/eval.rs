@@ -3458,6 +3458,64 @@ identical(f1, 1) && identical(n, 1) &&
     }
 
     #[test]
+    fn classes_methods_trace_s4_function_class() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("myS4Fun", contains = "function", slots = c(label = "character"))
+g <- new("myS4Fun", function(x) x, label = "kept")
+n <- 0
+suppressMessages(trace("g", quote(n <<- n + 1), print = FALSE))
+g1 <- g(1)
+stopifnot(identical(g@label, "kept"))
+untrace("g")
+identical(g1, 1) && identical(n, 1) &&
+  is(g, "myS4Fun") && identical(g@label, "kept") &&
+  identical(g(2), 2) && identical(n, 1)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "classes-methods.R trace S4 function class: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn classes_methods_trace_s3_s4_function_class() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+setClass("myS3FunS4", contains = c("function", "VIRTUAL"),
+         slots = c(label = "character"))
+setOldClass(c("myS3Fun", "function"), S4Class = "myS3FunS4")
+h <- structure(function(x) x, class = c("myS3Fun", "function"),
+               label = "kept")
+n <- 0
+suppressMessages(trace("h", quote(n <<- n + 1), print = FALSE))
+h1 <- h(1)
+stopifnot(identical(h@label, "kept"))
+untrace("h")
+identical(h1, 1) && identical(n, 1) &&
+  identical(class(h), c("myS3Fun", "function")) &&
+  identical(attr(h, "label"), "kept") &&
+  identical(h(2), 2) && identical(n, 1)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "classes-methods.R trace S3/S4 function class: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
     fn signature_class_names_slot_is_argument_names() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
@@ -3492,6 +3550,7 @@ identical(md@target@names, "x") && identical(md@defined@names, "x")
             src.push('\n');
         }
         src.push_str("TRUE\n");
+
         let (result, output, _) = session.eval_script_with_output_capture(&src);
         let result = result.unwrap_or_else(|e| {
             panic!(
@@ -3502,7 +3561,6 @@ identical(md@target@names, "x") && identical(md@defined@names, "x")
         });
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
 
     #[test]
     fn methods_package_slot_assign_sets_attribute() {
