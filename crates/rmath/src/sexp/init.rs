@@ -242,7 +242,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
         // GNU array.R / sapply.R: closures over .Internal, not primitives.
-        // paste stays a primitive until paste_impl Internal arity is wired.
+        // paste.R: .Internal(paste(list(...), sep, collapse, recycle0)).
+        eval_base_binding(
+            base_env,
+            "paste",
+            "function (..., sep = \" \", collapse = NULL, recycle0 = FALSE)\n\
+             .Internal(paste(list(...), sep, collapse, recycle0))",
+        );
+        eval_base_binding(
+            base_env,
+            "paste0",
+            "function (..., collapse = NULL, recycle0 = FALSE)\n\
+             .Internal(paste0(list(...), collapse, recycle0))",
+        );
         eval_base_binding(
             base_env,
             "array",

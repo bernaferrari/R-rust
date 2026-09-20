@@ -563,7 +563,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Check the arguments
         let x = CAR(args);
         if isVectorList(x) == 0 {
-            return ptr::null_mut();
+            error(c"invalid first argument".as_ptr(), 0, 0, 0);
         }
         let nx = XLENGTH(x);
 
@@ -583,7 +583,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             // paste(..., sep, .)
             sep = CADR(args);
             if Rf_isString(sep) == 0 || LENGTH(sep) <= 0 || isNA_STRING(STRING_ELT(sep, 0)) {
-                return ptr::null_mut();
+                error(c"invalid separator".as_ptr(), 0, 0, 0);
             }
             let sep_charsxp = STRING_ELT(sep, 0);
             csep = translateChar(sep_charsxp);
@@ -604,14 +604,14 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             recycle_0 = asBool2(CADDR(args), call);
         }
 
-        let do_collapse = !Rf_isNull(collapse) != 0;
+        let do_collapse = collapse != R_NilValue() && Rf_isNull(collapse) == 0;
 
         if do_collapse
             && (Rf_isString(collapse) == 0
                 || LENGTH(collapse) <= 0
                 || isNA_STRING(STRING_ELT(collapse, 0)))
         {
-            return ptr::null_mut();
+            error(c"invalid 'collapse' argument".as_ptr(), 0, 0, 0);
         }
 
         // Macro: zero_return
