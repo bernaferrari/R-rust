@@ -50,16 +50,10 @@ impl CaptureFrame {
         let (target, split) = match stream {
             OutputStream::Stdout => (&mut self.stdout, self.split_stdout),
             OutputStream::Stderr => (&mut self.stderr, false),
-            // Embedding captures both streams and keeps messages interleaved
-            // with printed values. An explicit message capture owns stderr;
-            // an output-only capture must let messages continue outward.
-            OutputStream::Message if self.stderr.is_some() => {
-                if self.stdout.is_some() {
-                    (&mut self.stdout, false)
-                } else {
-                    (&mut self.stderr, false)
-                }
-            }
+            // GNU message() writes stderr. An explicit message capture
+            // (capture.output(type="message")) owns stderr; an output-only
+            // capture must let messages continue outward as stderr.
+            OutputStream::Message if self.stderr.is_some() => (&mut self.stderr, false),
             OutputStream::Message => return false,
         };
         if let Some(buffer) = target {

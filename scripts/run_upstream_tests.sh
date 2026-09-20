@@ -92,7 +92,8 @@ fi
 # Build the rport file-runner helper (standalone crate). Rebuild when the
 # helper or rmath sources are newer — otherwise oracle runs a stale rmath.
 HELPER_BIN="$HELPER_CRATE/target/release/rport-upstream-run"
-if [[ ! -x "$HELPER_BIN" ]] || [[ -n "$(find "$HELPER_CRATE/src" "$HELPER_CRATE/Cargo.toml" "$ROOT_DIR/crates/rmath/src" "$ROOT_DIR/crates/rmath/Cargo.toml" -newer "$HELPER_BIN" 2>/dev/null)" ]]; then
+if [[ ! -x "$HELPER_BIN" ]] || [[ -n "$(find "$HELPER_CRATE/src" "$HELPER_CRATE/Cargo.toml" "$ROOT_DIR/crates/rmath/src" "$ROOT_DIR/crates/rmath/Cargo.toml" "$ROOT_DIR/crates/nmath/src" "$ROOT_DIR/crates/nmath/Cargo.toml" -newer "$HELPER_BIN" 2>/dev/null)" ]]; then
+
     echo "INFO: building rport upstream helper (release)..." >&2
     (cd "$HELPER_CRATE" && cargo build --release --offline >/dev/null) ||
         (cd "$HELPER_CRATE" && cargo build --release >/dev/null)
@@ -107,8 +108,12 @@ printf 'file\tverdict\treason\ttrunk_exit\trport_exit\tstock_exit\tstdout=trunk\
 
 # normalize <file> : strip CRs, trailing whitespace, trailing blank lines.
 normalize() {
-    tr -d '\r' <"$1" | sed -e 's/[[:space:]]\+$//' -e :a -e '/^$/{$d;N;ba' -e '}'
+    tr -d '\r' <"$1" | sed -e 's/[[:space:]]\+$//' \
+        -e 's/^Time elapsed:.*/Time elapsed: <t>/' \
+        -e 's/<environment: 0x[0-9a-fA-F]*>/<environment: 0x*>/' \
+        -e :a -e '/^$/{$d;N;ba' -e '}'
 }
+
 
 first_error_line() { # best-effort single-line R error/warning extract
     iconv -c -f UTF-8 -t UTF-8 "$1" 2>/dev/null | grep -m1 -E '^(Error|Warning|error|Fehler|Execution halted|panicked at)' |

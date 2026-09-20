@@ -2344,7 +2344,8 @@ pub unsafe fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
-/// R's `print.function(x)` — print function definition.
+/// R's `print.function(x)` — GNU PrintClosure: deparse the closure, then
+/// the enclosing environment pointer.
 pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -2356,40 +2357,33 @@ pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         if t != SEXPTYPE::CLOSXP && t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
             return do_print(_call, _op, args, _rho);
         }
-        let formals = if t == SEXPTYPE::CLOSXP {
-            crate::sexp::accessors::FORMALS(x)
-        } else {
-            R_NilValue()
-        };
-        let mut rendered = String::from("function(");
-        let mut first = true;
-        let mut cur = formals;
-        while !cur.is_null() && cur != R_NilValue() {
-            if !first {
-                rendered.push_str(", ");
-            }
-            first = false;
-            let tag = crate::sexp::accessors::TAG(cur);
-            if !tag.is_null() {
-                let pname = crate::sexp::accessors::PRINTNAME(tag);
-                if !pname.is_null() {
-                    let s = crate::sexp::accessors::CHAR(pname);
-                    if !s.is_null() {
-                        let name = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("?");
-                        rendered.push_str(name);
+        if t != SEXPTYPE::CLOSXP {
+            emit_print_text("<primitive>\n");
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+        let lines = crate::mainutils::deparse::deparse1(
+            x,
+            false,
+            crate::mainutils::deparse::DEFAULTDEPARSE,
+        );
+        let _lines = crate::sexp::protect::protect(lines);
+        let mut rendered = String::new();
+        if TYPEOF(lines) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(lines) {
+                let s = STRING_ELT(lines, i);
+                if !s.is_null() && s != crate::sexp::globals::R_NaString() {
+                    let p = CHAR(s);
+                    if !p.is_null() {
+                        rendered.push_str(std::ffi::CStr::from_ptr(p).to_str().unwrap_or(""));
                     }
                 }
+                rendered.push('\n');
             }
-            cur = CDR(cur);
         }
-        rendered.push_str(")\n");
-        if t == SEXPTYPE::CLOSXP {
-            let body = crate::sexp::accessors::BODY(x);
-            if !body.is_null() {
-                rendered.push_str("{ ... }\n");
-            }
-        } else {
-            rendered.push_str("<primitive>\n");
+        let env = crate::sexp::accessors::CLOENV(x);
+        if !env.is_null() && env != R_NilValue() {
+            rendered.push_str(&format!("<environment: {:p}>\n", env));
         }
         emit_print_text(&rendered);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);

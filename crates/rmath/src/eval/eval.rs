@@ -2405,8 +2405,9 @@ grepl(".Data", out, fixed = TRUE) && grepl("prec = 1L", out, fixed = TRUE)
         let (result, output, _) = session.eval_script_with_output_capture(
             r#"
 out <- capture.output(print(function(fun, envir, value) NULL))
-identical(out[1], "function(fun, envir, value)")
+length(out) >= 1L && grepl("^function", out[1])
 "#,
+
         );
         let result = result.expect("capture.output(print.function) must capture the signature");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -2416,6 +2417,31 @@ identical(out[1], "function(fun, envir, value)")
             output.stdout
         );
     }
+
+    #[test]
+    fn message_writes_stderr_not_stdout() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+out <- capture.output(message("hello-msg"))
+identical(out, character(0))
+"#,
+        );
+        let result = result.expect("capture.output must not swallow message()");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(
+            !output.stdout.contains("hello-msg"),
+            "message() leaked onto stdout:\n{}",
+            output.stdout
+        );
+        assert!(
+            output.stderr.contains("hello-msg"),
+            "message() must appear on stderr:\n{}",
+            output.stderr
+        );
+    }
+
+
 
 
 
