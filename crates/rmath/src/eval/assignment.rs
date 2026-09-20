@@ -386,12 +386,6 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
             "dimnames<-" => {
                 crate::mainutils::essentials::do_dimnames_set(call, assign_fn, args, rho)
             }
-            "rownames<-" => {
-                crate::mainutils::essentials::do_rownames_set(call, assign_fn, args, rho)
-            }
-            "colnames<-" => {
-                crate::mainutils::essentials::do_colnames_set(call, assign_fn, args, rho)
-            }
             _ => Rf_eval(call, rho),
 
         }

@@ -497,7 +497,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "rownames<-",
             "function(x, value) {\n\
              if (is.data.frame(x)) {\n\
-                 row.names(x) <- value\n\
+                 x <- `row.names<-.data.frame`(x, value)\n\
              } else {\n\
                  dn <- dimnames(x)\n\
                  if (is.null(dn)) {\n\
@@ -556,6 +556,14 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             base_env,
             "row.names<-.default",
             "function(x, value) { rownames(x) <- value; x }",
+        );
+        eval_base_binding(
+            base_env,
+            "row.names<-.data.frame",
+            "function(x, value) {\n\
+             attr(x, \"row.names\") <- if (is.null(value)) NULL else as.character(value)\n\
+             x\n\
+             }",
         );
         {
             let seq_sym = Rf_install_in_current("seq");
