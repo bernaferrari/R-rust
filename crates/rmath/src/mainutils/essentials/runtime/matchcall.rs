@@ -59,16 +59,48 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         let expand_arg = CAR(CDR(CDR(values)));
         let envir_arg = CAR(CDR(CDR(CDR(values))));
         let top = crate::sexp::context::R_GlobalContext();
+        // GNU match.call is a closure whose defaults are
+        // sys.function(sys.parent()) / sys.call(sys.parent()). This port
+        // exposes the Internal as a builtin, so R_syscall(0) is the
+        // innermost *other* function when match.call() is forced as an
+        // argument (format/deparse). Walk to the function whose cloenv is
+        // this builtin’s rho — the frame that wrote match.call().
+        let frame = {
+            let mut c = top;
+            let mut found = std::ptr::null_mut();
+            while !c.is_null() {
+                if ((*c).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0
+                    && (*c).cloenv == rho
+                {
+                    found = c;
+                    break;
+                }
+                c = (*c).nextcontext;
+            }
+            found
+        };
         let definition = if definition_arg == R_MissingArg() || definition_arg == R_NilValue() {
-            crate::eval::context::R_sysfunction(0, top)
+            if !frame.is_null() && !(*frame).callfun.is_null() {
+                crate::mainutils::duplicate::duplicate((*frame).callfun)
+            } else {
+                crate::eval::context::R_sysfunction(0, top)
+            }
         } else {
             definition_arg
         };
         let mut source = if call_arg == R_MissingArg() {
-            crate::eval::context::R_syscall(0, top)
+            if !frame.is_null()
+                && !(*frame).call.is_null()
+                && TYPEOF((*frame).call) == SEXPTYPE::LANGSXP
+            {
+                crate::mainutils::duplicate::shallow_duplicate((*frame).call)
+            } else {
+                crate::eval::context::R_syscall(0, top)
+            }
         } else {
             call_arg
         };
+
         if TYPEOF(source) == SEXPTYPE::EXPRSXP && XLENGTH(source) > 0 {
             source = VECTOR_ELT(source, 0);
         }

@@ -2578,6 +2578,39 @@ identical(capture.output(show(x)), gnu) &&
     }
 
     #[test]
+    fn s4_method_match_call_sees_user_call() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+setClass("m1", contains = "matrix")
+setGeneric("foo", function(x, ...) standardGeneric("foo"))
+setMethod("foo", "m1", function(x, ...) cat(" <m1> ", format(match.call()), "\n"))
+identical(
+  capture.output(foo(new("m1"), bla = TRUE)),
+  " <m1>  foo(x = new(\"m1\"), bla = TRUE) "
+)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "S4 match.call: {e}\nstdout={:?}\nstderr={:?}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={:?}\nstderr={:?}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+
+
+
+
+    #[test]
     fn str_s4_formal_class_matches_gnu() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
