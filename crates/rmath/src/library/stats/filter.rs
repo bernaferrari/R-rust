@@ -5000,7 +5000,30 @@ fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
     }
 }
 
-fn collect_term_labels(expr: SEXP, out: &mut Vec<String>) {
+fn deparse_call(expr: SEXP) -> String {
+    unsafe {
+        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+            return std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
+                .to_string_lossy()
+                .into_owned();
+        }
+        if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+            return String::new();
+        }
+        let op = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(CAR(expr))))
+            .to_string_lossy()
+            .into_owned();
+        let mut args = Vec::new();
+        let mut cell = CDR(expr);
+        while !cell.is_null() && cell != R_NilValue() {
+            args.push(deparse_call(CAR(cell)));
+            cell = CDR(cell);
+        }
+        format!("{op}({})", args.join(", "))
+    }
+}
+
+fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>) {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
             return;
@@ -5015,6 +5038,7 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>) {
             ) {
                 if !out.iter().any(|s| s == &name) {
                     out.push(name);
+                    nodes.push(expr);
                 }
             }
             return;
@@ -5028,6 +5052,14 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>) {
                 if name == "offset" {
                     return;
                 }
+                if matches!(name.as_str(), "+" | "-" | "*" | "/" | "^" | "(" | "~") {
+                    let mut cell = CDR(expr);
+                    while !cell.is_null() && cell != R_NilValue() {
+                        collect_term_labels(CAR(cell), out, nodes);
+                        cell = CDR(cell);
+                    }
+                    return;
+                }
                 if name == ":" {
                     let mut parts = Vec::new();
                     collect_formula_symbols(CADR(expr), &mut parts);
@@ -5036,15 +5068,17 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>) {
                         let joined = parts.join(":");
                         if !out.iter().any(|s| s == &joined) {
                             out.push(joined);
+                            nodes.push(expr);
                         }
                     }
                     return;
                 }
-            }
-            let mut cell = CDR(expr);
-            while !cell.is_null() && cell != R_NilValue() {
-                collect_term_labels(CAR(cell), out);
-                cell = CDR(cell);
+                let label = deparse_call(expr);
+                if !out.iter().any(|s| s == &label) {
+                    out.push(label);
+                    nodes.push(expr);
+                }
+                return;
             }
         }
     }
@@ -6129,7 +6163,8 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
         } else {
             form
         };
-        collect_term_labels(rhs, &mut labels);
+        let mut term_nodes: Vec<SEXP> = Vec::new();
+        collect_term_labels(rhs, &mut labels, &mut term_nodes);
         let lab = Rf_allocVector3(SEXPTYPE::STRSXP, labels.len() as i64);
         let _lb = protect(lab);
         for (i, name) in labels.iter().enumerate() {
@@ -6153,20 +6188,28 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
         );
         let mut var_syms: Vec<SEXP> = Vec::new();
         if response > 0 {
-            let rhs = CDR(form);
-            if !rhs.is_null() && rhs != R_NilValue() {
-                var_syms.push(CAR(rhs));
+            let resp = CDR(form);
+            if !resp.is_null() && resp != R_NilValue() {
+                var_syms.push(CAR(resp));
+            }
+        }
+        for (name, node) in labels.iter().zip(term_nodes.iter().copied()) {
+            if TYPEOF(node) == SEXPTYPE::LANGSXP
+                && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(CAR(node))))
+                    .to_bytes()
+                    == b":"
+            {
+                for part in name.split(':') {
+                    if !var_syms.iter().any(|&s| symbol_print_name(s) == part) {
+                        let c = std::ffi::CString::new(part).unwrap_or_default();
+                        var_syms.push(crate::sexp::symbol::Rf_install(c.as_ptr()));
+                    }
+                }
+            } else if !var_syms.iter().any(|&s| s == node) {
+                var_syms.push(node);
             }
         }
         collect_offsets(form, &mut var_syms);
-        for name in &labels {
-            for part in name.split(':') {
-                if !var_syms.iter().any(|&s| symbol_print_name(s) == part) {
-                    let c = std::ffi::CString::new(part).unwrap_or_default();
-                    var_syms.push(crate::sexp::symbol::Rf_install(c.as_ptr()));
-                }
-            }
-        }
         let mut offset_idx: Vec<i32> = Vec::new();
         for (i, &sym) in var_syms.iter().enumerate() {
             if TYPEOF(sym) == SEXPTYPE::LANGSXP {

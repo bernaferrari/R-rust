@@ -524,7 +524,7 @@ pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         } else {
             value
         };
-        crate::sexp::attrib_core::setAttrib(
+        crate::eval::attrib_core::setAttrib(
             x,
             Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
             value,
