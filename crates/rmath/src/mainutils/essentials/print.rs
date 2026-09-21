@@ -1807,10 +1807,44 @@ fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t) -> Vec<String> {
     (1..=nrow).map(|i| i.to_string()).collect()
 }
 
+unsafe fn print_data_frame_object(call: SEXP, args: SEXP) -> SEXP {
+    unsafe {
+        if !call.is_null() && call != R_NilValue() {
+            let matched = crate::mainutils::match_mod::match_formal_slots(
+                call,
+                args,
+                &["x", "..."],
+            );
+            if let Some(&x) = matched.first()
+                && !x.is_null()
+                && x != R_NilValue()
+                && TYPEOF(x) == SEXPTYPE::VECSXP
+            {
+                return x;
+            }
+        }
+        let mut p = args;
+        while !p.is_null() && p != R_NilValue() {
+            let v = CAR(p);
+            if !v.is_null()
+                && TYPEOF(v) == SEXPTYPE::VECSXP
+                && crate::mainutils::essentials::sexp_has_class(v, "data.frame")
+            {
+                return v;
+            }
+            p = CDR(p);
+        }
+        CAR(args)
+    }
+}
+
 /// R's `print.data.frame(x)` — print a data.frame nicely with aligned columns.
 pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        // GNU print(x, ...) UseMethod matches `x` before the method runs.
+        // `print(width = 101, df)` therefore passes the data.frame as `x`,
+        // not CAR(args) which is still the named `width` actual.
+        let x = print_data_frame_object(_call, args);
         if x.is_null() || x == R_NilValue() {
             emit_print_data_frame_line("NULL");
             return R_NilValue();

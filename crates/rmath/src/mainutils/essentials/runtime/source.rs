@@ -403,6 +403,7 @@ unsafe fn eval_source_expressions(
 ) -> SEXP {
     unsafe {
         let exprs = brace_or_single_expressions(exprs);
+        let _exprs = protect(exprs);
         let n = if exprs.is_null() || exprs == R_NilValue() {
             0
         } else {
@@ -410,6 +411,7 @@ unsafe fn eval_source_expressions(
         };
         let mut last_value = R_NilValue();
         let mut last_visible = FALSE;
+        let mut _last_guard = protect(R_NilValue());
 
         for i in 0..n {
             let expr = VECTOR_ELT(exprs, i);
@@ -424,6 +426,7 @@ unsafe fn eval_source_expressions(
                 );
             }
             last_value = crate::eval::eval::Rf_eval(expr, env);
+            _last_guard = protect(last_value);
             last_visible = crate::sexp::globals::R_Visible();
             if print_eval && last_visible != FALSE {
                 let print_args = Rf_cons(last_value, R_NilValue());
