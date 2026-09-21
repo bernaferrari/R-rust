@@ -641,6 +641,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "l10n_info",
     "Cstack_info",
     "extSoftVersion",
+    "La_library",
+    "La_version",
     "Sys.getpid",
     "capabilities",
     "subset",

@@ -5100,6 +5100,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_eSoftVersion,
     },
     EvaluatedBuiltin {
+        name: "La_library",
+        handler: crate::mainutils::lapack::do_La_library,
+    },
+    EvaluatedBuiltin {
+        name: "La_version",
+        handler: crate::mainutils::lapack::do_La_version,
+    },
+    EvaluatedBuiltin {
         name: "Sys.getpid",
         handler: crate::mainutils::platform::do_sysgetpid,
     },
