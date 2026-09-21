@@ -692,10 +692,12 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
                 // Already matched by tag — skip to next formal
                 f = CDR(f);
                 a = CDR(a);
-            } else if ARGUSED(b) != 0 || !TAG(b).is_null() {
-                // This value used or tagged, skip to next value
-                // The second test ensures we don't consider tagged values
-                // for positional matches.
+            } else if ARGUSED(b) != 0
+                || (!TAG(b).is_null() && TAG(b) != R_NilValue())
+            {
+                // Used or genuinely tagged (GNU: TAG != R_NilValue).
+                // Lazy-load pairlists store untagged args as a null TAG,
+                // which must still take a positional slot.
                 b = CDR(b);
             } else {
                 // We have a positional match

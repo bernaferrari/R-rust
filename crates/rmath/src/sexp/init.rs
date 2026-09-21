@@ -694,6 +694,30 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "format.pval", include_str!("gnu_format_pval.R"));
         eval_base_binding(
             base_env,
+            "is.qr",
+            "function(x) is.list(x) && inherits(x, \"qr\")",
+        );
+        eval_base_binding(
+            base_env,
+            "qr.solve",
+            "function(a, b, tol = 1e-7) {\n\
+             if (!inherits(a, \"qr\"))\n\
+                 a <- qr(a, tol = tol)\n\
+             nc <- ncol(a$qr); nr <- nrow(a$qr)\n\
+             if (a$rank != min(nc, nr))\n\
+                 stop(\"singular matrix 'a' in solve\")\n\
+             if (missing(b)) {\n\
+                 if (nc != nr)\n\
+                     stop(\"only square matrices can be inverted\")\n\
+                 b <- diag(1, nc)\n\
+             }\n\
+             res <- qr.coef(a, b)\n\
+             res[is.na(res)] <- 0\n\
+             res\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "rownames",
             "function(x, do.NULL = TRUE, prefix = \"row\") {\n\
              dn <- dimnames(x)[[1L]]\n\

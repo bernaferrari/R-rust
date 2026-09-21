@@ -13743,7 +13743,12 @@ pub unsafe fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let t = TYPEOF(x_arg);
         if t == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_abs_vec(x_arg);
+            let result = crate::eval::complex_arith::complex_abs_vec(x_arg);
+            if !result.is_null() && result != R_NilValue() {
+                crate::mainutils::array::copyMostAttrib(x_arg, result);
+                math1_copy_dim_and_names(x_arg, result);
+            }
+            return result;
         }
         if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
             math_nonnum_error();

@@ -101,6 +101,7 @@ pub unsafe fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     unsafe {
         let fn_arg = CAR(args);
         if fn_arg.is_null() || fn_arg == R_NilValue() {
+            // GNU do_envir: environment() with NULL is the current sysparent.
             return if _rho.is_null() { R_NilValue() } else { _rho };
         }
         let t = TYPEOF(fn_arg);
@@ -110,7 +111,11 @@ pub unsafe fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         } else if t == SEXPTYPE::ENVSXP {
             fn_arg
         } else {
-            R_NilValue()
+            // GNU: formulas and other objects store the env as `.Environment`.
+            crate::sexp::attrib_core::getAttrib(
+                fn_arg,
+                crate::sexp::attrib_core::R_EnvironmentSymbol(),
+            )
         }
     }
 }
