@@ -193,7 +193,7 @@ fn rdqelg(
 
     *nres += 1;
     *abserr = oflow;
-    *result = epstab[*n as usize];
+    *result = epstab[(*n - 1) as usize];
 
     if *n < 3 {
         *abserr = fmax2(*abserr, epmach * 5.0 * fabs(*result));
@@ -201,16 +201,16 @@ fn rdqelg(
     }
 
     let limexp: i32 = 50;
-    epstab[(*n + 2) as usize] = epstab[*n as usize];
+    epstab[(*n + 1) as usize] = epstab[(*n - 1) as usize];
     let newelm = (*n - 1) / 2;
-    epstab[*n as usize] = oflow;
+    epstab[(*n - 1) as usize] = oflow;
     let num = *n;
-    let mut k1 = *n;
+    let mut k1 = *n - 1;
 
     for i in 1..=newelm {
         let k2 = k1 - 1;
         let k3 = k1 - 2;
-        let mut res = epstab[(k1 + 2) as usize];
+        let mut res = epstab[(k1 + 1) as usize];
         let e0 = epstab[k3 as usize];
         let e1 = epstab[k2 as usize];
         let e2 = res;
@@ -229,8 +229,8 @@ fn rdqelg(
             return;
         }
 
-        let e3 = epstab[k1 as usize];
-        epstab[k1 as usize] = e1;
+        let e3 = epstab[(k1 - 1) as usize];
+        epstab[(k1 - 1) as usize] = e1;
         let delta1 = e1 - e3;
         let err1 = fabs(delta1);
         let tol1 = fmax2(e1abs, fabs(e3)) * epmach;
@@ -242,7 +242,7 @@ fn rdqelg(
             if epsinf > 1e-4 {
                 // Compute new element
                 res = e1 + 1.0 / ss;
-                epstab[k1 as usize] = res;
+                epstab[(k1 - 1) as usize] = res;
                 k1 -= 2;
                 let err_a = err2 + fabs(res - e2) + err3;
                 if err_a <= *abserr {
@@ -280,7 +280,9 @@ fn rdqelg(
     }
 
     if *nres >= 4 {
-        *abserr = fabs(*result - res3la[2]) + fabs(*result - res3la[1]) + fabs(*result - res3la[0]);
+        *abserr = fabs(*result - res3la[2])
+            + fabs(*result - res3la[1])
+            + fabs(*result - res3la[0]);
         res3la[0] = res3la[1];
         res3la[1] = res3la[2];
         res3la[2] = *result;
@@ -720,21 +722,28 @@ fn rdqagie(
             }
         }
 
-        // Perform extrapolation
+        // GNU passes local reseps/abseps. rdqelg resets abserr to DBL_MAX,
+        // so writing the real error here discards the panel sum's estimate.
         numrl2 += 1;
         rlist2[(numrl2 - 1) as usize] = area;
         let mut res3la = [0.0f64; 3];
+        let mut reseps = 0.0;
+        let mut abseps = 0.0;
         rdqelg(
             &mut numrl2,
             &mut rlist2,
-            result,
-            abserr,
+            &mut reseps,
+            &mut abseps,
             &mut res3la,
             &mut nres,
         );
         ktmin += 1;
-        if ktmin > 5 && *abserr < errsum * 0.001 {
+        if ktmin > 5 && abseps < errsum * 0.001 {
             *ier = 5;
+        }
+        if abseps < *abserr {
+            *result = reseps;
+            *abserr = abseps;
         }
         if *abserr >= erlarg {
             // L70
@@ -1105,21 +1114,26 @@ fn rdqagse(
             }
         }
 
-        // Perform extrapolation
         numrl2 += 1;
         rlist2[(numrl2 - 1) as usize] = area;
         let mut res3la = [0.0f64; 3];
+        let mut reseps = 0.0;
+        let mut abseps = 0.0;
         rdqelg(
             &mut numrl2,
             &mut rlist2,
-            result,
-            abserr,
+            &mut reseps,
+            &mut abseps,
             &mut res3la,
             &mut nres,
         );
         ktmin += 1;
-        if ktmin > 5 && *abserr < errsum * 0.001 {
+        if ktmin > 5 && abseps < errsum * 0.001 {
             *ier = 5;
+        }
+        if abseps < *abserr {
+            *result = reseps;
+            *abserr = abseps;
         }
         if *abserr < erlarg {
             ktmin = 0;
