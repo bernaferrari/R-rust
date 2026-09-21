@@ -5025,6 +5025,9 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>) {
                 let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
                     .to_string_lossy()
                     .into_owned();
+                if name == "offset" {
+                    return;
+                }
                 if name == ":" {
                     let mut parts = Vec::new();
                     collect_formula_symbols(CADR(expr), &mut parts);
@@ -5043,6 +5046,30 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>) {
                 collect_term_labels(CAR(cell), out);
                 cell = CDR(cell);
             }
+        }
+    }
+}
+
+/// `offset(expr)` is a variable of the model frame, not a term.
+fn collect_offsets(expr: SEXP, out: &mut Vec<SEXP>) {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() || TYPEOF(expr) != SEXPTYPE::LANGSXP {
+            return;
+        }
+        let op = CAR(expr);
+        if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
+            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
+                .to_string_lossy()
+                .into_owned();
+            if name == "offset" {
+                out.push(expr);
+                return;
+            }
+        }
+        let mut cell = CDR(expr);
+        while !cell.is_null() && cell != R_NilValue() {
+            collect_offsets(CAR(cell), out);
+            cell = CDR(cell);
         }
     }
 }
@@ -6095,10 +6122,14 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             Rf_ScalarInteger(1),
         );
         let mut labels = Vec::new();
-        collect_term_labels(form, &mut labels);
-        if response > 0 && !labels.is_empty() {
-            labels.remove(0);
-        }
+        // Term labels come from the RHS. The response expression
+        // (y1 - y2) must not contribute covariates.
+        let rhs = if response > 0 && TYPEOF(form) == SEXPTYPE::LANGSXP {
+            CADDR(form)
+        } else {
+            form
+        };
+        collect_term_labels(rhs, &mut labels);
         let lab = Rf_allocVector3(SEXPTYPE::STRSXP, labels.len() as i64);
         let _lb = protect(lab);
         for (i, name) in labels.iter().enumerate() {
@@ -6127,6 +6158,7 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
                 var_syms.push(CAR(rhs));
             }
         }
+        collect_offsets(form, &mut var_syms);
         for name in &labels {
             for part in name.split(':') {
                 if !var_syms.iter().any(|&s| symbol_print_name(s) == part) {
@@ -6134,6 +6166,30 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
                     var_syms.push(crate::sexp::symbol::Rf_install(c.as_ptr()));
                 }
             }
+        }
+        let mut offset_idx: Vec<i32> = Vec::new();
+        for (i, &sym) in var_syms.iter().enumerate() {
+            if TYPEOF(sym) == SEXPTYPE::LANGSXP {
+                let op = CAR(sym);
+                if !op.is_null()
+                    && TYPEOF(op) == SEXPTYPE::SYMSXP
+                    && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op))).to_bytes() == b"offset"
+                {
+                    offset_idx.push((i + 1) as i32);
+                }
+            }
+        }
+        if !offset_idx.is_empty() {
+            let ov = Rf_allocVector3(SEXPTYPE::INTSXP, offset_idx.len() as i64);
+            let _ov = protect(ov);
+            for (i, &v) in offset_idx.iter().enumerate() {
+                *INTEGER(ov).add(i) = v;
+            }
+            crate::sexp::attrib_core::setAttrib(
+                form,
+                crate::sexp::symbol::Rf_install(c"offset".as_ptr()),
+                ov,
+            );
         }
         let mut varlist = R_NilValue();
         for &sym in var_syms.iter().rev() {
@@ -6428,7 +6484,41 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         } else {
             XLENGTH(labs)
         };
-        let p = (if intercept != 0 { 1 } else { 0 }) + nterms;
+        let mut term_cols: Vec<Vec<Vec<f64>>> = Vec::new();
+        let names_for_width =
+            crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
+        for j in 0..nterms {
+            let lab = if TYPEOF(labs) == SEXPTYPE::STRSXP {
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(labs, j)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let mut colx = R_NilValue();
+            if TYPEOF(names_for_width) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(names_for_width) {
+                    let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names_for_width, i)))
+                        .to_string_lossy()
+                        .into_owned();
+                    if nm == lab {
+                        colx = VECTOR_ELT(data, i);
+                        break;
+                    }
+                }
+            }
+            if !colx.is_null()
+                && colx != R_NilValue()
+                && (crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
+                    || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0)
+            {
+                term_cols.push(factor_contrast_columns(colx));
+            } else {
+                term_cols.push(Vec::new());
+            }
+        }
+        let p = (if intercept != 0 { 1 } else { 0 })
+            + term_cols.iter().map(|c| if c.is_empty() { 1 } else { c.len() }).sum::<usize>();
         let mat = crate::mainutils::array::allocMatrix(
             SEXPTYPE::REALSXP.as_c_int(),
             n as i32,
@@ -6476,13 +6566,14 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                         as *const std::os::raw::c_char,
                 );
             }
-            if crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
-                || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0
-            {
-                crate::main::errors::Rf_error(
-                    b"C_modelmatrix contrasts for factors are not implemented\0".as_ptr()
-                        as *const std::os::raw::c_char,
-                );
+            if !term_cols[j as usize].is_empty() {
+                for column in &term_cols[j as usize] {
+                    for i in 0..n {
+                        *dst.add((i + col * n) as usize) = column[i as usize];
+                    }
+                    col += 1;
+                }
+                continue;
             }
             let col_ty = TYPEOF(colx);
             if col_ty != SEXPTYPE::REALSXP
@@ -6513,7 +6604,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             }
             col += 1;
         }
-        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, p);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, p as i64);
         let _cn = protect(cn);
         let mut c = 0i64;
         if intercept != 0 {
@@ -6540,7 +6631,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         SET_VECTOR_ELT(dn, 0, rn);
         SET_VECTOR_ELT(dn, 1, cn);
         crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
-        let assign = Rf_allocVector3(SEXPTYPE::INTSXP, p);
+        let assign = Rf_allocVector3(SEXPTYPE::INTSXP, p as i64);
         let _as = protect(assign);
         let mut a = 0i64;
         if intercept != 0 {
@@ -6556,6 +6647,54 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             assign,
         );
         mat
+    }
+}
+
+/// Contrast columns for a factor. An assigned `contrasts` matrix is used
+/// as-is; otherwise treatment contrasts drop the first level.
+fn factor_contrast_columns(colx: SEXP) -> Vec<Vec<f64>> {
+    unsafe {
+        let n = XLENGTH(colx) as usize;
+        let codes: Vec<i32> = (0..n).map(|i| *INTEGER(colx).add(i)).collect();
+        let assigned = crate::sexp::attrib_core::getAttrib(
+            colx,
+            crate::sexp::symbol::Rf_install(c"contrasts".as_ptr()),
+        );
+        if !assigned.is_null()
+            && assigned != R_NilValue()
+            && (TYPEOF(assigned) == SEXPTYPE::REALSXP || TYPEOF(assigned) == SEXPTYPE::INTSXP)
+        {
+            let dim = crate::sexp::attrib_core::getAttrib(
+                assigned,
+                crate::sexp::attrib_core::R_DimSymbol(),
+            );
+            if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+                let nr = *INTEGER(dim) as usize;
+                let nc = *INTEGER(dim).add(1) as usize;
+                let mut cols = Vec::with_capacity(nc);
+                for c in 0..nc {
+                    let mut column = vec![0.0; n];
+                    for (i, &code) in codes.iter().enumerate() {
+                        if code >= 1 && (code as usize) <= nr {
+                            let v = if TYPEOF(assigned) == SEXPTYPE::REALSXP {
+                                *REAL(assigned).add((code as usize - 1) + c * nr)
+                            } else {
+                                *INTEGER(assigned).add((code as usize - 1) + c * nr) as f64
+                            };
+                            column[i] = v;
+                        }
+                    }
+                    cols.push(column);
+                }
+                return cols;
+            }
+        }
+        let nlev = codes.iter().copied().filter(|c| *c > 0).max().unwrap_or(1) as usize;
+        let mut cols = Vec::new();
+        for lev in 2..=nlev {
+            cols.push(codes.iter().map(|&c| if c == lev as i32 { 1.0 } else { 0.0 }).collect());
+        }
+        cols
     }
 }
 

@@ -5937,7 +5937,24 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             let mut terms = Vec::new();
             collect_plus(rhs, &mut terms);
+            let mut offsets: Vec<SEXP> = Vec::new();
             for term in terms {
+                let op_name = if TYPEOF(term) == SEXPTYPE::LANGSXP {
+                    let op = CAR(term);
+                    if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
+                        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
+                            .to_string_lossy()
+                            .into_owned()
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+                if op_name == "offset" {
+                    offsets.push(CADR(term));
+                    continue;
+                }
                 let name = if TYPEOF(term) == SEXPTYPE::SYMSXP {
                     std::ffi::CStr::from_ptr(CHAR(PRINTNAME(term)))
                         .to_string_lossy()
@@ -5946,8 +5963,21 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     "x".to_string()
                 };
                 let val = crate::eval::eval::Rf_eval(term, eval_rho);
-
                 preds.push((name, val));
+            }
+            if !offsets.is_empty() {
+                let n = XLENGTH(y) as usize;
+                let adjusted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+                let _a = protect(adjusted);
+                for i in 0..n {
+                    let mut v = elt_real_safe(y, i as i64);
+                    for off in &offsets {
+                        let ov = crate::eval::eval::Rf_eval(*off, eval_rho);
+                        v -= elt_real_safe(ov, i as i64);
+                    }
+                    *REAL(adjusted).add(i) = v;
+                }
+                y = adjusted;
             }
         } else {
             let x = CAR(CDR(args));

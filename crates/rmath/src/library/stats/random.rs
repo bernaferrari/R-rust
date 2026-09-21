@@ -126,6 +126,20 @@ unsafe extern "C-unwind" fn c_do_d(args: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_deriv(args: SEXP) -> SEXP {
     unsafe { super::deriv::do_deriv(args) }
 }
+unsafe extern "C-unwind" fn c_fft(z: SEXP, inverse: SEXP) -> SEXP {
+    unsafe { super::fourier::fft(z, inverse) }
+}
+unsafe extern "C-unwind" fn c_mvfft(z: SEXP, inverse: SEXP) -> SEXP {
+    unsafe { super::fourier::mvfft(z, inverse) }
+}
+unsafe extern "C-unwind" fn c_approx_test(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -> SEXP {
+    unsafe { super::approx::ApproxTest(x, y, method, f, na_rm) }
+}
+unsafe extern "C-unwind" fn c_approx(
+    x: SEXP, y: SEXP, v: SEXP, method: SEXP, yleft: SEXP, yright: SEXP, f: SEXP, na_rm: SEXP,
+) -> SEXP {
+    unsafe { super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm) }
+}
 
 /// GNU stats `C_cov` — Pearson covariance, complete/everything NA handling.
 unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> SEXP {
@@ -375,7 +389,8 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases", "C_influence",
-    "C_cov", "C_cor", "C_doD", "C_deriv", "C_call_dqags", "C_call_dqagi",
+    "C_cov", "C_cor", "C_doD", "C_deriv", "C_fft", "C_mvfft", "C_ApproxTest", "C_Approx",
+    "C_call_dqags", "C_call_dqagi",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -419,6 +434,15 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "cor" => as_dl(c_cor as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "deriv" => as_dl(c_deriv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "fft" => as_dl(c_fft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "mvfft" => as_dl(c_mvfft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "ApproxTest" => as_dl(
+            c_approx_test as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "Approx" => as_dl(
+            c_approx
+                as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
         _ => super::distn::lookup_call(name),
     }
 }

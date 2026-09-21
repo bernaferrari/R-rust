@@ -727,6 +727,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "Map",
             "function(f, ...) mapply(FUN = f, ..., SIMPLIFY = FALSE)",
         );
+        eval_base_binding(base_env, "xy.coords", include_str!("gnu_xy_coords.R"));
+        eval_base_binding(base_env, "fix", include_str!("gnu_fix.R"));
+        eval_base_binding(base_env, "edit", "function(name, ...) name");
+        eval_base_binding(base_env, "image", "function(...) invisible(NULL)");
+        eval_base_binding(base_env, "heat.colors", "function(n, ...) rep(\"#FF0000\", n)");
         eval_base_binding(
             base_env,
             "all.equal",
