@@ -2300,76 +2300,10 @@ pub unsafe fn do_cumsum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return dispatched;
         }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-
-
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        let result_type = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            SEXPTYPE::INTSXP
-        } else {
-            SEXPTYPE::REALSXP
-        };
-        let result = Rf_allocVector3(result_type, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        if result_type == SEXPTYPE::INTSXP {
-            let dst = INTEGER(result);
-            let mut sum = 0_i64;
-            let mut poisoned = false;
-            let mut warned = false;
-            for i in 0..n {
-                let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER {
-                    poisoned = true;
-                }
-                if poisoned {
-                    *dst.add(i as usize) = NA_INTEGER;
-                } else {
-                    sum += v as i64;
-                    if sum > i32::MAX as i64 || sum < i32::MIN as i64 {
-                        poisoned = true;
-                        *dst.add(i as usize) = NA_INTEGER;
-                        if !warned {
-                            warned = true;
-                            let msg = CString::new(
-                                "integer overflow in 'cumsum'; use 'cumsum(as.numeric(.))'",
-                            )
-                            .unwrap_or_default();
-                            crate::mainutils::errors::Rf_warning(msg.as_ptr());
-                        }
-                    } else {
-                        *dst.add(i as usize) = sum as c_int;
-                    }
-                }
-            }
-            return result;
-        }
-
-        let dst = REAL(result);
-        let mut sum = 0.0f64;
-        let mut poisoned = false;
-        for i in 0..n {
-            let v = elt_real_safe(x, i);
-            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                poisoned = true;
-            }
-            if poisoned {
-                *dst.add(i as usize) = NA_REAL;
-            } else {
-                sum += v;
-                *dst.add(i as usize) = sum;
-            }
-        }
-        result
+        crate::mainutils::cum::do_cumsum(call, op, args, rho)
     }
 }
+
 
 /// R's `cumprod(x)` — cumulative product.
 pub unsafe fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

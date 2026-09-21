@@ -541,7 +541,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // GNU eval.R / which.R / stop.R: these are closures over .Internal,
         // not FunTab primitives. Binding them into the base frame makes
         // exists()/as.list(baseenv()) match GNU; .Internal still dispatches
-        // through FunTab (eval=11/211).
+        // through FunTab (eval=11/211). parent.frame must be a wrapper so
+        // do_parentframe walks from that extra frame (GNU context.c).
+        eval_base_binding(base_env, "parent.frame", include_str!("gnu_parent_frame.R"));
         eval_base_binding(base_env, "eval", include_str!("gnu_eval.R"));
         eval_base_binding(base_env, "evalq", include_str!("gnu_evalq.R"));
         eval_base_binding(base_env, "eval.parent", include_str!("gnu_eval_parent.R"));
@@ -2466,15 +2468,20 @@ mod tests {
                     exists("eval.parent", baseenv(), inherits = FALSE) &&
                     exists("which", baseenv(), inherits = FALSE) &&
                     exists("stopifnot", baseenv(), inherits = FALSE) &&
+                    exists("parent.frame", baseenv(), inherits = FALSE) &&
                     identical(typeof(eval), "closure") &&
                     identical(typeof(which), "closure") &&
                     identical(typeof(stopifnot), "closure") &&
+                    identical(typeof(parent.frame), "closure") &&
                     identical(eval(1 + 1), 2) &&
                     identical(eval(quote(1 + 1)), 2) &&
                     identical(evalq(a, list(a = 3L)), 3L) &&
                     identical(which(c(TRUE, FALSE, TRUE)), c(1L, 3L)) &&
+                    identical(cumsum(c(1+1i, 2+2i)), c(1+1i, 3+3i)) &&
                     is.null(stopifnot(TRUE)) &&
-                    inherits(try(stopifnot(FALSE), silent = TRUE), "try-error")
+                    inherits(try(stopifnot(FALSE), silent = TRUE), "try-error") &&
+                    (function() identical(parent.frame(), .GlobalEnv))() &&
+                    identical((function() { x <- 10L; (function() eval.parent(quote(x)))() })(), 10L)
             "#,
         );
         assert_eq!(

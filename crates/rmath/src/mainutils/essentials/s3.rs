@@ -153,28 +153,31 @@ pub unsafe fn do_parent_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             base_error("invalid 'n' value");
         }
 
+        // GNU do_parentframe: R_findParentContext(R_GlobalContext, n) then
+        // that context's sysparent. Always walk at least once so a
+        // `parent.frame` wrapper frame is skipped (eval.R).
         let mut cptr = sys_query_context();
         if cptr.is_null() {
             return crate::sexp::globals::R_GlobalEnv();
         }
         let mut remaining = n;
         loop {
+            cptr = find_exec_context(cptr, (*cptr).sysparent);
+            if cptr.is_null() {
+                return crate::sexp::globals::R_GlobalEnv();
+            }
             if remaining == 1 {
                 let sysparent = (*cptr).sysparent;
                 if sysparent.is_null() {
-                    break;
+                    return crate::sexp::globals::R_GlobalEnv();
                 }
                 return sysparent;
             }
-            cptr = find_exec_context(cptr, (*cptr).sysparent);
-            if cptr.is_null() {
-                break;
-            }
             remaining -= 1;
         }
-        crate::sexp::globals::R_GlobalEnv()
     }
 }
+
 
 /// Find a function context at or older than `cptr` executing in `envir`
 /// (upstream `R_findExecContext` — powers `parent.frame()`).
