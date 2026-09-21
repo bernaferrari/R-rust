@@ -121,10 +121,10 @@ pub(crate) fn dbinom_raw(x: f64, n: f64, p: f64, q: f64, give_log: bool) -> f64 
 }
 
 /// lbeta: log of the beta function
-/// Uses lgammafn from special::gamma
+/// log B(a,b). The plain lgamma difference cancels to 0 when one shape is
+/// ~2^200; GNU lbeta keeps the small-p/large-q expansion.
 fn lbeta_fn(a: f64, b: f64) -> f64 {
-    use crate::special::gamma::lgammafn;
-    lgammafn(a) + lgammafn(b) - lgammafn(a + b)
+    crate::special::lbeta::lbeta(a, b)
 }
 
 #[must_use]
@@ -437,7 +437,8 @@ fn qbeta_raw(
         if u0_maybe
             && u0
                 < (t * LOG_EPS_C
-                    - log(fabs(pp * (1.0 - qq) * (2.0 - qq) / (2.0 * (pp + 2.0)))) / 2.0)
+                    - log(fabs(pp * (1.0 - qq) * (2.0 - qq) / (2.0 * (pp + 2.0)))))
+                    / 2.0
         {
             // MM's one-step correction
             rp = rp * exp(u0);
@@ -622,6 +623,7 @@ fn qbeta_raw(
                 }
 
                 let mut g = 1.0;
+                let mut stepped = false;
                 for _i_inn in 0..1000 {
                     adj = g * w;
                     if fabs(adj) < prev {
@@ -631,10 +633,14 @@ fn qbeta_raw(
                                 converged = true;
                                 break;
                             }
+                            stepped = true;
                             break;
                         }
                     }
                     g /= 3.0;
+                }
+                if !stepped && !converged {
+                    continue;
                 }
 
                 let d = fmin2(fabs(adj), fabs(u_n - u));
@@ -1503,6 +1509,33 @@ mod tests {
                 assert_eq!(used, *want_used, "{name}: uniforms consumed");
                 assert_eq!(x.to_bits(), *want_bits, "{name}: returned value");
             }
+        });
+    }
+
+    #[test]
+    fn qbeta_small_a_huge_b_matches_inverse() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            let a = 2f64.powi(-8);
+            for e in 200..206 {
+                let b = 2f64.powi(e);
+                let q = qbeta_inner(0.125, a, b, true, false);
+                assert!(q.is_finite() && q > 0.0, "qbeta(1/8, {a}, {b}) = {q}");
+                let pq = pbeta_inner(q, a, b, true, false);
+                assert!(
+                    (pq - 0.125).abs() < 1e-8,
+                    "pbeta(qbeta(1/8, {a}, 2^{e})) = {pq}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn qbeta_tiny_equal_shapes_is_one() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            let q = qbeta_inner(0.95, 1e-307, 1e-307, true, false);
+            assert_eq!(q, 1.0, "qbeta(0.95, 1e-307, 1e-307) = {q}");
         });
     }
 }

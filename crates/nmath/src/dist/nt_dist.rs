@@ -286,8 +286,8 @@ pub fn qnt_inner(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
     }
 
     if !r_finite(df) {
-        // df = Inf ==> limit N(ncp,1)
-        return pnorm5_inner(p, ncp, 1.0, lower_tail, log_p);
+        // df = Inf ==> limit N(ncp, 1). pnorm here returned ~0.999 instead of ~5.
+        return super::normal::qnorm5_inner(p, ncp, 1.0, lower_tail, log_p);
     }
 
     let p = r_dt_qiv(p, lower_tail, log_p);

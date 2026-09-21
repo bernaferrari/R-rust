@@ -57,7 +57,7 @@ mod imp {
             // p and q are small: p <= q < 10.
             // R change for very small args
             if p < 1e-306 {
-                return log(fabs(p)) + (lgammafn(q) - lgammafn(p + q));
+                return lgammafn(p) + (lgammafn(q) - lgammafn(p + q));
             } else {
                 return log(gammafn(p) * (gammafn(q) / gammafn(p + q)));
             }
