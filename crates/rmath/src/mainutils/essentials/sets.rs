@@ -1626,6 +1626,50 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         }
         let t = TYPEOF(x);
+        // GNU unique.c: VECSXP/EXPRSXP keep x[!duplicated(x)].
+        if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
+            let dup = do_duplicated(_call, _op, args, _rho);
+            let _d = protect(dup);
+            let n = XLENGTH(x);
+            let mut keep: Vec<R_xlen_t> = Vec::new();
+            if TYPEOF(dup) == SEXPTYPE::LGLSXP {
+                for i in 0..n {
+                    if *LOGICAL(dup).add(i as usize) == FALSE {
+                        keep.push(i);
+                    }
+                }
+            } else {
+                for i in 0..n {
+                    keep.push(i);
+                }
+            }
+            let result = Rf_allocVector3(t, keep.len() as R_xlen_t);
+            let _r = protect(result);
+            for (j, &i) in keep.iter().enumerate() {
+                SET_VECTOR_ELT(result, j as R_xlen_t, VECTOR_ELT(x, i));
+            }
+            let names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == n
+            {
+                let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, keep.len() as R_xlen_t);
+                let _n = protect(out_names);
+                for (j, &i) in keep.iter().enumerate() {
+                    SET_STRING_ELT(out_names, j as R_xlen_t, STRING_ELT(names, i));
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    out_names,
+                );
+            }
+            return result;
+        }
         let sexptype = SEXPTYPE(t);
         if t != SEXPTYPE::LGLSXP
             && t != SEXPTYPE::INTSXP

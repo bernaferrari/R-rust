@@ -13,7 +13,7 @@ d-p-q-r-tst-2.R	skip	rport-2gpp.2	requires the complete stats distribution tail 
 datasets.R	pass	-	-
 datetime.R	pass	-	-
 datetime2.R	skip	rport-2gpp.4	requires complete timezone database and date-time formatting behavior
-datetime3.R	skip	rport-2gpp.4	requires platform-specific timezone transition data
+datetime3.R	pass	-	-
 datetime4.R	skip	rport-2gpp.4	requires platform-specific date-time and locale behavior
 datetime5.R	skip	rport-2gpp.4	requires complete time-zone conversion and system database behavior
 demos.R	xfail	rport-2gpp.2	executes unmodified but still lacks installed base-package demos and their package data
