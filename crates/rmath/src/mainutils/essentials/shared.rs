@@ -445,12 +445,20 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         if object.is_null() || object == R_NilValue() || field.is_empty() {
             return object;
         }
-        if TYPEOF(object) == SEXPTYPE::LISTSXP || TYPEOF(object) == SEXPTYPE::LANGSXP {
+        if TYPEOF(object) == SEXPTYPE::LISTSXP
+            || TYPEOF(object) == SEXPTYPE::LANGSXP
+            || TYPEOF(object) == SEXPTYPE::ENVSXP
+        {
             let nlist = Rf_install(CString::new(field.as_str()).unwrap_or_default().as_ptr());
             return crate::mainutils::subassign::R_subassign3_dflt(_call, object, nlist, value);
         }
         if TYPEOF(object) != SEXPTYPE::VECSXP {
             return object;
+        }
+        // GNU `$<-` on a list: `x$foo <- NULL` deletes the component.
+        if value.is_null() || value == R_NilValue() {
+            let nlist = Rf_install(CString::new(field.as_str()).unwrap_or_default().as_ptr());
+            return crate::mainutils::subassign::R_subassign3_dflt(_call, object, nlist, value);
         }
 
 

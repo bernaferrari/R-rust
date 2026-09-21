@@ -162,6 +162,15 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "alist",
             "function(...) { sc <- sys.call(); as.list(sc)[-1L] }",
         );
+        // GNU New-Internal.R: NextMethod is a closure over .Internal so extra
+        // named args land in `...` and CADDR(.Internal args) stays the dots
+        // symbol. A primitive NextMethod would evaluate those extras and hit
+        // "wrong argument ...".
+        eval_base_binding(
+            base_env,
+            "NextMethod",
+            "function(generic = NULL, object = NULL, ...)\n    .Internal(NextMethod(generic, object, ...))",
+        );
 
 
 

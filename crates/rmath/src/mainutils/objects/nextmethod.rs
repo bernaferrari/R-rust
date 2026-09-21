@@ -205,17 +205,17 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             });
         }
 
-        // Mark this context as generic while preserving its function/return
-        // bits; NextMethod still needs to rediscover the current closure frame.
+        // GNU objects.c: mark the NextMethod context generic, then look up
+        // S3 vars in the calling method frame (`sysparent`), not this
+        // closure's local env. A primitive NextMethod ran in the method
+        // context so cloenv worked; the GNU wrapper does not.
         (*cptr).callflag |= crate::sexp::context::ctxt_flags::CTXT_GENERIC;
-
-        // In this port S3 dispatch variables are installed directly in the
-        // method closure frame. Prefer that frame, falling back to sysparent
-        // for older call paths that still mirror C's context layout.
-        let sysp = if !(*cptr).cloenv.is_null() {
-            (*cptr).cloenv
-        } else {
+        let sysp = if !(*cptr).sysparent.is_null()
+            && (*cptr).sysparent != R_NilValue()
+        {
             (*cptr).sysparent
+        } else {
+            (*cptr).cloenv
         };
 
         // Walk the context stack to find the function context matching sysp
@@ -223,12 +223,11 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         let mut ctx_iter = cptr;
         while !ctx_iter.is_null() {
             let cf = (*ctx_iter).callflag;
-            if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0 {
-                // Check if this context matches
-                if (*ctx_iter).cloenv == sysp || (*ctx_iter).cloenv.is_null() {
-                    found_cptr = ctx_iter;
-                    break;
-                }
+            if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0
+                && (*ctx_iter).cloenv == sysp
+            {
+                found_cptr = ctx_iter;
+                break;
             }
             ctx_iter = (*ctx_iter).nextcontext;
         }

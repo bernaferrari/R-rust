@@ -89,6 +89,10 @@ unsafe fn dqrls_rust(
         let ny_us = ny as usize;
         let k = n_us.min(p_us);
 
+        // Residuals are y - X β. `qr` is overwritten by the factorization,
+        // so keep the original columns (column-major, like GNU dqrls).
+        let x_orig: Vec<f64> = std::slice::from_raw_parts(qr, n_us * p_us).to_vec();
+
         // --- 1. QR with column pivoting (dgeqp3) ---------------------------
         let mut info = 0i32;
         let mut lwork = -1i32;
@@ -105,7 +109,7 @@ unsafe fn dqrls_rust(
             &mut info,
         );
         lwork = work_query[0] as i32;
-        let mut work = vec![0.0f64; lwork as usize];
+        let mut work = vec![0.0f64; lwork.max(1) as usize];
         backend::dgeqp3_(
             &n,
             &p,
@@ -173,14 +177,13 @@ unsafe fn dqrls_rust(
             }
         }
 
-        // --- 5. Compute residuals = y - X * beta --------------------------
+        // --- 5. Compute residuals = y - X_orig * beta (pivoted columns) ---
         for col in 0..ny_us {
             for i in 0..n_us {
                 let mut xb = 0.0f64;
                 for j in 0..p_us {
-                    // apply column permutation: original col j is now at position pivot[j]-1
-                    let perm_j = (*pivot.add(j) - 1) as usize;
-                    xb += *qr.add(i + perm_j * n_us) * *coefficients.add(j + col * p_us);
+                    let orig_col = (*pivot.add(j) - 1) as usize;
+                    xb += x_orig[i + orig_col * n_us] * *coefficients.add(j + col * p_us);
                 }
                 *residuals.add(i + col * n_us) = *y.add(i + col * n_us) - xb;
             }

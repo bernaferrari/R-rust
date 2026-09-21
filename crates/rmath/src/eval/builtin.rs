@@ -135,6 +135,8 @@ pub(crate) fn is_hidden_builtin_name(name: &str) -> bool {
             | "summary.integer"
             | "summary.logical"
             | "summary.character"
+            // GNU: NextMethod is a .Internal closure, not a primitive.
+            | "NextMethod"
     )
 }
 

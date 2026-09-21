@@ -6372,7 +6372,15 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             ans = crate::eval::eval::Rf_eval(call_na, rho);
             let _a = protect(ans);
         }
-        let _ = subset;
+        if !subset.is_null()
+            && subset != R_NilValue()
+            && subset != crate::sexp::globals::R_MissingArg()
+        {
+            crate::main::errors::Rf_error(
+                b"C_modelframe subset is not implemented\0".as_ptr()
+                    as *const std::os::raw::c_char,
+            );
+        }
         ans
     }
 }
@@ -6388,7 +6396,17 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 b"invalid model frame\0".as_ptr() as *const std::os::raw::c_char,
             );
         }
-        let n = XLENGTH(VECTOR_ELT(data, 0));
+        let first = VECTOR_ELT(data, 0);
+        let dim0 = crate::sexp::attrib_core::getAttrib(first, crate::sexp::attrib_core::R_DimSymbol());
+        let n = if !dim0.is_null()
+            && dim0 != R_NilValue()
+            && TYPEOF(dim0) == SEXPTYPE::INTSXP
+            && XLENGTH(dim0) >= 2
+        {
+            *INTEGER(dim0) as i64
+        } else {
+            XLENGTH(first)
+        };
         let intercept_attr = crate::sexp::attrib_core::getAttrib(
             terms,
             crate::sexp::symbol::Rf_install(c"intercept".as_ptr()),
@@ -6434,6 +6452,12 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             } else {
                 String::new()
             };
+            if lab.contains(':') || lab.contains('*') {
+                crate::main::errors::Rf_error(
+                    b"C_modelmatrix interactions are not implemented\0".as_ptr()
+                        as *const std::os::raw::c_char,
+                );
+            }
             let mut colx = R_NilValue();
             if TYPEOF(names) == SEXPTYPE::STRSXP {
                 for i in 0..XLENGTH(names) {
@@ -6445,6 +6469,30 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                         break;
                     }
                 }
+            }
+            if colx.is_null() || colx == R_NilValue() {
+                crate::main::errors::Rf_error(
+                    b"C_modelmatrix cannot find a numeric column for a term\0".as_ptr()
+                        as *const std::os::raw::c_char,
+                );
+            }
+            if crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
+                || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0
+            {
+                crate::main::errors::Rf_error(
+                    b"C_modelmatrix contrasts for factors are not implemented\0".as_ptr()
+                        as *const std::os::raw::c_char,
+                );
+            }
+            let col_ty = TYPEOF(colx);
+            if col_ty != SEXPTYPE::REALSXP
+                && col_ty != SEXPTYPE::INTSXP
+                && col_ty != SEXPTYPE::LGLSXP
+            {
+                crate::main::errors::Rf_error(
+                    b"C_modelmatrix needs numeric term columns\0".as_ptr()
+                        as *const std::os::raw::c_char,
+                );
             }
             for i in 0..n {
                 let v = if colx.is_null() || colx == R_NilValue() {
