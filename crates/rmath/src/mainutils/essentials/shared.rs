@@ -3951,7 +3951,9 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
             | SEXPTYPE::LGLSXP
             | SEXPTYPE::STRSXP
             | SEXPTYPE::CPLXSXP
-            | SEXPTYPE::RAWSXP => XLENGTH(x),
+            | SEXPTYPE::RAWSXP
+            | SEXPTYPE::VECSXP
+            | SEXPTYPE::EXPRSXP => XLENGTH(x),
             _ => 1,
         };
         if n == 0 {
@@ -4032,9 +4034,36 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
                         .to_string()
                 }
             }
+        } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
+            let elt = crate::sexp::accessors::VECTOR_ELT(x, idx);
+            sexp_key(elt)
         } else {
             format!("{:?}", t)
         }
+    }
+}
+
+/// Stable key for one SEXP, used by duplicated() on lists of rows.
+pub(crate) fn sexp_key(x: SEXP) -> String {
+    unsafe {
+        if x.is_null() || x == crate::sexp::globals::R_NilValue() {
+            return "NULL".to_string();
+        }
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
+            let n = XLENGTH(x);
+            let mut parts = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                parts.push(sexp_key(crate::sexp::accessors::VECTOR_ELT(x, i)));
+            }
+            return format!("L({})", parts.join("\x1f"));
+        }
+        let n = XLENGTH(x).max(1);
+        let mut parts = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            parts.push(elt_to_string(x, i));
+        }
+        format!("V:{}", parts.join("\x1f"))
     }
 }
 

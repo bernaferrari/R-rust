@@ -278,7 +278,7 @@ pub unsafe fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
             // For simplicity, copy via setAttrib for the known attribute types.
             // In full R this does a shallow duplicate of the entire attribute list.
             let class = getAttrib(from, R_ClassSymbol());
-            if !isNull(class) {
+            if !isNull(class) && class_fits(to, class) {
                 setAttrib(to, R_ClassSymbol(), class);
             }
             let dim = getAttrib(from, R_DimSymbol());
@@ -294,6 +294,28 @@ pub unsafe fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
                 setAttrib(to, R_NamesSymbol(), names);
             }
         }
+    }
+}
+
+/// A factor or ordered class is only legal on an integer vector.
+unsafe fn class_fits(to: SEXP, class: SEXP) -> bool {
+    unsafe {
+        use crate::sexp::ffi::SEXPTYPE;
+        if crate::sexp::accessors::TYPEOF(to) == SEXPTYPE::INTSXP.as_c_int() {
+            return true;
+        }
+        if crate::sexp::accessors::TYPEOF(class) != SEXPTYPE::STRSXP.as_c_int() {
+            return true;
+        }
+        for i in 0..crate::sexp::accessors::XLENGTH(class) {
+            let s = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                crate::sexp::accessors::STRING_ELT(class, i),
+            ));
+            if s.to_bytes() == b"factor" || s.to_bytes() == b"ordered" {
+                return false;
+            }
+        }
+        true
     }
 }
 

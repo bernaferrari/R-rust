@@ -715,6 +715,18 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "prop.table", "proportions");
         eval_base_binding(base_env, "pdf", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "mtext", "function(...) invisible(NULL)");
+        eval_base_binding(base_env, "duplicated", include_str!("gnu_duplicated.R"));
+        eval_base_binding(base_env, "duplicated.default", include_str!("gnu_duplicated_default.R"));
+        eval_base_binding(
+            base_env,
+            "duplicated.data.frame",
+            include_str!("gnu_duplicated_data_frame.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "Map",
+            "function(f, ...) mapply(FUN = f, ..., SIMPLIFY = FALSE)",
+        );
         eval_base_binding(
             base_env,
             "all.equal",
