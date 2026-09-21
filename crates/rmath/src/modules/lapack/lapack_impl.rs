@@ -1425,17 +1425,24 @@ pub unsafe fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
         if m < 0 || p < 0 {
             crate::sexp::context::r_error("invalid matrix dimensions");
         }
-        if m != n || p != n {
+        // GNU: size may be rank < ncol; use the leading size×size of R.
+        if n > p {
+            crate::sexp::context::r_error(format!("'size' cannot exceed ncol(x) = {p}"));
+        }
+        if n > m {
+            crate::sexp::context::r_error(format!("'size' cannot exceed nrow(x) = {m}"));
+        }
+
+        let Some(src_len) = (m as usize).checked_mul(p as usize) else {
+            crate::sexp::context::r_error("matrix dimensions are too large");
+        };
+        if src_len > c_int::MAX as usize || XLENGTH(a) as usize != src_len {
             crate::sexp::context::r_error("invalid matrix dimensions or length");
         }
 
         let Some(len) = (n as usize).checked_mul(n as usize) else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
-        if len > c_int::MAX as usize || XLENGTH(a) as usize != len {
-            crate::sexp::context::r_error("invalid matrix dimensions or length");
-        }
-
         let Some(scratch_bytes) = len.checked_mul(std::mem::size_of::<f64>()) else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
@@ -1450,8 +1457,12 @@ pub unsafe fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
         let _scratch_reservation = scratch_reservation.flatten();
 
         let mut a_copy = vec![0.0f64; len];
-        if len != 0 {
-            ptr::copy_nonoverlapping(REAL(a), a_copy.as_mut_ptr(), len);
+        let lda = m as usize;
+        let sz = n as usize;
+        for j in 0..sz {
+            for i in 0..=j {
+                a_copy[i + j * sz] = *REAL(a).add(i + j * lda);
+            }
         }
 
         let mut info: c_int = 0;
@@ -1464,13 +1475,13 @@ pub unsafe fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
         }
 
         // Copy upper triangle to lower (dpotri U writes i<=j only).
-        for j in 1..n as usize {
+        for j in 1..sz {
             for i in 0..j {
-                a_copy[j + i * n as usize] = a_copy[i + j * n as usize];
+                a_copy[j + i * sz] = a_copy[i + j * sz];
             }
         }
 
-        let ans = Rf_allocVector(REALSXP_C, len as c_int);
+        let ans = crate::mainutils::array::allocMatrix(REALSXP_C, n, n);
         if len != 0 {
             ptr::copy_nonoverlapping(a_copy.as_ptr(), REAL(ans), len);
         }

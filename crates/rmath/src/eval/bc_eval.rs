@@ -1746,16 +1746,21 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             crate::sexp::constructors::Rf_ScalarLogical(0)
                         }),
                     };
-                    // GNU passes this pool entry as a value, even for symbols.
-                    // Our closure caller accepts promises; an already forced
-                    // promise preserves the literal and prevents reevaluation.
                     crate::sexp::accessors::SET_NAMED(value, 2);
-                    let promise = with_stack_rooted(&stack, value, || {
-                        let promise = crate::sexp::memory_ext::mkPROMSXP(value, R_NilValue());
-                        crate::sexp::accessors::SET_PRVALUE(promise, value);
-                        promise
-                    });
-                    stack.push(promise);
+                    // STARTSUBSET/DFLTSUBSET accumulate raw SEXPs. Wrapping
+                    // drop=FALSE in a promise makes asLogical() NA and GNU
+                    // ExtractDropArg defaults drop to TRUE → X[,j] is a
+                    // vector → 1×n %*% 1×1 in predict.lm type="terms".
+                    let stored = if gnu_call_frames.last().is_some_and(|frame| frame.raw_args) {
+                        value
+                    } else {
+                        with_stack_rooted(&stack, value, || {
+                            let promise = crate::sexp::memory_ext::mkPROMSXP(value, R_NilValue());
+                            crate::sexp::accessors::SET_PRVALUE(promise, value);
+                            promise
+                        })
+                    };
+                    stack.push(stored);
                 }
                 super::bytecode::GNU_OP_PUSHARG => {
                     if gnu_call_frames.is_empty() {

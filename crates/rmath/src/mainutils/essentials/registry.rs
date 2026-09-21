@@ -150,7 +150,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "tapply",
     "mapply",
     "outer",
-    "sweep",
     "abs",
     "sign",
     "ceiling",

@@ -105,12 +105,15 @@ unsafe extern "C-unwind" fn c_cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> 
 unsafe extern "C-unwind" fn c_compcases(args: SEXP) -> SEXP {
     unsafe { super::complete_cases::compcases(args) }
 }
+unsafe extern "C-unwind" fn c_influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
+    unsafe { super::influence::influence(mqr, e, stol) }
+}
 
 const RAND_CALL_NAMES: &[&str] = &[
     "C_rchisq", "C_rexp", "C_rgeom", "C_rpois", "C_rt", "C_rsignrank", "C_rbeta", "C_rbinom",
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
-    "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases",
+    "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases", "C_influence",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -147,6 +150,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         }
         "Cdqrls" => as_dl(c_cdqrls as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "compcases" => as_dl(c_compcases as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "influence" => as_dl(c_influence as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         _ => super::distn::lookup_call(name),
     }
 }

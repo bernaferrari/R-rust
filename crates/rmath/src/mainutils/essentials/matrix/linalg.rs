@@ -319,28 +319,29 @@ pub unsafe fn do_chol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `chol2inv(x)` — inverse from an upper Cholesky factor.
+/// GNU `chol2inv(x, size = NCOL(x))` — inverse from an upper Cholesky / R factor.
 pub unsafe fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let n = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 1
-        {
-            *INTEGER(dim)
+        let size_arg = CADR(args);
+        let size = if size_arg.is_null() || size_arg == R_NilValue() {
+            let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            let ncol = if !dim.is_null()
+                && dim != R_NilValue()
+                && TYPEOF(dim) == SEXPTYPE::INTSXP
+                && XLENGTH(dim) >= 2
+            {
+                *INTEGER(dim).add(1)
+            } else {
+                1
+            };
+            let s = Rf_ScalarInteger(ncol);
+            let _s = protect(s);
+            s
         } else {
-            return R_NilValue();
+            size_arg
         };
-        let size = Rf_ScalarInteger(n);
-        let _s = protect(size);
-        let ans = crate::modules::lapack::lapack_impl::La_chol2inv(x, size);
-        let _a = protect(ans);
-        if !dim.is_null() && dim != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        }
-        ans
+        crate::modules::lapack::lapack_impl::La_chol2inv(x, size)
     }
 }
 
