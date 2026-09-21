@@ -3796,15 +3796,31 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
 
     EvaluatedBuiltin {
         name: "sys.call",
-        handler: crate::mainutils::essentials::do_sys_call,
+        handler: crate::eval::context::do_sys,
     },
     EvaluatedBuiltin {
         name: "sys.frame",
-        handler: crate::mainutils::essentials::do_sys_frame,
+        handler: crate::eval::context::do_sys,
     },
     EvaluatedBuiltin {
         name: "sys.parent",
-        handler: crate::mainutils::essentials::do_sys_parent,
+        handler: crate::eval::context::do_sys,
+    },
+    EvaluatedBuiltin {
+        name: "sys.calls",
+        handler: crate::eval::context::do_sys,
+    },
+    EvaluatedBuiltin {
+        name: "sys.frames",
+        handler: crate::eval::context::do_sys,
+    },
+    EvaluatedBuiltin {
+        name: "sys.parents",
+        handler: crate::eval::context::do_sys,
+    },
+    EvaluatedBuiltin {
+        name: "sys.on.exit",
+        handler: crate::eval::context::do_sys,
     },
     EvaluatedBuiltin {
         name: "getwd",
@@ -4331,10 +4347,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "warningCondition",
         handler: crate::mainutils::essentials::do_warningCondition,
-    },
-    EvaluatedBuiltin {
-        name: "sys.calls",
-        handler: crate::mainutils::essentials::do_sys_calls,
     },
     EvaluatedBuiltin {
         name: "simpleWarning",
@@ -5109,11 +5121,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "sys.nframe",
-        handler: crate::mainutils::essentials::do_sys_nframe,
+        handler: crate::eval::context::do_sys,
     },
     EvaluatedBuiltin {
         name: "sys.function",
-        handler: crate::mainutils::essentials::do_sys_function,
+        handler: crate::eval::context::do_sys,
     },
     EvaluatedBuiltin {
         name: "read.csv",

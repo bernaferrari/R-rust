@@ -544,6 +544,37 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // through FunTab (eval=11/211). parent.frame must be a wrapper so
         // do_parentframe walks from that extra frame (GNU context.c).
         eval_base_binding(base_env, "parent.frame", include_str!("gnu_parent_frame.R"));
+        eval_base_binding(
+            base_env,
+            "sys.call",
+            "function(which = 0L) .Internal(sys.call(which))",
+        );
+        eval_base_binding(base_env, "sys.calls", "function() .Internal(sys.calls())");
+        eval_base_binding(
+            base_env,
+            "sys.frame",
+            "function(which = 0L) .Internal(sys.frame(which))",
+        );
+        eval_base_binding(
+            base_env,
+            "sys.function",
+            "function(which = 0L) .Internal(sys.function(which))",
+        );
+        eval_base_binding(base_env, "sys.frames", "function() .Internal(sys.frames())");
+        eval_base_binding(base_env, "sys.nframe", "function() .Internal(sys.nframe())");
+        eval_base_binding(
+            base_env,
+            "sys.parent",
+            "function(n = 1L) .Internal(sys.parent(n))",
+        );
+        eval_base_binding(base_env, "sys.parents", "function() .Internal(sys.parents())");
+        eval_base_binding(base_env, "sys.on.exit", "function() .Internal(sys.on.exit())");
+        eval_base_binding(
+            base_env,
+            "sys.status",
+            "function() list(sys.calls = sys.calls(), sys.parents = sys.parents(), sys.frames = sys.frames())",
+        );
+
         eval_base_binding(base_env, "eval", include_str!("gnu_eval.R"));
         eval_base_binding(base_env, "evalq", include_str!("gnu_evalq.R"));
         eval_base_binding(base_env, "eval.parent", include_str!("gnu_eval_parent.R"));
@@ -2481,7 +2512,13 @@ mod tests {
                     is.null(stopifnot(TRUE)) &&
                     inherits(try(stopifnot(FALSE), silent = TRUE), "try-error") &&
                     (function() identical(parent.frame(), .GlobalEnv))() &&
-                    identical((function() { x <- 10L; (function() eval.parent(quote(x)))() })(), 10L)
+                    identical((function() { x <- 10L; (function() eval.parent(quote(x)))() })(), 10L) &&
+                    exists("sys.nframe", baseenv(), inherits = FALSE) &&
+                    identical(typeof(sys.nframe), "closure") &&
+                    inherits(try(sys.nframe(1), silent = TRUE), "try-error") &&
+                    is.integer((function() sys.nframe())())
+
+
             "#,
         );
         assert_eq!(
