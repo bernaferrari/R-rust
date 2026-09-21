@@ -90,11 +90,27 @@ unsafe extern "C-unwind" fn c_rhyper(n: SEXP, a: SEXP, b: SEXP, c: SEXP) -> SEXP
 unsafe extern "C-unwind" fn c_rmultinom(n: SEXP, size: SEXP, prob: SEXP) -> SEXP {
     unsafe { do_rmultinom(n, size, prob) }
 }
+unsafe extern "C-unwind" fn c_termsform(args: SEXP) -> SEXP {
+    unsafe { super::filter::termsform(args) }
+}
+unsafe extern "C-unwind" fn c_modelframe(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { super::filter::modelframe(call, op, args, env) }
+}
+unsafe extern "C-unwind" fn c_modelmatrix(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { super::filter::modelmatrix(call, op, args, env) }
+}
+unsafe extern "C-unwind" fn c_cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
+    unsafe { super::lm::Cdqrls(x, y, tol, chk) }
+}
+unsafe extern "C-unwind" fn c_compcases(args: SEXP) -> SEXP {
+    unsafe { super::complete_cases::compcases(args) }
+}
 
 const RAND_CALL_NAMES: &[&str] = &[
     "C_rchisq", "C_rexp", "C_rgeom", "C_rpois", "C_rt", "C_rsignrank", "C_rbeta", "C_rbinom",
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
+    "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -122,6 +138,15 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "rnbinom_mu" => as_dl(c_rnbinom_mu as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "rhyper" => as_dl(c_rhyper as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "rmultinom" => as_dl(c_rmultinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "termsform" => as_dl(c_termsform as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "modelframe" => {
+            as_dl(c_modelframe as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "modelmatrix" => {
+            as_dl(c_modelmatrix as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "Cdqrls" => as_dl(c_cdqrls as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "compcases" => as_dl(c_compcases as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         _ => super::distn::lookup_call(name),
     }
 }

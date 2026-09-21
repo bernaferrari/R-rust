@@ -117,6 +117,11 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
     let mut s = args_iter;
     while !s.is_null() && s != nil {
         let car = unsafe { CAR(s) };
+        // GNU isList(NULL) is true and the inner walk is empty, so NULL is a no-op.
+        if car.is_null() || car == nil || unsafe { TYPEOF(car) } == SEXPTYPE::NILSXP {
+            s = unsafe { CDR(s) };
+            continue;
+        }
         if unsafe { Rf_isList(car) } != 0 {
             let mut t = car;
             while !t.is_null() && t != nil {
@@ -247,6 +252,10 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
     s = args_iter;
     while !s.is_null() && s != nil {
         let car = unsafe { CAR(s) };
+        if car.is_null() || car == nil || unsafe { TYPEOF(car) } == SEXPTYPE::NILSXP {
+            s = unsafe { CDR(s) };
+            continue;
+        }
         if unsafe { Rf_isList(car) } != 0 {
             let mut t = car;
             while !t.is_null() && t != nil {

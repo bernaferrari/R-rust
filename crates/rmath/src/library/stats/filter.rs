@@ -6044,6 +6044,34 @@ pub unsafe fn do_model_extract(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
     }
 }
 
+fn symbol_print_name(sym: SEXP) -> String {
+    unsafe {
+        if sym.is_null() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
+            return String::new();
+        }
+        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(sym)))
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+fn formula_response_name(form: SEXP) -> String {
+    unsafe {
+        if form.is_null() || TYPEOF(form) != SEXPTYPE::LANGSXP {
+            return "y".to_string();
+        }
+        let rhs = CDR(form);
+        if rhs.is_null() || rhs == R_NilValue() {
+            return "y".to_string();
+        }
+        let name = symbol_print_name(CAR(rhs));
+        if name.is_empty() {
+            "y".to_string()
+        } else {
+            name
+        }
+    }
+}
 
 fn mark_terms(form: SEXP, response: i32) -> SEXP {
     unsafe {
@@ -6082,6 +6110,46 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
             lab,
         );
+        let order = Rf_allocVector3(SEXPTYPE::INTSXP, labels.len() as i64);
+        let _ord = protect(order);
+        for i in 0..labels.len() {
+            *INTEGER(order).add(i) = 1;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            form,
+            crate::sexp::symbol::Rf_install(c"order".as_ptr()),
+            order,
+        );
+        let mut var_syms: Vec<SEXP> = Vec::new();
+        if response > 0 {
+            let rhs = CDR(form);
+            if !rhs.is_null() && rhs != R_NilValue() {
+                var_syms.push(CAR(rhs));
+            }
+        }
+        for name in &labels {
+            for part in name.split(':') {
+                if !var_syms.iter().any(|&s| symbol_print_name(s) == part) {
+                    let c = std::ffi::CString::new(part).unwrap_or_default();
+                    var_syms.push(crate::sexp::symbol::Rf_install(c.as_ptr()));
+                }
+            }
+        }
+        let mut varlist = R_NilValue();
+        for &sym in var_syms.iter().rev() {
+            varlist = Rf_cons(sym, varlist);
+        }
+        let list_sym = crate::sexp::symbol::Rf_install(c"list".as_ptr());
+        let variables = Rf_cons(list_sym, varlist);
+        if !variables.is_null() {
+            (*variables).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        let _vl = protect(variables);
+        crate::sexp::attrib_core::setAttrib(
+            form,
+            crate::sexp::symbol::Rf_install(c"variables".as_ptr()),
+            variables,
+        );
         let mut vars = Vec::new();
         for lab in &labels {
             for part in lab.split(':') {
@@ -6115,7 +6183,9 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             let _rn = protect(rn);
             let mut r = 0;
             if response > 0 {
-                SET_STRING_ELT(rn, 0, Rf_mkChar(c"y".as_ptr()));
+                let resp = formula_response_name(form);
+                let c = std::ffi::CString::new(resp).unwrap_or_default();
+                SET_STRING_ELT(rn, 0, Rf_mkChar(c.as_ptr()));
                 r = 1;
             }
             for var in &vars {
@@ -6145,6 +6215,299 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             );
         }
         form
+    }
+}
+
+/// GNU `.External(C_termsform, x, specials, data, keep.order, allowDotAsName)`.
+pub unsafe fn termsform(args: SEXP) -> SEXP {
+    unsafe {
+        let args = CDR(args);
+        let form = CAR(args);
+        if form.is_null() || TYPEOF(form) != SEXPTYPE::LANGSXP {
+            crate::main::errors::Rf_error(
+                b"argument is not a valid model\0".as_ptr() as *const std::os::raw::c_char,
+            );
+        }
+        let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
+        if CAR(form) != tilde {
+            crate::main::errors::Rf_error(
+                b"argument is not a valid model\0".as_ptr() as *const std::os::raw::c_char,
+            );
+        }
+        let dup = crate::mainutils::duplicate::Rf_duplicate(form);
+        let _d = protect(dup);
+        let rest = CDR(dup);
+        let third = if rest.is_null() {
+            R_NilValue()
+        } else {
+            CDR(rest)
+        };
+        let response = if third.is_null() || third == R_NilValue() {
+            0
+        } else {
+            1
+        };
+        mark_terms(dup, response)
+    }
+}
+
+/// GNU `.External2(C_modelframe, terms, rownames, variables, varnames, dots, ...)`.
+pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut args = CDR(args);
+        let _terms = CAR(args);
+        args = CDR(args);
+        let mut row_names = CAR(args);
+        args = CDR(args);
+        let variables = CAR(args);
+        args = CDR(args);
+        let varnames = CAR(args);
+        args = CDR(args);
+        let dots = CAR(args);
+        args = CDR(args);
+        let dotnames = CAR(args);
+        args = CDR(args);
+        let subset = CAR(args);
+        args = CDR(args);
+        let mut na_action = CAR(args);
+
+        if TYPEOF(variables) != SEXPTYPE::VECSXP || TYPEOF(varnames) != SEXPTYPE::STRSXP {
+            crate::main::errors::Rf_error(
+                b"invalid variables\0".as_ptr() as *const std::os::raw::c_char,
+            );
+        }
+        let nvars = XLENGTH(variables);
+        if nvars != XLENGTH(varnames) {
+            crate::main::errors::Rf_error(
+                b"number of variables != number of variable names\0".as_ptr()
+                    as *const std::os::raw::c_char,
+            );
+        }
+        let ndots = if dots.is_null() || dots == R_NilValue() || TYPEOF(dots) != SEXPTYPE::VECSXP {
+            0
+        } else {
+            XLENGTH(dots)
+        };
+        let mut nactual = 0i64;
+        for i in 0..ndots {
+            let v = VECTOR_ELT(dots, i);
+            if !v.is_null() && v != R_NilValue() {
+                nactual += 1;
+            }
+        }
+        let data = Rf_allocVector3(SEXPTYPE::VECSXP, nvars + nactual);
+        let _d = protect(data);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, nvars + nactual);
+        let _n = protect(names);
+        for i in 0..nvars {
+            SET_VECTOR_ELT(data, i, VECTOR_ELT(variables, i));
+            SET_STRING_ELT(names, i, STRING_ELT(varnames, i));
+        }
+        let mut j = nvars;
+        for i in 0..ndots {
+            let v = VECTOR_ELT(dots, i);
+            if v.is_null() || v == R_NilValue() {
+                continue;
+            }
+            SET_VECTOR_ELT(data, j, v);
+            if TYPEOF(dotnames) == SEXPTYPE::STRSXP && i < XLENGTH(dotnames) {
+                let raw = CHAR(STRING_ELT(dotnames, i));
+                let s = if raw.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
+                };
+                let labeled = format!("({s})");
+                let c = std::ffi::CString::new(labeled).unwrap_or_default();
+                SET_STRING_ELT(names, j, Rf_mkChar(c.as_ptr()));
+            }
+            j += 1;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            data,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+        let mut nr: R_xlen_t = 0;
+        if XLENGTH(data) > 0 {
+            nr = XLENGTH(VECTOR_ELT(data, 0));
+        } else if !row_names.is_null() && row_names != R_NilValue() {
+            nr = XLENGTH(row_names);
+        }
+        let class = Rf_mkString(c"data.frame".as_ptr());
+        let _cl = protect(class);
+        crate::sexp::attrib_core::setAttrib(data, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        if !row_names.is_null() && row_names != R_NilValue() && XLENGTH(row_names) == nr {
+            crate::sexp::attrib_core::setAttrib(
+                data,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+                row_names,
+            );
+        } else {
+            let compact = Rf_allocVector3(SEXPTYPE::INTSXP, if nr > 0 { 2 } else { 0 });
+            let _c = protect(compact);
+            if nr > 0 {
+                *INTEGER(compact) = NA_INTEGER;
+                *INTEGER(compact).add(1) = nr as i32;
+            }
+            crate::sexp::attrib_core::setAttrib(
+                data,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+                compact,
+            );
+        }
+        let mut ans = data;
+        if !na_action.is_null() && na_action != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                data,
+                crate::sexp::symbol::Rf_install(c"terms".as_ptr()),
+                _terms,
+            );
+            if TYPEOF(na_action) == SEXPTYPE::STRSXP && XLENGTH(na_action) > 0 {
+                let raw = CHAR(STRING_ELT(na_action, 0));
+                na_action = crate::sexp::symbol::Rf_install(raw);
+            }
+            let call_na = Rf_lang2(na_action, data);
+            let _cn = protect(call_na);
+            ans = crate::eval::eval::Rf_eval(call_na, rho);
+            let _a = protect(ans);
+        }
+        let _ = subset;
+        ans
+    }
+}
+
+/// GNU `.External2(C_modelmatrix, t, data)` for intercept + numeric terms.
+pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let args = CDR(args);
+        let terms = CAR(args);
+        let data = CADR(args);
+        if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP || XLENGTH(data) == 0 {
+            crate::main::errors::Rf_error(
+                b"invalid model frame\0".as_ptr() as *const std::os::raw::c_char,
+            );
+        }
+        let n = XLENGTH(VECTOR_ELT(data, 0));
+        let intercept_attr = crate::sexp::attrib_core::getAttrib(
+            terms,
+            crate::sexp::symbol::Rf_install(c"intercept".as_ptr()),
+        );
+        let intercept = if intercept_attr.is_null()
+            || intercept_attr == R_NilValue()
+            || TYPEOF(intercept_attr) != SEXPTYPE::INTSXP
+        {
+            1
+        } else {
+            *INTEGER(intercept_attr)
+        };
+        let labs = crate::sexp::attrib_core::getAttrib(
+            terms,
+            crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
+        );
+        let nterms = if labs.is_null() || TYPEOF(labs) != SEXPTYPE::STRSXP {
+            0
+        } else {
+            XLENGTH(labs)
+        };
+        let p = (if intercept != 0 { 1 } else { 0 }) + nterms;
+        let mat = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::REALSXP.as_c_int(),
+            n as i32,
+            p as i32,
+        );
+        let _m = protect(mat);
+        let dst = REAL(mat);
+        let mut col = 0i64;
+        if intercept != 0 {
+            for i in 0..n {
+                *dst.add(i as usize) = 1.0;
+            }
+            col = 1;
+        }
+        let names = crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
+        for j in 0..nterms {
+            let lab = if TYPEOF(labs) == SEXPTYPE::STRSXP {
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(labs, j)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let mut colx = R_NilValue();
+            if TYPEOF(names) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(names) {
+                    let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
+                        .to_string_lossy()
+                        .into_owned();
+                    if nm == lab {
+                        colx = VECTOR_ELT(data, i);
+                        break;
+                    }
+                }
+            }
+            for i in 0..n {
+                let v = if colx.is_null() || colx == R_NilValue() {
+                    0.0
+                } else if TYPEOF(colx) == SEXPTYPE::REALSXP {
+                    *REAL(colx).add(i as usize)
+                } else if TYPEOF(colx) == SEXPTYPE::INTSXP {
+                    let iv = *INTEGER(colx).add(i as usize);
+                    if iv == NA_INTEGER {
+                        f64::NAN
+                    } else {
+                        iv as f64
+                    }
+                } else {
+                    0.0
+                };
+                *dst.add((i + col * n) as usize) = v;
+            }
+            col += 1;
+        }
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, p);
+        let _cn = protect(cn);
+        let mut c = 0i64;
+        if intercept != 0 {
+            SET_STRING_ELT(cn, 0, Rf_mkChar(c"(Intercept)".as_ptr()));
+            c = 1;
+        }
+        for j in 0..nterms {
+            SET_STRING_ELT(cn, c + j, STRING_ELT(labs, j));
+        }
+        let rn = crate::sexp::attrib_core::getAttrib(
+            data,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+        );
+        let rn = if rn.is_null()
+            || rn == R_NilValue()
+            || XLENGTH(rn) != n
+        {
+            R_NilValue()
+        } else {
+            rn
+        };
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dn = protect(dn);
+        SET_VECTOR_ELT(dn, 0, rn);
+        SET_VECTOR_ELT(dn, 1, cn);
+        crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        let assign = Rf_allocVector3(SEXPTYPE::INTSXP, p);
+        let _as = protect(assign);
+        let mut a = 0i64;
+        if intercept != 0 {
+            *INTEGER(assign) = 0;
+            a = 1;
+        }
+        for j in 0..nterms {
+            *INTEGER(assign).add((a + j) as usize) = (j + 1) as i32;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::symbol::Rf_install(c"assign".as_ptr()),
+            assign,
+        );
+        mat
     }
 }
 
