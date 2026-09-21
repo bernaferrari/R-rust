@@ -1409,6 +1409,35 @@ pub unsafe fn translateChar(x: SEXP) -> *const c_char {
     }
 }
 
+/// Bytes of a CHARSXP translated to UTF-8, like GNU `translateCharUTF8`.
+pub unsafe fn charsxp_as_utf8(x: SEXP) -> Vec<u8> {
+    unsafe {
+        if !is_valid_sexp_ptr(x) || x == crate::sexp::globals::R_NaString() {
+            return Vec::new();
+        }
+        let n = if TYPEOF(x) == SEXPTYPE::CHARSXP {
+            LENGTH(x) as usize
+        } else {
+            0
+        };
+        let bytes = if n == 0 {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(CHAR(x) as *const u8, n)
+        };
+        if IS_LATIN1(x) != 0 {
+            let mut out = Vec::new();
+            for &b in bytes {
+                let mut buf = [0u8; 4];
+                out.extend_from_slice(char::from(b).encode_utf8(&mut buf).as_bytes());
+            }
+            out
+        } else {
+            bytes.to_vec()
+        }
+    }
+}
+
 /// translateCharUTF8: return the CHAR pointer for a CHARSXP as UTF-8.
 /// For UTF-8 or ASCII strings, return directly. For others, return as-is (best-effort).
 pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char {

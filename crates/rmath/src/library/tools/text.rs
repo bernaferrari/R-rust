@@ -473,10 +473,9 @@ pub unsafe fn nonASCII(text: SEXP) -> SEXP {
         }
         let _ans_guard = protect(ans);
         let lans = LOGICAL(ans);
-
         for i in 0..len as usize {
             let this = STRING_ELT(text, i as R_xlen_t);
-            if this.is_null() {
+            if this.is_null() || this == crate::sexp::globals::R_NaString() {
                 *lans.add(i) = 0;
                 continue;
             }

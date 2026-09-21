@@ -2906,10 +2906,147 @@ pub unsafe fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
-/// GNU `iconv(x, from, to)` identity for compatible encodings.
+fn iconv_norm_enc(name: &str) -> &str {
+    match name {
+        "" | "native.enc" => "native",
+        "UTF-8" | "UTF8" | "utf-8" | "utf8" => "UTF-8",
+        "latin1" | "LATIN1" | "ISO-8859-1" | "ISO8859-1" | "iso-8859-1" => "latin1",
+        "ASCII" | "US-ASCII" | "ascii" | "ANSI_X3.4-1968" => "ASCII",
+        other => other,
+    }
+}
+
+fn iconv_charsxp_bytes(ch: SEXP) -> &'static [u8] {
+    unsafe {
+        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            return &[];
+        }
+        let n = XLENGTH(ch);
+        if n <= 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(CHAR(ch) as *const u8, n as usize)
+        }
+    }
+}
+
+fn iconv_decode(bytes: &[u8], from: &str, marked: &str) -> Option<Vec<char>> {
+    let enc = if from == "native" {
+        if marked == "latin1" {
+            "latin1"
+        } else if marked == "UTF-8" || marked == "unknown" {
+            "UTF-8"
+        } else {
+            "UTF-8"
+        }
+    } else {
+        from
+    };
+    match enc {
+        "latin1" => Some(bytes.iter().map(|&b| char::from(b)).collect()),
+        "ASCII" => {
+            if bytes.iter().all(|&b| b < 0x80) {
+                Some(bytes.iter().map(|&b| char::from(b)).collect())
+            } else {
+                None
+            }
+        }
+        _ => std::str::from_utf8(bytes)
+            .ok()
+            .map(|s| s.chars().collect()),
+    }
+}
+
+fn iconv_encode(chars: &[char], to: &str, sub: Option<&str>) -> Option<Vec<u8>> {
+    match to {
+        "UTF-8" | "native" => {
+            let mut out = Vec::new();
+            for &ch in chars {
+                let mut buf = [0u8; 4];
+                out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+            }
+            Some(out)
+        }
+        "latin1" => {
+            let mut out = Vec::new();
+            for &ch in chars {
+                let cp = ch as u32;
+                if cp <= 0xff {
+                    out.push(cp as u8);
+                } else {
+                    match sub {
+                        None => return None,
+                        Some("") => {}
+                        Some("?") => out.push(b'?'),
+                        Some("byte") => {
+                            let mut buf = [0u8; 4];
+                            let raw = ch.encode_utf8(&mut buf).as_bytes();
+                            for b in raw {
+                                out.extend_from_slice(format!("<{b:02x}>").as_bytes());
+                            }
+                        }
+                        Some("Unicode") => {
+                            out.extend_from_slice(format!("<U+{cp:04X}>").as_bytes());
+                        }
+                        Some("c99") => {
+                            if cp <= 0xffff {
+                                out.extend_from_slice(format!("\\u{cp:04x}").as_bytes());
+                            } else {
+                                out.extend_from_slice(format!("\\U{cp:08x}").as_bytes());
+                            }
+                        }
+                        Some(other) => out.extend_from_slice(other.as_bytes()),
+                    }
+                }
+            }
+            Some(out)
+        }
+        "ASCII" => {
+            let mut out = Vec::new();
+            for &ch in chars {
+                let cp = ch as u32;
+                if cp <= 0x7f {
+                    out.push(cp as u8);
+                } else {
+                    match sub {
+                        None => return None,
+                        Some("") => {}
+                        Some("?") => out.push(b'?'),
+                        Some("byte") => {
+                            if cp <= 0xff {
+                                out.extend_from_slice(format!("<{cp:02x}>").as_bytes());
+                            } else {
+                                let mut buf = [0u8; 4];
+                                let raw = ch.encode_utf8(&mut buf).as_bytes();
+                                for b in raw {
+                                    out.extend_from_slice(format!("<{b:02x}>").as_bytes());
+                                }
+                            }
+                        }
+                        Some("Unicode") => {
+                            out.extend_from_slice(format!("<U+{cp:04X}>").as_bytes());
+                        }
+                        Some("c99") => {
+                            if cp <= 0xffff {
+                                out.extend_from_slice(format!("\\u{cp:04x}").as_bytes());
+                            } else {
+                                out.extend_from_slice(format!("\\U{cp:08x}").as_bytes());
+                            }
+                        }
+                        Some(other) => out.extend_from_slice(other.as_bytes()),
+                    }
+                }
+            }
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
+/// GNU `iconv(x, from, to, sub, mark, toRaw)`.
 pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
@@ -2919,7 +3056,88 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "invalid 'x' argument",
             );
         }
-        x
+        let from = {
+            let a = arg_by_name_or_position(args, &["from"], 1);
+            if a.is_null() || a == R_NilValue() || TYPEOF(a) != SEXPTYPE::STRSXP || XLENGTH(a) == 0 {
+                String::new()
+            } else {
+                elt_to_string(a, 0)
+            }
+        };
+        let to = {
+            let a = arg_by_name_or_position(args, &["to"], 2);
+            if a.is_null() || a == R_NilValue() || TYPEOF(a) != SEXPTYPE::STRSXP || XLENGTH(a) == 0 {
+                String::new()
+            } else {
+                elt_to_string(a, 0)
+            }
+        };
+        let from_n = iconv_norm_enc(&from);
+        let to_n = iconv_norm_enc(&to);
+        let sub_arg = arg_by_name_or_position(args, &["sub"], 3);
+        let sub = if sub_arg.is_null()
+            || sub_arg == R_NilValue()
+            || (TYPEOF(sub_arg) == SEXPTYPE::LGLSXP
+                && XLENGTH(sub_arg) > 0
+                && *LOGICAL(sub_arg) == NA_LOGICAL)
+            || (TYPEOF(sub_arg) == SEXPTYPE::STRSXP && is_string_na(sub_arg, 0))
+        {
+            None
+        } else if TYPEOF(sub_arg) == SEXPTYPE::STRSXP && XLENGTH(sub_arg) > 0 {
+            Some(elt_to_string(sub_arg, 0))
+        } else {
+            None
+        };
+        let mark_arg = arg_by_name_or_position(args, &["mark"], 4);
+        let mark = mark_arg.is_null()
+            || mark_arg == R_NilValue()
+            || (TYPEOF(mark_arg) == SEXPTYPE::LGLSXP
+                && XLENGTH(mark_arg) > 0
+                && *LOGICAL(mark_arg) == TRUE)
+            || TYPEOF(mark_arg) == SEXPTYPE::NILSXP;
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let ch = STRING_ELT(x, i);
+            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
+            let marked = if crate::sexp::accessors::IS_BYTES(ch) != 0 {
+                "bytes"
+            } else if crate::sexp::accessors::IS_LATIN1(ch) != 0 {
+                "latin1"
+            } else if crate::sexp::accessors::IS_UTF8(ch) != 0 {
+                "UTF-8"
+            } else {
+                "unknown"
+            };
+            let bytes = iconv_charsxp_bytes(ch);
+            let Some(chars) = iconv_decode(bytes, from_n, marked) else {
+                SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+                continue;
+            };
+            let sub_ref = sub.as_deref();
+            let Some(encoded) = iconv_encode(&chars, to_n, sub_ref) else {
+                SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+                continue;
+            };
+            let marked_ch = crate::sexp::constructors::Rf_mkCharLen(
+                encoded.as_ptr() as *const std::os::raw::c_char,
+                encoded.len() as c_int,
+            );
+            if mark && crate::sexp::accessors::IS_ASCII(marked_ch) == 0 {
+                let kind = match to_n {
+                    "UTF-8" => "UTF-8",
+                    "latin1" => "latin1",
+                    _ => "unknown",
+                };
+                crate::sexp::accessors::mark_charsxp_encoding(marked_ch, kind);
+            }
+            SET_STRING_ELT(out, i, marked_ch);
+        }
+        out
     }
 }
 

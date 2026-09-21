@@ -192,31 +192,7 @@ pub fn ne_with_nan(x: f64, y: f64, str: c_int) -> bool {
 }
 
 unsafe fn charsxp_identical(x: SEXP, y: SEXP) -> bool {
-    unsafe {
-        if x == y {
-            return true;
-        }
-        if x.is_null() || y.is_null() {
-            return false;
-        }
-        let x_na = x == R_NaString();
-        let y_na = y == R_NaString();
-        if x_na || y_na {
-            return x_na && y_na;
-        }
-        if TYPEOF(x) != SEXPTYPE::CHARSXP || TYPEOF(y) != SEXPTYPE::CHARSXP {
-            return false;
-        }
-        let len = LENGTH(x);
-        if len != LENGTH(y) {
-            return false;
-        }
-        if len <= 0 {
-            return true;
-        }
-        std::slice::from_raw_parts(CHAR(x) as *const u8, len as usize)
-            == std::slice::from_raw_parts(CHAR(y) as *const u8, len as usize)
-    }
+    unsafe { crate::mainutils::relop::Seql(x, y) != 0 }
 }
 
 // ---------------------------------------------------------------------------

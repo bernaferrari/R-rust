@@ -1089,6 +1089,12 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         );
 
         if fun.is_none() {
+            if let Some(name) = ported_call_name(CAR(args)) {
+                fun = crate::library::tools::native_calls::lookup_c(&name);
+            }
+        }
+
+        if fun.is_none() {
             return R_NilValue();
         }
 

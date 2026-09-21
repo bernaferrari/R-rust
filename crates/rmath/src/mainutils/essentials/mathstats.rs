@@ -13608,15 +13608,22 @@ pub unsafe fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 message: "argument must be a character vector of length 1".to_string(),
             });
         }
-        let s = elt_to_string(x, 0).as_bytes().to_vec();
-        let result = Rf_allocVector3(SEXPTYPE::RAWSXP, s.len() as R_xlen_t);
+        let ch = STRING_ELT(x, 0);
+        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            std::panic::panic_any(RError {
+                message: "argument must be a character vector of length 1".to_string(),
+            });
+        }
+        let n = XLENGTH(ch);
+        let result = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
-        let data = (*result).gengc_next_node as *mut u8;
-        for (i, &b) in s.iter().enumerate() {
-            *data.add(i) = b;
+        if n > 0 {
+            let src = CHAR(ch) as *const u8;
+            let data = (*result).gengc_next_node as *mut u8;
+            std::ptr::copy_nonoverlapping(src, data, n as usize);
         }
         result
     }

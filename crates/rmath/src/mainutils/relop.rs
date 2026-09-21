@@ -79,7 +79,7 @@ pub unsafe fn warningcall_stub(call: SEXP, format: *const c_char) {
     }
 }
 
-/// Seql (string equality) -- checks if two CHARSXP are equal.
+/// GNU `Seql`: pointer equality, else UTF-8 translation (memory.c).
 pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {
     unsafe {
         if x == y {
@@ -88,16 +88,19 @@ pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {
         if x.is_null() || y.is_null() {
             return 0;
         }
-        let cx = CHAR(x);
-        let cy = CHAR(y);
-        if cx.is_null() || cy.is_null() {
+        if crate::sexp::accessors::IS_BYTES(x) != 0 || crate::sexp::accessors::IS_BYTES(y) != 0 {
+            if crate::sexp::accessors::IS_BYTES(x) != 0 && crate::sexp::accessors::IS_BYTES(y) != 0 {
+                let cx = CHAR(x);
+                let cy = CHAR(y);
+                if cx.is_null() || cy.is_null() {
+                    return 0;
+                }
+                return (CStr::from_ptr(cx).to_bytes() == CStr::from_ptr(cy).to_bytes()) as c_int;
+            }
             return 0;
         }
-        if CStr::from_ptr(cx).to_bytes() == CStr::from_ptr(cy).to_bytes() {
-            1
-        } else {
-            0
-        }
+        (crate::sexp::accessors::charsxp_as_utf8(x) == crate::sexp::accessors::charsxp_as_utf8(y))
+            as c_int
     }
 }
 
@@ -1326,7 +1329,6 @@ unsafe fn string_relop(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
                 return;
             }
 
-            // Same pointer => equal
             if c1 == c2 {
                 match code {
                     EQOP | LEOP | GEOP => *pa.add(i as usize) = 1,
@@ -1336,81 +1338,23 @@ unsafe fn string_relop(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
                 return;
             }
 
-            // Byte comparison via CHAR
-            let bytes1 = CHAR(c1);
-            let bytes2 = CHAR(c2);
-
-            if bytes1.is_null() || bytes2.is_null() {
-                *pa.add(i as usize) = NA_LOGICAL;
+            if code == EQOP {
+                *pa.add(i as usize) = Seql(c1, c2);
+                return;
+            }
+            if code == NEOP {
+                *pa.add(i as usize) = if Seql(c1, c2) != 0 { 0 } else { 1 };
                 return;
             }
 
-            let len1 = std::ffi::CStr::from_ptr(bytes1).to_bytes();
-            let len2 = std::ffi::CStr::from_ptr(bytes2).to_bytes();
-            let cmp = len1.cmp(len2);
-
-            let byte_cmp = if cmp == std::cmp::Ordering::Equal {
-                len1.cmp(len2)
-            } else {
-                // Compare bytes lexicographically
-                let min_len = len1.len().min(len2.len());
-                let mut result = std::cmp::Ordering::Equal;
-                for j in 0..min_len {
-                    if len1[j] != len2[j] {
-                        result = len1[j].cmp(&len2[j]);
-                        break;
-                    }
-                }
-                if result == std::cmp::Ordering::Equal {
-                    len1.len().cmp(&len2.len())
-                } else {
-                    result
-                }
-            };
-
+            let u1 = crate::sexp::accessors::charsxp_as_utf8(c1);
+            let u2 = crate::sexp::accessors::charsxp_as_utf8(c2);
+            let byte_cmp = u1.cmp(&u2);
             *pa.add(i as usize) = match code {
-                EQOP => {
-                    if byte_cmp == std::cmp::Ordering::Equal {
-                        1
-                    } else {
-                        0
-                    }
-                }
-                NEOP => {
-                    if byte_cmp != std::cmp::Ordering::Equal {
-                        1
-                    } else {
-                        0
-                    }
-                }
-                LTOP => {
-                    if byte_cmp == std::cmp::Ordering::Less {
-                        1
-                    } else {
-                        0
-                    }
-                }
-                GTOP => {
-                    if byte_cmp == std::cmp::Ordering::Greater {
-                        1
-                    } else {
-                        0
-                    }
-                }
-                LEOP => {
-                    if byte_cmp != std::cmp::Ordering::Greater {
-                        1
-                    } else {
-                        0
-                    }
-                }
-                GEOP => {
-                    if byte_cmp != std::cmp::Ordering::Less {
-                        1
-                    } else {
-                        0
-                    }
-                }
+                LTOP => (byte_cmp == std::cmp::Ordering::Less) as c_int,
+                GTOP => (byte_cmp == std::cmp::Ordering::Greater) as c_int,
+                LEOP => (byte_cmp != std::cmp::Ordering::Greater) as c_int,
+                GEOP => (byte_cmp != std::cmp::Ordering::Less) as c_int,
                 _ => NA_LOGICAL,
             };
         });

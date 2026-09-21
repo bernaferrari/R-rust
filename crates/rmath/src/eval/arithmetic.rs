@@ -1920,13 +1920,27 @@ unsafe fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             let value = if ac.is_null() || bc.is_null() || ac == R_NaString() || bc == R_NaString()
             {
                 NA_LOGICAL
+            } else if op == "==" {
+                if crate::mainutils::relop::Seql(ac, bc) != 0 {
+                    TRUE
+                } else {
+                    FALSE
+                }
+            } else if op == "!=" {
+                if crate::mainutils::relop::Seql(ac, bc) != 0 {
+                    FALSE
+                } else {
+                    TRUE
+                }
             } else {
-                let av = Sexp::from_raw(ac).and_then(|s| s.try_as_str().ok());
-                let bv = Sexp::from_raw(bc).and_then(|s| s.try_as_str().ok());
-                match (av, bv) {
-                    (Some(av), Some(bv)) if compare_strings(op, av, bv) => TRUE,
-                    (Some(_), Some(_)) => FALSE,
-                    _ => NA_LOGICAL,
+                let av = crate::sexp::accessors::charsxp_as_utf8(ac);
+                let bv = crate::sexp::accessors::charsxp_as_utf8(bc);
+                let a = String::from_utf8_lossy(&av);
+                let b = String::from_utf8_lossy(&bv);
+                if compare_strings(op, a.as_ref(), b.as_ref()) {
+                    TRUE
+                } else {
+                    FALSE
                 }
             };
             result_mut.set_logical_elt(i, value);
