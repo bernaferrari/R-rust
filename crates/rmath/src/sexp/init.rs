@@ -748,15 +748,15 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             }
         }
         eval_base_binding(base_env, "seq", "function(...) UseMethod(\"seq\")");
+        eval_base_binding(base_env, "chkDots", include_str!("gnu_chkDots.R"));
+        eval_base_binding(base_env, "seq.default", include_str!("gnu_seq_default.R"));
+        eval_base_binding(base_env, "units", "function(x) UseMethod(\"units\")");
+        eval_base_binding(base_env, "units<-", "function(x, value) UseMethod(\"units<-\")");
+        eval_base_binding(base_env, "units.difftime", "function(x) attr(x, \"units\")");
         eval_base_binding(
             base_env,
-            "seq.default",
-            "function(from = 1, to = 1, by = ((to - from)/(length.out - 1)),\n\
-             length.out = NULL, along.with = NULL, ...) {\n\
-             cl <- match.call()\n\
-             cl[[1L]] <- quote(.rport_seq)\n\
-             eval.parent(cl)\n\
-             }",
+            "units<-.difftime",
+            include_str!("gnu_units_difftime.R"),
         );
         eval_base_binding(base_env, "seq.POSIXt", include_str!("gnu_seq_POSIXt.R"));
         eval_base_binding(base_env, "seq.Date", include_str!("gnu_seq_Date.R"));
@@ -765,11 +765,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "as.POSIXlt.POSIXct",
             include_str!("gnu_as_POSIXlt_POSIXct.R"),
         );
-        eval_base_binding(
-            base_env,
-            "as.POSIXct.Date",
-            "function(x, tz = \"UTC\", ...) .POSIXct(unclass(x)*86400, tz=tz)",
-        );
+
         eval_base_binding(
             base_env,
             "as.Date.default",

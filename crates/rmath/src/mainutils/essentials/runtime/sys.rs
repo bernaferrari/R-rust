@@ -1706,19 +1706,7 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let _guard = protect(result);
         let out = REAL(result);
 
-        if sexp_has_class(x, "Date")
-
-            && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
-        {
-            for i in 0..n {
-                let days = date_days_elt(x, i);
-                *out.add(i as usize) = if days.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                    NA_REAL
-                } else {
-                    days.floor() * 86_400.0
-                };
-            }
-        } else if TYPEOF(x) == SEXPTYPE::LGLSXP {
+        if TYPEOF(x) == SEXPTYPE::LGLSXP {
             // GNU as.POSIXct.default: logical all-NA -> numeric POSIXct.
             for i in 0..n {
                 if *INTEGER(x).add(i as usize) != NA_INTEGER {

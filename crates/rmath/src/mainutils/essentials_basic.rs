@@ -2191,6 +2191,7 @@ unsafe fn coerce_to_type(args: SEXP, target: c_int) -> SEXP {
                 if !result.is_null() && result != R_NilValue() {
                     if SEXPTYPE(target) != SEXPTYPE::LISTSXP {
                         SET_ATTRIB(result, R_NilValue());
+                        SET_OBJECT(result, 0);
                     }
                 }
                 result
