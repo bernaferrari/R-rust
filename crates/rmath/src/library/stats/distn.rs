@@ -66,6 +66,14 @@ unsafe fn as_integer(x: SEXP) -> c_int {
     }
 }
 
+/// GNU `FINISH_MathN`: `warning(_("NaNs produced"))` when a finite input
+/// produced a NaN. eprintln is not a warning condition (`assertWarning`).
+unsafe fn nans_produced() {
+    unsafe {
+        crate::mainutils::errors::Rf_warning1(c"NaNs produced".as_ptr());
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Math2 helpers (2-argument math functions)
 // ---------------------------------------------------------------------------
@@ -130,7 +138,7 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
         }
 
         if naflag {
-            eprintln!("NaNs produced");
+            nans_produced();
         }
         sy
     }
@@ -194,7 +202,7 @@ unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SE
         }
 
         if naflag {
-            eprintln!("NaNs produced");
+            nans_produced();
         }
         sy
     }
@@ -281,7 +289,7 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
         }
 
         if naflag {
-            eprintln!("NaNs produced");
+            nans_produced();
         }
         sy
     }
@@ -362,7 +370,7 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
         }
 
         if naflag {
-            eprintln!("NaNs produced");
+            nans_produced();
         }
         sy
     }
@@ -462,7 +470,7 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         }
 
         if naflag {
-            eprintln!("NaNs produced");
+            nans_produced();
         }
         sy
     }
@@ -564,7 +572,7 @@ unsafe fn math4_2(
         }
 
         if naflag {
-            eprintln!("NaNs produced");
+            nans_produced();
         }
         sy
     }
