@@ -216,7 +216,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         let promised_args = super::dispatch::promiseArgs(arglist, rho);
         let _promised_args_guard = protect(promised_args);
 
-        let newrho = make_applyClosure_env(op, arglist, rho);
+        let newrho = make_applyClosure_env(call, op, arglist, rho);
         if newrho.is_null() || newrho == R_NilValue() {
             return R_NilValue();
         }
@@ -573,7 +573,7 @@ fn is_function_sexp(value: SEXP) -> bool {
 
 
 /// This is a helper that separates environment creation from body evaluation.
-pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         match (
             Sexp::from_raw(op),
@@ -601,6 +601,7 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
                 let promised_args = crate::eval::dispatch::promiseArgs(arglist, rho);
                 let matched = match_closure_args(formals.clone().as_raw(), promised_args)
                     .unwrap_or_else(|message| {
+                        crate::mainutils::errors::record_error_call(call, true);
                         std::panic::panic_any(crate::sexp::context::RSignal::Error { message })
                     });
 
@@ -961,7 +962,12 @@ pub unsafe fn R_execClosure(
     rho: SEXP,
 ) -> Result<SEXP, crate::sexp::context::RError> {
     unsafe {
-        let newrho = make_applyClosure_env(op, arglist, rho);
+        let newrho = make_applyClosure_env(
+            crate::mainutils::errors::R_getCurrentCall(),
+            op,
+            arglist,
+            rho,
+        );
         if newrho.is_null() || newrho == R_NilValue() {
             return Err(crate::sexp::context::RError {
                 message: "failed to create closure environment".to_string(),

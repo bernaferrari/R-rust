@@ -127,6 +127,63 @@ pub fn take_error_call_less() -> bool {
     })
 }
 
+/// Record the call attributed to the error about to unwind.
+///
+/// `explicit` is the applied language object (GNU `errorcall(call)` from
+/// matchArgs / builtin dispatch). `stop()` records the same slot with
+/// `explicit = false` via `verrorcall_dflt` so tryCatch can still
+/// fabricate `doTryCatch` when the raise is in the tryCatch frame.
+pub fn record_error_call(call: SEXP, explicit: bool) {
+    let (nframe, stored) = unsafe {
+        let nframe = crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext());
+        let stored = if call.is_null() {
+            crate::sexp::globals::R_NilValue()
+        } else {
+            call
+        };
+        (nframe, stored)
+    };
+    with_error_state(|state| {
+        if explicit || !state.last_error_call_explicit {
+            state.last_error_call = stored;
+            state.last_error_call_explicit = explicit;
+            state.last_error_nframe = nframe;
+        }
+    });
+}
+
+/// Consume the raise-site call recorded by [`record_error_call`].
+pub fn take_recorded_error_call() -> Option<(SEXP, bool, i32)> {
+    with_error_state(|state| {
+        if state.last_error_call.is_null() {
+            return None;
+        }
+        let recorded = (
+            state.last_error_call,
+            state.last_error_call_explicit,
+            state.last_error_nframe,
+        );
+        state.last_error_call = std::ptr::null_mut();
+        state.last_error_call_explicit = false;
+        state.last_error_nframe = 0;
+        Some(recorded)
+    })
+}
+
+pub(crate) fn push_try_catch_nframe(nframe: i32) {
+    with_error_state(|state| state.try_catch_nframes.push(nframe));
+}
+
+pub(crate) fn pop_try_catch_nframe() {
+    with_error_state(|state| {
+        state.try_catch_nframes.pop();
+    });
+}
+
+pub(crate) fn try_catch_entry_nframe() -> Option<i32> {
+    with_error_state(|state| state.try_catch_nframes.last().copied())
+}
+
 
 pub(super) fn r_show_warn_calls() -> bool {
     with_error_state(|state| state.show_warn_calls)

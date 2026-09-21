@@ -111,6 +111,17 @@ pub(crate) struct ErrorState {
     /// sessions are nested on one host thread.
     pub calling_handlers_signaled: bool,
     pub try_catch_handler_classes: Vec<Vec<String>>,
+    /// Call recorded by the most recent error raise (`errorcall` / unused-arg).
+    /// `null` means unset; `R_NilValue` means `call. = FALSE`.
+    pub last_error_call: SEXP,
+    /// True when `last_error_call` is the applied language object (matchArgs,
+    /// builtin `attribute_handler_errors`), not `getCurrentCall()` from `stop()`.
+    pub last_error_call_explicit: bool,
+    /// `framedepth` at the raise site; compared with the enclosing tryCatch
+    /// entry depth so `stop()` inside `f()` keeps `f()` rather than doTryCatch.
+    pub last_error_nframe: i32,
+    /// `framedepth` snapshots pushed with `try_catch_handler_classes`.
+    pub try_catch_nframes: Vec<i32>,
     pub current_srcref_location: Option<(String, i32)>,
     /// `sequence()` announces the upcoming recycling default once per session.
     pub sequence_recycling_warned: bool,
@@ -143,6 +154,10 @@ impl Default for ErrorState {
             mathlib_warning_call_stack: Vec::new(),
             calling_handlers_signaled: false,
             try_catch_handler_classes: Vec::new(),
+            last_error_call: std::ptr::null_mut(),
+            last_error_call_explicit: false,
+            last_error_nframe: 0,
+            try_catch_nframes: Vec::new(),
             current_srcref_location: None,
             sequence_recycling_warned: false,
             warnings: std::ptr::null_mut(),

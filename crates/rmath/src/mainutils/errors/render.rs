@@ -220,6 +220,7 @@ pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut
         let warn_len = BUFSIZE.min(r_warn_length().max(0) as usize);
         let has_call = !call.is_null() && isNull(call) == 0;
         set_error_call_less(!has_call);
+        record_error_call(call, false);
         let head_len = if has_call {
             b"Error in ".len()
         } else {
@@ -544,6 +545,7 @@ where
             if let Some(err) = payload.downcast_ref::<RError>() {
                 let message = err.message.clone();
                 if !error_was_last_rendered(&message) {
+                    record_error_call(call, true);
                     // Diverges: renders "Error in <call> : <message>" and
                     // panics with the bare-message payload.
                     errorcall_str(call, &message);

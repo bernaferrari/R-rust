@@ -37,6 +37,7 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         crate::mainutils::errors::set_error_call_less(false);
+        let _try_nframe = TryCatchNframeGuard::push();
 
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -123,7 +124,7 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     if width > 75 {
                         prefix.push_str("\n  ");
                     }
-                    (prefix, simple_error_condition(&message))
+                    (prefix, simple_error_condition_at(&message, caught_error_call()))
                 };
                 let out_text = format!("{prefix}{message}\n");
 
@@ -1407,16 +1408,58 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+unsafe fn current_framedepth() -> i32 {
+    unsafe { crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext()) }
+}
+
+struct TryCatchNframeGuard;
+
+impl TryCatchNframeGuard {
+    fn push() -> Self {
+        crate::mainutils::errors::push_try_catch_nframe(unsafe { current_framedepth() });
+        Self
+    }
+}
+
+impl Drop for TryCatchNframeGuard {
+    fn drop(&mut self) {
+        crate::mainutils::errors::pop_try_catch_nframe();
+    }
+}
+
+/// GNU `errorcall(call)` stores the applied language object; `stop()` uses
+/// `getCurrentCall()`. tryCatch fabricates `doTryCatch(...)` only when the
+/// raise is in the tryCatch frame itself (`stop("boom")`).
+unsafe fn caught_error_call() -> Option<SEXP> {
+    unsafe {
+        let Some((call, explicit, nframe)) = crate::mainutils::errors::take_recorded_error_call()
+        else {
+            return None;
+        };
+        if call.is_null() || call == R_NilValue() {
+            return Some(R_NilValue());
+        }
+        if explicit {
+            return Some(call);
+        }
+        if let Some(entry) = crate::mainutils::errors::try_catch_entry_nframe()
+            && nframe > entry
+        {
+            return Some(call);
+        }
+        None
+    }
+}
+
 unsafe fn simple_error_condition(message: &str) -> SEXP {
-    simple_error_condition_at(message, None)
+    unsafe { simple_error_condition_at(message, None) }
 }
 
 unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
     unsafe {
-        // stock: conditions caught by tryCatch's error handler carry the
-        // internal doTryCatch(return(expr), name, parentenv, handler) frame
-        // as their call. GNU try() keeps a NULL call when the original
-        // error was raised with call. = FALSE / errorcall(R_NilValue).
+        // GNU stop() inside tryCatch attributes to doTryCatch because that
+        // is getCurrentCall(). Unused-arg / Math1 pass the applied call to
+        // errorcall; call. = FALSE is a NULL call.
         let mut _call_guard = None;
         let call = match call {
             Some(call) => call,
@@ -1545,12 +1588,17 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 .error_state
                 .try_catch_handler_classes
                 .push(handlers.iter().map(|(tag, _)| tag.clone()).collect());
+            (*inst)
+                .error_state
+                .try_catch_nframes
+                .push(current_framedepth());
         });
         struct PopHandlers(*mut crate::sexp::instance::RInstance);
         impl Drop for PopHandlers {
             fn drop(&mut self) {
                 unsafe {
                     (*self.0).error_state.try_catch_handler_classes.pop();
+                    (*self.0).error_state.try_catch_nframes.pop();
                 }
             }
         }
@@ -1566,6 +1614,11 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(expr, rho)
         }));
+        let caught_call = if result.is_err() {
+            caught_error_call()
+        } else {
+            None
+        };
         drop(_pop_guard);
 
         match result {
@@ -1630,7 +1683,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 let condition = if !original.is_null() {
                     original
                 } else {
-                    simple_error_condition(&message)
+                    simple_error_condition_at(&message, caught_call)
                 };
                 let classes = condition_classes(condition);
                 let Some(handler) = handlers
