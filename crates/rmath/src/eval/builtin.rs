@@ -791,11 +791,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
-        name: "evalq",
-        handler: crate::eval::evalq::do_evalq,
-        restore_visibility_always: false,
-    },
-    UnevaluatedBuiltin {
         name: "quote",
         handler: crate::mainutils::essentials::do_quote,
         restore_visibility_always: true,
@@ -4316,10 +4311,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "eval",
         handler: crate::mainutils::essentials::do_eval,
-    },
-    EvaluatedBuiltin {
-        name: "eval.parent",
-        handler: crate::mainutils::essentials::do_eval_parent,
     },
 
     EvaluatedBuiltin {
