@@ -1923,6 +1923,11 @@ unsafe fn initialize_special_environment_bindings(base_env: SEXP) {
         );
         super::accessors::SET_ENCLOS(global, autoloads);
         defineVar(Rf_install_in_current(".AutoloadEnv"), autoloads, base_env);
+        defineVar(
+            Rf_install_in_current(".Autoloaded"),
+            super::globals::R_NilValue(),
+            autoloads,
+        );
     }
 }
 
@@ -1975,6 +1980,15 @@ const NON_GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto(":::", &[arg("pkg"), arg("name")], false),
     proto("...length", NO_ARGS, false),
     proto("...names", NO_ARGS, false),
+    proto(
+        "rank",
+        &[
+            arg("x"),
+            arg_default("na.last", FormalDefault::True),
+            arg_default("ties.method", FormalDefault::String("average")),
+        ],
+        false,
+    ),
     proto("...elt", &[arg("n")], false),
     proto(
         ".C",
