@@ -902,7 +902,6 @@ pub unsafe fn do_which(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && names != R_NilValue()
             && TYPEOF(names) == SEXPTYPE::STRSXP
             && XLENGTH(names) == n
-            && !indices.is_empty()
         {
             let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
             let _np = protect(out_names);

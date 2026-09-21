@@ -1614,15 +1614,29 @@ pub(crate) fn format_date_vector_max(x: Sexp<'_>, max_override: Option<i64>) -> 
                         })
                 });
             let text = days
-                .and_then(crate::mainutils::essentials::date_days_to_iso)
-                .unwrap_or_else(|| "NA".to_string());
-
-            let c = std::ffi::CString::new(text).unwrap_or_default();
-            crate::sexp::accessors::SET_STRING_ELT(
-                formatted,
-                i,
-                crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
-            );
+                .and_then(crate::mainutils::essentials::date_days_to_iso);
+            if let Some(text) = text {
+                if text == "NA" {
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        formatted,
+                        i,
+                        crate::sexp::globals::R_NaString(),
+                    );
+                } else {
+                    let c = std::ffi::CString::new(text).unwrap_or_default();
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        formatted,
+                        i,
+                        crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+                    );
+                }
+            } else {
+                crate::sexp::accessors::SET_STRING_ELT(
+                    formatted,
+                    i,
+                    crate::sexp::globals::R_NaString(),
+                );
+            }
         }
         let sexp = Sexp::from_raw_unchecked(formatted);
         // GNU print.Date uses max+1 when truncating so print.default does

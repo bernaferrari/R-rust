@@ -752,6 +752,15 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
         eval_base_binding(base_env, "seq.POSIXt", include_str!("gnu_seq_POSIXt.R"));
+        eval_base_binding(base_env, "seq.Date", include_str!("gnu_seq_Date.R"));
+        eval_base_binding(
+            base_env,
+            "as.POSIXlt.POSIXct",
+            include_str!("gnu_as_POSIXlt_POSIXct.R"),
+        );
+        eval_base_binding(base_env, "print.Date", include_str!("gnu_print_Date.R"));
+        eval_base_binding(base_env, "print.POSIXct", include_str!("gnu_print_POSIXt.R"));
+        eval_base_binding(base_env, "print.POSIXlt", include_str!("gnu_print_POSIXt.R"));
         eval_base_binding(
             base_env,
             "factor",
