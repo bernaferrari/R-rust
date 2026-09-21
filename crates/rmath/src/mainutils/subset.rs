@@ -2016,7 +2016,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         /// exactly two `[` subscripts (`df[i, j]`).
         unsafe fn data_frame_subset_2(x: SEXP, nsubs: c_int) -> bool {
             unsafe {
-                nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP && length_int(x) > 0
+                nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP
             }
         }
 
@@ -2112,9 +2112,9 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         rows and columns. Both subscripts may be missing (`df[1,]`,
         `df[,1]`). */
         if data_frame_subset_2(x, nsubs) {
-            let first = VECTOR_ELT(ax, 0);
-            let nrows = data_frame_nrows(x, first);
             let ncols = length_int(ax);
+            let first = if ncols > 0 { VECTOR_ELT(ax, 0) } else { R_NilValue() };
+            let nrows = data_frame_nrows(x, first);
             let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             let _dims_guard = protect(dims);
             *INTEGER(dims).add(0) = nrows;

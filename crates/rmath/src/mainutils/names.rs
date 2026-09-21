@@ -1288,6 +1288,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"merge\0",
+        None,
+        0,
+        1,
+        2,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"anyDuplicated\0",
         None,
         2,
@@ -5231,6 +5239,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "anyDuplicated" => Some(crate::mainutils::essentials::do_anyDuplicated),
         "detach" => Some(crate::mainutils::envir::do_detach),
         "data" => Some(crate::mainutils::essentials::do_data),
+        "merge" => Some(crate::mainutils::essentials::do_merge),
         "attach" => Some(crate::mainutils::envir::do_attach),
         "as.vector" => Some(crate::mainutils::essentials::do_as_vector),
         "seq" => Some(crate::mainutils::seq::do_seq),

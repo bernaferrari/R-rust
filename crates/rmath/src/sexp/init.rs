@@ -736,6 +736,13 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "kappa.lm", include_str!("gnu_kappa_lm.R"));
         eval_base_binding(base_env, "kappa.qr", include_str!("gnu_kappa_qr.R"));
         eval_base_binding(base_env, ".kappa_tri", include_str!("gnu_kappa_tri.R"));
+        eval_base_binding(base_env, "merge", include_str!("gnu_merge.R"));
+        eval_base_binding(base_env, "merge.default", include_str!("gnu_merge_default.R"));
+        eval_base_binding(
+            base_env,
+            "merge.data.frame",
+            include_str!("gnu_merge_data_frame.R"),
+        );
         eval_base_binding(
             base_env,
             "all.equal",

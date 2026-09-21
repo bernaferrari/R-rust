@@ -714,7 +714,7 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         let mut x = CAR(args);
 
         if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
+            return empty_data_frame();
         }
         // If already a data.frame, return as-is
         let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
@@ -792,6 +792,25 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
         }
 
+        result
+    }
+}
+
+/// GNU `as.data.frame(NULL)`: zero columns and zero rows.
+unsafe fn empty_data_frame() -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        let _p = protect(result);
+        crate::mainutils::essentials::set_data_frame_class(result);
+        let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _r = protect(rn);
+        *INTEGER(rn) = crate::sexp::ffi::NA_INTEGER;
+        *INTEGER(rn).add(1) = 0;
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(c"row.names".as_ptr()),
+            rn,
+        );
         result
     }
 }
