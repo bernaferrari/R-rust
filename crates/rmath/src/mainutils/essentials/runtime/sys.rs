@@ -1715,6 +1715,13 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP {
             let origin_seconds = if origin_missing {
                 0.0
+            } else if sexp_has_class(origin, "POSIXct") && TYPEOF(origin) == SEXPTYPE::REALSXP {
+                let v = *REAL(origin);
+                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    NA_REAL
+                } else {
+                    v
+                }
             } else {
                 parse_iso_datetime_seconds(&elt_to_string(origin, 0))
                     .or_else(|| {

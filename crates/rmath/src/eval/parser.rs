@@ -727,6 +727,10 @@ impl Lexer {
         let mut s = String::new();
         loop {
             match self.advance() {
+                Some('\\') => match self.advance() {
+                    Some(c) => s.push(c),
+                    None => return Token::Invalid,
+                },
                 Some('`') => break,
                 Some(c) => s.push(c),
                 None => return Token::Invalid,
