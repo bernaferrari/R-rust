@@ -5715,10 +5715,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::seq::do_seq_along,
     },
     EvaluatedBuiltin {
-        name: "diff",
-        handler: crate::mainutils::essentials::do_diff,
-    },
-    EvaluatedBuiltin {
         name: "rev",
         handler: crate::mainutils::essentials::do_rev,
     },
