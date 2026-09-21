@@ -1411,15 +1411,306 @@ pub unsafe fn do_qtukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SE
 // ===========================================================================
 
 pub unsafe fn stats_signrank_free(_args: SEXP) -> SEXP {
-    unsafe {
-        // No-op: signrank caching not implemented
-        R_NilValue()
-    }
+    unsafe { R_NilValue() }
 }
 
 pub unsafe fn stats_wilcox_free(_args: SEXP) -> SEXP {
-    unsafe {
-        // No-op: wilcox caching not implemented
-        R_NilValue()
+    unsafe { R_NilValue() }
+}
+
+unsafe extern "C-unwind" fn c_signrank_free(_args: SEXP) -> SEXP {
+    unsafe { stats_signrank_free(R_NilValue()) }
+}
+unsafe extern "C-unwind" fn c_wilcox_free(_args: SEXP) -> SEXP {
+    unsafe { stats_wilcox_free(R_NilValue()) }
+}
+
+use crate::unix::dynload::DL_FUNC;
+
+fn as_dl<T>(f: T) -> DL_FUNC {
+    Some(unsafe { std::mem::transmute_copy(&f) })
+}
+
+macro_rules! wrap3 {
+    ($c:ident, $do:ident) => {
+        unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP) -> SEXP {
+            unsafe { $do(a, b, c) }
+        }
+    };
+}
+macro_rules! wrap4 {
+    ($c:ident, $do:ident) => {
+        unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP {
+            unsafe { $do(a, b, c, d) }
+        }
+    };
+}
+macro_rules! wrap5 {
+    ($c:ident, $do:ident) => {
+        unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP, e: SEXP) -> SEXP {
+            unsafe { $do(a, b, c, d, e) }
+        }
+    };
+}
+macro_rules! wrap6 {
+    ($c:ident, $do:ident) => {
+        unsafe extern "C-unwind" fn $c(
+            a: SEXP,
+            b: SEXP,
+            c: SEXP,
+            d: SEXP,
+            e: SEXP,
+            f: SEXP,
+        ) -> SEXP {
+            unsafe { $do(a, b, c, d, e, f) }
+        }
+    };
+}
+
+wrap3!(c_dchisq, do_dchisq);
+wrap3!(c_dexp, do_dexp);
+wrap3!(c_dgeom, do_dgeom);
+wrap3!(c_dpois, do_dpois);
+wrap3!(c_dt, do_dt);
+wrap3!(c_dsignrank, do_dsignrank);
+
+wrap4!(c_pchisq, do_pchisq);
+wrap4!(c_qchisq, do_qchisq);
+wrap4!(c_pexp, do_pexp);
+wrap4!(c_qexp, do_qexp);
+wrap4!(c_pgeom, do_pgeom);
+wrap4!(c_qgeom, do_qgeom);
+wrap4!(c_ppois, do_ppois);
+wrap4!(c_qpois, do_qpois);
+wrap4!(c_pt, do_pt);
+wrap4!(c_qt, do_qt);
+wrap4!(c_psignrank, do_psignrank);
+wrap4!(c_qsignrank, do_qsignrank);
+wrap4!(c_dbeta, do_dbeta);
+wrap4!(c_dbinom, do_dbinom);
+wrap4!(c_dcauchy, do_dcauchy);
+wrap4!(c_df, do_df);
+wrap4!(c_dgamma, do_dgamma);
+wrap4!(c_dlnorm, do_dlnorm);
+wrap4!(c_dlogis, do_dlogis);
+wrap4!(c_dnbinom, do_dnbinom);
+wrap4!(c_dnbinom_mu, do_dnbinom_mu);
+wrap4!(c_dnorm, do_dnorm);
+wrap4!(c_dweibull, do_dweibull);
+wrap4!(c_dunif, do_dunif);
+wrap4!(c_dnt, do_dnt);
+wrap4!(c_dnchisq, do_dnchisq);
+wrap4!(c_dwilcox, do_dwilcox);
+
+wrap5!(c_pbeta, do_pbeta);
+wrap5!(c_qbeta, do_qbeta);
+wrap5!(c_pbinom, do_pbinom);
+wrap5!(c_qbinom, do_qbinom);
+wrap5!(c_pcauchy, do_pcauchy);
+wrap5!(c_qcauchy, do_qcauchy);
+wrap5!(c_pf, do_pf);
+wrap5!(c_qf, do_qf);
+wrap5!(c_pgamma, do_pgamma);
+wrap5!(c_qgamma, do_qgamma);
+wrap5!(c_plnorm, do_plnorm);
+wrap5!(c_qlnorm, do_qlnorm);
+wrap5!(c_plogis, do_plogis);
+wrap5!(c_qlogis, do_qlogis);
+wrap5!(c_pnbinom, do_pnbinom);
+wrap5!(c_qnbinom, do_qnbinom);
+wrap5!(c_pnbinom_mu, do_pnbinom_mu);
+wrap5!(c_qnbinom_mu, do_qnbinom_mu);
+wrap5!(c_pnorm, do_pnorm);
+wrap5!(c_qnorm, do_qnorm);
+wrap5!(c_pweibull, do_pweibull);
+wrap5!(c_qweibull, do_qweibull);
+wrap5!(c_punif, do_punif);
+wrap5!(c_qunif, do_qunif);
+wrap5!(c_pnt, do_pnt);
+wrap5!(c_qnt, do_qnt);
+wrap5!(c_pnchisq, do_pnchisq);
+wrap5!(c_qnchisq, do_qnchisq);
+wrap5!(c_pwilcox, do_pwilcox);
+wrap5!(c_qwilcox, do_qwilcox);
+wrap5!(c_dhyper, do_dhyper);
+wrap5!(c_dnbeta, do_dnbeta);
+wrap5!(c_dnf, do_dnf);
+
+wrap6!(c_phyper, do_phyper);
+wrap6!(c_qhyper, do_qhyper);
+wrap6!(c_pnbeta, do_pnbeta);
+wrap6!(c_qnbeta, do_qnbeta);
+wrap6!(c_pnf, do_pnf);
+wrap6!(c_qnf, do_qnf);
+wrap6!(c_ptukey, do_ptukey);
+wrap6!(c_qtukey, do_qtukey);
+
+pub fn lookup_call(name: &str) -> DL_FUNC {
+    let bare = name.strip_prefix("C_").unwrap_or(name);
+    match bare {
+        "dchisq" => as_dl(c_dchisq as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "dexp" => as_dl(c_dexp as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "dgeom" => as_dl(c_dgeom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "dpois" => as_dl(c_dpois as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "dt" => as_dl(c_dt as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "dsignrank" => as_dl(c_dsignrank as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "pchisq" => as_dl(c_pchisq as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "qchisq" => as_dl(c_qchisq as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "pexp" => as_dl(c_pexp as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "qexp" => as_dl(c_qexp as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "pgeom" => as_dl(c_pgeom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "qgeom" => as_dl(c_qgeom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "ppois" => as_dl(c_ppois as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "qpois" => as_dl(c_qpois as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "pt" => as_dl(c_pt as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "qt" => as_dl(c_qt as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "psignrank" => {
+            as_dl(c_psignrank as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qsignrank" => {
+            as_dl(c_qsignrank as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "dbeta" => as_dl(c_dbeta as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dbinom" => as_dl(c_dbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dcauchy" => as_dl(c_dcauchy as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "df" => as_dl(c_df as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dgamma" => as_dl(c_dgamma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dlnorm" => as_dl(c_dlnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dlogis" => as_dl(c_dlogis as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dnbinom" => as_dl(c_dnbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dnbinom_mu" => {
+            as_dl(c_dnbinom_mu as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "dnorm" => as_dl(c_dnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dweibull" => as_dl(c_dweibull as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dunif" => as_dl(c_dunif as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dnt" => as_dl(c_dnt as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dnchisq" => as_dl(c_dnchisq as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "dwilcox" => as_dl(c_dwilcox as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "pbeta" => {
+            as_dl(c_pbeta as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qbeta" => {
+            as_dl(c_qbeta as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pbinom" => {
+            as_dl(c_pbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qbinom" => {
+            as_dl(c_qbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pcauchy" => {
+            as_dl(c_pcauchy as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qcauchy" => {
+            as_dl(c_qcauchy as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pf" => as_dl(c_pf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "qf" => as_dl(c_qf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "pgamma" => {
+            as_dl(c_pgamma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qgamma" => {
+            as_dl(c_qgamma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "plnorm" => {
+            as_dl(c_plnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qlnorm" => {
+            as_dl(c_qlnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "plogis" => {
+            as_dl(c_plogis as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qlogis" => {
+            as_dl(c_qlogis as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pnbinom" => {
+            as_dl(c_pnbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qnbinom" => {
+            as_dl(c_qnbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pnbinom_mu" => {
+            as_dl(c_pnbinom_mu as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qnbinom_mu" => {
+            as_dl(c_qnbinom_mu as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pnorm" => {
+            as_dl(c_pnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qnorm" => {
+            as_dl(c_qnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pweibull" => {
+            as_dl(c_pweibull as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qweibull" => {
+            as_dl(c_qweibull as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "punif" => {
+            as_dl(c_punif as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qunif" => {
+            as_dl(c_qunif as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pnt" => as_dl(c_pnt as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "qnt" => as_dl(c_qnt as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "pnchisq" => {
+            as_dl(c_pnchisq as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qnchisq" => {
+            as_dl(c_qnchisq as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pwilcox" => {
+            as_dl(c_pwilcox as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qwilcox" => {
+            as_dl(c_qwilcox as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "dhyper" => {
+            as_dl(c_dhyper as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "dnbeta" => {
+            as_dl(c_dnbeta as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "dnf" => as_dl(c_dnf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "phyper" => {
+            as_dl(c_phyper as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qhyper" => {
+            as_dl(c_qhyper as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pnbeta" => {
+            as_dl(c_pnbeta as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qnbeta" => {
+            as_dl(c_qnbeta as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pnf" => as_dl(c_pnf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "qnf" => as_dl(c_qnf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "ptukey" => {
+            as_dl(c_ptukey as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "qtukey" => {
+            as_dl(c_qtukey as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "signrank_free" => as_dl(c_signrank_free as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "wilcox_free" => as_dl(c_wilcox_free as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        _ => None,
     }
 }
+
+pub const DISTN_CALL_NAMES: &[&str] = &[
+    "C_dchisq", "C_dexp", "C_dgeom", "C_dpois", "C_dt", "C_dsignrank", "C_pchisq", "C_qchisq",
+    "C_pexp", "C_qexp", "C_pgeom", "C_qgeom", "C_ppois", "C_qpois", "C_pt", "C_qt", "C_psignrank",
+    "C_qsignrank", "C_dbeta", "C_dbinom", "C_dcauchy", "C_df", "C_dgamma", "C_dlnorm", "C_dlogis",
+    "C_dnbinom", "C_dnbinom_mu", "C_dnorm", "C_dweibull", "C_dunif", "C_dnt", "C_dnchisq",
+    "C_dwilcox", "C_pbeta", "C_qbeta", "C_pbinom", "C_qbinom", "C_pcauchy", "C_qcauchy", "C_pf",
+    "C_qf", "C_pgamma", "C_qgamma", "C_plnorm", "C_qlnorm", "C_plogis", "C_qlogis", "C_pnbinom",
+    "C_qnbinom", "C_pnbinom_mu", "C_qnbinom_mu", "C_pnorm", "C_qnorm", "C_pweibull", "C_qweibull",
+    "C_punif", "C_qunif", "C_pnt", "C_qnt", "C_pnchisq", "C_qnchisq", "C_pwilcox", "C_qwilcox",
+    "C_dhyper", "C_dnbeta", "C_dnf", "C_phyper", "C_qhyper", "C_pnbeta", "C_qnbeta", "C_pnf",
+    "C_qnf", "C_ptukey", "C_qtukey", "C_signrank_free", "C_wilcox_free",
+];

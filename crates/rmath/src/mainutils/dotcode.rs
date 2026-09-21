@@ -933,6 +933,25 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         );
 
         if ofun.is_none() {
+            if let Some(name) = ported_call_name(CAR(args)) {
+                ofun = crate::library::methods::native_calls::lookup(&name)
+                    .or_else(|| crate::library::tools::native_calls::lookup(&name))
+                    .or_else(|| crate::library::stats::random::lookup_call(&name));
+            }
+        }
+        if ofun.is_none() {
+            let name = std::ffi::CStr::from_bytes_until_nul(&buf)
+                .ok()
+                .and_then(|c| c.to_str().ok())
+                .unwrap_or("");
+            if !name.is_empty() {
+                ofun = crate::library::methods::native_calls::lookup(name)
+                    .or_else(|| crate::library::tools::native_calls::lookup(name))
+                    .or_else(|| crate::library::stats::random::lookup_call(name));
+            }
+        }
+
+        if ofun.is_none() {
             errorcall(
                 call,
                 &format!(

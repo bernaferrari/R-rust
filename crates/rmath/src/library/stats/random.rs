@@ -24,26 +24,122 @@ fn as_dl<T>(f: T) -> DL_FUNC {
     Some(unsafe { std::mem::transmute_copy(&f) })
 }
 
+unsafe extern "C-unwind" fn c_rchisq(n: SEXP, a: SEXP) -> SEXP {
+    unsafe { do_rchisq(n, a) }
+}
+unsafe extern "C-unwind" fn c_rexp(n: SEXP, a: SEXP) -> SEXP {
+    unsafe { do_rexp(n, a) }
+}
+unsafe extern "C-unwind" fn c_rgeom(n: SEXP, a: SEXP) -> SEXP {
+    unsafe { do_rgeom(n, a) }
+}
+unsafe extern "C-unwind" fn c_rpois(n: SEXP, a: SEXP) -> SEXP {
+    unsafe { do_rpois(n, a) }
+}
+unsafe extern "C-unwind" fn c_rt(n: SEXP, a: SEXP) -> SEXP {
+    unsafe { do_rt(n, a) }
+}
+unsafe extern "C-unwind" fn c_rsignrank(n: SEXP, a: SEXP) -> SEXP {
+    unsafe { do_rsignrank(n, a) }
+}
+unsafe extern "C-unwind" fn c_rbeta(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rbeta(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rbinom(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rbinom(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rcauchy(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rcauchy(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rf(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rf(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rgamma(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rgamma(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rlnorm(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rlnorm(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rlogis(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rlogis(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rnbinom(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rnbinom(n, a, b) }
+}
 unsafe extern "C-unwind" fn c_rnorm(n: SEXP, mu: SEXP, sd: SEXP) -> SEXP {
     unsafe { do_rnorm(n, mu, sd) }
 }
+unsafe extern "C-unwind" fn c_runif(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_runif(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rweibull(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rweibull(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rwilcox(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rwilcox(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rnchisq(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rnchisq(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rnbinom_mu(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    unsafe { do_rnbinom_mu(n, a, b) }
+}
+unsafe extern "C-unwind" fn c_rhyper(n: SEXP, a: SEXP, b: SEXP, c: SEXP) -> SEXP {
+    unsafe { do_rhyper(n, a, b, c) }
+}
+unsafe extern "C-unwind" fn c_rmultinom(n: SEXP, size: SEXP, prob: SEXP) -> SEXP {
+    unsafe { do_rmultinom(n, size, prob) }
+}
+
+const RAND_CALL_NAMES: &[&str] = &[
+    "C_rchisq", "C_rexp", "C_rgeom", "C_rpois", "C_rt", "C_rsignrank", "C_rbeta", "C_rbinom",
+    "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
+    "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
+];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
+        "rchisq" => as_dl(c_rchisq as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "rexp" => as_dl(c_rexp as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "rgeom" => as_dl(c_rgeom as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "rpois" => as_dl(c_rpois as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "rt" => as_dl(c_rt as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "rsignrank" => as_dl(c_rsignrank as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "rbeta" => as_dl(c_rbeta as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rbinom" => as_dl(c_rbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rcauchy" => as_dl(c_rcauchy as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rf" => as_dl(c_rf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rgamma" => as_dl(c_rgamma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rlnorm" => as_dl(c_rlnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rlogis" => as_dl(c_rlogis as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rnbinom" => as_dl(c_rnbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "rnorm" => as_dl(c_rnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        _ => None,
+        "runif" => as_dl(c_runif as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rweibull" => as_dl(c_rweibull as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rwilcox" => as_dl(c_rwilcox as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rnchisq" => as_dl(c_rnchisq as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rnbinom_mu" => as_dl(c_rnbinom_mu as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rhyper" => as_dl(c_rhyper as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "rmultinom" => as_dl(c_rmultinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        _ => super::distn::lookup_call(name),
     }
 }
 
 pub unsafe fn install_stats_call_symbols(env: SEXP) {
     unsafe {
-        let cname = std::ffi::CString::new("C_rnorm").unwrap_or_default();
-        crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(cname.as_ptr()),
-            crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
-            env,
-        );
+        for name in RAND_CALL_NAMES
+            .iter()
+            .copied()
+            .chain(super::distn::DISTN_CALL_NAMES.iter().copied())
+        {
+            let cname = std::ffi::CString::new(name).unwrap_or_default();
+            crate::sexp::envir::defineVar(
+                crate::sexp::symbol::Rf_install(cname.as_ptr()),
+                crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
+                env,
+            );
+        }
     }
 }
 

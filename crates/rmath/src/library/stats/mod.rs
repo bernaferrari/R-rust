@@ -10,7 +10,7 @@ mod complete_cases;
 mod d2x2xk;
 pub(crate) mod dblcen;
 mod distance;
-mod distn;
+pub(crate) mod distn;
 mod family;
 pub(crate) mod fexact;
 pub(crate) mod fft;

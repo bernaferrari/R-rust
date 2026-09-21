@@ -475,10 +475,10 @@ impl RSession {
             _thread_confined: PhantomData,
         };
         session.with_active(|| unsafe {
-            // GNU defaultPackages includes methods and datasets. Attach
-            // methods first so the final search path is
-            // .GlobalEnv, datasets, methods, base.
-            for package in ["methods", "datasets"] {
+            // GNU defaultPackages: datasets, utils, grDevices, graphics,
+            // stats, methods. library() inserts at pos 2, so attach in
+            // that order and stats sits just under .GlobalEnv.
+            for package in ["methods", "datasets", "utils", "stats"] {
                 let path = crate::mainutils::essentials::find_package_path(package);
                 if !path.is_empty() {
                     let _ = crate::mainutils::essentials::load_pure_r_package(
