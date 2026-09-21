@@ -7,7 +7,7 @@ use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
-use crate::special::gamma::lgammafn;
+use crate::special::choose::{choose, lchoose};
 use crate::state::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
@@ -29,10 +29,6 @@ where
     with_required_current_instance(|instance| f(&mut instance.wilcox_cache))
 }
 
-/// Compute log(choose(n, k)) = lgammafn(n+1) - lgammafn(k+1) - lgammafn(n-k+1)
-fn lchoose(n: f64, k: f64) -> f64 {
-    lgammafn(n + 1.0) - lgammafn(k + 1.0) - lgammafn(n - k + 1.0)
-}
 
 /// cwilcox: count the number of choices with statistic = k
 /// This counts the number of subsets of size n from {1, ..., m+n}
@@ -125,7 +121,7 @@ pub fn dwilcox_inner(x: f64, m: f64, n: f64, log_p: bool) -> f64 {
     let d = if log_p {
         log(cwilcox(xx, mm, nn)) - lchoose(m + n, n)
     } else {
-        cwilcox(xx, mm, nn) / exp(lchoose(m + n, n))
+        cwilcox(xx, mm, nn) / choose(m + n, n)
     };
 
     d
@@ -162,7 +158,7 @@ pub fn pwilcox_inner(q: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
     let mm = m as i32;
     let nn = n as i32;
 
-    let denom = exp(lchoose(m + n, n));
+    let denom = choose(m + n, n);
     let mut p = 0.0;
     let mut lower_tail = lower_tail;
 
@@ -248,7 +244,7 @@ pub fn qwilcox_inner(x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
     let mm = m as i32;
     let nn = n as i32;
 
-    let denom = exp(lchoose(m + n, n));
+    let denom = choose(m + n, n);
     let mut p = 0.0;
     let mut q: i32 = 0;
 
@@ -405,6 +401,26 @@ mod tests {
 
         left.with_protected(|| {
             with_wilcox_cache(|cache| assert!(cache.contains_key(&(4, 5))));
+        });
+    }
+
+    #[test]
+    fn dwilcox_is_bit_identical_when_m_and_n_swap() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            for &(m, n) in &[(2.0, 3.0), (7.0, 9.0), (6.0, 10.0), (5.0, 10.0)] {
+                let max = (m * n) as i32 + 1;
+                for x in -1..=max {
+                    let xf = x as f64;
+                    let a = dwilcox_inner(xf, m, n, false);
+                    let b = dwilcox_inner(xf, n, m, false);
+                    assert_eq!(
+                        a.to_bits(),
+                        b.to_bits(),
+                        "dwilcox({xf}, {m}, {n})={a} != dwilcox({xf}, {n}, {m})={b}"
+                    );
+                }
+            }
         });
     }
 }
