@@ -144,11 +144,15 @@ pub fn record_error_call(call: SEXP, explicit: bool) {
         (nframe, stored)
     };
     with_error_state(|state| {
-        if explicit || !state.last_error_call_explicit {
-            state.last_error_call = stored;
-            state.last_error_call_explicit = explicit;
-            state.last_error_nframe = nframe;
+        // First explicit applied-call wins. A later explicit from
+        // attribute_handler_errors (the tryCatch builtin itself) must not
+        // replace matchArgs/Math1 attribution when an inner handler misses.
+        if state.last_error_call_explicit {
+            return;
         }
+        state.last_error_call = stored;
+        state.last_error_call_explicit = explicit;
+        state.last_error_nframe = nframe;
     });
 }
 

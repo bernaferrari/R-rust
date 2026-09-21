@@ -1692,6 +1692,9 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     .map(|(_, handler)| *handler)
                 else {
                     run_finally();
+                    if let Some(call) = caught_call {
+                        crate::mainutils::errors::record_error_call(call, true);
+                    }
                     std::panic::panic_any(crate::sexp::context::RError { message });
                 };
                 if !original.is_null() {

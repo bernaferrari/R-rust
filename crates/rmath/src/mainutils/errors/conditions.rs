@@ -402,6 +402,50 @@ pub unsafe fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -
     }
 }
 
+/// GNU `R_FunctionNotFoundError(sym, call)`.
+pub unsafe fn R_FunctionNotFoundError(sym: SEXP, call: SEXP) -> ! {
+    unsafe {
+        let pname = PRINTNAME(sym);
+        let name = if pname.is_null() {
+            String::from("???")
+        } else {
+            let chars = CHAR(pname);
+            if chars.is_null() {
+                String::from("???")
+            } else {
+                CStr::from_ptr(chars)
+                    .to_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|_| String::from("???"))
+            }
+        };
+        let c_msg = std::ffi::CString::new(format!(
+            "could not find function \"{name}\""
+        ))
+        .unwrap_or_default();
+        let call = if call.is_null() {
+            crate::sexp::globals::R_NilValue()
+        } else {
+            call
+        };
+        let _call_guard = protect(call);
+        let cond = R_makeErrorCondition(
+            call,
+            c"objectNotFoundError".as_ptr(),
+            c"functionNotFoundError".as_ptr(),
+            2,
+            c_msg.as_ptr(),
+        );
+        let _cond_guard = protect(cond);
+        R_setConditionField(cond, 2, c"name".as_ptr(), sym);
+        let mode_sexp = Rf_mkString(c"function".as_ptr());
+        let _mode_guard = protect(mode_sexp);
+        R_setConditionField(cond, 3, c"mode".as_ptr(), mode_sexp);
+        R_signalErrorCondition(cond, call);
+        unreachable!("R_signalErrorCondition does not return")
+    }
+}
+
 /// R_setConditionField — set a field in a condition object.
 pub unsafe fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: *const c_char, val: SEXP) {
     unsafe {

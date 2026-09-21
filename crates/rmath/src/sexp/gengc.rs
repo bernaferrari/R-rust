@@ -1699,6 +1699,7 @@ mod tests {
             (*instance).error_state.restart_stack = nil;
             (*instance).error_state.global_calling_handlers = nil;
             (*instance).error_state.signalled_condition = nil;
+            (*instance).error_state.warning_call = nil;
             (*instance).error_state.last_error_call = std::ptr::null_mut();
             (*instance).error_state.last_error_call_explicit = false;
             (*instance).error_state.last_error_nframe = 0;

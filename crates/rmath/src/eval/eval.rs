@@ -298,17 +298,12 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
             Some(value) => value,
             None => match primitive_for_symbol(fun.clone()) {
                 Some(primitive) => primitive,
-                None => {
-                    // Upstream findFun3 raises R_FunctionNotFoundError with
-                    // the LANGSXP being evaluated, so the top-level render
-                    // attributes the error to that call: `Error in <call> :
-                    // could not find function "<name>"`.
-                    let name = unsafe { get_symbol_name(fun.as_raw()) };
-                    crate::mainutils::errors::errorcall_str(
+                None => unsafe {
+                    crate::mainutils::errors::R_FunctionNotFoundError(
+                        fun.as_raw(),
                         e.as_raw(),
-                        &format!("could not find function \"{name}\""),
-                    );
-                }
+                    )
+                },
             },
         }
     } else {
