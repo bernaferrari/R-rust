@@ -552,7 +552,11 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        if sexp_has_class(x, "Date") && TYPEOF(x) == SEXPTYPE::REALSXP {
+        // GNU as.Date.default: inherits(x, "Date") returns x unchanged,
+        // including integer-backed `.Date(nL)` objects.
+        if sexp_has_class(x, "Date")
+            && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
+        {
             return x;
         }
 
@@ -1595,8 +1599,48 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
             return result;
         }
-
-
+        if sexp_has_class(x, "Date")
+            && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
+        {
+            // GNU as.POSIXct.Date <- function(x, tz = "UTC", ...)
+            // .POSIXct(unclass(x)*86400, tz=tz)
+            // Missing tz is UTC even when TZ is set; explicit tz="" stays "".
+            let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
+            let tz_missing = tz_arg.is_null()
+                || tz_arg == R_NilValue()
+                || tz_arg == R_MissingArg()
+                || XLENGTH(tz_arg) == 0;
+            let tz = if tz_missing {
+                "UTC".to_string()
+            } else {
+                elt_to_string(tz_arg, 0)
+            };
+            let n = XLENGTH(x);
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+            let _guard = protect(result);
+            let out = REAL(result);
+            for i in 0..n {
+                let days = date_days_elt(x, i);
+                *out.add(i as usize) = if days.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    NA_REAL
+                } else {
+                    days.floor() * 86_400.0
+                };
+            }
+            set_posixct_class(result, &tz);
+            let names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+            return result;
+        }
 
         let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
         let tz_missing = tz_arg.is_null()

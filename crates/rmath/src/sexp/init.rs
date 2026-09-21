@@ -765,6 +765,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "as.POSIXlt.POSIXct",
             include_str!("gnu_as_POSIXlt_POSIXct.R"),
         );
+        eval_base_binding(
+            base_env,
+            "as.POSIXct.Date",
+            "function(x, tz = \"UTC\", ...) .POSIXct(unclass(x)*86400, tz=tz)",
+        );
+        eval_base_binding(
+            base_env,
+            "as.Date.default",
+            "function(x, ...) { if (inherits(x, \"Date\")) x else stop(gettextf(\"do not know how to convert '%s' to class %s\", deparse1(substitute(x)), dQuote(\"Date\")), domain = NA) }",
+        );
         eval_base_binding(base_env, "print.Date", include_str!("gnu_print_Date.R"));
         eval_base_binding(base_env, "print.POSIXct", include_str!("gnu_print_POSIXt.R"));
         eval_base_binding(base_env, "print.POSIXlt", include_str!("gnu_print_POSIXt.R"));
