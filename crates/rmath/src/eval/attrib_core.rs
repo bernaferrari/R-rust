@@ -97,6 +97,38 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
 // setAttrib — set an attribute value
 // ---------------------------------------------------------------------------
 
+/// `names(x) <- pairlist("a","b","c")` stores `c("a","b","c")`.
+pub(crate) unsafe fn pairlist_to_names(value: SEXP) -> SEXP {
+    unsafe {
+        let mut n = 0i32;
+        let mut cell = value;
+        while !cell.is_null() && cell != R_NilValue() {
+            n += 1;
+            cell = CDR(cell);
+        }
+        let out = Rf_allocVector(SEXPTYPE::STRSXP, n);
+        let _g = crate::sexp::protect::protect(out);
+        cell = value;
+        let mut i = 0i32;
+        while !cell.is_null() && cell != R_NilValue() && i < n {
+            let car = CAR(cell);
+            let ch = if TYPEOF(car) == SEXPTYPE::STRSXP && XLENGTH(car) > 0 {
+                STRING_ELT(car, 0)
+            } else if TYPEOF(car) == SEXPTYPE::CHARSXP {
+                car
+            } else if TYPEOF(car) == SEXPTYPE::SYMSXP {
+                PRINTNAME(car)
+            } else {
+                crate::sexp::globals::R_NaString()
+            };
+            SET_STRING_ELT(out, i as i64, ch);
+            i += 1;
+            cell = CDR(cell);
+        }
+        out
+    }
+}
+
 /// Set an attribute on an object.
 ///
 /// This is the equivalent of R's `setAttrib()` from attrib.c.
@@ -107,6 +139,8 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         }
         let value = if which == R_ClassSymbol() {
             crate::sexp::attrib_core::classgets_normalize(x, value)
+        } else if which == R_NamesSymbol() && TYPEOF(value) == SEXPTYPE::LISTSXP {
+            pairlist_to_names(value)
         } else {
             value
         };
