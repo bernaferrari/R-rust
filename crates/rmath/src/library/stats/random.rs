@@ -140,6 +140,9 @@ unsafe extern "C-unwind" fn c_approx(
 ) -> SEXP {
     unsafe { super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm) }
 }
+unsafe extern "C-unwind" fn c_fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
+    unsafe { super::chisqsim::Fisher_sim(sr, sc, sB) }
+}
 unsafe extern "C-unwind" fn c_zeroin2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { super::zeroin::zeroin2(call, op, args, env) }
 }
@@ -231,12 +234,9 @@ unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
 /// variables share, so a variable correlated with itself is exactly 1.
 unsafe fn stats_call_cor(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> SEXP {
     unsafe {
-        if TYPEOF(kendall) == SEXPTYPE::LGLSXP
+        let kendall = TYPEOF(kendall) == SEXPTYPE::LGLSXP
             && XLENGTH(kendall) > 0
-            && *LOGICAL(kendall) != 0
-        {
-            Rf_error(c"Kendall covariance is not implemented".as_ptr());
-        }
+            && *LOGICAL(kendall) != 0;
         let x = if TYPEOF(x) != SEXPTYPE::REALSXP {
             crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.into())
         } else {
@@ -285,7 +285,11 @@ unsafe fn stats_call_cor(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
         let ar = REAL(ans);
         for j in 0..ncy {
             for i in 0..ncx {
-                *ar.add(i + j * ncx) = cor_complete_pair(xr, nobs, n, i, yr, nobs, ny, j);
+                *ar.add(i + j * ncx) = if kendall {
+                    kendall_complete_pair(xr, nobs, n, i, yr, nobs, ny, j)
+                } else {
+                    cor_complete_pair(xr, nobs, n, i, yr, nobs, ny, j)
+                };
             }
         }
         ans
@@ -343,6 +347,49 @@ unsafe fn cor_complete_pair(
     }
 }
 
+/// GNU Kendall tau-b: sign products over complete pairs, divided by the
+/// two self-pair counts, then clamped to [-1, 1].
+unsafe fn kendall_complete_pair(
+    x: *const f64,
+    n: usize,
+    ldx: usize,
+    colx: usize,
+    y: *const f64,
+    _ny: usize,
+    ldy: usize,
+    coly: usize,
+) -> f64 {
+    unsafe {
+        let sign = |d: f64| -> f64 { if d > 0.0 { 1.0 } else if d < 0.0 { -1.0 } else { 0.0 } };
+        let mut sum = 0.0;
+        let mut xsd = 0.0;
+        let mut ysd = 0.0;
+        for k in 0..n {
+            let xk = *x.add(k + colx * ldx);
+            let yk = *y.add(k + coly * ldy);
+            if xk.is_nan() || yk.is_nan() {
+                continue;
+            }
+            for n1 in 0..k {
+                let x1 = *x.add(n1 + colx * ldx);
+                let y1 = *y.add(n1 + coly * ldy);
+                if x1.is_nan() || y1.is_nan() {
+                    continue;
+                }
+                let xm = sign(xk - x1);
+                let ym = sign(yk - y1);
+                sum += xm * ym;
+                xsd += xm * xm;
+                ysd += ym * ym;
+            }
+        }
+        if xsd == 0.0 || ysd == 0.0 {
+            return crate::sexp::ffi::NA_REAL;
+        }
+        (sum / (xsd * ysd).sqrt()).clamp(-1.0, 1.0)
+    }
+}
+
 unsafe fn cov_complete_pair(
     x: *const f64,
     n: usize,
@@ -393,7 +440,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases", "C_influence",
     "C_cov", "C_cor", "C_doD", "C_deriv", "C_fft", "C_mvfft",
-    "C_ApproxTest", "C_Approx", "C_zeroin2", "C_call_dqags", "C_call_dqagi",
+    "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_call_dqags", "C_call_dqagi",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -449,6 +496,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "zeroin2" => as_dl(
             c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
         ),
+        "Fisher_sim" => as_dl(c_fisher_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         _ => super::distn::lookup_call(name),
     }
 }

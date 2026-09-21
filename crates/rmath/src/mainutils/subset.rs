@@ -528,9 +528,20 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
         };
 
         if kept.is_empty() {
-            // Every dimension was 1: the result is a length-1 scalar.
             setAttrib(x, sym_Dim(), R_NilValue());
             setAttrib(x, sym_DimNames(), R_NilValue());
+            let mut chosen = R_NilValue();
+            let mut found = 0;
+            for i in 0..ndim {
+                let candidate = slot(i);
+                if !isNull(candidate) && candidate != R_NilValue() {
+                    found += 1;
+                    chosen = candidate;
+                }
+            }
+            if found == 1 {
+                setAttrib(x, sym_Names(), chosen);
+            }
             return x;
         }
         if kept.len() == 1 {

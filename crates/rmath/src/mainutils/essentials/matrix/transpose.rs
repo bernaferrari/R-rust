@@ -46,10 +46,22 @@ pub unsafe fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     crate::sexp::attrib_core::R_DimNamesSymbol(),
                     R_NilValue(),
                 );
+                // A 1x1 drop keeps the first non-null dimnames entry as names.
+                // drop(matrix(1, 1, 1, dimnames=list("a", NULL))) is named "a".
+                let mut names = R_NilValue();
+                if !dimnames.is_null() && dimnames != R_NilValue() {
+                    for axis in 0..dim_count {
+                        let candidate = super::construct::retained_dimname(dimnames, axis);
+                        if !candidate.is_null() && candidate != R_NilValue() {
+                            names = candidate;
+                            break;
+                        }
+                    }
+                }
                 crate::sexp::attrib_core::setAttrib(
                     result,
                     crate::sexp::attrib_core::R_NamesSymbol(),
-                    R_NilValue(),
+                    names,
                 );
             }
             1 => {

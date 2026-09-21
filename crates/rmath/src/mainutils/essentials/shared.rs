@@ -4166,7 +4166,9 @@ pub(crate) fn parse_iso_date_days(text: &str) -> Option<f64> {
     if text.eq_ignore_ascii_case("NaN") {
         return Some(f64::NAN);
     }
-    let mut parts = text.split('-');
+    // GNU accepts '/' when it is the only separator.
+    let sep = if text.contains('/') && !text.contains('-') { '/' } else { '-' };
+    let mut parts = text.split(sep);
     let year = parts.next()?.parse::<i64>().ok()?;
     let month = parts.next()?.parse::<i64>().ok()?;
     let day = parts.next()?.parse::<i64>().ok()?;
