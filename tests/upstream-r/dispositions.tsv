@@ -9,7 +9,7 @@ classes-methods.R	pass	-	-
 complex.R	pass	-	-
 conditions.R	pass	-	-
 d-p-q-r-tests.R	pass	-	-
-d-p-q-r-tst-2.R	skip	rport-2gpp.2	requires the complete stats distribution tail and log-probability surface
+d-p-q-r-tst-2.R	pass	-	-
 datasets.R	pass	-	-
 datetime.R	pass	-	-
 datetime2.R	pass	-	-

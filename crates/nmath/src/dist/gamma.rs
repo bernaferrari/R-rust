@@ -499,14 +499,17 @@ pub fn dgamma_inner(x: f64, shape: f64, scale: f64, give_log: bool) -> f64 {
     let pr: f64;
     if shape < 1.0 {
         pr = dpois_raw(shape, x / scale, give_log);
+        if std::env::var_os("DPOIS_TRACE").is_some() {
+            eprintln!("dgamma pr={pr} logshape={} logx={} ratio_finite={}", log(shape), log(x), r_finite(shape / x));
+        }
         return if give_log {
             // NB: currently *always* shape/x > 0 if shape < 1:
             // -- overflow to Inf happens, but underflow to 0 does NOT
             if r_finite(shape / x) {
                 pr + log(shape / x)
             } else {
-                // shape/x overflows to +Inf
-                log(shape) - log(x)
+                // shape/x overflows; log(shape/x) = log(shape) - log(x)
+                pr + log(shape) - log(x)
             }
         } else {
             pr * shape / x
@@ -1094,6 +1097,16 @@ mod tests {
             with_gamma_state(|state| {
                 assert_eq!(state.aa, 0.0);
             });
+        });
+    }
+
+    #[test]
+    fn dgamma_subnormal_x_keeps_the_poisson_term() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            // d-p-q-r-tst-2.R: shape/x overflows, but log(shape) - log(x)
+            let d = dgamma_inner(6.953355807835004e-310, 0.99, 1.0, true);
+            assert!((d - 7.1127667376).abs() < 1e-9, "dgamma = {d}");
         });
     }
 }

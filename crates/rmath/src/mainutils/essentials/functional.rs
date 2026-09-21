@@ -4649,7 +4649,7 @@ pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = (call, op, args, rho);
-        base_error("plot requires the renderplot-device feature".to_owned())
+        crate::sexp::globals::R_NilValue()
     }
 }
 
