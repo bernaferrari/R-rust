@@ -694,6 +694,54 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "format.pval", include_str!("gnu_format_pval.R"));
         eval_base_binding(
             base_env,
+            "all.equal",
+            "function(target, current, ...) UseMethod(\"all.equal\")",
+        );
+        eval_base_binding(base_env, "attr.all.equal", include_str!("gnu_attr_all_equal.R"));
+        eval_base_binding(
+            base_env,
+            "all.equal.character",
+            include_str!("gnu_all_equal_character.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "all.equal.numeric",
+            include_str!("gnu_all_equal_numeric.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "all.equal.list",
+            include_str!("gnu_all_equal_list.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "all.equal.default",
+            include_str!("gnu_all_equal_default.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "all.equal.language",
+            include_str!("gnu_all_equal_language.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "all.equal.raw",
+            include_str!("gnu_all_equal_raw.R"),
+        );
+        eval_base_binding(base_env, "all.equal.logical", "all.equal.raw");
+        eval_base_binding(base_env, "all.equal.integer", "all.equal.numeric");
+        eval_base_binding(base_env, "all.equal.complex", "all.equal.numeric");
+        eval_base_binding(base_env, "all.equal.matrix", "all.equal.numeric");
+        eval_base_binding(base_env, "all.equal.array", "all.equal.numeric");
+        eval_base_binding(
+            base_env,
+            "data.class",
+            "function(x) {\n\
+             if (length(cl <- oldClass(x))) cl[1L] else mode(x)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "is.qr",
             "function(x) is.list(x) && inherits(x, \"qr\")",
         );
