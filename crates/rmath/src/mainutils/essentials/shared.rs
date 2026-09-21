@@ -1944,14 +1944,33 @@ pub(crate) unsafe fn load_package_data_set(
                 source_r_file_into_env(&source_file, target_env)?;
                 return Ok(true);
             }
+            let rdb = data_dir.join("Rdata.rdb");
+            if rdb.is_file() {
+                let scratch = crate::sexp::memory_ext::NewEnvironment(
+                    R_NilValue(),
+                    crate::sexp::globals::R_EmptyEnv(),
+                    R_NilValue(),
+                );
+                let _scratch = protect(scratch);
+                let base = data_dir.join("Rdata");
+                eager_lazy_load_package_db(&base, scratch, &[])?;
+                let sym = crate::sexp::symbol::Rf_install(
+                    std::ffi::CString::new(topic).unwrap_or_default().as_ptr(),
+                );
+                let value = crate::sexp::envir::R_findVarInFrame(scratch, sym);
+                if !value.is_null()
+                    && value != crate::sexp::globals::R_UnboundValue()
+                {
+                    crate::sexp::envir::defineVar(sym, value, target_env);
+                    return Ok(true);
+                }
+            }
 
-            let unsupported = [
+            let per_topic = [
                 data_dir.join(format!("{topic}.rda")),
                 data_dir.join(format!("{topic}.RData")),
-                data_dir.join("Rdata.rdb"),
-                data_dir.join("Rdata.rdx"),
             ];
-            if let Some(path) = unsupported.iter().find(|path| path.is_file()) {
+            if let Some(path) = per_topic.iter().find(|path| path.is_file()) {
                 unsupported_data = Some(path.clone());
             }
         }
