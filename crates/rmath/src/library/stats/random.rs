@@ -93,6 +93,12 @@ unsafe extern "C-unwind" fn c_rmultinom(n: SEXP, size: SEXP, prob: SEXP) -> SEXP
 unsafe extern "C-unwind" fn c_termsform(args: SEXP) -> SEXP {
     unsafe { super::filter::termsform(args) }
 }
+unsafe extern "C-unwind" fn c_call_dqags(args: SEXP) -> SEXP {
+    unsafe { super::integrate::call_dqags(args) }
+}
+unsafe extern "C-unwind" fn c_call_dqagi(args: SEXP) -> SEXP {
+    unsafe { super::integrate::call_dqagi(args) }
+}
 unsafe extern "C-unwind" fn c_modelframe(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { super::filter::modelframe(call, op, args, env) }
 }
@@ -244,7 +250,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases", "C_influence",
-    "C_cov",
+    "C_cov", "C_call_dqags", "C_call_dqagi",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -273,6 +279,8 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "rhyper" => as_dl(c_rhyper as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "rmultinom" => as_dl(c_rmultinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "termsform" => as_dl(c_termsform as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "call_dqags" => as_dl(c_call_dqags as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "call_dqagi" => as_dl(c_call_dqagi as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "modelframe" => {
             as_dl(c_modelframe as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
         }
