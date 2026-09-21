@@ -2,13 +2,8 @@ function(target, current, ..., check.class = TRUE)
 {
     if (is.language(target))
         return(all.equal.language(target, current, ...))
-    if (is.function(target)) {
-        if (identical(target, current))
-            return(TRUE)
-        if (!is.function(current))
-            return("current is not a function")
-        return(all.equal.language(target, current, ...))
-    }
+    if (is.function(target))
+        return(all.equal.function(target, current, ...))
     if (is.environment(target) || is.environment(current))
         return(all.equal(as.list(target), as.list(current), ...))
     if (is.recursive(target))

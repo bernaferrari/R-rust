@@ -725,14 +725,17 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "all.equal.function",
+            include_str!("gnu_all_equal_function.R"),
+        );
+        eval_base_binding(
+            base_env,
             "all.equal.raw",
             include_str!("gnu_all_equal_raw.R"),
         );
         eval_base_binding(base_env, "all.equal.logical", "all.equal.raw");
         eval_base_binding(base_env, "all.equal.integer", "all.equal.numeric");
         eval_base_binding(base_env, "all.equal.complex", "all.equal.numeric");
-        eval_base_binding(base_env, "all.equal.matrix", "all.equal.numeric");
-        eval_base_binding(base_env, "all.equal.array", "all.equal.numeric");
         eval_base_binding(
             base_env,
             "data.class",
