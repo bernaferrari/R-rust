@@ -1580,6 +1580,60 @@ unsafe fn posixlt_extract_component(x: SEXP, j: SEXP) -> SEXP {
 }
 
 
+unsafe fn posixlt_index_preserves_balance(
+    x: SEXP,
+    i: SEXP,
+    n: R_xlen_t,
+    call: SEXP,
+    op: SEXP,
+    env: SEXP,
+) -> bool {
+    unsafe {
+        let bal = getAttrib(x, Rf_install(c"balanced".as_ptr()));
+        if bal.is_null()
+            || bal == R_NilValue()
+            || TYPEOF(bal) != SEXPTYPE::LGLSXP
+            || XLENGTH(bal) == 0
+            || *INTEGER(bal) != TRUE
+        {
+            return false;
+        }
+        if i.is_null() || i == R_NilValue() || i == R_MissingArg() {
+            return true;
+        }
+        let seq = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let _s = protect(seq);
+        for k in 0..n {
+            *INTEGER(seq).add(k as usize) = (k + 1) as i32;
+        }
+        let args = Rf_cons(seq, Rf_cons(i, R_NilValue()));
+        let _g = protect(args);
+        let sub = do_subset_dflt(call, op, args, env);
+        let _u = protect(sub);
+        if sub.is_null() || sub == R_NilValue() {
+            return true;
+        }
+        if TYPEOF(sub) == SEXPTYPE::INTSXP {
+            for k in 0..XLENGTH(sub) {
+                if *INTEGER(sub).add(k as usize) == NA_INTEGER {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if TYPEOF(sub) == SEXPTYPE::REALSXP {
+            for k in 0..XLENGTH(sub) {
+                let v = *REAL(sub).add(k as usize);
+                if v.is_nan() {
+                    return false;
+                }
+            }
+            return true;
+        }
+        false
+    }
+}
+
 unsafe fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let ncomp = XLENGTH(x);
@@ -1609,7 +1663,14 @@ unsafe fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP)
         if !isNull(tzone) {
             setAttrib(ans, sym_Tzone(), tzone);
         }
-        setAttrib(ans, Rf_install(c"balanced".as_ptr()), Rf_ScalarLogical(NA_LOGICAL));
+        // GNU `[.POSIXlt`: balanced stays TRUE iff x is balanced and
+        // seq_along(x)[i] has no NA (out-of-range / missing indices).
+        let keep_balanced = posixlt_index_preserves_balance(x, i, n, call, op, env);
+        setAttrib(
+            ans,
+            Rf_install(c"balanced".as_ptr()),
+            Rf_ScalarLogical(if keep_balanced { TRUE } else { NA_LOGICAL }),
+        );
         ans
     }
 }
