@@ -2865,6 +2865,44 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
 /// The `[<-` assignment operator.
 ///
 /// Dispatches to the appropriate method or falls through to default.
+/// GNU `[<-.POSIXlt` (datetime.R:1362-1366): after converting value through
+/// POSIXct, restore `$sec` fractions. `tm_sec == 60` is left to mktime
+/// (wraps to the next minute); only a nonzero fractional part is reapplied
+/// onto `floor(converted$sec)`.
+unsafe fn restore_posixlt_sec(orig_sec: SEXP, converted: SEXP) {
+    unsafe {
+        if converted.is_null()
+            || TYPEOF(converted) != SEXPTYPE::VECSXP
+            || XLENGTH(converted) < 1
+        {
+            return;
+        }
+        let dst = VECTOR_ELT(converted, 0);
+        if orig_sec.is_null()
+            || TYPEOF(orig_sec) != SEXPTYPE::REALSXP
+            || TYPEOF(dst) != SEXPTYPE::REALSXP
+        {
+            return;
+        }
+        let ns = XLENGTH(orig_sec);
+        let nd = XLENGTH(dst);
+        if ns <= 0 {
+            return;
+        }
+        for i in 0..nd {
+            let os = *REAL(orig_sec).add((i % ns) as usize);
+            let cs = *REAL(dst).add(i as usize);
+            if !os.is_finite() || !cs.is_finite() {
+                continue;
+            }
+            let frac = os - os.floor();
+            if frac != 0.0 {
+                *REAL(dst).add(i as usize) = cs.floor() + frac;
+            }
+        }
+    }
+}
+
 unsafe fn subassign_posixlt_time(
     x: SEXP,
     i: SEXP,
@@ -2920,9 +2958,17 @@ unsafe fn subassign_posixlt_time(
             {
                 value
             } else {
+                // GNU `[<-.POSIXlt`: convert via POSIXct then restore
+                // `$sec` fractions (datetime.R:1362-1366). POSIXct is
+                // lossy at large years; libc mktime also wraps tm_sec=60.
+                let orig_sec = VECTOR_ELT(value, 0);
                 let ct = crate::mainutils::datetime::convert_posixlt_to_posixct(value, &value_tz);
                 let _ct = protect(ct);
-                crate::mainutils::datetime::convert_posixct_to_posixlt(ct, &x_tz)
+                let converted =
+                    crate::mainutils::datetime::convert_posixct_to_posixlt(ct, &x_tz);
+                let _cv = protect(converted);
+                restore_posixlt_sec(orig_sec, converted);
+                converted
             }
         } else {
             let tz_s = Rf_mkString(std::ffi::CString::new(x_tz.as_str()).unwrap_or_default().as_ptr());
