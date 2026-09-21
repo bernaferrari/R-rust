@@ -735,18 +735,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "row.names<-.data.frame",
             "function(x, value) `.rowNamesDF<-`(x, value = value)",
         );
-        {
-            let seq_sym = Rf_install_in_current("seq");
-            let mut seq_prim = R_findVarInFrame(base_env, seq_sym);
-            if seq_prim.is_null() || seq_prim == R_UnboundValue() {
-                seq_prim = SYMVALUE(seq_sym);
-            }
-            if !seq_prim.is_null() && seq_prim != R_UnboundValue() {
-                let rport_seq = Rf_install_in_current(".rport_seq");
-                SET_SYMVALUE(rport_seq, seq_prim);
-                defineVar(rport_seq, seq_prim, base_env);
-            }
-        }
         eval_base_binding(base_env, "seq", "function(...) UseMethod(\"seq\")");
         eval_base_binding(base_env, "chkDots", include_str!("gnu_chkDots.R"));
         eval_base_binding(base_env, "seq.default", include_str!("gnu_seq_default.R"));
@@ -772,6 +760,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(x, ...) { if (inherits(x, \"Date\")) x else stop(gettextf(\"do not know how to convert '%s' to class %s\", deparse1(substitute(x)), dQuote(\"Date\")), domain = NA) }",
         );
         eval_base_binding(base_env, "print.Date", include_str!("gnu_print_Date.R"));
+        eval_base_binding(
+            base_env,
+            "length<-.POSIXct",
+            include_str!("gnu_lengthgets_POSIXct.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "length<-.POSIXlt",
+            include_str!("gnu_lengthgets_POSIXlt.R"),
+        );
         eval_base_binding(base_env, "print.POSIXct", include_str!("gnu_print_POSIXt.R"));
         eval_base_binding(base_env, "print.POSIXlt", include_str!("gnu_print_POSIXt.R"));
         eval_base_binding(

@@ -703,10 +703,27 @@ pub unsafe fn lengthgets(x: SEXP, len: c_int) -> SEXP {
     unsafe { xlengthgets(x, len as R_xlen_t) }
 }
 
-pub unsafe fn do_lengthgets(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
+        // GNU builtin.c: DispatchOrEval internal generic: length<-
+        if crate::sexp::accessors::OBJECT(x) != 0 {
+            let mut ans = R_NilValue();
+            if crate::eval::dispatch::DispatchOrEval(
+                call,
+                op,
+                b"length<-\0".as_ptr() as *const c_char,
+                args,
+                rho,
+                &mut ans,
+                0,
+                1,
+            ) != 0
+            {
+                return ans;
+            }
+        }
         let len = CADR(args);
         let len_val = asVecSize(len);
         if len_val == -999 {

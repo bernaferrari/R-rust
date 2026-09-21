@@ -178,43 +178,23 @@ pub unsafe fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // do_seq: seq.int() primitive
 // ---------------------------------------------------------------------------
 
-unsafe fn call_symbol_is(call: SEXP, name: &[u8]) -> bool {
-    unsafe {
-        if call.is_null() || call == R_NilValue() {
-            return false;
-        }
-        let head = CAR(call);
-        if head.is_null() || TYPEOF(head) != SEXPTYPE::SYMSXP {
-            return false;
-        }
-        let pname = PRINTNAME(head);
-        if pname.is_null() {
-            return false;
-        }
-        let cs = CHAR(pname);
-        !cs.is_null() && CStr::from_ptr(cs).to_bytes_with_nul() == name
-    }
-}
 
 pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         let mut ans: SEXP = R_NilValue();
         let one_arg = Rf_length(args) == 1;
-        // GNU seq.int DispatchOrEval("seq"). `.rport_seq` is seq.default's
-        // primitive: dispatching again re-enters seq.default forever.
-        let skip_dispatch = call_symbol_is(call, b".rport_seq\0");
-        if !skip_dispatch
-            && DispatchOrEval(
-                call,
-                op,
-                b"seq\0".as_ptr() as *const c_char,
-                args,
-                rho,
-                &mut ans,
-                0,
-                1,
-            ) != 0
+        // GNU seq.int DispatchOrEval internal generic: seq
+        if DispatchOrEval(
+            call,
+            op,
+            b"seq\0".as_ptr() as *const c_char,
+            args,
+            rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
         {
             return ans;
         }

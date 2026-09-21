@@ -2978,7 +2978,14 @@ unsafe fn subassign_posixlt_time(
         if !isNull(tzone) {
             setAttrib(ans, sym_Tzone(), tzone);
         }
-        setAttrib(ans, Rf_install(c"balanced".as_ptr()), Rf_ScalarLogical(NA_LOGICAL));
+        // GNU `[<-.POSIXlt` keeps balanced via unCfill+class<- when the
+        // source is balanced and i introduces no NA (same rule as `[`).
+        let keep_balanced = posixlt_index_preserves_balance(x, i, n, call, op, env);
+        setAttrib(
+            ans,
+            Rf_install(c"balanced".as_ptr()),
+            Rf_ScalarLogical(if keep_balanced { TRUE } else { NA_LOGICAL }),
+        );
         ans
     }
 }
