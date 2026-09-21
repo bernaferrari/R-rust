@@ -1663,7 +1663,7 @@ fn parse_table_records(content: &str, spec: &TableParseSpec) -> Vec<Vec<TableFie
             }
             continue;
         }
-        if spec.quotes.contains(&c) {
+        if spec.quotes.contains(&c) && !field_started {
             quote = Some(c);
             field_quoted = true;
             field_started = true;
