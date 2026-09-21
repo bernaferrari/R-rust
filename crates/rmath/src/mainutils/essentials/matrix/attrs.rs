@@ -215,11 +215,63 @@ pub unsafe fn do_dimnames_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         }
         x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
         let _x = protect(x);
+        if is_data_frame_like(x) {
+            dimnames_gets_data_frame(x, value);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         set_array_dimnames(x, value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
 }
+
+/// GNU `dimnames.data.frame`: `list(row.names(x), names(x))`.
+pub(crate) unsafe fn dimnames_data_frame(x: SEXP) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _g = protect(result);
+        let rn = string_vector(&data_frame_row_names(x));
+        SET_VECTOR_ELT(result, 0, rn);
+        let cn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        SET_VECTOR_ELT(result, 1, if cn.is_null() { R_NilValue() } else { cn });
+        result
+    }
+}
+
+/// GNU `dimnames<-.data.frame`: row.names and names, not array dimnames.
+unsafe fn dimnames_gets_data_frame(x: SEXP, value: SEXP) {
+    unsafe {
+        if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::VECSXP {
+            std::panic::panic_any(RError {
+                message: "invalid 'dimnames' given for data frame".to_string(),
+            });
+        }
+        if XLENGTH(value) != 2 {
+            std::panic::panic_any(RError {
+                message: "invalid 'dimnames' given for data frame".to_string(),
+            });
+        }
+        let rn = VECTOR_ELT(value, 0);
+        let cn = VECTOR_ELT(value, 1);
+        if !cn.is_null() && cn != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_NamesSymbol(), cn);
+        }
+        if !rn.is_null() && rn != R_NilValue() {
+            let rn_chr = if TYPEOF(rn) == SEXPTYPE::STRSXP {
+                rn
+            } else {
+                crate::mainutils::coerce::coerceVector(rn, SEXPTYPE::STRSXP.into())
+            };
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+                rn_chr,
+            );
+        }
+    }
+}
+
 
 /// Normalize and install an array's dimnames using GNU R's `dimnamesgets`
 /// contract.  In particular, axis labels are character vectors regardless of

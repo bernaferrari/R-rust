@@ -3024,7 +3024,7 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                 ));
             };
             let method_sym = Rf_install(method_cstr.as_ptr());
-            let method_value = crate::sexp::envir::R_findVarInFrame(package_env, method_sym);
+            let mut method_value = crate::sexp::envir::R_findVarInFrame(package_env, method_sym);
             if method_value.is_null()
                 || method_value == R_NilValue()
                 || method_value == crate::sexp::globals::R_UnboundValue()
@@ -3033,8 +3033,30 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                 // in the namespace (Windows-only utils methods on Unix).
                 continue;
             }
-
+            if TYPEOF(method_value) == SEXPTYPE::PROMSXP {
+                crate::sexp::envir::forcePromise(method_value);
+                method_value = crate::sexp::accessors::PRVALUE(method_value);
+            }
             define_s3_method(package_env, local_generic, &method.class, method_value)?;
+            // GNU registerS3method: methods for a closure generic live in
+            // environment(fdef); primitives use .BaseNamespaceEnv.
+            if let Ok(generic_cstr) = CString::new(local_generic) {
+                let generic_sym = Rf_install(generic_cstr.as_ptr());
+                let fdef = crate::sexp::envir::findFun(generic_sym, package_env);
+                if is_function_value(fdef) {
+                    let defenv = if TYPEOF(fdef) == SEXPTYPE::CLOSXP {
+                        crate::sexp::accessors::CLOENV(fdef)
+                    } else {
+                        crate::sexp::globals::R_BaseEnv()
+                    };
+                    if !defenv.is_null()
+                        && TYPEOF(defenv) == SEXPTYPE::ENVSXP
+                        && defenv != package_env
+                    {
+                        define_s3_method(defenv, local_generic, &method.class, method_value)?;
+                    }
+                }
+            }
 
 
         }

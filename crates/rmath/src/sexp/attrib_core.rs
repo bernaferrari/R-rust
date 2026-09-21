@@ -94,12 +94,40 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
         let mut current = attrib;
         while !current.is_null() && current != R_NilValue() {
             if TAG(current) == which {
-                return CAR(current);
+                let value = CAR(current);
+                if which == R_RowNamesSymbol() {
+                    return expand_compact_row_names(value);
+                }
+                return value;
             }
             current = CDR(current);
         }
 
         R_NilValue()
+    }
+}
+
+/// GNU attrib.c getAttrib0: compact `c(NA, ±n)` expands to `1:n`.
+unsafe fn expand_compact_row_names(value: SEXP) -> SEXP {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) == 2 {
+            let first = *super::accessors::INTEGER(value);
+            let second = *super::accessors::INTEGER(value).add(1);
+            if first == super::ffi::NA_INTEGER && second != 0 {
+                let n = second.unsigned_abs() as usize;
+                let expanded = Rf_allocVector(SEXPTYPE::INTSXP, n as i32);
+                let _g = super::protect::protect(expanded);
+                let dst = super::accessors::INTEGER(expanded);
+                for i in 0..n {
+                    *dst.add(i) = (i as i32) + 1;
+                }
+                return expanded;
+            }
+        }
+        value
     }
 }
 

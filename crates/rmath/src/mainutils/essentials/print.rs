@@ -418,6 +418,14 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        // GNU summary is UseMethod("summary"). The builtin registration
+        // must dispatch registered summary.<class> closures (summary.glm)
+        // before the hardcoded lm/data.frame shortcuts.
+        if let Some(result) =
+            crate::mainutils::essentials::apply_s3_closure_method("summary", _call, args, _rho)
+        {
+            return result;
+        }
         let class = crate::sexp::attrib_core::getAttrib(
             x,
             crate::sexp::attrib_core::R_ClassSymbol(),

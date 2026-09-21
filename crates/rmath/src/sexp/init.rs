@@ -691,6 +691,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Data\n\
              }",
         );
+        eval_base_binding(base_env, "format.pval", include_str!("gnu_format_pval.R"));
         eval_base_binding(
             base_env,
             "rownames",

@@ -518,6 +518,9 @@ pub unsafe fn do_dimnames(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        if crate::mainutils::essentials::is_data_frame_like(x) {
+            return dimnames_data_frame(x);
+        }
         crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()))
     }
 }

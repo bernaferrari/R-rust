@@ -13684,6 +13684,38 @@ fn math_nonnum_error() -> ! {
     })
 }
 
+/// GNU math1: SHALLOW_DUPLICATE_ATTRIB copies dim/dimnames/names.
+unsafe fn math1_copy_dim_and_names(src: SEXP, dst: SEXP) {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dim);
+            let dn = crate::sexp::attrib_core::getAttrib(
+                src,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            if !dn.is_null() && dn != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    dst,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    dn,
+                );
+            }
+        } else {
+            let names =
+                crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    dst,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+        }
+    }
+}
+
+
 pub unsafe fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
@@ -13732,6 +13764,8 @@ pub unsafe fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     value.abs()
                 };
             }
+            crate::mainutils::array::copyMostAttrib(x_arg, result);
+            math1_copy_dim_and_names(x_arg, result);
             return result;
         }
 
@@ -13749,6 +13783,8 @@ pub unsafe fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 v.abs()
             };
         }
+        crate::mainutils::array::copyMostAttrib(x_arg, result);
+        math1_copy_dim_and_names(x_arg, result);
         result
     }
 }

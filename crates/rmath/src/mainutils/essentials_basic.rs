@@ -983,9 +983,36 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
             set_ifelse_value(result, result_type, i, src, src_idx);
         }
+        // GNU ifelse: `ans <- test` then replace, so names/dim survive.
+        ifelse_copy_shape(test, result);
         result
     }
 }
+
+unsafe fn ifelse_copy_shape(src: SEXP, dst: SEXP) {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dim);
+            let dn = crate::sexp::attrib_core::getAttrib(
+                src,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            if !dn.is_null() && dn != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    dst,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    dn,
+                );
+            }
+        }
+    }
+}
+
 
 unsafe fn set_ifelse_na(result: SEXP, result_type: SEXPTYPE, index: R_xlen_t) {
     unsafe {

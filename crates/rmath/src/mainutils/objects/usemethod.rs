@@ -272,6 +272,29 @@ pub(crate) unsafe fn getPrimitive(symbol: SEXP) -> SEXP {
 // R_LookupMethod -- look up an S3 method in the appropriate environments
 // ---------------------------------------------------------------------------
 
+unsafe fn lookup_s3_method_in_env_table(method: SEXP, env: SEXP) -> Option<SEXP> {
+    unsafe {
+        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+            return None;
+        }
+        let table = crate::sexp::envir::R_findVarInFrame(env, S3MethodsTable_symbol());
+        if table.is_null() || table == R_UnboundValue() || TYPEOF(table) != SEXPTYPE::ENVSXP {
+            return None;
+        }
+        let _table_guard = protect(table);
+        let val = force_s3_method_value(crate::sexp::envir::R_findVarInFrame(table, method));
+        if val.is_null() || val == R_UnboundValue() || val == R_NilValue() {
+            return None;
+        }
+        let t = TYPEOF(val);
+        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+            Some(val)
+        } else {
+            None
+        }
+    }
+}
+
 /// Look up a method in the S3 dispatch chain: call environment, definition
 /// environment's .__S3MethodsTable__., and the base environment.
 pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEXP) -> SEXP {
@@ -302,27 +325,27 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
             return val;
         }
 
-        // Try the .__S3MethodsTable__. in defrho. Upstream R maps the base
-        // environment to the base namespace; this port does not yet model a
-        // distinct base namespace, so R_BaseEnv is the least surprising local
-        // approximation.
-        let effective_defrho = defrho;
-        if !effective_defrho.is_null() && effective_defrho != R_NilValue() {
-            let s3_table_sym = S3MethodsTable_symbol();
-            let table = crate::sexp::envir::R_findVarInFrame(effective_defrho, s3_table_sym);
-            if table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP {
-                let _table_guard = protect(table);
-                let val2 = force_s3_method_value(crate::sexp::envir::R_findVarInFrame(table, method));
-                if val2 != R_UnboundValue() {
-                    let t = TYPEOF(val2);
-                    if t == SEXPTYPE::CLOSXP
-                        || t == SEXPTYPE::BUILTINSXP
-                        || t == SEXPTYPE::SPECIALSXP
-                    {
-                        return val2;
-                    }
-                }
+        // Try the .__S3MethodsTable__. in defrho. GNU maps R_BaseEnv to
+        // R_BaseNamespace; session clones of base closures miss that table,
+        // so also search `.BaseNamespaceEnv`.
+        if let Some(val2) = lookup_s3_method_in_env_table(method, defrho) {
+            return val2;
+        }
+        let base_ns = crate::sexp::envir::R_findVarInFrame(
+            R_BaseEnv(),
+            Rf_install(c".BaseNamespaceEnv".as_ptr()),
+        );
+        if !base_ns.is_null()
+            && base_ns != R_UnboundValue()
+            && TYPEOF(base_ns) == SEXPTYPE::ENVSXP
+            && base_ns != defrho
+        {
+            if let Some(val2) = lookup_s3_method_in_env_table(method, base_ns) {
+                return val2;
             }
+        }
+        if let Some(val2) = lookup_s3_method_in_env_table(method, R_BaseEnv()) {
+            return val2;
         }
 
         // Search from top's enclosing environment. In this port the search
@@ -545,7 +568,9 @@ unsafe fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SE
         while !current.is_null() && current != R_EmptyEnv() {
             let table = crate::sexp::envir::R_findVarInFrame(current, S3MethodsTable_symbol());
             if !table.is_null() && table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP {
-                let method = crate::sexp::envir::R_findVarInFrame(table, method_sym);
+                let method = force_s3_method_value(crate::sexp::envir::R_findVarInFrame(
+                    table, method_sym,
+                ));
                 if isFunction(method) != FALSE {
                     return method;
                 }

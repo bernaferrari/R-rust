@@ -394,9 +394,42 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
             }
         }
 
+        // GNU lunary: DUPLICATE_ATTRIB so `!is.na(matrix)` keeps dim.
+        copy_logic_shape(arg, x);
         x
     }
 }
+
+unsafe fn copy_logic_shape(src: SEXP, dst: SEXP) {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dim);
+            let dn = crate::sexp::attrib_core::getAttrib(
+                src,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            if !dn.is_null() && dn != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    dst,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    dn,
+                );
+            }
+        } else {
+            let names =
+                crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    dst,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+        }
+    }
+}
+
 
 /// Binary logical AND/OR on logical vectors with element recycling.
 ///

@@ -90,27 +90,7 @@ pub unsafe fn R_EnvironmentSymbol() -> SEXP {
 /// This is the equivalent of R's `getAttrib()` from attrib.c.
 /// Searches the attribute pairlist for a matching symbol.
 pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || which.is_null() {
-            return R_NilValue();
-        }
-
-        let attrib = ATTRIB(x);
-        if attrib.is_null() || attrib == R_NilValue() {
-            return R_NilValue();
-        }
-
-        // Linear search through attribute pairlist
-        let mut current = attrib;
-        while !current.is_null() && current != R_NilValue() {
-            if TAG(current) == which {
-                return CAR(current);
-            }
-            current = CDR(current);
-        }
-
-        R_NilValue()
-    }
+    unsafe { crate::sexp::attrib_core::getAttrib(x, which) }
 }
 
 // ---------------------------------------------------------------------------
