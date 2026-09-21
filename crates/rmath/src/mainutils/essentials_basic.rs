@@ -867,12 +867,11 @@ unsafe fn string_vector(names: &[String]) -> SEXP {
 pub unsafe fn do_which(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        let t = TYPEOF(x);
-        if t != SEXPTYPE::LGLSXP && t != SEXPTYPE::INTSXP {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        // GNU summary.c do_which: isLogical(v) only — INTSXP/NULL error.
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::Rf_error(
+                c"argument to 'which' is not logical".as_ptr(),
+            );
         }
 
         let n = XLENGTH(x);
