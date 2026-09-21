@@ -1961,6 +1961,17 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         }
 
         let subs = CDR(args);
+        {
+            let mut cell = subs;
+            while !isNull(cell) {
+                if isPromise(CAR(cell)) {
+                    SETCAR(cell, crate::sexp::envir::forcePromise(CAR(cell)));
+                } else if isSymbol(CAR(cell)) && CAR(cell) != R_MissingArg() {
+                    SETCAR(cell, crate::eval::eval::Rf_eval(CAR(cell), rho));
+                }
+                cell = CDR(cell);
+            }
+        }
         let nsubs = length_int(subs);
         let xtype = TYPEOF(x);
         let data_frame_subset = is_data_frame(x) && nsubs < 2 && xtype == SEXPTYPE::VECSXP;

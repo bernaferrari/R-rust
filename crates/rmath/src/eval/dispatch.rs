@@ -1085,10 +1085,7 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                 }
             } else {
                 // Regular argument
-                if CAR(remaining) == R_MissingArg()
-                    || (TYPEOF(CAR(remaining)) == SEXPTYPE::SYMSXP
-                        && R_isMissing(CAR(remaining), rho) != 0)
-                {
+                if CAR(remaining) == R_MissingArg() {
                     val = R_MissingArg();
                 } else {
                     val = Rf_eval(CAR(remaining), rho);

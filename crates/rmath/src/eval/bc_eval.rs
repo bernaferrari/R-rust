@@ -627,13 +627,13 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
             bc_error("'...' used in an invalid context");
         }
         if TYPEOF(value) == SEXPTYPE::PROMSXP {
-            if keep_missing && crate::sexp::envir::R_isMissing(symbol, rho) != 0 {
+            // missing() stays true for a formal that has a default. The
+            // default is still the value: nmx[parametric] with
+            // parametric = FALSE must see FALSE, not a missing index.
+            let code = crate::sexp::accessors::PRCODE(value);
+            if keep_missing && (code == R_MissingArg() || code.is_null()) {
                 return R_MissingArg();
             }
-            // GNU getvar() returns PRVALUE after force with no second
-            // missing check. `recurse(formals(fn)[[i]])` supplies a
-            // promise whose value is the empty name; that is a value,
-            // not an unsupplied formal (eval.c:5855-5868).
             forcePromise(value)
         } else {
             value
