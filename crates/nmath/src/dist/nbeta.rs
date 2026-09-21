@@ -14,8 +14,9 @@ use crate::dpq::*;
 use crate::error::*;
 use crate::utils::*;
 
-use super::beta::{dbeta_inner, pbeta_inner};
+use super::beta::dbeta_inner;
 use crate::special::gamma::lgammafn;
+use crate::special::toms708::bratio;
 
 // Constants
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
@@ -132,8 +133,9 @@ fn pnbeta_raw(x: f64, o_x: f64, a: f64, b: f64, ncp: f64) -> f64 {
     let a0 = a + x0;
     let l_beta = lgammafn(a0) + lgammafn(b) - lgammafn(a0 + b);
 
-    // pbeta_raw(x, a0, b, TRUE, FALSE) -- use our pbeta_inner
-    let mut temp = pbeta_inner(x, a0, b, true, false);
+    // GNU: bratio(a0, b, x, o_x, &temp, &tmp_c, &ierr, FALSE)
+    let (temp, _tmp_c, _ierr) = bratio(a0, b, x, o_x, false);
+    let mut temp = temp;
 
     let mut gx =
         exp(a0 * log(x) + b * if x < 0.5 { log1p(-x) } else { log(o_x) } - l_beta - log(a0));
@@ -180,7 +182,7 @@ fn pnbeta_raw(x: f64, o_x: f64, a: f64, b: f64, ncp: f64) -> f64 {
 
 /// pnbeta2: pnbeta with o_x parameter (1 - x, for accuracy)
 /// Ported from pnbeta.c -- pnbeta2
-fn pnbeta2(x: f64, o_x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
+pub(crate) fn pnbeta2(x: f64, o_x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
     let ans = pnbeta_raw(x, o_x, a, b, ncp);
 
     if lower_tail {
