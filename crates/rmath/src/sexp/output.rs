@@ -2171,7 +2171,7 @@ fn format_data_frame_column(col: Sexp<'_>, nrow: R_xlen_t) -> Vec<String> {
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 args,
-                R_NilValue(),
+                crate::sexp::globals::R_GlobalEnv(),
             );
             if let Some(formatted) = Sexp::from_raw(formatted)
                 && formatted.clone().typeof_() == SEXPTYPE::STRSXP
@@ -3272,6 +3272,25 @@ pub fn print_value(x: Sexp<'_>) {
 
             if has_class(x.clone(), "POSIXlt") {
                 emit(&format!("{}\n", format_posixlt_vector(x)));
+                return;
+            }
+            // GNU PrintValue dispatches print() for objects. Auto-print of
+            // `(dd <- data.frame(...))` must use print.data.frame, not the
+            // internal formatter (which panics on POSIXt columns).
+            if has_class(x.clone(), "data.frame") {
+                unsafe {
+                    let args = crate::sexp::constructors::Rf_cons(
+                        x.clone().as_raw(),
+                        crate::sexp::globals::R_NilValue(),
+                    );
+                    let _g = crate::sexp::protect::protect(args);
+                    crate::mainutils::essentials::do_print_data_frame(
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        args,
+                        crate::sexp::globals::R_GlobalEnv(),
+                    );
+                }
                 return;
             }
             emit(&format!("{}\n", format_sexp_top_level(x)));

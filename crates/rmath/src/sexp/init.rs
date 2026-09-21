@@ -318,6 +318,13 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "as.data.frame.logical", "as.data.frame.vector");
         eval_base_binding(base_env, "as.data.frame.numeric", "as.data.frame.vector");
         eval_base_binding(base_env, "as.data.frame.complex", "as.data.frame.vector");
+        eval_base_binding(base_env, "as.data.frame.Date", "as.data.frame.vector");
+        eval_base_binding(base_env, "as.data.frame.POSIXct", "as.data.frame.vector");
+        eval_base_binding(
+            base_env,
+            "as.data.frame.POSIXlt",
+            include_str!("gnu_as_data_frame_POSIXlt.R"),
+        );
         eval_base_binding(
             base_env,
             "as.data.frame.character",
