@@ -177,14 +177,14 @@ fn pnchisq_raw(
             let mut pr = -lambda;
             let log_lam = log(lambda);
 
-            for i in 1..=110_i32 {
+            for i in 0..110_i32 {
                 let i_f = i as f64;
-                pr += log_lam - log(i_f);
                 sum2 = logspace_add(sum2, pr);
                 sum = logspace_add(sum, pr + pchisq_inner(x, f + 2.0 * i_f, true, true));
                 if sum2 >= -1e-15 {
                     break;
                 }
+                pr += log_lam - log((i + 1) as f64);
             }
             let ans = sum - sum2;
             return if log_p { ans } else { exp(ans) };
@@ -193,14 +193,14 @@ fn pnchisq_raw(
             let mut sum2: f64 = 0.0;
             let mut pr = exp(-lambda);
 
-            for i in 1..=110_i32 {
+            for i in 0..110_i32 {
                 let i_f = i as f64;
-                pr *= lambda / i_f;
                 sum2 += pr;
                 sum += pr * pchisq_inner(x, f + 2.0 * i_f, lower_tail, false);
                 if sum2 >= 1.0 - 1e-15 {
                     break;
                 }
+                pr *= lambda / ((i + 1) as f64);
             }
             let ans = sum / sum2;
             return if log_p { log(ans) } else { ans };

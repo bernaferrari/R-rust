@@ -8,7 +8,7 @@ array-subset.R	pass	-	-
 classes-methods.R	pass	-	-
 complex.R	pass	-	-
 conditions.R	pass	-	-
-d-p-q-r-tests.R	skip	rport-2gpp.2	requires the complete stats distribution family and test helpers
+d-p-q-r-tests.R	pass	-	-
 d-p-q-r-tst-2.R	skip	rport-2gpp.2	requires the complete stats distribution tail and log-probability surface
 datasets.R	pass	-	-
 datetime.R	pass	-	-

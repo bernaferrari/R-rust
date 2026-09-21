@@ -71,8 +71,6 @@ pub(crate) fn pnchisq_raw(
             let mut sum2: f64 = ML_NEGINF;
             let mut i: i32 = 0;
             while i < 110 {
-                i += 1;
-                pr += log_lam - log(i as f64);
                 sum2 = logspace_add(sum2, pr);
                 sum = logspace_add(
                     sum,
@@ -81,6 +79,8 @@ pub(crate) fn pnchisq_raw(
                 if sum2 >= -1e-15 {
                     break;
                 }
+                i += 1;
+                pr += log_lam - log(i as f64);
             }
             let ans = sum - sum2;
             return if log_p { ans } else { exp(ans) };
@@ -91,13 +91,13 @@ pub(crate) fn pnchisq_raw(
             let mut pr: f64 = exp(-lambda);
             let mut i: i32 = 0;
             while i < 110 {
-                i += 1;
-                pr *= lambda / (i as f64);
                 sum2 += pr;
                 sum += pr * pchisq_inner(x, f + 2.0 * (i as f64), lower_tail, false);
                 if sum2 >= 1.0 - 1e-15 {
                     break;
                 }
+                i += 1;
+                pr *= lambda / (i as f64);
             }
             let ans = sum / sum2;
             return if log_p { log(ans) } else { ans };
@@ -568,5 +568,16 @@ mod tests {
         assert!(first.is_finite());
         assert!(first >= 0.0);
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn pnchisq_ncp_zero_large_x_is_one() {
+        for &x in &[2000.0, 1e6, 1e50] {
+            for &df in &[0.1, 1.0, 10.0] {
+                let p = pnchisq_inner(x, df, 0.0, true, false);
+                assert_eq!(p, 1.0, "pnchisq({x}, {df}, ncp=0) = {p}");
+            }
+        }
+        assert_eq!(pnchisq_inner(f64::INFINITY, 0.1, 0.0, true, false), 1.0);
     }
 }
