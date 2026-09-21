@@ -41,6 +41,35 @@ fn bc_mismatch(detail: impl Into<String>) -> ! {
     bc_error(format!("BCMISMATCH: {}", detail.into()));
 }
 
+/// Language object of the CALL that follows this GETFUN in the GNU stream,
+/// falling back to the current function context. GNU `findFun` attributes
+/// `R_FunctionNotFoundError` with `R_CurrentExpression`; in bytecode that
+/// is the CALL constant.
+unsafe fn gnu_pending_call(words: &[c_int], mut pc: usize, consts: SEXP) -> SEXP {
+    unsafe {
+        while pc < words.len() {
+            let opcode = words[pc];
+            if opcode == super::bytecode::GNU_OP_CALL
+                || opcode == super::bytecode::GNU_OP_CALLBUILTIN
+            {
+                if pc + 1 >= words.len() {
+                    break;
+                }
+                let call = VECTOR_ELT(consts, words[pc + 1] as i64);
+                if TYPEOF(call) == SEXPTYPE::LANGSXP {
+                    return call;
+                }
+                break;
+            }
+            let Some(&width) = super::bytecode::GNU_BC_OPERAND_WIDTHS.get(opcode as usize) else {
+                break;
+            };
+            pc += 1 + width as usize;
+        }
+        crate::mainutils::errors::R_getCurrentCall()
+    }
+}
+
 fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
     let message = unsafe {
         if arg_sym.is_null() {
@@ -1652,10 +1681,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         }
 
                     });
-                    if fun == R_UnboundValue() {
-                        let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))
-                            .to_string_lossy();
-                        bc_error(format!("could not find function \"{name}\""));
+                    if fun == R_UnboundValue() || fun.is_null() {
+                        let call = gnu_pending_call(words, pc, consts);
+                        crate::mainutils::errors::R_FunctionNotFoundError(symbol, call);
                     }
 
                     let fun_type = TYPEOF(fun);
