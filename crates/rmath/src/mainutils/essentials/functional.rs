@@ -2000,7 +2000,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
 
         if margin == 1 {
-            // Sweep across rows: subtract STATS from each row
+            // GNU sweep MARGIN=1: one STATS value per row.
             let stats_len = if stats.is_null() || stats == R_NilValue() {
                 0
             } else {
@@ -2009,7 +2009,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for i in 0..nrow {
                 for j in 0..ncol {
                     let src_idx = (j * nrow + i) as usize;
-                    let stat_idx = if stats_len == 0 { 0 } else { j % stats_len };
+                    let stat_idx = if stats_len == 0 { 0 } else { (i as usize) % (stats_len as usize) };
                     let src_val = if t == SEXPTYPE::REALSXP {
                         *REAL(x).add(src_idx)
                     } else if t == SEXPTYPE::INTSXP {
@@ -2021,7 +2021,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let stat_val = if stats.is_null() || stats == R_NilValue() {
                         0.0
                     } else {
-                        elt_real_safe(stats, stat_idx)
+                        elt_real_safe(stats, stat_idx as i64)
                     };
                     let res = apply_binary(src_val, stat_val);
                     if t == SEXPTYPE::REALSXP {
@@ -2036,7 +2036,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
         } else if margin == 2 {
-            // Sweep across columns: subtract STATS from each column
+            // GNU sweep MARGIN=2: one STATS value per column.
             let stats_len = if stats.is_null() || stats == R_NilValue() {
                 0
             } else {
@@ -2045,7 +2045,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for j in 0..ncol {
                 for i in 0..nrow {
                     let src_idx = (j * nrow + i) as usize;
-                    let stat_idx = if stats_len == 0 { 0 } else { i % stats_len };
+                    let stat_idx = if stats_len == 0 { 0 } else { (j as usize) % (stats_len as usize) };
                     let src_val = if t == SEXPTYPE::REALSXP {
                         *REAL(x).add(src_idx)
                     } else if t == SEXPTYPE::INTSXP {
@@ -2057,7 +2057,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let stat_val = if stats.is_null() || stats == R_NilValue() {
                         0.0
                     } else {
-                        elt_real_safe(stats, stat_idx)
+                        elt_real_safe(stats, stat_idx as i64)
                     };
                     let res = apply_binary(src_val, stat_val);
                     if t == SEXPTYPE::REALSXP {

@@ -171,6 +171,47 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "NextMethod",
             "function(generic = NULL, object = NULL, ...)\n    .Internal(NextMethod(generic, object, ...))",
         );
+        // GNU sweep.R: aperm(array(STATS, dims[MARGIN,...])) then FUN.
+        // A primitive sweep recycled STATS along the wrong margin.
+        eval_base_binding(
+            base_env,
+            "sweep",
+            r#"function(x, MARGIN, STATS, FUN = "-", check.margin = TRUE, ...)
+{
+    FUN <- match.fun(FUN)
+    dims <- dim(x)
+    if (is.character(MARGIN)) {
+        dn <- dimnames(x)
+        if (is.null(dnn <- names(dn)))
+            stop("'x' must have named dimnames")
+        MARGIN <- match(MARGIN, dnn)
+        if (anyNA(MARGIN))
+            stop("not all elements of 'MARGIN' are names of dimensions")
+    }
+    if (check.margin) {
+        dimmargin <- dims[MARGIN]
+        dimstats <- dim(STATS)
+        lstats <- length(STATS)
+        if (lstats > prod(dimmargin)) {
+            warning("STATS is longer than the extent of 'dim(x)[MARGIN]'")
+        } else if (is.null(dimstats)) {
+            cumDim <- c(1L, cumprod(dimmargin))
+            upper <- min(cumDim[cumDim >= lstats])
+            lower <- max(cumDim[cumDim <= lstats])
+            if (lstats && (upper %% lstats != 0L || lstats %% lower != 0L))
+                warning("STATS does not recycle exactly across MARGIN")
+        } else {
+            dimmargin <- dimmargin[dimmargin > 1L]
+            dimstats <- dimstats[dimstats > 1L]
+            if (length(dimstats) != length(dimmargin) ||
+                any(dimstats != dimmargin))
+                warning("length(STATS) or dim(STATS) do not match dim(x)[MARGIN]")
+        }
+    }
+    perm <- c(MARGIN, seq_along(dims)[-MARGIN])
+    FUN(x, aperm(array(STATS, dims[perm]), order(perm)), ...)
+}"#,
+        );
 
 
 

@@ -715,14 +715,16 @@ pub unsafe fn args2buff(arglist: SEXP, _lineb: c_int, formals: c_int, d: *mut Lo
                     }
                 }
                 if formals != 0 {
-                    if !isNull(CAR(cur)) && CAR(cur) != R_MissingArg() {
+                    // GNU: only R_MissingArg means no default. `x = NULL` must
+                    // print as `x = NULL`, not as a missing formal.
+                    if CAR(cur) != R_MissingArg() {
                         print2buff(b" = \0".as_ptr() as *const c_char, d);
                         d.fnarg = true;
                         deparse2buff(CAR(cur), d);
                     }
                 } else {
                     print2buff(b" = \0".as_ptr() as *const c_char, d);
-                    if !isNull(CAR(cur)) && CAR(cur) != R_MissingArg() {
+                    if CAR(cur) != R_MissingArg() {
                         d.fnarg = true;
                         deparse2buff(CAR(cur), d);
                     }

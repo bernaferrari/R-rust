@@ -137,6 +137,10 @@ pub(crate) fn is_hidden_builtin_name(name: &str) -> bool {
             | "summary.character"
             // GNU: NextMethod is a .Internal closure, not a primitive.
             | "NextMethod"
+            // GNU sweep.R is a closure over aperm/array; not a primitive.
+            | "sweep"
+            // GNU stats:::predict.lm is a closure; loess uses predict.loess.
+            | "predict.lm"
     )
 }
 
@@ -674,11 +678,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     UnevaluatedBuiltin {
         name: "predict",
         handler: crate::mainutils::loess::do_predict,
-        restore_visibility_always: false,
-    },
-    UnevaluatedBuiltin {
-        name: "predict.lm",
-        handler: crate::mainutils::loess::do_predict_lm,
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {

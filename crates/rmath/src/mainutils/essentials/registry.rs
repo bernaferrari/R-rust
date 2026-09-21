@@ -347,7 +347,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "loess.control",
     "predict",
     "predict.loess",
-    "predict.lm",
     ".rport_loess_fit",
     ".rport_loess_predict",
     "do.call",

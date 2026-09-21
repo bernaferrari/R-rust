@@ -14762,8 +14762,9 @@ pub unsafe fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
     }
 }
 
-/// R's `match.fun(FUN)` — match a function argument.
-pub unsafe fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `match.fun(FUN)`: functions pass through; character/symbol names
+/// are looked up as functions (sweep's `FUN = "-"`).
+pub unsafe fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() {
@@ -14775,16 +14776,21 @@ pub unsafe fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         {
             return x;
         }
-        // If it's a symbol, look it up
-        if TYPEOF(x) == SEXPTYPE::SYMSXP {
-            let val = crate::sexp::envir::R_findVar(x, _rho);
-            if !val.is_null()
-                && (TYPEOF(val) == SEXPTYPE::CLOSXP
-                    || TYPEOF(val) == SEXPTYPE::BUILTINSXP
-                    || TYPEOF(val) == SEXPTYPE::SPECIALSXP)
-            {
-                return val;
-            }
+        let sym = if TYPEOF(x) == SEXPTYPE::SYMSXP {
+            x
+        } else if TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 {
+            Rf_install(CHAR(STRING_ELT(x, 0)))
+        } else {
+            return x;
+        };
+        let val = crate::sexp::envir::findFun(sym, rho);
+        if !val.is_null()
+            && val != R_UnboundValue()
+            && (TYPEOF(val) == SEXPTYPE::CLOSXP
+                || TYPEOF(val) == SEXPTYPE::BUILTINSXP
+                || TYPEOF(val) == SEXPTYPE::SPECIALSXP)
+        {
+            return val;
         }
         x
     }
