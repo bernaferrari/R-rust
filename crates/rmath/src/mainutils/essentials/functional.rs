@@ -3585,7 +3585,7 @@ pub unsafe fn do_is_atomic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(TRUE);
+            return Rf_ScalarLogical(FALSE);
         }
         let t = TYPEOF(x);
         let is_atomic = t == SEXPTYPE::LGLSXP
@@ -3594,8 +3594,7 @@ pub unsafe fn do_is_atomic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             || t == SEXPTYPE::CPLXSXP
             || t == SEXPTYPE::STRSXP
             || t == SEXPTYPE::RAWSXP
-            || t == SEXPTYPE::CHARSXP
-            || t == SEXPTYPE::NILSXP;
+            || t == SEXPTYPE::CHARSXP;
         Rf_ScalarLogical(if is_atomic { TRUE } else { FALSE })
     }
 }

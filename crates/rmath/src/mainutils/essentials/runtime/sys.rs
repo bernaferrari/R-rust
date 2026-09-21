@@ -1195,6 +1195,15 @@ pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 }
             }
         }
+        // GNU: "3 months" is step 3 of unit months.
+        let (step, units) = if let Some((n, rest)) = units.split_once(' ') {
+            match n.parse::<i32>() {
+                Ok(k) if k > 0 => (k, rest.to_string()),
+                _ => (1, units),
+            }
+        } else {
+            (1, units)
+        };
         let finite: Vec<f64> = days.iter().copied().filter(|d| d.is_finite()).collect();
         if finite.is_empty() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
@@ -1208,46 +1217,35 @@ pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             let mut b = min_d as i64 - off as i64;
             while (b as f64) <= max_d {
                 breaks.push(b as f64);
-                b += 7;
+                b += 7 * step as i64;
             }
             breaks.push(b as f64);
         } else if units.starts_with("month") {
             let mut b = date_first_of_month(min_d);
             while b <= max_d {
                 breaks.push(b);
-                b = date_add_months(b, 1);
+                b = date_add_months(b, step);
             }
-            breaks.push(date_add_months(b, 0).max(date_add_months(breaks.last().copied().unwrap_or(b), 1)));
-            if *breaks.last().unwrap() <= max_d {
-                breaks.push(date_add_months(*breaks.last().unwrap(), 1));
-            }
+            breaks.push(b);
         } else if units.starts_with("year") {
             let mut b = date_first_of_year(min_d);
             while b <= max_d {
                 breaks.push(b);
-                b = date_first_of_year(b + 370.0);
+                b = date_add_months(b, 12 * step);
             }
-            breaks.push(date_first_of_year(b + 370.0));
+            breaks.push(b);
         } else if units.starts_with("quarter") {
             let mut b = date_first_of_quarter(min_d);
             while b <= max_d {
                 breaks.push(b);
-                b = date_add_months(b, 3);
+                b = date_add_months(b, 3 * step);
             }
-            if breaks.is_empty() {
-                breaks.push(b);
-            }
-            let last = *breaks.last().unwrap();
-            if last <= max_d {
-                breaks.push(date_add_months(last, 3));
-            } else if breaks.len() < 2 {
-                breaks.push(date_add_months(last, 3));
-            }
+            breaks.push(b);
         } else if units.starts_with("day") {
             let mut b = min_d.floor();
             while b <= max_d {
                 breaks.push(b);
-                b += 1.0;
+                b += step as f64;
             }
             breaks.push(b);
         } else {
