@@ -105,14 +105,10 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // GNU baseenv lists only FunTab primitives. Extra rport builtins
             // stay on SYMVALUE so `f(...)` still resolves via findFun, but
             // `as.list(baseenv())` / `is.primitive` match GNU's inventory.
-            // `rep` is already in the frame from register_special_forms.
-            if name == "rep"
-                || is_rport_private_base_name(name)
+            if is_rport_private_base_name(name)
                 || !crate::sexp::init::is_accounted_primitive_name(name)
             {
-                if name != "rep" {
-                    SET_SYMVALUE(sym, prim);
-                }
+                SET_SYMVALUE(sym, prim);
                 continue;
             }
             let cell = Rf_cons(prim, chain);
