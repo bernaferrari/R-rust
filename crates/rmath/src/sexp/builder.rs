@@ -660,6 +660,22 @@ pub fn scalar_string_in<'arena>(arena: &'arena mut RArena, s: &str) -> Option<Se
     arena.sexp(ptr)
 }
 
+pub fn scalar_bytes_in<'arena>(arena: &'arena mut RArena, bytes: &[u8]) -> Option<Sexp<'arena>> {
+    let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+    if ptr.is_null() {
+        return None;
+    }
+    let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
+    if data.is_null() {
+        return None;
+    }
+    let charsxp = arena.alloc_charsxp(bytes);
+    unsafe {
+        *data = charsxp;
+    }
+    arena.sexp(ptr)
+}
+
 pub fn scalar_complex_in<'arena>(
     arena: &'arena mut RArena,
     r: c_double,

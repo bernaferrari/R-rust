@@ -28,7 +28,8 @@ use crate::sexp::accessors::{
     CADR, CAR, CDR, CHAR, INTEGER, PRINTNAME, SETCAR, SETTAG, SET_ATTRIB, TAG, TYPEOF,
 };
 use crate::sexp::builder::{
-    scalar_complex_in, scalar_integer_in, scalar_logical_in, scalar_real_in, scalar_string_in,
+    scalar_bytes_in, scalar_complex_in, scalar_integer_in, scalar_logical_in, scalar_real_in,
+    scalar_string_in,
 };
 use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
@@ -45,6 +46,8 @@ enum Token {
     Complex(f64),
     Int(i32),
     Str(String),
+    /// Octal/hex escapes that are not valid UTF-8 (`"\\xf4..."`).
+    StrBytes(Vec<u8>),
     Ident(String),
     // Arithmetic
     Plus,
@@ -594,32 +597,130 @@ impl Lexer {
         }
     }
 
-    fn read_string(&mut self) -> Token {
-        let quote = self.advance().unwrap_or('"');
-        let mut s = String::new();
-        loop {
-            match self.advance() {
-                Some('\\') => match self.advance() {
-                    Some('n') => s.push('\n'),
-                    Some('t') => s.push('\t'),
-                    Some('r') => s.push('\r'),
-                    Some('\\') => s.push('\\'),
-                    Some('"') => s.push('"'),
-                    Some('\'') => s.push('\''),
-                    Some(c) if c == quote => s.push(c),
-                    Some(c) => {
-                        s.push('\\');
-                        s.push(c);
-                    }
-                    None => return Token::Invalid,
-                },
-                Some(c) if c == quote => break,
-                Some(c) => s.push(c),
-                None => return Token::Invalid,
+    fn take_hex_digits(&mut self, max: usize) -> Option<u32> {
+        let mut val = 0u32;
+        let mut n = 0usize;
+        while n < max {
+            match self.peek_char() {
+                Some(c) if c.is_ascii_hexdigit() => {
+                    self.advance();
+                    val = val * 16 + c.to_digit(16).unwrap();
+                    n += 1;
+                }
+                _ => break,
             }
         }
-        Token::Str(s)
+        if n == 0 { None } else { Some(val) }
     }
+
+    /// GNU gram.y `StringValue`: \\a \\b \\f \\n \\r \\t \\v \\\\ \\' \\" \\`
+    /// \\  \\<newline>, octal, \\xHH, \\u / \\U. Mix of Unicode and octal/hex
+    /// is an error. Nul is an error.
+    fn read_string(&mut self) -> Token {
+        let quote = self.advance().unwrap_or('"');
+        let mut bytes = Vec::new();
+        let mut oct_or_hex = false;
+        let mut use_wcs = false;
+        loop {
+            let Some(c) = self.advance() else {
+                return Token::Invalid;
+            };
+            if c == quote {
+                break;
+            }
+            if c != '\\' {
+                let mut buf = [0u8; 4];
+                bytes.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+                continue;
+            }
+            let Some(esc) = self.advance() else {
+                return Token::Invalid;
+            };
+            match esc {
+                'a' => bytes.push(0x07),
+                'b' => bytes.push(0x08),
+                'f' => bytes.push(0x0c),
+                'n' => bytes.push(b'\n'),
+                'r' => bytes.push(b'\r'),
+                't' => bytes.push(b'\t'),
+                'v' => bytes.push(0x0b),
+                '\\' | '"' | '\'' | '`' | ' ' | '\n' => {
+                    let mut buf = [0u8; 4];
+                    bytes.extend_from_slice(esc.encode_utf8(&mut buf).as_bytes());
+                }
+                '0'..='7' => {
+                    if use_wcs {
+                        return Token::Invalid;
+                    }
+                    let mut octal = esc as u32 - '0' as u32;
+                    if let Some(d) = self.peek_char() {
+                        if ('0'..='7').contains(&d) {
+                            self.advance();
+                            octal = 8 * octal + d as u32 - '0' as u32;
+                            if let Some(e) = self.peek_char() {
+                                if ('0'..='7').contains(&e) {
+                                    self.advance();
+                                    octal = 8 * octal + e as u32 - '0' as u32;
+                                }
+                            }
+                        }
+                    }
+                    if octal == 0 || octal > 0xff {
+                        return Token::Invalid;
+                    }
+                    bytes.push(octal as u8);
+                    oct_or_hex = true;
+                }
+                'x' => {
+                    if use_wcs {
+                        return Token::Invalid;
+                    }
+                    let Some(val) = self.take_hex_digits(2) else {
+                        return Token::Invalid;
+                    };
+                    if val == 0 {
+                        return Token::Invalid;
+                    }
+                    bytes.push(val as u8);
+                    oct_or_hex = true;
+                }
+                'u' | 'U' => {
+                    if oct_or_hex {
+                        return Token::Invalid;
+                    }
+                    let max = if esc == 'u' { 4 } else { 8 };
+                    let delim = self.peek_char() == Some('{');
+                    if delim {
+                        self.advance();
+                    }
+                    let Some(val) = self.take_hex_digits(max) else {
+                        return Token::Invalid;
+                    };
+                    if delim {
+                        if self.peek_char() != Some('}') {
+                            return Token::Invalid;
+                        }
+                        self.advance();
+                    }
+                    if val == 0 {
+                        return Token::Invalid;
+                    }
+                    let Some(ch) = char::from_u32(val) else {
+                        return Token::Invalid;
+                    };
+                    let mut buf = [0u8; 4];
+                    bytes.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+                    use_wcs = true;
+                }
+                _ => return Token::Invalid,
+            }
+        }
+        match String::from_utf8(bytes.clone()) {
+            Ok(s) => Token::Str(s),
+            Err(_) => Token::StrBytes(bytes),
+        }
+    }
+
 
     fn read_backtick_name(&mut self) -> Token {
         self.advance(); // skip `
@@ -748,7 +849,7 @@ pub fn flush_literal_warnings() {
 fn token_display(tok: &Token) -> String {
     match tok {
         Token::Number(_) | Token::Complex(_) | Token::Int(_) => "numeric constant".to_string(),
-        Token::Str(_) => "string constant".to_string(),
+        Token::Str(_) | Token::StrBytes(_) => "string constant".to_string(),
         Token::Ident(_) => "symbol".to_string(),
         Token::LeftAssign => "assignment".to_string(),
         Token::Newline => "end of line".to_string(),
@@ -1130,6 +1231,12 @@ impl<'arena> Parser<'arena> {
 
     fn scalar_string(&mut self, value: &str) -> Result<SEXP, ParseError> {
         scalar_string_in(self.arena, value)
+            .map(|s| s.as_raw())
+            .ok_or_else(|| self.allocation_error())
+    }
+
+    fn scalar_bytes(&mut self, bytes: &[u8]) -> Result<SEXP, ParseError> {
+        scalar_bytes_in(self.arena, bytes)
             .map(|s| s.as_raw())
             .ok_or_else(|| self.allocation_error())
     }
@@ -2664,6 +2771,10 @@ impl<'arena> Parser<'arena> {
             Token::Str(s) => {
                 self.advance();
                 self.scalar_string(&s)
+            }
+            Token::StrBytes(bytes) => {
+                self.advance();
+                self.scalar_bytes(&bytes)
             }
             Token::DotDotDot => {
                 self.advance();

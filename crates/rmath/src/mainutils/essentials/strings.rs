@@ -7,9 +7,10 @@ use std::path::PathBuf;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    ATTRIB, CADR, CADDR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT,
+    LENGTH, LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT,
+    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -1676,12 +1677,17 @@ pub unsafe fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
             return Rf_ScalarInteger(NA_INTEGER);
         }
-        let raw = std::ffi::CStr::from_ptr(CHAR(ch))
-            .to_string_lossy();
-        if raw.contains('\u{FFFD}') && !std::str::from_utf8(raw.as_bytes()).is_ok() {
+        // GNU raw.c: `if (!utf8Valid(s)) return ScalarInteger(NA_INTEGER)`.
+        let n = XLENGTH(ch);
+        let bytes = if n <= 0 {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(CHAR(ch) as *const u8, n as usize)
+        };
+        let Ok(s) = std::str::from_utf8(bytes) else {
             return Rf_ScalarInteger(NA_INTEGER);
-        }
-        let cps: Vec<i32> = raw.chars().map(|c| c as u32 as i32).collect();
+        };
+        let cps: Vec<i32> = s.chars().map(|c| c as u32 as i32).collect();
         let out = Rf_allocVector3(SEXPTYPE::INTSXP, cps.len() as i64);
         let _o = protect(out);
         for (i, cp) in cps.iter().enumerate() {
@@ -1691,18 +1697,14 @@ pub unsafe fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-/// GNU `intToUtf8(x, multiple=FALSE)`.
+/// GNU `intToUtf8(x, multiple=FALSE, allow_surrogate_pairs=FALSE)`.
 pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let mut multiple = false;
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let m = CAR(rest);
-            if TYPEOF(m) == SEXPTYPE::LGLSXP && XLENGTH(m) > 0 {
-                multiple = *LOGICAL(m) == TRUE;
-            }
-        }
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let m = arg_by_name_or_position(args, &["multiple"], 1);
+        let multiple = TYPEOF(m) == SEXPTYPE::LGLSXP && XLENGTH(m) > 0 && *LOGICAL(m) == TRUE;
+        let p = arg_by_name_or_position(args, &["allow_surrogate_pairs"], 2);
+        let s_pair = TYPEOF(p) == SEXPTYPE::LGLSXP && XLENGTH(p) > 0 && *LOGICAL(p) == TRUE;
         let n = if x.is_null() || x == R_NilValue() {
             0
         } else {
@@ -1717,7 +1719,7 @@ pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 NA_INTEGER
             }
         };
-        let valid = |cp: i32| -> Option<char> {
+        let valid_scalar = |cp: i32| -> Option<char> {
             if cp == NA_INTEGER || cp < 0 || (0xD800..=0xDFFF).contains(&cp) || cp > 0x10FFFF {
                 None
             } else if cp == 0 {
@@ -1727,10 +1729,16 @@ pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             }
         };
         if multiple {
+            if s_pair {
+                crate::main::errors::Rf_warning(
+                    c"allow_surrogate_pairs = TRUE is incompatible with multiple = TRUE and will be ignored"
+                        .as_ptr(),
+                );
+            }
             let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _o = protect(out);
             for i in 0..n {
-                match valid(code(i)) {
+                match valid_scalar(code(i)) {
                     Some('\0') => {
                         SET_STRING_ELT(out, i, Rf_mkChar(c"".as_ptr()));
                     }
@@ -1748,16 +1756,49 @@ pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             }
             out
         } else {
+            // GNU raw.c: high surrogates pair with the next low surrogate when
+            // allow_surrogate_pairs=TRUE; unpaired surrogates / NA / out of
+            // range yield NA_STRING.
             let mut s = String::new();
             let mut have_na = false;
-            for i in 0..n {
-                match valid(code(i)) {
-                    Some('\0') => {}
-                    Some(ch) => s.push(ch),
-                    None => {
+            let mut i = 0i64;
+            while i < n {
+                let this = code(i);
+                if this == NA_INTEGER
+                    || this < 0
+                    || (0xDC00..=0xDFFF).contains(&this)
+                    || this > 0x10FFFF
+                {
+                    have_na = true;
+                    break;
+                } else if (0xD800..=0xDBFF).contains(&this) {
+                    if !s_pair || i + 1 >= n {
                         have_na = true;
                         break;
                     }
+                    let next = code(i + 1);
+                    if !(0xDC00..=0xDFFF).contains(&next) {
+                        have_na = true;
+                        break;
+                    }
+                    let hi = (this as u32) - 0xD800;
+                    let lo = (next as u32) - 0xDC00;
+                    let cp = 0x10000 + (hi << 10) + lo;
+                    if let Some(ch) = char::from_u32(cp) {
+                        s.push(ch);
+                    } else {
+                        have_na = true;
+                        break;
+                    }
+                    i += 2;
+                } else if this == 0 {
+                    i += 1;
+                } else if let Some(ch) = char::from_u32(this as u32) {
+                    s.push(ch);
+                    i += 1;
+                } else {
+                    have_na = true;
+                    break;
                 }
             }
             let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
@@ -1765,8 +1806,14 @@ pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             if have_na {
                 SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
             } else {
-                let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
-                SET_STRING_ELT(out, 0, Rf_mkChar(c.as_ptr()));
+                SET_STRING_ELT(
+                    out,
+                    0,
+                    crate::sexp::constructors::Rf_mkCharLen(
+                        s.as_ptr() as *const std::os::raw::c_char,
+                        s.len() as c_int,
+                    ),
+                );
             }
             out
         }
