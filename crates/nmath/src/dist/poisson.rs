@@ -183,28 +183,27 @@ pub fn qpois_inner(p: f64, lambda: f64, lower_tail: bool, log_p: bool) -> f64 {
         return ml_warn_return_nan();
     }
 
-    // R_Q_P01_check(p)
+    // R_Q_P01_check(p) only. GNU returns 0 for lambda == 0 before R_DT_0/1,
+    // so qpois(1, lambda=0) is 0, not Inf.
     if log_p {
         if p > 0.0 {
             return ml_warn_return_nan();
         }
-        if p == 0.0 {
-            return if lower_tail { ML_POSINF } else { 0.0 };
-        }
-    } else {
-        if p < 0.0 || p > 1.0 {
-            return ml_warn_return_nan();
-        }
+    } else if !(0.0..=1.0).contains(&p) {
+        return ml_warn_return_nan();
+    }
+
+    if lambda == 0.0 {
+        return 0.0;
+    }
+
+    if !log_p {
         if p == 0.0 {
             return if lower_tail { 0.0 } else { ML_POSINF };
         }
         if p == 1.0 {
             return if lower_tail { ML_POSINF } else { 0.0 };
         }
-    }
-
-    if lambda == 0.0 {
-        return 0.0;
     }
 
     let p_is_0 = if lower_tail {
@@ -594,6 +593,19 @@ mod tests {
                 assert_eq!(state.muprev, 0.0);
                 assert_eq!(state.s, 0.0);
             });
+        });
+    }
+
+    #[test]
+    fn qpois_lambda_zero_is_zero_including_p_one() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            for &p in &[0.0, 0.125, 0.5, 0.875, 1.0] {
+                assert_eq!(qpois_inner(p, 0.0, true, false), 0.0, "qpois({p}, 0)");
+                assert_eq!(qpois_inner(p, 0.0, false, false), 0.0, "qpois({p}, 0, lower=F)");
+            }
+            assert_eq!(qpois_inner(1.0, 1.0, true, false), f64::INFINITY);
+            assert_eq!(qpois_inner(0.0, 1.0, true, false), 0.0);
         });
     }
 }

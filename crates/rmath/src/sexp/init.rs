@@ -704,6 +704,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "curve",
+            include_str!("gnu_curve.R"),
+        );
+        eval_base_binding(
+            base_env,
             "all.equal",
             "function(target, current, ...) UseMethod(\"all.equal\")",
         );

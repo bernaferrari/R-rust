@@ -537,12 +537,23 @@ fn format_exponent(v: f64, precision: usize, upper: bool) -> String {
         let s = format!("0.{:0<width$}", "", width = precision);
         return format!("{s}{e_char}+00");
     }
-    // Rust's {:e} gives "1.5e2"; expand to C form "1.500000e+02".
-    let rust = format!("{v:.precision$e}");
-    let (mant, exp) = rust.split_once('e').unwrap_or((rust.as_str(), "0"));
-    let exp: i32 = exp.parse().unwrap_or(0);
+    let neg = v.is_sign_negative();
+    let av = v.abs();
+    // 10^-50 underflows f64 powi before the mantissa is formed.
+    // log10m1 = log10(|v|) - floor(log10(|v|)) stays in [0, 1).
+    let log10v = av.log10();
+    let mut exp = log10v.floor() as i32;
+    let mut mant = 10f64.powf(log10v - exp as f64);
+    let scale = 10f64.powi(precision as i32);
+    mant = (mant * scale).round() / scale;
+    if mant >= 10.0 {
+        mant = 1.0;
+        exp += 1;
+    }
+    let digits = format!("{mant:.precision$}");
     format!(
-        "{mant}{e_char}{}{:02}",
+        "{}{digits}{e_char}{}{:02}",
+        if neg { "-" } else { "" },
         if exp < 0 { '-' } else { '+' },
         exp.abs()
     )
@@ -561,10 +572,13 @@ fn format_general(v: f64, precision: usize, upper: bool, alt: bool) -> String {
             "0".to_string()
         };
     }
-    // Decimal exponent from Rust's shortest e-notation of the rounded value.
-    let rounded = format!("{v:.p$e}");
-    let (_, exp_str) = rounded.split_once('e').unwrap_or(("", "0"));
-    let x: i32 = exp_str.parse().unwrap_or(0);
+    // C %g style: %e when the decimal exponent is < -4 or >= precision.
+    let mut x = v.abs().log10().floor() as i32;
+    let mut mant = v.abs() / 10f64.powi(x);
+    let scale = 10f64.powi((p - 1) as i32);
+    if (mant * scale).round() / scale >= 10.0 {
+        x += 1;
+    }
     let mut body = if x >= -4 && (x as i64) < p as i64 {
         let fp = (p as i64 - 1 - x as i64).max(0) as usize;
         format!("{v:.fp$}")
@@ -572,14 +586,18 @@ fn format_general(v: f64, precision: usize, upper: bool, alt: bool) -> String {
         format_exponent(v, p - 1, upper)
     };
     if !alt {
-        if body.contains('.') {
-            while body.ends_with('0') {
-                body.pop();
+        let end = body.find(['e', 'E']).unwrap_or(body.len());
+        let (head, exp) = body.split_at(end);
+        let mut head = head.to_string();
+        if head.contains('.') {
+            while head.ends_with('0') {
+                head.pop();
             }
-            if body.ends_with('.') {
-                body.pop();
+            if head.ends_with('.') {
+                head.pop();
             }
         }
+        body = format!("{head}{exp}");
     }
     if upper {
         body = body.to_uppercase();
@@ -623,6 +641,9 @@ mod tests {
         assert_eq!(f("%g", &[CArg::Double(1234567.0)]), "1.23457e+06");
         assert_eq!(f("%.3g", &[CArg::Double(0.5)]), "0.5");
         assert_eq!(f("%.17g", &[CArg::Double(0.1)]), "0.10000000000000001");
+        assert_eq!(f("%.8g", &[CArg::Double(1e-50)]), "1e-50");
+        assert_eq!(f("%.8g", &[CArg::Double(1e-5)]), "1e-05");
+        assert_eq!(f("%.8g", &[CArg::Double(1e-4)]), "0.0001");
     }
 
     #[test]
