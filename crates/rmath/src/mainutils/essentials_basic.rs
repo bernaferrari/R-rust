@@ -893,6 +893,28 @@ pub unsafe fn do_which(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for (i, &idx) in indices.iter().enumerate() {
             *dst.add(i) = idx;
         }
+        // GNU summary.c do_which: names of TRUE elements follow the indices.
+        let names = crate::eval::attrib_core::getAttrib(
+            x,
+            crate::eval::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == n
+            && !indices.is_empty()
+        {
+            let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
+            let _np = protect(out_names);
+            for (j, &idx) in indices.iter().enumerate() {
+                SET_STRING_ELT(out_names, j as R_xlen_t, STRING_ELT(names, (idx as i64) - 1));
+            }
+            crate::eval::attrib_core::setAttrib(
+                result,
+                crate::eval::attrib_core::R_NamesSymbol(),
+                out_names,
+            );
+        }
         result
     }
 }

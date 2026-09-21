@@ -735,7 +735,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                 seq_prim = SYMVALUE(seq_sym);
             }
             if !seq_prim.is_null() && seq_prim != R_UnboundValue() {
-                SET_SYMVALUE(Rf_install_in_current(".rport_seq"), seq_prim);
+                let rport_seq = Rf_install_in_current(".rport_seq");
+                SET_SYMVALUE(rport_seq, seq_prim);
+                defineVar(rport_seq, seq_prim, base_env);
             }
         }
         eval_base_binding(base_env, "seq", "function(...) UseMethod(\"seq\")");
@@ -749,6 +751,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              eval.parent(cl)\n\
              }",
         );
+        eval_base_binding(base_env, "seq.POSIXt", include_str!("gnu_seq_POSIXt.R"));
         eval_base_binding(
             base_env,
             "factor",
