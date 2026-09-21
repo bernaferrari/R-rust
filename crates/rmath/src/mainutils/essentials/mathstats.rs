@@ -226,6 +226,62 @@ unsafe fn copy_all_attribs(dst: SEXP, src: SEXP) {
     }
 }
 
+/// Exact names, then a unique partial name, then leftover positionals.
+/// `round(d = 2, x = pi)` binds `x` exactly and `d` to `digits`.
+unsafe fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
+    unsafe {
+        let formals = ["x", "digits"];
+        let mut bound = [R_NilValue(), R_NilValue()];
+        let mut seen = [false, false];
+        let mut untagged = Vec::new();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if tag.is_null() || tag == R_NilValue() {
+                untagged.push(CAR(cell));
+            } else {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned();
+                if let Some(i) = formals.iter().position(|f| *f == name) {
+                    bound[i] = CAR(cell);
+                    seen[i] = true;
+                }
+            }
+            cell = CDR(cell);
+        }
+        cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null() && tag != R_NilValue() {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned();
+                if !formals.iter().any(|f| *f == name) {
+                    let hits: Vec<usize> = formals
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, f)| !seen[*i] && f.starts_with(&name))
+                        .map(|(i, _)| i)
+                        .collect();
+                    if hits.len() == 1 {
+                        bound[hits[0]] = CAR(cell);
+                        seen[hits[0]] = true;
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
+        for value in untagged {
+            if let Some(i) = seen.iter().position(|s| !s) {
+                bound[i] = value;
+                seen[i] = true;
+            }
+        }
+        (bound[0], bound[1])
+    }
+}
+
 /// R's `round(x, digits=0)` — round to specified decimal digits.
 pub unsafe fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -241,8 +297,7 @@ pub unsafe fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return dispatched;
         }
-        let x_arg = CAR(args);
-        let digits_arg = CAR(CDR(args));
+        let (x_arg, digits_arg) = match_x_digits(args);
 
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();
@@ -13258,54 +13313,58 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             // Per-match group spans (0-based start, length); None mirrors
             // PCRE2_UNSET groups (0/0 arithmetic below).
             let mut group_spans: Vec<Vec<Option<(usize, usize)>>> = Vec::new();
-            if !pat.is_empty() {
-                if capture_count > 0 {
-                    // Perl run with capture groups: every global match
-                    // contributes its whole-match span and its groups.
-                    if let Some(all) =
-                        crate::mainutils::grep::perl_captures_all(&pat, &txt, ignore_case)
-                    {
-                        for caps in all {
-                            if let Some(whole) = caps.first().and_then(|c| c.as_ref()) {
-                                starts.push(whole.start + 1);
-                                lengths.push(whole.end - whole.start);
-                                group_spans.push(
-                                    (1..=capture_count)
-                                        .map(|g| {
-                                            caps.get(g)
-                                                .and_then(|c| c.as_ref())
-                                                .map(|m| (m.start, m.end - m.start))
-                                        })
-                                        .collect(),
-                                );
-                            }
+            if pat.is_empty() {
+                // An empty pattern matches at every character, length 0.
+                let mut pos = 1usize;
+                for ch in txt.chars() {
+                    starts.push(pos);
+                    lengths.push(0);
+                    pos += ch.len_utf8();
+                }
+            } else if capture_count > 0 {
+                if let Some(all) =
+                    crate::mainutils::grep::perl_captures_all(&pat, &txt, ignore_case)
+                {
+                    for caps in all {
+                        if let Some(whole) = caps.first().and_then(|c| c.as_ref()) {
+                            starts.push(whole.start + 1);
+                            lengths.push(whole.end - whole.start);
+                            group_spans.push(
+                                (1..=capture_count)
+                                    .map(|g| {
+                                        caps.get(g)
+                                            .and_then(|c| c.as_ref())
+                                            .map(|m| (m.start, m.end - m.start))
+                                    })
+                                    .collect(),
+                            );
                         }
                     }
-                } else {
-                    let mut offset = 0usize;
-                    while offset <= txt.len() {
-                        let hay = &txt[offset..];
-                        let found = if fixed {
-                            fixed_find(hay, &pat, ignore_case)
-                        } else if perl {
-                            crate::mainutils::grep::perl_find(&pat, hay, ignore_case)
-                        } else {
-                            crate::mainutils::grep::ere_find(&pat, hay, ignore_case)
-                        };
-                        let Some(m) = found else {
-                            break;
-                        };
-                        let start = offset + m.start;
-                        starts.push(start + 1);
-                        lengths.push(m.end - m.start);
-                        let next_offset = offset + m.end;
-                        offset = if m.start == m.end {
-                            next_offset
-                                + txt[next_offset..].chars().next().map_or(1, char::len_utf8)
-                        } else {
-                            next_offset
-                        };
-                    }
+                }
+            } else {
+                let mut offset = 0usize;
+                while offset <= txt.len() {
+                    let hay = &txt[offset..];
+                    let found = if fixed {
+                        fixed_find(hay, &pat, ignore_case)
+                    } else if perl {
+                        crate::mainutils::grep::perl_find(&pat, hay, ignore_case)
+                    } else {
+                        crate::mainutils::grep::ere_find(&pat, hay, ignore_case)
+                    };
+                    let Some(m) = found else {
+                        break;
+                    };
+                    let start = offset + m.start;
+                    starts.push(start + 1);
+                    lengths.push(m.end - m.start);
+                    let next_offset = offset + m.end;
+                    offset = if m.start == m.end {
+                        next_offset
+                            + txt[next_offset..].chars().next().map_or(1, char::len_utf8)
+                    } else {
+                        next_offset
+                    };
                 }
             }
 
