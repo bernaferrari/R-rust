@@ -851,6 +851,11 @@ impl RSession {
                 .copied()
                 .map(|expr| protect(expr_or_nil(expr)))
                 .collect();
+            for expr in &expressions {
+                unsafe {
+                    crate::sexp::protect::R_ReleaseObject(expr_or_nil(*expr));
+                }
+            }
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
             let last_index = expressions.len().saturating_sub(1);
@@ -1011,6 +1016,11 @@ impl RSession {
                 .copied()
                 .map(|expr| protect(expr_or_nil(expr)))
                 .collect();
+            for expr in &expressions {
+                unsafe {
+                    crate::sexp::protect::R_ReleaseObject(expr_or_nil(*expr));
+                }
+            }
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
             let last_index = expressions.len().saturating_sub(1);

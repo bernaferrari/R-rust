@@ -1308,6 +1308,12 @@ impl<'arena> Parser<'arena> {
                 return Err(self.pipebind_position_error("invalid use of pipe bind symbol"));
             }
             exprs.push(expr);
+            // Later parse_expr allocations may GC. Keep each completed
+            // top-level SEXP alive until the caller roots the vector
+            // (eval_script protect guards / parse() EXPRSXP).
+            unsafe {
+                crate::sexp::protect::R_PreserveObject(expr);
+            }
             record_parsed_expr_warning_msgs(self.take_token_warnings(start, self.pos));
             self.skip_terminators();
         }
@@ -1355,6 +1361,9 @@ impl<'arena> Parser<'arena> {
                 tok_start
             };
             spans.push((expr, tok_start, tok_end));
+            unsafe {
+                crate::sexp::protect::R_PreserveObject(expr);
+            }
             record_parsed_expr_warning_msgs(self.take_token_warnings(start, self.pos));
             self.skip_terminators();
         }
