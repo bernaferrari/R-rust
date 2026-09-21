@@ -725,6 +725,9 @@ unsafe fn condition_classes(cond: SEXP) -> Vec<String> {
 /// silences RSignal payloads, and every RSignal match site passes
 /// unknown variants through.
 /// Does any enclosing tryCatch frame register one of `classes`?
+pub(crate) fn try_catch_wants_warning() -> bool {
+    try_catch_wants(&["simpleWarning", "warning", "condition"])
+}
 fn try_catch_wants(classes: &[&str]) -> bool {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         (*inst)
@@ -787,9 +790,18 @@ unsafe fn calling_handler_entry(class_name: &str, handler: SEXP, rho: SEXP) -> S
         entry
     }
 }
+thread_local! {
+    static WARNING_HANDLER_RAN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A calling handler matched and ran for the warning just signaled.
+pub(crate) fn warning_handler_invoked() -> bool {
+    WARNING_HANDLER_RAN.with(|c| c.get())
+}
 
 unsafe fn signal_calling_handlers(condition: SEXP, rho: SEXP) {
     unsafe {
+        WARNING_HANDLER_RAN.with(|c| c.set(false));
         let classes = crate::sexp::attrib_core::getAttrib(condition, Rf_install(c"class".as_ptr()));
         if classes.is_null() || classes == R_NilValue() || TYPEOF(classes) != SEXPTYPE::STRSXP {
             return;
@@ -804,6 +816,7 @@ unsafe fn signal_calling_handlers(condition: SEXP, rho: SEXP) {
                 if calling_handler_entry_class(entry).as_deref() == Some(class_name.as_str()) {
                     let handler = VECTOR_ELT(entry, 1);
                     call_condition_handler(handler, condition, rho);
+                    WARNING_HANDLER_RAN.with(|c| c.set(true));
                 }
                 current = CDR(current);
             }

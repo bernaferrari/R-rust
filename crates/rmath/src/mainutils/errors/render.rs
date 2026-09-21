@@ -917,6 +917,12 @@ pub(super) unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
             if muffled {
                 return;
             }
+            // tryCatch(warning=) without an error handler consumes the warning
+            // before warn >= 2 turns it into an error. assertWarning registers
+            // both, so it still sees the default action.
+            if crate::mainutils::essentials::try_catch_wants_warning() {
+                std::panic::panic_any(crate::sexp::context::RSignal::Warning { message: msg });
+            }
         }
         let hooksym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
         // A freshly interned port symbol carries a NULL value slot (C uses

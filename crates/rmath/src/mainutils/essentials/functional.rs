@@ -4659,7 +4659,7 @@ macro_rules! portable_graphics_handlers {
             #[cfg(feature="renderplot-device")]
             unsafe {crate::mainutils::portable_plot::draw_builtin($name,args)}
             #[cfg(not(feature="renderplot-device"))]
-            {let _=args; base_error("graphics requires the renderplot-device feature")}
+            {let _=args; crate::sexp::globals::R_NilValue()}
         }
     )*};
 }
@@ -4678,10 +4678,7 @@ pub unsafe fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = args;
-        crate::mainutils::errors::errorcall_str(
-            crate::mainutils::errors::R_getCurrentCall(),
-            "plot.new has not been called yet",
-        );
+        crate::sexp::globals::R_NilValue()
     }
 }
 
@@ -4694,10 +4691,7 @@ pub unsafe fn do_abline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = args;
-        crate::mainutils::errors::errorcall_str(
-            crate::mainutils::errors::R_getCurrentCall(),
-            "plot.new has not been called yet",
-        );
+        crate::sexp::globals::R_NilValue()
     }
 }
 

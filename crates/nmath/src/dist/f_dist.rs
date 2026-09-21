@@ -260,7 +260,7 @@ pub fn qf_inner(p: f64, df1: f64, df2: f64, lower_tail: bool, log_p: bool) -> f6
             return ml_warn_return_nan();
         }
         if p == 0.0 {
-            return if lower_tail { 0.0 } else { ML_POSINF };
+            return if lower_tail { ML_POSINF } else { 0.0 };
         }
         if p == ML_NEGINF {
             return if lower_tail { ML_POSINF } else { 0.0 };

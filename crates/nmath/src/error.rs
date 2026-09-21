@@ -39,6 +39,11 @@ pub fn ml_warn_nonint(which: &str, value: f64) {
     emit_warning(&format!("non-integer {which} = {value:.6}"));
 }
 
+/// A mathlib warning whose text is the whole message, not a code template.
+pub fn ml_warn_message(message: &str) {
+    emit_warning(message);
+}
+
 /// Print a mathlib warning.
 ///
 /// Translates nmath.h's `ML_WARNING`: `ME_DOMAIN` is deliberately silent

@@ -713,6 +713,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             include_str!("gnu_proportions.R"),
         );
         eval_base_binding(base_env, "prop.table", "proportions");
+        eval_base_binding(base_env, "pdf", "function(...) invisible(NULL)");
+        eval_base_binding(base_env, "mtext", "function(...) invisible(NULL)");
         eval_base_binding(
             base_env,
             "all.equal",
