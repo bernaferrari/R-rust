@@ -538,6 +538,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(x) is.logical(x) && length(x) == 1L && !is.na(x) && !x",
         );
         eval_base_binding(base_env, "force", "function(x) x");
+        // GNU eval.R / which.R / stop.R: these are closures over .Internal,
+        // not FunTab primitives. Binding them into the base frame makes
+        // exists()/as.list(baseenv()) match GNU; .Internal still dispatches
+        // through FunTab (eval=11/211).
+        eval_base_binding(base_env, "eval", include_str!("gnu_eval.R"));
+        eval_base_binding(base_env, "evalq", include_str!("gnu_evalq.R"));
+        eval_base_binding(base_env, "eval.parent", include_str!("gnu_eval_parent.R"));
+        eval_base_binding(base_env, "arrayInd", include_str!("gnu_arrayInd.R"));
+        eval_base_binding(base_env, "which", include_str!("gnu_which.R"));
+        eval_base_binding(base_env, "which.min", include_str!("gnu_which_min.R"));
+        eval_base_binding(base_env, "which.max", include_str!("gnu_which_max.R"));
+        eval_base_binding(base_env, "stopifnot", include_str!("gnu_stopifnot.R"));
+
         eval_base_binding(
             base_env,
             "is.primitive",
@@ -2441,6 +2454,38 @@ mod tests {
             Some(TRUE)
         );
     }
+
+    #[test]
+    fn test_gnu_eval_which_stopifnot_are_base_closures() {
+        let mut session = crate::sexp::session::RSession::new();
+
+        let (result, _, _) = session.eval_code_with_output_capture(
+            r#"
+                exists("eval", baseenv(), inherits = FALSE) &&
+                    exists("evalq", baseenv(), inherits = FALSE) &&
+                    exists("eval.parent", baseenv(), inherits = FALSE) &&
+                    exists("which", baseenv(), inherits = FALSE) &&
+                    exists("stopifnot", baseenv(), inherits = FALSE) &&
+                    identical(typeof(eval), "closure") &&
+                    identical(typeof(which), "closure") &&
+                    identical(typeof(stopifnot), "closure") &&
+                    identical(eval(1 + 1), 2) &&
+                    identical(eval(quote(1 + 1)), 2) &&
+                    identical(evalq(a, list(a = 3L)), 3L) &&
+                    identical(which(c(TRUE, FALSE, TRUE)), c(1L, 3L)) &&
+                    is.null(stopifnot(TRUE)) &&
+                    inherits(try(stopifnot(FALSE), silent = TRUE), "try-error")
+            "#,
+        );
+        assert_eq!(
+            result
+                .expect("GNU eval/which/stopifnot should be base closures")
+                .logical_elt(0),
+            Some(TRUE)
+        );
+    }
+
+
 
     #[test]
     fn test_initialize_installs_machine_constants() {

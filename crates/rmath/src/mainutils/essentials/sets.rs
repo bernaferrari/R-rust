@@ -2386,36 +2386,10 @@ pub unsafe fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return dispatched;
         }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-
-
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = REAL(result);
-        let mut prod = 1.0f64;
-        let mut poisoned = false;
-        for i in 0..n {
-            let v = elt_real_safe(x, i);
-            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                poisoned = true;
-            }
-            if poisoned {
-                *dst.add(i as usize) = NA_REAL;
-            } else {
-                prod *= v;
-                *dst.add(i as usize) = prod;
-            }
-        }
-        result
+        crate::mainutils::cum::do_cumprod(call, op, args, rho)
     }
 }
+
 
 /// R's `cumvar(x)` — cumulative sample variance by Youngs-Cramer algorithm.
 pub unsafe fn do_cumvar(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

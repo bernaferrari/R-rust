@@ -13,9 +13,10 @@ use crate::mainutils::essentials::*;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    ATTRIB, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT,
+    LENGTH, LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_NAMED, SET_OBJECT,
+    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -67,15 +68,72 @@ pub unsafe fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
-        let envir_arg = CAR(CDR(args));
+        let mut env = CADR(args);
+        let mut encl = CADDR(args);
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
         }
-        let envir = if envir_arg.is_null() || envir_arg == R_NilValue() {
-            _rho
-        } else {
-            envir_arg
+        // GNU eval.R always supplies three arguments. A leftover 1-arg
+        // builtin call still evaluates in the caller (`rho`).
+        let nargs = {
+            let mut n = 0;
+            let mut cell = args;
+            while !cell.is_null() && cell != R_NilValue() {
+                n += 1;
+                cell = CDR(cell);
+            }
+            n
         };
+        if encl.is_null() || encl == R_NilValue() || encl == R_MissingArg() {
+            encl = crate::eval::runtime::base_env();
+        } else if TYPEOF(encl) != SEXPTYPE::ENVSXP {
+            std::panic::panic_any(RError {
+                message: "invalid 'enclos' argument".into(),
+            });
+        }
+        if nargs < 2 || env.is_null() || env == R_MissingArg() {
+            env = _rho;
+        } else {
+            match TYPEOF(env) {
+                t if t == SEXPTYPE::NILSXP => env = encl,
+                t if t == SEXPTYPE::ENVSXP => {}
+                t if t == SEXPTYPE::LISTSXP => {
+                    let dup = crate::mainutils::duplicate::Rf_duplicate(env);
+                    let _dup = protect(dup);
+                    env = crate::sexp::memory_ext::NewEnvironment(dup, encl, R_NilValue());
+                }
+                t if t == SEXPTYPE::VECSXP => {
+                    let x = crate::eval::missing::VectorToPairListNamed(env);
+                    let _x = protect(x);
+                    let mut xptr = x;
+                    while !xptr.is_null() && xptr != R_NilValue() {
+                        SET_NAMED(CAR(xptr), 2);
+                        xptr = CDR(xptr);
+                    }
+                    env = crate::sexp::memory_ext::NewEnvironment(x, encl, R_NilValue());
+                }
+                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP => {
+                    if XLENGTH(env) != 1 {
+                        std::panic::panic_any(RError {
+                            message: "numeric 'envir' arg not of length one".into(),
+                        });
+                    }
+                    let frame = crate::mainutils::coerce::asInteger(env);
+                    if frame == NA_INTEGER {
+                        std::panic::panic_any(RError {
+                            message: "invalid 'envir' argument".into(),
+                        });
+                    }
+                    env = crate::eval::context::R_sysframe(frame, std::ptr::null_mut());
+                }
+                _ => {
+                    std::panic::panic_any(RError {
+                        message: "invalid 'envir' argument".into(),
+                    });
+                }
+            }
+        }
+        let _env_guard = protect(env);
         let caller_call = {
             let ctx = crate::sexp::context::R_GlobalContext();
             if ctx.is_null() {
@@ -97,7 +155,7 @@ pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             Some(crate::sexp::context::begin_context_guard(
                 crate::sexp::context::ctxt_flags::CTXT_RETURN,
                 caller_call,
-                envir,
+                env,
                 _rho,
                 None,
                 op,
@@ -117,7 +175,7 @@ pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             || TYPEOF(expr) == SEXPTYPE::SYMSXP
             || TYPEOF(expr) == bcode
         {
-            return crate::eval::eval::Rf_eval(expr, envir);
+            return crate::eval::eval::Rf_eval(expr, env);
         }
         if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
             let n = XLENGTH(expr);
@@ -131,7 +189,7 @@ pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 // (srcref-level show.error.locations: `eval(parse(...))`
                 // errors carry `(from <file>#<line>)`).
                 crate::mainutils::srcref::set_current_srcref_location(element, expr, i as usize);
-                result = crate::eval::eval::Rf_eval(element, envir);
+                result = crate::eval::eval::Rf_eval(element, env);
             }
             crate::mainutils::srcref::set_current_srcref_location(
                 std::ptr::null_mut(),
@@ -143,6 +201,7 @@ pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         expr
     }
 }
+
 
 /// GNU `eval.parent(expr, n = 1)` is `eval(expr, parent.frame(n + 1))`.
 /// A builtin has no extra frame, so `parent.frame(n)` is that environment.
