@@ -730,6 +730,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "all.equal.environment",
+            include_str!("gnu_all_equal_environment.R"),
+        );
+        eval_base_binding(
+            base_env,
             "all.equal.raw",
             include_str!("gnu_all_equal_raw.R"),
         );

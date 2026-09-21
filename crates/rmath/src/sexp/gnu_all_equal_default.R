@@ -5,7 +5,7 @@ function(target, current, ..., check.class = TRUE)
     if (is.function(target))
         return(all.equal.function(target, current, ...))
     if (is.environment(target) || is.environment(current))
-        return(all.equal(as.list(target), as.list(current), ...))
+        return(all.equal.environment(target, current, ...))
     if (is.recursive(target))
         return(all.equal.list(target, current, ...))
     msg <- switch(mode(target),
