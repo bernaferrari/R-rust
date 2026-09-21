@@ -1163,6 +1163,7 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 return transposed;
             }
             setAttrib(transposed, R_DimSymbol(), source_dim);
+            setAttrib(transposed, R_DimNamesSymbol(), R_NilValue());
             return transposed;
         }
 
@@ -2045,16 +2046,9 @@ mod tests {
 
             let dim_names = getAttrib(result_dim, R_NamesSymbol());
             assert_eq!(string_elt_str(dim_names, 0), "rows");
-            // Trunk PR#19133: the !resize 2D path returns t()'s result with
-            // the dim reset, so the swapped dimnames survive (the general
-            // path drops them for !resize). This fixture has no
-            // names(dimnames), so none appear on the result either.
-            let result_dimnames = getAttrib(result, R_DimNamesSymbol());
-            assert_eq!(string_elt_str(VECTOR_ELT(result_dimnames, 0), 0), "c1");
-            assert_eq!(string_elt_str(VECTOR_ELT(result_dimnames, 0), 2), "c3");
-            assert_eq!(string_elt_str(VECTOR_ELT(result_dimnames, 1), 0), "r1");
-            assert_eq!(string_elt_str(VECTOR_ELT(result_dimnames, 1), 1), "r2");
-            assert_eq!(getAttrib(result_dimnames, R_NamesSymbol()), R_NilValue());
+            // GNU aperm(resize=FALSE) drops dimnames; reg-tests-1a.R checks
+            // is.null(dimnames(aperm(x, c(2, 1), FALSE))).
+            assert_eq!(getAttrib(result, R_DimNamesSymbol()), R_NilValue());
         }
     }
 

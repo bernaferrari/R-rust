@@ -117,6 +117,9 @@ unsafe extern "C-unwind" fn c_influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP 
 unsafe extern "C-unwind" fn c_cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
     unsafe { stats_call_cov(x, y, na_method, kendall) }
 }
+unsafe extern "C-unwind" fn c_cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
+    unsafe { stats_call_cor(x, y, na_method, kendall) }
+}
 
 /// GNU stats `C_cov` — Pearson covariance, complete/everything NA handling.
 unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> SEXP {
@@ -201,6 +204,122 @@ unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
     }
 }
 
+/// GNU stats `C_cor`. Each entry comes from one pass over the rows both
+/// variables share, so a variable correlated with itself is exactly 1.
+unsafe fn stats_call_cor(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> SEXP {
+    unsafe {
+        if TYPEOF(kendall) == SEXPTYPE::LGLSXP
+            && XLENGTH(kendall) > 0
+            && *LOGICAL(kendall) != 0
+        {
+            Rf_error(c"Kendall covariance is not implemented".as_ptr());
+        }
+        let x = if TYPEOF(x) != SEXPTYPE::REALSXP {
+            crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.into())
+        } else {
+            x
+        };
+        let _x = protect(x);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (n, ncx) = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+        } else {
+            (XLENGTH(x) as usize, 1usize)
+        };
+        let y_null = y.is_null() || y == R_NilValue();
+        let (y, ny, ncy) = if y_null {
+            (x, n, ncx)
+        } else {
+            let y = if TYPEOF(y) != SEXPTYPE::REALSXP {
+                crate::mainutils::coerce::coerceVector(y, SEXPTYPE::REALSXP.into())
+            } else {
+                y
+            };
+            let _y = protect(y);
+            let ydim =
+                crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_DimSymbol());
+            let (ny, ncy) = if TYPEOF(ydim) == SEXPTYPE::INTSXP && XLENGTH(ydim) == 2 {
+                (*INTEGER(ydim) as usize, *INTEGER(ydim).add(1) as usize)
+            } else {
+                (XLENGTH(y) as usize, 1usize)
+            };
+            (y, ny, ncy)
+        };
+        let nobs = n.min(ny);
+        let ans = if ncx == 1 && ncy == 1 {
+            Rf_allocVector3(SEXPTYPE::REALSXP, 1)
+        } else {
+            let m = Rf_allocVector3(SEXPTYPE::REALSXP, (ncx * ncy) as i64);
+            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            *INTEGER(dims) = ncx as i32;
+            *INTEGER(dims).add(1) = ncy as i32;
+            crate::sexp::attrib_core::setAttrib(m, crate::sexp::attrib_core::R_DimSymbol(), dims);
+            m
+        };
+        let _a = protect(ans);
+        let xr = REAL(x);
+        let yr = REAL(y);
+        let ar = REAL(ans);
+        for j in 0..ncy {
+            for i in 0..ncx {
+                *ar.add(i + j * ncx) = cor_complete_pair(xr, nobs, n, i, yr, nobs, ny, j);
+            }
+        }
+        ans
+    }
+}
+
+unsafe fn cor_complete_pair(
+    x: *const f64,
+    n: usize,
+    ldx: usize,
+    colx: usize,
+    y: *const f64,
+    _ny: usize,
+    ldy: usize,
+    coly: usize,
+) -> f64 {
+    unsafe {
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        let mut count = 0usize;
+        for k in 0..n {
+            let xv = *x.add(k + colx * ldx);
+            let yv = *y.add(k + coly * ldy);
+            if xv.is_nan() || yv.is_nan() {
+                continue;
+            }
+            sx += xv;
+            sy += yv;
+            count += 1;
+        }
+        if count < 2 {
+            return crate::sexp::ffi::NA_REAL;
+        }
+        let mx = sx / count as f64;
+        let my = sy / count as f64;
+        let mut sxy = 0.0;
+        let mut sxx = 0.0;
+        let mut syy = 0.0;
+        for k in 0..n {
+            let xv = *x.add(k + colx * ldx);
+            let yv = *y.add(k + coly * ldy);
+            if xv.is_nan() || yv.is_nan() {
+                continue;
+            }
+            let dx = xv - mx;
+            let dy = yv - my;
+            sxy += dx * dy;
+            sxx += dx * dx;
+            syy += dy * dy;
+        }
+        if sxx == 0.0 || syy == 0.0 {
+            return crate::sexp::ffi::NA_REAL;
+        }
+        sxy / (sxx * syy).sqrt()
+    }
+}
+
 unsafe fn cov_complete_pair(
     x: *const f64,
     n: usize,
@@ -250,7 +369,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases", "C_influence",
-    "C_cov", "C_call_dqags", "C_call_dqagi",
+    "C_cov", "C_cor", "C_call_dqags", "C_call_dqagi",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -291,6 +410,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "compcases" => as_dl(c_compcases as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "influence" => as_dl(c_influence as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "cov" => as_dl(c_cov as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "cor" => as_dl(c_cor as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         _ => super::distn::lookup_call(name),
     }
 }

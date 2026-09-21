@@ -1907,6 +1907,22 @@ unsafe fn initialize_special_environment_bindings(base_env: SEXP) {
             Rf_mkString(library.as_ptr()),
             base_env,
         );
+        // GNU puts an empty "Autoloads" environment on the search path
+        // between .GlobalEnv and base. ls("Autoloads") resolves it by name.
+        let global = super::globals::R_GlobalEnv();
+        let autoloads = super::memory_ext::NewEnvironment(
+            super::globals::R_NilValue(),
+            super::accessors::ENCLOS(global),
+            super::globals::R_NilValue(),
+        );
+        let _autoloads = super::protect::protect(autoloads);
+        super::attrib_core::setAttrib(
+            autoloads,
+            Rf_install_in_current("name"),
+            Rf_mkString(c"Autoloads".as_ptr()),
+        );
+        super::accessors::SET_ENCLOS(global, autoloads);
+        defineVar(Rf_install_in_current(".AutoloadEnv"), autoloads, base_env);
     }
 }
 

@@ -4678,7 +4678,10 @@ pub unsafe fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = args;
-        crate::sexp::globals::R_NilValue()
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "plot.new has not been called yet",
+        );
     }
 }
 
@@ -4691,7 +4694,10 @@ pub unsafe fn do_abline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = args;
-        crate::sexp::globals::R_NilValue()
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "plot.new has not been called yet",
+        );
     }
 }
 
