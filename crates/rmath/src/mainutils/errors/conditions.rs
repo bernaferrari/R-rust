@@ -337,6 +337,12 @@ pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
                     as *const c_char,
             );
         }
+        // GNU R_signalErrorCondition keeps `cond` as the signaled object so
+        // tryCatch handlers receive objectNotFoundError rather than a
+        // reconstructed simpleError.
+        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+            (*inst).error_state.signalled_condition = cond;
+        });
         let msg = translateChar(STRING_ELT(elt, 0));
         errorcall(call, msg);
     }
@@ -346,6 +352,53 @@ pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
 pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) {
     unsafe {
         R_signalErrorCondition(cond, call);
+    }
+}
+
+/// GNU `R_ObjectNotFoundError(sym, call, mode)`.
+pub unsafe fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -> ! {
+    unsafe {
+        let pname = PRINTNAME(sym);
+        let name = if pname.is_null() {
+            String::from("???")
+        } else {
+            let chars = CHAR(pname);
+            if chars.is_null() {
+                String::from("???")
+            } else {
+                CStr::from_ptr(chars)
+                    .to_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|_| String::from("???"))
+            }
+        };
+        let msg = match mode {
+            None => format!("object '{name}' not found"),
+            Some(mode) => format!("object '{name}' of mode '{mode}' was not found"),
+        };
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+        let call = if call.is_null() {
+            crate::sexp::globals::R_NilValue()
+        } else {
+            call
+        };
+        let _call_guard = protect(call);
+        let cond = R_makeErrorCondition(
+            call,
+            c"objectNotFoundError".as_ptr(),
+            std::ptr::null(),
+            2,
+            c_msg.as_ptr(),
+        );
+        let _cond_guard = protect(cond);
+        R_setConditionField(cond, 2, c"name".as_ptr(), sym);
+        let mode_name = mode.unwrap_or("any");
+        let mode_cstr = std::ffi::CString::new(mode_name).unwrap_or_default();
+        let mode_sexp = Rf_mkString(mode_cstr.as_ptr());
+        let _mode_guard = protect(mode_sexp);
+        R_setConditionField(cond, 3, c"mode".as_ptr(), mode_sexp);
+        R_signalErrorCondition(cond, call);
+        unreachable!("R_signalErrorCondition does not return")
     }
 }
 

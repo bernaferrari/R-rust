@@ -52,6 +52,28 @@ pub unsafe fn framedepth(cptr: *mut RCNTXT) -> c_int {
     }
 }
 
+/// GNU `getLexicalCall(rho)`: call of the first `CTXT_FUNCTION` context
+/// whose `cloenv` is `rho`. Top-level eval has no such frame, so `R_NilValue`.
+pub unsafe fn get_lexical_call(rho: SEXP) -> SEXP {
+    unsafe {
+        let mut c = crate::sexp::context::R_GlobalContext();
+        while !c.is_null() {
+            if (*c).callflag == ctxt_flags::CTXT_TOPLEVEL {
+                break;
+            }
+            if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv == rho {
+                return if (*c).call.is_null() {
+                    R_NilValue()
+                } else {
+                    (*c).call
+                };
+            }
+            c = (*c).nextcontext;
+        }
+        R_NilValue()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // R_sysframe — get environment of nth function context
 // ---------------------------------------------------------------------------

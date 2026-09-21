@@ -191,15 +191,18 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
     match classify_expr(expr.clone()) {
         EvalKind::SelfEvaluating => Ok(expr),
         EvalKind::Symbol => {
-            if let Some(value) = find_var_result(expr.clone(), env)? {
+            if let Some(value) = find_var_result(expr.clone(), env.clone())? {
                 return Ok(value);
             }
             match primitive_for_symbol(expr.clone()) {
                 Some(primitive) => Ok(primitive),
-                None => Err(format!(
-                    "object '{}' not found",
-                    symbol_name_for_error(expr)
-                )),
+                None => unsafe {
+                    crate::mainutils::errors::R_ObjectNotFoundError(
+                        expr.as_raw(),
+                        super::context::get_lexical_call(env.as_raw()),
+                        None,
+                    )
+                },
             }
         }
         EvalKind::Language => eval_lang_safe(expr, env),
