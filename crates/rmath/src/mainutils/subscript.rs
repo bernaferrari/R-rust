@@ -816,7 +816,7 @@ unsafe fn logicalSubscript(
         // `ns` (not merely to the count of TRUEs, which could leave the
         // returned indices out of range of the grown vector).
         let canstretch = *stretch > 0;
-        if ns <= 0 || (nx <= 0 && ns > 0) {
+        if ns <= 0 || (nx == 0 && ns == 1) {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
         if !canstretch && ns > nx {
