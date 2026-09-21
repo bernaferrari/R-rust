@@ -6274,6 +6274,88 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
     }
 }
 
+/// `.` on a formula RHS is every data column except the response.
+unsafe fn expand_formula_dot(form: SEXP, data: SEXP) {
+    unsafe {
+        if data.is_null()
+            || data == R_NilValue()
+            || (TYPEOF(data) != SEXPTYPE::VECSXP && TYPEOF(data) != SEXPTYPE::LISTSXP)
+        {
+            return;
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            data,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) == 0 {
+            return;
+        }
+        let response = CADR(form);
+        let response_name = if TYPEOF(response) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(response)))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        };
+        let mut cols = Vec::new();
+        for i in 0..XLENGTH(names) {
+            let name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
+                .to_string_lossy()
+                .into_owned();
+            if name != response_name {
+                cols.push(name);
+            }
+        }
+        if cols.is_empty() {
+            return;
+        }
+        let rhs = CDR(CDR(form));
+        if rhs.is_null() || rhs == R_NilValue() {
+            return;
+        }
+        SETCAR(rhs, replace_formula_dot(CAR(rhs), &cols));
+    }
+}
+
+unsafe fn replace_formula_dot(expr: SEXP, cols: &[String]) -> SEXP {
+    unsafe {
+        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
+                .to_string_lossy()
+                .into_owned();
+            if name == "." {
+                return plus_chain(cols);
+            }
+            return expr;
+        }
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP {
+            let mut cell = CDR(expr);
+            while !cell.is_null() && cell != R_NilValue() {
+                SETCAR(cell, replace_formula_dot(CAR(cell), cols));
+                cell = CDR(cell);
+            }
+        }
+        expr
+    }
+}
+
+unsafe fn plus_chain(cols: &[String]) -> SEXP {
+    unsafe {
+        let plus = crate::sexp::symbol::Rf_install(c"+".as_ptr());
+        let mut acc = crate::sexp::symbol::Rf_install(
+            std::ffi::CString::new(cols[0].as_str()).unwrap_or_default().as_ptr(),
+        );
+        for name in &cols[1..] {
+            let sym = crate::sexp::symbol::Rf_install(
+                std::ffi::CString::new(name.as_str()).unwrap_or_default().as_ptr(),
+            );
+            acc = crate::sexp::constructors::Rf_lang3(plus, acc, sym);
+        }
+        acc
+    }
+}
+
 /// GNU `.External(C_termsform, x, specials, data, keep.order, allowDotAsName)`.
 pub unsafe fn termsform(args: SEXP) -> SEXP {
     unsafe {
@@ -6303,6 +6385,11 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
         } else {
             1
         };
+        let data = {
+            let specials = CDR(args);
+            if specials.is_null() { R_NilValue() } else { CAR(CDR(specials)) }
+        };
+        expand_formula_dot(dup, data);
         mark_terms(dup, response)
     }
 }
