@@ -208,6 +208,76 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `dump(list, file, ...)` — write `name <-` deparsed values.
+pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let names = arg_by_name_or_position(args, &["list"], 0);
+        if names.is_null()
+            || names == R_NilValue()
+            || TYPEOF(names) != SEXPTYPE::STRSXP
+            || XLENGTH(names) == 0
+        {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let file_arg = arg_by_name_or_position(args, &["file"], 1);
+        let file = if file_arg.is_null()
+            || file_arg == R_NilValue()
+            || TYPEOF(file_arg) != SEXPTYPE::STRSXP
+            || XLENGTH(file_arg) == 0
+        {
+            String::new()
+        } else {
+            elt_to_string(file_arg, 0)
+        };
+        let envir = arg_by_name_or_position(args, &["envir"], 4);
+        let env = if TYPEOF(envir) == SEXPTYPE::ENVSXP {
+            envir
+        } else {
+            rho
+        };
+        let mut output = String::new();
+        let n = XLENGTH(names);
+        let outnames = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(outnames);
+        for i in 0..n {
+            SET_STRING_ELT(outnames, i, STRING_ELT(names, i));
+            let nm = elt_to_string(names, i);
+            let cname = CString::new(nm.as_str()).unwrap_or_default();
+            let sym = crate::sexp::symbol::Rf_install(cname.as_ptr());
+            let mut val = crate::sexp::envir::R_findVar(sym, env);
+            if val.is_null() || val == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            if TYPEOF(val) == SEXPTYPE::PROMSXP {
+                val = crate::sexp::envir::forcePromise(val);
+            }
+            let lines = deparse_lines(val);
+            if crate::mainutils::deparse::isValidName(cname.as_ptr()) {
+                output.push_str(&format!("{} <-\n", nm));
+            } else {
+                output.push_str(&format!("`{}` <-\n", nm));
+            }
+            output.push_str(&lines.join("\n"));
+            output.push('\n');
+        }
+        if file.is_empty() {
+            if crate::sexp::output::is_capturing() {
+                crate::sexp::output::capture_stdout(&output);
+            } else {
+                print!("{}", output);
+            }
+        } else {
+            std::fs::write(&file, output).unwrap_or_else(|err| {
+                std::panic::panic_any(RError {
+                    message: format!("cannot write dump file '{file}': {err}"),
+                })
+            });
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        outnames
+    }
+}
+
 fn deparse_lines(expr: SEXP) -> Vec<String> {
     unsafe {
         let deparsed = crate::mainutils::deparse::deparse1(

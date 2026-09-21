@@ -4735,6 +4735,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_dget,
     },
     EvaluatedBuiltin {
+        name: "dump",
+        handler: crate::mainutils::essentials::do_dump,
+    },
+    EvaluatedBuiltin {
         name: "packageStartupMessage",
         handler: crate::mainutils::essentials::do_package_startup_message,
     },

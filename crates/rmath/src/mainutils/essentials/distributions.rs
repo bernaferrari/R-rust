@@ -844,41 +844,71 @@ pub unsafe fn do_qweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
-/// R's `df(x, df1, df2, log=FALSE)` — F distribution density.
+/// R's `df(x, df1, df2, ncp, log=FALSE)` — F density.
 pub unsafe fn do_df(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let names = ["x", "df1", "df2", "log"];
-        let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
-        let log_p = dpq_flag(&slots, &filled, 3, false);
-        dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::f_dist::df_inner(v[0], v[1], v[2], lp)
-        })
+        let names = ["x", "df1", "df2", "ncp", "log"];
+        let (slots, filled) = dist_match(args, &names);
+        let x = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
+        let df1 = dpq_num(&slots, &filled, &names, 1, None, DPQ_NONNUM);
+        let df2 = dpq_num(&slots, &filled, &names, 2, None, DPQ_NONNUM);
+        let log_p = dpq_flag(&slots, &filled, 4, false);
+        if dpq_supplied(&slots, &filled, 3) {
+            let ncp = dpq_num(&slots, &filled, &names, 3, None, DPQ_NONNUM);
+            dpq_evaluate(call, &[x, df1, df2, ncp], false, log_p, &mut |v, _, lp| {
+                crate::dist::nf_dist::dnf_inner(v[0], v[1], v[2], v[3], lp)
+            })
+        } else {
+            dpq_evaluate(call, &[x, df1, df2], false, log_p, &mut |v, _, lp| {
+                crate::dist::f_dist::df_inner(v[0], v[1], v[2], lp)
+            })
+        }
     }
 }
 
-/// R's `pf(q, df1, df2, lower.tail=TRUE, log.p=FALSE)` — F distribution CDF.
+/// R's `pf(q, df1, df2, ncp, lower.tail=TRUE, log.p=FALSE)` — F CDF.
 pub unsafe fn do_pf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let names = ["q", "df1", "df2", "lower.tail", "log.p"];
-        let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
-        let lower_tail = dpq_flag(&slots, &filled, 3, true);
-        let log_p = dpq_flag(&slots, &filled, 4, false);
-        dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::f_dist::pf_inner(v[0], v[1], v[2], lt, lp)
-        })
+        let names = ["q", "df1", "df2", "ncp", "lower.tail", "log.p"];
+        let (slots, filled) = dist_match(args, &names);
+        let q = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
+        let df1 = dpq_num(&slots, &filled, &names, 1, None, DPQ_NONNUM);
+        let df2 = dpq_num(&slots, &filled, &names, 2, None, DPQ_NONNUM);
+        let lower_tail = dpq_flag(&slots, &filled, 4, true);
+        let log_p = dpq_flag(&slots, &filled, 5, false);
+        if dpq_supplied(&slots, &filled, 3) {
+            let ncp = dpq_num(&slots, &filled, &names, 3, None, DPQ_NONNUM);
+            dpq_evaluate(call, &[q, df1, df2, ncp], lower_tail, log_p, &mut |v, lt, lp| {
+                crate::dist::nf_dist::pnf_inner(v[0], v[1], v[2], v[3], lt, lp)
+            })
+        } else {
+            dpq_evaluate(call, &[q, df1, df2], lower_tail, log_p, &mut |v, lt, lp| {
+                crate::dist::f_dist::pf_inner(v[0], v[1], v[2], lt, lp)
+            })
+        }
     }
 }
 
-/// R's `qf(p, df1, df2, lower.tail=TRUE, log.p=FALSE)` — F distribution quantile.
+/// R's `qf(p, df1, df2, ncp, lower.tail=TRUE, log.p=FALSE)` — F quantile.
 pub unsafe fn do_qf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let names = ["p", "df1", "df2", "lower.tail", "log.p"];
-        let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
-        let lower_tail = dpq_flag(&slots, &filled, 3, true);
-        let log_p = dpq_flag(&slots, &filled, 4, false);
-        dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::f_dist::qf_inner(v[0], v[1], v[2], lt, lp)
-        })
+        let names = ["p", "df1", "df2", "ncp", "lower.tail", "log.p"];
+        let (slots, filled) = dist_match(args, &names);
+        let p = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
+        let df1 = dpq_num(&slots, &filled, &names, 1, None, DPQ_NONNUM);
+        let df2 = dpq_num(&slots, &filled, &names, 2, None, DPQ_NONNUM);
+        let lower_tail = dpq_flag(&slots, &filled, 4, true);
+        let log_p = dpq_flag(&slots, &filled, 5, false);
+        if dpq_supplied(&slots, &filled, 3) {
+            let ncp = dpq_num(&slots, &filled, &names, 3, None, DPQ_NONNUM);
+            dpq_evaluate(call, &[p, df1, df2, ncp], lower_tail, log_p, &mut |v, lt, lp| {
+                crate::dist::nf_dist::qnf_inner(v[0], v[1], v[2], v[3], lt, lp)
+            })
+        } else {
+            dpq_evaluate(call, &[p, df1, df2], lower_tail, log_p, &mut |v, lt, lp| {
+                crate::dist::f_dist::qf_inner(v[0], v[1], v[2], lt, lp)
+            })
+        }
     }
 }
 

@@ -46,11 +46,11 @@ no-segfault.Rin	skip	rport-2gpp.5	requires configure-time substitution and isola
 ok-errors.R	pass	-	-
 
 p-qbeta-strict-tst.R	skip	rport-2gpp.2	requires exhaustive beta-distribution accuracy contracts
-p-r-random-tests.R	skip	rport-2gpp.5	requires exhaustive random-generator statistical and long-run checks
+p-r-random-tests.R	pass	-	-
 primitives.R	pass	-	-
 
 print-tests.R	pass	-	-
-r-strict-tst.R	skip	rport-2gpp.5	requires the strict long-running numerical accuracy suite
+r-strict-tst.R	pass	-	-
 reg-BLAS.R	skip	rport-2gpp.2	requires complete BLAS backend and numerical error contracts
 reg-IO.R	skip	rport-2gpp.4	requires complete file, compression, FIFO, and connection behavior
 reg-IO2.R	skip	rport-2gpp.4	requires complete file-system and connection edge behavior

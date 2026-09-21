@@ -493,21 +493,28 @@ pub unsafe fn EncodeRealDrop0(
         let na = na_string_str();
         let formatted = format_real_printf_style(x, w, d, e, false, &na);
 
-        // Drop trailing zeros after decimal point
+        // Drop trailing zeros after the decimal in the mantissa only — GNU
+        // EncodeRealDrop0 must not eat the exponent's units digit (`e-10`).
         let mut trimmed: Vec<u8> = formatted.bytes().collect();
-        if let Some(dot_pos) = trimmed.iter().position(|&b| b == b'.') {
-            // Find the last non-zero digit after the dot
+        let exp_pos = trimmed
+            .iter()
+            .position(|&b| b == b'e' || b == b'E');
+        let mantissa_end = exp_pos.unwrap_or(trimmed.len());
+        if let Some(dot_pos) = trimmed[..mantissa_end].iter().position(|&b| b == b'.') {
             let mut last_nonzero = dot_pos + 1;
-            for (i, &ch) in trimmed.iter().enumerate().skip(dot_pos + 1) {
+            for (i, &ch) in trimmed[..mantissa_end].iter().enumerate().skip(dot_pos + 1) {
                 if ch != b'0' {
                     last_nonzero = i + 1;
                 }
             }
             if last_nonzero == dot_pos + 1 {
-                // All digits after dot are zero; remove them and the dot
+                let exp = trimmed[mantissa_end..].to_vec();
                 trimmed.truncate(dot_pos);
-            } else if last_nonzero < trimmed.len() {
+                trimmed.extend_from_slice(&exp);
+            } else if last_nonzero < mantissa_end {
+                let exp = trimmed[mantissa_end..].to_vec();
                 trimmed.truncate(last_nonzero);
+                trimmed.extend_from_slice(&exp);
             }
         }
 
