@@ -1446,6 +1446,10 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         lo = 0.0;
                         hi = 1.0;
                     }
+                    if lo == hi {
+                        lo -= (lo.abs() * 0.001).max(0.001);
+                        hi += (hi.abs() * 0.001).max(0.001);
+                    }
                     let step = (hi - lo) / nbins as f64;
                     for i in 0..=nbins {
                         break_pts.push(lo + i as f64 * step);

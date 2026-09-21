@@ -140,6 +140,9 @@ unsafe extern "C-unwind" fn c_approx(
 ) -> SEXP {
     unsafe { super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm) }
 }
+unsafe extern "C-unwind" fn c_zeroin2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { super::zeroin::zeroin2(call, op, args, env) }
+}
 
 /// GNU stats `C_cov` — Pearson covariance, complete/everything NA handling.
 unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> SEXP {
@@ -389,8 +392,8 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases", "C_influence",
-    "C_cov", "C_cor", "C_doD", "C_deriv", "C_fft", "C_mvfft", "C_ApproxTest", "C_Approx",
-    "C_call_dqags", "C_call_dqagi",
+    "C_cov", "C_cor", "C_doD", "C_deriv", "C_fft", "C_mvfft",
+    "C_ApproxTest", "C_Approx", "C_zeroin2", "C_call_dqags", "C_call_dqagi",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -442,6 +445,9 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "Approx" => as_dl(
             c_approx
                 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "zeroin2" => as_dl(
+            c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
         ),
         _ => super::distn::lookup_call(name),
     }

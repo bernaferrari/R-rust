@@ -1154,6 +1154,10 @@ unsafe fn stringSubscript(
         for i in 0..ns {
             let mut sub: R_xlen_t = 0;
             let si = STRING_ELT(s, i);
+            if si == crate::sexp::globals::R_NaString() {
+                *pindx.add(i as usize) = crate::sexp::ffi::NA_INTEGER;
+                continue;
+            }
             if is_non_null_string(si) {
                 let sbytes = std::ffi::CStr::from_ptr(CHAR(si)).to_bytes();
                 if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
@@ -1162,7 +1166,7 @@ unsafe fn stringSubscript(
                         if is_non_null_string(name_j) {
                             let nbytes =
                                 unsafe { std::ffi::CStr::from_ptr(CHAR(name_j)) }.to_bytes();
-                            if nbytes == sbytes {
+                            if !sbytes.is_empty() && nbytes == sbytes {
                                 sub = j + 1;
                                 break;
                             }

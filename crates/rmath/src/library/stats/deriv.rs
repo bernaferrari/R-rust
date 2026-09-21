@@ -182,6 +182,30 @@ unsafe fn deriv_expr(expr: SEXP, var: SEXP) -> SEXP {
                             simplify(sym("^"), a, constant(as_real(b) - 1.0)),
                         ),
                     )
+                } else if head == sym("gamma") {
+                    simplify(
+                        sym("*"),
+                        deriv_expr(a, var),
+                        simplify(sym("*"), expr, simplify(sym("digamma"), a, R_MissingArg())),
+                    )
+                } else if head == sym("lgamma") {
+                    simplify(sym("*"), deriv_expr(a, var), simplify(sym("digamma"), a, R_MissingArg()))
+                } else if head == sym("digamma") {
+                    simplify(sym("*"), deriv_expr(a, var), simplify(sym("trigamma"), a, R_MissingArg()))
+                } else if head == sym("trigamma") {
+                    simplify(
+                        sym("*"),
+                        deriv_expr(a, var),
+                        Rf_lang3(sym("psigamma"), a, Rf_ScalarInteger(2)),
+                    )
+                } else if head == sym("psigamma") {
+                    let order = if b == R_MissingArg() { Rf_ScalarInteger(1) } else { b };
+                    let next = if is_numeric_const(order) {
+                        Rf_ScalarInteger(as_real(order) as i32 + 1)
+                    } else {
+                        Rf_lang3(sym("+"), order, Rf_ScalarInteger(1))
+                    };
+                    simplify(sym("*"), deriv_expr(a, var), Rf_lang3(sym("psigamma"), a, next))
                 } else if head == sym("sin") {
                     simplify(sym("*"), simplify(sym("cos"), a, R_MissingArg()), deriv_expr(a, var))
                 } else if head == sym("cos") {

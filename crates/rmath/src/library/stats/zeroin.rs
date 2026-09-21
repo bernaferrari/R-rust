@@ -371,6 +371,67 @@ pub unsafe fn do_nlminb(
     }
 }
 
+struct ZeroinCall {
+    f: crate::sexp::ffi::SEXP,
+    env: crate::sexp::ffi::SEXP,
+}
+
+unsafe extern "C" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
+    unsafe {
+        let call = &*(info as *const ZeroinCall);
+        let arg = crate::sexp::constructors::Rf_ScalarReal(x);
+        let _a = crate::sexp::protect::protect(arg);
+        let expr = crate::sexp::constructors::Rf_lang2(call.f, arg);
+        let _e = crate::sexp::protect::protect(expr);
+        let result = crate::eval::eval::Rf_eval(expr, call.env);
+        crate::mainutils::coerce::asReal(result)
+    }
+}
+
+/// `.External2(C_zeroin2, f, lower, upper, f.lower, f.upper, tol, maxiter)`.
+pub unsafe fn zeroin2(
+    _call: crate::sexp::ffi::SEXP,
+    _op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    env: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    use crate::sexp::accessors::{CAR, CDR, REAL};
+    use crate::sexp::constructors::Rf_allocVector;
+    use crate::sexp::ffi::SEXPTYPE;
+    unsafe {
+        let mut a = CDR(args);
+        let f = CAR(a);
+        a = CDR(a);
+        let lower = crate::mainutils::coerce::asReal(CAR(a));
+        a = CDR(a);
+        let upper = crate::mainutils::coerce::asReal(CAR(a));
+        a = CDR(a);
+        let fa = crate::mainutils::coerce::asReal(CAR(a));
+        a = CDR(a);
+        let fb = crate::mainutils::coerce::asReal(CAR(a));
+        a = CDR(a);
+        let mut tol = crate::mainutils::coerce::asReal(CAR(a));
+        a = CDR(a);
+        let mut maxit = crate::mainutils::coerce::asInteger(CAR(a));
+        let info = ZeroinCall { f, env };
+        let root = R_zeroin2(
+            lower,
+            upper,
+            fa,
+            fb,
+            zeroin_r_fn,
+            &info as *const ZeroinCall as *mut c_void,
+            &mut tol,
+            &mut maxit,
+        );
+        let out = Rf_allocVector(SEXPTYPE::REALSXP, 3);
+        *REAL(out) = root;
+        *REAL(out).add(1) = maxit as f64;
+        *REAL(out).add(2) = tol;
+        out
+    }
+}
+
 
 
 

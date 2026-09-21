@@ -3541,6 +3541,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_pmax,
     },
     EvaluatedBuiltin {
+        name: "pmax.int",
+        handler: crate::mainutils::essentials::do_pmax,
+    },
+    EvaluatedBuiltin {
+        name: "pmin.int",
+        handler: crate::mainutils::essentials::do_pmin,
+    },
+    EvaluatedBuiltin {
         name: "which.min",
         handler: crate::mainutils::essentials::do_which_min,
     },
