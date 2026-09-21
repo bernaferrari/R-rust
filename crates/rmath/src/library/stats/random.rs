@@ -337,7 +337,7 @@ unsafe fn fillWithNAs(x: SEXP, n: R_xlen_t, type_: SEXPTYPE) {
                 *REAL(x).add(i as usize) = NA_REAL;
             }
         }
-        eprintln!("NAs produced");
+        crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
     }
 }
 
@@ -560,14 +560,14 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
                     }
                 }
                 if naflag {
-                    eprintln!("NAs produced");
+                    crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
                 }
                 PutRNGstate();
                 drop(x_real_guard);
                 return x_real;
             }
             if naflag {
-                eprintln!("NAs produced");
+                crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
             }
             PutRNGstate();
         }
@@ -657,14 +657,14 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
                     }
                 }
                 if naflag {
-                    eprintln!("NAs produced");
+                    crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
                 }
                 PutRNGstate();
                 drop(x_real_guard);
                 return x_real;
             }
             if naflag {
-                eprintln!("NAs produced");
+                crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
             }
             PutRNGstate();
         }
@@ -768,14 +768,14 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
                     }
                 }
                 if naflag {
-                    eprintln!("NAs produced");
+                    crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
                 }
                 PutRNGstate();
                 drop(x_real_guard);
                 return x_real;
             }
             if naflag {
-                eprintln!("NAs produced");
+                crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
             }
             PutRNGstate();
         }

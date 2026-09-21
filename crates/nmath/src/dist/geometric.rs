@@ -90,31 +90,28 @@ pub fn qgeom_inner(p: f64, prob: f64, lower_tail: bool, log_p: bool) -> f64 {
         return ml_warn_return_nan();
     }
 
-    // R_Q_P01_check(p)
+    // R_Q_P01_check only. GNU's formula gives 0 at prob == 1 for every
+    // finite p (log1p(-1) = -Inf), including p == 1; returning Inf first
+    // made qgeom(1, prob=1) Inf.
     if log_p {
         if p > 0.0 {
             return ml_warn_return_nan();
         }
-        if p == 0.0 {
-            return if lower_tail { ML_POSINF } else { 0.0 };
-        }
-        if p == ML_NEGINF {
-            return if lower_tail { 0.0 } else { ML_POSINF };
-        }
-    } else {
-        if p < 0.0 || p > 1.0 {
-            return ml_warn_return_nan();
-        }
+    } else if !(0.0..=1.0).contains(&p) {
+        return ml_warn_return_nan();
+    }
+
+    if prob == 1.0 {
+        return 0.0;
+    }
+
+    if !log_p {
         if p == 0.0 {
             return if lower_tail { 0.0 } else { ML_POSINF };
         }
         if p == 1.0 {
             return if lower_tail { ML_POSINF } else { 0.0 };
         }
-    }
-
-    if prob == 1.0 {
-        return 0.0;
     }
 
     // R_Q_P01_boundaries(p, 0, ML_POSINF) -- already handled above
