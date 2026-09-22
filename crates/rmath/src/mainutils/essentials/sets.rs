@@ -253,17 +253,45 @@ fn multi_key_indices(
                 });
             }
         }
-        let mut missing = Vec::new();
+        let na_last = !matches!(na_placement, SortNaPlacement::First);
         let mut present = Vec::new();
+        let mut missing = Vec::new();
         for i in 0..n as usize {
-            if keys.iter().any(|key| order_key_is_na(*key, i)) {
-                missing.push(i as R_xlen_t);
-            } else {
-                present.push(i as R_xlen_t);
+            let any_na = keys.iter().any(|key| order_key_is_na(*key, i));
+            if any_na && matches!(na_placement, SortNaPlacement::Remove) {
+                continue;
             }
+            if any_na {
+                missing.push(i as R_xlen_t);
+            }
+            present.push(i as R_xlen_t);
         }
-        present.sort_by(|&a, &b| {
+        // na.last = NA drops incomplete rows. Otherwise NA is only special
+        // on the key being compared, so every row stays in the ordering.
+        let mut rows = if matches!(na_placement, SortNaPlacement::Remove) {
+            present
+        } else {
+            let mut all = Vec::with_capacity(n as usize);
+            all.extend(missing.iter().copied());
+            // missing was recorded but we want every index, once.
+            all.clear();
+            all.extend(0..n);
+            all
+        };
+        rows.sort_by(|&a, &b| {
             for key in keys {
+                let a_na = order_key_is_na(*key, a as usize);
+                let b_na = order_key_is_na(*key, b as usize);
+                if a_na || b_na {
+                    if a_na && b_na {
+                        continue;
+                    }
+                    return if a_na == na_last {
+                        std::cmp::Ordering::Greater
+                    } else {
+                        std::cmp::Ordering::Less
+                    };
+                }
                 let mut ordering = order_key_cmp(*key, a as usize, b as usize);
                 if decreasing {
                     ordering = ordering.reverse();
@@ -274,17 +302,7 @@ fn multi_key_indices(
             }
             std::cmp::Ordering::Equal
         });
-        match na_placement {
-            SortNaPlacement::First => {
-                missing.extend(present);
-                missing
-            }
-            SortNaPlacement::Last | SortNaPlacement::Keep => {
-                present.extend(missing);
-                present
-            }
-            SortNaPlacement::Remove => present,
-        }
+        rows
     }
 }
 
