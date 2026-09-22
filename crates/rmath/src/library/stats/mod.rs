@@ -13,6 +13,7 @@ mod distance;
 pub(crate) mod hclust_f;
 pub(crate) mod updateform;
 pub(crate) mod numeric_deriv;
+pub(crate) mod arima_native;
 pub(crate) mod kmns;
 pub(crate) mod deriv;
 pub(crate) mod distn;
