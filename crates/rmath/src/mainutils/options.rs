@@ -1010,16 +1010,20 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut args = args;
 
         let single_arg_tag = if n == 1 { TAG(args) } else { R_NilValue() };
+        let single = if n == 1 { CAR(args) } else { R_NilValue() };
         if n == 1
-            && (isPairList(CAR(args)) != 0 || isVectorList(CAR(args)) != 0)
-            // Untagged evaluator-built pairlists use a null TAG, while
-            // C-built pairlists may use the R_NilValue singleton.  Both are
-            // R's unnamed argument representation and must enable the
-            // `options(list(...))` restore form.
+            && (single == R_NilValue()
+                || isPairList(single) != 0
+                || isVectorList(single) != 0)
             && (single_arg_tag.is_null() || single_arg_tag == R_NilValue())
         {
-            args = CAR(args);
-            n = length(args);
+            // options(NULL) and options(list()) set nothing.
+            args = single;
+            n = if single == R_NilValue() {
+                0
+            } else {
+                length(args)
+            };
         }
 
         let value = Rf_allocVector(SEXPTYPE::VECSXP, n);
