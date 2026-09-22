@@ -121,7 +121,7 @@ unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
 // fminfn -- objective function callback for optim
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_double {
+unsafe extern "C-unwind" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_double {
     unsafe {
         let os = &mut *(ex as *mut OptStruct);
         let x = Rf_allocVector(SEXPTYPE::REALSXP, n);
@@ -159,7 +159,7 @@ unsafe extern "C" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_voi
 // fmingr -- gradient callback for optim
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn fmingr(
+unsafe extern "C-unwind" fn fmingr(
     n: c_int,
     p: *mut c_double,
     df: *mut c_double,
@@ -419,7 +419,7 @@ unsafe fn genptry(
     xp: *mut f64,
     t: f64,
     os: *mut OptStruct,
-    fminfn: Option<unsafe extern "C" fn(c_int, *mut f64, *mut std::ffi::c_void) -> f64>,
+    fminfn: Option<unsafe extern "C-unwind" fn(c_int, *mut f64, *mut std::ffi::c_void) -> f64>,
     ex: *mut std::ffi::c_void,
 ) -> f64 {
     unsafe {
@@ -471,7 +471,7 @@ unsafe fn samin(
     n: c_int,
     sb: *mut f64,
     ybest: *mut f64,
-    fminfn: Option<unsafe extern "C" fn(c_int, *mut f64, *mut std::ffi::c_void) -> f64>,
+    fminfn: Option<unsafe extern "C-unwind" fn(c_int, *mut f64, *mut std::ffi::c_void) -> f64>,
     maxit: c_int,
     tmax: c_int,
     temp: f64,
@@ -1106,6 +1106,14 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         ans
     }
+}
+
+pub unsafe extern "C-unwind" fn c_optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { optim(call, op, args, rho) }
+}
+
+pub unsafe extern "C-unwind" fn c_optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { optimhess(call, op, args, rho) }
 }
 
 pub unsafe fn do_optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

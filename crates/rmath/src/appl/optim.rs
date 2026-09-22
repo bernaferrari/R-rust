@@ -16,10 +16,10 @@ use libm::*;
 
 /// Objective function type: fn(n, x, ex) -> f64
 pub type OptimFn =
-    unsafe extern "C" fn(n: std::os::raw::c_int, x: *mut f64, ex: *mut std::ffi::c_void) -> f64;
+    unsafe extern "C-unwind" fn(n: std::os::raw::c_int, x: *mut f64, ex: *mut std::ffi::c_void) -> f64;
 
 /// Gradient function type: fn(n, x, g, ex)
-pub type OptimGr = unsafe extern "C" fn(
+pub type OptimGr = unsafe extern "C-unwind" fn(
     n: std::os::raw::c_int,
     x: *mut f64,
     g: *mut f64,

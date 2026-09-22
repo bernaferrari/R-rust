@@ -6161,6 +6161,67 @@ fn symbol_print_name(sym: SEXP) -> String {
             .into_owned()
     }
 }
+fn formula_constant(expr: SEXP) -> Option<f64> {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() {
+            return None;
+        }
+        if TYPEOF(expr) == SEXPTYPE::INTSXP && XLENGTH(expr) == 1 {
+            let v = *INTEGER(expr);
+            if v == NA_INTEGER {
+                None
+            } else {
+                Some(v as f64)
+            }
+        } else if TYPEOF(expr) == SEXPTYPE::REALSXP && XLENGTH(expr) == 1 {
+            Some(*REAL(expr))
+        } else {
+            None
+        }
+    }
+}
+
+/// `~ x - 1` and `~ x + 0` have no intercept. `+ 1` puts it back.
+fn formula_intercept(expr: SEXP) -> i32 {
+    let mut intercept = 1;
+    note_formula_intercept(expr, 1, &mut intercept);
+    intercept
+}
+
+fn note_formula_intercept(expr: SEXP, sign: i32, intercept: &mut i32) {
+    unsafe {
+        if let Some(value) = formula_constant(expr) {
+            if value == 1.0 {
+                *intercept = if sign < 0 { 0 } else { 1 };
+            } else if value == 0.0 && sign > 0 {
+                *intercept = 0;
+            }
+            return;
+        }
+        if expr.is_null() || TYPEOF(expr) != SEXPTYPE::LANGSXP {
+            return;
+        }
+        let op = symbol_print_name(CAR(expr));
+        if op == "+" {
+            let mut cell = CDR(expr);
+            while !cell.is_null() && cell != R_NilValue() {
+                note_formula_intercept(CAR(cell), sign, intercept);
+                cell = CDR(cell);
+            }
+        } else if op == "-" {
+            let n = crate::sexp::constructors::Rf_length(expr);
+            if n == 2 {
+                note_formula_intercept(CADR(expr), -sign, intercept);
+            } else if n >= 3 {
+                note_formula_intercept(CADR(expr), sign, intercept);
+                note_formula_intercept(CADDR(expr), -sign, intercept);
+            }
+        } else if op == "(" {
+            note_formula_intercept(CADR(expr), sign, intercept);
+        }
+    }
+}
+
 
 fn formula_response_name(form: SEXP) -> String {
     unsafe {
@@ -6196,11 +6257,6 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             crate::sexp::symbol::Rf_install(c"response".as_ptr()),
             Rf_ScalarInteger(response),
         );
-        crate::sexp::attrib_core::setAttrib(
-            form,
-            crate::sexp::symbol::Rf_install(c"intercept".as_ptr()),
-            Rf_ScalarInteger(1),
-        );
         let mut labels = Vec::new();
         // Term labels come from the RHS. The response expression
         // (y1 - y2) must not contribute covariates.
@@ -6209,6 +6265,11 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
         } else {
             form
         };
+        crate::sexp::attrib_core::setAttrib(
+            form,
+            crate::sexp::symbol::Rf_install(c"intercept".as_ptr()),
+            Rf_ScalarInteger(formula_intercept(rhs)),
+        );
         let mut term_nodes: Vec<SEXP> = Vec::new();
         collect_term_labels(rhs, &mut labels, &mut term_nodes, 1);
         let lab = Rf_allocVector3(SEXPTYPE::STRSXP, labels.len() as i64);
