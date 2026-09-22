@@ -1523,8 +1523,8 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let bn = XLENGTH(breaks_arg);
                 if bn == 1 {
                     let nbins = elt_real_safe(breaks_arg, 0) as i64;
-                    if nbins < 1 {
-                        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+                    if nbins < 2 {
+                        base_error("invalid number of intervals".to_string());
                     }
                     let mut lo = f64::INFINITY;
                     let mut hi = f64::NEG_INFINITY;
@@ -1543,16 +1543,25 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         lo = 0.0;
                         hi = 1.0;
                     }
-                    if lo == hi {
-                        lo -= (lo.abs() * 0.001).max(0.001);
-                        hi += (hi.abs() * 0.001).max(0.001);
-                    }
-                    let step = (hi - lo) / nbins as f64;
-                    for i in 0..=nbins {
-                        break_pts.push(lo + i as f64 * step);
-                    }
-                    if let Some(last) = break_pts.last_mut() {
-                        *last += step * 0.001;
+                    let mut dx = hi - lo;
+                    if dx == 0.0 {
+                        dx = if lo != 0.0 { lo.abs() } else { 1.0 };
+                        let start = lo - dx / 1000.0;
+                        let end = hi + dx / 1000.0;
+                        let step = (end - start) / nbins as f64;
+                        for i in 0..=nbins {
+                            break_pts.push(start + i as f64 * step);
+                        }
+                    } else {
+                        // seq from the range, then pull the outer breaks
+                        // past the data so the minimum and maximum are inside.
+                        let step = dx / nbins as f64;
+                        for i in 0..=nbins {
+                            break_pts.push(lo + i as f64 * step);
+                        }
+                        break_pts[0] = lo - dx / 1000.0;
+                        let last = break_pts.len() - 1;
+                        break_pts[last] = hi + dx / 1000.0;
                     }
                 } else {
                     for i in 0..bn {
