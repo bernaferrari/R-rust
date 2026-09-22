@@ -344,3 +344,51 @@ pub unsafe fn do_kmeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// `.Fortran(C_kmns, ...)`: Hartigan-Wong (AS 136).
+pub unsafe extern "C" fn c_kmns(
+    x: *mut std::ffi::c_void,
+    m: *mut std::ffi::c_void,
+    p: *mut std::ffi::c_void,
+    centers: *mut std::ffi::c_void,
+    k: *mut std::ffi::c_void,
+    c1: *mut std::ffi::c_void,
+    c2: *mut std::ffi::c_void,
+    nc: *mut std::ffi::c_void,
+    an1: *mut std::ffi::c_void,
+    an2: *mut std::ffi::c_void,
+    ncp: *mut std::ffi::c_void,
+    d: *mut std::ffi::c_void,
+    itran: *mut std::ffi::c_void,
+    live: *mut std::ffi::c_void,
+    iter: *mut std::ffi::c_void,
+    wss: *mut std::ffi::c_void,
+    ifault: *mut std::ffi::c_void,
+) {
+    use std::os::raw::c_int;
+    unsafe {
+        let mm = *(m as *const c_int);
+        let nn = *(p as *const c_int);
+        let kk = *(k as *const c_int);
+        super::kmns::kmns(
+            std::slice::from_raw_parts_mut(x as *mut f64, (mm * nn) as usize),
+            mm,
+            nn,
+            std::slice::from_raw_parts_mut(centers as *mut f64, (kk * nn) as usize),
+            kk,
+            std::slice::from_raw_parts_mut(c1 as *mut c_int, mm as usize),
+            std::slice::from_raw_parts_mut(c2 as *mut c_int, mm as usize),
+            std::slice::from_raw_parts_mut(nc as *mut c_int, kk as usize),
+            std::slice::from_raw_parts_mut(an1 as *mut f64, kk as usize),
+            std::slice::from_raw_parts_mut(an2 as *mut f64, kk as usize),
+            std::slice::from_raw_parts_mut(ncp as *mut c_int, kk as usize),
+            std::slice::from_raw_parts_mut(d as *mut f64, mm as usize),
+            std::slice::from_raw_parts_mut(itran as *mut c_int, (kk + 1) as usize),
+            std::slice::from_raw_parts_mut(live as *mut c_int, kk as usize),
+            &mut *(iter as *mut c_int),
+            std::slice::from_raw_parts_mut(wss as *mut f64, kk as usize),
+            &mut *(ifault as *mut c_int),
+        );
+    }
+}
+
+

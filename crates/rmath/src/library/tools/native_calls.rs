@@ -75,6 +75,13 @@ pub fn lookup_c(name: &str) -> DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
         "Renctest" => as_dl(c_renctest as unsafe extern "C" fn(*mut std::ffi::c_void)),
+        "kmns" => as_dl(crate::library::stats::kmeans::c_kmns as unsafe extern "C" fn(
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void,
+        )),
         _ => None,
     }
 }

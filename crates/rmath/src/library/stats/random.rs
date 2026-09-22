@@ -440,7 +440,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases", "C_influence",
     "C_cov", "C_cor", "C_doD", "C_deriv", "C_fft", "C_mvfft",
-    "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_call_dqags", "C_call_dqagi",
+    "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {

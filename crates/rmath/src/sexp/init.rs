@@ -1109,6 +1109,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "as.array", include_str!("gnu_as_array.R"));
         eval_base_binding(base_env, "as.array.default", include_str!("gnu_as_array_default.R"));
         eval_base_binding(base_env, "provideDimnames", include_str!("gnu_provide_dimnames.R"));
+        eval_base_binding(base_env, "kmeans", include_str!("gnu_kmeans.R"));
 
         // GNU utils/R/sourceutils.R: getSrcref for rematched S4 methods
         // (reg-S4.R 638). Lives in utils; install in base so source() tests
