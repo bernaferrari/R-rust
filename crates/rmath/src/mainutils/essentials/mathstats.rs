@@ -14740,6 +14740,11 @@ pub unsafe fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             // from the elements, parent = emptyenv() (whisker's partials
             // path relies on this).
             let n = XLENGTH(x);
+            let env = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 0);
+            let _env_guard = protect(env);
+            if n == 0 {
+                return env;
+            }
             let names =
                 crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
             let names_ok = !names.is_null()
@@ -14756,8 +14761,6 @@ pub unsafe fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
                         .to_string(),
                 });
             }
-            let env = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 0);
-            let _env_guard = protect(env);
             for i in 0..n {
                 let value = if TYPEOF(x) == SEXPTYPE::VECSXP {
                     crate::sexp::accessors::VECTOR_ELT(x, i as i64)

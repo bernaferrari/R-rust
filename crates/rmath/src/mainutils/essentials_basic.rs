@@ -2089,8 +2089,10 @@ pub unsafe fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
         for (i, (_, value)) in entries.iter().enumerate() {
             SET_VECTOR_ELT(result, i as R_xlen_t, *value);
         }
-        let names_vec = string_vector(&names);
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
+        if !names.is_empty() {
+            let names_vec = string_vector(&names);
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
+        }
         result
     }
 }
