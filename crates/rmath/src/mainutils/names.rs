@@ -3701,6 +3701,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"rapply\0",
+        None,
+        0,
+        11,
+        5,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"Version\0",
         None,
         0,
@@ -5232,6 +5240,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "islistfactor" => Some(crate::mainutils::apply::do_islistfactor),
         "lapply" => Some(crate::mainutils::apply::do_lapply),
         "vapply" => Some(crate::mainutils::apply::do_vapply),
+        "rapply" => Some(crate::mainutils::apply::do_rapply),
         "array" => Some(crate::mainutils::array::do_array),
         "paste" | "paste0" => Some(crate::mainutils::paste_impl::do_paste),
         "unique" => Some(crate::mainutils::essentials::do_unique),

@@ -781,6 +781,31 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "as.expression.default",
             "function(x, ...) .Internal(as.vector(x, \"expression\"))",
         );
+        eval_base_binding(base_env, "labels", "function(object, ...) UseMethod(\"labels\")");
+        eval_base_binding(
+            base_env,
+            "labels.default",
+            "function(object, ...) {\n    if(length(d <- dim(object))) {\n        nt <- dimnames(object)\n        if(is.null(nt)) nt <- vector(\"list\", length(d))\n        for(i in seq_along(d))\n            if(!length(nt[[i]])) nt[[i]] <- as.character(seq_len(d[i]))\n    } else {\n        nt <- names(object)\n        if(!length(nt)) nt <- as.character(seq_along(object))\n    }\n    nt\n}",
+        );
+        eval_base_binding(
+            base_env,
+            "rapply",
+            "function(object, f, classes = \"ANY\", deflt = NULL, how = c(\"unlist\", \"replace\", \"list\"), ...) {\n\
+             how <- match.arg(how)\n\
+             res <- .Internal(rapply(object, f, classes, deflt, how))\n\
+             if (how == \"unlist\") unlist(res, recursive = TRUE) else res\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "labels.dendrogram",
+            "function(object, ...) {\n    if(is.list(object))\n        rapply(object, attr, which = \"label\")\n    else\n        attr(object, \"label\")\n}",
+        );
+        eval_base_binding(
+            base_env,
+            "dendrapply",
+            "function(X, FUN, ...) {\n    FUN <- match.fun(FUN)\n    if (!inherits(X, \"dendrogram\")) stop(\"'X' is not a dendrogram\")\n    Napply <- function(d) {\n        r <- FUN(d, ...)\n        if (!is.leaf(d)) {\n            if (!is.list(r)) r <- as.list(r)\n            if (length(r) < (n <- length(d))) r[seq_len(n)] <- vector(\"list\", n)\n            r[] <- lapply(d, Napply)\n        }\n        r\n    }\n    Napply(X)\n}",
+        );
         eval_base_binding(base_env, "match.fun", include_str!("gnu_match_fun.R"));
         eval_base_binding(base_env, "summaryRprof", include_str!("gnu_summary_rprof.R"));
         eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));
