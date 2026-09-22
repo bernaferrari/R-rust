@@ -1753,6 +1753,9 @@ pub(crate) unsafe fn load_package_namespace(
             if package == "stats" {
                 crate::library::stats::random::install_stats_call_symbols(env);
             }
+            if package == "utils" {
+                crate::library::utils::install_utils_call_symbols(env);
+            }
 
             let directives = read_namespace_directives(package_dir)?;
             ensure_namespace_info(package, package_dir, env, directives.as_ref());

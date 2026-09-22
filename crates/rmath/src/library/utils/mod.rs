@@ -6,4 +6,31 @@ mod io;
 mod size;
 mod sock;
 mod stubs;
+
+pub(crate) unsafe fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
+    match name {
+        "countfields" | "C_countfields" => Some(unsafe {
+            std::mem::transmute::<
+                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
+                _,
+            >(c_countfields)
+        }),
+        _ => None,
+    }
+}
+
+unsafe extern "C-unwind" fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe { io::countfields(args) }
+}
+
+pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
+    unsafe {
+        let cname = std::ffi::CString::new("C_countfields").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(cname.as_ptr()),
+            crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
+            env,
+        );
+    }
+}
 mod utils;
