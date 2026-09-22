@@ -2814,9 +2814,30 @@ pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
-        let call_args = Rf_cons(x, rest);
-        let _call_args = protect(call_args);
-        return format_numeric_vector(x, XLENGTH(x), call_args);
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _out = protect(out);
+        for i in 0..n {
+            let elt = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                Rf_ScalarInteger(*INTEGER(x).add(i as usize))
+            } else if TYPEOF(x) == SEXPTYPE::REALSXP {
+                Rf_ScalarReal(*REAL(x).add(i as usize))
+            } else if TYPEOF(x) == SEXPTYPE::STRSXP {
+                let one = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                SET_STRING_ELT(one, 0, STRING_ELT(x, i));
+                one
+            } else {
+                x
+            };
+            let _elt = protect(elt);
+            let call_args = Rf_cons(elt, rest);
+            let _call_args = protect(call_args);
+            let formatted = format_numeric_vector(elt, 1, call_args);
+            if TYPEOF(formatted) == SEXPTYPE::STRSXP && XLENGTH(formatted) > 0 {
+                SET_STRING_ELT(out, i, STRING_ELT(formatted, 0));
+            }
+        }
+        return out;
         let mut big_mark = String::new();
         let mut decimal_mark = ".".to_string();
         let mut zero_print: Option<String> = None;
