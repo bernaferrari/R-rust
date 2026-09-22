@@ -463,20 +463,45 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
         let object = crate::eval::eval::Rf_eval(CAR(args), rho);
         let _object_eval = protect(object);
-        let name_arg = CAR(CDR(args));
-        let name_arg = if TYPEOF(name_arg) == SEXPTYPE::PROMSXP {
-            let forced = crate::eval::eval::Rf_eval(name_arg, rho);
-            let _forced = protect(forced);
-            forced
-        } else {
-            name_arg
-        };
-        let field = replacement_name(name_arg);
-        let value = if CDR(CDR(args)).is_null() || CDR(CDR(args)) == R_NilValue() {
+        let mut name_arg = CAR(CDR(args));
+        let mut value = if CDR(CDR(args)).is_null() || CDR(CDR(args)) == R_NilValue() {
             R_NilValue()
         } else {
-            crate::eval::eval::Rf_eval(CAR(CDR(CDR(args))), rho)
+            CAR(CDR(CDR(args)))
         };
+        // NextMethod rematches `$<-` onto the method formals, so the
+        // primitive argument list can be (x, fun, value) while the call
+        // still has the user's name and the value to store.
+        if !_call.is_null() && _call != R_NilValue() {
+            let call_name = CAR(CDR(CDR(_call)));
+            let call_value = CAR(CDR(CDR(CDR(_call))));
+            if !call_name.is_null()
+                && (TYPEOF(call_name) == SEXPTYPE::SYMSXP
+                    || TYPEOF(call_name) == SEXPTYPE::STRSXP)
+            {
+                name_arg = call_name;
+            }
+            if !call_value.is_null() && call_value != R_NilValue() {
+                value = call_value;
+            }
+        }
+        if TYPEOF(name_arg) == SEXPTYPE::PROMSXP {
+            let expr = crate::sexp::accessors::PRCODE(name_arg);
+            name_arg = if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+                expr
+            } else {
+                let forced = crate::eval::eval::Rf_eval(name_arg, rho);
+                let _forced = protect(forced);
+                forced
+            };
+        }
+        let field = replacement_name(name_arg);
+        if TYPEOF(value) == SEXPTYPE::PROMSXP
+            || TYPEOF(value) == SEXPTYPE::SYMSXP
+            || TYPEOF(value) == SEXPTYPE::LANGSXP
+        {
+            value = crate::eval::eval::Rf_eval(value, rho);
+        }
         let _value_eval = protect(value);
 
         let object = if !object.is_null()
