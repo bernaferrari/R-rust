@@ -772,7 +772,15 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                     message: format!("object '{lookup_name}' not found"),
                 });
             }
-            let value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+            let mut value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+            if !private_lookup
+                && (value == crate::sexp::globals::R_UnboundValue() || value.is_null())
+            {
+                let parent = crate::sexp::accessors::ENCLOS(namespace);
+                if !parent.is_null() && parent != R_NilValue() {
+                    value = crate::sexp::envir::R_findVarInFrame(parent, name);
+                }
+            }
             if value == crate::sexp::globals::R_UnboundValue() {
                 std::panic::panic_any(RError {
                     message: format!(

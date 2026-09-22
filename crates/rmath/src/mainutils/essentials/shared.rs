@@ -2665,7 +2665,7 @@ unsafe fn bind_cached_builtin_imports(
             {
                 continue;
             }
-            crate::sexp::envir::defineVar(symbol, value, package_env);
+            crate::sexp::envir::defineVar(symbol, value, namespace_imports_env(package_env));
         }
         Ok(())
     }
@@ -2760,7 +2760,7 @@ pub(crate) unsafe fn import_namespace_bindings(
             {
                 missing.push(name);
             } else {
-                crate::sexp::envir::defineVar(symbol, value, package_env);
+                crate::sexp::envir::defineVar(symbol, value, namespace_imports_env(package_env));
             }
         }
 
@@ -2776,6 +2776,33 @@ pub(crate) unsafe fn import_namespace_bindings(
         }
     }
 }
+unsafe fn namespace_imports_env(package_env: SEXP) -> SEXP {
+    unsafe {
+        let parent = crate::sexp::accessors::ENCLOS(package_env);
+        let marker = Rf_install(c".__imports__.".as_ptr());
+        if !parent.is_null()
+            && parent != R_NilValue()
+            && TYPEOF(parent) == SEXPTYPE::ENVSXP
+            && crate::sexp::envir::R_findVarInFrame(parent, marker)
+                != crate::sexp::globals::R_UnboundValue()
+        {
+            return parent;
+        }
+        let imports = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            if parent.is_null() {
+                crate::sexp::globals::R_BaseEnv()
+            } else {
+                parent
+            },
+            R_NilValue(),
+        );
+        crate::sexp::envir::defineVar(marker, Rf_ScalarLogical(1), imports);
+        crate::sexp::accessors::SET_ENCLOS(package_env, imports);
+        imports
+    }
+}
+
 
 pub(crate) unsafe fn make_package_attach_env(
     package: &str,
