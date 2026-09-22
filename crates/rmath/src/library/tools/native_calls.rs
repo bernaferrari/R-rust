@@ -1,6 +1,6 @@
 //! Bind ported tools C routines so GNU `.Call(C_doTabExpand, ...)` resolves.
 
-use std::ffi::{CString, c_char};
+use std::ffi::{CString, c_char, c_double, c_int};
 
 use crate::sexp::accessors::TYPEOF;
 use crate::sexp::constructors::Rf_mkString;
@@ -97,6 +97,40 @@ pub fn lookup_c(name: &str) -> DL_FUNC {
         "hcass2" => as_dl(crate::library::stats::hclust_f::c_hcass2 as unsafe extern "C" fn(
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
             *mut std::ffi::c_void, *mut std::ffi::c_void,
+        )),
+        "loess_raw" => {
+            let f: unsafe extern "C" fn(
+                *mut c_double, *mut c_double, *mut c_double, *mut c_double,
+                *mut c_int, *mut c_int, *mut c_double, *mut c_int,
+                *mut c_int, *mut c_int, *mut c_int, *mut c_double,
+                *mut *mut c_char, *mut c_double, *mut c_int, *mut c_int,
+                *mut c_double, *mut c_double, *mut c_double, *mut c_double,
+                *mut c_double, *mut c_double, *mut c_double, *mut c_int,
+            ) = crate::library::stats::loessc::loess_raw;
+            as_dl(f)
+        }
+        "loess_dfit" => {
+            let f: unsafe extern "C" fn(
+                *mut c_double, *mut c_double, *mut c_double, *mut c_double,
+                *mut c_double, *mut c_int, *mut c_int, *mut c_int,
+                *mut c_int, *mut c_int, *mut c_int, *mut c_int,
+                *mut c_double,
+            ) = crate::library::stats::loessc::loess_dfit;
+            as_dl(f)
+        }
+        "loess_ifit" => {
+            let f: unsafe extern "C" fn(
+                *mut c_int, *mut c_int, *mut c_double, *mut c_double,
+                *mut c_double, *mut c_int, *mut c_double, *mut c_double,
+            ) = crate::library::stats::loessc::loess_ifit;
+            as_dl(f)
+        }
+        "lowesw" => as_dl(crate::library::stats::loessc::c_lowesw as unsafe extern "C" fn(
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+        )),
+        "lowesp" => as_dl(crate::library::stats::loessc::c_lowesp as unsafe extern "C" fn(
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
         )),
         _ => None,
     }

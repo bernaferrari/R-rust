@@ -2772,13 +2772,51 @@ fn prettynum_group(int_part: &str, mark: &str, interval: usize) -> String {
     format!("{sign}{out}")
 }
 
+fn pretty_num_split(args: SEXP) -> (SEXP, SEXP) {
+    unsafe {
+        let mut x = R_NilValue();
+        let mut found = false;
+        let mut head = R_NilValue();
+        let mut tail = R_NilValue();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if !found && (name == "x" || name.is_empty()) {
+                x = CAR(cell);
+                found = true;
+            } else {
+                let next = Rf_cons(CAR(cell), R_NilValue());
+                SETTAG(next, tag);
+                if head == R_NilValue() {
+                    head = next;
+                } else {
+                    SETCDR(tail, next);
+                }
+                tail = next;
+            }
+            cell = CDR(cell);
+        }
+        (x, head)
+    }
+}
+
 /// GNU `prettyNum(x, big.mark, decimal.mark)`.
 pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let (x, rest) = pretty_num_split(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
+        let call_args = Rf_cons(x, rest);
+        let _call_args = protect(call_args);
+        return format_numeric_vector(x, XLENGTH(x), call_args);
         let mut big_mark = String::new();
         let mut decimal_mark = ".".to_string();
         let mut zero_print: Option<String> = None;

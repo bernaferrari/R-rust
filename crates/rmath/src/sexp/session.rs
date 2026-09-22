@@ -208,7 +208,10 @@ fn auto_print_visible(value: Sexp<'_>) {
             })
         }
     };
-    if s4 || srcref {
+    let data_frame = unsafe {
+        crate::mainutils::essentials::sexp_has_class(value.clone().as_raw(), "data.frame")
+    };
+    if s4 || srcref || data_frame {
         if let Err(payload) = catch_unwind(AssertUnwindSafe(|| {
             super::output::print_value(value);
         })) {

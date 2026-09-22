@@ -150,9 +150,25 @@ unsafe extern "C-unwind" fn c_zeroin2(call: SEXP, op: SEXP, args: SEXP, env: SEX
     unsafe { super::zeroin::zeroin2(call, op, args, env) }
 }
 
+fn reject_var_on_factor(x: SEXP) {
+    unsafe {
+        if !x.is_null()
+            && x != R_NilValue()
+            && crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) != 0
+        {
+            Rf_error(
+                c"Calling var(x) on a factor x is defunct.\n  Use something like 'all(duplicated(x)[-1L])' to test for a constant vector."
+                    .as_ptr(),
+            );
+        }
+    }
+}
+
 /// GNU stats `C_cov` — Pearson covariance, complete/everything NA handling.
 unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> SEXP {
     unsafe {
+        reject_var_on_factor(x);
+        reject_var_on_factor(y);
         if TYPEOF(kendall) == SEXPTYPE::LGLSXP
             && XLENGTH(kendall) > 0
             && *LOGICAL(kendall) != 0
@@ -237,6 +253,8 @@ unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
 /// variables share, so a variable correlated with itself is exactly 1.
 unsafe fn stats_call_cor(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> SEXP {
     unsafe {
+        reject_var_on_factor(x);
+        reject_var_on_factor(y);
         let kendall = TYPEOF(kendall) == SEXPTYPE::LGLSXP
             && XLENGTH(kendall) > 0
             && *LOGICAL(kendall) != 0;
@@ -446,6 +464,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_ARIMA_transPars", "C_ARIMA_CSS", "C_ARIMA_Like", "C_ARIMA_Invtrans", "C_ARIMA_undoPars", "C_ARIMA_Gradtrans", "C_TSconv", "C_getQ0",
     "C_doD", "C_deriv", "C_fft", "C_mvfft",
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
+    "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_lowesw", "C_lowesp",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {

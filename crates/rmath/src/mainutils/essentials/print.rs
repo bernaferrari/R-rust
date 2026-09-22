@@ -1743,6 +1743,30 @@ fn print_data_frame_show_row_names(args: SEXP) -> bool {
         true
     }
 }
+/// GNU `print.data.frame` leaves character and logical NA unencoded
+/// (`na.encode = FALSE`) and `print.default` renders those as `<NA>`.
+/// Numeric NA stays `NA`.
+fn data_frame_cell_text(col: SEXP, i: R_xlen_t) -> String {
+    unsafe {
+        if col.is_null() {
+            return "NULL".to_string();
+        }
+        let t = TYPEOF(col);
+        if t == SEXPTYPE::STRSXP {
+            let elt = STRING_ELT(col, i);
+            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                return "<NA>".to_string();
+            }
+        } else if t == SEXPTYPE::LGLSXP {
+            let data = LOGICAL(col);
+            if !data.is_null() && *data.add(i as usize) == NA_INTEGER {
+                return "<NA>".to_string();
+            }
+        }
+        elt_to_string(col, i)
+    }
+}
+
 
 fn print_data_frame_column_texts(
     x: SEXP,
@@ -1767,12 +1791,7 @@ fn print_data_frame_column_texts(
             headers.push(header);
             let mut values = Vec::with_capacity(nrow as usize);
             for i in 0..nrow {
-                let val = if col.is_null() {
-                    "NULL".to_string()
-                } else {
-                    elt_to_string(col, i)
-                };
-                values.push(val);
+                values.push(data_frame_cell_text(col, i));
             }
             columns.push(values);
         }
@@ -1799,6 +1818,42 @@ fn emit_print_data_frame_line(line: &str) {
         println!("{line}");
     }
 }
+fn print_empty_data_frame(x: SEXP, ncol: R_xlen_t) {
+    unsafe {
+        if ncol == 0 {
+            let row_names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+            );
+            let n = if !row_names.is_null()
+                && row_names != R_NilValue()
+                && (TYPEOF(row_names) == SEXPTYPE::STRSXP || TYPEOF(row_names) == SEXPTYPE::INTSXP)
+            {
+                XLENGTH(row_names)
+            } else {
+                0
+            };
+            let line = if n == 1 {
+                "data frame with 0 columns and 1 row".to_string()
+            } else {
+                format!("data frame with 0 columns and {n} rows")
+            };
+            emit_print_data_frame_line(&line);
+            return;
+        }
+        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
+        if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0 {
+            let mut line = String::from("[1]");
+            for i in 0..XLENGTH(names) {
+                line.push(' ');
+                line.push_str(&elt_to_string(names, i));
+            }
+            emit_print_data_frame_line(&line);
+        }
+        emit_print_data_frame_line("<0 rows> (or 0-length row.names)");
+    }
+}
+
 
 /// Derive the row labels of a data.frame for printing.
 ///
@@ -1814,15 +1869,19 @@ fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t) -> Vec<String> {
             if t == SEXPTYPE::STRSXP && XLENGTH(row_names) == nrow {
                 return (0..nrow).map(|i| elt_to_string(row_names, i)).collect();
             }
-            if t == SEXPTYPE::INTSXP && XLENGTH(row_names) == nrow {
+            if t == SEXPTYPE::INTSXP && nrow > 0 && XLENGTH(row_names) == nrow {
                 // Compact automatic row names are stored as c(NA_integer_, n);
                 // only a full-length vector of real integers names the rows.
-                let first = *INTEGER(row_names);
-                let is_compact = XLENGTH(row_names) == 2 && first == crate::sexp::ffi::NA_INTEGER;
-                if !is_compact {
-                    return (0..nrow)
-                        .map(|i| INTEGER(row_names).add(i as usize).read().to_string())
-                        .collect();
+                // A length-0 integer vector has a null data pointer.
+                let data = INTEGER(row_names);
+                if !data.is_null() {
+                    let first = *data;
+                    let is_compact = XLENGTH(row_names) == 2 && first == crate::sexp::ffi::NA_INTEGER;
+                    if !is_compact {
+                        return (0..nrow)
+                            .map(|i| data.add(i as usize).read().to_string())
+                            .collect();
+                    }
                 }
             }
         }
@@ -1880,6 +1939,11 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         } else {
             0
         };
+        if ncol == 0 || nrow == 0 {
+            print_empty_data_frame(x, ncol);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
 
         let show_row_names = print_data_frame_show_row_names(args);
         // GNU formats x[seq_len(n0),] so column/label widths ignore omitted rows.

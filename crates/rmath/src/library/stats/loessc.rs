@@ -25,6 +25,338 @@ use crate::sexp::instance::with_required_current_instance;
 
 const GAUSSIAN: c_int = 1;
 const SYMMETRIC: c_int = 0;
+use std::cell::{Cell, RefCell};
+
+thread_local! {
+    static PREDICT_MODEL: RefCell<Option<super::loess::Model>> = const { RefCell::new(None) };
+    /// The pseudovalue refit after `lowesp` must not replace the model
+    /// `predict.loess` interpolates. `simpleLoess` always calls it second.
+    static SKIP_PREDICT_STORE: Cell<bool> = const { Cell::new(false) };
+}
+
+fn loess_median(mut values: Vec<f64>) -> f64 {
+    values.retain(|v| v.is_finite());
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.sort_by(f64::total_cmp);
+    let n = values.len();
+    if n % 2 == 0 {
+        (values[n / 2 - 1] + values[n / 2]) / 2.0
+    } else {
+        values[n / 2]
+    }
+}
+
+fn column_major_rows(x: *mut c_double, n: usize, d: usize) -> Vec<Vec<f64>> {
+    unsafe {
+        (0..n)
+            .map(|i| (0..d).map(|j| *x.add(i + j * n)).collect())
+            .collect()
+    }
+}
+
+fn copy_vec(ptr: *mut c_double, n: usize) -> Vec<f64> {
+    unsafe { (0..n).map(|i| *ptr.add(i)).collect() }
+}
+
+fn surf_text(surf_stat: *mut *mut c_char) -> String {
+    unsafe {
+        if surf_stat.is_null() || (*surf_stat).is_null() {
+            return String::new();
+        }
+        CStr::from_ptr(*surf_stat).to_string_lossy().into_owned()
+    }
+}
+
+fn fit_loess_model(
+    y: *mut c_double,
+    x: *mut c_double,
+    weights: *mut c_double,
+    d: c_int,
+    n: c_int,
+    span: f64,
+    degree: c_int,
+    nonparametric: c_int,
+    drop_square: *mut c_int,
+    cell: f64,
+    interpolate: bool,
+    exact: bool,
+    approximate_trace: bool,
+) -> Result<super::loess::Model, String> {
+    let n = n as usize;
+    let d = d as usize;
+    if n == 0 || d == 0 || y.is_null() || x.is_null() || weights.is_null() {
+        return Err("invalid LOESS arguments".into());
+    }
+    let np = (nonparametric as usize).min(d);
+    let parametric = (0..d).map(|j| j >= np).collect();
+    let drop = unsafe {
+        (0..d)
+            .map(|j| !drop_square.is_null() && *drop_square.add(j) == 1)
+            .collect()
+    };
+    let config = super::loess::Config {
+        span,
+        degree: (degree as usize).min(2),
+        normalize: false,
+        parametric,
+        drop_square: drop,
+        interpolate,
+        cell: if cell.is_finite() && cell > 0.0 { cell } else { 0.2 },
+        iterations: 1,
+        exact,
+        approximate_trace,
+    };
+    super::loess::Model::fit_with_execution(
+        column_major_rows(x, n, d),
+        copy_vec(y, n),
+        copy_vec(weights, n),
+        config,
+        &super::loess::Execution::new(&|| Ok(())),
+    )
+}
+
+fn store_predict_model(model: super::loess::Model) {
+    let skip = SKIP_PREDICT_STORE.with(|flag| flag.replace(false));
+    if skip {
+        return;
+    }
+    PREDICT_MODEL.with(|slot| *slot.borrow_mut() = Some(model));
+}
+
+fn write_fit(dest: *mut c_double, values: &[f64]) {
+    unsafe {
+        if dest.is_null() {
+            return;
+        }
+        for (i, value) in values.iter().enumerate() {
+            *dest.add(i) = *value;
+        }
+    }
+}
+
+fn same_rows(model: &super::loess::Model, queries: &[Vec<f64>]) -> bool {
+    model.x.len() == queries.len()
+        && model
+            .x
+            .iter()
+            .zip(queries)
+            .all(|(left, right)| left.len() == right.len() && left.iter().zip(right).all(|(a, b)| a == b))
+}
+
+fn predict_model(model: &super::loess::Model, queries: &[Vec<f64>]) -> Result<Vec<f64>, String> {
+    if same_rows(model, queries) {
+        return Ok(model.fitted.clone());
+    }
+    model
+        .predict_with_execution(queries, false, &super::loess::Execution::new(&|| Ok(())))
+        .map(|(fitted, _)| fitted)
+}
+fn fail_loess(message: &str) -> ! {
+    let mut bytes = message.as_bytes().to_vec();
+    bytes.push(0);
+    unsafe {
+        crate::main::errors::Rf_error(bytes.as_ptr() as *const c_char);
+        unreachable!();
+    }
+}
+
+fn engine_loess_raw(
+    y: *mut c_double,
+    x: *mut c_double,
+    weights: *mut c_double,
+    robust: *mut c_double,
+    d: *mut c_int,
+    n: *mut c_int,
+    span: *mut c_double,
+    degree: *mut c_int,
+    nonparametric: *mut c_int,
+    drop_square: *mut c_int,
+    cell: *mut c_double,
+    surf_stat: *mut *mut c_char,
+    surface: *mut c_double,
+    parameter: *mut c_int,
+    tr_l: *mut c_double,
+    one_delta: *mut c_double,
+    two_delta: *mut c_double,
+) {
+    unsafe {
+        let surf = surf_text(surf_stat);
+        let weight_ptr = if surf.ends_with("/none") { robust } else { weights };
+        let span_v = *span;
+        let cell_v = if span_v > 0.0 { *cell / span_v } else { *cell };
+        let model = fit_loess_model(
+            y,
+            x,
+            weight_ptr,
+            *d,
+            *n,
+            span_v,
+            *degree,
+            *nonparametric,
+            drop_square,
+            cell_v,
+            surf.starts_with("interpolate"),
+            surf.ends_with("/exact"),
+            surf.contains("2.approx"),
+        );
+        let model = match model {
+            Ok(model) => model,
+            Err(message) => fail_loess(&message),
+        };
+        write_fit(surface, &model.fitted);
+        if !tr_l.is_null() {
+            *tr_l = model.trace;
+        }
+        if !one_delta.is_null() {
+            *one_delta = if model.delta1 == 0.0 { 1.0 } else { model.delta1 };
+        }
+        if !two_delta.is_null() {
+            *two_delta = model.delta2;
+        }
+        if !parameter.is_null() {
+            *parameter = *d;
+            *parameter.add(1) = *n;
+            *parameter.add(2) = 1;
+            *parameter.add(3) = 1;
+            *parameter.add(4) = 1;
+            *parameter.add(5) = 1;
+            *parameter.add(6) = 1;
+        }
+        store_predict_model(model);
+    }
+}
+
+fn engine_loess_dfit(
+    y: *mut c_double,
+    x: *mut c_double,
+    x_evaluate: *mut c_double,
+    weights: *mut c_double,
+    span: *mut c_double,
+    degree: *mut c_int,
+    nonparametric: *mut c_int,
+    drop_square: *mut c_int,
+    d: *mut c_int,
+    n: *mut c_int,
+    m: *mut c_int,
+    fit: *mut c_double,
+) {
+    unsafe {
+        let model = fit_loess_model(
+            y,
+            x,
+            weights,
+            *d,
+            *n,
+            *span,
+            *degree,
+            *nonparametric,
+            drop_square,
+            0.2,
+            false,
+            false,
+            false,
+        );
+        let model = match model {
+            Ok(model) => model,
+            Err(message) => fail_loess(&message),
+        };
+        let queries = column_major_rows(x_evaluate, *m as usize, *d as usize);
+        match predict_model(&model, &queries) {
+            Ok(values) => write_fit(fit, &values),
+            Err(message) => fail_loess(&message),
+        }
+    }
+}
+
+fn engine_loess_ifit(m: *mut c_int, x_evaluate: *mut c_double, fit: *mut c_double) {
+    let model = PREDICT_MODEL.with(|slot| slot.borrow().clone());
+    let Some(model) = model else {
+        fail_loess("no LOESS model to interpolate");
+    };
+    unsafe {
+        let d = model.x.first().map(Vec::len).unwrap_or(0);
+        let queries = column_major_rows(x_evaluate, *m as usize, d);
+        match predict_model(&model, &queries) {
+            Ok(values) => write_fit(fit, &values),
+            Err(message) => fail_loess(&message),
+        }
+    }
+}
+
+pub unsafe extern "C" fn c_lowesw(
+    residuals: *mut std::ffi::c_void,
+    n: *mut std::ffi::c_void,
+    robust: *mut std::ffi::c_void,
+    _iwork: *mut std::ffi::c_void,
+) {
+    unsafe {
+        let residuals = residuals as *mut c_double;
+        let robust = robust as *mut c_double;
+        let n = *(n as *mut c_int) as usize;
+        let abs: Vec<f64> = (0..n).map(|i| (*residuals.add(i)).abs()).collect();
+        let cmad = 6.0 * loess_median(abs);
+        for i in 0..n {
+            let r = (*residuals.add(i)).abs();
+            *robust.add(i) = if cmad < f64::MIN_POSITIVE || r <= cmad * 0.001 {
+                1.0
+            } else if r > cmad * 0.999 {
+                0.0
+            } else {
+                (1.0 - (r / cmad).powi(2)).powi(2)
+            };
+        }
+    }
+}
+
+pub unsafe extern "C" fn c_lowesp(
+    n: *mut std::ffi::c_void,
+    y: *mut std::ffi::c_void,
+    fitted: *mut std::ffi::c_void,
+    weights: *mut std::ffi::c_void,
+    robust: *mut std::ffi::c_void,
+    _iwork: *mut std::ffi::c_void,
+    pseudo: *mut std::ffi::c_void,
+) {
+    unsafe {
+        let n = *(n as *mut c_int) as usize;
+        let y = y as *mut c_double;
+        let fitted = fitted as *mut c_double;
+        let weights = weights as *mut c_double;
+        let robust = robust as *mut c_double;
+        let pseudo = pseudo as *mut c_double;
+        let residuals: Vec<f64> = (0..n).map(|i| *y.add(i) - *fitted.add(i)).collect();
+        let mad = loess_median(
+            residuals
+                .iter()
+                .enumerate()
+                .map(|(i, r)| r.abs() * (*weights.add(i)).sqrt())
+                .collect(),
+        );
+        let c = (6.0 * mad).powi(2) / 5.0;
+        let scale = if c == 0.0 {
+            1.0
+        } else {
+            n as f64
+                / (0..n)
+                    .map(|i| {
+                        let r = residuals[i];
+                        let w = *weights.add(i);
+                        let rw = *robust.add(i);
+                        (1.0 - r * r * w / c) * rw.sqrt()
+                    })
+                    .sum::<f64>()
+                    .max(f64::MIN_POSITIVE)
+        };
+        for i in 0..n {
+            *pseudo.add(i) = *fitted.add(i) + scale * *robust.add(i) * residuals[i];
+        }
+    }
+    SKIP_PREDICT_STORE.with(|flag| flag.set(true));
+}
+
+
 
 pub(crate) struct LoessWorkspaceState {
     iv: Vec<c_int>,
@@ -218,7 +550,7 @@ fn strcmp_c(s1: &str, s2: &str) -> bool {
     s1 == s2
 }
 
-pub unsafe fn loess_raw(
+pub unsafe extern "C" fn loess_raw(
     y: *mut c_double,
     x: *mut c_double,
     weights: *mut c_double,
@@ -245,6 +577,11 @@ pub unsafe fn loess_raw(
     setLf: *mut c_int,
 ) {
     unsafe {
+        engine_loess_raw(
+            y, x, weights, robust, d, n, span, degree, nonparametric, drop_square, cell,
+            surf_stat, surface, parameter, trL, one_delta, two_delta,
+        );
+        return;
         use crate::main::errors::Rf_error;
 
         let mut i0: c_int = 0;
@@ -414,7 +751,7 @@ pub unsafe fn loess_raw(
     }
 }
 
-pub unsafe fn loess_dfit(
+pub unsafe extern "C" fn loess_dfit(
     y: *mut c_double,
     x: *mut c_double,
     x_evaluate: *mut c_double,
@@ -430,6 +767,11 @@ pub unsafe fn loess_dfit(
     fit: *mut c_double,
 ) {
     unsafe {
+        let _ = (sum_drop_sqr,);
+        engine_loess_dfit(
+            y, x, x_evaluate, weights, span, degree, nonparametric, drop_square, d, n, m, fit,
+        );
+        return;
         let mut i0: c_int = 0;
         let mut d0: c_double = 0.0;
 
@@ -537,7 +879,7 @@ pub unsafe fn loess_dfitse(
     }
 }
 
-pub unsafe fn loess_ifit(
+pub unsafe extern "C" fn loess_ifit(
     parameter: *mut c_int,
     a: *mut c_int,
     xi: *mut c_double,
@@ -548,6 +890,9 @@ pub unsafe fn loess_ifit(
     fit: *mut c_double,
 ) {
     unsafe {
+        let _ = (parameter, a, xi, vert, vval);
+        engine_loess_ifit(m, x_evaluate, fit);
+        return;
         loess_grow(parameter, a, xi, vert, vval);
         let (iv, v) = with_loess_workspace_state(LoessWorkspaceState::ptrs);
         lowese(iv, v, m, x_evaluate, fit);

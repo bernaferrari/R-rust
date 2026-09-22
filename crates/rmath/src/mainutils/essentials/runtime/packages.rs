@@ -459,8 +459,8 @@ pub unsafe fn do_data(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let packages = package_arg_values(package_arg);
         if topic_arg.is_null() || topic_arg == R_NilValue() || XLENGTH(topic_arg) == 0 {
-            let names = list_package_data_sets(&packages);
-            return string_vector(&names);
+            let items = list_package_data_sets(&packages);
+            return package_data_index(&packages, &items);
         }
 
         let mut loaded = Vec::<String>::new();
@@ -479,3 +479,63 @@ pub unsafe fn do_data(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         string_vector(&loaded)
     }
 }
+fn package_data_index(packages: &[String], items: &[String]) -> SEXP {
+    unsafe {
+        let package_name = packages
+            .first()
+            .cloned()
+            .unwrap_or_else(|| ".".to_string());
+        let n = items.len();
+        let matrix = Rf_allocVector3(SEXPTYPE::STRSXP, (n * 4) as i64);
+        let _matrix = protect(matrix);
+        let package = CString::new(package_name).unwrap_or_default();
+        let empty = CString::new("").unwrap_or_default();
+        for (i, item) in items.iter().enumerate() {
+            let item = CString::new(item.as_str()).unwrap_or_default();
+            SET_STRING_ELT(matrix, i as R_xlen_t, Rf_mkChar(package.as_ptr()));
+            SET_STRING_ELT(matrix, (n + i) as R_xlen_t, Rf_mkChar(empty.as_ptr()));
+            SET_STRING_ELT(matrix, (2 * n + i) as R_xlen_t, Rf_mkChar(item.as_ptr()));
+            SET_STRING_ELT(matrix, (3 * n + i) as R_xlen_t, Rf_mkChar(empty.as_ptr()));
+        }
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dim) = n as i32;
+        *INTEGER(dim).add(1) = 4;
+        crate::sexp::attrib_core::setAttrib(matrix, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        let colnames = string_vector(&[
+            "Package".to_string(),
+            "LibPath".to_string(),
+            "Item".to_string(),
+            "Title".to_string(),
+        ]);
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        SET_VECTOR_ELT(dimnames, 0, R_NilValue());
+        SET_VECTOR_ELT(dimnames, 1, colnames);
+        crate::sexp::attrib_core::setAttrib(
+            matrix,
+            Rf_install(c"dimnames".as_ptr()),
+            dimnames,
+        );
+
+        let out = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _out = protect(out);
+        SET_VECTOR_ELT(out, 0, Rf_mkString(c"Data sets".as_ptr()));
+        SET_VECTOR_ELT(out, 1, R_NilValue());
+        SET_VECTOR_ELT(out, 2, matrix);
+        SET_VECTOR_ELT(out, 3, R_NilValue());
+        let names = string_vector(&[
+            "title".to_string(),
+            "header".to_string(),
+            "results".to_string(),
+            "footer".to_string(),
+        ]);
+        crate::sexp::attrib_core::setAttrib(out, Rf_install(c"names".as_ptr()), names);
+        let class = Rf_mkString(c"packageIQR".as_ptr());
+        crate::sexp::attrib_core::setAttrib(
+            out,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        out
+    }
+}
+

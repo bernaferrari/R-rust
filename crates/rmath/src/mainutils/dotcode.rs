@@ -760,6 +760,35 @@ unsafe fn dispatch_dotcall(fun: DL_FUNC, args: &[SEXP], call: SEXP) -> SEXP {
 
 
 /// Dispatch a .C/.Fortran void function by argument count.
+unsafe fn dispatch_wide(fun: DL_FUNC, args: &[*mut c_void]) -> bool {
+    unsafe {
+        macro_rules! call_n {
+            ($($i:literal),+) => {{
+                let f: unsafe extern "C" fn($(call_n!(@t $i)),+) = std::mem::transmute_copy(&fun);
+                f($(args[$i]),+);
+            }};
+            (@t $i:literal) => { *mut c_void };
+        }
+        match args.len() {
+            11 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+            12 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11),
+            13 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+            14 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13),
+            15 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14),
+            16 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+            18 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
+            19 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18),
+            20 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19),
+            21 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20),
+            22 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21),
+            23 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22),
+            24 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23),
+            _ => return false,
+        }
+        true
+    }
+}
+
 unsafe fn dispatch_dotcode(fun: DL_FUNC, args: &[*mut c_void], call: SEXP) {
     unsafe {
         let _ = call;
@@ -885,7 +914,9 @@ unsafe fn dispatch_dotcode(fun: DL_FUNC, args: &[*mut c_void], call: SEXP) {
                 )
             }
             n if n <= MAX_ARGS => {
-                errorcall(call, "too many arguments in foreign function call");
+                if !dispatch_wide(fun, args) {
+                    errorcall(call, "too many arguments in foreign function call");
+                }
             }
             _ => errorcall(ptr::null_mut(), "too many arguments, sorry"),
         }
