@@ -203,21 +203,6 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if keys.is_null() || keys == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        let mut narg = 0usize;
-        let mut ap = keys;
-        while !ap.is_null() && ap != R_NilValue() {
-            narg += 1;
-            ap = CDR(ap);
-        }
-        if narg > 1 {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "multi-key order() is not yet supported".to_string(),
-            });
-        }
-        let x = CAR(keys);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
         let decreasing = crate::mainutils::coerce::asLogical(decreasing_s) == TRUE;
         let na_placement = {
             let raw = crate::mainutils::coerce::asLogical(nalast);
@@ -227,7 +212,20 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 _ => SortNaPlacement::Last,
             }
         };
-        let ordered_indices = ordered_atomic_indices(x, decreasing, na_placement);
+        let mut key_vecs = Vec::new();
+        let mut ap = keys;
+        while !ap.is_null() && ap != R_NilValue() {
+            key_vecs.push(CAR(ap));
+            ap = CDR(ap);
+        }
+        if key_vecs.is_empty() || key_vecs[0].is_null() || key_vecs[0] == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+        let ordered_indices = if key_vecs.len() == 1 {
+            ordered_atomic_indices(key_vecs[0], decreasing, na_placement)
+        } else {
+            multi_key_indices(&key_vecs, decreasing, na_placement)
+        };
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, ordered_indices.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
@@ -238,6 +236,87 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *dst.add(i) = (orig_idx + 1) as c_int;
         }
         result
+    }
+}
+
+fn multi_key_indices(
+    keys: &[SEXP],
+    decreasing: bool,
+    na_placement: SortNaPlacement,
+) -> Vec<R_xlen_t> {
+    unsafe {
+        let n = XLENGTH(keys[0]);
+        for key in keys.iter().skip(1) {
+            if XLENGTH(*key) != n {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "argument lengths differ".to_string(),
+                });
+            }
+        }
+        let mut missing = Vec::new();
+        let mut present = Vec::new();
+        for i in 0..n as usize {
+            if keys.iter().any(|key| order_key_is_na(*key, i)) {
+                missing.push(i as R_xlen_t);
+            } else {
+                present.push(i as R_xlen_t);
+            }
+        }
+        present.sort_by(|&a, &b| {
+            for key in keys {
+                let mut ordering = order_key_cmp(*key, a as usize, b as usize);
+                if decreasing {
+                    ordering = ordering.reverse();
+                }
+                if ordering != std::cmp::Ordering::Equal {
+                    return ordering;
+                }
+            }
+            std::cmp::Ordering::Equal
+        });
+        match na_placement {
+            SortNaPlacement::First => {
+                missing.extend(present);
+                missing
+            }
+            SortNaPlacement::Last | SortNaPlacement::Keep => {
+                present.extend(missing);
+                present
+            }
+            SortNaPlacement::Remove => present,
+        }
+    }
+}
+
+fn order_key_is_na(key: SEXP, i: usize) -> bool {
+    unsafe {
+        match TYPEOF(key) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                *INTEGER(key).add(i) == NA_INTEGER
+            }
+            t if t == SEXPTYPE::REALSXP => ISNAN(*REAL(key).add(i)),
+            t if t == SEXPTYPE::STRSXP => charsxp_is_na(STRING_ELT(key, i as R_xlen_t)),
+            _ => ISNAN(elt_real_safe(key, i as R_xlen_t)),
+        }
+    }
+}
+
+fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
+    unsafe {
+        match TYPEOF(key) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                (*INTEGER(key).add(i)).cmp(&*INTEGER(key).add(j))
+            }
+            t if t == SEXPTYPE::REALSXP => (*REAL(key).add(i))
+                .partial_cmp(&*REAL(key).add(j))
+                .unwrap_or(std::cmp::Ordering::Equal),
+            t if t == SEXPTYPE::STRSXP => {
+                compare_charsxp_for_sort(STRING_ELT(key, i as R_xlen_t), STRING_ELT(key, j as R_xlen_t))
+            }
+            _ => elt_real_safe(key, i as R_xlen_t)
+                .partial_cmp(&elt_real_safe(key, j as R_xlen_t))
+                .unwrap_or(std::cmp::Ordering::Equal),
+        }
     }
 }
 

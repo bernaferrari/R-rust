@@ -775,6 +775,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "srcfile", include_str!("gnu_srcfile.R"));
         eval_base_binding(base_env, "R.home", include_str!("gnu_r_home.R"));
+        eval_base_binding(base_env, "match.fun", include_str!("gnu_match_fun.R"));
+        eval_base_binding(base_env, "summaryRprof", include_str!("gnu_summary_rprof.R"));
         eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));
         eval_base_binding(base_env, "kappa", include_str!("gnu_kappa.R"));
         eval_base_binding(base_env, "kappa.lm", include_str!("gnu_kappa_lm.R"));
@@ -1245,12 +1247,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              method = c(\"auto\", \"shell\", \"radix\")) {\n\
              z <- list(...)\n\
              if (length(z) == 0L) return(integer())\n\
-             if (length(z) > 1L)\n\
-                 stop(\"multi-key order() is not yet supported\")\n\
              method <- match.arg(method)\n\
-             x <- z[[1L]]\n\
-             if (is.object(x)) x <- as.vector(xtfrm(x))\n\
-             .Internal(order(na.last, decreasing, x))\n\
+             if (any(vapply(z, is.object, logical(1L)))) {\n\
+                 z <- lapply(z, function(x) if (is.object(x)) as.vector(xtfrm(x)) else x)\n\
+                 return(do.call(\"order\", c(z, list(na.last = na.last, decreasing = decreasing, method = method))))\n\
+             }\n\
+             .Internal(order(na.last, decreasing, ...))\n\
              }",
         );
         // GNU sort.R / mean.R / stats median.R: closures, not primitives.

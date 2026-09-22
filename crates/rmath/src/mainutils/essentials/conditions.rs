@@ -1888,8 +1888,19 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
         let env = environment_arg_or_default(args, &["envir", "pos"], 1, rho);
-        let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
+        let mode_arg = arg_by_name_or_position(args, &["mode"], 3);
+        let mode = if mode_arg.is_null() || mode_arg == R_NilValue() || XLENGTH(mode_arg) == 0 {
+            "any".to_string()
+        } else if TYPEOF(mode_arg) == SEXPTYPE::STRSXP {
+            elt_to_string(mode_arg, 0)
+        } else {
+            "any".to_string()
+        };
         let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        if mode == "function" {
+            return crate::sexp::envir::findFun(sym, env);
+        }
+        let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
         if inherits {
             crate::sexp::envir::R_findVar(sym, env)
         } else {

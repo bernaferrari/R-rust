@@ -1273,7 +1273,7 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
         let margin_arg = eval_arg_by_name_or_position(args, &["MARGIN"], 1, rho);
-        let fun = callable_arg_by_name_or_position(args, &["FUN"], 2, rho);
+        let fun = apply_fun(_call, args, rho);
 
         if x.is_null() || x == R_NilValue() || fun.is_null() {
             return R_NilValue();
@@ -1329,6 +1329,38 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
     }
 }
+fn apply_fun(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let evaluated = callable_arg_by_name_or_position(args, &["FUN"], 2, rho);
+        if is_function(evaluated) {
+            return evaluated;
+        }
+        // `apply(x, 1, diff)` inside a function whose formal is `diff = TRUE`
+        // still means base::diff. GNU match.fun recovers the symbol and
+        // skips the non-function binding.
+        let uneval = CDR(call);
+        let expr = arg_by_name_or_position(uneval, &["FUN"], 2);
+        if !expr.is_null() && TYPEOF(expr) == SEXPTYPE::SYMSXP {
+            let found = crate::sexp::envir::findFun(expr, rho);
+            if is_function(found) {
+                return found;
+            }
+        }
+        evaluated
+    }
+}
+
+fn is_function(value: SEXP) -> bool {
+    unsafe {
+        !value.is_null()
+            && value != R_NilValue()
+            && value != crate::sexp::globals::R_UnboundValue()
+            && (TYPEOF(value) == SEXPTYPE::CLOSXP
+                || TYPEOF(value) == SEXPTYPE::BUILTINSXP
+                || TYPEOF(value) == SEXPTYPE::SPECIALSXP)
+    }
+}
+
 
 /// R's `tapply(X, INDEX, FUN)` — apply FUN to each group defined by INDEX.
 ///
