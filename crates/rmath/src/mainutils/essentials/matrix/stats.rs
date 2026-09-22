@@ -286,6 +286,18 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             force_bind_arg(dispatch)
         };
         if sexp_has_class(first, "data.frame") && TYPEOF(first) == SEXPTYPE::VECSXP {
+            let sym = Rf_install(c"rbind.data.frame".as_ptr());
+            let method = crate::sexp::envir::R_findVar(sym, rho);
+            if TYPEOF(method) == SEXPTYPE::CLOSXP {
+                return crate::eval::closure::applyClosure(
+                    call,
+                    method,
+                    dispatch,
+                    rho,
+                    R_NilValue(),
+                    0,
+                );
+            }
             return rbind_data_frame(dispatch);
         }
 
