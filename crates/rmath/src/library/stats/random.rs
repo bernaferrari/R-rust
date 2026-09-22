@@ -442,7 +442,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_updateform", "C_Cdqrls", "C_compcases", "C_influence",
-    "C_cov", "C_cor", "C_Cdist", "C_hclust", "C_hcass2", "C_doD", "C_deriv", "C_fft", "C_mvfft",
+    "C_cov", "C_cor", "C_Cdist", "C_hclust", "C_hcass2", "C_numeric_deriv", "C_doD", "C_deriv", "C_fft", "C_mvfft",
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
 ];
 
@@ -488,6 +488,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "Cdist" => as_dl(c_cdist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "numeric_deriv" => as_dl(super::numeric_deriv::c_numeric_deriv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "deriv" => as_dl(c_deriv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "fft" => as_dl(c_fft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "mvfft" => as_dl(c_mvfft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
