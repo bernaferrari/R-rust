@@ -294,7 +294,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                     if s4 != 0 && !isNull(xOrig) {
                         SET_S4_OBJECT(xOrig);
                     }
-                    return x;
+                    return if recursed { xup } else { x };
                 }
                 if offset < 0 {
                     errorOutOfBoundsSEXP(x, -1, thesub);
