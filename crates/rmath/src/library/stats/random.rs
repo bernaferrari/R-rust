@@ -465,6 +465,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_doD", "C_deriv", "C_fft", "C_mvfft",
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
     "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_lowesw", "C_lowesp",
+    "C_kmeans_Lloyd", "C_kmeans_MacQueen",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {

@@ -4219,6 +4219,14 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         } else {
             None
         };
+        let pinned_print = crate::mainutils::format::format_set_R_print(
+            crate::mainutils::format::RPrint {
+                digits,
+                scipen: crate::mainutils::options::GetOptionScipen(),
+                na_width: 2,
+                na_width_noquote: 2,
+            },
+        );
 
         // GNU do_format feeds decimal.mark to EncodeReal0 as OutDec.
         let outdec_owned = CString::new(decimal_mark.as_str()).unwrap_or_else(|_| {
@@ -4314,6 +4322,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             }
         }
 
+        crate::mainutils::format::format_set_R_print(pinned_print);
         crate::mainutils::options::SetOptionByName("digits", saved_digits);
         if let Some(old) = saved_scipen {
             crate::mainutils::options::SetOptionByName("scipen", old);

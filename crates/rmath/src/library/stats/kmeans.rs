@@ -228,6 +228,57 @@ pub unsafe fn kmeans_MacQueen(
     let wss = unsafe { slice::from_raw_parts_mut(wss, wss_len) };
     kmeans_macqueen_impl(x, n, p, k, cen, cl, maxiter, nc, wss);
 }
+pub unsafe extern "C" fn c_kmeans_lloyd(
+    x: *mut std::ffi::c_void,
+    m: *mut std::ffi::c_void,
+    p: *mut std::ffi::c_void,
+    centers: *mut std::ffi::c_void,
+    k: *mut std::ffi::c_void,
+    c1: *mut std::ffi::c_void,
+    iter: *mut std::ffi::c_void,
+    nc: *mut std::ffi::c_void,
+    wss: *mut std::ffi::c_void,
+) {
+    unsafe {
+        kmeans_Lloyd(
+            x as *mut f64,
+            m as *const c_int,
+            p as *const c_int,
+            centers as *mut f64,
+            k as *const c_int,
+            c1 as *mut c_int,
+            iter as *mut c_int,
+            nc as *mut c_int,
+            wss as *mut f64,
+        );
+    }
+}
+
+pub unsafe extern "C" fn c_kmeans_macqueen(
+    x: *mut std::ffi::c_void,
+    m: *mut std::ffi::c_void,
+    p: *mut std::ffi::c_void,
+    centers: *mut std::ffi::c_void,
+    k: *mut std::ffi::c_void,
+    c1: *mut std::ffi::c_void,
+    iter: *mut std::ffi::c_void,
+    nc: *mut std::ffi::c_void,
+    wss: *mut std::ffi::c_void,
+) {
+    unsafe {
+        kmeans_MacQueen(
+            x as *mut f64,
+            m as *const c_int,
+            p as *const c_int,
+            centers as *mut f64,
+            k as *const c_int,
+            c1 as *mut c_int,
+            iter as *mut c_int,
+            nc as *mut c_int,
+            wss as *mut f64,
+        );
+    }
+}
 
 // Fortran tracing stubs (F77_SUB name mangling: lowercase + underscore suffix)
 pub unsafe fn kmns1_(_k: *const c_int, _it: *const c_int, _indx: *const c_int) {
