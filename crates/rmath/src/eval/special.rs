@@ -72,7 +72,21 @@ unsafe fn dispatch_special_by_name(
     unsafe {
         match name {
             "{" => do_begin(CDR(call), rho),
-            "(" => do_paren(CDR(call), rho),
+            "(" => {
+                // `(` is an evaluated builtin. evalList splices `...`
+                // before the arity check, so `(...)` is the first dotted
+                // value and `(a, b)` is an error.
+                let evaled = super::dispatch::evalList(CDR(call), rho, call, -1);
+                let _evaled = protect(evaled);
+                let n = crate::sexp::constructors::Rf_length(evaled);
+                if n != 1 {
+                    let noun = if n == 1 { "argument" } else { "arguments" };
+                    std::panic::panic_any(crate::sexp::context::RError {
+                        message: format!("{n} {noun} passed to '(' which requires 1"),
+                    });
+                }
+                do_paren_builtin(call, op, evaled, rho)
+            }
             "if" => do_if(CDR(call), rho),
             "while" => do_while(CDR(call), rho),
             "for" => do_for(CDR(call), rho),

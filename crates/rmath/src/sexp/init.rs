@@ -731,7 +731,31 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "fix", include_str!("gnu_fix.R"));
         eval_base_binding(base_env, "edit", "function(name, ...) name");
         eval_base_binding(base_env, "image", "function(...) invisible(NULL)");
+        eval_base_binding(base_env, "contour", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "heat.colors", "function(n, ...) rep(\"#FF0000\", n)");
+        eval_base_binding(base_env, "colorRamp", include_str!("gnu_color_ramp.R"));
+        eval_base_binding(
+            base_env,
+            "colorRampPalette",
+            include_str!("gnu_color_ramp_palette.R"),
+        );
+        eval_base_binding(base_env, "subset", "function(x, ...) UseMethod(\"subset\")");
+        eval_base_binding(
+            base_env,
+            "subset.default",
+            "function(x, subset, ...) {\n    if(!is.logical(subset)) stop(\"'subset' must be logical\")\n    x[subset & !is.na(subset)]\n}",
+        );
+        eval_base_binding(
+            base_env,
+            "subset.data.frame",
+            include_str!("gnu_subset_data_frame.R"),
+        );
+        eval_base_binding(base_env, "relist", include_str!("gnu_relist.R"));
+        eval_base_binding(base_env, "relist.default", include_str!("gnu_relist_default.R"));
+        eval_base_binding(base_env, "relist.list", include_str!("gnu_relist_list.R"));
+        eval_base_binding(base_env, "outer", include_str!("gnu_outer.R"));
+        eval_base_binding(base_env, "%o%", "function(X, Y) outer(X, Y)");
+        eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));
         eval_base_binding(base_env, "kappa", include_str!("gnu_kappa.R"));
         eval_base_binding(base_env, "kappa.lm", include_str!("gnu_kappa_lm.R"));
         eval_base_binding(base_env, "kappa.qr", include_str!("gnu_kappa_qr.R"));

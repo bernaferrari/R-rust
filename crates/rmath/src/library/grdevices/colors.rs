@@ -4129,41 +4129,73 @@ pub unsafe fn do_rgb_builtin(
     _rho: *mut crate::sexp::ffi::SexprecCore,
 ) -> *mut crate::sexp::ffi::SexprecCore {
     unsafe {
-        let cell = |i: usize| {
-            let mut c = args;
-            for _ in 0..i {
-                if c.is_null() || c == R_NilValue() {
-                    return R_NilValue();
-                }
-                c = CDR(c);
+        let tag_is = |cell: SEXP, name: &[u8]| -> bool {
+            let tag = crate::sexp::accessors::TAG(cell);
+            if tag.is_null() || crate::sexp::accessors::TYPEOF(tag) != SEXPTYPE::SYMSXP {
+                return false;
             }
-            if c.is_null() || c == R_NilValue() {
-                R_NilValue()
+            let pname = crate::sexp::accessors::PRINTNAME(tag);
+            if pname.is_null() {
+                return false;
+            }
+            std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname)).to_bytes() == name
+        };
+        let missing = |value: SEXP| -> bool {
+            value.is_null()
+                || value == R_NilValue()
+                || value == crate::sexp::globals::R_MissingArg()
+        };
+        let mut red = R_NilValue();
+        let mut green = R_NilValue();
+        let mut blue = R_NilValue();
+        let mut alpha = R_NilValue();
+        let mut names = R_NilValue();
+        let mut mcv = R_NilValue();
+        let mut positional = 0usize;
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let value = CAR(cell);
+            if tag_is(cell, b"red") {
+                red = value;
+            } else if tag_is(cell, b"green") {
+                green = value;
+            } else if tag_is(cell, b"blue") {
+                blue = value;
+            } else if tag_is(cell, b"alpha") {
+                alpha = value;
+            } else if tag_is(cell, b"names") {
+                names = value;
+            } else if tag_is(cell, b"maxColorValue") {
+                mcv = value;
             } else {
-                CAR(c)
+                match positional {
+                    0 => red = value,
+                    1 => green = value,
+                    2 => blue = value,
+                    3 => alpha = value,
+                    4 => names = value,
+                    5 => mcv = value,
+                    _ => {}
+                }
+                positional += 1;
             }
-        };
-        // R formals: rgb(red, green, blue, alpha, names, maxColorValue=1).
-        // Missing maxColorValue defaults to 1 (not NA, which errors).
-        // Missing args arrive as R_MissingArg (a SYMSXP), not NULL, so
-        // treat any non-numeric arg as missing too.
-        let raw_mcv = cell(5);
-        let mcv = if raw_mcv.is_null()
-            || raw_mcv == R_NilValue()
-            || crate::sexp::ffi::SEXPTYPE::REALSXP != crate::sexp::accessors::TYPEOF(raw_mcv)
-                && crate::sexp::ffi::SEXPTYPE::INTSXP != crate::sexp::accessors::TYPEOF(raw_mcv)
-                && crate::sexp::ffi::SEXPTYPE::LGLSXP != crate::sexp::accessors::TYPEOF(raw_mcv)
+            cell = CDR(cell);
+        }
+        if missing(mcv)
+            || (SEXPTYPE::REALSXP != TYPEOF(mcv)
+                && SEXPTYPE::INTSXP != TYPEOF(mcv)
+                && SEXPTYPE::LGLSXP != TYPEOF(mcv))
         {
-            crate::sexp::constructors::Rf_ScalarReal(1.0)
-        } else {
-            raw_mcv
-        };
+            mcv = crate::sexp::constructors::Rf_ScalarReal(1.0);
+        }
+        if missing(alpha) {
+            alpha = R_NilValue();
+        }
+        if missing(names) {
+            names = R_NilValue();
+        }
         let _mcv_guard = crate::sexp::protect::protect(mcv);
-        // do_rgb's 4th/5th params are (alpha, maxColorValue)-adjacent:
-        // the R formals are (red, green, blue, alpha, names, maxColorValue)
-        // but the C port takes (r, g, b, a, mcv, nam). cell(3)=alpha,
-        // cell(4)=names are positional; pass through.
-        do_rgb(cell(0), cell(1), cell(2), cell(3), mcv, cell(4))
+        do_rgb(red, green, blue, alpha, mcv, names)
     }
 }
 

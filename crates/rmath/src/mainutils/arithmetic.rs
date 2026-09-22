@@ -1114,23 +1114,17 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
             t if t == SEXPTYPE::LGLSXP => {
                 // Coerce to INTSXP for unary minus on logicals
                 match code {
-                    OP_PLUS => {
-                        // Return as-is (logical + = logical)
-                        s1
-                    }
-                    OP_MINUS => {
+                    OP_PLUS | OP_MINUS => {
                         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n);
                         let _ans_guard = protect(ans);
                         let pa = INTEGER(ans);
                         let px = LOGICAL(s1);
                         for i in 0..(n as usize) {
                             let x = *px.add(i);
-                            *pa.add(i) = if x == NA_INTEGER {
-                                NA_INTEGER
-                            } else if x == 0 {
-                                0
-                            } else {
+                            *pa.add(i) = if code == OP_MINUS && x != NA_INTEGER && x != 0 {
                                 -x
+                            } else {
+                                x
                             };
                         }
                         ans

@@ -549,6 +549,11 @@ pub fn force_promise_result(prom: Sexp<'_>) -> EnvResult<LookupResult<'_>> {
     unsafe {
         SET_PRVALUE(prom.clone().as_raw(), value.clone().as_raw());
         SET_PRENV(prom.as_raw(), R_NilValue());
+        // A forced promise value is shared with the promise. GNU marks it
+        // NAMEDMAX so a later `x[1] <-` duplicates instead of mutating it.
+        if !value.clone().as_raw().is_null() {
+            super::accessors::SET_NAMED(value.clone().as_raw(), 2);
+        }
     }
     Ok(Some(value))
 }

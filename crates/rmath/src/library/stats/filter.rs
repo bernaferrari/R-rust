@@ -5038,6 +5038,15 @@ fn deparse_call(expr: SEXP) -> String {
             args.push(piece);
             cell = CDR(cell);
         }
+        if op == ":" && args.len() == 2 {
+            return format!("{}:{}", args[0], args[1]);
+        }
+        if matches!(op.as_str(), "+" | "-" | "*" | "/" | "^") && args.len() == 2 {
+            return format!("{} {} {}", args[0], op, args[1]);
+        }
+        if op == "-" && args.len() == 1 {
+            return format!("-{}", args[0]);
+        }
         format!("{op}({})", args.join(", "))
     }
 }
@@ -6705,7 +6714,19 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             } else {
                 String::new()
             };
-            if lab.contains(':') || lab.contains('*') {
+            // `:` inside I(1:10) is a sequence, not an interaction.
+            // An interaction is `:` or `*` outside parentheses.
+            let mut depth = 0i32;
+            let mut interaction = false;
+            for ch in lab.chars() {
+                match ch {
+                    '(' | '[' => depth += 1,
+                    ')' | ']' => depth = depth.saturating_sub(1),
+                    ':' | '*' if depth == 0 => interaction = true,
+                    _ => {}
+                }
+            }
+            if interaction {
                 crate::main::errors::Rf_error(
                     b"C_modelmatrix interactions are not implemented\0".as_ptr()
                         as *const std::os::raw::c_char,

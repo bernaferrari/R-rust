@@ -120,6 +120,9 @@ unsafe extern "C-unwind" fn c_cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SE
 unsafe extern "C-unwind" fn c_cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
     unsafe { stats_call_cor(x, y, na_method, kendall) }
 }
+unsafe extern "C-unwind" fn c_cdist(x: SEXP, method: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
+    unsafe { super::distance::Cdist(x, method, attrs, p) }
+}
 unsafe extern "C-unwind" fn c_do_d(args: SEXP) -> SEXP {
     unsafe { super::deriv::do_d(args) }
 }
@@ -439,7 +442,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_Cdqrls", "C_compcases", "C_influence",
-    "C_cov", "C_cor", "C_doD", "C_deriv", "C_fft", "C_mvfft",
+    "C_cov", "C_cor", "C_Cdist", "C_doD", "C_deriv", "C_fft", "C_mvfft",
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
 ];
 
@@ -482,6 +485,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "influence" => as_dl(c_influence as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "cov" => as_dl(c_cov as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "cor" => as_dl(c_cor as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "Cdist" => as_dl(c_cdist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "deriv" => as_dl(c_deriv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "fft" => as_dl(c_fft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),

@@ -394,8 +394,22 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
             }
         }
 
-        // GNU lunary: DUPLICATE_ATTRIB so `!is.na(matrix)` keeps dim.
-        copy_logic_shape(arg, x);
+        // GNU lunary shallow-duplicates a logical or raw, so `!` keeps
+        // the ts class. A numeric becomes a plain logical and keeps only
+        // names and dimensions.
+        if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::RAWSXP {
+            let mut attr = crate::sexp::accessors::ATTRIB(arg);
+            while !attr.is_null() && attr != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    x,
+                    crate::sexp::accessors::TAG(attr),
+                    crate::sexp::accessors::CAR(attr),
+                );
+                attr = crate::sexp::accessors::CDR(attr);
+            }
+        } else {
+            copy_logic_shape(arg, x);
+        }
         x
     }
 }

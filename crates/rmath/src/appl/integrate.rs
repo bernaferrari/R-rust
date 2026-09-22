@@ -188,6 +188,8 @@ fn rdqelg(
     res3la: &mut [f64; 3],
     nres: &mut i32,
 ) {
+    // Indices follow GNU dqelg after its `--epstab`/`--res3la` adjustment:
+    // function slot k is epstab[k - 1].
     let epmach = DBL_EPSILON;
     let oflow = DBL_MAX;
 
@@ -205,14 +207,14 @@ fn rdqelg(
     let newelm = (*n - 1) / 2;
     epstab[(*n - 1) as usize] = oflow;
     let num = *n;
-    let mut k1 = *n - 1;
+    let mut k1 = *n;
 
     for i in 1..=newelm {
         let k2 = k1 - 1;
         let k3 = k1 - 2;
         let mut res = epstab[(k1 + 1) as usize];
-        let e0 = epstab[k3 as usize];
-        let e1 = epstab[k2 as usize];
+        let e0 = epstab[(k3 - 1) as usize];
+        let e1 = epstab[(k2 - 1) as usize];
         let e2 = res;
         let e1abs = fabs(e1);
         let delta2 = e2 - e1;
@@ -240,7 +242,6 @@ fn rdqelg(
             let epsinf = fabs(ss * e1);
 
             if epsinf > 1e-4 {
-                // Compute new element
                 res = e1 + 1.0 / ss;
                 epstab[(k1 - 1) as usize] = res;
                 k1 -= 2;
@@ -257,24 +258,22 @@ fn rdqelg(
         break;
     }
 
-    // Shift the table
     if *n == limexp {
         *n = (limexp / 2) * 2 - 1;
     }
 
-    let ib = if num / 2 * 2 == num { 2 } else { 1 };
+    let mut ib = if num / 2 * 2 == num { 2 } else { 1 };
     let ie = newelm + 1;
-    let mut ib = ib as i32;
     for _i in 1..=ie {
         let ib2 = ib + 2;
-        epstab[ib as usize] = epstab[ib2 as usize];
+        epstab[(ib - 1) as usize] = epstab[(ib2 - 1) as usize];
         ib = ib2;
     }
 
     if num != *n {
         let mut indx = num - *n + 1;
         for i in 1..=*n {
-            epstab[i as usize] = epstab[indx as usize];
+            epstab[(i - 1) as usize] = epstab[(indx - 1) as usize];
             indx += 1;
         }
     }
@@ -317,7 +316,7 @@ fn rdqpsrt(
     if *nrmax > 1 {
         let ido = *nrmax - 1;
         for _i in 1..=ido {
-            let isucc = iord[(*nrmax - 1) as usize];
+            let isucc = iord[(*nrmax - 2) as usize];
             if errmax <= elist[(isucc - 1) as usize] {
                 break;
             }
@@ -574,6 +573,7 @@ fn rdqagie(
     *abserr = oflow;
     let mut nrmax: i32 = 1;
     let mut nres: i32 = 0;
+    let mut res3la = [0.0f64; 3];
     let mut numrl2: i32 = 2;
     let mut ktmin: i32 = 0;
     let mut extrap = false;
@@ -726,7 +726,7 @@ fn rdqagie(
         // so writing the real error here discards the panel sum's estimate.
         numrl2 += 1;
         rlist2[(numrl2 - 1) as usize] = area;
-        let mut res3la = [0.0f64; 3];
+
         let mut reseps = 0.0;
         let mut abseps = 0.0;
         rdqelg(
@@ -738,37 +738,20 @@ fn rdqagie(
             &mut nres,
         );
         ktmin += 1;
-        if ktmin > 5 && abseps < errsum * 0.001 {
+        if ktmin > 5 && *abserr < errsum * 0.001 {
             *ier = 5;
         }
         if abseps < *abserr {
-            *result = reseps;
+            ktmin = 0;
             *abserr = abseps;
-        }
-        if *abserr >= erlarg {
-            // L70
-            if numrl2 == 1 {
-                noext = true;
-            }
-            if *ier == 5 {
+            *result = reseps;
+            correc = erlarg;
+            ertest = fmax2(epsabs, epsrel * fabs(reseps));
+            if *abserr <= ertest {
                 break;
             }
-            maxerr = (iord[0] - 1) as usize;
-            errmax = elist[maxerr];
-            nrmax = 1;
-            extrap = false;
-            small *= 0.5;
-            erlarg = errsum;
-            continue;
-        }
-        ktmin = 0;
-        correc = erlarg;
-        ertest = fmax2(epsabs, epsrel * fabs(*result));
-        if *abserr <= ertest {
-            break;
         }
 
-        // L70
         if numrl2 == 1 {
             noext = true;
         }
@@ -966,6 +949,7 @@ fn rdqagse(
     *abserr = oflow;
     let mut nrmax: i32 = 1;
     let mut nres: i32 = 0;
+    let mut res3la = [0.0f64; 3];
     let mut numrl2: i32 = 2;
     let mut ktmin: i32 = 0;
     let mut extrap = false;
@@ -1070,7 +1054,7 @@ fn rdqagse(
             break;
         }
         if *last == 2 {
-            small = fabs(b - a) * 0.375;
+            small = (b - a).abs() * 0.375;
             erlarg = errsum;
             ertest = errbnd;
             rlist2[1] = area;
@@ -1116,7 +1100,7 @@ fn rdqagse(
 
         numrl2 += 1;
         rlist2[(numrl2 - 1) as usize] = area;
-        let mut res3la = [0.0f64; 3];
+
         let mut reseps = 0.0;
         let mut abseps = 0.0;
         rdqelg(
@@ -1128,17 +1112,15 @@ fn rdqagse(
             &mut nres,
         );
         ktmin += 1;
-        if ktmin > 5 && abseps < errsum * 0.001 {
+        if ktmin > 5 && *abserr < errsum * 0.001 {
             *ier = 5;
         }
         if abseps < *abserr {
-            *result = reseps;
-            *abserr = abseps;
-        }
-        if *abserr < erlarg {
             ktmin = 0;
+            *abserr = abseps;
+            *result = reseps;
             correc = erlarg;
-            ertest = fmax2(epsabs, epsrel * fabs(*result));
+            ertest = fmax2(epsabs, epsrel * fabs(reseps));
             if *abserr <= ertest {
                 break;
             }

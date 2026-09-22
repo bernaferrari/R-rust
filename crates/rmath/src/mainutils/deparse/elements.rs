@@ -94,21 +94,21 @@ pub unsafe fn deparse2buf_name(nv: SEXP, i: c_int, d: *mut LocalParseData) {
 /// correct string (using complex(real=..., imaginary=...) form).
 pub unsafe fn EncodeNonFiniteComplexElement(x: Rcomplex, buff: *mut c_char) -> *const c_char {
     unsafe {
-        // Format real and imaginary parts, then the wrapper string.
-        let re = if R_FINITE(x.r) {
-            r_sprintf("%.17g", &[x.r.into()])
-        } else if ISNAN(x.r) {
-            "NaN".to_string()
-        } else {
-            "Inf".to_string()
+        let part = |x: f64| -> String {
+            if R_FINITE(x) {
+                r_sprintf("%.17g", &[x.into()])
+            } else if crate::sexp::ffi::R_IsNA(x) {
+                "NA".to_string()
+            } else if x.is_nan() {
+                "NaN".to_string()
+            } else if x.is_sign_negative() {
+                "-Inf".to_string()
+            } else {
+                "Inf".to_string()
+            }
         };
-        let im = if R_FINITE(x.i) {
-            r_sprintf("%.17g", &[x.i.into()])
-        } else if ISNAN(x.i) {
-            "NaN".to_string()
-        } else {
-            "Inf".to_string()
-        };
+        let re = part(x.r);
+        let im = part(x.i);
         let out = r_sprintf(
             "complex(real=%s, imaginary=%s)",
             &[re.as_str().into(), im.as_str().into()],

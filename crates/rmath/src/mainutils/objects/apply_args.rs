@@ -162,8 +162,20 @@ pub(crate) unsafe fn applyMethod(
             .unwrap_or_else(|message| crate::sexp::context::r_error(&message))
             .as_raw();
         } else if t == SEXPTYPE::CLOSXP {
+            // A method's sysparent is the generic's caller, not the generic
+            // frame. parent.frame() inside aggregate.formula must see `data`.
+            let ctx = crate::sexp::context::R_GlobalContext();
+            let supplied = if !ctx.is_null()
+                && !(*ctx).sysparent.is_null()
+                && (*ctx).sysparent != R_NilValue()
+                && TYPEOF((*ctx).sysparent) == SEXPTYPE::ENVSXP
+            {
+                (*ctx).sysparent
+            } else {
+                rho
+            };
             return crate::eval::closure::applyClosureWithFrameVars(
-                call, op, args, rho, rho, newvars, 0,
+                call, op, args, rho, supplied, newvars, 0,
             );
         }
 

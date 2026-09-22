@@ -372,6 +372,8 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                             let v = integer_or_logical_elt(arg, i as c_int);
                             if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                        } else if t == SEXPTYPE::RAWSXP {
+                            *RAW(arg).add(i as usize) as f64
                         } else {
                             NA_REAL
                         };
@@ -382,6 +384,8 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     for i in 0..n {
                         let val = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                             integer_or_logical_elt(arg, i as c_int)
+                        } else if t == SEXPTYPE::RAWSXP {
+                            *RAW(arg).add(i as usize) as c_int
                         } else {
                             NA_INTEGER
                         };
@@ -392,6 +396,8 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     for i in 0..n {
                         let val = if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
                             integer_or_logical_elt(arg, i as c_int)
+                        } else if t == SEXPTYPE::RAWSXP {
+                            if *RAW(arg).add(i as usize) != 0 { 1 } else { 0 }
                         } else {
                             NA_INTEGER
                         };
@@ -694,6 +700,7 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
                 };
             }
         }
+        copy_pminmax_shape(arg_vecs[0], result, max_len);
         result
     }
 }
@@ -747,9 +754,43 @@ unsafe fn pminmax_character(
                 SET_STRING_ELT(result, i, charsxp);
             }
         }
+        copy_pminmax_shape(arg_vecs[0], result, max_len);
         result
     }
 }
+/// GNU `pmin`/`pmax` copy the first argument's dimensions onto a result of
+/// the same length (`mostattributes<-`).
+unsafe fn copy_pminmax_shape(first: SEXP, result: SEXP, max_len: R_xlen_t) {
+    unsafe {
+        if XLENGTH(first) != max_len {
+            return;
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(
+            first,
+            crate::sexp::attrib_core::R_DimSymbol(),
+        );
+        if dim.is_null() || dim == R_NilValue() {
+            return;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimSymbol(),
+            dim,
+        );
+        let dimnames = crate::sexp::attrib_core::getAttrib(
+            first,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if !dimnames.is_null() && dimnames != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
+            );
+        }
+    }
+}
+
 
 /// R's `which.min(x)` — 1-based index of minimum element.
 pub unsafe fn do_which_min(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

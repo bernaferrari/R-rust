@@ -1400,6 +1400,9 @@ pub unsafe fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                             arithmetic_error("invalid argument to unary operator");
                         }
                         if op_name == "+" {
+                            if TYPEOF(a) == SEXPTYPE::LGLSXP {
+                                return unary_plus_logical(a);
+                            }
                             return a;
                         }
                         let result = unary_minus(a);
@@ -1714,6 +1717,21 @@ unsafe fn explicit_data_frame_row_names(frame: SEXP) -> SEXP {
     }
 }
 
+/// Unary plus on a logical is an integer. Integer and real unary plus
+/// return the object unchanged.
+unsafe fn unary_plus_logical(x: SEXP) -> SEXP {
+    unsafe {
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let _guard = protect(result);
+        for i in 0..n {
+            SET_INTEGER_ELT(result, i as i32, LOGICAL_ELT(x, i as i32));
+        }
+        propagate_unary_vector_attributes(result, x, n);
+        result
+    }
+}
+
 /// Unary minus — negate each element of a numeric vector.
 unsafe fn unary_minus(x: SEXP) -> SEXP {
     unsafe {
@@ -1748,7 +1766,11 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
             }
         }
         let _ = result_mut.freeze();
-        propagate_unary_vector_attributes(result_raw, x, n);
+        if TYPEOF(x) == SEXPTYPE::LGLSXP {
+            propagate_unary_vector_attributes(result_raw, x, n);
+        } else {
+            copy_all_attrib(result_raw, x);
+        }
         result_raw
     }
 }

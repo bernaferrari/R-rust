@@ -113,28 +113,108 @@ pub unsafe fn real_math1(
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+unsafe extern "C" {
+    fn __sinpi(x: f64) -> f64;
+    fn __cospi(x: f64) -> f64;
+    fn __tanpi(x: f64) -> f64;
+}
+
+/// GNU `sinpi`: reduce modulo 2, then the platform's `sinpi` when it exists.
 pub fn sinpi_value(x: f64) -> f64 {
-    if x.is_finite() && x.fract() == 0.0 {
-        0.0
-    } else {
-        (std::f64::consts::PI * x).sin()
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        return unsafe { __sinpi(x) };
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    {
+        if x.is_nan() {
+            return x;
+        }
+        if !x.is_finite() {
+            return f64::NAN;
+        }
+        let mut x = x % 2.0;
+        if x <= -1.0 {
+            x += 2.0;
+        } else if x > 1.0 {
+            x -= 2.0;
+        }
+        if x == 0.0 || x == 1.0 {
+            0.0
+        } else if x == 0.5 {
+            1.0
+        } else if x == -0.5 {
+            -1.0
+        } else {
+            (std::f64::consts::PI * x).sin()
+        }
     }
 }
 
+/// GNU `cospi`.
 pub fn cospi_value(x: f64) -> f64 {
-    if x.is_finite() && x.fract() == 0.0 {
-        if (x as i64).rem_euclid(2) == 0 {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        return unsafe { __cospi(x) };
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    {
+        if x.is_nan() {
+            return x;
+        }
+        if !x.is_finite() {
+            return f64::NAN;
+        }
+        let x = x.abs() % 2.0;
+        if x % 1.0 == 0.5 {
+            0.0
+        } else if x == 1.0 {
+            -1.0
+        } else if x == 0.0 {
             1.0
         } else {
-            -1.0
+            (std::f64::consts::PI * x).cos()
         }
-    } else if x.is_finite() && (x - 0.5).fract() == 0.0 {
-        0.0
-    } else {
-        (std::f64::consts::PI * x).cos()
     }
 }
 
+/// GNU `tanpi`. Half-integers are NaN.
+/// GNU `Rtanpi`. Half-integers are NaN, not the Inf `__tanpi` returns.
+pub fn tanpi_value(x: f64) -> f64 {
+    if x.is_nan() {
+        return x;
+    }
+    if !x.is_finite() {
+        return f64::NAN;
+    }
+    let mut reduced = x % 1.0;
+    if reduced <= -0.5 {
+        reduced += 1.0;
+    } else if reduced > 0.5 {
+        reduced -= 1.0;
+    }
+    if reduced == 0.0 {
+        return 0.0;
+    }
+    if reduced == 0.5 {
+        return f64::NAN;
+    }
+    if reduced == 0.25 {
+        return 1.0;
+    }
+    if reduced == -0.25 {
+        return -1.0;
+    }
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        return unsafe { __tanpi(x) };
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    {
+        (std::f64::consts::PI * reduced).tan()
+    }
+}
 
 /// R's `expm1(x)` — accurate exp(x)-1.
 pub unsafe fn do_expm1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -197,7 +277,6 @@ pub unsafe fn do_atanh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-
 /// R's `sinpi(x)` — sin(pi*x), exact at integer arguments.
 pub unsafe fn do_sinpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { real_math1(call, op, args, rho, sinpi_value) }
@@ -208,30 +287,9 @@ pub unsafe fn do_cospi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { real_math1(call, op, args, rho, cospi_value) }
 }
 
-/// R's `tanpi(x)` — tan(pi*x), based on the exact sinpi/cospi helpers.
+/// R's `tanpi(x)` — tan(pi*x).
 pub unsafe fn do_tanpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        real_math1(call, op, args, rho, |x| {
-            if x.is_finite() && x.fract() == 0.0 {
-                return 0.0;
-            }
-            if x.is_finite() {
-                let cycle = x.rem_euclid(1.0);
-                if cycle == 0.25 {
-                    return 1.0;
-                }
-                if cycle == 0.75 {
-                    return -1.0;
-                }
-            }
-            let cos = cospi_value(x);
-            if cos == 0.0 {
-                f64::NAN
-            } else {
-                sinpi_value(x) / cos
-            }
-        })
-    }
+    unsafe { real_math1(call, op, args, rho, tanpi_value) }
 }
 
 /// R's `sin(x)` — sine function.

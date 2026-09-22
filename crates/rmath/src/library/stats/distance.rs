@@ -336,7 +336,7 @@ fn ncols(x: SEXP) -> c_int {
             return 1;
         }
         if LENGTH(d) >= 2 {
-            return *INTEGER(d.add(1));
+            return *INTEGER(d).add(1);
         }
         1
     }
