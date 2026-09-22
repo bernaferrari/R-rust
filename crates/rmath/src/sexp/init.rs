@@ -765,6 +765,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "str2expression",
             "function(text) parse(text = text, keep.source = FALSE)",
         );
+        eval_base_binding(base_env, "getAnywhere", include_str!("gnu_getAnywhere.R"));
         eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));
         eval_base_binding(base_env, "kappa", include_str!("gnu_kappa.R"));
         eval_base_binding(base_env, "kappa.lm", include_str!("gnu_kappa_lm.R"));
