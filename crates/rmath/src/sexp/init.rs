@@ -796,6 +796,13 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              if (how == \"unlist\") unlist(res, recursive = TRUE) else res\n\
              }",
         );
+        eval_base_binding(base_env, "within", "function(data, expr, ...) UseMethod(\"within\")");
+        eval_base_binding(
+            base_env,
+            "within.data.frame",
+            include_str!("gnu_within_data_frame.R"),
+        );
+        eval_base_binding(base_env, "within.list", include_str!("gnu_within_list.R"));
         eval_base_binding(
             base_env,
             "labels.dendrogram",
