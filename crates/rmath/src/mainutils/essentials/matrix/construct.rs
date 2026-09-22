@@ -304,8 +304,8 @@ pub(crate) unsafe fn data_frame_row_count(x: SEXP) -> R_xlen_t {
         if !row_names.is_null() && TYPEOF(row_names) == SEXPTYPE::INTSXP && LENGTH(row_names) == 2 {
             let first = *INTEGER(row_names);
             let second = *INTEGER(row_names).add(1);
-            if first == NA_INTEGER && second < 0 {
-                return -(second as R_xlen_t);
+            if first == NA_INTEGER && second != NA_INTEGER && second != 0 {
+                return (second as R_xlen_t).unsigned_abs() as R_xlen_t;
             }
         }
 
@@ -313,10 +313,26 @@ pub(crate) unsafe fn data_frame_row_count(x: SEXP) -> R_xlen_t {
         for i in 0..XLENGTH(x) {
             let col = VECTOR_ELT(x, i);
             if !col.is_null() {
-                rows = rows.max(XLENGTH(col));
+                rows = rows.max(column_row_count(col));
             }
         }
         rows
+    }
+}
+
+pub(crate) unsafe fn column_row_count(col: SEXP) -> R_xlen_t {
+    unsafe {
+        if col.is_null() || col == R_NilValue() {
+            return 0;
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(col, Rf_install(c"dim".as_ptr()));
+        if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 1 {
+            let n = *INTEGER(dim);
+            if n > 0 {
+                return n as R_xlen_t;
+            }
+        }
+        XLENGTH(col)
     }
 }
 

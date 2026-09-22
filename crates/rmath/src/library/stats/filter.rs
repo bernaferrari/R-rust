@@ -6622,9 +6622,10 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             names,
         );
         let mut nr: R_xlen_t = 0;
-        if XLENGTH(data) > 0 {
-            nr = XLENGTH(VECTOR_ELT(data, 0));
-        } else if !row_names.is_null() && row_names != R_NilValue() {
+        for i in 0..XLENGTH(data) {
+            nr = nr.max(model_column_rows(VECTOR_ELT(data, i)));
+        }
+        if nr == 0 && !row_names.is_null() && row_names != R_NilValue() {
             nr = XLENGTH(row_names);
         }
         let class = Rf_mkString(c"data.frame".as_ptr());
@@ -6641,7 +6642,7 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             let _c = protect(compact);
             if nr > 0 {
                 *INTEGER(compact) = NA_INTEGER;
-                *INTEGER(compact).add(1) = nr as i32;
+                *INTEGER(compact).add(1) = -(nr as i32);
             }
             crate::sexp::attrib_core::setAttrib(
                 data,
@@ -6677,6 +6678,64 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         ans
     }
 }
+fn model_column_rows(col: SEXP) -> R_xlen_t {
+    unsafe {
+        if col.is_null() || col == R_NilValue() {
+            return 0;
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(
+            col,
+            crate::sexp::attrib_core::R_DimSymbol(),
+        );
+        if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
+            let n = *INTEGER(dim);
+            if n > 0 {
+                return n as R_xlen_t;
+            }
+        }
+        XLENGTH(col)
+    }
+}
+
+unsafe fn character_row_names(rn: SEXP, n: i64) -> SEXP {
+    unsafe {
+        if rn.is_null() || rn == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == n {
+            return rn;
+        }
+        if TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == 2 && *INTEGER(rn) == NA_INTEGER {
+            let count = (*INTEGER(rn).add(1)).unsigned_abs() as i64;
+            if count != n {
+                return R_NilValue();
+            }
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            for i in 0..n {
+                let label = std::ffi::CString::new((i + 1).to_string()).unwrap_or_default();
+                SET_STRING_ELT(out, i, Rf_mkChar(label.as_ptr()));
+            }
+            return out;
+        }
+        if TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == n {
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            for i in 0..n {
+                let v = *INTEGER(rn).add(i as usize);
+                let label = if v == NA_INTEGER {
+                    "NA".to_string()
+                } else {
+                    v.to_string()
+                };
+                let c = std::ffi::CString::new(label).unwrap_or_default();
+                SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+            }
+            return out;
+        }
+        R_NilValue()
+    }
+}
+
+
 
 /// GNU `.External2(C_modelmatrix, t, data)` for intercept + numeric terms.
 pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -6897,18 +6956,14 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         for j in 0..nterms {
             SET_STRING_ELT(cn, c + j, STRING_ELT(labs, j));
         }
-        let rn = crate::sexp::attrib_core::getAttrib(
-            data,
-            crate::sexp::attrib_core::R_RowNamesSymbol(),
+        let rn = character_row_names(
+            crate::sexp::attrib_core::getAttrib(
+                data,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+            ),
+            n,
         );
-        let rn = if rn.is_null()
-            || rn == R_NilValue()
-            || XLENGTH(rn) != n
-        {
-            R_NilValue()
-        } else {
-            rn
-        };
+        let _rn = protect(rn);
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, rn);
