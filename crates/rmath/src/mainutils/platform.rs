@@ -1395,17 +1395,21 @@ pub unsafe fn do_Rhome(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
         use crate::sexp::constructors::Rf_mkString;
         use std::env;
 
-        let home = env::var("R_HOME").unwrap_or_else(|_| {
-            // Try to find R home relative to this executable
-            if let Ok(exe) = env::current_exe()
-                && let Some(parent) = exe.parent().and_then(|p| p.parent())
-            {
-                return parent.to_string_lossy().to_string();
-            }
-            "/usr/lib/R".to_string()
-        });
+        let home = env::var("R_HOME").unwrap_or_else(|_| discover_r_home());
         Rf_mkString(CString::new(home).unwrap_or_default().as_ptr())
     }
+}
+
+fn discover_r_home() -> String {
+    if let Ok(out) = std::process::Command::new("R").arg("RHOME").output()
+        && let Ok(text) = String::from_utf8(out.stdout)
+    {
+        let home = text.trim();
+        if !home.is_empty() && std::path::Path::new(home).is_dir() {
+            return home.to_string();
+        }
+    }
+    "/usr/lib/R".to_string()
 }
 
 /// R's `file.exists()` — check if file exists.

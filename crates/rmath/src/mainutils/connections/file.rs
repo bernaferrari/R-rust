@@ -617,7 +617,7 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                         }
                     }
                     Err(e) => {
-                        r_error(&format!("cannot open the connection: {}", e));
+                        r_error(&format!("cannot open the connection '{}': {}", conn.description, e));
                     }
                 }
             }

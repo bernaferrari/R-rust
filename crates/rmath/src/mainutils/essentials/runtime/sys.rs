@@ -84,10 +84,47 @@ unsafe fn r_setlocale(_category: c_int, _locale: *const c_char) -> *mut c_char {
 /// R's `R.home()` — R home directory (simplified).
 pub unsafe fn do_R_home(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let home = std::env::var("R_HOME").unwrap_or_else(|_| "/usr/lib/R".to_string());
+        let home = std::env::var("R_HOME").unwrap_or_else(|_| discover_installed_r_home());
         let s = CString::new(home).unwrap_or_default();
         Rf_mkString(s.as_ptr())
     }
+}
+
+fn discover_installed_r_home() -> String {
+    for bin in ["/opt/homebrew/bin/R", "/usr/local/bin/R", "R"] {
+        if let Ok(out) = std::process::Command::new(bin).arg("RHOME").output()
+            && let Ok(text) = String::from_utf8(out.stdout)
+        {
+            let home = text.trim();
+            if home_has_rd_macros(home) {
+                return home.to_string();
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir("/opt/homebrew/Cellar/r") {
+        let mut homes: Vec<std::path::PathBuf> = entries
+            .flatten()
+            .map(|entry| entry.path().join("lib/R"))
+            .filter(|home| home_has_rd_macros(&home.to_string_lossy()))
+            .collect();
+        homes.sort();
+        if let Some(home) = homes.last() {
+            return home.to_string_lossy().to_string();
+        }
+    }
+    for home in ["/usr/local/lib/R", "/usr/lib/R"] {
+        if home_has_rd_macros(home) {
+            return home.to_string();
+        }
+    }
+    "/usr/lib/R".to_string()
+}
+
+fn home_has_rd_macros(home: &str) -> bool {
+    !home.is_empty()
+        && std::path::Path::new(home)
+            .join("share/Rd/macros/system.Rd")
+            .is_file()
 }
 
 /// R's `Sys.getenv(x)` — get environment variable.
