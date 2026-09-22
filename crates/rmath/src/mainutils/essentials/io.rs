@@ -567,19 +567,21 @@ fn scan_error(message: impl Into<String>) -> ! {
     });
 }
 
-fn split_scan_fields(contents: &str, sep: &str, nmax: i64) -> Vec<String> {
+fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64) -> Vec<String> {
     let limit = if nmax > 0 { nmax as usize } else { usize::MAX };
-    let fields: Box<dyn Iterator<Item = &str> + '_> = if sep.is_empty() {
-        Box::new(contents.split_whitespace())
-    } else {
-        Box::new(
-            contents
-                .split(sep)
-                .map(str::trim)
-                .filter(|field| !field.is_empty()),
-        )
+    let spec = TableParseSpec {
+        sep: sep.chars().next(),
+        quotes: quote.chars().collect(),
+        comment: None,
+        strip_white: sep.is_empty(),
+        blank_lines_skip: true,
     };
-    fields.take(limit).map(ToOwned::to_owned).collect()
+    parse_table_records(contents, &spec)
+        .into_iter()
+        .flatten()
+        .take(limit)
+        .map(|field| field.text)
+        .collect()
 }
 
 fn parse_scan_logical(value: &str) -> Option<c_int> {
@@ -692,7 +694,13 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             elt_to_string(sep_arg, 0)
         };
-        let values = split_scan_fields(&contents, &sep, nmax);
+        let quote_arg = by_slot(&["quote"], 5);
+        let quote = if quote_arg.is_null() || quote_arg == R_NilValue() {
+            "\"'".to_string()
+        } else {
+            elt_to_string(quote_arg, 0)
+        };
+        let values = split_scan_fields(&contents, &sep, &quote, nmax);
         let n = values.len() as R_xlen_t;
         let quiet = match named_arg(args, "quiet") {
             Some(q) if !q.is_null() && q != R_NilValue() && XLENGTH(q) > 0 => {

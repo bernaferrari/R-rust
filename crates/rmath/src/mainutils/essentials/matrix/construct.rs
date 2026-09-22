@@ -799,7 +799,7 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return x;
         }
         if is_data_frame_object(x) {
-            return do_data_matrix(_call, _op, args, R_NilValue());
+            return data_frame_as_matrix(x);
         }
         let t = TYPEOF(x);
         if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
@@ -976,6 +976,103 @@ unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
         }
     }
 }
+
+/// GNU `as.matrix.data.frame`: character columns stay character, factors
+/// become their codes, and a mixed frame becomes character.
+unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
+    unsafe {
+        let nrow = data_frame_row_count(frame);
+        let ncol = XLENGTH(frame);
+        let mut any_char = false;
+        let mut any_real = false;
+        for j in 0..ncol {
+            let column = VECTOR_ELT(frame, j);
+            let factor = crate::mainutils::objects::inherits2(column, c"factor".as_ptr()) != 0;
+            match TYPEOF(column) {
+                t if t == SEXPTYPE::STRSXP && !factor => any_char = true,
+                t if t == SEXPTYPE::REALSXP => any_real = true,
+                _ => {}
+            }
+        }
+        let result_type = if any_char {
+            SEXPTYPE::STRSXP
+        } else if any_real || ncol == 0 {
+            SEXPTYPE::REALSXP
+        } else {
+            SEXPTYPE::INTSXP
+        };
+        let result = Rf_allocVector3(result_type, nrow.saturating_mul(ncol));
+        let _g = protect(result);
+        for j in 0..ncol {
+            let column = VECTOR_ELT(frame, j);
+            let offset = j * nrow;
+            let factor = crate::mainutils::objects::inherits2(column, c"factor".as_ptr()) != 0;
+            for row in 0..nrow {
+                let src = if XLENGTH(column) == 0 { 0 } else { row % XLENGTH(column) };
+                let at = (offset + row) as usize;
+                if result_type == SEXPTYPE::STRSXP {
+                    let text = if XLENGTH(column) == 0 {
+                        crate::sexp::globals::R_NaString()
+                    } else if TYPEOF(column) == SEXPTYPE::STRSXP && !factor {
+                        STRING_ELT(column, src)
+                    } else if factor || TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::LGLSXP {
+                        let v = *INTEGER(column).add(src as usize);
+                        if v == NA_INTEGER {
+                            crate::sexp::globals::R_NaString()
+                        } else {
+                            let s = std::ffi::CString::new(v.to_string()).unwrap_or_default();
+                            crate::sexp::constructors::Rf_mkChar(s.as_ptr())
+                        }
+                    } else {
+                        let v = *REAL(column).add(src as usize);
+                        if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                            crate::sexp::globals::R_NaString()
+                        } else {
+                            let s = std::ffi::CString::new(v.to_string()).unwrap_or_default();
+                            crate::sexp::constructors::Rf_mkChar(s.as_ptr())
+                        }
+                    };
+                    SET_STRING_ELT(result, at as R_xlen_t, text);
+                } else if result_type == SEXPTYPE::INTSXP {
+                    *INTEGER(result).add(at) = if XLENGTH(column) == 0 {
+                        NA_INTEGER
+                    } else {
+                        *INTEGER(column).add(src as usize)
+                    };
+                } else {
+                    *REAL(result).add(at) = if XLENGTH(column) == 0 {
+                        NA_REAL
+                    } else if TYPEOF(column) == SEXPTYPE::REALSXP {
+                        *REAL(column).add(src as usize)
+                    } else {
+                        let v = *INTEGER(column).add(src as usize);
+                        if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                    };
+                }
+            }
+        }
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _d = protect(dim);
+        *INTEGER(dim) = nrow as c_int;
+        *INTEGER(dim).add(1) = ncol as c_int;
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _n = protect(dimnames);
+        SET_VECTOR_ELT(dimnames, 0, R_NilValue());
+        SET_VECTOR_ELT(
+            dimnames,
+            1,
+            crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dimnames,
+        );
+        result
+    }
+}
+
 
 /// R's `data.matrix(frame, rownames.force = NA)`.
 ///
