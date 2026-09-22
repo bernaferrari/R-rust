@@ -342,9 +342,12 @@ pub unsafe fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 pub unsafe fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
     unsafe {
-        let x = arg_by_name_or_position(args, &["x"], 0);
+        let mut x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
+        }
+        if crate::mainutils::objects::inherits2(x, c"data.frame".as_ptr()) != 0 {
+            x = super::construct::data_frame_as_matrix(x);
         }
         let na_rm = named_logical_arg(args, "na.rm").unwrap_or_else(|| {
             let arg = arg_by_name_or_position(args, &[], 1);

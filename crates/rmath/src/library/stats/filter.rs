@@ -5007,6 +5007,17 @@ fn deparse_call(expr: SEXP) -> String {
                 .to_string_lossy()
                 .into_owned();
         }
+        if TYPEOF(expr) == SEXPTYPE::INTSXP || TYPEOF(expr) == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(expr);
+            return if v == NA_INTEGER {
+                "NA".to_string()
+            } else {
+                v.to_string()
+            };
+        }
+        if TYPEOF(expr) == SEXPTYPE::REALSXP {
+            return (*REAL(expr)).to_string();
+        }
         if TYPEOF(expr) != SEXPTYPE::LANGSXP {
             return String::new();
         }
@@ -5016,7 +5027,15 @@ fn deparse_call(expr: SEXP) -> String {
         let mut args = Vec::new();
         let mut cell = CDR(expr);
         while !cell.is_null() && cell != R_NilValue() {
-            args.push(deparse_call(CAR(cell)));
+            let mut piece = deparse_call(CAR(cell));
+            let tag = TAG(cell);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned();
+                piece = format!("{name} = {piece}");
+            }
+            args.push(piece);
             cell = CDR(cell);
         }
         format!("{op}({})", args.join(", "))
@@ -6643,6 +6662,20 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0)
             {
                 term_cols.push(factor_contrast_columns(colx));
+            } else if !colx.is_null()
+                && colx != R_NilValue()
+                && TYPEOF(colx) == SEXPTYPE::REALSXP
+            {
+                let dim = crate::sexp::attrib_core::getAttrib(
+                    colx,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                );
+                if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+                    let nc = *INTEGER(dim).add(1) as usize;
+                    term_cols.push(vec![Vec::new(); nc]);
+                } else {
+                    term_cols.push(Vec::new());
+                }
             } else {
                 term_cols.push(Vec::new());
             }
@@ -6688,6 +6721,26 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                         colx = VECTOR_ELT(data, i);
                         break;
                     }
+                }
+            }
+            if !colx.is_null()
+                && colx != R_NilValue()
+                && TYPEOF(colx) == SEXPTYPE::REALSXP
+            {
+                let dim = crate::sexp::attrib_core::getAttrib(
+                    colx,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                );
+                if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+                    let nc = *INTEGER(dim).add(1) as i64;
+                    for c in 0..nc {
+                        for i in 0..n {
+                            *dst.add((i + col * n) as usize) =
+                                *REAL(colx).add((i + c * n) as usize);
+                        }
+                        col += 1;
+                    }
+                    continue;
                 }
             }
             if colx.is_null() || colx == R_NilValue() {

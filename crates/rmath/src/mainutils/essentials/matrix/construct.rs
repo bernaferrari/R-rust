@@ -979,7 +979,7 @@ unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
 
 /// GNU `as.matrix.data.frame`: character columns stay character, factors
 /// become their codes, and a mixed frame becomes character.
-unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
+pub(crate) unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
     unsafe {
         let nrow = data_frame_row_count(frame);
         let ncol = XLENGTH(frame);
@@ -1075,8 +1075,6 @@ unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
 
 
 /// R's `data.matrix(frame, rownames.force = NA)`.
-///
-/// Data-frame factors retain their integer codes, character columns become
 /// first-occurrence integer codes, and logical/real columns select double
 /// storage just as base R does after its per-column conversion pass.
 pub unsafe fn do_data_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

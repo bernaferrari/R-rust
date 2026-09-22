@@ -751,6 +751,20 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "attr.all.equal", include_str!("gnu_attr_all_equal.R"));
         eval_base_binding(
             base_env,
+            "count.fields",
+            "function(file, sep = \"\", quote = \"\\\"'\", skip = 0,\n         blank.lines.skip = TRUE, comment.char = \"#\")\n{\n    if(is.character(file)) {\n        file <- file(file)\n        on.exit(close(file))\n    }\n    if(!inherits(file, \"connection\"))\n        stop(\"'file' must be a character string or connection\")\n    if (!isOpen(file)) open(file, \"rt\")\n    .External(C_countfields, file, sep, quote, skip, blank.lines.skip,\n              comment.char)\n}\n",
+        );
+        eval_base_binding(base_env, "C_countfields", "\"C_countfields\"");
+        eval_base_binding(base_env, "poly", include_str!("gnu_poly.R"));
+        eval_base_binding(base_env, "polym", include_str!("gnu_polym.R"));
+        eval_base_binding(base_env, "predict.poly", include_str!("gnu_predict_poly.R"));
+        eval_base_binding(
+            base_env,
+            "makepredictcall.poly",
+            include_str!("gnu_makepredictcall_poly.R"),
+        );
+        eval_base_binding(
+            base_env,
             "all.equal.character",
             include_str!("gnu_all_equal_character.R"),
         );
