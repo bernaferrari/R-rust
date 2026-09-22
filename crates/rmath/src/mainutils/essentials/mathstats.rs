@@ -14328,38 +14328,51 @@ pub unsafe fn do_besselK(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `besselY(x, nu)` — Bessel function of the second kind.
-pub unsafe fn do_besselY(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_besselY(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let _mathlib_call = crate::mainutils::errors::mathlib_warning_call_guard(call);
         let x = CAR(args);
         let nu_arg = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
             return R_NilValue();
         }
-        let nu = real_or_default(nu_arg, 0.0);
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
+        let nx = XLENGTH(x);
+        let nnu = XLENGTH(nu_arg);
+        let n = nx.max(nnu);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
         let dst = REAL(result);
+        let na_bit = crate::sexp::ffi::R_NA_BIT_PATTERN;
         for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            let val = bessel_real_at(x, if nx == 0 { 0 } else { i % nx });
+            let nu = bessel_real_at(nu_arg, if nnu == 0 { 0 } else { i % nnu });
+            if val.to_bits() == na_bit || nu.to_bits() == na_bit {
                 *dst.add(i as usize) = NA_REAL;
             } else {
                 *dst.add(i as usize) = crate::special::bessel_y::bessel_y(val, nu);
             }
         }
         result
+    }
+}
+
+fn bessel_real_at(v: SEXP, i: i64) -> f64 {
+    unsafe {
+        if v.is_null() || v == R_NilValue() || XLENGTH(v) == 0 {
+            return NA_REAL;
+        }
+        let t = TYPEOF(v);
+        if t == SEXPTYPE::REALSXP {
+            *REAL(v).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let x = *INTEGER(v).add(i as usize);
+            if x == NA_INTEGER { NA_REAL } else { x as f64 }
+        } else {
+            NA_REAL
+        }
     }
 }
 

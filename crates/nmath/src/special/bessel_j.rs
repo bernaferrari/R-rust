@@ -545,17 +545,22 @@ pub fn bessel_j(x: f64, alpha: f64) -> f64 {
 
     let mut b = vec![0.0; nb as usize];
     let ncalc = j_bessel(x, alpha_mod, nb, &mut b);
+    let mut result = b[(nb - 1) as usize];
     if ncalc != nb {
         /* error input */
         if ncalc < 0 {
             // MATHLIB_WARNING4 -- just issue a warning
             ml_warning(ME_RANGE, "bessel_j");
         } else {
-            // MATHLIB_WARNING2 -- precision lost
+            // MATHLIB_WARNING2 -- precision lost. Orders past the last
+            // successful term underflow; GNU leaves those entries at 0.
             ml_warning(ME_PRECISION, "bessel_j");
+            if !result.is_finite() {
+                result = 0.0;
+            }
         }
     }
-    b[(nb - 1) as usize]
+    result
 }
 
 /// C FFI wrapper for bessel_j
