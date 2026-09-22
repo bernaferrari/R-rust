@@ -936,7 +936,8 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if let Some(name) = ported_call_name(CAR(args)) {
                 ofun = crate::library::methods::native_calls::lookup(&name)
                     .or_else(|| crate::library::tools::native_calls::lookup(&name))
-                    .or_else(|| crate::library::stats::random::lookup_call(&name));
+                    .or_else(|| crate::library::stats::random::lookup_call(&name))
+                    .or_else(|| crate::library::utils::lookup(&name));
             }
         }
         if ofun.is_none() {
@@ -947,7 +948,8 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if !name.is_empty() {
                 ofun = crate::library::methods::native_calls::lookup(name)
                     .or_else(|| crate::library::tools::native_calls::lookup(name))
-                    .or_else(|| crate::library::stats::random::lookup_call(name));
+                    .or_else(|| crate::library::stats::random::lookup_call(name))
+                    .or_else(|| crate::library::utils::lookup(name));
             }
         }
 
@@ -963,13 +965,11 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let primval = PRIMVAL(op);
         let retval = if primval == 1 {
-            // .External2: fun(call, op, args, env)
-            type ExtRoutine2 = unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
+            type ExtRoutine2 = unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
             let f: ExtRoutine2 = std::mem::transmute_copy(&ofun);
             f(call, op, args, env)
         } else {
-            // .External: fun(args)
-            type ExtRoutine = unsafe extern "C" fn(SEXP) -> SEXP;
+            type ExtRoutine = unsafe extern "C-unwind" fn(SEXP) -> SEXP;
             let f: ExtRoutine = std::mem::transmute_copy(&ofun);
             f(args)
         };

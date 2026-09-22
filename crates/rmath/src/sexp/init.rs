@@ -1104,6 +1104,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "identity", "function(x) x");
         // GNU table.R: is.table <- function(x) inherits(x, "table")
         eval_base_binding(base_env, "is.table", "function(x) inherits(x, \"table\")");
+        eval_base_binding(base_env, "as.table", include_str!("gnu_as_table.R"));
+        eval_base_binding(base_env, "as.table.default", include_str!("gnu_as_table_default.R"));
+        eval_base_binding(base_env, "as.array", include_str!("gnu_as_array.R"));
+        eval_base_binding(base_env, "as.array.default", include_str!("gnu_as_array_default.R"));
+        eval_base_binding(base_env, "provideDimnames", include_str!("gnu_provide_dimnames.R"));
 
         // GNU utils/R/sourceutils.R: getSrcref for rematched S4 methods
         // (reg-S4.R 638). Lives in utils; install in base so source() tests
