@@ -248,8 +248,23 @@ unsafe fn matrix_dims_for_product(
                 });
                 (x_shape, y_shape)
             }
-            MatProductKind::Cross | MatProductKind::TransposedCross => {
-                (x_dim.unwrap_or((x_len, 1)), y_dim.unwrap_or((y_len, 1)))
+            MatProductKind::Cross => {
+                let x_shape = x_dim.unwrap_or((x_len, 1));
+                let y_shape = y_dim.unwrap_or(if y_len == x_shape.0 {
+                    (y_len, 1)
+                } else {
+                    (1, y_len)
+                });
+                (x_shape, y_shape)
+            }
+            MatProductKind::TransposedCross => {
+                let x_shape = x_dim.unwrap_or((x_len, 1));
+                let y_shape = y_dim.unwrap_or(if y_len == x_shape.1 {
+                    (1, y_len)
+                } else {
+                    (y_len, 1)
+                });
+                (x_shape, y_shape)
             }
         }
     }
