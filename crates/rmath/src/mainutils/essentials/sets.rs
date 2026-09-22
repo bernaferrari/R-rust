@@ -2373,9 +2373,11 @@ pub unsafe fn do_any(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let n = XLENGTH(x);
                 for i in 0..n {
                     match logical_arg_value(x, i) {
-                        Some(TRUE) => return Rf_ScalarLogical(TRUE),
+                        Some(v) if v != FALSE && v != NA_INTEGER => {
+                            return Rf_ScalarLogical(TRUE);
+                        }
                         Some(NA_INTEGER) if !na_rm => has_na = true,
-                        Some(_) | None => {}
+                        _ => {}
                     }
                 }
             }
@@ -2419,7 +2421,7 @@ pub unsafe fn do_all(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     match logical_arg_value(x, i) {
                         Some(FALSE) => return Rf_ScalarLogical(FALSE),
                         Some(NA_INTEGER) if !na_rm => has_na = true,
-                        Some(_) | None => {}
+                        _ => {}
                     }
                 }
             }
