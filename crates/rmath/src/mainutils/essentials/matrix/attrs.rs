@@ -5,7 +5,10 @@ use super::*;
 pub unsafe fn do_storage_mode_set(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
-        let x = CAR(args);
+        let mut x = CAR(args);
+        if TYPEOF(x) == SEXPTYPE::PROMSXP {
+            x = crate::sexp::envir::forcePromise(x);
+        }
         let value = CAR(CDR(args));
         let allow_numeric = crate::eval::eval::PRIMNAME(op) == "mode<-";
         let target_type = match storage_mode_target(value, allow_numeric) {
@@ -24,6 +27,15 @@ pub unsafe fn do_storage_mode_set(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) 
             std::panic::panic_any(RError {
                 message: "invalid to change the storage mode of a factor".to_string(),
             });
+        }
+
+        if target_type == SEXPTYPE::VECSXP.as_c_int() {
+            // mode<- "list" is as.list, including calls and pairlists.
+            let list_args = crate::sexp::constructors::Rf_cons(x, R_NilValue());
+            let _list_args = protect(list_args);
+            let result = crate::mainutils::essentials::do_as_list(call, op, list_args, _rho);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return result;
         }
 
         let result = crate::mainutils::coerce::coerceVector(x, target_type);
