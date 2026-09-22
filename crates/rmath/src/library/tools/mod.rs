@@ -15,3 +15,4 @@ mod signals;
 pub(crate) mod native_calls;
 
 mod text;
+mod parse_rd;

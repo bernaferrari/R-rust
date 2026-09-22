@@ -123,11 +123,19 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         match &conn.kind {
             ConnKind::File => {
-                if let Some(ref mut reader) = conn.reader {
+                if conn.mode.contains('+') {
+                    if let Some(writer) = conn.writer.as_mut() {
+                        let _ = writer.flush();
+                    }
+                    if let Some(reader) = conn.reader.as_mut() {
+                        let _ = reader.seek(SeekFrom::Start(conn.raw_pos as u64));
+                    }
+                }
+                if let Some(reader) = conn.reader.as_mut() {
                     for _ in 0..backend_limit {
                         let mut line = String::new();
                         match reader.read_line(&mut line) {
-                            Ok(0) => break, // EOF
+                            Ok(0) => break,
                             Ok(_) => {
                                 if line.ends_with('\n') {
                                     line.pop();
@@ -339,6 +347,12 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
                         }
                     }
                     let _ = writer.flush();
+                    if conn.mode.contains('+')
+                        && let Some(reader) = conn.reader.as_mut()
+                    {
+                        let _ = reader.seek(SeekFrom::Start(0));
+                        conn.raw_pos = 0;
+                    }
                 }
             }
             ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {

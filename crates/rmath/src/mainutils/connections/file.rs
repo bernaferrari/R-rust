@@ -44,10 +44,28 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             "raw",
         );
 
-        let description = check_string_arg(scmd, "description");
+        let mut description = check_string_arg(scmd, "description");
         let open = check_string_arg(sopen, "open");
-        let deferred = open.is_empty();
-        let open_mode = if open.is_empty() {
+        // GNU file("") is an anonymous temporary opened read/write.
+        if description.is_empty() {
+            if !open.is_empty() && open != "w+" && open != "w+b" {
+                let msg = std::ffi::CString::new(
+                    "file(\"\") only supports open = \"w+\" and open = \"w+b\": using the former",
+                )
+                .unwrap_or_default();
+                crate::mainutils::errors::Rf_warning(msg.as_ptr());
+            }
+            description = anonymous_temp_path();
+        }
+        let anonymous = description_is_anonymous(&description);
+        let deferred = open.is_empty() && !anonymous;
+        let open_mode = if anonymous {
+            if open == "w+b" {
+                "w+b".to_string()
+            } else {
+                "w+".to_string()
+            }
+        } else if open.is_empty() {
             "r".to_string()
         } else {
             open
@@ -147,8 +165,9 @@ fn open_browser_file(conn: &mut RConn, mode: &str) {
 type OpenFileHandles = (File, Option<BufReader<File>>, Option<BufWriter<File>>);
 
 pub fn open_file_conn(path: &str, mode: &str) -> io::Result<OpenFileHandles> {
+    let plus = mode.contains('+');
     let mut opts = OpenOptions::new();
-    if mode.contains('r') {
+    if mode.contains('r') || plus {
         opts.read(true);
     }
     if mode.contains('w') {
@@ -159,19 +178,38 @@ pub fn open_file_conn(path: &str, mode: &str) -> io::Result<OpenFileHandles> {
     }
     let file = opts.open(path)?;
 
-    let reader = if mode.contains('r') {
+    let reader = if mode.contains('r') || plus {
         Some(BufReader::new(file.try_clone()?))
     } else {
         None
     };
 
-    let writer = if mode.contains('w') || mode.contains('a') {
+    let writer = if mode.contains('w') || mode.contains('a') || plus {
         Some(BufWriter::new(file.try_clone()?))
     } else {
         None
     };
 
     Ok((file, reader, writer))
+}
+
+fn description_is_anonymous(description: &str) -> bool {
+    let prefix = std::env::temp_dir().join("Rf");
+    Path::new(description).starts_with(std::env::temp_dir())
+        && Path::new(description)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("Rf"))
+        && prefix.is_dir() || description.contains("/Rf") || description.contains("\\Rf")
+}
+
+fn anonymous_temp_path() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("Rf{}{:x}", std::process::id(), n));
+    let _ = std::fs::File::create(&path);
+    path.to_string_lossy().into_owned()
 }
 
 pub fn open_gz_conn(conn: &mut RConn, mode: &str) -> io::Result<()> {
@@ -617,7 +655,7 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                         }
                     }
                     Err(e) => {
-                        r_error(&format!("cannot open the connection '{}': {}", conn.description, e));
+                        r_error("cannot open the connection");
                     }
                 }
             }

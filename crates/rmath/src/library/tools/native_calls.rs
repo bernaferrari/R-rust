@@ -21,7 +21,10 @@ const TOOLS_CALL_NAMES: &[&str] = &[
     "C_delim_match",
     "delim_match",
     "C_Renctest",
-    "Renctest",
+    "C_parseRd",
+    "parseRd",
+    "C_parseRdText",
+    "parseRdText",
 ];
 
 unsafe extern "C-unwind" fn c_do_tab_expand(strings: SEXP, starts: SEXP) -> SEXP {
@@ -67,8 +70,12 @@ pub fn lookup(name: &str) -> DL_FUNC {
         }
         "nonASCII" => as_dl(c_non_ascii as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "delim_match" => as_dl(c_delim_match as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "parseRd" | "parseRdText" => as_dl(
+            super::parse_rd::c_parse_rd
+                as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
         _ => None,
-    }
+}
 }
 
 pub fn lookup_c(name: &str) -> DL_FUNC {
@@ -143,6 +150,13 @@ pub unsafe fn install_tools_assert_closures(env: SEXP) {
              if (syntax != \"Rd\")\n\
                  stop(\"only Rd syntax is currently supported\")\n\
              .Call(C_delim_match, x, delim)\n\
+             }\n",
+        );
+        eval_tools_source(
+            env,
+            "parse_Rd <- function(file, ...) {\n\
+             text <- paste(c(readLines(file, warn = FALSE), \"\"), collapse = \"\\n\")\n\
+             .External2(C_parseRdText, text)\n\
              }\n",
         );
     }

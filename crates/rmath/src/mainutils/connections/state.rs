@@ -461,6 +461,26 @@ pub(crate) fn connection_fgetc(n: c_int) -> c_int {
 
     let mut byte = [0u8; 1];
     let result = match &mut conn.kind {
+        ConnKind::File if conn.mode.contains('+') => {
+            if let Some(writer) = conn.writer.as_mut() {
+                let _ = writer.flush();
+            }
+            if let Some(file) = conn.file.as_mut() {
+                if file.seek(SeekFrom::Start(conn.raw_pos as u64)).is_err() {
+                    Ok(0)
+                } else {
+                    match file.read(&mut byte) {
+                        Ok(1) => {
+                            conn.raw_pos += 1;
+                            Ok(1)
+                        }
+                        other => other,
+                    }
+                }
+            } else {
+                Ok(0)
+            }
+        }
         ConnKind::File => conn
             .reader
             .as_mut()
