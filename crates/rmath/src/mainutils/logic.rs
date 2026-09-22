@@ -546,11 +546,34 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         {
             return ans;
         }
+        let nargs = if args.is_null() || args == R_NilValue() {
+            0
+        } else {
+            let mut n = 0;
+            let mut cell = args;
+            while !cell.is_null() && cell != R_NilValue() {
+                n += 1;
+                cell = CDR(cell);
+            }
+            n
+        };
+        let code = primval(op);
+        if code == 1 || code == 2 {
+            if nargs != 2 {
+                let name = if code == 1 { "&" } else { "|" };
+                let noun = if nargs == 1 { "argument" } else { "arguments" };
+                logic_error(format!(
+                    "{nargs} {noun} passed to '{name}' which requires 2"
+                ));
+            }
+        } else if nargs != 1 {
+            let noun = if nargs == 1 { "argument" } else { "arguments" };
+            logic_error(format!("{nargs} {noun} passed to '!' which requires 1"));
+        }
 
         let attr1 = !ATTRIB(arg1).is_null();
 
-
-        // Arity check: CDR(args) == R_NilValue() means single argument
+        // `!` is the only unary operator in this primitive.
         if CDR(args) == R_NilValue() {
             // Fast path for scalar logical
             if !attr1 && TYPEOF(arg1) == SEXPTYPE::LGLSXP && XLENGTH(arg1) == 1 {
