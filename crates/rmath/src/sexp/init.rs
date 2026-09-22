@@ -803,6 +803,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             include_str!("gnu_within_data_frame.R"),
         );
         eval_base_binding(base_env, "within.list", include_str!("gnu_within_list.R"));
+        eval_base_binding(
+            base_env,
+            "rbind.data.frame",
+            include_str!("gnu_rbind_data_frame.R"),
+        );
         eval_base_binding(base_env, ".checkHT", include_str!("gnu_checkHT.R"));
         eval_base_binding(base_env, "head", "function(x, ...) UseMethod(\"head\")");
         eval_base_binding(base_env, "head.default", include_str!("gnu_head_default.R"));
