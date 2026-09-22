@@ -755,6 +755,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "relist.list", include_str!("gnu_relist_list.R"));
         eval_base_binding(base_env, "outer", include_str!("gnu_outer.R"));
         eval_base_binding(base_env, "%o%", "function(X, Y) outer(X, Y)");
+        eval_base_binding(
+            base_env,
+            "str2lang",
+            "function(s) { stopifnot(length(s) == 1L); ex <- parse(text = s, keep.source = FALSE); stopifnot(length(ex) == 1L); ex[[1L]] }",
+        );
+        eval_base_binding(
+            base_env,
+            "str2expression",
+            "function(text) parse(text = text, keep.source = FALSE)",
+        );
         eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));
         eval_base_binding(base_env, "kappa", include_str!("gnu_kappa.R"));
         eval_base_binding(base_env, "kappa.lm", include_str!("gnu_kappa_lm.R"));

@@ -11,6 +11,7 @@ mod d2x2xk;
 pub(crate) mod dblcen;
 mod distance;
 pub(crate) mod hclust_f;
+pub(crate) mod updateform;
 pub(crate) mod kmns;
 pub(crate) mod deriv;
 pub(crate) mod distn;

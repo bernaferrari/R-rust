@@ -5051,11 +5051,22 @@ fn deparse_call(expr: SEXP) -> String {
     }
 }
 
-fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>) {
+fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>, sign: i32) {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
             return;
         }
+        let record = |name: String, node: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>| {
+            if sign < 0 {
+                if let Some(i) = out.iter().position(|s| s == &name) {
+                    out.remove(i);
+                    nodes.remove(i);
+                }
+            } else if !out.iter().any(|s| s == &name) {
+                out.push(name);
+                nodes.push(node);
+            }
+        };
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
             let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
                 .to_string_lossy()
@@ -5064,10 +5075,7 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>)
                 name.as_str(),
                 "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
             ) {
-                if !out.iter().any(|s| s == &name) {
-                    out.push(name);
-                    nodes.push(expr);
-                }
+                record(name, expr, out, nodes);
             }
             return;
         }
@@ -5080,10 +5088,28 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>)
                 if name == "offset" {
                     return;
                 }
-                if matches!(name.as_str(), "+" | "-" | "*" | "/" | "^" | "(" | "~") {
+                if name == "+" {
                     let mut cell = CDR(expr);
                     while !cell.is_null() && cell != R_NilValue() {
-                        collect_term_labels(CAR(cell), out, nodes);
+                        collect_term_labels(CAR(cell), out, nodes, sign);
+                        cell = CDR(cell);
+                    }
+                    return;
+                }
+                if name == "-" {
+                    let n = crate::sexp::constructors::Rf_length(expr);
+                    if n == 2 {
+                        collect_term_labels(CADR(expr), out, nodes, -sign);
+                    } else {
+                        collect_term_labels(CADR(expr), out, nodes, sign);
+                        collect_term_labels(CADDR(expr), out, nodes, -sign);
+                    }
+                    return;
+                }
+                if matches!(name.as_str(), "*" | "/" | "^" | "(" | "~") {
+                    let mut cell = CDR(expr);
+                    while !cell.is_null() && cell != R_NilValue() {
+                        collect_term_labels(CAR(cell), out, nodes, sign);
                         cell = CDR(cell);
                     }
                     return;
@@ -5093,19 +5119,11 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>)
                     collect_formula_symbols(CADR(expr), &mut parts);
                     collect_formula_symbols(CADDR(expr), &mut parts);
                     if !parts.is_empty() {
-                        let joined = parts.join(":");
-                        if !out.iter().any(|s| s == &joined) {
-                            out.push(joined);
-                            nodes.push(expr);
-                        }
+                        record(parts.join(":"), expr, out, nodes);
                     }
                     return;
                 }
-                let label = deparse_call(expr);
-                if !out.iter().any(|s| s == &label) {
-                    out.push(label);
-                    nodes.push(expr);
-                }
+                record(deparse_call(expr), expr, out, nodes);
                 return;
             }
         }
@@ -6192,7 +6210,7 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             form
         };
         let mut term_nodes: Vec<SEXP> = Vec::new();
-        collect_term_labels(rhs, &mut labels, &mut term_nodes);
+        collect_term_labels(rhs, &mut labels, &mut term_nodes, 1);
         let lab = Rf_allocVector3(SEXPTYPE::STRSXP, labels.len() as i64);
         let _lb = protect(lab);
         for (i, name) in labels.iter().enumerate() {
