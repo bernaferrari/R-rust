@@ -1184,6 +1184,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
         }
 
         let mut pc = 1usize;
+        let mut prot_top: usize = 0;
         let mut stack = R_bcstack_t::new(4);
         let mut for_loops: Vec<GnuForLoopState> = Vec::new();
         let mut loop_stack: Vec<LoopContext> = Vec::new();
@@ -1389,14 +1390,12 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     }
                 }
                 super::bytecode::GNU_OP_INCLNKSTK => {
-                    let value = stack_top_checked(&stack, "GNU INCLNKSTK");
-                    increment_named_link(value);
-                    // GNU pushes the bcprot offset; record the protected
-                    // slot index for DECLNKSTK to release.
-                    let marker = with_stack_rooted(&stack, value, || {
-                        crate::sexp::constructors::Rf_ScalarInteger(
-                            stack.depth() as c_int - 1,
-                        )
+                    // GNU saves the protection-top offset and pushes it.
+                    // It does not read a stack value; the stack may be empty.
+                    let offset = prot_top;
+                    prot_top = stack.depth();
+                    let marker = with_stack_rooted(&stack, R_NilValue(), || {
+                        crate::sexp::constructors::Rf_ScalarInteger(offset as c_int)
                     });
                     stack.push(marker);
                 }
@@ -1408,11 +1407,11 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if TYPEOF(marker) != SEXPTYPE::INTSXP || LENGTH(marker) != 1 {
                         bc_error("GNU DECLNKSTK marker is missing");
                     }
-                    let slot = crate::sexp::accessors::INTEGER_ELT(marker, 0);
-                    if slot < 0 || slot as usize >= stack.depth() - 2 {
+                    let offset = crate::sexp::accessors::INTEGER_ELT(marker, 0);
+                    if offset < 0 {
                         bc_error("GNU DECLNKSTK marker is out of range");
                     }
-                    decrement_named_link(stack.at(slot as usize));
+                    prot_top = offset as usize;
                     let top = stack.at(stack.depth() - 1);
                     stack.set(stack.depth() - 2, top);
                     stack.set_depth(stack.depth() - 1);
