@@ -749,14 +749,28 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                 let directives = read_namespace_directives(Path::new(&package_path))
                     .ok()
                     .flatten();
-                let exports = namespace_exports(directives.as_ref(), namespace);
+                let mut exports = namespace_exports(directives.as_ref(), namespace);
                 if !exports.iter().any(|export| export == &lookup_name) {
+                    if let Some(value) = lazy_data_value(&package_name, &package_path, &lookup_name)
+                    {
+                        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                        return value;
+                    }
                     std::panic::panic_any(RError {
                         message: format!(
                             "'{lookup_name}' is not an exported object from namespace '{package_name}'"
                         ),
                     });
                 }
+            }
+            if private_lookup
+                && crate::mainutils::essentials::lazy_data_names_binding(namespace)
+                    .iter()
+                    .any(|lazy_name| lazy_name == &lookup_name)
+            {
+                std::panic::panic_any(RError {
+                    message: format!("object '{lookup_name}' not found"),
+                });
             }
             let value = crate::sexp::envir::R_findVarInFrame(namespace, name);
             if value == crate::sexp::globals::R_UnboundValue() {
@@ -780,6 +794,28 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
         force_namespace_value(value)
 
+    }
+}
+
+unsafe fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP> {
+    unsafe {
+        let scratch = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 0);
+        let _guard = protect(scratch);
+        crate::mainutils::essentials::source_package_lazy_data(
+            package,
+            std::path::Path::new(package_path),
+            scratch,
+        )
+        .ok()?;
+        let sym = crate::sexp::symbol::Rf_install(
+            std::ffi::CString::new(name).unwrap_or_default().as_ptr(),
+        );
+        let value = crate::sexp::envir::R_findVarInFrame(scratch, sym);
+        if value == crate::sexp::globals::R_UnboundValue() || value.is_null() {
+            None
+        } else {
+            Some(force_namespace_value(value))
+        }
     }
 }
 
