@@ -301,11 +301,16 @@ pub(crate) unsafe fn is_data_frame_object(x: SEXP) -> bool {
 pub(crate) unsafe fn data_frame_row_count(x: SEXP) -> R_xlen_t {
     unsafe {
         let row_names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr()));
-        if !row_names.is_null() && TYPEOF(row_names) == SEXPTYPE::INTSXP && LENGTH(row_names) == 2 {
-            let first = *INTEGER(row_names);
-            let second = *INTEGER(row_names).add(1);
-            if first == NA_INTEGER && second != NA_INTEGER && second != 0 {
-                return (second as R_xlen_t).unsigned_abs() as R_xlen_t;
+        if !row_names.is_null() && row_names != R_NilValue() {
+            let t = TYPEOF(row_names);
+            let len = XLENGTH(row_names);
+            if t == SEXPTYPE::INTSXP && len == 2 && *INTEGER(row_names) == NA_INTEGER {
+                let second = *INTEGER(row_names).add(1);
+                if second != NA_INTEGER && second != 0 {
+                    return (second as R_xlen_t).unsigned_abs() as R_xlen_t;
+                }
+            } else if (t == SEXPTYPE::STRSXP || t == SEXPTYPE::INTSXP) && len > 0 {
+                return len;
             }
         }
 

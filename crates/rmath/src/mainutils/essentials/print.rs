@@ -1755,13 +1755,16 @@ fn print_data_frame_column_texts(
         let mut headers = Vec::with_capacity(ncol as usize);
         let mut columns = Vec::with_capacity(ncol as usize);
         for j in 0..ncol {
+            let col = VECTOR_ELT(x, j as R_xlen_t);
+            if !print_data_frame_column(col) {
+                continue;
+            }
             let header = if has_names && j < XLENGTH(names) {
                 elt_to_string(names, j)
             } else {
                 format!("[,{}]", j + 1)
             };
             headers.push(header);
-            let col = VECTOR_ELT(x, j as R_xlen_t);
             let mut values = Vec::with_capacity(nrow as usize);
             for i in 0..nrow {
                 let val = if col.is_null() {
@@ -1776,6 +1779,18 @@ fn print_data_frame_column_texts(
         (headers, columns)
     }
 }
+fn print_data_frame_column(col: SEXP) -> bool {
+    unsafe {
+        if col.is_null() || col == R_NilValue() {
+            return true;
+        }
+        if crate::mainutils::essentials::sexp_has_class(col, "data.frame") && XLENGTH(col) == 0 {
+            return false;
+        }
+        true
+    }
+}
+
 
 fn emit_print_data_frame_line(line: &str) {
     if crate::sexp::output::is_capturing() {
