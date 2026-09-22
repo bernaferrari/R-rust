@@ -1309,6 +1309,17 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     if TYPEOF(argi) != SEXPTYPE::STRSXP || LENGTH(argi) != 1 {
                         r_error("invalid value for 'OutDec'");
                     }
+                    let ch = STRING_ELT(argi, 0);
+                    let nchars = if ch.is_null() {
+                        0
+                    } else {
+                        std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes().len()
+                    };
+                    if nchars != 1 {
+                        let msg = std::ffi::CString::new("'OutDec' must be a string of one character")
+                            .unwrap_or_default();
+                        crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                    }
                     let new_val = duplicate_sexp(argi);
                     let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));

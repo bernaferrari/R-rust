@@ -3977,7 +3977,18 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         let mut big_mark = String::new();
         let mut drop0trailing = false;
         let mut zero_print: Option<String> = None;
-        let mut decimal_mark = ".".to_string();
+        let mut decimal_mark = {
+            let opt = crate::mainutils::options::GetOption(c"OutDec".as_ptr());
+            if !opt.is_null()
+                && opt != R_NilValue()
+                && TYPEOF(opt) == SEXPTYPE::STRSXP
+                && XLENGTH(opt) >= 1
+            {
+                elt_to_string(opt, 0)
+            } else {
+                ".".to_string()
+            }
+        };
         let mut small_mark = String::new();
         let mut small_interval: usize = 5;
         let mut positional = 0;
@@ -4111,6 +4122,15 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             }
             cell = CDR(cell);
         }
+        if decimal_mark.len() != 1 {
+            let which = if decimal_mark.len() > 1 { "more" } else { "less" };
+            let msg = std::ffi::CString::new(format!(
+                "the decimal mark is {which} than one character wide; this will become an error"
+            ))
+            .unwrap_or_default();
+            crate::mainutils::errors::Rf_warning(msg.as_ptr());
+        }
+
 
         // formatReal/formatComplex read the live digits option; honor an
         // explicit digits argument by swapping the option for this call.
