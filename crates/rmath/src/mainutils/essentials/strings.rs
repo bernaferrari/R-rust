@@ -191,6 +191,15 @@ pub(crate) fn unicode_display_width(ch: char) -> usize {
     if ch.is_control() {
         return 0;
     }
+    // Zero-width format characters. U+200B has width 0, not -1.
+    if (0x200B..=0x200F).contains(&c)
+        || (0x202A..=0x202E).contains(&c)
+        || (0x2060..=0x2064).contains(&c)
+        || (0x2066..=0x206F).contains(&c)
+        || c == 0xFEFF
+    {
+        return 0;
+    }
     // Combining marks.
     if (0x0300..=0x036F).contains(&c)
         || (0x1AB0..=0x1AFF).contains(&c)
