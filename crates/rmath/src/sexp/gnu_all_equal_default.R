@@ -15,6 +15,7 @@ function(target, current, ..., check.class = TRUE)
                   character = all.equal.character(target, current, check.class = check.class, ...),
                   logical = ,
                   raw = all.equal.raw(target, current, check.class = check.class, ...),
+                  S4 = attr.all.equal(target, current, ...),
                   if (check.class && data.class(target) != data.class(current)) {
                       paste0("target is ", data.class(target), ", current is ",
                              data.class(current))

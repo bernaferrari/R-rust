@@ -542,6 +542,7 @@ fn mode_name(x: SEXP) -> &'static str {
                 "function"
             }
             t if t == SEXPTYPE::ENVSXP => "environment",
+            t if t == SEXPTYPE::S4SXP => "S4",
             _ => "unknown",
         }
     }
