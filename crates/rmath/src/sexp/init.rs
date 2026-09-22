@@ -803,6 +803,15 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             include_str!("gnu_within_data_frame.R"),
         );
         eval_base_binding(base_env, "within.list", include_str!("gnu_within_list.R"));
+        eval_base_binding(base_env, ".checkHT", include_str!("gnu_checkHT.R"));
+        eval_base_binding(base_env, "head", "function(x, ...) UseMethod(\"head\")");
+        eval_base_binding(base_env, "head.default", include_str!("gnu_head_default.R"));
+        eval_base_binding(base_env, "head.array", include_str!("gnu_head_array.R"));
+        eval_base_binding(base_env, "head.matrix", include_str!("gnu_head_array.R"));
+        eval_base_binding(base_env, "tail", "function(x, ...) UseMethod(\"tail\")");
+        eval_base_binding(base_env, "tail.default", include_str!("gnu_tail_default.R"));
+        eval_base_binding(base_env, "tail.array", include_str!("gnu_tail_array.R"));
+        eval_base_binding(base_env, "tail.matrix", include_str!("gnu_tail_array.R"));
         eval_base_binding(
             base_env,
             "labels.dendrogram",
