@@ -1374,9 +1374,18 @@ pub unsafe fn do_save_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 candidate
             }
         };
-        if ascii.is_null() || ascii == R_NilValue() {
-            error("save() requires ascii = TRUE in this runtime");
-        }
+        // Binary XDR is not implemented. The default ascii=FALSE path still
+        // writes the ASCII image, looked up in `envir`, so save(one, envir=)
+        // records that binding instead of failing closed.
+        let ascii = if ascii.is_null()
+            || ascii == R_NilValue()
+            || crate::mainutils::coerce::asInteger(ascii) == 0
+        {
+            crate::sexp::constructors::Rf_ScalarLogical(1)
+        } else {
+            ascii
+        };
+        let _ascii = protect(ascii);
         let result = save_ascii_objects(list, file, ascii, envir);
         // Stock save() returns invisible NULL/names; the top-level
         // auto-print depends on the exact flag.

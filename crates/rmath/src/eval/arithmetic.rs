@@ -243,12 +243,8 @@ pub(super) fn warn_if_non_multiple_recycling(a_len: R_xlen_t, b_len: R_xlen_t) {
 }
 
 fn warn_simple(message: &str) {
-    let formatted = format!("Warning message:\n{message} \n");
-    if crate::sexp::output::is_capturing() {
-        crate::sexp::output::capture_stderr(&formatted);
-    } else {
-        eprint!("{formatted}");
-    }
+    let cmsg = std::ffi::CString::new(message).unwrap_or_default();
+    unsafe { crate::mainutils::errors::Rf_warning(cmsg.as_ptr()) }
 }
 
 fn arithmetic_error(message: impl Into<String>) -> ! {

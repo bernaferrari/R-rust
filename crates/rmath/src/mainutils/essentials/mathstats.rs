@@ -14571,35 +14571,124 @@ pub unsafe fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
             return x;
         }
-        // Try integer first
+        let tagged = |name: &str| -> SEXP {
+            let mut cell = args;
+            while !cell.is_null() && cell != R_NilValue() {
+                let tag = TAG(cell);
+                if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                    let pname = PRINTNAME(tag);
+                    if !pname.is_null() {
+                        let label = std::ffi::CStr::from_ptr(CHAR(pname)).to_string_lossy();
+                        if label == name {
+                            return CAR(cell);
+                        }
+                    }
+                }
+                cell = CDR(cell);
+            }
+            R_NilValue()
+        };
+        let numerals = {
+            let spec = tagged("numerals");
+            if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0 {
+                elt_to_string(spec, 0)
+            } else {
+                "allow.loss".to_string()
+            }
+        };
+        let as_is = {
+            let spec = tagged("as.is");
+            if spec.is_null() || spec == R_NilValue() {
+                true
+            } else {
+                crate::mainutils::coerce::asLogical(spec) != 0
+            }
+        };
         let n = XLENGTH(x);
-        let first = elt_to_string(x, 0);
-        if first.parse::<i64>().is_ok() {
-            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-            if result.is_null() {
-                return x;
+        let mut all_i32 = n > 0;
+        let mut all_real = n > 0;
+        let mut exact_real = true;
+        let mut loss = false;
+        let mut values = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let s = elt_to_string(x, i);
+            if let Ok(v) = s.parse::<i64>() {
+                if let Ok(v) = i32::try_from(v) {
+                    values.push(v as f64);
+                    continue;
+                }
             }
-            let _p = protect(result);
-            for i in 0..n {
-                let s = elt_to_string(x, i);
-                *INTEGER(result).add(i as usize) = s.parse::<i64>().unwrap_or(0) as c_int;
+            all_i32 = false;
+            let plain_int = {
+                let body = s.trim_start_matches(['+', '-']);
+                !body.is_empty() && body.bytes().all(|b| b.is_ascii_digit())
+            };
+            if let Some(v) = crate::mainutils::coerce::parse_double_str(&s) {
+                if plain_int {
+                    let digits = s.trim_start_matches(['+', '-']).trim_start_matches('0');
+                    let digits = if digits.is_empty() { "0" } else { digits };
+                    let shown = format!("{v:.0}");
+                    let shown = shown.trim_start_matches('-');
+                    if shown != digits {
+                        exact_real = false;
+                        loss = true;
+                    }
+                }
+                values.push(v);
+            } else {
+                all_real = false;
+                values.push(f64::NAN);
             }
-            result
-        } else if crate::mainutils::coerce::parse_double_str(&first).is_some() {
-            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            if result.is_null() {
-                return x;
-            }
-            let _p = protect(result);
-            for i in 0..n {
-                let s = elt_to_string(x, i);
-                *REAL(result).add(i as usize) =
-                    crate::mainutils::coerce::parse_double_str(&s).unwrap_or(NA_REAL);
-            }
-            result
-        } else {
-            x // Keep as character
         }
+        let keep_real = all_real && (numerals != "no.loss" || exact_real);
+        if all_i32 {
+            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+            let _p = protect(result);
+            for (i, v) in values.iter().enumerate() {
+                *INTEGER(result).add(i) = *v as c_int;
+            }
+            return result;
+        }
+        if keep_real {
+            if numerals == "warn.loss" && loss {
+                let msg = format!(
+                    "accuracy loss in conversion from \"{}\" to numeric",
+                    elt_to_string(x, 0)
+                );
+                let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
+                crate::mainutils::errors::Rf_warning(cmsg.as_ptr());
+            }
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+            let _p = protect(result);
+            for (i, v) in values.iter().enumerate() {
+                *REAL(result).add(i) = *v;
+            }
+            return result;
+        }
+        if as_is {
+            return x;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let _p = protect(result);
+        let levels = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _l = protect(levels);
+        for i in 0..n {
+            *INTEGER(result).add(i as usize) = (i as c_int) + 1;
+            SET_STRING_ELT(levels, i, STRING_ELT(x, i));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::symbol::Rf_install(c"levels".as_ptr()),
+            levels,
+        );
+        let class = Rf_mkString(c"factor".as_ptr());
+        let _c = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        result
     }
 }
 
