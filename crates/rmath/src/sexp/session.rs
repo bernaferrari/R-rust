@@ -176,6 +176,16 @@ fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
     }
 }
 
+fn remember_last_value(value: SEXP) {
+    unsafe {
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".Last.value".as_ptr()),
+            value,
+            crate::sexp::globals::R_GlobalEnv(),
+        );
+    }
+}
+
 fn auto_print_visible(value: Sexp<'_>) {
     let s4 = unsafe { crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw()) } != 0;
     let srcref = unsafe {
@@ -873,6 +883,9 @@ impl RSession {
                 };
                 crate::mainutils::errors::set_toplevel_expr_no(index + 1);
                 result = self.eval_sexp(expr);
+                if let Ok(value) = result.as_ref() {
+                    remember_last_value(value.clone().as_raw());
+                }
                 crate::eval::parser::flush_parsed_expr_warnings(index);
                 if result.is_err() {
                     let catch_script = unsafe {
@@ -1036,6 +1049,9 @@ impl RSession {
                 };
                 crate::mainutils::errors::set_toplevel_expr_no(index + 1);
                 result = self.eval_sexp(expr);
+                if let Ok(value) = result.as_ref() {
+                    remember_last_value(value.clone().as_raw());
+                }
                 crate::eval::parser::flush_parsed_expr_warnings(index);
                 if result.is_err() {
                     // Same top-level halt semantics as the plain script loop:
