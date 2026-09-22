@@ -391,6 +391,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
                 klass,
                 method,
                 env,
+                sysp,
                 callenv,
                 defenv,
             )

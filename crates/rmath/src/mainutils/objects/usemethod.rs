@@ -111,6 +111,7 @@ pub(crate) unsafe fn simple_next_method_dispatch(
     klass: SEXP,
     method: SEXP,
     env: SEXP,
+    arg_env: SEXP,
     callenv: SEXP,
     defenv: SEXP,
 ) -> Option<SEXP> {
@@ -180,7 +181,7 @@ pub(crate) unsafe fn simple_next_method_dispatch(
                     defenv,
                 );
                 let _next_vars_guard = protect(next_vars);
-                let args = frame_args_for_method(FORMALS(next_match.method), env);
+                let args = frame_args_for_method(FORMALS(next_match.method), arg_env);
                 let _args_guard = protect(args);
                 return Some(crate::eval::closure::applyClosureWithFrameVars(
                     next_call,

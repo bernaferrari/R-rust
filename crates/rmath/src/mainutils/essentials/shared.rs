@@ -419,10 +419,59 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
             return R_NilValue();
         }
+        let call_name = if !_call.is_null()
+            && _call != R_NilValue()
+            && TYPEOF(CAR(_call)) == SEXPTYPE::SYMSXP
+        {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(CAR(_call))))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        };
+        if call_name == "$<-" {
+            let object = crate::eval::eval::Rf_eval(CAR(args), rho);
+            let _object_guard = protect(object);
+            if crate::eval::attrib_core::isObject(object) != 0 {
+                let fixed = crate::mainutils::subset::fixSubset3Args(
+                    _call,
+                    args,
+                    rho,
+                    std::ptr::null_mut(),
+                );
+                let _fixed = protect(fixed);
+                SETCAR(
+                    fixed,
+                    crate::sexp::memory_ext::R_mkEVPROMISE(CAR(fixed), object),
+                );
+                let mut dispatched = R_NilValue();
+                if crate::eval::dispatch::DispatchOrEval(
+                    _call,
+                    _op,
+                    c"$<-".as_ptr(),
+                    fixed,
+                    rho,
+                    &mut dispatched,
+                    0,
+                    0,
+                ) != 0
+                {
+                    return dispatched;
+                }
+            }
+        }
 
         let object = crate::eval::eval::Rf_eval(CAR(args), rho);
         let _object_eval = protect(object);
-        let field = replacement_name(CAR(CDR(args)));
+        let name_arg = CAR(CDR(args));
+        let name_arg = if TYPEOF(name_arg) == SEXPTYPE::PROMSXP {
+            let forced = crate::eval::eval::Rf_eval(name_arg, rho);
+            let _forced = protect(forced);
+            forced
+        } else {
+            name_arg
+        };
+        let field = replacement_name(name_arg);
         let value = if CDR(CDR(args)).is_null() || CDR(CDR(args)) == R_NilValue() {
             R_NilValue()
         } else {
