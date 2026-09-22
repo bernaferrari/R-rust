@@ -30,7 +30,7 @@ struct IntStruct {
 // Rintfn -- the integrand function called by the quadrature routines
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_void) {
+unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_void) {
     unsafe {
         let is = &*(ex as *const IntStruct);
 

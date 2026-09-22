@@ -20,7 +20,7 @@ use libm::*;
 /// The function receives a mutable slice of x values and an opaque pointer.
 /// It should overwrite x[i] with f(x[i]).
 pub type IntegrFn =
-    unsafe extern "C" fn(x: *mut f64, n: std::os::raw::c_int, ex: *mut std::ffi::c_void);
+    unsafe extern "C-unwind" fn(x: *mut f64, n: std::os::raw::c_int, ex: *mut std::ffi::c_void);
 
 // =====================================================================
 // Constants
