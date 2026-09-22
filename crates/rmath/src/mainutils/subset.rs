@@ -562,6 +562,19 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
         for (j, d) in kept.iter().enumerate() {
             *INTEGER(new_dim).add(j) = *d;
         }
+        let dim_names = getAttrib(dim, sym_Names());
+        if !isNull(dim_names) && TYPEOF(dim_names) == SEXPTYPE::STRSXP {
+            let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept.len() as R_xlen_t);
+            let _new_names = protect(new_names);
+            for (j, i) in kept_idx.iter().enumerate() {
+                SET_STRING_ELT(
+                    new_names,
+                    j as R_xlen_t,
+                    STRING_ELT(dim_names, *i as R_xlen_t),
+                );
+            }
+            setAttrib(new_dim, sym_Names(), new_names);
+        }
         setAttrib(x, sym_Dim(), new_dim);
 
         if !dimnames.is_null() && dimnames != R_NilValue() {

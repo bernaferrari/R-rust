@@ -77,6 +77,29 @@ pub unsafe fn do_lengths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 *dst.add(i as usize) = 1;
             }
         }
+        let use_names = {
+            let arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["use.names"], 1);
+            arg.is_null()
+                || arg == R_NilValue()
+                || crate::main::coerce::asLogical(arg) != 0
+        };
+        if use_names {
+            let names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == n
+            {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+        }
         result
     }
 }

@@ -525,6 +525,21 @@ pub unsafe fn array_dimension_attribute(value: SEXP, data_len: R_xlen_t) -> Resu
         for i in 0..XLENGTH(value) {
             *INTEGER(dim).add(i as usize) = dimension_component(value, i);
         }
+        let names = crate::sexp::attrib_core::getAttrib(
+            value,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == XLENGTH(dim)
+        {
+            crate::sexp::attrib_core::setAttrib(
+                dim,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
         Ok(dim)
     }
 }
