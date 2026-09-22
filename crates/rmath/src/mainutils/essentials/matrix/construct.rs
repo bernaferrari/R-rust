@@ -99,6 +99,7 @@ pub fn supported_matrix_type(t: c_int) -> bool {
         || t == SEXPTYPE::RAWSXP
         || t == SEXPTYPE::STRSXP
         || t == SEXPTYPE::VECSXP
+        || t == SEXPTYPE::EXPRSXP
 }
 
 pub unsafe fn set_matrix_na_or_zero(x: SEXP, i: R_xlen_t) {
@@ -235,7 +236,9 @@ pub(crate) unsafe fn copy_matrix_element(dst: SEXP, dst_i: R_xlen_t, src: SEXP, 
                 *RAW(dst).add(dst_i as usize) = *RAW(src).add(src_i as usize)
             }
             t if t == SEXPTYPE::STRSXP => SET_STRING_ELT(dst, dst_i, STRING_ELT(src, src_i)),
-            t if t == SEXPTYPE::VECSXP => SET_VECTOR_ELT(dst, dst_i, VECTOR_ELT(src, src_i)),
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                SET_VECTOR_ELT(dst, dst_i, VECTOR_ELT(src, src_i))
+            }
             _ => {}
         }
     }

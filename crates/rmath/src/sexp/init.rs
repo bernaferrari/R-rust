@@ -775,6 +775,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "srcfile", include_str!("gnu_srcfile.R"));
         eval_base_binding(base_env, "R.home", include_str!("gnu_r_home.R"));
+        eval_base_binding(base_env, "as.expression", "function(x, ...) UseMethod(\"as.expression\")");
+        eval_base_binding(
+            base_env,
+            "as.expression.default",
+            "function(x, ...) .Internal(as.vector(x, \"expression\"))",
+        );
         eval_base_binding(base_env, "match.fun", include_str!("gnu_match_fun.R"));
         eval_base_binding(base_env, "summaryRprof", include_str!("gnu_summary_rprof.R"));
         eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));
