@@ -2772,6 +2772,7 @@ pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
         let mut big_mark = String::new();
         let mut decimal_mark = ".".to_string();
+        let mut zero_print: Option<String> = None;
         let mut cell = CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
             let value = CAR(cell);
@@ -2783,7 +2784,30 @@ pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             } else {
                 String::new()
             };
-            if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+            if named == "zero.print" {
+                zero_print = if TYPEOF(value) == SEXPTYPE::LGLSXP {
+                    Some(
+                        if crate::mainutils::coerce::asLogical(value) != 0 {
+                            "0".to_string()
+                        } else {
+                            " ".to_string()
+                        },
+                    )
+                } else if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+                    let ch = STRING_ELT(value, 0);
+                    if ch.is_null() {
+                        None
+                    } else {
+                        Some(
+                            std::ffi::CStr::from_ptr(CHAR(ch))
+                                .to_string_lossy()
+                                .into_owned(),
+                        )
+                    }
+                } else {
+                    None
+                };
+            } else if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
                 let ch = STRING_ELT(value, 0);
                 if !ch.is_null() {
                     let s = std::ffi::CStr::from_ptr(CHAR(ch))
@@ -2838,7 +2862,27 @@ pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     .to_string_lossy()
                     .into_owned()
             };
-            let pretty = if let Some((int_part, frac)) = raw.split_once('.') {
+            let is_zero = {
+                let body = raw.trim().trim_start_matches(['+', '-']);
+                !body.is_empty()
+                    && body.chars().all(|c| c == '0' || c == '.')
+                    && body.contains('0')
+                    && body.chars().filter(|c| *c == '.').count() <= 1
+            };
+            let pretty = if is_zero {
+                if let Some(zero) = zero_print.as_deref() {
+                    zero.to_string()
+                } else if let Some((int_part, frac)) = raw.split_once('.') {
+                    format!(
+                        "{}{}{}",
+                        prettynum_group(int_part, &big_mark, 3),
+                        decimal_mark,
+                        frac
+                    )
+                } else {
+                    prettynum_group(&raw, &big_mark, 3)
+                }
+            } else if let Some((int_part, frac)) = raw.split_once('.') {
                 format!(
                     "{}{}{}",
                     prettynum_group(int_part, &big_mark, 3),
