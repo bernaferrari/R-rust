@@ -82,6 +82,15 @@ pub fn lookup_c(name: &str) -> DL_FUNC {
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
             *mut std::ffi::c_void,
         )),
+        "hclust" => as_dl(crate::library::stats::hclust_f::c_hclust as unsafe extern "C" fn(
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void,
+        )),
+        "hcass2" => as_dl(crate::library::stats::hclust_f::c_hcass2 as unsafe extern "C" fn(
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void,
+        )),
         _ => None,
     }
 }
