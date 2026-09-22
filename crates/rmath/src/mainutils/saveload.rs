@@ -177,8 +177,10 @@ pub fn OutIntegerAscii(fp: &mut impl Write, x: c_int) -> io::Result<()> {
 
 /// Write a double in ASCII format (NA -> "NA", Inf -> "Inf"/"-Inf").
 pub fn OutDoubleAscii(fp: &mut impl Write, x: f64) -> io::Result<()> {
-    if x.is_nan() {
+    if crate::sexp::ffi::R_IsNA(x) {
         fp.write_all(b"NA")
+    } else if x.is_nan() {
+        fp.write_all(b"NaN")
     } else if x.is_infinite() {
         if x < 0.0 {
             fp.write_all(b"-Inf")
@@ -257,6 +259,7 @@ pub fn InDoubleAscii(reader: &mut impl BufRead) -> io::Result<f64> {
     let buf = buf.trim();
     match buf {
         "NA" => Ok(f64::from_bits(R_NA_BIT_PATTERN)),
+        "NaN" => Ok(f64::NAN),
         "Inf" => Ok(f64::INFINITY),
         "-Inf" => Ok(f64::NEG_INFINITY),
         _ => buf
@@ -289,6 +292,7 @@ fn InComplexAscii(reader: &mut impl BufRead) -> io::Result<Rcomplex> {
 fn parse_ascii_double_token(token: &str) -> io::Result<f64> {
     match token {
         "NA" => Ok(f64::from_bits(R_NA_BIT_PATTERN)),
+        "NaN" => Ok(f64::NAN),
         "Inf" => Ok(f64::INFINITY),
         "-Inf" => Ok(f64::NEG_INFINITY),
         _ => token
@@ -1526,7 +1530,7 @@ mod tests {
 
         buf.clear();
         must(OutDoubleAscii(&mut buf, f64::NAN));
-        assert_eq!(&buf, b"NA");
+        assert_eq!(&buf, b"NaN");
 
         buf.clear();
         must(OutDoubleAscii(&mut buf, f64::INFINITY));
