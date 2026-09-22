@@ -158,13 +158,25 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 }
             }
             ConnKind::Pipe => {
-                if let Some(ref mut child) = conn.child
-                    && let Some(ref mut stdout) = child.stdout
+                if let Some(child) = conn.child.as_mut()
+                    && let Some(stdout) = child.stdout.as_mut()
                 {
-                    let _reader = BufReader::new(stdout);
-                    #[allow(clippy::never_loop)]
+                    let mut reader = BufReader::new(stdout);
                     for _ in 0..backend_limit {
-                        break;
+                        let mut line = String::new();
+                        match reader.read_line(&mut line) {
+                            Ok(0) => break,
+                            Ok(_) => {
+                                if line.ends_with('\n') {
+                                    line.pop();
+                                }
+                                if line.ends_with('\r') {
+                                    line.pop();
+                                }
+                                lines.push(line);
+                            }
+                            Err(_) => break,
+                        }
                     }
                 }
             }

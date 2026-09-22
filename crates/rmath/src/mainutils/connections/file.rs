@@ -752,12 +752,19 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
 
         let mut table = connection_table();
-        if let Some(ref mut conn) = table[i] {
+        let status = if let Some(ref mut conn) = table[i] {
+            let is_pipe = matches!(conn.kind, ConnKind::Pipe);
             close_connection_inner(conn);
-        }
+            if is_pipe { Some(conn.status) } else { None }
+        } else {
+            None
+        };
         table[i] = None;
-
-        R_NilValue()
+        if let Some(code) = status {
+            Rf_ScalarInteger(code)
+        } else {
+            R_NilValue()
+        }
     }
 }
 
