@@ -20,7 +20,7 @@ function(x, breaks = "Sturges", freq = NULL, probability = NULL,
         z <- sort(z)
         h <- (length(z) - 1) * p + 1
         j <- floor(h)
-        if (j >= length(z)) z[length(z)] else z[j] + (h - j) * (z[j + 1L] - z[j])
+        if (j >= length(z) || h == j) z[j] else z[j] + (h - j) * (z[j + 1L] - z[j])
     }
     med <- function(z) q7(z, .5)
     if (!is.null(nclass) && length(nclass) == 1L && missing(breaks)) breaks <- nclass
@@ -53,7 +53,9 @@ function(x, breaks = "Sturges", freq = NULL, probability = NULL,
     breaks <- sort(breaks)
     nB <- length(breaks)
     h <- diff(breaks)
+
     if (any(h <= 0)) stop("'breaks' are not strictly increasing")
+
     equidist <- (max(h) - min(h)) < 1e-7 * mean(h)
     if (!is.null(probability) && !is.null(freq) && any(as.logical(probability) == as.logical(freq)))
         stop("'probability' is an alias for '!freq', however they differ.")
@@ -66,6 +68,7 @@ function(x, breaks = "Sturges", freq = NULL, probability = NULL,
              else c(rep(-diddle, nB - 1L), if (include.lowest) diddle else -diddle)
     fuzzybreaks <- breaks + fuzzv
     counts <- integer(nB - 1L)
+
     for (i in seq_along(counts)) {
         if (right) {
             left <- if (i == 1L && include.lowest) x >= fuzzybreaks[i] else x > fuzzybreaks[i]
