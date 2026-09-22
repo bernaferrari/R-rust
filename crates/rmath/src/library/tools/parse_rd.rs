@@ -67,8 +67,32 @@ fn lines_with_newlines(text: &str) -> Vec<String> {
     }
     lines
 }
+fn strip_rd_comments(input: &str) -> String {
+    let chars: Vec<char> = input.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\\' && i + 1 < chars.len() && chars[i + 1] == '%' {
+            out.push('\\');
+            out.push('%');
+            i += 2;
+            continue;
+        }
+        if chars[i] == '%' {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
 
 fn expand_user_macros(input: &str) -> String {
+    let input = strip_rd_comments(input);
     let chars: Vec<char> = input.chars().collect();
     let mut macros: Vec<(String, String)> = Vec::new();
     let mut out = String::new();
