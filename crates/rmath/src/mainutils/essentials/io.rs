@@ -1761,27 +1761,50 @@ enum TableColClass {
     Infer,
 }
 
-unsafe fn parse_table_col_classes(arg: SEXP, ncols: usize) -> Vec<TableColClass> {
+unsafe fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableColClass> {
     unsafe {
+        let ncols = col_names.len();
         let mut declared: Vec<Option<TableColClass>> = vec![None; ncols];
         if !arg.is_null() && arg != R_NilValue() && TYPEOF(arg) == SEXPTYPE::STRSXP {
             let n = XLENGTH(arg) as usize;
-            if n > 0 {
+            let names = crate::sexp::attrib_core::getAttrib(
+                arg,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            let named = !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == n as i64;
+            if named {
+                let mut missing = false;
+                for src in 0..n {
+                    if is_string_na(arg, src as R_xlen_t) {
+                        continue;
+                    }
+                    let nm = elt_to_string(names, src as R_xlen_t);
+                    if let Some(j) = col_names.iter().position(|c| c == &nm) {
+                        declared[j] = Some(table_col_class_name(&elt_to_string(arg, src as R_xlen_t)));
+                    } else {
+                        missing = true;
+                    }
+                }
+                if missing {
+                    let msg = std::ffi::CString::new(
+                        "not all columns named in 'colClasses' exist",
+                    )
+                    .unwrap_or_default();
+                    crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                }
+            } else if n > 0 {
                 for j in 0..ncols {
                     let src = j % n;
                     if is_string_na(arg, src as R_xlen_t) {
                         continue;
                     }
-                    let name = elt_to_string(arg, src as R_xlen_t);
-                    declared[j] = Some(match name.as_str() {
-                        "logical" => TableColClass::Logical,
-                        "integer" => TableColClass::Integer,
-                        "numeric" | "double" | "real" => TableColClass::Numeric,
-                        "character" => TableColClass::Character,
-                        "factor" => TableColClass::Factor,
-                        "NULL" => TableColClass::Null,
-                        _ => TableColClass::Character,
-                    });
+                    declared[j] = Some(table_col_class_name(&elt_to_string(
+                        arg,
+                        src as R_xlen_t,
+                    )));
                 }
             }
         }
@@ -1789,6 +1812,18 @@ unsafe fn parse_table_col_classes(arg: SEXP, ncols: usize) -> Vec<TableColClass>
             .into_iter()
             .map(|d| d.unwrap_or(TableColClass::Infer))
             .collect()
+    }
+}
+
+fn table_col_class_name(name: &str) -> TableColClass {
+    match name {
+        "logical" => TableColClass::Logical,
+        "integer" => TableColClass::Integer,
+        "numeric" | "double" | "real" => TableColClass::Numeric,
+        "character" => TableColClass::Character,
+        "factor" => TableColClass::Factor,
+        "NULL" => TableColClass::Null,
+        _ => TableColClass::Character,
     }
 }
 
@@ -1946,6 +1981,17 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 .map(|i| elt_to_string(text_arg, i))
                 .collect::<Vec<_>>()
                 .join("\n")
+        } else if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) >= 1 {
+            let con = *INTEGER(file_arg);
+            let mut bytes = Vec::new();
+            loop {
+                let c = crate::mainutils::connections::connection_fgetc(con);
+                if c < 0 {
+                    break;
+                }
+                bytes.push(c as u8);
+            }
+            String::from_utf8_lossy(&bytes).into_owned()
         } else {
             if file_arg.is_null()
                 || file_arg == R_NilValue()
@@ -2030,7 +2076,7 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let data = padded;
         let nrow = data.len() as R_xlen_t;
 
-        let classes = parse_table_col_classes(col_classes_arg, ncols);
+        let classes = parse_table_col_classes(col_classes_arg, &col_names);
 
         // Optional row.names: a single integer names the column to use,
         // a character vector supplies the names directly.
