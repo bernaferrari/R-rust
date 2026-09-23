@@ -426,6 +426,14 @@ pub(crate) unsafe fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
 /// Port of `VectorAssign()` -- handles `x[s] <- y` for vectors.
 pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP {
     unsafe {
+        if crate::mainutils::subset::is_data_frame(x)
+            && TYPEOF(s) == SEXPTYPE::STRSXP
+            && XLENGTH(s) == 1
+        {
+            let args = Rf_cons(x, Rf_cons(s, Rf_cons(y, R_NilValue())));
+            let _a = protect(args);
+            return crate::mainutils::essentials::do_dollar_set(call, R_NilValue(), args, rho);
+        }
         use crate::eval::attrib_core::R_DimSymbol;
 
         // Quick return for simple scalar case
