@@ -7651,6 +7651,84 @@ pub unsafe fn do_psmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 
+fn smirnov_hit(q: f64, r: f64, s: f64, two: bool) -> bool {
+    if two { (r - s).abs() >= q } else { (r - s) >= q }
+}
+
+fn psmirnov_uniq(q: f64, m: i32, n: i32, two: bool, lower: bool) -> f64 {
+    if m < 0 || n < 0 {
+        return f64::NAN;
+    }
+    let md = m as f64;
+    let nd = n as f64;
+    let mut u = vec![0.0f64; (n as usize) + 1];
+    if lower {
+        u[0] = 1.0;
+        for j in 1..=n as usize {
+            u[j] = if smirnov_hit(q, 0.0, j as f64 / nd, two) { 0.0 } else { u[j - 1] };
+        }
+        for i in 1..=m {
+            let w = i as f64 / (i + n) as f64;
+            u[0] = if smirnov_hit(q, i as f64 / md, 0.0, two) { 0.0 } else { w * u[0] };
+            for j in 1..=n as usize {
+                u[j] = if smirnov_hit(q, i as f64 / md, j as f64 / nd, two) {
+                    0.0
+                } else {
+                    w * u[j] + u[j - 1]
+                };
+            }
+        }
+    } else {
+        u[0] = 0.0;
+        for j in 1..=n as usize {
+            u[j] = if smirnov_hit(q, 0.0, j as f64 / nd, two) { 1.0 } else { u[j - 1] };
+        }
+        for i in 1..=m {
+            if smirnov_hit(q, i as f64 / md, 0.0, two) {
+                u[0] = 1.0;
+            }
+            for j in 1..=n as usize {
+                if smirnov_hit(q, i as f64 / md, j as f64 / nd, two) {
+                    u[j] = 1.0;
+                } else {
+                    let v = i as f64 / (i + j as i32) as f64;
+                    let w = j as f64 / (i + j as i32) as f64;
+                    u[j] = v * u[j] + w * u[j - 1];
+                }
+            }
+        }
+    }
+    u[n as usize]
+}
+
+pub unsafe extern "C-unwind" fn c_psmirnov_exact(
+    sq: SEXP,
+    sm: SEXP,
+    sn: SEXP,
+    sz: SEXP,
+    stwo: SEXP,
+    slower: SEXP,
+) -> SEXP {
+    unsafe {
+        let _ = sz;
+        let m = if TYPEOF(sm) == SEXPTYPE::REALSXP { *REAL(sm) as i32 } else { *INTEGER(sm) };
+        let n = if TYPEOF(sn) == SEXPTYPE::REALSXP { *REAL(sn) as i32 } else { *INTEGER(sn) };
+        let two = if TYPEOF(stwo) == SEXPTYPE::REALSXP { *REAL(stwo) as i32 } else { *INTEGER(stwo) } != 0;
+        let lower = if TYPEOF(slower) == SEXPTYPE::REALSXP { *REAL(slower) as i32 } else { *INTEGER(slower) } != 0;
+        let nq = XLENGTH(sq).max(0);
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, nq);
+        let _ans = protect(ans);
+        let md = m as f64;
+        let nd = n as f64;
+        for i in 0..nq as usize {
+            let raw = if TYPEOF(sq) == SEXPTYPE::REALSXP { *REAL(sq).add(i) } else { *INTEGER(sq).add(i) as f64 };
+            let q = (0.5 + (raw * md * nd - 1e-7).floor()) / (md * nd);
+            *REAL(ans).add(i) = psmirnov_uniq(q, m, n, two, lower);
+        }
+        ans
+    }
+}
+
 /// GNU `qsmirnov(p, sizes, exact=FALSE)` — smallest D with psmirnov >= p.
 pub unsafe fn do_qsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
