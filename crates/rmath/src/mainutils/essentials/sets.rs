@@ -1319,9 +1319,20 @@ unsafe fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey
         }
         match common_type {
             SEXPTYPE::STRSXP => {
-                if TYPEOF(x) == SEXPTYPE::STRSXP
-                    && STRING_ELT(x, index) == crate::sexp::globals::R_NaString()
-                {
+                let missing = match TYPEOF(x) {
+                    t if t == SEXPTYPE::STRSXP => {
+                        STRING_ELT(x, index) == crate::sexp::globals::R_NaString()
+                    }
+                    t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                        INTEGER_ELT(x, index as c_int) == NA_INTEGER
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        REAL_ELT(x, index as c_int).to_bits()
+                            == crate::sexp::ffi::R_NA_BIT_PATTERN
+                    }
+                    _ => false,
+                };
+                if missing {
                     MatchKey::Missing
                 } else {
                     MatchKey::String(elt_to_string(x, index))

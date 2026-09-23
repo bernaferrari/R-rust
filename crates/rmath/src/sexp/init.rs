@@ -1194,6 +1194,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "pretty.POSIXt", include_str!("gnu_pretty_date.R"));
         eval_base_binding(
             base_env,
+            "as.vector.factor",
+            include_str!("gnu_as_vector_factor.R"),
+        );
+        eval_base_binding(
+            base_env,
             "as.POSIXlt.POSIXct",
             include_str!("gnu_as_POSIXlt_POSIXct.R"),
         );
