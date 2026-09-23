@@ -709,7 +709,8 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             elt_to_string(quote_arg, 0)
         };
-        let values = split_scan_fields(&contents, &sep, &quote, nmax);
+        let field_cap = if what_type == SEXPTYPE::VECSXP { -1 } else { nmax };
+        let values = split_scan_fields(&contents, &sep, &quote, field_cap);
         let n = values.len() as R_xlen_t;
         let quiet = match named_arg(args, "quiet") {
             Some(q) if !q.is_null() && q != R_NilValue() && XLENGTH(q) > 0 => {
@@ -781,6 +782,44 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let cstr = CString::new(value.as_str()).unwrap_or_default();
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
                 SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+            }
+            result
+        } else if what_type == SEXPTYPE::VECSXP {
+            let nc = XLENGTH(what_arg);
+            if nc <= 0 {
+                scan_error("scan() 'what' list is empty");
+            }
+            for j in 0..nc {
+                let tmpl = VECTOR_ELT(what_arg, j);
+                if TYPEOF(tmpl) != SEXPTYPE::STRSXP {
+                    scan_error("scan() list 'what' only supports character fields");
+                }
+            }
+            let nrec = if nmax >= 0 {
+                nmax as R_xlen_t
+            } else {
+                n / nc
+            };
+            let take = nrec * nc;
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, nc);
+            let _p = protect(result);
+            for j in 0..nc {
+                let col = Rf_allocVector3(SEXPTYPE::STRSXP, nrec);
+                SET_VECTOR_ELT(result, j, col);
+                for r in 0..nrec {
+                    let idx = r * nc + j;
+                    let text = if idx < n && idx < take {
+                        values[idx as usize].as_str()
+                    } else {
+                        ""
+                    };
+                    let cstr = CString::new(text).unwrap_or_default();
+                    SET_STRING_ELT(
+                        col,
+                        r,
+                        crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                    );
+                }
             }
             result
         } else {
