@@ -460,14 +460,7 @@ pub unsafe fn ScalarLogical(x: c_int) -> SEXP {
 
 /// NA_STRING -- returns the NA string CHARSXP sentinel.
 pub unsafe fn NA_STRING() -> SEXP {
-    unsafe {
-        // Use a CHARSXP with the NA bit set (gp=1)
-        let s = Rf_mkChar(b"NA\x00".as_ptr() as *const c_char);
-        if !s.is_null() {
-            (*s).sxpinfo.set_gp(1);
-        }
-        s
-    }
+    unsafe { crate::sexp::globals::R_NaString() }
 }
 
 // ---------------------------------------------------------------------------

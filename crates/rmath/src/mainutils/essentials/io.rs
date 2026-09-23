@@ -1962,6 +1962,8 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let col_classes_arg = arg_by_name_or_position(args, &["colClasses"], named_only);
         let na_strings_arg =
             arg_by_name_or_position(args, &["na.strings", "NA.strings"], named_only);
+        let strings_as_factors_arg =
+            arg_by_name_or_position(args, &["stringsAsFactors"], named_only);
         let comment_arg = arg_by_name_or_position(args, &["comment.char"], named_only);
         let strip_white_arg = arg_by_name_or_position(args, &["strip.white"], named_only);
         let blank_skip_arg = arg_by_name_or_position(args, &["blank.lines.skip"], named_only);
@@ -2001,6 +2003,9 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         } else {
             vec!["NA".to_string()]
         };
+        let strings_as_factors = !strings_as_factors_arg.is_null()
+            && strings_as_factors_arg != R_NilValue()
+            && crate::mainutils::coerce::asLogical(strings_as_factors_arg) != 0;
         let blank_lines_skip = blank_skip_arg.is_null()
             || blank_skip_arg == R_NilValue()
             || real_or_default(blank_skip_arg, 1.0) != 0.0;
@@ -2233,6 +2238,40 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             };
             out_cols.push(col);
             out_names.push(col_names[j].clone());
+        }
+        if strings_as_factors {
+            for col in &mut out_cols {
+                if TYPEOF(*col) != SEXPTYPE::STRSXP {
+                    continue;
+                }
+                let n = XLENGTH(*col);
+                let mut levels: Vec<String> = Vec::new();
+                for i in 0..n {
+                    let ch = STRING_ELT(*col, i);
+                    if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                        continue;
+                    }
+                    let s = elt_to_string(*col, i);
+                    if !levels.iter().any(|level| level == &s) {
+                        levels.push(s);
+                    }
+                }
+                levels.sort();
+                let coded = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+                let _coded = protect(coded);
+                for i in 0..n {
+                    let ch = STRING_ELT(*col, i);
+                    if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                        *INTEGER(coded).add(i as usize) = NA_INTEGER;
+                    } else {
+                        let s = elt_to_string(*col, i);
+                        let code = levels.iter().position(|level| level == &s).unwrap_or(0);
+                        *INTEGER(coded).add(i as usize) = code as i32 + 1;
+                    }
+                }
+                crate::mainutils::essentials::tables::set_factor_attrs(coded, &levels);
+                *col = coded;
+            }
         }
 
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, out_cols.len() as R_xlen_t);
