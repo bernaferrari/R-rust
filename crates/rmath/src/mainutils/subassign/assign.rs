@@ -56,7 +56,7 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
             } else {
                 value
             };
-            let updated = assign_column_rows(col, &rows, src, ylen);
+            let updated = assign_column_rows(col, &rows, src, XLENGTH(src).max(1));
             SET_VECTOR_ELT(frame, col_i, updated);
         }
         Some(frame)

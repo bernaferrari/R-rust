@@ -5106,7 +5106,35 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>,
                     }
                     return;
                 }
-                if matches!(name.as_str(), "*" | "/" | "^" | "(" | "~") {
+                if name == "*" {
+                    let mut left_labels = Vec::new();
+                    let mut left_nodes = Vec::new();
+                    let mut right_labels = Vec::new();
+                    let mut right_nodes = Vec::new();
+                    collect_term_labels(CADR(expr), &mut left_labels, &mut left_nodes, 1);
+                    collect_term_labels(CADDR(expr), &mut right_labels, &mut right_nodes, 1);
+                    let mut combined_labels = Vec::new();
+                    let mut combined_nodes = Vec::new();
+                    for (label, node) in left_labels.iter().zip(left_nodes.iter().copied()) {
+                        combined_labels.push(label.clone());
+                        combined_nodes.push(node);
+                    }
+                    for (label, node) in right_labels.iter().zip(right_nodes.iter().copied()) {
+                        combined_labels.push(label.clone());
+                        combined_nodes.push(node);
+                    }
+                    for left in &left_labels {
+                        for right in &right_labels {
+                            combined_labels.push(format!("{left}:{right}"));
+                            combined_nodes.push(expr);
+                        }
+                    }
+                    for (label, node) in combined_labels.into_iter().zip(combined_nodes) {
+                        record(label, node, out, nodes);
+                    }
+                    return;
+                }
+                if matches!(name.as_str(), "/" | "^" | "(" | "~") {
                     let mut cell = CDR(expr);
                     while !cell.is_null() && cell != R_NilValue() {
                         collect_term_labels(CAR(cell), out, nodes, sign);
@@ -6286,7 +6314,7 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
         let order = Rf_allocVector3(SEXPTYPE::INTSXP, labels.len() as i64);
         let _ord = protect(order);
         for i in 0..labels.len() {
-            *INTEGER(order).add(i) = 1;
+            *INTEGER(order).add(i) = labels[i].matches(':').count() as i32 + 1;
         }
         crate::sexp::attrib_core::setAttrib(
             form,
@@ -6301,11 +6329,7 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             }
         }
         for (name, node) in labels.iter().zip(term_nodes.iter().copied()) {
-            if TYPEOF(node) == SEXPTYPE::LANGSXP
-                && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(CAR(node))))
-                    .to_bytes()
-                    == b":"
-            {
+            if name.contains(':') {
                 for part in name.split(':') {
                     if !var_syms.iter().any(|&s| symbol_print_name(s) == part) {
                         let c = std::ffi::CString::new(part).unwrap_or_default();
@@ -6799,6 +6823,10 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             } else {
                 String::new()
             };
+            if is_formula_interaction(&lab) {
+                term_cols.push(interaction_product_columns(data, &lab, n as usize));
+                continue;
+            }
             let mut colx = R_NilValue();
             if TYPEOF(names_for_width) == SEXPTYPE::STRSXP {
                 for i in 0..XLENGTH(names_for_width) {
@@ -6872,11 +6900,14 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     _ => {}
                 }
             }
-            if interaction {
-                crate::main::errors::Rf_error(
-                    b"C_modelmatrix interactions are not implemented\0".as_ptr()
-                        as *const std::os::raw::c_char,
-                );
+            if !term_cols[j as usize].is_empty() {
+                for column in &term_cols[j as usize] {
+                    for i in 0..n {
+                        *dst.add((i + col * n) as usize) = column[i as usize];
+                    }
+                    col += 1;
+                }
+                continue;
             }
             let mut colx = R_NilValue();
             if TYPEOF(names) == SEXPTYPE::STRSXP {
@@ -7049,6 +7080,86 @@ fn factor_contrast_columns(colx: SEXP) -> Vec<Vec<f64>> {
             cols.push(codes.iter().map(|&c| if c == lev as i32 { 1.0 } else { 0.0 }).collect());
         }
         cols
+    }
+}
+fn is_formula_interaction(lab: &str) -> bool {
+    let mut depth = 0i32;
+    for ch in lab.chars() {
+        match ch {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            ':' | '*' if depth == 0 => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+fn interaction_product_columns(data: SEXP, lab: &str, n: usize) -> Vec<Vec<f64>> {
+    unsafe {
+        let mut parts = Vec::new();
+        let mut depth = 0i32;
+        let mut start = 0usize;
+        for (i, ch) in lab.char_indices() {
+            match ch {
+                '(' | '[' => depth += 1,
+                ')' | ']' => depth = depth.saturating_sub(1),
+                ':' if depth == 0 => {
+                    parts.push(&lab[start..i]);
+                    start = i + ch.len_utf8();
+                }
+                _ => {}
+            }
+        }
+        parts.push(&lab[start..]);
+        let names = crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut groups: Vec<Vec<Vec<f64>>> = Vec::new();
+        for part in parts {
+            let mut colx = R_NilValue();
+            if TYPEOF(names) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(names) {
+                    let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
+                        .to_string_lossy()
+                        .into_owned();
+                    if term_label_matches(&nm, part) {
+                        colx = VECTOR_ELT(data, i);
+                        break;
+                    }
+                }
+            }
+            if colx.is_null() || colx == R_NilValue() {
+                return Vec::new();
+            }
+            if crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
+                || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0
+            {
+                groups.push(factor_contrast_columns(colx));
+            } else {
+                let mut column = vec![0.0; n];
+                for i in 0..n {
+                    column[i] = crate::mainutils::essentials::elt_real_safe(colx, i as i64);
+                }
+                groups.push(vec![column]);
+            }
+        }
+        let mut products = vec![vec![1.0; n]];
+        for group in &groups {
+            if group.is_empty() {
+                return Vec::new();
+            }
+            let mut next = Vec::new();
+            for base in &products {
+                for column in group {
+                    let mut product = base.clone();
+                    for i in 0..n {
+                        product[i] *= column[i];
+                    }
+                    next.push(product);
+                }
+            }
+            products = next;
+        }
+        products
     }
 }
 

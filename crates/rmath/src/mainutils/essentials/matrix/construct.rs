@@ -1017,23 +1017,27 @@ unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
 }
 
 /// GNU `as.matrix.data.frame`: character columns stay character, factors
-/// become their codes, and a mixed frame becomes character.
+/// become their level labels, and a mixed frame becomes character.
 pub(crate) unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
     unsafe {
         let nrow = data_frame_row_count(frame);
         let ncol = XLENGTH(frame);
         let mut any_char = false;
         let mut any_real = false;
+        let mut any_factor = false;
         for j in 0..ncol {
             let column = VECTOR_ELT(frame, j);
             let factor = crate::mainutils::objects::inherits2(column, c"factor".as_ptr()) != 0;
+            if factor {
+                any_factor = true;
+            }
             match TYPEOF(column) {
                 t if t == SEXPTYPE::STRSXP && !factor => any_char = true,
                 t if t == SEXPTYPE::REALSXP => any_real = true,
                 _ => {}
             }
         }
-        let result_type = if any_char {
+        let result_type = if any_char || any_factor {
             SEXPTYPE::STRSXP
         } else if any_real || ncol == 0 {
             SEXPTYPE::REALSXP
@@ -1054,7 +1058,23 @@ pub(crate) unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                         crate::sexp::globals::R_NaString()
                     } else if TYPEOF(column) == SEXPTYPE::STRSXP && !factor {
                         STRING_ELT(column, src)
-                    } else if factor || TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::LGLSXP {
+                    } else if factor {
+                        let v = *INTEGER(column).add(src as usize);
+                        let levels = crate::sexp::attrib_core::getAttrib(
+                            column,
+                            crate::sexp::attrib_core::R_LevelsSymbol(),
+                        );
+                        if v == NA_INTEGER
+                            || levels.is_null()
+                            || TYPEOF(levels) != SEXPTYPE::STRSXP
+                            || v < 1
+                            || v as i64 > XLENGTH(levels)
+                        {
+                            crate::sexp::globals::R_NaString()
+                        } else {
+                            STRING_ELT(levels, (v - 1) as i64)
+                        }
+                    } else if TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::LGLSXP {
                         let v = *INTEGER(column).add(src as usize);
                         if v == NA_INTEGER {
                             crate::sexp::globals::R_NaString()
