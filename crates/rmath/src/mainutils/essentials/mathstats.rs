@@ -298,6 +298,11 @@ pub unsafe fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return dispatched;
         }
         let (x_arg, digits_arg) = match_x_digits(args);
+        if crate::mainutils::essentials::sexp_has_class(x_arg, "POSIXt") {
+            return crate::mainutils::essentials::do_round_POSIXt(
+                call, op, args, rho,
+            );
+        }
 
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();

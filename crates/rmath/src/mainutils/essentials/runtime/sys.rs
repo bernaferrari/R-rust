@@ -2145,7 +2145,10 @@ pub unsafe fn do_round_POSIXt(
         set_posixct_class(shifted, "GMT");
         let u = Rf_mkString(CString::new(units.as_str()).unwrap_or_default().as_ptr());
         let _u = protect(u);
-        do_trunc_POSIXt(call, op, Rf_cons(shifted, Rf_cons(u, R_NilValue())), rho)
+        let truncated =
+            do_trunc_POSIXt(call, op, Rf_cons(shifted, Rf_cons(u, R_NilValue())), rho);
+        let _t = protect(truncated);
+        crate::mainutils::datetime::do_as_POSIXlt(call, op, Rf_cons(truncated, R_NilValue()), rho)
     }
 }
 
