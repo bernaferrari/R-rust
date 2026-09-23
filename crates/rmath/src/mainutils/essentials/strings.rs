@@ -2695,6 +2695,35 @@ fn formatc_one(v: f64, digits: i32, format: &str) -> String {
                 }
             }
         }
+        "fg" | "fG" => {
+            if !v.is_finite() {
+                return if v.is_nan() {
+                    "NA".to_string()
+                } else if v.is_sign_negative() {
+                    "-Inf".to_string()
+                } else {
+                    "Inf".to_string()
+                };
+            }
+            if v == 0.0 || d == 0 {
+                return "0".to_string();
+            }
+            let exp = v.abs().log10().floor() as i32;
+            let scale = 10f64.powi(d as i32 - 1 - exp);
+            let rounded = (v * scale).round() / scale;
+            let exp2 = if rounded == 0.0 {
+                exp
+            } else {
+                rounded.abs().log10().floor() as i32
+            };
+            let decimals = (d as i32 - 1 - exp2).max(0) as usize;
+            let s = format!("{rounded:.decimals$}");
+            if s.contains('.') {
+                s.trim_end_matches('0').trim_end_matches('.').to_string()
+            } else {
+                s
+            }
+        }
         "d" => format!("{}", v as i64),
         _ => format!("{v:.d$}"),
     }
