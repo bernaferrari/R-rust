@@ -1238,8 +1238,16 @@ unsafe fn f4xact(
             }
         }
 
-        // Parameter adjustments: irstk -= nrow + 1; icstk -= ncol + 1; --nrstk; --ncstk; --lstk; --mstk; --nstk; --ystk;
-        // We handle 1-based indexing by using adjusted pointers
+        // GNU: irstk -= nrow + 1; icstk -= ncol + 1; then the stack decrements.
+        // irow/icol stay unshifted: irow[nrow - i] is 0-based.
+        let irstk = irstk.sub(nrow as usize + 1);
+        let icstk = icstk.sub(ncol as usize + 1);
+        let nrstk = nrstk.sub(1);
+        let ncstk = ncstk.sub(1);
+        let lstk = lstk.sub(1);
+        let mstk = mstk.sub(1);
+        let nstk = nstk.sub(1);
+        let ystk = ystk.sub(1);
 
         let mut i: c_int;
         let mut j: c_int;
@@ -1258,15 +1266,12 @@ unsafe fn f4xact(
         let mut amx: c_double;
         let mut sp: c_double;
 
-        // initialization before loop (1-based)
         for idx in 1..=nrow as usize {
-            // irstk[i + nrow] = irow[nrow - i]
-            *irstk.add(idx + nrow as usize) = *irow.add((nrow - idx as c_int + 1) as usize);
+            *irstk.add(idx + nrow as usize) = *irow.add(nrow as usize - idx);
         }
 
         for idx in 1..=ncol as usize {
-            // icstk[j + ncol] = icol[ncol - j]
-            *icstk.add(idx + ncol as usize) = *icol.add((ncol - idx as c_int + 1) as usize);
+            *icstk.add(idx + ncol as usize) = *icol.add(ncol as usize - idx);
         }
 
         nro = nrow;
@@ -1483,7 +1488,12 @@ unsafe fn f5xact(
     psh: bool,
 ) {
     unsafe {
-        // All arrays are 1-based
+        // GNU shifts these five only. key and ipoin stay 0-based.
+        let stp = stp.sub(1);
+        let ifrq = ifrq.sub(1);
+        let npoin = npoin.sub(1);
+        let nr = nr.sub(1);
+        let nl = nl.sub(1);
 
         if psh {
             // Convert KVAL to int in range 0, ..., LDKEY-1
