@@ -2608,6 +2608,32 @@ fn merge_named_true(args: SEXP, name: &str) -> bool {
     }
 }
 
+fn merge_named_value(args: SEXP, name: &str) -> SEXP {
+    unsafe {
+        let cname = std::ffi::CString::new(name).unwrap_or_default();
+        let sym = crate::sexp::symbol::Rf_installChar(
+            cname.as_ptr(),
+            name.len() as crate::sexp::ffi::R_xlen_t,
+        );
+        let mut cell = args;
+        while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+            let tag = crate::sexp::accessors::TAG(cell);
+            if tag == sym {
+                let mut v = CAR(cell);
+                if TYPEOF(v) == SEXPTYPE::PROMSXP {
+                    v = crate::sexp::accessors::PRVALUE(v);
+                    if v == crate::sexp::globals::R_UnboundValue() {
+                        v = crate::eval::eval::Rf_eval(CAR(cell), crate::sexp::accessors::PRENV(CAR(cell)));
+                    }
+                }
+                return v;
+            }
+            cell = CDR(cell);
+        }
+        crate::sexp::globals::R_NilValue()
+    }
+}
+
 unsafe fn store_na(out: SEXP, i: i64) {
     unsafe {
         let t = TYPEOF(out);
@@ -2643,7 +2669,25 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut by: Vec<String> = Vec::new();
         let mut x_by: Vec<usize> = Vec::new();
         let mut y_by: Vec<usize> = Vec::new();
-        if TYPEOF(xnames) == SEXPTYPE::STRSXP && TYPEOF(ynames) == SEXPTYPE::STRSXP {
+        let by_x = merge_named_value(args, "by.x");
+        let by_y = merge_named_value(args, "by.y");
+        if TYPEOF(by_x) == SEXPTYPE::STRSXP
+            && TYPEOF(by_y) == SEXPTYPE::STRSXP
+            && XLENGTH(by_x) > 0
+            && XLENGTH(by_x) == XLENGTH(by_y)
+        {
+            for k in 0..XLENGTH(by_x) {
+                let xn = elt_to_string(by_x, k);
+                let yn = elt_to_string(by_y, k);
+                let xi = (0..XLENGTH(xnames)).find(|&i| elt_to_string(xnames, i) == xn);
+                let yi = (0..XLENGTH(ynames)).find(|&i| elt_to_string(ynames, i) == yn);
+                if let (Some(xi), Some(yi)) = (xi, yi) {
+                    by.push(xn);
+                    x_by.push(xi as usize);
+                    y_by.push(yi as usize);
+                }
+            }
+        } else if TYPEOF(xnames) == SEXPTYPE::STRSXP && TYPEOF(ynames) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(xnames) {
                 let n = elt_to_string(xnames, i);
                 for j in 0..XLENGTH(ynames) {
