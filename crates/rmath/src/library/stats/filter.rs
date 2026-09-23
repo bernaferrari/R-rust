@@ -6977,7 +6977,15 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             a = 1;
         }
         for j in 0..nterms {
-            *INTEGER(assign).add((a + j) as usize) = (j + 1) as i32;
+            let width = if term_cols[j as usize].is_empty() {
+                1
+            } else {
+                term_cols[j as usize].len()
+            };
+            for _ in 0..width {
+                *INTEGER(assign).add(a as usize) = (j + 1) as i32;
+                a += 1;
+            }
         }
         crate::sexp::attrib_core::setAttrib(
             mat,

@@ -23,9 +23,141 @@ use crate::sexp::symbol::Rf_install;
 
 use super::support::{SET_S4_OBJECT, SET_TRUELENGTH, UNSET_S4_OBJECT};
 use super::*;
+use crate::mainutils::essentials::{elt_real_safe, elt_to_string};
 
 // ---------------------------------------------------------------------------
 // Exported functions
+unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP> {
+    unsafe {
+        let ncol = XLENGTH(frame);
+        if ncol == 0 || value.is_null() || value == R_NilValue() {
+            return None;
+        }
+        let nrows = {
+            let col0 = VECTOR_ELT(frame, 0);
+            if col0.is_null() { 0 } else { XLENGTH(col0) }
+        };
+        if nrows == 0 {
+            return None;
+        }
+        let rows = subscript_positions(CAR(subs), nrows)?;
+        let cols = column_positions(frame, CADR(subs))?;
+        if cols.is_empty() || rows.is_empty() {
+            return Some(frame);
+        }
+        let ylen = XLENGTH(value).max(1);
+        for (cpos, &col_i) in cols.iter().enumerate() {
+            let col = VECTOR_ELT(frame, col_i);
+            if col.is_null() {
+                continue;
+            }
+            let src = if TYPEOF(value) == SEXPTYPE::VECSXP && XLENGTH(value) == cols.len() as i64 {
+                VECTOR_ELT(value, cpos as i64)
+            } else {
+                value
+            };
+            let updated = assign_column_rows(col, &rows, src, ylen);
+            SET_VECTOR_ELT(frame, col_i, updated);
+        }
+        Some(frame)
+    }
+}
+
+unsafe fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
+    unsafe {
+        if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg() {
+            return Some((0..n).collect());
+        }
+        let mut out = Vec::new();
+        if TYPEOF(index) == SEXPTYPE::INTSXP || TYPEOF(index) == SEXPTYPE::REALSXP {
+            for i in 0..XLENGTH(index) {
+                let v = crate::mainutils::essentials::elt_real_safe(index, i);
+                if v.is_nan() {
+                    continue;
+                }
+                let pos = v as i64;
+                if pos >= 1 && pos <= n {
+                    out.push(pos - 1);
+                }
+            }
+            Some(out)
+        } else {
+            None
+        }
+    }
+}
+
+unsafe fn column_positions(frame: SEXP, index: SEXP) -> Option<Vec<i64>> {
+    unsafe {
+        if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg() {
+            return Some((0..XLENGTH(frame)).collect());
+        }
+        if TYPEOF(index) == SEXPTYPE::STRSXP {
+            let names = crate::sexp::attrib_core::getAttrib(
+                frame,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            let mut out = Vec::new();
+            for i in 0..XLENGTH(index) {
+                let want = elt_to_string(index, i);
+                let mut found = None;
+                if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                    for j in 0..XLENGTH(names) {
+                        if elt_to_string(names, j) == want {
+                            found = Some(j);
+                            break;
+                        }
+                    }
+                }
+                found?;
+                out.push(found.unwrap());
+            }
+            return Some(out);
+        }
+        subscript_positions(index, XLENGTH(frame))
+    }
+}
+
+unsafe fn assign_column_rows(col: SEXP, rows: &[i64], value: SEXP, value_len: i64) -> SEXP {
+    unsafe {
+        let col = crate::mainutils::duplicate::shallow_duplicate(col);
+        let levels = crate::sexp::attrib_core::getAttrib(
+            col,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        );
+        let factor = TYPEOF(col) == SEXPTYPE::INTSXP
+            && !levels.is_null()
+            && TYPEOF(levels) == SEXPTYPE::STRSXP;
+        for (k, &row) in rows.iter().enumerate() {
+            if row < 0 || row >= XLENGTH(col) {
+                continue;
+            }
+            let src_i = (k as i64) % value_len.max(1);
+            if factor && TYPEOF(value) == SEXPTYPE::STRSXP {
+                let text = elt_to_string(value, src_i);
+                let mut code = NA_INTEGER;
+                for j in 0..XLENGTH(levels) {
+                    if elt_to_string(levels, j) == text {
+                        code = (j + 1) as c_int;
+                        break;
+                    }
+                }
+                *INTEGER(col).add(row as usize) = code;
+            } else if TYPEOF(col) == SEXPTYPE::INTSXP && TYPEOF(value) == SEXPTYPE::INTSXP {
+                *INTEGER(col).add(row as usize) = *INTEGER(value).add(src_i as usize);
+            } else if TYPEOF(col) == SEXPTYPE::REALSXP {
+                *REAL(col).add(row as usize) = elt_real_safe(value, src_i);
+            } else if TYPEOF(col) == SEXPTYPE::STRSXP && TYPEOF(value) == SEXPTYPE::STRSXP {
+                SET_STRING_ELT(col, row, STRING_ELT(value, src_i));
+            } else if TYPEOF(col) == SEXPTYPE::INTSXP {
+                let v = elt_real_safe(value, src_i);
+                *INTEGER(col).add(row as usize) = if v.is_nan() { NA_INTEGER } else { v as c_int };
+            }
+        }
+        col
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 /// Port of `do_subassign()` -- the `[<-` operator.
@@ -97,6 +229,14 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             }
         }
         let _x_guard = protect(x);
+        if nsubs == 2
+            && TYPEOF(x) == SEXPTYPE::VECSXP
+            && crate::mainutils::essentials::sexp_has_class(x, "data.frame")
+        {
+            if let Some(updated) = data_frame_assign_cells(x, subs, y) {
+                return updated;
+            }
+        }
 
         match TYPEOF(x) {
             LGLSXP | INTSXP | REALSXP | CPLXSXP | STRSXP | EXPRSXP | VECSXP | RAWSXP => {

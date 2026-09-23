@@ -683,7 +683,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                      replace <- c(\"dim\", \"dimnames\", \"names\", \"tsp\", \"levels\")\n\
                      names(attrib)[ok] <- replace[m[ok]]\n\
                  }\n\
-                 if (any(attrib[[\"class\", exact = TRUE]] == \"factor\")\n\
+                 if (isTRUE(any(attrib[[\"class\", exact = TRUE]] == \"factor\"))\n\
                      && typeof(.Data) == \"double\")\n\
                      storage.mode(.Data) <- \"integer\"\n\
                  attributes(.Data) <- c(attributes(.Data), attrib)\n\

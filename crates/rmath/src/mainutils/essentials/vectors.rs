@@ -765,6 +765,20 @@ unsafe fn copy_pminmax_shape(first: SEXP, result: SEXP, max_len: R_xlen_t) {
         if XLENGTH(first) != max_len {
             return;
         }
+        let names = crate::sexp::attrib_core::getAttrib(
+            first,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null()
+            && names != R_NilValue()
+            && XLENGTH(names) == max_len
+        {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
         let dim = crate::sexp::attrib_core::getAttrib(
             first,
             crate::sexp::attrib_core::R_DimSymbol(),

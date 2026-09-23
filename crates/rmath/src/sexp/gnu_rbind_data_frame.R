@@ -230,7 +230,6 @@ function(..., deparse.level = 1, make.row.names = TRUE,
 	as.data.frame(value, row.names = rlabs, fix.empty.names = TRUE,
 		      stringsAsFactors = stringsAsFactors)
     } else {
-	structure(value, class = cl,
-		  row.names = rlabs %||% .set_row_names(nrow))
+	structure(value, class = cl, row.names = rlabs %||% .set_row_names(nrow))
     }
 }
