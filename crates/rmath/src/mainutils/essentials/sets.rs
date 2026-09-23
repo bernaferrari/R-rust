@@ -2027,14 +2027,64 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
     unsafe {
         let n = XLENGTH(x) as usize;
         let t = TYPEOF(x);
+        #[derive(Clone, Copy)]
+        enum Kind {
+            Int,
+            Real,
+            Str,
+            Cplx,
+        }
+        let kind = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            Kind::Int
+        } else if t == SEXPTYPE::REALSXP {
+            Kind::Real
+        } else if t == SEXPTYPE::STRSXP {
+            Kind::Str
+        } else if t == SEXPTYPE::CPLXSXP {
+            Kind::Cplx
+        } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "'x' must be atomic".to_string(),
+            });
+        } else {
+            let name = if t == SEXPTYPE::RAWSXP { "raw" } else { "unknown" };
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: format!("unimplemented type '{name}' in 'orderVector1'"),
+            });
+        };
         let is_na = |i: usize| -> bool {
-            if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                *INTEGER(x).add(i) == NA_INTEGER
-            } else if t == SEXPTYPE::REALSXP {
-                ISNAN(*REAL(x).add(i))
-            } else {
-                false
+            match kind {
+                Kind::Int => *INTEGER(x).add(i) == NA_INTEGER,
+                Kind::Real => ISNAN(*REAL(x).add(i)),
+                Kind::Str => charsxp_is_na(STRING_ELT(x, i as R_xlen_t)),
+                Kind::Cplx => {
+                    let z = *crate::sexp::accessors::COMPLEX(x).add(i);
+                    ISNAN(z.r) || ISNAN(z.i)
+                }
             }
+        };
+        let cmp = |a: usize, b: usize| -> std::cmp::Ordering {
+            let ord = match kind {
+                Kind::Int => (*INTEGER(x).add(a)).cmp(&*INTEGER(x).add(b)),
+                Kind::Real => (*REAL(x).add(a))
+                    .partial_cmp(&*REAL(x).add(b))
+                    .unwrap_or(std::cmp::Ordering::Equal),
+                Kind::Str => compare_charsxp_for_sort(
+                    STRING_ELT(x, a as R_xlen_t),
+                    STRING_ELT(x, b as R_xlen_t),
+                ),
+                Kind::Cplx => {
+                    let za = *crate::sexp::accessors::COMPLEX(x).add(a);
+                    let zb = *crate::sexp::accessors::COMPLEX(x).add(b);
+                    za.r.partial_cmp(&zb.r)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then(
+                            za.i.partial_cmp(&zb.i)
+                                .unwrap_or(std::cmp::Ordering::Equal),
+                        )
+                }
+            };
+            if decreasing { ord.reverse() } else { ord }
         };
         let mut kept = Vec::new();
         let mut missing = Vec::new();
@@ -2045,18 +2095,7 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
                 kept.push(i);
             }
         }
-        kept.sort_by(|&a, &b| {
-            if t == SEXPTYPE::REALSXP {
-                let av = *REAL(x).add(a);
-                let bv = *REAL(x).add(b);
-                av.partial_cmp(&bv).unwrap_or(std::cmp::Ordering::Equal)
-            } else {
-                (*INTEGER(x).add(a)).cmp(&*INTEGER(x).add(b))
-            }
-        });
-        if decreasing {
-            kept.reverse();
-        }
+        kept.sort_by(|&a, &b| cmp(a, b));
         let mut idx = Vec::new();
         if na_placement == SortNaPlacement::First {
             idx.extend_from_slice(&missing);
@@ -2072,19 +2111,30 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
         let _index = protect(index);
         for (j, &i) in idx.iter().enumerate() {
             *INTEGER(index).add(j) = (i as i32) + 1;
-            if t == SEXPTYPE::REALSXP {
-                *REAL(values).add(j) = *REAL(x).add(i);
-            } else {
-                *INTEGER(values).add(j) = *INTEGER(x).add(i);
+            match kind {
+                Kind::Int => *INTEGER(values).add(j) = *INTEGER(x).add(i),
+                Kind::Real => *REAL(values).add(j) = *REAL(x).add(i),
+                Kind::Str => {
+                    SET_STRING_ELT(values, j as R_xlen_t, STRING_ELT(x, i as R_xlen_t))
+                }
+                Kind::Cplx => {
+                    *crate::sexp::accessors::COMPLEX(values).add(j) =
+                        *crate::sexp::accessors::COMPLEX(x).add(i);
+                }
             }
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _result = protect(result);
         SET_VECTOR_ELT(result, 0, values);
         SET_VECTOR_ELT(result, 1, index);
+        let x_name = Rf_mkChar(c"x".as_ptr());
+        let _x_name = protect(x_name);
+        let ix_name = Rf_mkChar(c"ix".as_ptr());
+        let _ix_name = protect(ix_name);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        SET_STRING_ELT(names, 0, Rf_mkChar(c"x".as_ptr()));
-        SET_STRING_ELT(names, 1, Rf_mkChar(c"ix".as_ptr()));
+        let _names = protect(names);
+        SET_STRING_ELT(names, 0, x_name);
+        SET_STRING_ELT(names, 1, ix_name);
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_NamesSymbol(),
