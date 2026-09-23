@@ -5578,6 +5578,20 @@ pub unsafe fn do_df_residual(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// GNU `nobs` — `$nobs`/`$n.obs`, else `nobs.lm`: `sum(weights != 0)` or `NROW(residuals)`.
 pub unsafe fn do_nobs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            _call,
+            _op,
+            c"nobs".as_ptr(),
+            args,
+            _rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         let n = named_list_elt(x, "nobs");
         if !n.is_null() && n != R_NilValue() {

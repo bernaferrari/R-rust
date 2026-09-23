@@ -827,6 +827,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "dendrapply",
             "function(X, FUN, ...) {\n    FUN <- match.fun(FUN)\n    if (!inherits(X, \"dendrogram\")) stop(\"'X' is not a dendrogram\")\n    Napply <- function(d) {\n        r <- FUN(d, ...)\n        if (!is.leaf(d)) {\n            if (!is.list(r)) r <- as.list(r)\n            if (length(r) < (n <- length(d))) r[seq_len(n)] <- vector(\"list\", n)\n            r[] <- lapply(d, Napply)\n        }\n        r\n    }\n    Napply(X)\n}",
         );
+        eval_base_binding(base_env, "as.dendrogram", include_str!("gnu_dendrogram.R"));
+        eval_base_binding(
+            base_env,
+            "reorder",
+            "function(x, ...) if (inherits(x, \"dendrogram\")) .rport_reorder_dendrogram(x, ..1) else .rport_reorder_default(x, ..1)",
+        );
         eval_base_binding(base_env, "match.fun", include_str!("gnu_match_fun.R"));
         eval_base_binding(base_env, "summaryRprof", include_str!("gnu_summary_rprof.R"));
         eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));

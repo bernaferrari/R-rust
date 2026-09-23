@@ -2575,6 +2575,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_dendrogram,
     },
     EvaluatedBuiltin {
+        name: ".rport_as_dendrogram",
+        handler: crate::mainutils::essentials::do_as_dendrogram,
+    },
+    EvaluatedBuiltin {
+        name: ".rport_reorder_dendrogram",
+        handler: crate::mainutils::essentials::do_reorder_dendrogram,
+    },
+    EvaluatedBuiltin {
+        name: ".rport_reorder_default",
+        handler: crate::mainutils::essentials::do_reorder,
+    },
+    EvaluatedBuiltin {
         name: "order.dendrogram",
         handler: crate::mainutils::essentials::do_order_dendrogram,
     },

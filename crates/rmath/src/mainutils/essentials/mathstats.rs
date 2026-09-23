@@ -4492,6 +4492,24 @@ pub unsafe fn do_loadings(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// GNU `reorder(x, X)` by group means.
 pub unsafe fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let x0 = CAR(args);
+        if class_contains(x0, "dendrogram") {
+            return do_reorder_dendrogram(_call, _op, args, _rho);
+        }
+        let mut ans = R_NilValue();
+        if crate::eval::dispatch::DispatchOrEval(
+            _call,
+            _op,
+            c"reorder".as_ptr(),
+            args,
+            _rho,
+            &mut ans,
+            0,
+            1,
+        ) != 0
+        {
+            return ans;
+        }
         let x = CAR(args);
         let xx = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() || xx.is_null() || xx == R_NilValue() {
@@ -10435,12 +10453,65 @@ fn complete_link(d: &[f64], a: &[usize], b: &[usize], n: usize) -> f64 {
 }
 
 /// GNU `hclust(d, method="complete")`.
-pub unsafe fn do_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let _ = _rho;
+        // GNU stats/R/hclust.R: method order is the Fortran iOpt code.
+        const METHODS: [&str; 8] = [
+            "ward.D",
+            "single",
+            "complete",
+            "average",
+            "mcquitty",
+            "median",
+            "centroid",
+            "ward.D2",
+        ];
         let d = CAR(args);
         if d.is_null() || d == R_NilValue() {
-            return R_NilValue();
+            crate::mainutils::errors::errorcall_str(call, "invalid dissimilarities");
         }
+        let mut method = "complete".to_string();
+        let mut members_arg = R_NilValue();
+        let mut cell = CDR(args);
+        let mut pos = 0i32;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            let val = CAR(cell);
+            if name == "method" || (name.is_empty() && pos == 0) {
+                if TYPEOF(val) == SEXPTYPE::STRSXP && XLENGTH(val) > 0 {
+                    let ch = STRING_ELT(val, 0);
+                    if !ch.is_null() {
+                        method = std::ffi::CStr::from_ptr(CHAR(ch))
+                            .to_string_lossy()
+                            .into_owned();
+                    }
+                }
+            } else if name == "members" || (name.is_empty() && pos == 1) {
+                members_arg = val;
+            }
+            if name.is_empty() {
+                pos += 1;
+            }
+            cell = CDR(cell);
+        }
+        if method == "ward" {
+            method = "ward.D".to_string();
+        }
+        let i_meth = METHODS.iter().position(|m| m.starts_with(&method));
+        let ambiguous = METHODS.iter().filter(|m| m.starts_with(&method)).count() != 1;
+        let Some(i_meth) = i_meth.filter(|_| !ambiguous && !method.is_empty()) else {
+            crate::mainutils::errors::errorcall_str(call, "invalid clustering method");
+        };
+        let iopt = (i_meth as i32) + 1;
+
         let size_attr = crate::sexp::attrib_core::getAttrib(
             d,
             crate::sexp::symbol::Rf_install(c"Size".as_ptr()),
@@ -10450,125 +10521,134 @@ pub unsafe fn do_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             && TYPEOF(size_attr) == SEXPTYPE::INTSXP
             && XLENGTH(size_attr) > 0
         {
-            *INTEGER(size_attr) as usize
+            *INTEGER(size_attr) as i32
         } else {
             let len = XLENGTH(d) as usize;
-            // solve n(n-1)/2 = len
-            (((1.0 + (1.0 + 8.0 * len as f64).sqrt()) / 2.0).round()) as usize
+            (((1.0 + (1.0 + 8.0 * len as f64).sqrt()) / 2.0).round()) as i32
         };
-        let mut dists = Vec::with_capacity(XLENGTH(d) as usize);
-        for i in 0..XLENGTH(d) {
-            dists.push(elt_real_safe(d, i));
+        if n < 2 {
+            crate::mainutils::errors::errorcall_str(call, "must have n >= 2 objects to cluster");
         }
-        #[derive(Clone)]
-        struct Cl {
-            members: Vec<usize>,
-            id: i32,
+        if n > 65536 {
+            crate::mainutils::errors::errorcall_str(call, "size cannot be NA nor exceed 65536");
         }
-        let mut clusters: Vec<Option<Cl>> = (0..n)
-            .map(|i| {
-                Some(Cl {
-                    members: vec![i],
-                    id: -((i as i32) + 1),
-                })
-            })
-            .collect();
+        let len = n as usize * (n as usize - 1) / 2;
+        if XLENGTH(d) as usize != len {
+            crate::mainutils::errors::errorcall_str(call, "dissimilarities of improper length");
+        }
+        let mut diss = Vec::with_capacity(len);
+        for i in 0..len as i64 {
+            diss.push(elt_real_safe(d, i));
+        }
+        let nu = n as usize;
+        let mut ia = vec![0i32; nu];
+        let mut ib = vec![0i32; nu];
+        let mut crit = vec![0f64; nu];
+        let mut membr = vec![1f64; nu];
+        if !members_arg.is_null() && members_arg != R_NilValue() && members_arg != R_MissingArg()
+        {
+            if XLENGTH(members_arg) as i32 != n {
+                crate::mainutils::errors::errorcall_str(call, "invalid length of members");
+            }
+            for i in 0..nu {
+                membr[i] = elt_real_safe(members_arg, i as i64);
+            }
+        }
+        let mut nn = vec![0i32; nu];
+        let mut disnn = vec![0f64; nu];
+        let mut n_slot = n;
+        let mut len_slot = len as i32;
+        let mut iopt_slot = iopt;
+        crate::library::stats::hclust_f::c_hclust(
+            &mut n_slot as *mut i32 as *mut std::os::raw::c_void,
+            &mut len_slot as *mut i32 as *mut std::os::raw::c_void,
+            &mut iopt_slot as *mut i32 as *mut std::os::raw::c_void,
+            ia.as_mut_ptr() as *mut std::os::raw::c_void,
+            ib.as_mut_ptr() as *mut std::os::raw::c_void,
+            crit.as_mut_ptr() as *mut std::os::raw::c_void,
+            membr.as_mut_ptr() as *mut std::os::raw::c_void,
+            nn.as_mut_ptr() as *mut std::os::raw::c_void,
+            disnn.as_mut_ptr() as *mut std::os::raw::c_void,
+            diss.as_mut_ptr() as *mut std::os::raw::c_void,
+        );
+        let mut iorder = vec![0i32; nu];
+        let mut iia = vec![0i32; nu];
+        let mut iib = vec![0i32; nu];
+        crate::library::stats::hclust_f::c_hcass2(
+            &mut n_slot as *mut i32 as *mut std::os::raw::c_void,
+            ia.as_mut_ptr() as *mut std::os::raw::c_void,
+            ib.as_mut_ptr() as *mut std::os::raw::c_void,
+            iorder.as_mut_ptr() as *mut std::os::raw::c_void,
+            iia.as_mut_ptr() as *mut std::os::raw::c_void,
+            iib.as_mut_ptr() as *mut std::os::raw::c_void,
+        );
+
         let nmerge = n - 1;
-        let merge =
-            crate::mainutils::array::allocMatrix(SEXPTYPE::INTSXP.as_c_int(), nmerge as i32, 2);
+        let merge = crate::mainutils::array::allocMatrix(SEXPTYPE::INTSXP.as_c_int(), nmerge, 2);
         let _m = protect(merge);
+        for s in 0..nmerge as usize {
+            *INTEGER(merge).add(s) = iia[s];
+            *INTEGER(merge).add(s + nmerge as usize) = iib[s];
+        }
         let height = Rf_allocVector3(SEXPTYPE::REALSXP, nmerge as i64);
         let _h = protect(height);
-        for step in 0..nmerge {
-            let mut best = f64::INFINITY;
-            let mut bi = 0usize;
-            let mut bj = 1usize;
-            for i in 0..n {
-                if clusters[i].is_none() {
-                    continue;
-                }
-                for j in (i + 1)..n {
-                    if clusters[j].is_none() {
-                        continue;
-                    }
-                    let dij = complete_link(
-                        &dists,
-                        &clusters[i].as_ref().unwrap().members,
-                        &clusters[j].as_ref().unwrap().members,
-                        n,
-                    );
-                    if dij < best {
-                        best = dij;
-                        bi = i;
-                        bj = j;
-                    }
-                }
-            }
-            let a = clusters[bi].take().unwrap();
-            let b = clusters[bj].take().unwrap();
-            let (left, right) = match (a.id < 0, b.id < 0) {
-                (true, false) => (a.id, b.id),
-                (false, true) => (b.id, a.id),
-                (true, true) => {
-                    if a.id > b.id {
-                        (a.id, b.id)
-                    } else {
-                        (b.id, a.id)
-                    }
-                }
-                (false, false) => {
-                    if a.id < b.id {
-                        (a.id, b.id)
-                    } else {
-                        (b.id, a.id)
-                    }
-                }
-            };
-            *INTEGER(merge).add(step) = left;
-            *INTEGER(merge).add(step + nmerge) = right;
-            *REAL(height).add(step) = best;
-            let mut members = a.members;
-            members.extend(b.members);
-            clusters[bi] = Some(Cl {
-                members,
-                id: (step as i32) + 1,
-            });
+        for s in 0..nmerge as usize {
+            *REAL(height).add(s) = crit[s];
         }
-        let mut order_v = Vec::new();
-        fn walk(id: i32, merge_l: &[i32], merge_r: &[i32], order: &mut Vec<i32>) {
-            if id < 0 {
-                order.push(-id);
-            } else {
-                let s = (id as usize) - 1;
-                walk(merge_l[s], merge_l, merge_r, order);
-                walk(merge_r[s], merge_l, merge_r, order);
-            }
-        }
-        let mut ml = vec![0i32; nmerge];
-        let mut mr = vec![0i32; nmerge];
-        for s in 0..nmerge {
-            ml[s] = *INTEGER(merge).add(s);
-            mr[s] = *INTEGER(merge).add(s + nmerge);
-        }
-        walk(nmerge as i32, &ml, &mr, &mut order_v);
         let order = Rf_allocVector3(SEXPTYPE::INTSXP, n as i64);
         let _o = protect(order);
-        for (i, v) in order_v.iter().enumerate() {
-            *INTEGER(order).add(i) = *v;
+        for s in 0..nu {
+            *INTEGER(order).add(s) = iorder[s];
         }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let labels = crate::sexp::attrib_core::getAttrib(
+            d,
+            crate::sexp::symbol::Rf_install(c"Labels".as_ptr()),
+        );
+        let method_s = Rf_mkString(
+            std::ffi::CString::new(METHODS[i_meth])
+                .unwrap_or_default()
+                .as_ptr(),
+        );
+        let _ms = protect(method_s);
+        let dist_method = crate::sexp::attrib_core::getAttrib(
+            d,
+            crate::sexp::symbol::Rf_install(c"method".as_ptr()),
+        );
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, merge);
         SET_VECTOR_ELT(result, 1, height);
         SET_VECTOR_ELT(result, 2, order);
-        SET_VECTOR_ELT(result, 3, Rf_mkString(c"complete".as_ptr()));
+        SET_VECTOR_ELT(
+            result,
+            3,
+            if labels.is_null() {
+                R_NilValue()
+            } else {
+                labels
+            },
+        );
+        SET_VECTOR_ELT(result, 4, method_s);
+        SET_VECTOR_ELT(result, 5, if call.is_null() { R_NilValue() } else { call });
+        SET_VECTOR_ELT(
+            result,
+            6,
+            if dist_method.is_null() {
+                R_NilValue()
+            } else {
+                dist_method
+            },
+        );
         crate::mainutils::essentials::set_string_names(
             result,
             &[
                 "merge".to_string(),
                 "height".to_string(),
                 "order".to_string(),
+                "labels".to_string(),
                 "method".to_string(),
+                "call".to_string(),
+                "dist.method".to_string(),
             ],
         );
         let class = Rf_mkString(c"hclust".as_ptr());
@@ -10711,28 +10791,319 @@ fn class_contains(x: SEXP, name: &str) -> bool {
 }
 
 /// GNU `as.dendrogram(hclust)` — leaf order with class `dendrogram`.
-pub unsafe fn do_as_dendrogram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         if class_contains(obj, "dendrogram") {
             return obj;
         }
-        let order = list_named_elt(obj, "order");
-        if order == R_NilValue() {
-            return R_NilValue();
+        let merge = list_named_elt(obj, "merge");
+        let height = list_named_elt(obj, "height");
+        let labels = list_named_elt(obj, "labels");
+        if merge == R_NilValue() || height == R_NilValue() {
+            crate::mainutils::errors::errorcall_str(call, "invalid dendrogram");
         }
-        let n = XLENGTH(order);
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        let _r = protect(result);
-        for i in 0..n as usize {
-            *INTEGER(result).add(i) = elt_real_safe(order, i as i64) as i32;
+        let dim = crate::sexp::attrib_core::getAttrib(merge, crate::sexp::attrib_core::R_DimSymbol());
+        let n_merge = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
+            *INTEGER(dim) as usize
+        } else {
+            0
+        };
+        if n_merge == 0 || XLENGTH(height) as usize != n_merge {
+            crate::mainutils::errors::errorcall_str(call, "invalid dendrogram");
         }
+        let hang = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+            -1.0
+        } else {
+            elt_real_safe(CADR(args), 0)
+        };
+        let hmax = elt_real_safe(height, (n_merge as i64) - 1);
+        let z = Rf_allocVector3(SEXPTYPE::VECSXP, n_merge as i64);
+        let _z = protect(z);
+
+        let member_of = |node: SEXP| -> i32 {
+            let m = crate::sexp::attrib_core::getAttrib(
+                node,
+                crate::sexp::symbol::Rf_install(c"members".as_ptr()),
+            );
+            if m.is_null() || m == R_NilValue() || XLENGTH(m) < 1 {
+                1
+            } else {
+                elt_real_safe(m, 0) as i32
+            }
+        };
+        let mid_of = |node: SEXP| -> f64 {
+            let m = crate::sexp::attrib_core::getAttrib(
+                node,
+                crate::sexp::symbol::Rf_install(c"midpoint".as_ptr()),
+            );
+            if m.is_null() || m == R_NilValue() || XLENGTH(m) < 1 {
+                0.0
+            } else {
+                elt_real_safe(m, 0)
+            }
+        };
+        let make_leaf = |id: i32, h0: f64| -> SEXP {
+            let leaf = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+            *INTEGER(leaf) = id;
+            let _leaf = protect(leaf);
+            crate::sexp::attrib_core::setAttrib(
+                leaf,
+                crate::sexp::symbol::Rf_install(c"members".as_ptr()),
+                Rf_ScalarInteger(1),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                leaf,
+                crate::sexp::symbol::Rf_install(c"height".as_ptr()),
+                Rf_ScalarReal(h0),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                leaf,
+                crate::sexp::symbol::Rf_install(c"leaf".as_ptr()),
+                Rf_ScalarLogical(crate::sexp::ffi::TRUE),
+            );
+            if !labels.is_null()
+                && labels != R_NilValue()
+                && TYPEOF(labels) == SEXPTYPE::STRSXP
+                && id >= 1
+                && (id as i64) <= XLENGTH(labels)
+            {
+                let s = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                SET_STRING_ELT(s, 0, STRING_ELT(labels, (id as i64) - 1));
+                crate::sexp::attrib_core::setAttrib(
+                    leaf,
+                    crate::sexp::symbol::Rf_install(c"label".as_ptr()),
+                    s,
+                );
+            }
+            leaf
+        };
+        let set_node = |node: SEXP, members: i32, midpoint: f64, h: f64| {
+            crate::sexp::attrib_core::setAttrib(
+                node,
+                crate::sexp::symbol::Rf_install(c"members".as_ptr()),
+                Rf_ScalarInteger(members),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                node,
+                crate::sexp::symbol::Rf_install(c"midpoint".as_ptr()),
+                Rf_ScalarReal(midpoint),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                node,
+                crate::sexp::symbol::Rf_install(c"height".as_ptr()),
+                Rf_ScalarReal(h),
+            );
+        };
+
+        for k in 0..n_merge {
+            let x0 = *INTEGER(merge).add(k);
+            let x1 = *INTEGER(merge).add(k + n_merge);
+            let hk = elt_real_safe(height, k as i64);
+            let h0 = if hang < 0.0 {
+                0.0
+            } else {
+                (hk - hang * hmax).max(0.0)
+            };
+            let node = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _node = protect(node);
+            if x0 < 0 && x1 < 0 {
+                SET_VECTOR_ELT(node, 0, make_leaf(-x0, h0));
+                SET_VECTOR_ELT(node, 1, make_leaf(-x1, h0));
+                set_node(node, 2, 0.5, hk);
+            } else if x0 < 0 || x1 < 0 {
+                let (leaf_id, internal) = if x0 < 0 { (-x0, x1) } else { (-x1, x0) };
+                let internal_node = VECTOR_ELT(z, (internal as i64) - 1);
+                let leaf = make_leaf(leaf_id, h0);
+                if x0 < 0 {
+                    SET_VECTOR_ELT(node, 0, leaf);
+                    SET_VECTOR_ELT(node, 1, internal_node);
+                } else {
+                    SET_VECTOR_ELT(node, 0, internal_node);
+                    SET_VECTOR_ELT(node, 1, leaf);
+                }
+                let left = VECTOR_ELT(node, 0);
+                let members = member_of(internal_node) + 1;
+                let midpoint = (member_of(left) as f64 + mid_of(internal_node)) / 2.0;
+                set_node(node, members, midpoint, hk);
+            } else {
+                let left = VECTOR_ELT(z, (x0 as i64) - 1);
+                let right = VECTOR_ELT(z, (x1 as i64) - 1);
+                SET_VECTOR_ELT(node, 0, left);
+                SET_VECTOR_ELT(node, 1, right);
+                let ml = member_of(left);
+                let midpoint = (ml as f64 + mid_of(left) + mid_of(right)) / 2.0;
+                set_node(node, ml + member_of(right), midpoint, hk);
+            }
+            SET_VECTOR_ELT(z, k as i64, node);
+        }
+        let result = VECTOR_ELT(z, (n_merge as i64) - 1);
+        let class = Rf_mkString(c"dendrogram".as_ptr());
+        let _c = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"dendrogram".as_ptr()),
+            class,
         );
         result
+    }
+}
+
+unsafe fn dendrogram_flag(node: SEXP, name: &std::ffi::CStr) -> bool {
+    unsafe {
+        let attr = crate::sexp::attrib_core::getAttrib(
+            node,
+            crate::sexp::symbol::Rf_install(name.as_ptr()),
+        );
+        !attr.is_null()
+            && attr != R_NilValue()
+            && TYPEOF(attr) == SEXPTYPE::LGLSXP
+            && XLENGTH(attr) >= 1
+            && *LOGICAL(attr) == crate::sexp::ffi::TRUE
+    }
+}
+
+unsafe fn dendrogram_attr_real(node: SEXP, name: &std::ffi::CStr, default: f64) -> f64 {
+    unsafe {
+        let attr = crate::sexp::attrib_core::getAttrib(
+            node,
+            crate::sexp::symbol::Rf_install(name.as_ptr()),
+        );
+        if attr.is_null() || attr == R_NilValue() || XLENGTH(attr) < 1 {
+            default
+        } else {
+            elt_real_safe(attr, 0)
+        }
+    }
+}
+
+unsafe fn set_dendrogram_real(node: SEXP, name: &std::ffi::CStr, value: f64) {
+    unsafe {
+        let scalar = Rf_ScalarReal(value);
+        let _scalar = protect(scalar);
+        crate::sexp::attrib_core::setAttrib(
+            node,
+            crate::sexp::symbol::Rf_install(name.as_ptr()),
+            scalar,
+        );
+    }
+}
+
+unsafe fn copy_dendrogram_attr(dst: SEXP, src: SEXP, name: &std::ffi::CStr) {
+    unsafe {
+        let value = crate::sexp::attrib_core::getAttrib(
+            src,
+            crate::sexp::symbol::Rf_install(name.as_ptr()),
+        );
+        if !value.is_null() && value != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                dst,
+                crate::sexp::symbol::Rf_install(name.as_ptr()),
+                value,
+            );
+        }
+    }
+}
+
+/// GNU `reorder.dendrogram` + `midcache.dendrogram` for `agglo.FUN = sum`.
+///
+/// The R walk duplicates list nodes on every `[[<-`. Rebuilding the binary
+/// tree here keeps the same child order and midpoint formula.
+unsafe fn reorder_dendrogram_sum(node: SEXP, wts: &[f64]) -> (SEXP, f64, Option<crate::sexp::protect::ProtectGuard<'static>>) {
+    unsafe {
+        if dendrogram_flag(node, c"leaf") || TYPEOF(node) != SEXPTYPE::VECSXP {
+            let id = if TYPEOF(node) == SEXPTYPE::INTSXP && XLENGTH(node) >= 1 {
+                *INTEGER(node)
+            } else if XLENGTH(node) >= 1 {
+                elt_real_safe(node, 0) as i32
+            } else {
+                0
+            };
+            let value = if id >= 1 && (id as usize) <= wts.len() {
+                wts[(id as usize) - 1]
+            } else {
+                crate::sexp::ffi::NA_REAL
+            };
+            set_dendrogram_real(node, c"value", value);
+            return (node, value, None);
+        }
+        let k = XLENGTH(node) as usize;
+        let rebuilt = Rf_allocVector3(SEXPTYPE::VECSXP, k as i64);
+        let guard = protect(rebuilt);
+        let mut values = Vec::with_capacity(k);
+        for i in 0..k {
+            let (child, value, child_guard) =
+                reorder_dendrogram_sum(VECTOR_ELT(node, i as i64), wts);
+            SET_VECTOR_ELT(rebuilt, i as i64, child);
+            drop(child_guard);
+            values.push(value);
+        }
+        let mut order: Vec<usize> = (0..k).collect();
+        order.sort_by(|&a, &b| {
+            values[a]
+                .partial_cmp(&values[b])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let kids: Vec<SEXP> = (0..k)
+            .map(|i| VECTOR_ELT(rebuilt, i as i64))
+            .collect();
+        for (i, &src) in order.iter().enumerate() {
+            SET_VECTOR_ELT(rebuilt, i as i64, kids[src]);
+        }
+        let sum: f64 = values.iter().copied().sum();
+        copy_dendrogram_attr(rebuilt, node, c"members");
+        copy_dendrogram_attr(rebuilt, node, c"height");
+        copy_dendrogram_attr(rebuilt, node, c"class");
+        set_dendrogram_real(rebuilt, c"value", sum);
+        (rebuilt, sum, Some(guard))
+    }
+}
+
+unsafe fn midcache_dendrogram(node: SEXP) {
+    unsafe {
+        if dendrogram_flag(node, c"leaf") || TYPEOF(node) != SEXPTYPE::VECSXP {
+            return;
+        }
+        let k = XLENGTH(node);
+        if k < 1 {
+            return;
+        }
+        for i in 0..k {
+            midcache_dendrogram(VECTOR_ELT(node, i));
+        }
+        let mut mid_sum = 0.0;
+        for i in 0..k {
+            mid_sum += dendrogram_attr_real(VECTOR_ELT(node, i), c"midpoint", 0.0);
+        }
+        let first_members =
+            dendrogram_attr_real(VECTOR_ELT(node, 0), c"members", 1.0);
+        set_dendrogram_real(node, c"midpoint", (first_members + mid_sum) / 2.0);
+    }
+}
+
+pub unsafe fn do_reorder_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let node = CAR(args);
+        let wts_arg = CADR(args);
+        if node.is_null() || node == R_NilValue() {
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "'reorder.dendrogram' requires a dendrogram",
+            );
+        }
+        let n = if wts_arg.is_null() || wts_arg == R_NilValue() {
+            0
+        } else {
+            XLENGTH(wts_arg)
+        };
+        let mut wts = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            wts.push(elt_real_safe(wts_arg, i));
+        }
+        let (reordered, _value, guard) = reorder_dendrogram_sum(node, &wts);
+        midcache_dendrogram(reordered);
+        std::mem::forget(guard);
+        reordered
     }
 }
 

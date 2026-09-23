@@ -500,6 +500,19 @@ impl RSession {
                     );
                 }
             }
+            if let Ok(exprs) = super::memory::with_arena(|arena| {
+                crate::eval::parser::parse_expressions(
+                    "if (\"package:stats\" %in% search()) assign(\"reorder\", get(\"reorder\", baseenv()), envir = as.environment(\"package:stats\"))",
+                    arena,
+                )
+            }) {
+                if let Some(expr) = exprs.first().copied() {
+                    let _ = crate::eval::eval::Rf_eval(
+                        expr,
+                        crate::sexp::globals::R_GlobalEnv(),
+                    );
+                }
+            }
         });
 
         session
