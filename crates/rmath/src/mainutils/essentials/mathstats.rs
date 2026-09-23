@@ -474,6 +474,13 @@ fn fround(x: f64, digits: f64) -> f64 {
     }
 
     let dig = (digits + 0.5).floor() as i32;
+    // 10^k for k>0 is an integer. Dividing by the inexact 10^{-k}
+    // makes round(100000/3, -2) miss 33300 by an ulp.
+    if dig < 0 {
+        let scale = r_pow_di(10.0, -dig);
+        let sgn = if x < 0.0 { -1.0 } else { 1.0 };
+        return sgn * (x.abs() / scale).round_ties_even() * scale;
+    }
     let sgn = if x < 0.0 { -1.0 } else { 1.0 };
     let x = x.abs();
     let l10x = std::f64::consts::LOG10_2 * (0.5 + logb(x));
