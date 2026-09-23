@@ -1665,7 +1665,7 @@ unsafe fn f6xact(
     ipn: *mut c_int,
 ) -> bool {
     unsafe {
-        // key is 1-based
+        let key = key.sub(1);
 
         // L10:
         'l10: loop {
