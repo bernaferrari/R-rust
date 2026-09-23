@@ -57,11 +57,17 @@ function(..., row.names = NULL, check.rows = FALSE, check.names = TRUE,
     vlist <- vnames <- as.list(vnames)
     nrows <- ncols <- integer(n)
     for (i in seq_len(n)) {
+        if (inherits(x[[i]], "AsIs")) {
+            xi <- x[[i]]
+            nrows[i] <- length(xi)
+            ncols[i] <- 1L
+            vlist[[i]] <- xi
+            next
+        }
         xi <- if (is.character(x[[i]]) || is.list(x[[i]]))
                   as.data.frame(x[[i]], optional = TRUE, validRN = FALSE,
                                 stringsAsFactors = stringsAsFactors)
               else as.data.frame(x[[i]], optional = TRUE, validRN = FALSE)
-
         nrows[i] <- .row_names_info(xi)
         ncols[i] <- length(xi)
         namesi <- names(xi)
@@ -91,6 +97,10 @@ function(..., row.names = NULL, check.rows = FALSE, check.names = TRUE,
     for (i in seq_len(n)[nrows < nr]) {
         xi <- vlist[[i]]
         if (nrows[i] > 0L && (nr %% nrows[i] == 0L)) {
+            if (inherits(xi, "AsIs")) {
+                vlist[[i]] <- structure(rep(unclass(xi), length.out = nr), class = class(xi))
+                next
+            }
             xi <- unclass(xi)
             fixed <- TRUE
             for (j in seq_along(xi)) {
