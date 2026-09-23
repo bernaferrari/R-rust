@@ -619,7 +619,11 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             r_error("cannot open standard connections");
         }
 
-        let open_str = check_string_arg(sopen, "open");
+        let open_str = if sopen.is_null() || sopen == R_NilValue() {
+            String::new()
+        } else {
+            check_string_arg(sopen, "open")
+        };
         let open_mode = if open_str.is_empty() {
             "r".to_string()
         } else {

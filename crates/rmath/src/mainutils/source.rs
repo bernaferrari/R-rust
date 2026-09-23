@@ -45,6 +45,30 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         // parse its content with strict file-parse semantics.
         let file = file_arg(args);
         if !file.is_null() && file != R_NilValue() {
+            if crate::mainutils::connections::inherits_class(file, "connection") {
+                let index = crate::mainutils::connections::checked_connection_index(
+                    crate::mainutils::connections::as_integer(file),
+                );
+                let mut content = String::new();
+                {
+                    let mut table = crate::mainutils::connections::connection_table();
+                    let Some(conn) = table[index].as_mut() else {
+                        parse_failure("invalid connection");
+                    };
+                    while let Some(line) =
+                        crate::mainutils::connections::read_pushback_line(conn, false)
+                    {
+                        content.push_str(&line);
+                        content.push('\n');
+                    }
+                    if let Some(reader) = conn.reader.as_mut() {
+                        use std::io::Read;
+                        let _ = reader.read_to_string(&mut content);
+                    }
+                }
+                remember_parse_context(&content);
+                return parse_content_to_exprs(&content);
+            }
             let path = local_elt_to_string(file, 0);
             if !path.is_empty() {
                 match crate::mainutils::browser_files::read_text_or_host(&path) {
