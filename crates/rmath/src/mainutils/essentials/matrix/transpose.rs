@@ -251,6 +251,37 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
 
         crate::mainutils::array::copyMostAttrib(x, result);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_TspSymbol(),
+            R_NilValue(),
+        );
+        let class = crate::sexp::attrib_core::getAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if TYPEOF(class) == SEXPTYPE::STRSXP {
+            let n = XLENGTH(class);
+            let mut ts = false;
+            for i in 0..n {
+                let elt = STRING_ELT(class, i);
+                if elt.is_null() {
+                    continue;
+                }
+                let bytes = std::ffi::CStr::from_ptr(CHAR(elt)).to_bytes();
+                if bytes == b"ts" || bytes == b"mts" {
+                    ts = true;
+                    break;
+                }
+            }
+            if ts {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    R_NilValue(),
+                );
+            }
+        }
         result
     }
 }
