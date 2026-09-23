@@ -2597,7 +2597,7 @@ fn merge_named_true(args: SEXP, name: &str) -> bool {
             let is_true = (TYPEOF(v) == SEXPTYPE::LGLSXP || TYPEOF(v) == SEXPTYPE::INTSXP)
                 && !v.is_null()
                 && *INTEGER(v) == 1;
-            if tag == sym || (tag.is_null() && is_true && name == "all.x") {
+            if tag == sym {
                 if is_true {
                     return true;
                 }
@@ -2715,8 +2715,13 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for (k, name) in by.iter().enumerate() {
             let src = VECTOR_ELT(x, x_by[k] as i64);
             let out = Rf_allocVector3(TYPEOF(src), nout);
-            for (dst, (xi, _)) in pairs.iter().enumerate() {
-                if *xi < 0 { store_na(out, dst as i64); } else { copy_elt(src, *xi, out, dst as i64); }
+            for (dst, (xi, yr)) in pairs.iter().enumerate() {
+                if *xi < 0 {
+                    let ysrc = VECTOR_ELT(y, y_by[k] as i64);
+                    copy_elt(ysrc, *yr, out, dst as i64);
+                } else {
+                    copy_elt(src, *xi, out, dst as i64);
+                }
             }
             SET_VECTOR_ELT(result, col, out);
             names.push(name.clone());
