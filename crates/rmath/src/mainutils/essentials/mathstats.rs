@@ -674,6 +674,9 @@ pub unsafe fn do_trunc(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return dispatched;
         }
+        if crate::mainutils::objects::inherits2(CAR(args), c"Date".as_ptr()) != 0 {
+            return crate::mainutils::essentials::do_trunc_Date(call, op, args, rho);
+        }
         let x_arg = CAR(args);
         let _digits_arg = CAR(CDR(args));
 
