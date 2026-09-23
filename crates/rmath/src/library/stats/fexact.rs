@@ -82,6 +82,15 @@ unsafe fn isort_wrapper(n: c_int, ix: *mut c_int) {
     }
 }
 
+unsafe fn fact_term(fact: *const c_double, idx: c_int, site: &str) -> c_double {
+    unsafe {
+        if idx < 0 {
+            prterr(2, &format!("negative count {idx} at {site}"));
+        }
+        *fact.add(idx as usize)
+    }
+}
+
 unsafe fn f2xact(
     nrow: c_int,
     ncol: c_int,
@@ -650,8 +659,8 @@ unsafe fn f2xact(
                             if (ncell as c_double) * 100. >= (k1 * nro2) as c_double * percnt {
                                 tmp = 0.;
                                 for idx_i in 0..nro2 as usize {
-                                    tmp += *fact.add(*irn.add(nrb as usize + idx_i) as usize)
-                                        - *fact.add((*irn.add(nrb as usize + idx_i) - 1) as usize);
+                                    tmp += fact_term(fact, *irn.add(nrb as usize + idx_i), "irn")
+                                        - fact_term(fact, *irn.add(nrb as usize + idx_i) - 1, "irn-1");
                                 }
                                 tmp *= (k1 - 1) as c_double;
                                 for idx_j in 1..=k1 as usize {
@@ -1005,10 +1014,10 @@ unsafe fn f3xact(
                 if nro == 2 {
                     // Only 1 row left
                     let mut v2 = v
-                        + *fact.add((*ico.add(1) - *lb.add(1)) as usize)
-                        + *fact.add((*ico.add(2) - *lb.add(2)) as usize);
+                        + fact_term(fact, *ico.add(1) - *lb.add(1), "ico1-lb1")
+                        + fact_term(fact, *ico.add(2) - *lb.add(2), "ico2-lb2");
                     for idx in 3..=nco as usize {
-                        v2 += *fact.add((*ico.add(idx) - *lb.add(idx)) as usize);
+                        v2 += fact_term(fact, *ico.add(idx) - *lb.add(idx), "ico-lb");
                     }
                     if vmn > v2 {
                         vmn = v2;
@@ -1021,10 +1030,10 @@ unsafe fn f3xact(
                     let n11 = (*iro.add((irl + 1) as usize) + 1) * (ic1 + 1) / nn1;
                     let n12 = *iro.add((irl + 1) as usize) - n11;
                     let v2 = v
-                        + *fact.add(n11 as usize)
-                        + *fact.add(n12 as usize)
-                        + *fact.add((ic1 - n11) as usize)
-                        + *fact.add((ic2 - n12) as usize);
+                        + fact_term(fact, n11, "n11")
+                        + fact_term(fact, n12, "n12")
+                        + fact_term(fact, ic1 - n11, "ic1-n11")
+                        + fact_term(fact, ic2 - n12, "ic2-n12");
                     if vmn > v2 {
                         vmn = v2;
                     }
@@ -1228,13 +1237,13 @@ unsafe fn f4xact(
         }
         if nrow * ncol == 4 {
             if *irow.add(1) <= *icol.add(1) {
-                return -(*fact.add(*irow.add(1) as usize)
-                    + *fact.add(*icol.add(1) as usize)
-                    + *fact.add((*icol.add(1) - *irow.add(1)) as usize));
+                return -(fact_term(fact, *irow.add(1), "f4-irow")
+                    + fact_term(fact, *icol.add(1), "f4-icol")
+                    + fact_term(fact, *icol.add(1) - *irow.add(1), "f4-diff"));
             } else {
-                return -(*fact.add(*icol.add(1) as usize)
-                    + *fact.add(*irow.add(1) as usize)
-                    + *fact.add((*irow.add(1) - *icol.add(1)) as usize));
+                return -(fact_term(fact, *icol.add(1), "f4-icol")
+                    + fact_term(fact, *irow.add(1), "f4-irow")
+                    + fact_term(fact, *irow.add(1) - *icol.add(1), "f4-diff"));
             }
         }
 
@@ -1499,9 +1508,8 @@ unsafe fn f5xact(
             // Convert KVAL to int in range 0, ..., LDKEY-1
             let ird = *kval % ldkey;
             let mut found = false;
+            let mut saw_empty = false;
             let mut itp_val: c_int = 0;
-
-            // Search for an unused location
             for idx in ird..ldkey {
                 if *key.add(idx as usize) == *kval {
                     itp_val = idx;
@@ -1510,10 +1518,11 @@ unsafe fn f5xact(
                 }
                 if *key.add(idx as usize) < 0 {
                     itp_val = idx;
+                    saw_empty = true;
                     break;
                 }
             }
-            if !found {
+            if !found && !saw_empty {
                 for idx in 0..ird {
                     if *key.add(idx as usize) == *kval {
                         itp_val = idx;
@@ -1522,12 +1531,13 @@ unsafe fn f5xact(
                     }
                     if *key.add(idx as usize) < 0 {
                         itp_val = idx;
+                        saw_empty = true;
                         break;
                     }
                 }
             }
 
-            if !found && *key.add(itp_val as usize) != *kval {
+            if !found && !saw_empty {
                 // Return if KEY array is full
                 let msg = format!(
                     "FEXACT error 6 (f5xact).  LDKEY={} is too small for this problem: kval={}.\n\
@@ -1537,29 +1547,29 @@ unsafe fn f5xact(
                 prterr(6, &msg);
             }
 
-            // L30: Update KEY
             with_fexact_state(|state| state.f5xact_itp = itp_val);
-            *key.add(itp_val as usize) = *kval;
-            *itop += 1;
-            *ipoin.add(itp_val as usize) = *itop;
-            // Return if STP array full
-            if *itop > ldstp {
-                let msg = format!(
-                    "FEXACT error 7(update key). LDSTP={} is too small for this problem,\n  (kval={}, itop-ldstp={}).\n\
+            // Empty slot: insert and return. A hit falls through to L40.
+            if saw_empty {
+                *key.add(itp_val as usize) = *kval;
+                *itop += 1;
+                *ipoin.add(itp_val as usize) = *itop;
+                if *itop > ldstp {
+                    let msg = format!(
+                        "FEXACT error 7(update key). LDSTP={} is too small for this problem,\n  (kval={}, itop-ldstp={}).\n\
                  Increase workspace or consider using 'simulate.p.value=TRUE'.",
-                    ldstp,
-                    *kval,
-                    *itop - ldstp
-                );
-                prterr(7, &msg);
+                        ldstp,
+                        *kval,
+                        *itop - ldstp
+                    );
+                    prterr(7, &msg);
+                }
+                *npoin.add(*itop as usize) = -1;
+                *nr.add(*itop as usize) = -1;
+                *nl.add(*itop as usize) = -1;
+                *stp.add(*itop as usize) = pastp;
+                *ifrq.add(*itop as usize) = ifreq;
+                return;
             }
-            // Update STP, etc.
-            *npoin.add(*itop as usize) = -1;
-            *nr.add(*itop as usize) = -1;
-            *nl.add(*itop as usize) = -1;
-            *stp.add(*itop as usize) = pastp;
-            *ifrq.add(*itop as usize) = ifreq;
-            return;
         }
 
         // L40: Find location, if any, of pastp
@@ -1570,6 +1580,9 @@ unsafe fn f5xact(
         let test2 = pastp + tol;
 
         loop {
+            if ipn <= 0 {
+                break;
+            }
             if *stp.add(ipn as usize) < test1 {
                 ipn = *nl.add(ipn as usize);
             } else if *stp.add(ipn as usize) > test2 {
