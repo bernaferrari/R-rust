@@ -585,12 +585,16 @@ fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64) -> Vec<S
         strip_white: sep.is_empty(),
         blank_lines_skip: true,
     };
-    parse_table_records(contents, &spec)
+    let mut fields: Vec<String> = parse_table_records(contents, &spec)
         .into_iter()
         .flatten()
         .take(limit)
         .map(|field| field.text)
-        .collect()
+        .collect();
+    if sep == "\n" && fields.last().is_some_and(|field| field.is_empty()) {
+        fields.pop();
+    }
+    fields
 }
 
 fn parse_scan_logical(value: &str) -> Option<c_int> {
