@@ -136,13 +136,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 }
                 if let Some(reader) = conn.reader.as_mut() {
                     for _ in 0..backend_limit {
-                        let mut line = String::new();
-                        match reader.read_line(&mut line) {
-                            Ok(0) => break,
-                            Ok(_) => {
-                                if line.ends_with('\n') {
-                                    line.pop();
-                                }
+                        match read_crlf_line(reader) {
+                            Ok(None) => break,
+                            Ok(Some(line)) => {
                                 lines.push(nul_normalized_line(line.into_bytes(), skip_nul));
                             }
                             Err(e) => {
@@ -472,5 +468,32 @@ impl AutoCloseGuard {
 impl Drop for AutoCloseGuard {
     fn drop(&mut self) {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { self.close() }));
+    }
+}
+
+fn read_crlf_line<R: BufRead>(reader: &mut R) -> io::Result<Option<String>> {
+    let mut line = Vec::new();
+    loop {
+        let mut byte = [0u8; 1];
+        match reader.read(&mut byte)? {
+            0 => {
+                if line.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+            }
+            _ => {
+                if byte[0] == b'\n' {
+                    return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+                }
+                if byte[0] == b'\r' {
+                    if let Some(&b'\n') = reader.fill_buf()?.first() {
+                        reader.consume(1);
+                    }
+                    return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+                }
+                line.push(byte[0]);
+            }
+        }
     }
 }
