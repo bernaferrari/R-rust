@@ -1105,6 +1105,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            ".row",
+            "function(dim) row(matrix(0, dim[1L], dim[2L]))",
+        );
+        eval_base_binding(
+            base_env,
+            ".col",
+            "function(dim) col(matrix(0, dim[1L], dim[2L]))",
+        );
+        eval_base_binding(
+            base_env,
             "row.names<-",
             "function(x, value) UseMethod(\"row.names<-\")",
         );
