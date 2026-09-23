@@ -141,6 +141,9 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
 
     ans
 }
+pub unsafe extern "C-unwind" fn c_cutree(merge: SEXP, which: SEXP) -> SEXP {
+    unsafe { cutree(merge, which) }
+}
 
 unsafe fn list_elt(list: SEXP, name: &str) -> SEXP {
     unsafe {

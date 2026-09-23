@@ -460,7 +460,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_updateform", "C_Cdqrls", "C_compcases", "C_influence",
-    "C_cov", "C_cor", "C_Cdist", "C_hclust", "C_hcass2", "C_numeric_deriv", "C_optim", "C_optimhess",
+    "C_cov", "C_cor", "C_Cdist", "C_hclust", "C_hcass2", "C_rbart", "C_bvalus", "C_numeric_deriv", "C_optim", "C_optimhess",
     "C_ARIMA_transPars", "C_ARIMA_CSS", "C_ARIMA_Like", "C_ARIMA_Invtrans", "C_ARIMA_undoPars", "C_ARIMA_Gradtrans", "C_TSconv", "C_getQ0",
     "C_doD", "C_deriv", "C_fft", "C_mvfft",
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
@@ -470,6 +470,8 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_get_s2", "C_get_resid", "C_set_trans", "C_Invtrans", "C_Dotrans", "C_Gradtrans", "C_Fexact",
     "C_SplineCoef", "C_SplineEval",
     "C_logit_link", "C_logit_linkinv", "C_logit_mu_eta", "C_binomial_dev_resids",
+    "C_DoubleCentre",
+    "C_cutree",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -564,6 +566,8 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "logit_linkinv" => as_dl(super::family::c_logit_linkinv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "logit_mu_eta" => as_dl(super::family::c_logit_mu_eta as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "binomial_dev_resids" => as_dl(super::family::c_binomial_dev_resids as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "DoubleCentre" => as_dl(super::dblcen::c_double_centre as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "cutree" => as_dl(super::hclust_utils::c_cutree as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         _ => super::distn::lookup_call(name),
     }
 }

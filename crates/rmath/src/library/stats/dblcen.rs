@@ -54,6 +54,9 @@ pub unsafe fn DoubleCentre(A: SEXP) -> SEXP {
 
     A
 }
+pub unsafe extern "C-unwind" fn c_double_centre(a: SEXP) -> SEXP {
+    unsafe { DoubleCentre(a) }
+}
 
 /// GNU `cmdscale(d, k)` classical MDS.
 pub unsafe fn do_cmdscale(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
