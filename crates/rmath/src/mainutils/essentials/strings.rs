@@ -94,7 +94,11 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let idx = if XLENGTH(x) == 0 { 0 } else { i % XLENGTH(x) };
                 let charsxp = STRING_ELT(x, idx);
                 if charsxp == crate::sexp::globals::R_NaString() {
-                    *dst.add(i as usize) = NA_INTEGER;
+                    *dst.add(i as usize) = if matches!(nchar_type, NcharKind::Width) {
+                        2
+                    } else {
+                        NA_INTEGER
+                    };
                     continue;
                 }
             }
@@ -1441,13 +1445,13 @@ pub unsafe fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let mut old = Vec::with_capacity(n as usize);
         for i in 0..n {
             let ch = STRING_ELT(names_s, i);
-            let raw = if ch.is_null() {
-                String::new()
-            } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
-            };
+            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                old.push(String::new());
+                continue;
+            }
+            let raw = std::ffi::CStr::from_ptr(CHAR(ch))
+                .to_string_lossy()
+                .into_owned();
             old.push(raw.trim().to_string());
         }
         let mut unique_names = Vec::new();
@@ -1467,6 +1471,12 @@ pub unsafe fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let nm = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _n = protect(nm);
         for i in 0..n as usize {
+            let ch = STRING_ELT(names_s, i as i64);
+            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                SET_STRING_ELT(out, i as i64, crate::sexp::globals::R_NaString());
+                SET_STRING_ELT(nm, i as i64, crate::sexp::globals::R_NaString());
+                continue;
+            }
             let abbr = &uniq[first_of[i]];
             let c = CString::new(abbr.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
             SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
@@ -3778,6 +3788,7 @@ fn approximate_contains(pattern: &str, text: &str, max_distance: usize, ignore_c
     }
     let min_len = pat.len().saturating_sub(max_distance).max(1);
     let max_len = (pat.len() + max_distance).min(hay.len());
+
     for start in 0..hay.len() {
         for len in min_len..=max_len {
             let end = start + len;
@@ -3815,11 +3826,30 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
+        if string_arg_is_na(pattern_arg) {
+            for i in 0..n {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+            }
+            return result;
+        }
+        let replacement_missing = string_arg_is_na(replacement_arg);
         for i in 0..n {
             if TYPEOF(x_arg) == SEXPTYPE::STRSXP
                 && STRING_ELT(x_arg, i) == crate::sexp::globals::R_NaString()
             {
                 SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
+            if replacement_missing {
+                let matched = crate::mainutils::grep::ere_replace(
+                    &pattern, &elt_to_string(x_arg, i), "", global, ignore_case,
+                )
+                .is_some_and(|trial| trial != elt_to_string(x_arg, i));
+                if matched {
+                    SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                } else {
+                    SET_STRING_ELT(result, i, STRING_ELT(x_arg, i));
+                }
                 continue;
             }
             let s = elt_to_string(x_arg, i);
