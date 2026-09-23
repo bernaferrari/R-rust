@@ -469,6 +469,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_setup_starma", "C_free_starma", "C_Starma_method", "C_arma0fa",
     "C_get_s2", "C_get_resid", "C_set_trans", "C_Invtrans", "C_Dotrans", "C_Gradtrans", "C_Fexact",
     "C_SplineCoef", "C_SplineEval",
+    "C_logit_link", "C_logit_linkinv", "C_logit_mu_eta", "C_binomial_dev_resids",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -554,6 +555,10 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "Fexact" => as_dl(super::starma_api::c_fexact as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "SplineCoef" => as_dl(super::splines::c_spline_coef as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "SplineEval" => as_dl(super::splines::c_spline_eval as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "logit_link" => as_dl(super::family::c_logit_link as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "logit_linkinv" => as_dl(super::family::c_logit_linkinv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "logit_mu_eta" => as_dl(super::family::c_logit_mu_eta as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "binomial_dev_resids" => as_dl(super::family::c_binomial_dev_resids as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         _ => super::distn::lookup_call(name),
     }
 }
