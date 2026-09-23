@@ -164,6 +164,9 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             current = CDR(current);
             expr = next_bind_expr(expr);
         }
+        if entries.is_empty() {
+            return R_NilValue();
+        }
 
         if entries
             .iter()
@@ -332,6 +335,9 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             current = CDR(current);
             expr = next_bind_expr(expr);
+        }
+        if entries.is_empty() {
+            return R_NilValue();
         }
 
 
