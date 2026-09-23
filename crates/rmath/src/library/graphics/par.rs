@@ -1203,13 +1203,40 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     set_values.push(sexp_to_par_value(value));
                 }
                 None => {
-                    for name in string_vector_values(value) {
-                        if !is_known_par(&name) {
-                            par_error(format!(
-                                "invalid value specified for graphical parameter \"{name}\""
-                            ));
+                    if TYPEOF(value) == SEXPTYPE::VECSXP {
+                        let names = crate::sexp::attrib_core::getAttrib(
+                            value,
+                            crate::sexp::attrib_core::R_NamesSymbol(),
+                        );
+                        let n = XLENGTH(value);
+                        if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) != n {
+                            par_error("invalid argument passed to par()");
                         }
-                        query_names.push(name);
+                        for i in 0..n {
+                            let elt = STRING_ELT(names, i);
+                            let name = std::ffi::CStr::from_ptr(CHAR(elt))
+                                .to_string_lossy()
+                                .into_owned();
+                            if name.is_empty() || !is_known_par(&name) {
+                                par_error(format!(
+                                    "invalid value specified for graphical parameter \"{name}\""
+                                ));
+                            }
+                            if is_readonly_par(&name) {
+                                continue;
+                            }
+                            set_names.push(name);
+                            set_values.push(sexp_to_par_value(VECTOR_ELT(value, i)));
+                        }
+                    } else {
+                        for name in string_vector_values(value) {
+                            if !is_known_par(&name) {
+                                par_error(format!(
+                                    "invalid value specified for graphical parameter \"{name}\""
+                                ));
+                            }
+                            query_names.push(name);
+                        }
                     }
                 }
             }
