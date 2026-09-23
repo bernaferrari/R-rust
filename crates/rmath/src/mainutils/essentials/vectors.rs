@@ -1270,11 +1270,34 @@ pub unsafe fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return ans;
         }
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
         let t = TYPEOF(x);
-        let n = XLENGTH(x);
+        let supported = t == SEXPTYPE::NILSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
+            || t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP;
+        if !supported {
+            let name = match t {
+                t if t == SEXPTYPE::VECSXP => "list",
+                t if t == SEXPTYPE::EXPRSXP => "expression",
+                t if t == SEXPTYPE::LANGSXP => "language",
+                t if t == SEXPTYPE::ENVSXP => "environment",
+                t if t == SEXPTYPE::CLOSXP => "closure",
+                t if t == SEXPTYPE::SYMSXP => "symbol",
+                _ => "unknown",
+            };
+            crate::mainutils::errors::errorcall_str(
+                call,
+                &format!("default method not implemented for type '{name}'"),
+            );
+        }
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -1368,10 +1391,12 @@ pub unsafe fn do_is_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::VECSXP {
-            TRUE
-        } else {
-            FALSE
-        })
+        Rf_ScalarLogical(
+            if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::LISTSXP {
+                TRUE
+            } else {
+                FALSE
+            },
+        )
     }
 }

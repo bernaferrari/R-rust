@@ -5032,7 +5032,7 @@ pub unsafe fn do_is_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
+            return Rf_ScalarLogical(TRUE);
         }
         Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::LISTSXP {
             TRUE

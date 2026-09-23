@@ -843,6 +843,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
         eval_base_binding(base_env, "tar", include_str!("gnu_tar.R"));
+        eval_base_binding(base_env, "kronecker", include_str!("gnu_kronecker.R"));
+        eval_base_binding(
+            base_env,
+            "ps.options",
+            "function(...) list(onefile = TRUE)",
+        );
         eval_base_binding(base_env, "match.fun", include_str!("gnu_match_fun.R"));
         eval_base_binding(base_env, "summaryRprof", include_str!("gnu_summary_rprof.R"));
         eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));
@@ -1357,7 +1363,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(x, decreasing = FALSE, na.last = NA, ...) {\n\
              if (is.object(x))\n\
                  x[order(x, na.last = na.last, decreasing = decreasing)]\n\
-             else .Internal(sort(x, decreasing, na.last))\n\
+             else .Internal(sort(x, decreasing, na.last, ...))\n\
              }",
         );
         eval_base_binding(

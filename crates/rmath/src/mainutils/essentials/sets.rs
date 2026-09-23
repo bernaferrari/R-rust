@@ -2023,15 +2023,90 @@ fn copy_atomic_element(
 }
 
 /// R's `sort(x, decreasing, na.last)` — sort an atomic vector.
+unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlacement) -> SEXP {
+    unsafe {
+        let n = XLENGTH(x) as usize;
+        let t = TYPEOF(x);
+        let is_na = |i: usize| -> bool {
+            if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                *INTEGER(x).add(i) == NA_INTEGER
+            } else if t == SEXPTYPE::REALSXP {
+                ISNAN(*REAL(x).add(i))
+            } else {
+                false
+            }
+        };
+        let mut kept = Vec::new();
+        let mut missing = Vec::new();
+        for i in 0..n {
+            if is_na(i) {
+                missing.push(i);
+            } else {
+                kept.push(i);
+            }
+        }
+        kept.sort_by(|&a, &b| {
+            if t == SEXPTYPE::REALSXP {
+                let av = *REAL(x).add(a);
+                let bv = *REAL(x).add(b);
+                av.partial_cmp(&bv).unwrap_or(std::cmp::Ordering::Equal)
+            } else {
+                (*INTEGER(x).add(a)).cmp(&*INTEGER(x).add(b))
+            }
+        });
+        if decreasing {
+            kept.reverse();
+        }
+        let mut idx = Vec::new();
+        if na_placement == SortNaPlacement::First {
+            idx.extend_from_slice(&missing);
+        }
+        idx.extend_from_slice(&kept);
+        if na_placement == SortNaPlacement::Last {
+            idx.extend_from_slice(&missing);
+        }
+        let out_n = idx.len() as i64;
+        let values = Rf_allocVector3(t, out_n);
+        let _values = protect(values);
+        let index = Rf_allocVector3(SEXPTYPE::INTSXP, out_n);
+        let _index = protect(index);
+        for (j, &i) in idx.iter().enumerate() {
+            *INTEGER(index).add(j) = (i as i32) + 1;
+            if t == SEXPTYPE::REALSXP {
+                *REAL(values).add(j) = *REAL(x).add(i);
+            } else {
+                *INTEGER(values).add(j) = *INTEGER(x).add(i);
+            }
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _result = protect(result);
+        SET_VECTOR_ELT(result, 0, values);
+        SET_VECTOR_ELT(result, 1, index);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        SET_STRING_ELT(names, 0, Rf_mkChar(c"x".as_ptr()));
+        SET_STRING_ELT(names, 1, Rf_mkChar(c"ix".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+        result
+    }
+}
+
+/// R's `sort(x, decreasing, na.last)` — sort an atomic vector.
 pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-
         let decreasing = sort_logical_arg(args, &["decreasing"], 1).unwrap_or(false);
         let na_placement = sort_na_placement(args);
+        if sort_logical_arg(args, &["index.return"], 99).unwrap_or(false) {
+            return sort_with_index(x, decreasing, na_placement);
+        }
+
 
         let t = TYPEOF(x);
         let n = XLENGTH(x);

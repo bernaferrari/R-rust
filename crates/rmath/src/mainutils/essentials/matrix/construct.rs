@@ -291,7 +291,7 @@ pub unsafe fn string_vector_contains_value(x: SEXP, needle: &str) -> bool {
     }
 }
 
-pub(crate) unsafe fn is_data_frame_object(x: SEXP) -> bool {
+pub unsafe fn is_data_frame_object(x: SEXP) -> bool {
     unsafe {
         let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         string_vector_contains_value(class, "data.frame")
@@ -1018,7 +1018,7 @@ unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
 
 /// GNU `as.matrix.data.frame`: character columns stay character, factors
 /// become their level labels, and a mixed frame becomes character.
-pub(crate) unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
+pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
     unsafe {
         let nrow = data_frame_row_count(frame);
         let ncol = XLENGTH(frame);

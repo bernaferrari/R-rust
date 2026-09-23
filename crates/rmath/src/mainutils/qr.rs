@@ -87,7 +87,11 @@ pub unsafe fn do_qr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let [x_arg, tol_arg, lapack_arg] = match_qr_args(args);
-        let x0 = x_arg.unwrap_or_else(|| qr_error("argument 'x' is missing, with no default"));
+        let mut x0 = x_arg.unwrap_or_else(|| qr_error("argument 'x' is missing, with no default"));
+        if crate::mainutils::essentials::is_data_frame_object(x0) {
+            x0 = crate::mainutils::essentials::data_frame_as_matrix(x0);
+        }
+        let _frame = protect(x0);
         if x0.is_null() || x0 == R_NilValue() {
             qr_error("'data' must be of a vector type, was 'NULL'")
         }
