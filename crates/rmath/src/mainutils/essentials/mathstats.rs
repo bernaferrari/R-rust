@@ -1126,62 +1126,102 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-        let do_center = center_arg.is_null()
-            || center_arg == R_NilValue()
-            || (TYPEOF(center_arg) == SEXPTYPE::LGLSXP && *LOGICAL(center_arg) == TRUE);
-        let do_scale = scale_arg.is_null()
-            || scale_arg == R_NilValue()
-            || (TYPEOF(scale_arg) == SEXPTYPE::LGLSXP && *LOGICAL(scale_arg) == TRUE);
-
-        let n = XLENGTH(x);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let (nrow, ncol) = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            (*INTEGER(dim) as R_xlen_t, *INTEGER(dim).add(1) as R_xlen_t)
+        } else {
+            (XLENGTH(x), 1)
+        };
+        let n = nrow.saturating_mul(ncol);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
-
-        // Compute mean
-        let mut sum = 0.0_f64;
-        let mut count = 0_i64;
-        for i in 0..n {
-            let v = real_or_default(elt_to_sexp(x, i), NA_REAL);
-            if !v.is_nan() && v != NA_REAL {
-                sum += v;
-                count += 1;
-            }
+        if !dim.is_null() && dim != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                dim,
+            );
         }
-        let mean = if count > 0 {
-            sum / count as f64
-        } else {
-            NA_REAL
+        let center_numeric = !center_arg.is_null()
+            && center_arg != R_NilValue()
+            && (TYPEOF(center_arg) == SEXPTYPE::REALSXP || TYPEOF(center_arg) == SEXPTYPE::INTSXP);
+        let scale_numeric = !scale_arg.is_null()
+            && scale_arg != R_NilValue()
+            && (TYPEOF(scale_arg) == SEXPTYPE::REALSXP || TYPEOF(scale_arg) == SEXPTYPE::INTSXP);
+        let do_center = !center_numeric
+            && (center_arg.is_null()
+                || center_arg == R_NilValue()
+                || (TYPEOF(center_arg) == SEXPTYPE::LGLSXP && *LOGICAL(center_arg) == TRUE));
+        let do_scale = !scale_numeric
+            && (scale_arg.is_null()
+                || scale_arg == R_NilValue()
+                || (TYPEOF(scale_arg) == SEXPTYPE::LGLSXP && *LOGICAL(scale_arg) == TRUE));
+        let number_at = |arg: SEXP, j: R_xlen_t| -> f64 {
+            let len = XLENGTH(arg).max(1);
+            let i = j % len;
+            if TYPEOF(arg) == SEXPTYPE::INTSXP {
+                let v = *INTEGER(arg).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                *REAL(arg).add(i as usize)
+            }
         };
-
-        // Compute sd
-        let mut var_sum = 0.0_f64;
-        if do_scale {
-            for i in 0..n {
-                let v = real_or_default(elt_to_sexp(x, i), NA_REAL);
-                if !v.is_nan() && v != NA_REAL {
-                    var_sum += (v - mean) * (v - mean);
+        let dst = REAL(result);
+        for j in 0..ncol {
+            let mut sum = 0.0;
+            let mut count = 0i64;
+            for i in 0..nrow {
+                let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
+                if v.is_finite() {
+                    sum += v;
+                    count += 1;
                 }
             }
-        }
-        let sd = if count > 1 {
-            (var_sum / (count as f64 - 1.0)).sqrt()
-        } else {
-            NA_REAL
-        };
-
-        let dst = REAL(result);
-        for i in 0..n {
-            let v = real_or_default(elt_to_sexp(x, i), NA_REAL);
-            let centered = if do_center { v - mean } else { v };
-            let scaled = if do_scale && sd != 0.0 && !sd.is_nan() {
-                centered / sd
+            let mean = if count > 0 { sum / count as f64 } else { 0.0 };
+            let mut var_sum = 0.0;
+            if do_scale {
+                for i in 0..nrow {
+                    let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
+                    if v.is_finite() {
+                        var_sum += (v - mean) * (v - mean);
+                    }
+                }
+            }
+            let sd = if count > 1 {
+                (var_sum / (count as f64 - 1.0)).sqrt()
             } else {
-                centered
+                1.0
             };
-            *dst.add(i as usize) = scaled;
+            let cen = if center_numeric {
+                number_at(center_arg, j)
+            } else if do_center {
+                mean
+            } else {
+                0.0
+            };
+            let sc = if scale_numeric {
+                number_at(scale_arg, j)
+            } else if do_scale && sd != 0.0 && sd.is_finite() {
+                sd
+            } else {
+                1.0
+            };
+            for i in 0..nrow {
+                let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
+                let centered = if cen.is_finite() { v - cen } else { v };
+                *dst.add((i + j * nrow) as usize) = if sc.is_finite() && sc != 0.0 {
+                    centered / sc
+                } else {
+                    centered
+                };
+            }
         }
         result
     }
