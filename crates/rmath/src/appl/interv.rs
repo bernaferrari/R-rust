@@ -72,13 +72,13 @@ pub unsafe fn findInterval2(
                 x >= xt_v || x > xt_v
             }
         };
-        let x_smlr = |xt_v: f64| -> bool {
-            if left_open {
-                x <= xt_v
-            } else {
-                x < xt_v || x <= xt_v
-            }
-        };
+    let x_smlr = |xt_v: f64| -> bool {
+        if left_open {
+            x <= xt_v
+        } else {
+            x < xt_v
+        }
+    };
 
         let mut ilo = ilo;
         let mut ihi: i32;

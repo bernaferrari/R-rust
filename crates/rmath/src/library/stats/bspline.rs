@@ -14,11 +14,17 @@ use crate::sexp::instance::with_required_current_instance;
 
 pub(crate) struct BsplineState {
     bsplvb_j: c_int,
+    deltal: [f64; 20],
+    deltar: [f64; 20],
 }
 
 impl Default for BsplineState {
     fn default() -> Self {
-        Self { bsplvb_j: 1 }
+        Self {
+            bsplvb_j: 1,
+            deltal: [0.0; 20],
+            deltar: [0.0; 20],
+        }
     }
 }
 
@@ -55,8 +61,6 @@ pub unsafe fn bsplvb(
 ) {
     unsafe {
         const JMAX: usize = 20;
-        let mut deltal: [f64; JMAX] = [0.0; JMAX];
-        let mut deltar: [f64; JMAX] = [0.0; JMAX];
 
         with_bspline_state(|state| {
             let mut j = state.bsplvb_j;
@@ -65,29 +69,34 @@ pub unsafe fn bsplvb(
                 j = 1;
                 *biatx.add(0) = 1.0;
                 if j >= jhigh {
+                    state.bsplvb_j = j;
                     return;
                 }
             }
 
             loop {
                 let jp1 = j + 1;
-                let left_u = left as usize;
+                let left_i = left as isize;
                 let j_u = j as usize;
-                let jp1_u = jp1 as usize;
+                let j_i = j as isize;
 
-                if jp1_u <= JMAX {
-                    deltar[j_u] = *t.add(left_u + jp1_u) - x;
-                    deltal[j_u] = x - *t.add(left_u + 1 - jp1_u);
+                if j_u <= JMAX {
+                    state.deltar[j_u - 1] = *t.offset(left_i + j_i - 1) - x;
+                    state.deltal[j_u - 1] = x - *t.offset(left_i - j_i);
                 }
 
                 let mut saved = 0.0f64;
                 for i in 0..j_u {
-                    let denom = deltar[i] + deltal[jp1_u - 1 - i];
-                    let term = *biatx.add(i) / denom;
-                    *biatx.add(i) = saved + deltar[i] * term;
-                    saved = deltal[jp1_u - 1 - i] * term;
+                    let denom = state.deltar[i] + state.deltal[j_u - 1 - i];
+                    let term = if denom == 0.0 {
+                        0.0
+                    } else {
+                        *biatx.add(i) / denom
+                    };
+                    *biatx.add(i) = saved + state.deltar[i] * term;
+                    saved = state.deltal[j_u - 1 - i] * term;
                 }
-                *biatx.add(jp1_u) = saved;
+                *biatx.add(j_u) = saved;
 
                 j = jp1;
                 if j < jhigh {
@@ -183,25 +192,20 @@ pub unsafe fn bsplvd(
         while m <= mhigh {
             let kp1mm = kp1 - m;
             let fkp1mm = kp1mm as f64;
-            let mut il = left as usize;
+            let mut il = left as isize;
             let mut i = k_u;
 
             let mut _ldummy: usize = 1;
             while _ldummy <= kp1mm as usize {
-                let factor = fkp1mm / (*t.add(il + kp1mm as usize) - *t.add(il));
+                let factor = fkp1mm
+                    / (*t.offset(il + kp1mm as isize - 1) - *t.offset(il - 1));
                 let mut j = 1usize;
                 while j <= i {
                     *a.add(i - 1 + (j - 1) * k_u) =
                         (*a.add(i - 1 + (j - 1) * k_u) - *a.add(i - 2 + (j - 1) * k_u)) * factor;
                     j += 1;
                 }
-                if il == 0 {
-                    break;
-                }
                 il -= 1;
-                if i == 0 {
-                    break;
-                }
                 i -= 1;
                 _ldummy += 1;
             }
@@ -411,20 +415,20 @@ pub unsafe fn sinerp(
             let c0 = 1.0 / *abd.add(3 + j0 * ld4);
 
             let (c1, c2, c3) = if j0 + 3 < nk {
-                // j <= nk-3 in Fortran
+                // j <= nk-3
                 (
                     *abd.add(0 + (j0 + 3) * ld4) * c0,
                     *abd.add(1 + (j0 + 2) * ld4) * c0,
                     *abd.add(2 + (j0 + 1) * ld4) * c0,
                 )
-            } else if j0 + 2 == nk {
+            } else if j0 + 3 == nk {
                 // j == nk-2
                 (
                     0.0,
                     *abd.add(1 + (j0 + 2) * ld4) * c0,
                     *abd.add(2 + (j0 + 1) * ld4) * c0,
                 )
-            } else if j0 + 1 == nk {
+            } else if j0 + 2 == nk {
                 // j == nk-1
                 (0.0, 0.0, *abd.add(2 + (j0 + 1) * ld4) * c0)
             } else {

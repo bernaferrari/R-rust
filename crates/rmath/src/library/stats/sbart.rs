@@ -112,22 +112,22 @@ unsafe fn sgram(
             *sg3.add(i) = 0.0;
         }
 
-        let mut ileft: c_int = 1; // 1-based
+        let mut ileft: c_int = 0;
 
         for i in 1..=nk {
-            // Find interval using interv (0-indexed result, but Fortran uses 1-based)
             let mut mflag: c_int = 0;
-            ileft = crate::appl::interv::findInterval(
+            let raw = crate::appl::interv::findInterval2(
                 knot,
                 (nk + 1) as c_int,
                 *knot.add(i - 1),
-                0,
-                0,
+                false,
+                false,
+                false,
                 ileft,
                 &mut mflag,
             );
-            // findInterval returns 0-indexed; Fortran expects 1-based
-            ileft += 1;
+            ileft = raw;
+            let left = raw + 1;
 
             // Left end second derivatives: bsplvd(knot, lentb, 4, tb(i), ileft, work, vnikx, 3)
             // vnikx(4,3) column-major: vnikx[(row-1) + (col-1)*4]
@@ -136,7 +136,7 @@ unsafe fn sgram(
                 lentb as c_int,
                 4,
                 *knot.add(i - 1),
-                ileft,
+                left,
                 work.as_mut_ptr(),
                 vnikx.as_mut_ptr(),
                 3,
@@ -151,7 +151,7 @@ unsafe fn sgram(
                 lentb as c_int,
                 4,
                 *knot.add(i),
-                ileft,
+                left,
                 work.as_mut_ptr(),
                 vnikx.as_mut_ptr(),
                 3,
@@ -161,7 +161,7 @@ unsafe fn sgram(
             }
 
             let wpt = *knot.add(i) - *knot.add(i - 1);
-            let ileft_u = ileft as usize;
+            let ileft_u = left as usize;
 
             if ileft_u >= 4 {
                 for ii in 0..4 {
@@ -171,36 +171,36 @@ unsafe fn sgram(
                         let contrib = wpt
                             * (yw1[ii] * yw1[jj]
                                 + (yw2[ii] * yw1[jj] + yw2[jj] * yw1[ii]) * 0.5
-                                + yw2[ii] * yw2[jj] / 3.0);
+                                + yw2[ii] * yw2[jj] * 0.3330);
                         *sg0.add(idx) += contrib;
                     }
                     if jj < 3 {
-                        let idx = ileft_u - 4 + ii + 1;
+                        let idx = ileft_u - 4 + ii;
                         if idx < nk {
                             let contrib = wpt
                                 * (yw1[ii] * yw1[jj + 1]
                                     + (yw2[ii] * yw1[jj + 1] + yw2[jj + 1] * yw1[ii]) * 0.5
-                                    + yw2[ii] * yw2[jj + 1] / 3.0);
+                                    + yw2[ii] * yw2[jj + 1] * 0.3330);
                             *sg1.add(idx) += contrib;
                         }
                     }
                     if jj + 2 <= 3 {
-                        let idx = ileft_u - 4 + ii + 2;
+                        let idx = ileft_u - 4 + ii;
                         if idx < nk {
                             let contrib = wpt
                                 * (yw1[ii] * yw1[jj + 2]
                                     + (yw2[ii] * yw1[jj + 2] + yw2[jj + 2] * yw1[ii]) * 0.5
-                                    + yw2[ii] * yw2[jj + 2] / 3.0);
+                                    + yw2[ii] * yw2[jj + 2] * 0.3330);
                             *sg2.add(idx) += contrib;
                         }
                     }
                     if jj + 3 <= 3 {
-                        let idx = ileft_u - 4 + ii + 3;
+                        let idx = ileft_u - 4 + ii;
                         if idx < nk {
                             let contrib = wpt
                                 * (yw1[ii] * yw1[jj + 3]
                                     + (yw2[ii] * yw1[jj + 3] + yw2[jj + 3] * yw1[ii]) * 0.5
-                                    + yw2[ii] * yw2[jj + 3] / 3.0);
+                                    + yw2[ii] * yw2[jj + 3] * 0.3330);
                             *sg3.add(idx) += contrib;
                         }
                     }
@@ -213,26 +213,26 @@ unsafe fn sgram(
                         let contrib = wpt
                             * (yw1[ii] * yw1[jj]
                                 + (yw2[ii] * yw1[jj] + yw2[jj] * yw1[ii]) * 0.5
-                                + yw2[ii] * yw2[jj] / 3.0);
+                                + yw2[ii] * yw2[jj] * 0.3330);
                         *sg0.add(idx) += contrib;
                     }
                     if jj < 2 {
-                        let idx = ileft_u - 3 + ii + 1;
+                        let idx = ileft_u - 3 + ii;
                         if idx < nk {
                             let contrib = wpt
                                 * (yw1[ii] * yw1[jj + 1]
                                     + (yw2[ii] * yw1[jj + 1] + yw2[jj + 1] * yw1[ii]) * 0.5
-                                    + yw2[ii] * yw2[jj + 1] / 3.0);
+                                    + yw2[ii] * yw2[jj + 1] * 0.3330);
                             *sg1.add(idx) += contrib;
                         }
                     }
                     if jj + 2 <= 2 {
-                        let idx = ileft_u - 3 + ii + 2;
+                        let idx = ileft_u - 3 + ii;
                         if idx < nk {
                             let contrib = wpt
                                 * (yw1[ii] * yw1[jj + 2]
                                     + (yw2[ii] * yw1[jj + 2] + yw2[jj + 2] * yw1[ii]) * 0.5
-                                    + yw2[ii] * yw2[jj + 2] / 3.0);
+                                    + yw2[ii] * yw2[jj + 2] * 0.3330);
                             *sg2.add(idx) += contrib;
                         }
                     }
@@ -245,16 +245,16 @@ unsafe fn sgram(
                         let contrib = wpt
                             * (yw1[ii] * yw1[jj]
                                 + (yw2[ii] * yw1[jj] + yw2[jj] * yw1[ii]) * 0.5
-                                + yw2[ii] * yw2[jj] / 3.0);
+                                + yw2[ii] * yw2[jj] * 0.3330);
                         *sg0.add(idx) += contrib;
                     }
                     if jj < 1 {
-                        let idx = ileft_u - 2 + ii + 1;
+                        let idx = ileft_u - 2 + ii;
                         if idx < nk {
                             let contrib = wpt
                                 * (yw1[ii] * yw1[jj + 1]
                                     + (yw2[ii] * yw1[jj + 1] + yw2[jj + 1] * yw1[ii]) * 0.5
-                                    + yw2[ii] * yw2[jj + 1] / 3.0);
+                                    + yw2[ii] * yw2[jj + 1] * 0.3330);
                             *sg1.add(idx) += contrib;
                         }
                     }
@@ -264,7 +264,7 @@ unsafe fn sgram(
                 let contrib = wpt
                     * (yw1[0] * yw1[0]
                         + (yw2[0] * yw1[0] + yw2[0] * yw1[0]) * 0.5
-                        + yw2[0] * yw2[0] / 3.0);
+                        + yw2[0] * yw2[0] * 0.3330);
                 *sg0.add(idx) += contrib;
             }
         }
@@ -493,7 +493,7 @@ unsafe fn sslvrg(
                     xv = *knot.add(nk) - eps;
                 }
 
-                let j = ileft as usize - 3; // 0-based
+                let j = ileft as usize - 4;
 
                 super::bspline::bsplvd(
                     knot,
@@ -523,8 +523,8 @@ unsafe fn sslvrg(
                     + *p1ip.add(3 + (j + 3) * ld4) * b3 * b3)
                     * *ws.add(i)
                     * *ws.add(i);
-            }
 
+            }
             // Evaluate criterion
             let mut df = 0.0;
             if *icrit == 1 {
@@ -658,7 +658,6 @@ pub unsafe fn sbart_(
         if *isetup < 0 {
             spar_is_lambda = true;
         } else if *isetup != 1 {
-            // isetup == 0 or 2
             // SIGMA[i,j] := Int B''(i,t) B''(j,t) dt
             sgram(sg0, sg1, sg2, sg3, knot, nk);
             stxwx(xs, ys, ws, n, knot, nk, xwy, hs0, hs1, hs2, hs3);
@@ -960,7 +959,6 @@ pub unsafe fn sbart_(
                 eprintln!("{:11} {:12}", *lspar, CRIT(fu, *icrit));
             }
             if !fu.is_finite() {
-                eprintln!("spar-finding: non-finite value {}; using BIG value", fu);
                 fu = 2.0 * BIG_f;
             }
 
@@ -1004,5 +1002,104 @@ pub unsafe fn sbart_(
         *Ratio = ratio;
         *spar = x;
         *crit = fx;
+    }
+}
+
+/// `.Fortran(C_rbart)` — `qsbart.f` scratch layout into `sbart_`.
+pub unsafe extern "C" fn c_rbart(
+    penalt: *mut std::ffi::c_void,
+    dofoff: *mut std::ffi::c_void,
+    xs: *mut std::ffi::c_void,
+    ys: *mut std::ffi::c_void,
+    ws: *mut std::ffi::c_void,
+    ssw: *mut std::ffi::c_void,
+    n: *mut std::ffi::c_void,
+    knot: *mut std::ffi::c_void,
+    nk: *mut std::ffi::c_void,
+    coef: *mut std::ffi::c_void,
+    sz: *mut std::ffi::c_void,
+    lev: *mut std::ffi::c_void,
+    crit: *mut std::ffi::c_void,
+    iparms: *mut std::ffi::c_void,
+    spar: *mut std::ffi::c_void,
+    parms: *mut std::ffi::c_void,
+    scratch: *mut std::ffi::c_void,
+    ld4: *mut std::ffi::c_void,
+    ldnk: *mut std::ffi::c_void,
+    ier: *mut std::ffi::c_void,
+) {
+    unsafe {
+        let nk_i = *(nk as *const c_int);
+        let ld4_i = *(ld4 as *const c_int);
+        let ip = iparms as *mut c_int;
+        let parms = parms as *mut f64;
+        let sc = scratch as *mut f64;
+        let nk_us = nk_i as usize;
+        let ld4_us = ld4_i as usize;
+        let mut isetup: c_int = if *ip.add(3) == 1 { 2 } else { 0 };
+        sbart_(
+            penalt as *mut f64,
+            dofoff as *mut f64,
+            xs as *mut f64,
+            ys as *mut f64,
+            ws as *mut f64,
+            ssw as *mut f64,
+            n as *mut c_int,
+            knot as *mut f64,
+            nk as *mut c_int,
+            coef as *mut f64,
+            sz as *mut f64,
+            lev as *mut f64,
+            crit as *mut f64,
+            ip,
+            spar as *mut f64,
+            ip.add(1),
+            ip.add(2),
+            parms,
+            parms.add(1),
+            parms.add(2),
+            parms.add(3),
+            parms.add(4),
+            &mut isetup,
+            sc,
+            sc.add(nk_us),
+            sc.add(2 * nk_us),
+            sc.add(3 * nk_us),
+            sc.add(4 * nk_us),
+            sc.add(5 * nk_us),
+            sc.add(6 * nk_us),
+            sc.add(7 * nk_us),
+            sc.add(8 * nk_us),
+            sc.add(9 * nk_us),
+            sc.add(9 * nk_us + ld4_us * nk_us),
+            sc.add(9 * nk_us + 2 * ld4_us * nk_us),
+            ld4 as *mut c_int,
+            ldnk as *mut c_int,
+            ier as *mut c_int,
+        );
+    }
+}
+
+/// `.Fortran(C_bvalus)` — evaluate the cubic spline at each x.
+pub unsafe extern "C" fn c_bvalus(
+    n: *mut std::ffi::c_void,
+    knot: *mut std::ffi::c_void,
+    coef: *mut std::ffi::c_void,
+    nk: *mut std::ffi::c_void,
+    x: *mut std::ffi::c_void,
+    s: *mut std::ffi::c_void,
+    order: *mut std::ffi::c_void,
+) {
+    unsafe {
+        let n = *(n as *const c_int);
+        let nk = *(nk as *const c_int);
+        let deriv = *(order as *const c_int);
+        let knot = knot as *const f64;
+        let coef = coef as *const f64;
+        let x = x as *const f64;
+        let s = s as *mut f64;
+        for i in 0..n as usize {
+            *s.add(i) = super::bspline::bvalue(knot, coef, nk, 4, *x.add(i), deriv);
+        }
     }
 }
