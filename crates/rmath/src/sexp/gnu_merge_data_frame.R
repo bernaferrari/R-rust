@@ -21,6 +21,8 @@ function(x, y, by = intersect(names(x), names(y)), by.x = by, by.y = by,
             cbind(x[ij[, 1L], , drop = FALSE], y[ij[, 2L], , drop = FALSE])
         }
     } else {
+        if (is.numeric(by.x)) by.x <- names(x)[by.x]
+        if (is.numeric(by.y)) by.y <- names(y)[by.y]
         .Primitive("merge")(x, y, by.x = by.x, by.y = by.y, all = all, all.x = all.x, all.y = all.y)
     }
 }
