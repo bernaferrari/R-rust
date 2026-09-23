@@ -124,7 +124,7 @@ unsafe fn natural_spline(
         *c.add(nm1) = 0.0;
 
         // Cubic coefficients
-        *b.add(0) = (*y.add(1) - *y.add(0)) / *d.add(0) - *d.add(nm1 - 1) * *c.add(1);
+        *b.add(0) = (*y.add(1) - *y.add(0)) / *d.add(0) - *d.add(0) * *c.add(1);
         *c.add(0) = 0.0;
         *d.add(0) = *c.add(1) / *d.add(0);
         *b.add(nm1) =
@@ -624,6 +624,14 @@ pub unsafe fn do_spline_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
         let z = crate::sexp::envir::R_findVar(crate::sexp::symbol::Rf_install(c"z".as_ptr()), env);
         SplineEval(v, z)
     }
+}
+
+pub unsafe extern "C-unwind" fn c_spline_coef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
+    unsafe { SplineCoef(method, x, y) }
+}
+
+pub unsafe extern "C-unwind" fn c_spline_eval(xout: SEXP, z: SEXP) -> SEXP {
+    unsafe { SplineEval(xout, z) }
 }
 
 
