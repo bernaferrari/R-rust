@@ -6734,6 +6734,14 @@ unsafe fn character_row_names(rn: SEXP, n: i64) -> SEXP {
         R_NilValue()
     }
 }
+fn term_label_matches(column: &str, label: &str) -> bool {
+    if column == label {
+        return true;
+    }
+    let compact = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    compact(column) == compact(label)
+}
+
 
 
 
@@ -6797,7 +6805,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names_for_width, i)))
                         .to_string_lossy()
                         .into_owned();
-                    if nm == lab {
+                    if term_label_matches(&nm, &lab) {
                         colx = VECTOR_ELT(data, i);
                         break;
                     }
@@ -6876,7 +6884,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
                         .to_string_lossy()
                         .into_owned();
-                    if nm == lab {
+                    if term_label_matches(&nm, &lab) {
                         colx = VECTOR_ELT(data, i);
                         break;
                     }
