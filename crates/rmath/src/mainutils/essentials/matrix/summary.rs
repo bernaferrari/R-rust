@@ -598,13 +598,7 @@ pub unsafe fn do_col(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let mut dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-        if (dim_attr.is_null() || dim_attr == R_NilValue())
-            && TYPEOF(x) == SEXPTYPE::INTSXP
-            && XLENGTH(x) >= 2
-        {
-            dim_attr = x;
-        }
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if dim_attr.is_null() || dim_attr == R_NilValue() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP {
             std::panic::panic_any(RError {
                 message: "a matrix-like object is required as argument to 'col'".to_string(),
@@ -641,13 +635,7 @@ pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let mut dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-        if (dim_attr.is_null() || dim_attr == R_NilValue())
-            && TYPEOF(x) == SEXPTYPE::INTSXP
-            && XLENGTH(x) >= 2
-        {
-            dim_attr = x;
-        }
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if dim_attr.is_null() || dim_attr == R_NilValue() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP {
             std::panic::panic_any(RError {
                 message: "a matrix-like object is required as argument to 'row'".to_string(),

@@ -6507,18 +6507,20 @@ unsafe fn expand_formula_dot(form: SEXP, data: SEXP) {
             String::new()
         };
         let mut cols = Vec::new();
+        let mut seen = Vec::new();
         for i in 0..XLENGTH(names) {
             let name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
                 .to_string_lossy()
                 .into_owned();
+            if seen.iter().any(|existing| existing == &name) {
+                let msg = std::ffi::CString::new(format!(
+                    "duplicated name '{name}' in data frame using '.'"
+                ))
+                .unwrap_or_default();
+                crate::main::errors::Rf_error(msg.as_ptr());
+            }
+            seen.push(name.clone());
             if name != response_name {
-                if cols.iter().any(|existing| existing == &name) {
-                    let msg = std::ffi::CString::new(format!(
-                        "duplicated name '{name}' in data frame using '.'"
-                    ))
-                    .unwrap_or_default();
-                    crate::main::errors::Rf_error(msg.as_ptr());
-                }
                 cols.push(name);
             }
         }
