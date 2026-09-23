@@ -13,6 +13,6 @@ function(x, y, by = intersect(names(x), names(y)), by.x = by, by.y = by,
             cbind(x[ij[, 1L], , drop = FALSE], y[ij[, 2L], , drop = FALSE])
         }
     } else {
-        .Primitive("merge")(x, y)
+        .Primitive("merge")(x, y, all.x = all.x, all.y = all.y)
     }
 }

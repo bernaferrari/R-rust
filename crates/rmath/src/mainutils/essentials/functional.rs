@@ -2583,6 +2583,43 @@ pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+fn merge_named_true(args: SEXP, name: &str) -> bool {
+    unsafe {
+        let cname = std::ffi::CString::new(name).unwrap_or_default();
+        let sym = crate::sexp::symbol::Rf_installChar(cname.as_ptr(), name.len() as crate::sexp::ffi::R_xlen_t);
+        let mut cell = args;
+        while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+            let mut v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::PROMSXP {
+                v = crate::sexp::accessors::PRVALUE(v);
+            }
+            let tag = crate::sexp::accessors::TAG(cell);
+            let is_true = (TYPEOF(v) == SEXPTYPE::LGLSXP || TYPEOF(v) == SEXPTYPE::INTSXP)
+                && !v.is_null()
+                && *INTEGER(v) == 1;
+            if tag == sym || (tag.is_null() && is_true && name == "all.x") {
+                if is_true {
+                    return true;
+                }
+            }
+            cell = CDR(cell);
+        }
+        false
+    }
+}
+
+unsafe fn store_na(out: SEXP, i: i64) {
+    unsafe {
+        let t = TYPEOF(out);
+        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            *INTEGER(out).add(i as usize) = crate::sexp::ffi::NA_INTEGER;
+        } else if t == SEXPTYPE::REALSXP {
+            *REAL(out).add(i as usize) = f64::NAN;
+        } else if t == SEXPTYPE::STRSXP {
+            SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+        }
+    }
+}
 
 /// GNU `merge` inner join on intersecting column names.
 pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -2646,6 +2683,23 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
         }
+        let all_flag = merge_named_true(args, "all");
+        let all_x = all_flag || merge_named_true(args, "all.x");
+        let all_y = all_flag || merge_named_true(args, "all.y");
+        if all_x {
+            for i in 0..nx {
+                if !pairs.iter().any(|p| p.0 == i) {
+                    pairs.push((i, -1));
+                }
+            }
+        }
+        if all_y {
+            for j in 0..ny {
+                if !pairs.iter().any(|p| p.1 == j) {
+                    pairs.push((-1, j));
+                }
+            }
+        }
         let nout = pairs.len() as i64;
         let x_extra: Vec<usize> = (0..XLENGTH(x) as usize)
             .filter(|i| !x_by.contains(i))
@@ -2662,7 +2716,7 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let src = VECTOR_ELT(x, x_by[k] as i64);
             let out = Rf_allocVector3(TYPEOF(src), nout);
             for (dst, (xi, _)) in pairs.iter().enumerate() {
-                copy_elt(src, *xi, out, dst as i64);
+                if *xi < 0 { store_na(out, dst as i64); } else { copy_elt(src, *xi, out, dst as i64); }
             }
             SET_VECTOR_ELT(result, col, out);
             names.push(name.clone());
@@ -2672,7 +2726,7 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let src = VECTOR_ELT(x, xi as i64);
             let out = Rf_allocVector3(TYPEOF(src), nout);
             for (dst, (xr, _)) in pairs.iter().enumerate() {
-                copy_elt(src, *xr, out, dst as i64);
+                if *xr < 0 { store_na(out, dst as i64); } else { copy_elt(src, *xr, out, dst as i64); }
             }
             SET_VECTOR_ELT(result, col, out);
             names.push(elt_to_string(xnames, xi as i64));
@@ -2682,7 +2736,7 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let src = VECTOR_ELT(y, yi as i64);
             let out = Rf_allocVector3(TYPEOF(src), nout);
             for (dst, (_, yr)) in pairs.iter().enumerate() {
-                copy_elt(src, *yr, out, dst as i64);
+                if *yr < 0 { store_na(out, dst as i64); } else { copy_elt(src, *yr, out, dst as i64); }
             }
             SET_VECTOR_ELT(result, col, out);
             names.push(elt_to_string(ynames, yi as i64));
