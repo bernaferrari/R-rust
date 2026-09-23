@@ -65,7 +65,11 @@ pub unsafe fn do_is_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             || t == SEXPTYPE::STRSXP
             || t == SEXPTYPE::RAWSXP
             || t == SEXPTYPE::VECSXP;
-        Rf_ScalarLogical(if is_vec { TRUE } else { FALSE })
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
+        let has_class = !class.is_null()
+            && TYPEOF(class) == SEXPTYPE::STRSXP
+            && XLENGTH(class) > 0;
+        Rf_ScalarLogical(if is_vec && !has_class { TRUE } else { FALSE })
     }
 }
 
