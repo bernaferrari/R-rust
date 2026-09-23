@@ -6813,6 +6813,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             XLENGTH(labs)
         };
         let mut term_cols: Vec<Vec<Vec<f64>>> = Vec::new();
+        let mut term_names: Vec<Vec<String>> = Vec::new();
         let names_for_width =
             crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
         for j in 0..nterms {
@@ -6825,6 +6826,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             };
             if is_formula_interaction(&lab) {
                 term_cols.push(interaction_product_columns(data, &lab, n as usize));
+                term_names.push(interaction_column_names(data, &lab));
                 continue;
             }
             let mut colx = R_NilValue();
@@ -6845,6 +6847,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0)
             {
                 term_cols.push(factor_contrast_columns(colx));
+                term_names.push(contrast_suffixes(colx, &lab));
             } else if !colx.is_null()
                 && colx != R_NilValue()
                 && TYPEOF(colx) == SEXPTYPE::REALSXP
@@ -6856,11 +6859,14 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
                     let nc = *INTEGER(dim).add(1) as usize;
                     term_cols.push(vec![Vec::new(); nc]);
+                    term_names.push((1..=nc).map(|k| format!("{lab}{k}")).collect());
                 } else {
                     term_cols.push(Vec::new());
+                    term_names.push(vec![lab.clone()]);
                 }
             } else {
                 term_cols.push(Vec::new());
+                term_names.push(vec![lab]);
             }
         }
         let p = (if intercept != 0 { 1 } else { 0 })
@@ -6995,8 +7001,15 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             SET_STRING_ELT(cn, 0, Rf_mkChar(c"(Intercept)".as_ptr()));
             c = 1;
         }
-        for j in 0..nterms {
-            SET_STRING_ELT(cn, c + j, STRING_ELT(labs, j));
+        for names in &term_names {
+            for name in names {
+                if c >= p as i64 {
+                    break;
+                }
+                let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+                SET_STRING_ELT(cn, c, Rf_mkChar(cstr.as_ptr()));
+                c += 1;
+            }
         }
         let rn = character_row_names(
             crate::sexp::attrib_core::getAttrib(
@@ -7185,6 +7198,108 @@ fn interaction_product_columns(data: SEXP, lab: &str, n: usize) -> Vec<Vec<f64>>
             products = next;
         }
         products
+    }
+}
+fn contrast_suffixes(colx: SEXP, prefix: &str) -> Vec<String> {
+    unsafe {
+        let assigned = crate::sexp::attrib_core::getAttrib(
+            colx,
+            crate::sexp::symbol::Rf_install(c"contrasts".as_ptr()),
+        );
+        if !assigned.is_null()
+            && assigned != R_NilValue()
+            && (TYPEOF(assigned) == SEXPTYPE::REALSXP || TYPEOF(assigned) == SEXPTYPE::INTSXP)
+        {
+            let dim = crate::sexp::attrib_core::getAttrib(
+                assigned,
+                crate::sexp::attrib_core::R_DimSymbol(),
+            );
+            if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+                let nc = *INTEGER(dim).add(1) as i64;
+                let dn = crate::sexp::attrib_core::getAttrib(
+                    assigned,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                );
+                let colnames = if !dn.is_null()
+                    && TYPEOF(dn) == SEXPTYPE::VECSXP
+                    && XLENGTH(dn) >= 2
+                {
+                    VECTOR_ELT(dn, 1)
+                } else {
+                    R_NilValue()
+                };
+                let mut out = Vec::new();
+                for c in 0..nc {
+                    let suffix = if TYPEOF(colnames) == SEXPTYPE::STRSXP && c < XLENGTH(colnames) {
+                        crate::mainutils::essentials::elt_to_string(colnames, c)
+                    } else {
+                        (c + 1).to_string()
+                    };
+                    out.push(format!("{prefix}{suffix}"));
+                }
+                return out;
+            }
+        }
+        let levels = crate::sexp::attrib_core::getAttrib(
+            colx,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        );
+        let mut out = Vec::new();
+        if TYPEOF(levels) == SEXPTYPE::STRSXP {
+            for i in 1..XLENGTH(levels) {
+                out.push(format!("{prefix}{}", crate::mainutils::essentials::elt_to_string(levels, i)));
+            }
+        }
+        out
+    }
+}
+
+fn interaction_column_names(data: SEXP, lab: &str) -> Vec<String> {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut groups = Vec::new();
+        for part in split_top_level_colon(lab) {
+            let mut colx = R_NilValue();
+            if TYPEOF(names) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(names) {
+                    let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
+                        .to_string_lossy()
+                        .into_owned();
+                    if term_label_matches(&nm, part) {
+                        colx = VECTOR_ELT(data, i);
+                        break;
+                    }
+                }
+            }
+            if colx.is_null() || colx == R_NilValue() {
+                return Vec::new();
+            }
+            if crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
+                || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0
+            {
+                groups.push(contrast_suffixes(colx, part));
+            } else {
+                groups.push(vec![part.to_string()]);
+            }
+        }
+        let mut names_out = vec![String::new()];
+        for group in &groups {
+            if group.is_empty() {
+                return Vec::new();
+            }
+            let mut next = Vec::new();
+            for base in &names_out {
+                for suffix in group {
+                    if base.is_empty() {
+                        next.push(suffix.clone());
+                    } else {
+                        next.push(format!("{base}:{suffix}"));
+                    }
+                }
+            }
+            names_out = next;
+        }
+        names_out
     }
 }
 
