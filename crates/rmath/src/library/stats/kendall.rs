@@ -106,3 +106,7 @@ pub unsafe fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
 
     p
 }
+
+pub unsafe extern "C-unwind" fn c_pKendall(q: SEXP, sn: SEXP) -> SEXP {
+    unsafe { pKendall(q, sn) }
+}

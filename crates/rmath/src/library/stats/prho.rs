@@ -135,3 +135,7 @@ pub unsafe fn pRho(q: SEXP, sn: SEXP, lower: SEXP) -> SEXP {
         Rf_ScalarReal(p)
     }
 }
+
+pub unsafe extern "C-unwind" fn c_pRho(q: SEXP, sn: SEXP, lower: SEXP) -> SEXP {
+    unsafe { pRho(q, sn, lower) }
+}
