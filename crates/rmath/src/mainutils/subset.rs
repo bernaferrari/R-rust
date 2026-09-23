@@ -121,7 +121,7 @@ unsafe fn sym_RowNames() -> SEXP {
     unsafe { Rf_install(c"row.names".as_ptr()) }
 }
 
-unsafe fn is_data_frame(x: SEXP) -> bool {
+pub(crate) unsafe fn is_data_frame(x: SEXP) -> bool {
     unsafe {
         let class = getAttrib(x, sym_Class());
         if isNull(class) || TYPEOF(class) != SEXPTYPE::STRSXP {
@@ -2424,6 +2424,27 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
 
         let dims = getAttrib(x, sym_Dim());
+        if nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP {
+            let ncols = XLENGTH(x);
+            let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let j = crate::mainutils::subscript::get1index(CADR(subs), names, ncols, pok, 0, call);
+            if j < 0 || j >= ncols {
+                errorcall(call, "undefined columns selected");
+            }
+            let col = VECTOR_ELT(x, j);
+            let nrows = XLENGTH(col);
+            let i = crate::mainutils::subscript::get1index(CAR(subs), R_NilValue(), nrows, pok, 0, call);
+            if i < 0 || i >= nrows {
+                errorcall(call, "subscript out of bounds");
+            }
+            return match TYPEOF(col) {
+                t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(*REAL(col).add(i as usize)),
+                t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(*INTEGER(col).add(i as usize)),
+                t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(*LOGICAL(col).add(i as usize)),
+                t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(col, i)),
+                _ => { errorcall(call, "incorrect number of subscripts"); R_NilValue() }
+            };
+        }
         let ndims = length_int(dims);
         if nsubs > 1 && nsubs != ndims {
             errorcall(call, "incorrect number of subscripts");

@@ -366,6 +366,36 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         } else {
             ptr::null()
         };
+        if nsubs == 2
+            && crate::mainutils::subset::is_data_frame(x)
+            && TYPEOF(x) == SEXPTYPE::VECSXP
+        {
+            let ncols = XLENGTH(x);
+            let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let j = crate::mainutils::subscript::get1index(CADR(subs), names, ncols, 0, 0, call);
+            if j < 0 || j >= ncols {
+                return x;
+            }
+            let col = VECTOR_ELT(x, j);
+            let nrows = XLENGTH(col);
+            let i = crate::mainutils::subscript::get1index(CAR(subs), R_NilValue(), nrows, 0, 0, call);
+            if i < 0 || i >= nrows {
+                return x;
+            }
+            let v = if TYPEOF(y) == SEXPTYPE::REALSXP {
+                *REAL(y)
+            } else if TYPEOF(y) == SEXPTYPE::INTSXP {
+                *INTEGER(y) as f64
+            } else {
+                return x;
+            };
+            match TYPEOF(col) {
+                t if t == SEXPTYPE::REALSXP => *REAL(col).add(i as usize) = v,
+                t if t == SEXPTYPE::INTSXP => *INTEGER(col).add(i as usize) = v as i32,
+                _ => {}
+            }
+            return x;
+        }
 
         // ENVSXP special case
         if TYPEOF(x) == ENVSXP {
