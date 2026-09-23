@@ -127,6 +127,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         let f = Rf_ScalarLogical(FALSE);
         let _f = super::protect::protect(f);
         defineVar(Rf_install_in_current("F"), f, base_env);
+        let device = Rf_mkString(c"null device".as_ptr());
+        let _device = super::protect::protect(device);
+        defineVar(Rf_install_in_current(".Device"), device, base_env);
 
 
         // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
