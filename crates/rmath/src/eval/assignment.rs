@@ -228,7 +228,13 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
 
 
-            let target_expr = Rf_eval(CADR(lhs), rho);
+            let target_env = if forcelocal == 0 && TYPEOF(CADR(lhs)) == SEXPTYPE::SYMSXP {
+                let enc = crate::sexp::accessors::ENCLOS(rho);
+                if enc.is_null() || enc == R_NilValue() { rho } else { enc }
+            } else {
+                rho
+            };
+            let target_expr = Rf_eval(CADR(lhs), target_env);
             let _target_guard = protect(target_expr);
 
             if symbol_name(func_sym).as_deref() == Some("$")
