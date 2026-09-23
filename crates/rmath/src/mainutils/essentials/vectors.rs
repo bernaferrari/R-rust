@@ -1193,7 +1193,7 @@ pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
