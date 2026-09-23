@@ -391,6 +391,37 @@ pub unsafe fn do_loaded_namespaces(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SE
     }
 }
 
+/// R's `unloadNamespace(ns)` — drop a loaded namespace from this session.
+pub unsafe fn do_unload_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let name = CAR(args);
+        let package = if TYPEOF(name) == SEXPTYPE::SYMSXP {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(name)))
+                .to_str()
+                .unwrap_or("")
+                .to_string()
+        } else {
+            elt_to_string(name, 0)
+        };
+        if package.is_empty() || package == "base" {
+            package_error("cannot unload the base namespace".to_string());
+        }
+        crate::mainutils::essentials::shared::uncache_package_namespace(&package);
+        let label = format!("package:{package}");
+        let label_sexp = Rf_mkString(
+            std::ffi::CString::new(label).unwrap_or_default().as_ptr(),
+        );
+        let _label_guard = protect(label_sexp);
+        let cell = Rf_cons(label_sexp, R_NilValue());
+        let _cell_guard = protect(cell);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::mainutils::envir::do_detach(_call, _op, cell, _rho);
+        }));
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
+    }
+}
+
 /// `.Internal(getRegisteredNamespace(name))` — loaded namespace or NULL.
 pub unsafe fn do_get_registered_namespace(
     _call: SEXP,

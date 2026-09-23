@@ -5372,6 +5372,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_loaded_namespaces,
     },
     EvaluatedBuiltin {
+        name: "unloadNamespace",
+        handler: crate::mainutils::essentials::do_unload_namespace,
+    },
+    EvaluatedBuiltin {
         name: "getRegisteredNamespace",
         handler: crate::mainutils::essentials::do_get_registered_namespace,
     },
