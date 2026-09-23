@@ -328,6 +328,18 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
         eval_base_binding(base_env, "unsplit", include_str!("gnu_unsplit.R"));
+        eval_base_binding(base_env, "stripchart", "function(x, ...) UseMethod(\"stripchart\")");
+        eval_base_binding(
+            base_env,
+            "stripchart.default",
+            "function(x, method = \"overplot\", ...) invisible(NULL)",
+        );
+        eval_base_binding(
+            base_env,
+            "stripchart.formula",
+            "function(x, data = NULL, ...) invisible(NULL)",
+        );
+
         eval_base_binding(
             base_env,
             "split.data.frame",
