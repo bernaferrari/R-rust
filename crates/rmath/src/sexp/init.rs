@@ -1195,6 +1195,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "seq.POSIXt", include_str!("gnu_seq_POSIXt.R"));
         eval_base_binding(base_env, "seq.Date", include_str!("gnu_seq_Date.R"));
         eval_base_binding(base_env, "pretty.POSIXt", include_str!("gnu_pretty_date.R"));
+        eval_base_binding(base_env, "symnum", include_str!("gnu_symnum.R"));
+        eval_base_binding(
+            base_env,
+            "c.noquote",
+            "function(..., recursive = FALSE) structure(NextMethod(\"c\"), class = \"noquote\")",
+        );
         eval_base_binding(
             base_env,
             "as.vector.factor",
@@ -1750,7 +1756,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             ".register_print_data_frame",
-            "{ registerS3method(\"print\", \"data.frame\", function(x, ...) print.data.frame(x, ...)); TRUE }",
+            "{ registerS3method(\"print\", \"data.frame\", function(x, ...) .Primitive(\"print.data.frame\")(x, ...)); TRUE }",
         );
         eval_base_binding(
             base_env,
