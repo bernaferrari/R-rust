@@ -1240,7 +1240,14 @@ pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
             let mut labels: Vec<String> = (0..XLENGTH(levels))
-                .map(|i| crate::mainutils::essentials::elt_to_string(levels, i))
+                .map(|i| {
+                    let elt = STRING_ELT(levels, i);
+                    if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                        "\u{0}".to_string()
+                    } else {
+                        crate::mainutils::essentials::elt_to_string(levels, i)
+                    }
+                })
                 .collect();
             if use_na.should_include(na_count) {
                 labels.push("<NA>".to_string());
@@ -1380,8 +1387,13 @@ pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !dim_labels.is_null() {
                 let _labels_p = protect(dim_labels);
                 for (i, label) in labels.iter().enumerate() {
-                    let cstr = CString::new(label.as_str()).unwrap_or_default();
-                    SET_STRING_ELT(dim_labels, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                    let charsxp = if label == "\u{0}" {
+                        crate::sexp::globals::R_NaString()
+                    } else {
+                        let cstr = CString::new(label.as_str()).unwrap_or_default();
+                        Rf_mkChar(cstr.as_ptr())
+                    };
+                    SET_STRING_ELT(dim_labels, i as R_xlen_t, charsxp);
                 }
                 SET_VECTOR_ELT(dimnames, 0, dim_labels);
             }
