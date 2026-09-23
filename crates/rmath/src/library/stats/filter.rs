@@ -6708,10 +6708,23 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             && subset != R_NilValue()
             && subset != crate::sexp::globals::R_MissingArg()
         {
-            crate::main::errors::Rf_error(
-                b"C_modelframe subset is not implemented\0".as_ptr()
-                    as *const std::os::raw::c_char,
-            );
+            let index = if TYPEOF(subset) == SEXPTYPE::LANGSXP || TYPEOF(subset) == SEXPTYPE::SYMSXP
+            {
+                crate::eval::eval::Rf_eval(subset, rho)
+            } else {
+                subset
+            };
+            let _idx = protect(index);
+            let ncol = XLENGTH(ans);
+            let cols = Rf_allocVector3(SEXPTYPE::INTSXP, ncol);
+            let _cols = protect(cols);
+            for i in 0..ncol {
+                *INTEGER(cols).add(i as usize) = (i + 1) as i32;
+            }
+            let args = Rf_cons(ans, Rf_cons(index, Rf_cons(cols, R_NilValue())));
+            let _args = protect(args);
+            ans = crate::mainutils::subset::do_subset_dflt(_call, _op, args, rho);
+            let _sub = protect(ans);
         }
         ans
     }
