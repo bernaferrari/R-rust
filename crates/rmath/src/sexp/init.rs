@@ -307,6 +307,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "split.default",
             include_str!("gnu_split_default.R"),
         );
+        eval_base_binding(base_env, "interaction", include_str!("gnu_interaction.R"));
         eval_base_binding(
             base_env,
             "split.data.frame",

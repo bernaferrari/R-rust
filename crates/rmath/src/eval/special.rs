@@ -489,19 +489,13 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
                 crate::sexp::instance::check_cancellation();
                 let cond_val = Rf_eval(cond, rho);
 
-                let should_continue = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP {
-                    let data = crate::sexp::accessors::LOGICAL(cond_val);
-                    *data == 1
-                } else {
-                    let len = crate::sexp::constructors::Rf_length(cond_val);
-                    if len > 0 {
-                        true
-                    } else {
-                        std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                            message: "argument is not interpretable as logical".to_string(),
-                        });
-                    }
-                };
+                let truth = crate::eval::defaults::asLogicalNoNA(cond_val, R_NilValue());
+                if truth == crate::sexp::ffi::NA_INTEGER {
+                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                        message: "missing value where TRUE/FALSE needed".to_string(),
+                    });
+                }
+                let should_continue = truth != 0;
 
                 if !should_continue {
                     break;
