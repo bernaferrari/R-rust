@@ -26,7 +26,7 @@ fn hclust_body(
 ) {
     const INF: f64 = 1.0e300;
     let n = n as usize;
-    let mut flag = vec![true; n + 1];
+    let mut active: Vec<i32> = (1..=n as i32).collect();
     let mut im = 0i32;
     let mut jj = 0i32;
     let mut jm = 0i32;
@@ -53,8 +53,11 @@ fn hclust_body(
 
     loop {
         let mut dmin = INF;
-        for i in 1..n as i32 {
-            if flag[i as usize] && disnn[(i - 1) as usize] < dmin {
+        for &i in &active {
+            if i >= n as i32 {
+                break;
+            }
+            if disnn[(i - 1) as usize] < dmin {
                 dmin = disnn[(i - 1) as usize];
                 im = i;
                 jm = nn[(i - 1) as usize];
@@ -71,12 +74,12 @@ fn hclust_body(
             dmin = dmin.sqrt();
         }
         crit[slot] = dmin;
-        flag[j2 as usize] = false;
+        active.retain(|&k| k != j2);
 
         dmin = INF;
         jj = 0;
-        for k in 1..=n as i32 {
-            if flag[k as usize] && k != i2 {
+        for &k in &active {
+            if k != i2 {
                 let ind1 = if i2 < k {
                     ioffst(n as i32, i2, k)
                 } else {
@@ -128,19 +131,18 @@ fn hclust_body(
         disnn[(i2 - 1) as usize] = dmin;
         nn[(i2 - 1) as usize] = jj;
 
-        for i in 1..n as i32 {
-            if flag[i as usize]
-                && (nn[(i - 1) as usize] == i2 || nn[(i - 1) as usize] == j2)
-            {
+        for (ai, i) in active.iter().copied().enumerate() {
+            if i >= n as i32 {
+                break;
+            }
+            if nn[(i - 1) as usize] == i2 || nn[(i - 1) as usize] == j2 {
                 let mut dmin = INF;
                 let mut jj = 0i32;
-                for j in (i + 1)..=n as i32 {
-                    if flag[j as usize] {
-                        let ind = ioffst(n as i32, i, j) - 1;
-                        if diss[ind] < dmin {
-                            dmin = diss[ind];
-                            jj = j;
-                        }
+                for &j in &active[ai + 1..] {
+                    let ind = ioffst(n as i32, i, j) - 1;
+                    if diss[ind] < dmin {
+                        dmin = diss[ind];
+                        jj = j;
                     }
                 }
                 nn[(i - 1) as usize] = jj;
