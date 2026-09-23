@@ -1007,7 +1007,7 @@ unsafe fn f3xact(
                     *nr.add(lev as usize) = nrt_val - *lb.add(lev as usize);
                 }
                 *alen.add(nco as usize) =
-                    *alen.add(lev as usize) + *fact.add(*nr.add(lev as usize) as usize);
+                    *alen.add(lev as usize) + fact_term(fact, *nr.add(lev as usize), "nr");
                 *lb.add(nco as usize) = *nr.add(lev as usize);
 
                 let v = val + *alen.add(nco as usize);
