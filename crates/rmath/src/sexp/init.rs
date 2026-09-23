@@ -310,6 +310,26 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "interaction", include_str!("gnu_interaction.R"));
         eval_base_binding(
             base_env,
+            "split<-",
+            "function(x, f, drop = FALSE, ..., value) UseMethod(\"split<-\")",
+        );
+        eval_base_binding(
+            base_env,
+            "split<-.default",
+            "function(x, f, drop = FALSE, ..., value) {\n\
+             ix <- split(seq_along(x), f, drop = drop, ...)\n\
+             n <- length(value)\n\
+             j <- 0\n\
+             for (i in ix) {\n\
+                 j <- j %% n + 1\n\
+                 x[i] <- value[[j]]\n\
+             }\n\
+             x\n\
+             }",
+        );
+        eval_base_binding(base_env, "unsplit", include_str!("gnu_unsplit.R"));
+        eval_base_binding(
+            base_env,
             "split.data.frame",
             "function(x, f, drop = FALSE, ...) {\n\
              lapply(split(x = seq_len(nrow(x)), f = f, drop = drop, ...),\n\
