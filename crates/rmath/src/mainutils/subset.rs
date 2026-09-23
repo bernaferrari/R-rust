@@ -3155,7 +3155,11 @@ pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                             }
                         }
                     }
-                    if code == NA_INTEGER && !warned {
+                    if code == NA_INTEGER
+                        && !warned
+                        && !vs.is_null()
+                        && vs != crate::sexp::globals::R_NaString()
+                    {
                         warned = true;
                         crate::mainutils::errors::warningcall(
                             call,
