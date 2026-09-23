@@ -502,7 +502,7 @@ impl RSession {
             }
             if let Ok(exprs) = super::memory::with_arena(|arena| {
                 crate::eval::parser::parse_expressions(
-                    "if (\"package:stats\" %in% search()) assign(\"reorder\", get(\"reorder\", baseenv()), envir = as.environment(\"package:stats\"))",
+                    "{ if (\"package:stats\" %in% search()) assign(\"reorder\", get(\"reorder\", baseenv()), envir = as.environment(\"package:stats\")); f <- get(\"diff.ts\", baseenv()); for (env in list(baseenv(), get(\".BaseNamespaceEnv\", baseenv()), asNamespace(\"stats\"), as.environment(\"package:stats\"))) { tab <- tryCatch(get(\".__S3MethodsTable__.\", env), error = function(e) NULL); if (!is.null(tab) && exists(\"diff.ts\", tab, inherits = FALSE)) { if (bindingIsLocked(\"diff.ts\", tab)) unlockBinding(\"diff.ts\", tab); assign(\"diff.ts\", f, tab) }; if (exists(\"diff.ts\", env, inherits = FALSE)) { if (bindingIsLocked(\"diff.ts\", env)) unlockBinding(\"diff.ts\", env); assign(\"diff.ts\", f, env) } } }",
                     arena,
                 )
             }) {

@@ -337,6 +337,39 @@ pub unsafe fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 fround(v, digits)
             };
         }
+        let dim = crate::sexp::attrib_core::getAttrib(
+            x_arg,
+            crate::sexp::attrib_core::R_DimSymbol(),
+        );
+        if !dim.is_null() && dim != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                dim,
+            );
+        }
+        let dimnames = crate::sexp::attrib_core::getAttrib(
+            x_arg,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if !dimnames.is_null() && dimnames != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
+            );
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            x_arg,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
         result
     }
 }

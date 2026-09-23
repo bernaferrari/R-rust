@@ -466,6 +466,8 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
     "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_lowesw", "C_lowesp",
     "C_kmeans_Lloyd", "C_kmeans_MacQueen", "C_Rsm", "C_pRho", "C_pKendall",
+    "C_setup_starma", "C_free_starma", "C_Starma_method", "C_arma0fa",
+    "C_get_s2", "C_get_resid", "C_set_trans", "C_Invtrans", "C_Dotrans", "C_Gradtrans",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -538,6 +540,17 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
             c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
         ),
         "Fisher_sim" => as_dl(c_fisher_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "setup_starma" => as_dl(super::starma_api::c_setup_starma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "free_starma" => as_dl(super::starma_api::c_free_starma as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "Starma_method" => as_dl(super::starma_api::c_starma_method as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "arma0fa" => as_dl(super::starma_api::c_arma0fa as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "get_s2" => as_dl(super::starma_api::c_get_s2 as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "get_resid" => as_dl(super::starma_api::c_get_resid as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "set_trans" => as_dl(super::starma_api::c_set_trans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "Invtrans" => as_dl(super::starma_api::c_invtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "Dotrans" => as_dl(super::starma_api::c_dotrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "Gradtrans" => as_dl(super::starma_api::c_gradtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+
         _ => super::distn::lookup_call(name),
     }
 }

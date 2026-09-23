@@ -52,6 +52,7 @@ pub(crate) mod smooth;
 pub(crate) mod splines;
 pub(crate) mod srunmed;
 mod starma;
+mod starma_api;
 pub(crate) mod stl;
 pub(crate) mod swilk;
 mod trunmed;
