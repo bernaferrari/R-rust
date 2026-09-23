@@ -319,8 +319,10 @@ pub unsafe fn karma(g: *mut c_void, sumlog: *mut f64, ssq: *mut f64, iupd: c_int
         let work = G.xnext;
 
         if *nit == 0 {
+            // A new pass. nused from the previous arma0fa call must not
+            // be added again if this pass drops into the quick recursion.
+            G.nused = 0;
             let mut nu: c_int = 0;
-            let mut i: c_int;
             for i in 0..n {
                 /* prediction. */
                 if iupd != 1 || i > 0 {
