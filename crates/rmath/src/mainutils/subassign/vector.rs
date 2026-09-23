@@ -432,7 +432,7 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
         {
             let args = Rf_cons(x, Rf_cons(s, Rf_cons(y, R_NilValue())));
             let _a = protect(args);
-            return crate::mainutils::essentials::do_dollar_set(call, R_NilValue(), args, rho);
+            return crate::mainutils::essentials::do_dollar_set(R_NilValue(), R_NilValue(), args, rho);
         }
         use crate::eval::attrib_core::R_DimSymbol;
 
