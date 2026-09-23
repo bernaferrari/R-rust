@@ -2668,7 +2668,7 @@ unsafe fn complex_fmt(raw: SEXP, n: R_xlen_t) -> ComplexFmt {
 }
 
 fn part_is_na(v: f64) -> bool {
-    v.is_nan() && v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+    crate::sexp::ffi::is_na_real(v)
 }
 
 fn part_is_nan(v: f64) -> bool {

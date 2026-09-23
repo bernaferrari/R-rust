@@ -329,7 +329,7 @@ pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
 
 /// Detect R's NA real (a NaN with R's specific NA payload).
 fn r_real_is_na(x: f64) -> bool {
-    x.is_nan() && x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+    crate::sexp::ffi::is_na_real(x)
 }
 
 /// Render a real exactly like the C snprintf formats stock EncodeReal0,

@@ -456,7 +456,7 @@ pub type SEXP = *mut SexprecCore;
 /// Check if a double is R's NA.
 #[inline]
 pub fn R_IsNA(x: c_double) -> bool {
-    x.to_bits() == R_NA_BIT_PATTERN
+    is_na_real(x)
 }
 
 /// Check if a double is NaN (any NaN, not specifically R's NA).
@@ -468,7 +468,7 @@ pub fn ISNAN(x: c_double) -> bool {
 /// Check if a double is NaN but not NA (R semantics: R_IsNaN excludes NA).
 #[inline]
 pub fn R_IsNaN(x: c_double) -> bool {
-    x.is_nan() && x.to_bits() != R_NA_BIT_PATTERN
+    x.is_nan() && !is_na_real(x)
 }
 
 /// Check if a double is finite (not NA, not NaN, not Inf).

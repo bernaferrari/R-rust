@@ -1929,7 +1929,7 @@ fn atomic_unique_key(x: SEXP, index: R_xlen_t, target_type: SEXPTYPE) -> AtomicU
                         raw as f64
                     }
                 };
-                if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                if crate::sexp::ffi::is_na_real(value) {
                     AtomicUniqueKey::Real(crate::sexp::ffi::R_NA_BIT_PATTERN)
                 } else if value.is_nan() {
                     AtomicUniqueKey::Real(f64::NAN.to_bits())
