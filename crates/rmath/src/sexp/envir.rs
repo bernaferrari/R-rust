@@ -1003,7 +1003,7 @@ fn value_is_missing(val: Sexp<'_>) -> bool {
     if val == missing_arg {
         return true;
     }
-    let root = find_root_promise(val);
+    let root = find_root_promise(val.clone());
     if root.clone().typeof_() == SEXPTYPE::PROMSXP
         && let Ok(expr) = root.clone().try_prcode()
     {
@@ -1011,12 +1011,49 @@ fn value_is_missing(val: Sexp<'_>) -> bool {
             return true;
         }
         if expr.clone().is_symbol()
-            && let Ok(env) = root.try_prenv()
+            && let Ok(env) = root.clone().try_prenv()
         {
             return is_missing_safe(expr, env);
         }
+        if expr.clone().typeof_() == SEXPTYPE::BCODESXP
+            && let Ok(env) = root.try_prenv()
+        {
+            return bytecode_loads_missing_symbol(expr, env);
+        }
     }
     false
+}
+
+/// A compiled argument expression that is only `GETVAR` / `GETVAR_MISSOK`
+/// of a symbol is missing when that symbol is missing. GNU keeps the symbol
+/// as the promise code; this runtime sometimes stores the bytecode instead.
+fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>) -> bool {
+    unsafe {
+        let bc = code.as_raw();
+        let code_ptr = crate::eval::bc_eval::BCODE_CODE(bc);
+        if code_ptr.is_null() {
+            return false;
+        }
+        let op = *code_ptr.add(1);
+        if op != crate::eval::bytecode::GNU_OP_GETVAR
+            && op != crate::eval::bytecode::GNU_OP_GETVAR_MISSOK
+        {
+            return false;
+        }
+        let idx = *code_ptr.add(2);
+        let consts = crate::eval::bc_eval::BCODE_CONSTS(bc);
+        if consts.is_null() {
+            return false;
+        }
+        let sym = crate::sexp::accessors::VECTOR_ELT(consts, idx as i64);
+        if TYPEOF(sym) != SEXPTYPE::SYMSXP {
+            return false;
+        }
+        let Some(sym) = Sexp::from_raw(sym) else {
+            return false;
+        };
+        is_missing_safe(sym, env)
+    }
 }
 
 fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool) -> bool {

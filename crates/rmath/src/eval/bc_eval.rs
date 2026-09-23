@@ -89,6 +89,28 @@ fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
                         .unwrap_or_else(|_| "???".to_string())
                 }
             };
+
+            format!("argument \"{name}\" is missing, with no default")
+        }
+    };
+    let message = unsafe {
+        if arg_sym.is_null() {
+            "argument is missing, with no default".to_string()
+        } else {
+            let pname = PRINTNAME(arg_sym);
+            let name = if pname.is_null() {
+                "???".to_string()
+            } else {
+                let chars = CHAR(pname);
+                if chars.is_null() {
+                    "???".to_string()
+                } else {
+                    std::ffi::CStr::from_ptr(chars)
+                        .to_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|_| "???".to_string())
+                }
+            };
             format!("argument \"{name}\" is missing, with no default")
         }
     };
@@ -592,11 +614,10 @@ unsafe fn find_var_unforced(symbol: SEXP, rho: SEXP) -> SEXP {
         match crate::sexp::envir::find_var_binding_result(symbol, rho) {
             Ok(Some(value)) => value.as_raw(),
             Ok(None) => R_UnboundValue(),
-            Err(message) => bc_error(message),
+            Err(_) => R_UnboundValue(),
         }
     }
 }
-
 
 /// GNU GETVAR / GETVAR_MISSOK match eval.c getvar(keepmiss).
 unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: bool) -> SEXP {
@@ -631,7 +652,15 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
             // default is still the value: nmx[parametric] with
             // parametric = FALSE must see FALSE, not a missing index.
             let code = crate::sexp::accessors::PRCODE(value);
-            if keep_missing && (code == R_MissingArg() || code.is_null()) {
+            if keep_missing
+                && (code == R_MissingArg()
+                    || code.is_null()
+                    || (TYPEOF(code) == SEXPTYPE::SYMSXP
+                        && crate::sexp::envir::R_missing(
+                            code,
+                            crate::sexp::accessors::PRENV(value),
+                        ) != 0))
+            {
                 return R_MissingArg();
             }
             forcePromise(value)
