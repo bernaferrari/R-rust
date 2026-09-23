@@ -15258,13 +15258,49 @@ pub unsafe fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         if as_is {
             return x;
         }
+        let na_spec = tagged("na.strings");
+        let mut na_strings: Vec<String> = Vec::new();
+        if na_spec.is_null() || na_spec == R_NilValue() {
+            na_strings.push("NA".to_string());
+        } else if TYPEOF(na_spec) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(na_spec) {
+                na_strings.push(elt_to_string(na_spec, i));
+            }
+        }
+        let mut levels_v: Vec<String> = Vec::new();
+        let mut is_na = vec![false; n as usize];
+        for i in 0..n {
+            let ch = STRING_ELT(x, i);
+            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                is_na[i as usize] = true;
+                continue;
+            }
+            let s = elt_to_string(x, i);
+            if na_strings.iter().any(|n| n == &s) {
+                is_na[i as usize] = true;
+                continue;
+            }
+            if !levels_v.iter().any(|l| l == &s) {
+                levels_v.push(s);
+            }
+        }
+        levels_v.sort();
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         let _p = protect(result);
-        let levels = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _l = protect(levels);
         for i in 0..n {
-            *INTEGER(result).add(i as usize) = (i as c_int) + 1;
-            SET_STRING_ELT(levels, i, STRING_ELT(x, i));
+            if is_na[i as usize] {
+                *INTEGER(result).add(i as usize) = NA_INTEGER;
+            } else {
+                let s = elt_to_string(x, i);
+                let code = levels_v.iter().position(|l| l == &s).unwrap_or(0) as c_int + 1;
+                *INTEGER(result).add(i as usize) = code;
+            }
+        }
+        let levels = Rf_allocVector3(SEXPTYPE::STRSXP, levels_v.len() as i64);
+        let _l = protect(levels);
+        for (i, level) in levels_v.iter().enumerate() {
+            let c = std::ffi::CString::new(level.as_str()).unwrap_or_default();
+            SET_STRING_ELT(levels, i as i64, Rf_mkChar(c.as_ptr()));
         }
         crate::sexp::attrib_core::setAttrib(
             result,
