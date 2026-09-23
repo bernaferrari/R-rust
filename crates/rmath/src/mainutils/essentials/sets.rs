@@ -584,6 +584,31 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *dst.add(out) = ranks[i];
             out += 1;
         }
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == n
+        {
+            let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, output_len as R_xlen_t);
+            let _on = protect(out_names);
+            let mut out = 0i64;
+            for i in 0..n {
+                if na_placement == SortNaPlacement::Remove && is_missing[i as usize] {
+                    continue;
+                }
+                SET_STRING_ELT(out_names, out, STRING_ELT(names, i));
+                out += 1;
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                out_names,
+            );
+        }
         result
     }
 }
