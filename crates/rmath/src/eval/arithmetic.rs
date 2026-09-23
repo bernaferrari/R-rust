@@ -981,9 +981,7 @@ unsafe fn propagate_unary_vector_attributes(result: SEXP, source: SEXP, result_l
         if LENGTH(source) as R_xlen_t == result_len {
             copy_attr_if_present(result, source, R_NamesSymbol());
         }
-        if TYPEOF(result) == TYPEOF(source)
-            && (has_class(source, "ts") || has_class(source, "mts"))
-        {
+        if has_class(source, "ts") || has_class(source, "mts") {
             copy_attr_if_present(result, source, crate::sexp::attrib_core::R_ClassSymbol());
             copy_attr_if_present(result, source, crate::sexp::attrib_core::R_TspSymbol());
         }
@@ -1730,6 +1728,10 @@ unsafe fn unary_plus_logical(x: SEXP) -> SEXP {
             SET_INTEGER_ELT(result, i as i32, LOGICAL_ELT(x, i as i32));
         }
         propagate_unary_vector_attributes(result, x, n);
+        if has_class(x, "ts") || has_class(x, "mts") {
+            crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), R_NilValue());
+            crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_TspSymbol(), R_NilValue());
+        }
         result
     }
 }
@@ -1770,6 +1772,10 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
         let _ = result_mut.freeze();
         if TYPEOF(x) == SEXPTYPE::LGLSXP {
             propagate_unary_vector_attributes(result_raw, x, n);
+            if has_class(x, "ts") || has_class(x, "mts") {
+                crate::sexp::attrib_core::setAttrib(result_raw, crate::sexp::attrib_core::R_ClassSymbol(), R_NilValue());
+                crate::sexp::attrib_core::setAttrib(result_raw, crate::sexp::attrib_core::R_TspSymbol(), R_NilValue());
+            }
         } else {
             copy_all_attrib(result_raw, x);
         }

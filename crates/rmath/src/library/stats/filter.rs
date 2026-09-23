@@ -6438,11 +6438,15 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
                         }
                     }
                 }
-                let iv = Rf_allocVector3(SEXPTYPE::INTSXP, hits.len() as i64);
-                for (k, &h) in hits.iter().enumerate() {
-                    *INTEGER(iv).add(k) = h;
+                if hits.is_empty() {
+                    SET_VECTOR_ELT(spec, s as i64, R_NilValue());
+                } else {
+                    let iv = Rf_allocVector3(SEXPTYPE::INTSXP, hits.len() as i64);
+                    for (k, &h) in hits.iter().enumerate() {
+                        *INTEGER(iv).add(k) = h;
+                    }
+                    SET_VECTOR_ELT(spec, s as i64, iv);
                 }
-                SET_VECTOR_ELT(spec, s as i64, iv);
             }
             crate::sexp::attrib_core::setAttrib(
                 spec,
