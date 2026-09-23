@@ -26,6 +26,10 @@ pub unsafe fn NewBase(base: SEXP, tag: SEXP) -> SEXP {
         let base = EnsureString(base);
         let tag = EnsureString(tag);
 
+        let na = crate::sexp::globals::R_NaString();
+        if base == na || tag == na {
+            return na;
+        }
         let base_empty = if base.is_null() || base == R_NilValue() {
             true
         } else {
@@ -64,6 +68,10 @@ pub unsafe fn NewName(base: SEXP, tag: SEXP, seqno: R_xlen_t, count: c_int) -> S
         let base = EnsureString(base);
         let tag = EnsureString(tag);
 
+        let na = crate::sexp::globals::R_NaString();
+        if base == na || tag == na {
+            return na;
+        }
         let base_empty = if base.is_null() || base == R_NilValue() {
             true
         } else {
@@ -114,6 +122,9 @@ pub unsafe fn ItemName(names: SEXP, i: R_xlen_t) -> SEXP {
         let elt = STRING_ELT(names, i);
         if elt.is_null() || elt == R_NilValue() {
             return R_NilValue();
+        }
+        if elt == crate::sexp::globals::R_NaString() {
+            return elt;
         }
         if *CHAR(elt) == 0 {
             // empty string
