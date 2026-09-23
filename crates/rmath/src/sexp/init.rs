@@ -393,13 +393,17 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              d <- dim(x)\n\
              if (length(d) == 2L) {\n\
                  nrows <- d[1L]\n\
-                 value <- list(x)\n\
+                 rn <- dimnames(x)[[1L]]\n\
              } else {\n\
                  nrows <- length(x)\n\
-                 value <- list(x)\n\
+                 rn <- names(x)\n\
              }\n\
-             if (is.null(row.names))\n\
-                 row.names <- if (nrows == 0L) character() else .set_row_names(nrows)\n\
+             if (is.null(row.names)) {\n\
+                 if (!is.null(rn) && length(rn) == nrows && !anyDuplicated(rn))\n\
+                     row.names <- rn\n\
+                 else row.names <- if (nrows == 0L) character() else .set_row_names(nrows)\n\
+             }\n\
+             value <- list(x)\n\
              if (!optional) names(value) <- deparse(substitute(x), width.cutoff = 500L)[1L]\n\
              structure(value, row.names = row.names, class = \"data.frame\")\n\
              }",
