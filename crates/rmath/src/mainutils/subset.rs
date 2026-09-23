@@ -2195,6 +2195,12 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 
         /* The actual subsetting code */
         let mut ans: SEXP = if nsubs < 2 {
+            if data_frame_subset && nsubs == 1 {
+                let i = CAR(subs);
+                if TYPEOF(i) == SEXPTYPE::LGLSXP && XLENGTH(i) > xlength(ax) {
+                    errorcall(call, "undefined columns selected");
+                }
+            }
             let dim = getAttrib(x, sym_Dim());
             let ndim = length_int(dim);
             let ans = VectorSubset(ax, if nsubs == 1 { CAR(subs) } else { R_NilValue() }, call);
