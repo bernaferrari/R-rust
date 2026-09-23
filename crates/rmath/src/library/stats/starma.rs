@@ -330,7 +330,7 @@ pub unsafe fn karma(g: *mut c_void, sumlog: *mut f64, ssq: *mut f64, iupd: c_int
                     let dt_val = if r > 1 { *P.add(r as usize) } else { 0.0 };
                     if dt_val < G.delta {
                         /* jump to quick recursions */
-                        quick_recur(G, nit, ssq, w, phi, theta, resid, p, q, n, i as usize);
+                        quick_recur(G, nit, ssq, w, phi, theta, resid, p, q, n, i as usize, nu);
                         return;
                     }
                     let a1 = *a.add(0);
@@ -414,7 +414,7 @@ pub unsafe fn karma(g: *mut c_void, sumlog: *mut f64, ssq: *mut f64, iupd: c_int
             G.nused = nu;
         } else {
             /* quick recursions: never used with missing values */
-            quick_recur(G, nit, ssq, w, phi, theta, resid, p, q, n, 0);
+            quick_recur(G, nit, ssq, w, phi, theta, resid, p, q, n, 0, G.nused);
         }
     }
 }
@@ -432,9 +432,10 @@ unsafe fn quick_recur(
     q: c_int,
     n: c_int,
     start_i: usize,
+    nu0: c_int,
 ) {
     unsafe {
-        let mut nu: c_int = G.nused; /* carry over from normal recursions if any */
+        let mut nu: c_int = nu0;
         let mut et: c_double;
         let mut indw: c_int;
 

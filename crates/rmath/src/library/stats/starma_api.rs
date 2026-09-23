@@ -6,13 +6,13 @@
 
 use core::ffi::{c_double, c_int, c_void};
 
-use crate::sexp::accessors::{INTEGER, REAL, TYPEOF, XLENGTH};
+use crate::sexp::accessors::{INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
-use super::starma::{karma, starma, starma_struct};
+use super::starma::{forkal, karma, starma, starma_struct};
 
 fn alloc_len(n: i32) -> usize {
     if n < 1 { 1 } else { n as usize }
@@ -404,6 +404,71 @@ pub unsafe extern "C-unwind" fn c_get_resid(pg: SEXP) -> SEXP {
         let _res = protect(res);
         for i in 0..n as usize {
             *REAL(res).add(i) = *g.resid.add(i);
+        }
+        res
+    }
+}
+
+/// Forecast `n_ahead` steps. Returns a list of mean and variance.
+pub unsafe extern "C-unwind" fn c_arma0_kfore(
+    pg: SEXP,
+    pd: SEXP,
+    psd: SEXP,
+    nahead: SEXP,
+) -> SEXP {
+    unsafe {
+        let g = &mut *starma_from(pg);
+        let dd = as_i32(pd);
+        let sd = as_i32(psd);
+        let il = as_i32(nahead).max(0);
+        let d = dd + g.ns * sd;
+        let mut del = vec![0.0f64; (d.max(0) + 1) as usize];
+        let mut del2 = vec![0.0f64; (d.max(0) + 1) as usize];
+        if !del.is_empty() {
+            del[0] = 1.0;
+        }
+        for _j in 0..dd {
+            del2.copy_from_slice(&del);
+            for i in 0..d as usize {
+                del[i + 1] -= del2[i];
+            }
+        }
+        let ns = g.ns.max(0) as usize;
+        for _j in 0..sd {
+            del2.copy_from_slice(&del);
+            let mut i = 0;
+            while i + ns < del.len() && i <= d as usize {
+                del[i + ns] -= del2[i];
+                i += 1;
+            }
+        }
+        for i in 1..=d as usize {
+            if i < del.len() {
+                del[i] *= -1.0;
+            }
+        }
+        let res = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _res = protect(res);
+        let x = Rf_allocVector3(SEXPTYPE::REALSXP, il as i64);
+        let var = Rf_allocVector3(SEXPTYPE::REALSXP, il as i64);
+        SET_VECTOR_ELT(res, 0, x);
+        SET_VECTOR_ELT(res, 1, var);
+        let mut ifault = 0;
+        if il > 0 {
+            forkal(
+                g as *mut starma_struct as *mut c_void,
+                d,
+                il,
+                del.as_mut_ptr().add(1),
+                REAL(x),
+                REAL(var),
+                &mut ifault,
+            );
+        }
+        if ifault != 0 {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: format!("forkal error code {ifault}"),
+            });
         }
         res
     }
