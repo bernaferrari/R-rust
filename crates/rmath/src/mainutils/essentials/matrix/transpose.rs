@@ -428,6 +428,45 @@ pub unsafe fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 crate::sexp::attrib_core::R_TspSymbol(),
                 R_NilValue(),
             );
+            let class = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            );
+            if !class.is_null()
+                && class != R_NilValue()
+                && TYPEOF(class) == SEXPTYPE::STRSXP
+            {
+                let n = XLENGTH(class);
+                let mut keep = Vec::new();
+                for i in 0..n {
+                    let elt = STRING_ELT(class, i);
+                    if elt.is_null() {
+                        continue;
+                    }
+                    let name = std::ffi::CStr::from_ptr(CHAR(elt)).to_string_lossy();
+                    if name != "ts" && name != "mts" {
+                        keep.push(elt);
+                    }
+                }
+                if keep.is_empty() {
+                    crate::sexp::attrib_core::setAttrib(
+                        x,
+                        crate::sexp::attrib_core::R_ClassSymbol(),
+                        R_NilValue(),
+                    );
+                } else if keep.len() as i64 != n {
+                    let next = Rf_allocVector3(SEXPTYPE::STRSXP, keep.len() as i64);
+                    let _next = protect(next);
+                    for (i, elt) in keep.iter().enumerate() {
+                        SET_STRING_ELT(next, i as i64, *elt);
+                    }
+                    crate::sexp::attrib_core::setAttrib(
+                        x,
+                        crate::sexp::attrib_core::R_ClassSymbol(),
+                        next,
+                    );
+                }
+            }
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }
