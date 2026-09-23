@@ -239,6 +239,16 @@ pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP
     }
 }
 
+pub unsafe extern "C-unwind" fn c_ksmooth(
+    x: SEXP,
+    y: SEXP,
+    xp: SEXP,
+    skrn: SEXP,
+    sbw: SEXP,
+) -> SEXP {
+    unsafe { ksmooth(x, y, xp, skrn, sbw) }
+}
+
 /// GNU `ksmooth(x, y, kernel=, bandwidth=, n.points=, x.points=)`.
 pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
