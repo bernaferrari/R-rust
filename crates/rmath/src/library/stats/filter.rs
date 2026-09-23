@@ -6512,6 +6512,13 @@ unsafe fn expand_formula_dot(form: SEXP, data: SEXP) {
                 .to_string_lossy()
                 .into_owned();
             if name != response_name {
+                if cols.iter().any(|existing| existing == &name) {
+                    let msg = std::ffi::CString::new(format!(
+                        "duplicated name '{name}' in data frame using '.'"
+                    ))
+                    .unwrap_or_default();
+                    crate::main::errors::Rf_error(msg.as_ptr());
+                }
                 cols.push(name);
             }
         }
