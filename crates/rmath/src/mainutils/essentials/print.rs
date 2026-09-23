@@ -483,9 +483,7 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
                 }
             }
             let names: Vec<&str> = if na_count > 0 {
-                vec![
-                    "Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max.", "NAs",
-                ]
+                vec!["Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max.", "NAs"]
             } else {
                 vec!["Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max."]
             };

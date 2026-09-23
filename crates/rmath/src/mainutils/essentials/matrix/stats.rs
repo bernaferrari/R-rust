@@ -1058,6 +1058,14 @@ pub unsafe fn copy_bind_value(
                 };
                 *INTEGER(dst).add(dst_i as usize) = value;
             }
+            SEXPTYPE::VECSXP => {
+                let elt = if TYPEOF(src) == SEXPTYPE::VECSXP {
+                    VECTOR_ELT(src, src_i)
+                } else {
+                    src
+                };
+                SET_VECTOR_ELT(dst, dst_i, elt);
+            }
 
             _ => {}
         }

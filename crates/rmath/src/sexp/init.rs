@@ -1172,6 +1172,26 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "units.difftime", "function(x) attr(x, \"units\")");
         eval_base_binding(
             base_env,
+            "summary.POSIXct",
+            "function(object, digits = 15L, ...) {\n\
+             x <- summary.default(unclass(object), digits = digits, ...)\n\
+             nas <- NULL\n\
+             if (m <- match(\"NAs\", names(x), 0L)) {\n\
+               nas <- as.integer(x[m])\n\
+               x <- x[-m]\n\
+               attr(x, \"NAs\") <- nas\n\
+             }\n\
+             class(x) <- c(\"summaryDefault\", oldClass(object))\n\
+             x\n\
+            }",
+        );
+        eval_base_binding(
+            base_env,
+            "summary.POSIXlt",
+            "function(object, ...) summary(as.POSIXct(object), ...)",
+        );
+        eval_base_binding(
+            base_env,
             "units<-.difftime",
             include_str!("gnu_units_difftime.R"),
         );

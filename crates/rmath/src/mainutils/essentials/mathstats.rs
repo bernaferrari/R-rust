@@ -15301,7 +15301,22 @@ pub unsafe fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             return result;
         }
         if as_is {
-            return x;
+            let na_spec = tagged("na.strings");
+            if na_spec.is_null() || na_spec == R_NilValue() || TYPEOF(na_spec) != SEXPTYPE::STRSXP {
+                return x;
+            }
+            let out = crate::mainutils::duplicate::duplicate(x);
+            let _o = protect(out);
+            for i in 0..n {
+                let s = elt_to_string(x, i);
+                for k in 0..XLENGTH(na_spec) {
+                    if s == elt_to_string(na_spec, k) {
+                        SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+                        break;
+                    }
+                }
+            }
+            return out;
         }
         let na_spec = tagged("na.strings");
         let mut na_strings: Vec<String> = Vec::new();
