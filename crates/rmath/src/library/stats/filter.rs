@@ -6900,8 +6900,11 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     _ => {}
                 }
             }
-            if !term_cols[j as usize].is_empty() {
+            if term_cols[j as usize].iter().any(|column| column.len() == n as usize) {
                 for column in &term_cols[j as usize] {
+                    if column.len() != n as usize {
+                        continue;
+                    }
                     for i in 0..n {
                         *dst.add((i + col * n) as usize) = column[i as usize];
                     }
