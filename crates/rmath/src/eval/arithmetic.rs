@@ -2574,14 +2574,23 @@ unsafe fn eval_sum(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
                     let vector = Sexp::from_raw_unchecked(value);
                     for (i, item) in vector.iter_complex().enumerate() {
                         poll_vector_cancellation(i as R_xlen_t);
-                        if complex_missing(item) {
-                            if !na_rm {
-                                missing = merge_missing(missing, MissingKind::NA);
-                            }
+                        if na_rm && complex_missing(item) {
                             continue;
                         }
-                        complex_total.r += item.r;
-                        complex_total.i += item.i;
+                        if item.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                            || complex_total.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                        {
+                            complex_total.r = NA_REAL;
+                        } else {
+                            complex_total.r += item.r;
+                        }
+                        if item.i.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                            || complex_total.i.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                        {
+                            complex_total.i = NA_REAL;
+                        } else {
+                            complex_total.i += item.i;
+                        }
                     }
                 }
                 _ => {}
@@ -2590,12 +2599,6 @@ unsafe fn eval_sum(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
         }
 
         if shape.saw_complex {
-            if missing.is_some() {
-                return Rf_ScalarComplex(Rcomplex {
-                    r: NA_REAL,
-                    i: NA_REAL,
-                });
-            }
             return Rf_ScalarComplex(complex_total);
         }
         if shape.saw_real {
