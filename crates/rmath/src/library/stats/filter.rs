@@ -211,6 +211,14 @@ pub unsafe fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) ->
     }
 }
 
+pub unsafe extern "C-unwind" fn c_cfilter(
+    sx: SEXP,
+    sfilter: SEXP,
+    ssides: SEXP,
+    scircular: SEXP,
+) -> SEXP {
+    unsafe { cfilter(sx, sfilter, ssides, scircular) }
+}
 /// GNU `filter(x, filter)` convolution, sides=2.
 pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -281,6 +289,9 @@ pub unsafe fn rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
     }
 }
 
+pub unsafe extern "C-unwind" fn c_rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
+    unsafe { rfilter(x, filter, out) }
+}
 /* now allows missing values */
 unsafe fn acf0(
     x: *const c_double,
