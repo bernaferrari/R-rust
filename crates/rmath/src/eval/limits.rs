@@ -195,10 +195,16 @@ pub fn check_eval_depth() -> Result<DepthGuard, String> {
             (*inst).eval_state.start_time.map(|start| start.elapsed()),
         )
     });
-    let max_depth = if limits.max_eval_depth > 0 {
-        limits.max_eval_depth
+    let from_option = crate::mainutils::errors::R_Expressions();
+    let from_option = if from_option > 0 {
+        from_option as usize
     } else {
-        500
+        5000
+    };
+    let max_depth = if limits.max_eval_depth > 0 {
+        limits.max_eval_depth.max(from_option)
+    } else {
+        from_option
     };
     if depth as usize > max_depth {
         let hint = unsafe { current_call_hint() };
