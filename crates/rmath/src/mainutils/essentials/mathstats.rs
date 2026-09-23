@@ -1215,7 +1215,7 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             };
             for i in 0..nrow {
                 let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
-                let centered = if cen.is_finite() { v - cen } else { v };
+                let centered = if !cen.is_finite() { NA_REAL } else { v - cen };
                 *dst.add((i + j * nrow) as usize) = if sc.is_finite() && sc != 0.0 {
                     centered / sc
                 } else {
