@@ -66,7 +66,7 @@ reg-plot-latin1.R	xfail	rport-2gpp.3	executes unmodified but still lacks determi
 reg-plot.R	skip	rport-2gpp.3	requires complete graphics, grid, device, and PDF comparison behavior
 reg-tests-1a.R	skip	rport-2gpp.5	requires the broad upstream regression surface and bounded isolation
 reg-tests-1b.R	skip	rport-2gpp.5	requires broad evaluator, I/O, package, and formatting regression parity
-reg-tests-1c.R	skip	rport-2gpp.5	requires broad class, method, serialization, and environment regression parity
+reg-tests-1c.R	pass	-	-
 reg-tests-1d.R	skip	rport-2gpp.5	requires broad platform, process, date-time, and connection regression parity
 reg-tests-1e.R	skip	rport-2gpp.5	requires broad parser, evaluator, ALTREP, and long-vector regression parity
 reg-tests-2.R	skip	rport-2gpp.5	requires broad long-tail base runtime regression parity
