@@ -776,6 +776,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "edit", "function(name, ...) name");
         eval_base_binding(base_env, "image", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "contour", "function(...) invisible(NULL)");
+        eval_base_binding(base_env, "persp", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "heat.colors", "function(n, ...) rep(\"#FF0000\", n)");
         eval_base_binding(base_env, "colorRamp", include_str!("gnu_color_ramp.R"));
         eval_base_binding(
