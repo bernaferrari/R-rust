@@ -3359,6 +3359,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
     if has_class(x.clone(), "condition") {
         return unsafe { format_condition(x) };
     }
+    if has_class(x.clone(), "lm") {
+        return "\nCall:\nlm()\n".to_string();
+    }
     match x.clone().typeof_() {
         SEXPTYPE::NILSXP => "NULL".to_string(),
         SEXPTYPE::INTSXP => {
