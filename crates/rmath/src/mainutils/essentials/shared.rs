@@ -1827,6 +1827,9 @@ pub(crate) unsafe fn load_package_namespace(
             if package == "stats" {
                 crate::library::stats::random::install_stats_call_symbols(env);
             }
+            if package == "splines" {
+                crate::library::splines::splines::install_splines_call_symbols(env);
+            }
             if package == "utils" {
                 crate::library::utils::install_utils_call_symbols(env);
             }
@@ -1895,6 +1898,9 @@ pub(crate) unsafe fn load_package_namespace(
 
         if package == "stats" {
             crate::library::stats::random::install_stats_call_symbols(package_env);
+        }
+        if package == "splines" {
+            crate::library::splines::splines::install_splines_call_symbols(package_env);
         }
 
         if package == "tools" {

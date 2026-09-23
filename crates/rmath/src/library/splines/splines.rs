@@ -371,3 +371,56 @@ pub unsafe fn R_init_splines(_dll: *mut c_void) {
     //   R_forceSymbols(dll, TRUE);
     // Since our functions are #[unsafe(no_mangle)] and directly linked, no registration needed.
 }
+
+use crate::unix::dynload::DL_FUNC;
+
+const SPLINE_CALL_NAMES: &[&str] = &["C_spline_basis", "C_spline_value"];
+
+unsafe extern "C-unwind" fn c_spline_basis(
+    knots: SEXP,
+    order: SEXP,
+    xvals: SEXP,
+    derivs: SEXP,
+) -> SEXP {
+    unsafe { spline_basis(knots, order, xvals, derivs) }
+}
+
+unsafe extern "C-unwind" fn c_spline_value(
+    knots: SEXP,
+    coeff: SEXP,
+    order: SEXP,
+    x: SEXP,
+    deriv: SEXP,
+) -> SEXP {
+    unsafe { spline_value(knots, coeff, order, x, deriv) }
+}
+
+fn as_dl<T>(f: T) -> DL_FUNC {
+    Some(unsafe { std::mem::transmute_copy(&f) })
+}
+
+pub fn lookup(name: &str) -> DL_FUNC {
+    let bare = name.strip_prefix("C_").unwrap_or(name);
+    match bare {
+        "spline_basis" => as_dl(
+            c_spline_basis as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "spline_value" => as_dl(
+            c_spline_value as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        _ => None,
+    }
+}
+
+pub unsafe fn install_splines_call_symbols(env: SEXP) {
+    unsafe {
+        for name in SPLINE_CALL_NAMES {
+            let cname = std::ffi::CString::new(*name).unwrap_or_default();
+            crate::sexp::envir::defineVar(
+                crate::sexp::symbol::Rf_install(cname.as_ptr()),
+                crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
+                env,
+            );
+        }
+    }
+}

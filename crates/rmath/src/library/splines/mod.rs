@@ -1,3 +1,3 @@
 //! Splines package - B-spline routines
 
-mod splines;
+pub mod splines;

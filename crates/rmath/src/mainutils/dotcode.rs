@@ -980,6 +980,7 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 ofun = crate::library::methods::native_calls::lookup(&name)
                     .or_else(|| crate::library::tools::native_calls::lookup(&name))
                     .or_else(|| crate::library::stats::random::lookup_call(&name))
+                    .or_else(|| crate::library::splines::splines::lookup(&name))
                     .or_else(|| crate::library::utils::lookup(&name));
             }
         }
@@ -992,6 +993,7 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 ofun = crate::library::methods::native_calls::lookup(name)
                     .or_else(|| crate::library::tools::native_calls::lookup(name))
                     .or_else(|| crate::library::stats::random::lookup_call(name))
+                    .or_else(|| crate::library::splines::splines::lookup(name))
                     .or_else(|| crate::library::utils::lookup(name));
             }
         }
@@ -1039,7 +1041,8 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if let Some(name) = ported_call_name(CAR(args)) {
             ofun = crate::library::methods::native_calls::lookup(&name)
                 .or_else(|| crate::library::tools::native_calls::lookup(&name))
-                .or_else(|| crate::library::stats::random::lookup_call(&name));
+                .or_else(|| crate::library::stats::random::lookup_call(&name))
+                .or_else(|| crate::library::splines::splines::lookup(&name));
         }
 
 
@@ -1071,7 +1074,8 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 if !name.is_empty() {
                     ofun = crate::library::methods::native_calls::lookup(name)
                         .or_else(|| crate::library::tools::native_calls::lookup(name))
-                        .or_else(|| crate::library::stats::random::lookup_call(name));
+                        .or_else(|| crate::library::stats::random::lookup_call(name))
+                        .or_else(|| crate::library::splines::splines::lookup(name));
                 }
             }
         }
