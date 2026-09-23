@@ -949,11 +949,12 @@ unsafe fn f3xact(
         let mut ks: c_int = 0;
         let mut k: c_int = ldst;
         let mut lev: c_int;
-        let nr1 = nro - 1;
+        let mut nr1 = nro - 1;
         let mut vmn: c_double = 1e100;
 
         'new_node: loop {
-            // LnewNode: Setup to generate new node
+            // GNU sets nr1 = nro - 1 at every LnewNode.
+            nr1 = nro - 1;
             lev = 1;
             let nrt = *iro.add(irl as usize);
             let nct = *ico.add(1);
