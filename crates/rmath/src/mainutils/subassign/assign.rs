@@ -224,6 +224,8 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
                 return x;
             } else {
                 if isNull(x) {
+                    x = Rf_allocVector(TYPEOF(y), 0);
+                } else {
                     x = coerceVector(x, TYPEOF(y));
                 }
             }
