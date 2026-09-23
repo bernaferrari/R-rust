@@ -1366,6 +1366,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              else .Internal(sort(x, decreasing, na.last, ...))\n\
              }",
         );
+        eval_base_binding(base_env, "diff.ts", include_str!("gnu_diff_ts.R"));
         eval_base_binding(
             base_env,
             "mean",
