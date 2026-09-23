@@ -567,11 +567,11 @@ unsafe fn f2xact(
                 // Compute shortest and longest path
                 if k1 > 1 {
                     obs2 = obs
-                        - *fact.add(*ico.add((kb + 1) as usize) as usize)
-                        - *fact.add(*ico.add((kb + 2) as usize) as usize)
+                        - fact_term(fact, *ico.add((kb + 1) as usize), "obs2-kb1")
+                        - fact_term(fact, *ico.add((kb + 2) as usize), "obs2-kb2")
                         - ddf;
                     for idx in 3..=k1 as usize {
-                        obs2 -= *fact.add(*ico.add((kb as usize + idx) as usize) as usize);
+                        obs2 -= fact_term(fact, *ico.add((kb as usize + idx) as usize), "obs2");
                     }
 
                     if *lp.add(itp as usize) > 0. {
@@ -985,7 +985,7 @@ unsafe fn f3xact(
 
                 loop {
                     *alen.add(lev as usize) =
-                        *alen.add((lev - 1) as usize) + *fact.add(*lb.add(lev as usize) as usize);
+                        *alen.add((lev - 1) as usize) + fact_term(fact, *lb.add(lev as usize), "lb");
                     if lev >= nc1s {
                         break;
                     }
@@ -1347,7 +1347,7 @@ unsafe fn f4xact(
 
                 irt = *irstk.add((i + istk * nrow) as usize);
                 ict = *icstk.add((j + istk * ncol) as usize);
-                y += *fact.add(std::cmp::min(irt, ict) as usize);
+                y += fact_term(fact, std::cmp::min(irt, ict), "f4-min");
                 if irt == ict {
                     nro -= 1;
                     nco -= 1;
@@ -1911,6 +1911,7 @@ unsafe fn f11act(irow: *const c_int, i1: c_int, i2: c_int, new: *mut c_int) {
             *new.add(i as usize) = *irow.add(i as usize);
             i += 1;
         }
+        i = i1;
         while i <= i2 {
             *new.add((i - 1) as usize) = *irow.add(i as usize);
             i += 1;
