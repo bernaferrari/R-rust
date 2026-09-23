@@ -12906,12 +12906,9 @@ pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 /// R tempfile(pattern = "file", tmpdir = tempdir(), fileext = "")
 pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut pattern = "file".to_string();
-        let mut tmpdir: Option<PathBuf> = None;
-        let mut fileext = String::new();
-        // Upstream tempfile(pattern, tmpdir, fileext): arguments match by
-        // TAG first (tempfile(fileext = ".R") leaves pattern at its
-        // "file" default), then by position.
+        let mut pattern: Option<SEXP> = None;
+        let mut tmpdir: Option<SEXP> = None;
+        let mut fileext: Option<SEXP> = None;
         let mut positional: Vec<SEXP> = Vec::new();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -12926,9 +12923,9 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 .into_owned();
                 let nonempty = !value.is_null() && value != R_NilValue() && XLENGTH(value) > 0;
                 match name.as_str() {
-                    "pattern" if nonempty => pattern = elt_to_string(value, 0),
-                    "tmpdir" if nonempty => tmpdir = Some(PathBuf::from(elt_to_string(value, 0))),
-                    "fileext" if nonempty => fileext = elt_to_string(value, 0),
+                    "pattern" if nonempty => pattern = Some(value),
+                    "tmpdir" if nonempty => tmpdir = Some(value),
+                    "fileext" if nonempty => fileext = Some(value),
                     _ => {}
                 }
             } else {
@@ -12936,25 +12933,45 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             }
             cell = CDR(cell);
         }
-        for (i, value) in positional.iter().enumerate() {
-            if value.is_null() || *value == R_NilValue() || XLENGTH(*value) == 0 {
+        for (i, value) in positional.iter().copied().enumerate() {
+            if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
                 continue;
             }
             match i {
-                0 => pattern = elt_to_string(*value, 0),
-                1 => tmpdir = Some(PathBuf::from(elt_to_string(*value, 0))),
-                2 => fileext = elt_to_string(*value, 0),
+                0 if pattern.is_none() => pattern = Some(value),
+                1 if tmpdir.is_none() => tmpdir = Some(value),
+                2 if fileext.is_none() => fileext = Some(value),
                 _ => {}
             }
         }
+        let n1 = pattern.map(|sx| XLENGTH(sx)).unwrap_or(1).max(1);
+        let n2 = tmpdir.map(|sx| XLENGTH(sx)).unwrap_or(1).max(1);
+        let n3 = fileext.map(|sx| XLENGTH(sx)).unwrap_or(1).max(1);
+        let n = n1.max(n2).max(n3);
         let default_tmp = crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).path_policy.temp_dir().to_path_buf()
         });
-        let tmp = tmpdir.unwrap_or(default_tmp);
-        let path =
-            crate::mainutils::sysutils::R_tmpnam2(&pattern, &tmp.to_string_lossy(), &fileext)
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _ans = protect(ans);
+        for i in 0..n {
+            let pat = pattern
+                .map(|sx| elt_to_string(sx, i % n1))
+                .unwrap_or_else(|| "file".to_string());
+            let dir = tmpdir
+                .map(|sx| PathBuf::from(elt_to_string(sx, i % n2)))
+                .unwrap_or_else(|| default_tmp.clone());
+            let ext = fileext
+                .map(|sx| elt_to_string(sx, i % n3))
+                .unwrap_or_default();
+            let path = crate::mainutils::sysutils::R_tmpnam2(&pat, &dir.to_string_lossy(), &ext)
                 .unwrap_or_else(|| base_error("cannot find an unused temporary filename"));
-        Rf_mkString(CString::new(path.as_str()).unwrap_or_default().as_ptr())
+            SET_STRING_ELT(
+                ans,
+                i,
+                Rf_mkChar(CString::new(path.as_str()).unwrap_or_default().as_ptr()),
+            );
+        }
+        ans
     }
 }
 

@@ -87,24 +87,43 @@ pub unsafe fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// R's `saveRDS(object, file, ascii, ...)` — save a single R object.
 pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let object_arg = CAR(args);
-        let file_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(CDR(args))
-        };
-
+        let mut object_arg = R_NilValue();
+        let mut file_arg = R_NilValue();
+        let mut ascii_arg = R_NilValue();
+        let mut positional: Vec<SEXP> = Vec::new();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let value = CAR(cell);
+            if !tag.is_null() && tag != R_NilValue() {
+                let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    crate::sexp::accessors::PRINTNAME(tag),
+                ))
+                .to_string_lossy()
+                .into_owned();
+                match name.as_str() {
+                    "object" => object_arg = value,
+                    "file" => file_arg = value,
+                    "ascii" => ascii_arg = value,
+                    _ => {}
+                }
+            } else {
+                positional.push(value);
+            }
+            cell = CDR(cell);
+        }
+        for (i, value) in positional.iter().copied().enumerate() {
+            match i {
+                0 if object_arg == R_NilValue() => object_arg = value,
+                1 if file_arg == R_NilValue() => file_arg = value,
+                2 if ascii_arg == R_NilValue() => ascii_arg = value,
+                _ => {}
+            }
+        }
         if file_arg.is_null() || file_arg == R_NilValue() {
             eprintln!("saveRDS: file argument is required");
             return R_NilValue();
         }
-
-        let ascii_arg = if CDR(CDR(args)).is_null() || CDR(CDR(args)) == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(CDR(CDR(args)))
-        };
-
         let raw = crate::mainutils::serialize::R_serialize(
             object_arg,
             R_NilValue(),
