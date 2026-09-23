@@ -598,6 +598,19 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             SET_STRING_ELT(out_names, i, name);
         }
 
+        let value = if sexp_has_class(object, "data.frame")
+            && !sexp_has_class(value, "AsIs")
+        {
+            let stripped = crate::mainutils::duplicate::duplicate(value);
+            crate::sexp::attrib_core::setAttrib(
+                stripped,
+                names_sym,
+                R_NilValue(),
+            );
+            stripped
+        } else {
+            value
+        };
         SET_VECTOR_ELT(out, n, value);
         let field_c = CString::new(field).unwrap_or_default();
         SET_STRING_ELT(out_names, n, Rf_mkChar(field_c.as_ptr()));

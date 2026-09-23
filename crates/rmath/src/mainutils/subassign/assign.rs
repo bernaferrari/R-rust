@@ -589,6 +589,13 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                 | 1913 | 1914 | 1915 | 1916 | 1920 | 1921 | 1922 | 1923 | 1924 | 1925 | 1903
                 | 1907 | 1908 | 1999 | 2001 | 2002 | 2006 | 2010 | 2013 | 2014 | 2015 | 2016
                 | 2024 | 2025 | 1919 | 2020 => {
+                    if crate::mainutils::subset::is_data_frame(xtop)
+                        && crate::mainutils::objects::inherits2(y, c"AsIs".as_ptr()) == 0
+                    {
+                        y = crate::mainutils::duplicate::duplicate(y);
+                        dynamic_guards.push(protect(y));
+                        setAttrib(y, crate::eval::attrib_core::R_NamesSymbol(), R_NilValue());
+                    }
                     if MAYBE_REFERENCED(y) && VECTOR_ELT(x, offset) != y {
                         y = R_FixupRHS(x, y);
                     }
