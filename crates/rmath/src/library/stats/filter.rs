@@ -6345,10 +6345,19 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
         for (name, node) in labels.iter().zip(term_nodes.iter().copied()) {
             if is_formula_interaction(name) {
                 for part in split_top_level_colon(name) {
-                    if !var_syms.iter().any(|&s| symbol_print_name(s) == part) {
-                        let c = std::ffi::CString::new(part).unwrap_or_default();
-                        var_syms.push(crate::sexp::symbol::Rf_install(c.as_ptr()));
+                    if var_syms.iter().any(|&s| {
+                        symbol_print_name(s) == part || deparse_call(s) == part
+                    }) {
+                        continue;
                     }
+                    if let Some(node) = term_nodes.iter().copied().find(|&node| {
+                        symbol_print_name(node) == part || deparse_call(node) == part
+                    }) {
+                        var_syms.push(node);
+                        continue;
+                    }
+                    let c = std::ffi::CString::new(part).unwrap_or_default();
+                    var_syms.push(crate::sexp::symbol::Rf_install(c.as_ptr()));
                 }
             } else if !var_syms.iter().any(|&s| s == node) {
                 var_syms.push(node);
