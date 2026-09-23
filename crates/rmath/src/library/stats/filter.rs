@@ -6329,8 +6329,8 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             }
         }
         for (name, node) in labels.iter().zip(term_nodes.iter().copied()) {
-            if name.contains(':') {
-                for part in name.split(':') {
+            if is_formula_interaction(name) {
+                for part in split_top_level_colon(name) {
                     if !var_syms.iter().any(|&s| symbol_print_name(s) == part) {
                         let c = std::ffi::CString::new(part).unwrap_or_default();
                         var_syms.push(crate::sexp::symbol::Rf_install(c.as_ptr()));
@@ -6382,7 +6382,7 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
         );
         let mut vars = Vec::new();
         for lab in &labels {
-            for part in lab.split(':') {
+            for part in split_top_level_colon(lab) {
                 if !vars.iter().any(|s| s == part) {
                     vars.push(part.to_string());
                 }
@@ -6402,7 +6402,7 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             }
             let row0 = if response > 0 { 1 } else { 0 };
             for (j, lab) in labels.iter().enumerate() {
-                let parts: Vec<&str> = lab.split(':').collect();
+                let parts = split_top_level_colon(lab);
                 for (i, var) in vars.iter().enumerate() {
                     if parts.iter().any(|p| *p == var) {
                         *INTEGER(fac).add(row0 + i + j * nrows) = 1;
@@ -7082,6 +7082,28 @@ fn factor_contrast_columns(colx: SEXP) -> Vec<Vec<f64>> {
         cols
     }
 }
+fn split_top_level_colon(lab: &str) -> Vec<&str> {
+    if !is_formula_interaction(lab) {
+        return vec![lab];
+    }
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (i, ch) in lab.char_indices() {
+        match ch {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => {
+                parts.push(&lab[start..i]);
+                start = i + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    parts.push(&lab[start..]);
+    parts
+}
+
 fn is_formula_interaction(lab: &str) -> bool {
     let mut depth = 0i32;
     for ch in lab.chars() {
