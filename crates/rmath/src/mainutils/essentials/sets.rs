@@ -1886,6 +1886,13 @@ fn atomic_incomparable_keys(
         if incomparables.is_null() || incomparables == R_NilValue() {
             return keys;
         }
+        // GNU: `incomparables = FALSE` means every value can be compared.
+        if TYPEOF(incomparables) == SEXPTYPE::LGLSXP
+            && XLENGTH(incomparables) == 1
+            && *LOGICAL(incomparables) == FALSE
+        {
+            return keys;
+        }
         let n = XLENGTH(incomparables);
         for i in 0..n {
             keys.insert(atomic_unique_key(incomparables, i, target_type));
