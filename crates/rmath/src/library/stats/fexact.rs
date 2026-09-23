@@ -1794,6 +1794,7 @@ unsafe fn f7xact(
                         break;
                     }
                 }
+                break 'f7_loop;
             }
         }
         true
