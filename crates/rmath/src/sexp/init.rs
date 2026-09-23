@@ -705,6 +705,24 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "format", "function(x, ...) UseMethod(\"format\")");
         eval_base_binding(
             base_env,
+            "diag<-",
+            "function(x, value) {\n\
+                dx <- dim(x)\n\
+                if (length(dx) != 2L)\n\
+                    stop(\"only matrix diagonals can be replaced\")\n\
+                len.i <- min(dx)\n\
+                len.v <- length(value)\n\
+                if (len.v != 1L && len.v != len.i)\n\
+                    stop(\"replacement diagonal has wrong length\")\n\
+                if (len.i) {\n\
+                    i <- seq_len(len.i)\n\
+                    x[cbind(i, i)] <- value\n\
+                }\n\
+                x\n\
+            }",
+        );
+        eval_base_binding(
+            base_env,
             "diff",
             "function(x, ...) UseMethod(\"diff\")",
         );
