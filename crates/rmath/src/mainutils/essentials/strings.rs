@@ -341,6 +341,10 @@ pub unsafe fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
             let end = stop.min(chars.len());
             let span = end - start + 1;
+            if nv > 0 && STRING_ELT(value, i % nv) == crate::sexp::globals::R_NaString() {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
             let repl = if nv == 0 {
                 String::new()
             } else {
@@ -3492,6 +3496,27 @@ pub unsafe fn do_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_string_replace(args, false) }
 }
 
+unsafe fn string_arg_is_na(arg: SEXP) -> bool {
+    unsafe {
+        TYPEOF(arg) == SEXPTYPE::STRSXP
+            && XLENGTH(arg) > 0
+            && STRING_ELT(arg, 0) == crate::sexp::globals::R_NaString()
+    }
+}
+
+unsafe fn na_integer_vector(n: R_xlen_t) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        for i in 0..n {
+            *INTEGER(result).add(i as usize) = NA_INTEGER;
+        }
+        result
+    }
+}
+
 /// R's `grep(pattern, x, ..., value = FALSE)` for fixed and ERE matching.
 pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -3499,6 +3524,9 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
         if pattern_arg.is_null() || x_arg.is_null() || x_arg == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+        if string_arg_is_na(pattern_arg) {
+            return na_integer_vector(XLENGTH(x_arg));
         }
         let value = named_logical_arg(args, "value").unwrap_or(false);
         let invert = named_logical_arg(args, "invert").unwrap_or(false);
@@ -3584,6 +3612,9 @@ pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
         if pattern_arg.is_null() || x_arg.is_null() || x_arg == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+        if string_arg_is_na(pattern_arg) {
+            return na_integer_vector(XLENGTH(x_arg));
         }
         let value = named_logical_arg(args, "value").unwrap_or(false);
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
@@ -3785,6 +3816,12 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         }
         let _result_guard = protect(result);
         for i in 0..n {
+            if TYPEOF(x_arg) == SEXPTYPE::STRSXP
+                && STRING_ELT(x_arg, i) == crate::sexp::globals::R_NaString()
+            {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
             let s = elt_to_string(x_arg, i);
             let replaced = if fixed && global {
                 s.replace(&pattern, &replacement)
