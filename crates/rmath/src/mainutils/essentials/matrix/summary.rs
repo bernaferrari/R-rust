@@ -374,7 +374,10 @@ pub unsafe fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEX
         }
         let na_rm = named_logical_arg(args, "na.rm").unwrap_or_else(|| {
             let arg = arg_by_name_or_position(args, &[], 1);
-            !arg.is_null() && arg != R_NilValue() && real_or_default(arg, 0.0) != 0.0
+            !arg.is_null()
+                && arg != R_NilValue()
+                && arg != crate::sexp::globals::R_MissingArg()
+                && real_or_default(arg, 0.0) != 0.0
         });
         let dims_arg = {
             let named = arg_by_name_or_position(args, &["dims"], 2);

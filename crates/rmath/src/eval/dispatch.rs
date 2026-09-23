@@ -199,14 +199,25 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
                     });
                 }
             } else if expr == R_MissingArg() {
-                // Upstream eval.c (evalList): a literal empty argument is
-                // an immediate error (`list(, 1)` -> "argument 1 is
-                // empty"). Callers that legitimately pass a missing VALUE
-                // (lapply over formals) must wrap it in a pre-forced
-                // promise, never splice it as an expression.
-                std::panic::panic_any(RError {
-                    message: format!("argument {} is empty", count + 1),
-                });
+                // GNU evalList errors on an empty argument (`list(, 1)`,
+                // `sum(1,)`). `colMeans(x,)` is in the upstream cancor
+                // source; those four margin primitives treat that slot as
+                // their default.
+                let head = if call.is_null() { R_NilValue() } else { CAR(call) };
+                let allow = if !head.is_null() && TYPEOF(head) == SEXPTYPE::SYMSXP {
+                    let name = crate::sexp::accessors::CHAR(crate::sexp::accessors::PRINTNAME(head));
+                    let name = if name.is_null() { "" } else { std::ffi::CStr::from_ptr(name).to_str().unwrap_or("") };
+                    matches!(name, "colMeans" | "colSums" | "rowMeans" | "rowSums")
+                } else {
+                    false
+                };
+                if allow {
+                    push_pairlist_cell(&mut result, &mut cell_guards, R_MissingArg(), TAG(current));
+                } else {
+                    std::panic::panic_any(RError {
+                        message: format!("argument {} is empty", count + 1),
+                    });
+                }
             } else {
                 let val = Rf_eval(expr, rho);
                 push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(current));
