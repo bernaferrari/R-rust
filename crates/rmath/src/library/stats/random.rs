@@ -120,6 +120,9 @@ unsafe extern "C-unwind" fn c_cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SE
 unsafe extern "C-unwind" fn c_cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
     unsafe { stats_call_cor(x, y, na_method, kendall) }
 }
+unsafe extern "C-unwind" fn c_chisq_sim(sr: SEXP, sc: SEXP, b: SEXP, e: SEXP) -> SEXP {
+    unsafe { super::chisqsim::chisq_sim(sr, sc, b, e) }
+}
 unsafe extern "C-unwind" fn c_cdist(x: SEXP, method: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     unsafe { super::distance::Cdist(x, method, attrs, p) }
 }
@@ -498,6 +501,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_logit_link", "C_logit_linkinv", "C_logit_mu_eta", "C_binomial_dev_resids",
     "C_DoubleCentre",
     "C_cutree",
+    "C_chisq_sim",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -543,6 +547,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "Rsm" => as_dl(super::smooth::c_rsm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "chisq_sim" => as_dl(c_chisq_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "ksmooth" => as_dl(super::ksmooth::c_ksmooth as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "rfilter" => as_dl(super::filter::c_rfilter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "arma0_kfore" => as_dl(super::starma_api::c_arma0_kfore as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),

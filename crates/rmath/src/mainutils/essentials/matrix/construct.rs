@@ -1025,6 +1025,7 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
         let mut any_char = false;
         let mut any_real = false;
         let mut any_factor = false;
+        let mut all_logical = ncol > 0;
         for j in 0..ncol {
             let column = VECTOR_ELT(frame, j);
             let factor = crate::mainutils::objects::inherits2(column, c"factor".as_ptr()) != 0;
@@ -1032,13 +1033,19 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                 any_factor = true;
             }
             match TYPEOF(column) {
-                t if t == SEXPTYPE::STRSXP && !factor => any_char = true,
-                t if t == SEXPTYPE::REALSXP => any_real = true,
-                _ => {}
+                t if t == SEXPTYPE::STRSXP && !factor => { any_char = true; all_logical = false; }
+                t if t == SEXPTYPE::REALSXP => { any_real = true; all_logical = false; }
+                t if t == SEXPTYPE::LGLSXP => {}
+                _ => all_logical = false,
+            }
+            if factor {
+                all_logical = false;
             }
         }
         let result_type = if any_char || any_factor {
             SEXPTYPE::STRSXP
+        } else if all_logical {
+            SEXPTYPE::LGLSXP
         } else if any_real || ncol == 0 {
             SEXPTYPE::REALSXP
         } else {
@@ -1092,7 +1099,7 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                         }
                     };
                     SET_STRING_ELT(result, at as R_xlen_t, text);
-                } else if result_type == SEXPTYPE::INTSXP {
+                } else if result_type == SEXPTYPE::INTSXP || result_type == SEXPTYPE::LGLSXP {
                     *INTEGER(result).add(at) = if XLENGTH(column) == 0 {
                         NA_INTEGER
                     } else {
