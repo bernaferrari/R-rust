@@ -6068,6 +6068,9 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     offsets.push(CADR(term));
                     continue;
                 }
+                if op_name == "Error" {
+                    continue;
+                }
                 let name = if TYPEOF(term) == SEXPTYPE::SYMSXP {
                     std::ffi::CStr::from_ptr(CHAR(PRINTNAME(term)))
                         .to_string_lossy()
@@ -8622,6 +8625,7 @@ pub unsafe fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         Rf_mkString(CString::new(msg).unwrap().as_ptr())
     }
 }
+
 
 
 

@@ -6294,7 +6294,7 @@ fn formula_response_name(form: SEXP) -> String {
     }
 }
 
-fn mark_terms(form: SEXP, response: i32) -> SEXP {
+fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
     unsafe {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _cl = protect(class);
@@ -6414,6 +6414,47 @@ fn mark_terms(form: SEXP, response: i32) -> SEXP {
             crate::sexp::symbol::Rf_install(c"variables".as_ptr()),
             variables,
         );
+        if TYPEOF(specials) == SEXPTYPE::STRSXP && XLENGTH(specials) > 0 {
+            let nspec = XLENGTH(specials) as usize;
+            let spec = Rf_allocVector3(SEXPTYPE::VECSXP, nspec as i64);
+            let _sp = protect(spec);
+            let spec_names = Rf_allocVector3(SEXPTYPE::STRSXP, nspec as i64);
+            let _sn = protect(spec_names);
+            for s in 0..nspec {
+                SET_STRING_ELT(spec_names, s as i64, STRING_ELT(specials, s as i64));
+                let want = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(specials, s as i64)))
+                    .to_string_lossy()
+                    .into_owned();
+                let mut hits: Vec<i32> = Vec::new();
+                for (i, &sym) in var_syms.iter().enumerate() {
+                    if TYPEOF(sym) == SEXPTYPE::LANGSXP {
+                        let op = CAR(sym);
+                        if !op.is_null()
+                            && TYPEOF(op) == SEXPTYPE::SYMSXP
+                            && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op))).to_string_lossy()
+                                == want
+                        {
+                            hits.push((i + 1) as i32);
+                        }
+                    }
+                }
+                let iv = Rf_allocVector3(SEXPTYPE::INTSXP, hits.len() as i64);
+                for (k, &h) in hits.iter().enumerate() {
+                    *INTEGER(iv).add(k) = h;
+                }
+                SET_VECTOR_ELT(spec, s as i64, iv);
+            }
+            crate::sexp::attrib_core::setAttrib(
+                spec,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                spec_names,
+            );
+            crate::sexp::attrib_core::setAttrib(
+                form,
+                crate::sexp::symbol::Rf_install(c"specials".as_ptr()),
+                spec,
+            );
+        }
         let mut vars = Vec::new();
         for lab in &labels {
             for part in split_top_level_colon(lab) {
@@ -6602,12 +6643,22 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
         } else {
             1
         };
+        let specials_cell = CDR(args);
+        let specials = if specials_cell.is_null() || specials_cell == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(specials_cell)
+        };
         let data = {
-            let specials = CDR(args);
-            if specials.is_null() { R_NilValue() } else { CAR(CDR(specials)) }
+            let after = CDR(specials_cell);
+            if after.is_null() || after == R_NilValue() {
+                R_NilValue()
+            } else {
+                CAR(after)
+            }
         };
         expand_formula_dot(dup, data);
-        mark_terms(dup, response)
+        mark_terms(dup, response, specials)
     }
 }
 
@@ -7445,7 +7496,7 @@ pub unsafe fn do_terms(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 1
             };
-            return mark_terms(x, response);
+            return mark_terms(x, response, R_NilValue());
         }
         R_NilValue()
     }
@@ -7465,10 +7516,10 @@ pub unsafe fn do_delete_response(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
             CDR(rest)
         };
         if third.is_null() || third == R_NilValue() {
-            return mark_terms(x, 0);
+            return mark_terms(x, 0, R_NilValue());
         }
         let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
-        mark_terms(Rf_lang2(tilde, CAR(third)), 0)
+        mark_terms(Rf_lang2(tilde, CAR(third)), 0, R_NilValue())
     }
 }
 
@@ -7516,7 +7567,7 @@ pub unsafe fn do_drop_terms(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             rho,
         );
         let _f = protect(form);
-        mark_terms(form, 0)
+        mark_terms(form, 0, R_NilValue())
     }
 }
 
