@@ -645,6 +645,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "getElement",
             "function(object, name) if(isS4(object)) methods::slot(object, name) else object[[name, exact=TRUE]]",
         );
+        eval_base_binding(
+            base_env,
+            "write",
+            "function(x, file = \"data\", ncolumns = if(is.character(x)) 1 else 5, append = FALSE, sep = \" \") cat(x, file = file, sep = c(rep.int(sep, ncolumns-1), \"\\n\"), append = append)",
+        );
         eval_base_binding(base_env, "strptime", include_str!("gnu_strptime.R"));
 
         eval_base_binding(
