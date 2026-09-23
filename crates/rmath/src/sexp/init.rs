@@ -1285,6 +1285,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // GNU funprog.R: identity <- function(x) x. setMethod(..., identity)
         // needs a closure, not a primitive (reg-S4.R PR#15691).
         eval_base_binding(base_env, "identity", "function(x) x");
+        eval_base_binding(base_env, "is.na<-", "function(x, value) UseMethod(\"is.na<-\")");
+        eval_base_binding(
+            base_env,
+            "is.na<-.default",
+            "function(x, value) { x[value] <- NA; x }",
+        );
         // GNU table.R: is.table <- function(x) inherits(x, "table")
         eval_base_binding(base_env, "is.table", "function(x) inherits(x, \"table\")");
         eval_base_binding(base_env, "as.table", include_str!("gnu_as_table.R"));
