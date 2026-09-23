@@ -115,6 +115,15 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             (*cell).data.listsxp.tagval = sym;
             chain = cell;
         }
+        {
+            let name = "difftime";
+            let prim = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
+            let _p = protect(prim);
+            let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let cell = Rf_cons(prim, chain);
+            (*cell).data.listsxp.tagval = sym;
+            chain = cell;
+        }
         let pi_sym = Rf_install(c"pi".as_ptr());
         let pi_value = Rf_ScalarReal(std::f64::consts::PI);
         let _pi_value_guard = protect(pi_value);

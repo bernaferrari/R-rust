@@ -801,6 +801,29 @@ fn difftime_seconds(x: SEXP) -> f64 {
         }
     }
 }
+fn difftime_seconds_at(x: SEXP, i: i64) -> f64 {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+            return f64::NAN;
+        }
+        let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            let iv = *INTEGER(x).add(i as usize);
+            if iv == NA_INTEGER {
+                return f64::NAN;
+            }
+            iv as f64
+        } else {
+            return f64::NAN;
+        };
+        if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+            v * 86_400.0
+        } else {
+            v
+        }
+    }
+}
 
 /// GNU `difftime(time1, time2, units="auto")`.
 pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -832,28 +855,59 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             }
             cell = CDR(cell);
         }
-        let z = difftime_seconds(time1) - difftime_seconds(time2);
-        if units == "auto" {
-            let zz = z.abs();
-            units = if !zz.is_finite() || zz < 60.0 {
+        let n1 = XLENGTH(time1).max(0);
+        let n2 = XLENGTH(time2).max(0);
+        let n = n1.max(n2);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        let scale = match units.as_str() {
+            "auto" => 0.0,
+            "mins" => 60.0,
+            "hours" => 3600.0,
+            "days" => 86_400.0,
+            "weeks" => 7.0 * 86_400.0,
+            _ => 1.0,
+        };
+        let mut max_abs = 0.0;
+        for i in 0..n {
+            let a = difftime_seconds_at(time1, if n1 == 0 { 0 } else { i % n1 });
+            let b = difftime_seconds_at(time2, if n2 == 0 { 0 } else { i % n2 });
+            let z = a - b;
+            if z.abs() > max_abs {
+                max_abs = z.abs();
+            }
+            *REAL(result).add(i as usize) = z;
+        }
+        let units = if units == "auto" {
+            if !max_abs.is_finite() || max_abs < 60.0 {
                 "secs".to_string()
-            } else if zz < 3600.0 {
+            } else if max_abs < 3600.0 {
                 "mins".to_string()
-            } else if zz < 86400.0 {
+            } else if max_abs < 86400.0 {
                 "hours".to_string()
             } else {
                 "days".to_string()
-            };
-        }
-        let scaled = match units.as_str() {
-            "mins" => z / 60.0,
-            "hours" => z / 3600.0,
-            "days" => z / 86_400.0,
-            "weeks" => z / (7.0 * 86_400.0),
-            _ => z,
+            }
+        } else {
+            units
         };
-        let result = Rf_ScalarReal(scaled);
-        let _r = protect(result);
+        let div = if scale == 0.0 {
+            match units.as_str() {
+                "mins" => 60.0,
+                "hours" => 3600.0,
+                "days" => 86_400.0,
+                "weeks" => 7.0 * 86_400.0,
+                _ => 1.0,
+            }
+        } else {
+            scale
+        };
+        if div != 1.0 {
+            for i in 0..n {
+                *REAL(result).add(i as usize) /= div;
+            }
+        }
+
         set_single_class(result, "difftime");
         let u = Rf_mkString(
             std::ffi::CString::new(units.as_str())

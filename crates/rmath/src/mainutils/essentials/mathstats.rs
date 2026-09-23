@@ -15659,7 +15659,10 @@ pub unsafe fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
 /// are looked up as functions (sweep's `FUN = "-"`).
 pub unsafe fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
+        if TYPEOF(x) == SEXPTYPE::PROMSXP {
+            x = crate::sexp::envir::forcePromise(x);
+        }
         if x.is_null() {
             return R_NilValue();
         }
