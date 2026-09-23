@@ -65,12 +65,13 @@ pub unsafe fn do_is_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             || t == SEXPTYPE::STRSXP
             || t == SEXPTYPE::RAWSXP
             || t == SEXPTYPE::VECSXP;
-        let names_sym = Rf_install(c"names".as_ptr());
+        let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
+        let nil = crate::sexp::globals::R_NilValue();
         let mut extra = false;
         let mut a = ATTRIB(x);
-        while !a.is_null() {
+        while !a.is_null() && a != nil {
             let tag = TAG(a);
-            if !tag.is_null() && tag != names_sym {
+            if !tag.is_null() && tag != nil && tag != names_sym {
                 extra = true;
                 break;
             }
