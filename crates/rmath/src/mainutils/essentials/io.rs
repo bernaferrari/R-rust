@@ -2639,27 +2639,39 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let ncols = widths.iter().filter(|&&width| width >= 0).count();
         let nrows = lines.len();
 
-        // Parse fixed-width fields
-        let mut col_data: Vec<Vec<f64>> = vec![vec![NA_REAL; nrows]; ncols];
+        let mut col_text: Vec<Vec<String>> = vec![vec![String::new(); nrows]; ncols];
+        let mut col_num: Vec<Vec<f64>> = vec![vec![NA_REAL; nrows]; ncols];
+        let mut col_numeric = vec![true; ncols];
         for (i, line) in lines.iter().enumerate() {
             let mut pos = 0usize;
             let mut out_col = 0usize;
+            let bytes = line.as_bytes();
             for &width in &widths {
                 let span = width.unsigned_abs() as usize;
                 if width < 0 {
                     pos = pos.saturating_add(span);
                     continue;
                 }
-                if span > 0 && pos + span <= line.len() {
-                    let field = &line[pos..pos + span];
-                    col_data[out_col][i] = field.trim().parse::<f64>().unwrap_or(NA_REAL);
+                let end = pos.saturating_add(span).min(bytes.len());
+                let field = if pos < bytes.len() {
+                    String::from_utf8_lossy(&bytes[pos..end]).into_owned()
+                } else {
+                    String::new()
+                };
+                let trimmed = field.trim();
+                if trimmed.is_empty() {
+                    col_num[out_col][i] = NA_REAL;
+                } else if let Ok(v) = trimmed.parse::<f64>() {
+                    col_num[out_col][i] = v;
+                } else {
+                    col_numeric[out_col] = false;
                 }
+                col_text[out_col][i] = field;
                 pos = pos.saturating_add(span);
                 out_col += 1;
             }
         }
 
-        // Build data.frame
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
@@ -2670,22 +2682,28 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let _p2 = protect(names_vec);
 
         for j in 0..ncols {
-            let col = Rf_allocVector3(SEXPTYPE::REALSXP, nrows as R_xlen_t);
-            if !col.is_null() {
-                let dst = REAL(col);
-                for (i, &v) in col_data[j].iter().enumerate() {
-                    *dst.add(i) = v;
+            let col = if col_numeric[j] {
+                let col = Rf_allocVector3(SEXPTYPE::REALSXP, nrows as R_xlen_t);
+                if !col.is_null() {
+                    let dst = REAL(col);
+                    for (i, &v) in col_num[j].iter().enumerate() {
+                        *dst.add(i) = v;
+                    }
                 }
-            }
-            let data = (*result).gengc_next_node as *mut SEXP;
-            *data.add(j) = col;
-
+                col
+            } else {
+                let col = Rf_allocVector3(SEXPTYPE::STRSXP, nrows as R_xlen_t);
+                if !col.is_null() {
+                    for (i, text) in col_text[j].iter().enumerate() {
+                        let cstr = CString::new(text.as_str()).unwrap_or_default();
+                        SET_STRING_ELT(col, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                    }
+                }
+                col
+            };
+            SET_VECTOR_ELT(result, j as R_xlen_t, col);
             let cstr = CString::new(format!("V{}", j + 1)).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                let nmdata = (*names_vec).gengc_next_node as *mut SEXP;
-                *nmdata.add(j) = charsxp;
-            }
+            SET_STRING_ELT(names_vec, j as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
         }
 
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
