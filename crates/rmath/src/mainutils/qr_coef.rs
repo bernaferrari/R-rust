@@ -169,7 +169,7 @@ pub unsafe fn do_qr_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             *REAL(coef).add(i) = NA_REAL;
         }
         if p == 0 || k == 0 {
-            return finish(coef, p, ny, matrix, f, y);
+            return finish(coef, p, ny, matrix, f, y, pivot);
         }
         let lap = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
         let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP && XLENGTH(lap) == 1 && LOGICAL_ELT(lap, 0) == 1;
@@ -282,7 +282,7 @@ pub unsafe fn do_qr_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 }
             }
         }
-        finish(coef, p, ny, matrix, f, y)
+        finish(coef, p, ny, matrix, f, y, pivot)
     }
 }
 
@@ -378,11 +378,19 @@ unsafe fn qr_coef_complex(q: SEXP, f: SEXP, qraux: SEXP, pivot: SEXP, y: SEXP) -
                 }
             }
         }
-        finish(coef, p, ny, matrix, f, y)
+        finish(coef, p, ny, matrix, f, y, pivot)
     }
 }
 
-unsafe fn finish(coef: SEXP, p: c_int, ny: usize, matrix: bool, f: SEXP, y: SEXP) -> SEXP {
+unsafe fn finish(
+    coef: SEXP,
+    p: c_int,
+    ny: usize,
+    matrix: bool,
+    f: SEXP,
+    y: SEXP,
+    pivot: SEXP,
+) -> SEXP {
     unsafe {
         if matrix {
             let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
@@ -397,6 +405,35 @@ unsafe fn finish(coef: SEXP, p: c_int, ny: usize, matrix: bool, f: SEXP, y: SEXP
         } else {
             R_NilValue()
         };
+        let mut sorted = true;
+        if TYPEOF(pivot) == INTSXP_C {
+            for i in 0..p {
+                if *INTEGER(pivot).add(i as usize) != i + 1 {
+                    sorted = false;
+                    break;
+                }
+            }
+        }
+        let row_names = if !sorted
+            && TYPEOF(xnames) == STRSXP_C
+            && TYPEOF(pivot) == INTSXP_C
+            && XLENGTH(xnames) >= p as R_xlen_t
+        {
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, p as R_xlen_t);
+            let _out = protect(out);
+            for i in 0..p {
+                SET_STRING_ELT(out, i as R_xlen_t, Rf_mkChar(c"".as_ptr()));
+            }
+            for i in 0..p {
+                let dest = *INTEGER(pivot).add(i as usize);
+                if dest >= 1 && dest <= p {
+                    SET_STRING_ELT(out, (dest - 1) as R_xlen_t, STRING_ELT(xnames, i as R_xlen_t));
+                }
+            }
+            out
+        } else {
+            xnames
+        };
         if matrix {
             let ydn = getAttrib(y, crate::sexp::symbol::Rf_install(c"dimnames".as_ptr()));
             let ynames = if TYPEOF(ydn) == VECSXP_C && XLENGTH(ydn) >= 2 {
@@ -406,11 +443,11 @@ unsafe fn finish(coef: SEXP, p: c_int, ny: usize, matrix: bool, f: SEXP, y: SEXP
             };
             let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
             let _dn = protect(dn);
-            SET_VECTOR_ELT(dn, 0, xnames);
+            SET_VECTOR_ELT(dn, 0, row_names);
             SET_VECTOR_ELT(dn, 1, ynames);
             setAttrib(coef, crate::sexp::symbol::Rf_install(c"dimnames".as_ptr()), dn);
-        } else if xnames != R_NilValue() && !xnames.is_null() {
-            setAttrib(coef, R_NamesSymbol(), xnames);
+        } else if row_names != R_NilValue() && !row_names.is_null() {
+            setAttrib(coef, R_NamesSymbol(), row_names);
         }
         coef
     }
