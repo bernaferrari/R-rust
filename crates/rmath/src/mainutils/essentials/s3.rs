@@ -774,7 +774,9 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
             // GNU `as.data.frame.AsIs` for a 2-D object calls
             // `as.data.frame.model.matrix`: keep the matrix as one list column.
-            if crate::mainutils::essentials::sexp_has_class(x, "AsIs") {
+            if crate::mainutils::essentials::sexp_has_class(x, "AsIs")
+                || crate::mainutils::essentials::sexp_has_class(x, "model.matrix")
+            {
                 return asis_matrix_as_data_frame(x, dim);
             }
             return matrix_as_data_frame(x, dim);

@@ -3029,7 +3029,7 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 }
                 // GNU `as.data.frame.AsIs` (and `as.data.frame.model.matrix`):
                 // a 2-D AsIs object stays one list column. Bare matrices split.
-                if sexp_has_class(value, "AsIs") {
+                if sexp_has_class(value, "AsIs") || sexp_has_class(value, "model.matrix") {
                     columns.push(value);
                     names.push(arg_name);
                 } else {
@@ -3071,6 +3071,15 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
 
         }
+        if let Some(&col) = columns.first() {
+            let dim = crate::sexp::attrib_core::getAttrib(col, crate::sexp::attrib_core::R_DimSymbol());
+            if TYPEOF(dim) == SEXPTYPE::INTSXP
+                && XLENGTH(dim) == 2
+                && (sexp_has_class(col, "AsIs") || sexp_has_class(col, "model.matrix"))
+            {
+                nrow = Some(*INTEGER(dim) as R_xlen_t);
+            }
+        }
 
         repair_data_frame_names(&mut names);
         let row_count = nrow.unwrap_or(0);
@@ -3087,7 +3096,25 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             );
         }
         set_string_names(result, &names);
-        set_compact_row_names(result, row_count);
+        if let Some(&col) = columns.first() {
+            let dn = crate::sexp::attrib_core::getAttrib(col, crate::sexp::attrib_core::R_DimNamesSymbol());
+            if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 1 {
+                let rn = VECTOR_ELT(dn, 0);
+                if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == row_count {
+                    crate::sexp::attrib_core::setAttrib(
+                        result,
+                        crate::sexp::attrib_core::R_RowNamesSymbol(),
+                        rn,
+                    );
+                } else {
+                    set_compact_row_names(result, row_count);
+                }
+            } else {
+                set_compact_row_names(result, row_count);
+            }
+        } else {
+            set_compact_row_names(result, row_count);
+        }
         set_data_frame_class(result);
 
         result

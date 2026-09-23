@@ -446,6 +446,23 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "as.data.frame.model.matrix",
+            "function(x, row.names = NULL, optional = FALSE, ...) {\n\
+             d <- dim(x)\n\
+             nrows <- d[1L]\n\
+             rn <- dimnames(x)[[1L]]\n\
+             if (is.null(row.names)) {\n\
+                 if (!is.null(rn) && length(rn) == nrows && !anyDuplicated(rn))\n\
+                     row.names <- rn\n\
+                 else row.names <- if (nrows == 0L) character() else .set_row_names(nrows)\n\
+             }\n\
+             value <- list(x)\n\
+             if (!optional) names(value) <- deparse(substitute(x), width.cutoff = 500L)[1L]\n\
+             structure(value, row.names = row.names, class = \"data.frame\")\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "as.data.frame.data.frame",
             "function(x, row.names = NULL, ...) {\n\
              cl <- oldClass(x)\n\
