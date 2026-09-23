@@ -1524,6 +1524,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_substr,
     },
     EvaluatedBuiltin {
+        name: "substr<-",
+        handler: crate::mainutils::essentials::do_substrgets,
+    },
+    EvaluatedBuiltin {
         // base::substring: R-level wrapper rep_lens text to the common
         // length before the internal (character.R); do_substring mirrors
         // that, so `substring(s, c(1,2), c(2,3))` returns 2 elements

@@ -299,6 +299,64 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// `substr<-`(x, start, stop, value). Replaces characters start:stop.
+/// A longer value is truncated to the span. A shorter value replaces only
+/// its own characters; the rest of the span stays.
+pub unsafe fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let start_arg = CAR(CDR(args));
+        let stop_arg = CAR(CDR(CDR(args)));
+        let value = CAR(CDR(CDR(CDR(args))));
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
+            return x;
+        }
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _g = protect(result);
+        let nv = if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP
+        {
+            0
+        } else {
+            XLENGTH(value)
+        };
+        for i in 0..n {
+            if STRING_ELT(x, i) == crate::sexp::globals::R_NaString() {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
+            let s = elt_to_string(x, i);
+            let mut chars: Vec<char> = s.chars().collect();
+            let start = (real_elt_or_default(start_arg, i, 1.0) as isize).max(1) as usize;
+            let stop_raw = if stop_arg.is_null() || stop_arg == R_NilValue() {
+                chars.len() as f64
+            } else {
+                real_elt_or_default(stop_arg, i, chars.len() as f64)
+            };
+            let stop = (stop_raw as isize).max(0) as usize;
+            if start == 0 || start > chars.len() || start > stop {
+                let cstr = CString::new(s.as_str()).unwrap_or_default();
+                SET_STRING_ELT(result, i, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+                continue;
+            }
+            let end = stop.min(chars.len());
+            let span = end - start + 1;
+            let repl = if nv == 0 {
+                String::new()
+            } else {
+                elt_to_string(value, i % nv)
+            };
+            for (k, ch) in repl.chars().take(span).enumerate() {
+                chars[start - 1 + k] = ch;
+            }
+            let out: String = chars.into_iter().collect();
+            let cstr = CString::new(out).unwrap_or_default();
+            SET_STRING_ELT(result, i, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+        }
+        result
+    }
+}
+
 /// GNU `strrep(x, times)` — recycle `x` and `times` to a common length.
 pub unsafe fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
