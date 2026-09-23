@@ -1740,6 +1740,20 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "getNamespaceName",
+            "function(ns) {\n\
+             ns <- asNamespace(ns)\n\
+             if (identical(ns, .BaseNamespaceEnv) || identical(ns, baseenv())) \"base\"\n\
+             else unname(getNamespaceInfo(ns, \"spec\")[\"name\"])\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            ".register_print_data_frame",
+            "{ registerS3method(\"print\", \"data.frame\", function(x, ...) print.data.frame(x, ...)); TRUE }",
+        );
+        eval_base_binding(
+            base_env,
             "setNamespaceInfo",
             "function(ns, which, val) {\n\
              ns <- asNamespace(ns)\n\
