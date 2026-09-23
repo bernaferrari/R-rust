@@ -876,6 +876,43 @@ pub unsafe fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if crate::mainutils::objects::inherits2(tim, c"difftime".as_ptr()) != 0 {
             return tim;
         }
+        if TYPEOF(tim) == SEXPTYPE::STRSXP {
+            let n = XLENGTH(tim);
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+            let _r = protect(result);
+            for i in 0..n {
+                let ch = STRING_ELT(tim, i as i64);
+                let text = if ch.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned()
+                };
+                let parts: Vec<f64> = text
+                    .split(':')
+                    .filter_map(|p| p.parse::<f64>().ok())
+                    .collect();
+                let secs = match parts.as_slice() {
+                    [h, m, s] => h * 3600.0 + m * 60.0 + s,
+                    [m, s] => m * 60.0 + s,
+                    [s] => *s,
+                    _ => NA_REAL,
+                };
+                *REAL(result).add(i as usize) = secs;
+            }
+            let u = Rf_mkString(c"secs".as_ptr());
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                u,
+            );
+            let class = Rf_mkString(c"difftime".as_ptr());
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+            return result;
+        }
         let mut units = String::new();
         let mut cell = CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
