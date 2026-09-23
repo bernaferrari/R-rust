@@ -705,6 +705,21 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "format", "function(x, ...) UseMethod(\"format\")");
         eval_base_binding(
             base_env,
+            "Math.data.frame",
+            "function(x, ...) {\n\
+                mode.ok <- vapply(x, function(x) is.numeric(x) || is.logical(x) || is.complex(x), NA)\n\
+                if (all(mode.ok)) {\n\
+                    x[] <- lapply(X = x, FUN = .Generic, ...)\n\
+                    x\n\
+                } else {\n\
+                    vnames <- names(x)\n\
+                    if (is.null(vnames)) vnames <- seq_along(x)\n\
+                    stop(\"non-numeric-alike variable(s) in data frame: \", paste(vnames[!mode.ok], collapse = \", \"))\n\
+                }\n\
+            }",
+        );
+        eval_base_binding(
+            base_env,
             "diag<-",
             "function(x, value) {\n\
                 dx <- dim(x)\n\
