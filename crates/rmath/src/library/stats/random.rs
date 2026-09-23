@@ -258,6 +258,15 @@ unsafe fn stats_call_cor(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
         let kendall = TYPEOF(kendall) == SEXPTYPE::LGLSXP
             && XLENGTH(kendall) > 0
             && *LOGICAL(kendall) != 0;
+        let x_names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        let y_names = if y.is_null() || y == R_NilValue() {
+            x_names
+        } else {
+            crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_DimNamesSymbol())
+        };
         let x = if TYPEOF(x) != SEXPTYPE::REALSXP {
             crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.into())
         } else {
@@ -312,6 +321,23 @@ unsafe fn stats_call_cor(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
                     cor_complete_pair(xr, nobs, n, i, yr, nobs, ny, j)
                 };
             }
+        }
+        if ncx != 1 || ncy != 1 {
+            let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let col = |src: SEXP| {
+                if TYPEOF(src) == SEXPTYPE::VECSXP && XLENGTH(src) >= 2 {
+                    VECTOR_ELT(src, 1)
+                } else {
+                    R_NilValue()
+                }
+            };
+            SET_VECTOR_ELT(dn, 0, col(x_names));
+            SET_VECTOR_ELT(dn, 1, col(y_names));
+            crate::sexp::attrib_core::setAttrib(
+                ans,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dn,
+            );
         }
         ans
     }
