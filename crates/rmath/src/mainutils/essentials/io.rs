@@ -835,9 +835,34 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `write.table(x, file, sep=" ", ...)` — write data to file.
 pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x_arg = CAR(args);
-        let file_arg = CAR(CDR(args));
-        let sep_arg = CAR(CDR(CDR(args)));
+        let mut x_arg = R_NilValue();
+        let mut file_arg = R_NilValue();
+        let mut sep = " ".to_string();
+        let mut row_names = true;
+        let mut positional = 0usize;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let arg = CAR(current);
+            let name = tag_name(current);
+            match name.as_deref() {
+                Some("x") => x_arg = arg,
+                Some("file") => file_arg = arg,
+                Some("sep") => sep = elt_to_string(arg, 0),
+                Some("row.names") => {
+                    row_names = !(TYPEOF(arg) == SEXPTYPE::LGLSXP && *LOGICAL(arg) == 0)
+                }
+                _ => {
+                    match positional {
+                        0 => x_arg = arg,
+                        1 => file_arg = arg,
+                        2 => sep = elt_to_string(arg, 0),
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
         if x_arg.is_null()
             || x_arg == R_NilValue()
             || file_arg.is_null()
@@ -846,11 +871,8 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             return R_NilValue();
         }
         let filename = elt_to_string(file_arg, 0);
-        let sep = if sep_arg.is_null() || sep_arg == R_NilValue() {
-            " "
-        } else {
-            &elt_to_string(sep_arg, 0)
-        };
+        let sep = sep.as_str();
+        let _ = row_names;
 
         let mut output = String::new();
         let n = XLENGTH(x_arg);
@@ -903,7 +925,12 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 for j in 0..ncols {
                     let col = VECTOR_ELT(x_arg, j);
                     if !col.is_null() && col != R_NilValue() {
-                        row.push(elt_to_string(col, i));
+                        let cell = elt_to_string(col, i);
+                        if TYPEOF(col) == SEXPTYPE::STRSXP {
+                            row.push(format!("\"{}\"", cell.replace('"', "\"\"")));
+                        } else {
+                            row.push(cell);
+                        }
                     } else {
                         row.push("NA".to_string());
                     }
@@ -1454,112 +1481,19 @@ pub unsafe fn do_warning_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 
 /// R's `read.csv(file, header=TRUE, sep=",")` — read a CSV file (simplified).
 /// Returns a list (data.frame) of columns as REALSXP vectors.
-pub unsafe fn do_read_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_read_csv(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let file_arg = CAR(args);
-        let header_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(CDR(args))
-        };
-
-        let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
-        let header = if header_arg.is_null() || header_arg == R_NilValue() {
-            true
-        } else {
-            let v = real_or_default(header_arg, 1.0);
-            v != 0.0
-        };
-
-        // Read file
-        let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
-            Ok(s) => s,
-            Err(e) => {
-                base_error(format!("cannot read file '{}': {}", file_path, e));
-            }
-        };
-
-        let mut lines: Vec<&str> = content.lines().collect();
-        if lines.is_empty() {
-            return R_NilValue();
-        }
-
-        let col_names: Vec<String> = if header {
-            let header_line = lines.remove(0);
-            header_line
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .collect()
-        } else {
-            lines[0]
-                .split(',')
-                .enumerate()
-                .map(|(i, _)| format!("V{}", i + 1))
-                .collect()
-        };
-
-        let ncols = col_names.len();
-        if ncols == 0 {
-            return R_NilValue();
-        }
-
-        // Parse data rows
-        let mut col_data: Vec<Vec<f64>> = vec![Vec::new(); ncols];
-        for line in &lines {
-            let fields: Vec<&str> = line.split(',').collect();
-            for j in 0..ncols {
-                let val = if j < fields.len() {
-                    fields[j].trim().parse::<f64>().unwrap_or(NA_REAL)
-                } else {
-                    NA_REAL
-                };
-                col_data[j].push(val);
-            }
-        }
-
-        // Build list result
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-
-        let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, ncols as R_xlen_t);
-        let _p2 = protect(names_vec);
-
-        for j in 0..ncols {
-            let nrow = col_data[j].len();
-            let col = Rf_allocVector3(SEXPTYPE::REALSXP, nrow as R_xlen_t);
-            if !col.is_null() {
-                let dst = REAL(col);
-                for (i, &v) in col_data[j].iter().enumerate() {
-                    *dst.add(i) = v;
-                }
-            }
-            let data = (*result).gengc_next_node as *mut SEXP;
-            *data.add(j) = col;
-
-            let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                let nmdata = (*names_vec).gengc_next_node as *mut SEXP;
-                *nmdata.add(j) = charsxp;
-            }
-        }
-
-        // Set names
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
-        // Set class to data.frame
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _p3 = protect(class_vec);
-        let cstr = c"data.frame";
-        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-        if !charsxp.is_null() {
-            let cdata = (*class_vec).gengc_next_node as *mut SEXP;
-            *cdata.add(0) = charsxp;
-        }
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
-        result
+        let header = Rf_ScalarLogical(1);
+        let _h = protect(header);
+        let sep = Rf_mkString(c",".as_ptr());
+        let _s = protect(sep);
+        let file = CAR(args);
+        let rest = CDR(args);
+        let built = Rf_cons(file, Rf_cons(header, Rf_cons(sep, rest)));
+        let _b = protect(built);
+        SETTAG(CDR(built), Rf_install(c"header".as_ptr()));
+        SETTAG(CDR(CDR(built)), Rf_install(c"sep".as_ptr()));
+        do_read_table(call, op, built, rho)
     }
 }
 
