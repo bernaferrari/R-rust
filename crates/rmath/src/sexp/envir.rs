@@ -979,19 +979,39 @@ fn fewer_dots_error(n: i32) -> ! {
     }
 }
 
+fn find_root_promise(mut val: Sexp<'_>) -> Sexp<'_> {
+    // GNU findRootPromise: a promise whose expression is another promise
+    // (UseMethod / DispatchOrEval double-wrap) is missing iff the inner
+    // promise is. Stop if a promise's code points at itself.
+    for _ in 0..64 {
+        if val.clone().typeof_() != SEXPTYPE::PROMSXP {
+            break;
+        }
+        let Ok(expr) = val.clone().try_prcode() else {
+            break;
+        };
+        if expr.clone().typeof_() != SEXPTYPE::PROMSXP || expr == val {
+            break;
+        }
+        val = expr;
+    }
+    val
+}
+
 fn value_is_missing(val: Sexp<'_>) -> bool {
     let missing_arg = missing_arg_value();
     if val == missing_arg {
         return true;
     }
-    if val.clone().typeof_() == SEXPTYPE::PROMSXP
-        && let Ok(expr) = val.clone().try_prcode()
+    let root = find_root_promise(val);
+    if root.clone().typeof_() == SEXPTYPE::PROMSXP
+        && let Ok(expr) = root.clone().try_prcode()
     {
         if expr == missing_arg {
             return true;
         }
         if expr.clone().is_symbol()
-            && let Ok(env) = val.try_prenv()
+            && let Ok(env) = root.try_prenv()
         {
             return is_missing_safe(expr, env);
         }

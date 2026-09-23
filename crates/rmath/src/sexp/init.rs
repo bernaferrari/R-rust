@@ -1040,6 +1040,23 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "units<-.difftime",
             include_str!("gnu_units_difftime.R"),
         );
+        eval_base_binding(
+            base_env,
+            "as.double.difftime",
+            "function(x, units = \"auto\", ...) {\n\
+                 if (units != \"auto\") units(x) <- units\n\
+                 as.vector(x, \"double\")\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "as.numeric.difftime",
+            "function(x, units = \"auto\", ...) {\n\
+                 if (units != \"auto\") units(x) <- units\n\
+                 as.vector(x, \"double\")\n\
+             }",
+        );
+        eval_base_binding(base_env, "trunc.POSIXt", include_str!("gnu_trunc_POSIXt.R"));
         eval_base_binding(base_env, "seq.POSIXt", include_str!("gnu_seq_POSIXt.R"));
         eval_base_binding(base_env, "seq.Date", include_str!("gnu_seq_Date.R"));
         eval_base_binding(base_env, "pretty.POSIXt", include_str!("gnu_pretty_date.R"));

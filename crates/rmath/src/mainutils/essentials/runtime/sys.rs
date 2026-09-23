@@ -1941,19 +1941,23 @@ pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             );
             return empty;
         }
+        let seconds_at = |x: SEXP, i: usize| -> f64 {
+            if TYPEOF(x) == SEXPTYPE::REALSXP {
+                *REAL(x).add(i)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let v = *crate::sexp::accessors::INTEGER(x).add(i);
+                if v == crate::sexp::ffi::NA_INTEGER {
+                    crate::sexp::ffi::NA_REAL
+                } else {
+                    v as f64
+                }
+            } else {
+                0.0
+            }
+        };
         let mut z = Vec::with_capacity((n - 1) as usize);
         for i in 0..(n - 1) {
-            let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
-            } else {
-                0.0
-            };
-            let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add((i + 1) as usize)
-            } else {
-                0.0
-            };
-            z.push(b - a);
+            z.push(seconds_at(x, (i + 1) as usize) - seconds_at(x, i as usize));
         }
         let zz = z
             .iter()

@@ -14,11 +14,14 @@ prettyDate <- function(x, n = 5, min.n = n %/% 2, sep = " ", ...)
     YEAR <- DAY * 365.25
     MONTH <- YEAR / 12
     makeOutput <- function(at, s, round = TRUE, do) {
-	structure(if(isDate)
-		      if(round) as.Date(round(at, units = "days")) else at
-		  else as.POSIXct(at),
+	at <- if(isDate)
+		  if(round) as.Date(round(at, units = "days")) else at
+	      else as.POSIXct(at)
+	res <- structure(at,
 		  labels = format(at, s$format),
           format = s$format)
+	if (!isDate) attr(res, "tzone") <- attr(x, "tzone")
+	res
     }
     if(isDate && D <= n * DAY) { # D <= 'n days' & Date  ==> use days
 	zz <- as.Date(zz)
