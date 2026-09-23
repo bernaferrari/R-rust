@@ -191,6 +191,14 @@ pub unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
 
     unsafe {
         match TYPEOF(lang) {
+            t if t == SEXPTYPE::BCODESXP => {
+                let source = crate::eval::bc_eval::BCODE_EXPR(lang);
+                if source.is_null() || source == R_NilValue() {
+                    lang
+                } else {
+                    substitute(source, rho)
+                }
+            }
             t if t == SEXPTYPE::PROMSXP => substitute(PRCODE(lang), rho),
             t if t == SEXPTYPE::SYMSXP => {
                 if rho != R_NilValue() {
@@ -205,14 +213,22 @@ pub unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
                             if NAMED(expr) < 2 {
                                 SET_NAMED(expr, 2);
                             }
-                            return expr;
+                            return if TYPEOF(expr) == SEXPTYPE::BCODESXP {
+                                substitute(expr, rho)
+                            } else {
+                                expr
+                            };
                         } else if TYPEOF(t) == SEXPTYPE::DOTSXP {
                             Rf_error(
                                 b"'...' used in an incorrect context\0".as_ptr() as *const c_char
                             );
                         }
                         if rho != R_GlobalEnv() {
-                            return t;
+                            return if TYPEOF(t) == SEXPTYPE::BCODESXP {
+                                substitute(t, rho)
+                            } else {
+                                t
+                            };
                         }
                     }
                 }
