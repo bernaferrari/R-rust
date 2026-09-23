@@ -74,6 +74,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             let contents = crate::mainutils::browser_files::read_bytes_or_host(&path)
                 .unwrap_or_else(|e| r_error(&format!("cannot open file '{}': {}", path, e)));
             let lines = nul_normalized_lines(&contents, n, skip_nul);
+            if lines.len() < n && _ok == 0 {
+                r_error("too few lines read in readLines");
+            }
             let ans = Rf_allocVector(SEXPTYPE::STRSXP, lines.len() as c_int);
             let _ans_root = protect(ans);
             if !ans.is_null() {
@@ -253,7 +256,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         }
 
         drop(table);
-        // Build result STRSXP
+        if lines.len() < n && _ok == 0 {
+            r_error("too few lines read in readLines");
+        }
         let nlines = lines.len() as c_int;
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
         if !ans.is_null() {
