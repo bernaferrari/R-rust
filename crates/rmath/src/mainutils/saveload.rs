@@ -1269,6 +1269,52 @@ unsafe fn save_ascii_objects(list: SEXP, file_sexp: SEXP, ascii_flag: SEXP, envi
         R_NilValue()
     }
 }
+unsafe fn load_xdr_workspace(reader: &mut impl Read, envir: SEXP) -> SEXP {
+    unsafe {
+        let mut bytes = Vec::new();
+        if reader.read_to_end(&mut bytes).is_err() {
+            error("a read error occurred");
+        }
+        let raw = Rf_allocVector(SEXPTYPE::RAWSXP.as_c_int(), bytes.len() as i32);
+        let _raw = protect(raw);
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw) as *mut u8, bytes.len());
+        let mut mb = crate::mainutils::serialize::membuf_st {
+            size: 0,
+            count: 0,
+            buf: std::ptr::null_mut(),
+        };
+        let mut stream = std::mem::zeroed();
+        crate::mainutils::serialize::InitMemInPStream(
+            &mut stream,
+            &mut mb,
+            RAW(raw) as *mut std::ffi::c_void,
+            bytes.len() as crate::sexp::ffi::R_size_t,
+            None,
+            R_NilValue(),
+        );
+        let obj = crate::mainutils::serialize::R_Unserialize(&mut stream);
+        let mut names_vec = Vec::new();
+        let mut cell = obj;
+        while !cell.is_null() && cell != R_NilValue() && TYPEOF(cell) == SEXPTYPE::LISTSXP {
+            let tag = TAG(cell);
+            if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                defineVar(tag, CAR(cell), envir);
+                let pn = PRINTNAME(tag);
+                if !pn.is_null() {
+                    names_vec.push(std::ffi::CStr::from_ptr(CHAR(pn)).to_string_lossy().into_owned());
+                }
+            }
+            cell = CDR(cell);
+        }
+        let names = Rf_allocVector(SEXPTYPE::STRSXP.as_c_int(), names_vec.len() as i32);
+        let _names = protect(names);
+        for (i, name) in names_vec.iter().enumerate() {
+            let c_name = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(names, i as i64, Rf_mkChar(c_name.as_ptr()));
+        }
+        names
+    }
+}
 
 unsafe fn load_ascii_objects(file_sexp: SEXP, envir: SEXP) -> SEXP {
     unsafe {
@@ -1295,6 +1341,9 @@ unsafe fn load_ascii_objects(file_sexp: SEXP, envir: SEXP) -> SEXP {
         let mut reader = BufReader::new(file);
 
         let magic = R_ReadMagic(&mut reader);
+        if magic == R_MAGIC_XDR_V1 || magic == R_MAGIC_XDR_V2 || magic == R_MAGIC_XDR_V3 {
+            return load_xdr_workspace(&mut reader, envir);
+        }
         if magic == R_MAGIC_EMPTY || magic == R_MAGIC_CORRUPT {
             error("bad restore file magic number (file may be corrupted) -- no data loaded");
         }
