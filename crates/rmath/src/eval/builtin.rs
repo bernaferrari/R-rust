@@ -3975,6 +3975,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_flush,
     },
     EvaluatedBuiltin {
+        name: "flush.console",
+        handler: crate::mainutils::essentials::do_flush_console,
+    },
+    EvaluatedBuiltin {
         name: "gzfile",
         handler: crate::mainutils::essentials::do_gzfile,
     },
