@@ -1513,6 +1513,7 @@ pub unsafe fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol()));
 
         if result_type == SEXPTYPE::INTSXP {
             let dst = INTEGER(result);
@@ -1586,6 +1587,7 @@ pub unsafe fn do_cummax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol()));
 
         if result_type == SEXPTYPE::INTSXP {
             let dst = INTEGER(result);

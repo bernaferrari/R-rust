@@ -2679,6 +2679,7 @@ pub unsafe fn do_cumvar(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol()));
         let dst = REAL(result);
         if n == 0 {
             return result;
@@ -2687,8 +2688,14 @@ pub unsafe fn do_cumvar(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         *dst = NA_REAL;
         let mut var = 0.0f64;
         let mut sum = elt_real_safe(x, 0);
+        let mut poisoned = sum.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || sum.is_nan();
         for i in 1..n {
             let value = elt_real_safe(x, i);
+            if poisoned || value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || value.is_nan() {
+                poisoned = true;
+                *dst.add(i as usize) = NA_REAL;
+                continue;
+            }
             sum += value;
             let count = (i + 1) as f64;
             let numerator = count * value - sum;
