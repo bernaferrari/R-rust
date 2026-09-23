@@ -467,7 +467,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_lowesw", "C_lowesp",
     "C_kmeans_Lloyd", "C_kmeans_MacQueen", "C_Rsm", "C_pRho", "C_pKendall",
     "C_setup_starma", "C_free_starma", "C_Starma_method", "C_arma0fa",
-    "C_get_s2", "C_get_resid", "C_set_trans", "C_Invtrans", "C_Dotrans", "C_Gradtrans",
+    "C_get_s2", "C_get_resid", "C_set_trans", "C_Invtrans", "C_Dotrans", "C_Gradtrans", "C_Fexact",
 ];
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -550,7 +550,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "Invtrans" => as_dl(super::starma_api::c_invtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "Dotrans" => as_dl(super::starma_api::c_dotrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "Gradtrans" => as_dl(super::starma_api::c_gradtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-
+        "Fexact" => as_dl(super::starma_api::c_fexact as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         _ => super::distn::lookup_call(name),
     }
 }

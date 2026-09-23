@@ -193,9 +193,23 @@ unsafe fn f2xact(
         let mut chisq: bool = false;
         let mut psh: bool;
 
-        // Parameter adjustments (1-based indexing): all arrays shifted by -1
-        // C code does: table -= ldtabl + 1; --ico; --iro; etc.
-        // We handle this by adjusting pointer offsets inline.
+        // GNU decrements these pointers once so later 1-based indexes
+        // land inside the allocation. table stays 0-based in this port.
+        let ico = ico.sub(1);
+        let iro = iro.sub(1);
+        let kyy = kyy.sub(1);
+        let idif = idif.sub(1);
+        let irn = irn.sub(1);
+        let key = key.sub(1);
+        let ipoin = ipoin.sub(1);
+        let stp = stp.sub(1);
+        let ifrq = ifrq.sub(1);
+        let lp = lp.sub(1);
+        let sp = sp.sub(1);
+        let tm = tm.sub(1);
+        let key2 = key2.sub(1);
+        let iwk = iwk.sub(1);
+        let rwk = rwk.sub(1);
 
         if nrow > ldtabl {
             prterr(1, "NROW must be less than or equal to LDTABL.");
@@ -786,7 +800,18 @@ unsafe fn f3xact(
     ldst: c_int,
 ) -> c_double {
     unsafe {
-        // All arrays are 1-based in C (adjusted with --array)
+        let irow = irow.sub(1);
+        let icol = icol.sub(1);
+        let ico = ico.sub(1);
+        let iro = iro.sub(1);
+        let it = it.sub(1);
+        let lb = lb.sub(1);
+        let nr = nr.sub(1);
+        let nt = nt.sub(1);
+        let nu = nu.sub(1);
+        let itc = itc.sub(1);
+        let ist = ist.sub(1);
+        let stv = stv.sub(1);
 
         if nrow <= 1 {
             // nrow is 1
@@ -1652,7 +1677,8 @@ unsafe fn f7xact(
     ks: *mut c_int,
 ) -> bool {
     unsafe {
-        // idif and iro are 1-based
+        let iro = iro.sub(1);
+        let idif = idif.sub(1);
 
         let mut m: c_int;
         let kk: c_int;
@@ -1752,7 +1778,8 @@ unsafe fn f7xact(
 
 unsafe fn f8xact(irow: *const c_int, is: c_int, i1: c_int, izero: c_int, new: *mut c_int) {
     unsafe {
-        // new and irow are 1-based
+        let irow = irow.sub(1);
+        let new = new.sub(1);
 
         let mut i: c_int = 1;
 
