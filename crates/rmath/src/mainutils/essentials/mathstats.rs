@@ -10976,7 +10976,6 @@ unsafe fn dendrogram_attr_real(node: SEXP, name: &std::ffi::CStr, default: f64) 
         }
     }
 }
-
 unsafe fn set_dendrogram_real(node: SEXP, name: &std::ffi::CStr, value: f64) {
     unsafe {
         let scalar = Rf_ScalarReal(value);
@@ -10986,6 +10985,35 @@ unsafe fn set_dendrogram_real(node: SEXP, name: &std::ffi::CStr, value: f64) {
             crate::sexp::symbol::Rf_install(name.as_ptr()),
             scalar,
         );
+    }
+}
+
+unsafe fn set_dendrogram_int(node: SEXP, name: &std::ffi::CStr, value: i32) {
+    unsafe {
+        let scalar = Rf_ScalarInteger(value);
+        let _scalar = protect(scalar);
+        crate::sexp::attrib_core::setAttrib(
+            node,
+            crate::sexp::symbol::Rf_install(name.as_ptr()),
+            scalar,
+        );
+    }
+}
+
+unsafe fn set_dendrogram_value(node: SEXP, value: f64, integer_wts: bool) {
+    unsafe {
+        if integer_wts
+            && value.is_finite()
+            && value.fract() == 0.0
+            && value >= i32::MIN as f64
+            && value <= i32::MAX as f64
+        {
+            set_dendrogram_int(node, c"value", value as i32);
+        } else if integer_wts && !value.is_finite() {
+            set_dendrogram_int(node, c"value", crate::sexp::ffi::NA_INTEGER);
+        } else {
+            set_dendrogram_real(node, c"value", value);
+        }
     }
 }
 
@@ -11009,7 +11037,7 @@ unsafe fn copy_dendrogram_attr(dst: SEXP, src: SEXP, name: &std::ffi::CStr) {
 ///
 /// The R walk duplicates list nodes on every `[[<-`. Rebuilding the binary
 /// tree here keeps the same child order and midpoint formula.
-unsafe fn reorder_dendrogram_sum(node: SEXP, wts: &[f64]) -> (SEXP, f64, Option<crate::sexp::protect::ProtectGuard<'static>>) {
+unsafe fn reorder_dendrogram_sum(node: SEXP, wts: &[f64], integer_wts: bool) -> (SEXP, f64, Option<crate::sexp::protect::ProtectGuard<'static>>) {
     unsafe {
         if dendrogram_flag(node, c"leaf") || TYPEOF(node) != SEXPTYPE::VECSXP {
             let id = if TYPEOF(node) == SEXPTYPE::INTSXP && XLENGTH(node) >= 1 {
@@ -11024,8 +11052,10 @@ unsafe fn reorder_dendrogram_sum(node: SEXP, wts: &[f64]) -> (SEXP, f64, Option<
             } else {
                 crate::sexp::ffi::NA_REAL
             };
-            set_dendrogram_real(node, c"value", value);
-            return (node, value, None);
+            let node = crate::mainutils::duplicate::shallow_duplicate(node);
+            let guard = protect(node);
+            set_dendrogram_value(node, value, integer_wts);
+            return (node, value, Some(guard));
         }
         let k = XLENGTH(node) as usize;
         let rebuilt = Rf_allocVector3(SEXPTYPE::VECSXP, k as i64);
@@ -11033,7 +11063,7 @@ unsafe fn reorder_dendrogram_sum(node: SEXP, wts: &[f64]) -> (SEXP, f64, Option<
         let mut values = Vec::with_capacity(k);
         for i in 0..k {
             let (child, value, child_guard) =
-                reorder_dendrogram_sum(VECTOR_ELT(node, i as i64), wts);
+                reorder_dendrogram_sum(VECTOR_ELT(node, i as i64), wts, integer_wts);
             SET_VECTOR_ELT(rebuilt, i as i64, child);
             drop(child_guard);
             values.push(value);
@@ -11054,7 +11084,7 @@ unsafe fn reorder_dendrogram_sum(node: SEXP, wts: &[f64]) -> (SEXP, f64, Option<
         copy_dendrogram_attr(rebuilt, node, c"members");
         copy_dendrogram_attr(rebuilt, node, c"height");
         copy_dendrogram_attr(rebuilt, node, c"class");
-        set_dendrogram_real(rebuilt, c"value", sum);
+        set_dendrogram_value(rebuilt, sum, integer_wts);
         (rebuilt, sum, Some(guard))
     }
 }
@@ -11100,7 +11130,7 @@ pub unsafe fn do_reorder_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
         for i in 0..n {
             wts.push(elt_real_safe(wts_arg, i));
         }
-        let (reordered, _value, guard) = reorder_dendrogram_sum(node, &wts);
+        let (reordered, _value, guard) = reorder_dendrogram_sum(node, &wts, TYPEOF(wts_arg) == SEXPTYPE::INTSXP);
         midcache_dendrogram(reordered);
         std::mem::forget(guard);
         reordered
@@ -11108,16 +11138,53 @@ pub unsafe fn do_reorder_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 }
 
 /// GNU `order.dendrogram(x)` — leaf order as a vector.
-pub unsafe fn do_order_dendrogram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_order_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if !class_contains(x, "dendrogram") {
             crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
+                call,
                 "'order.dendrogram' requires a dendrogram",
             );
         }
-        x
+        let mut ids = Vec::new();
+        fn walk(node: SEXP, ids: &mut Vec<f64>, integer: &mut bool) {
+            unsafe {
+                if TYPEOF(node) == SEXPTYPE::VECSXP {
+                    let n = XLENGTH(node);
+                    for i in 0..n {
+                        walk(VECTOR_ELT(node, i), ids, integer);
+                    }
+                } else if TYPEOF(node) == SEXPTYPE::INTSXP && XLENGTH(node) >= 1 {
+                    let v = *INTEGER(node);
+                    ids.push(if v == crate::sexp::ffi::NA_INTEGER {
+                        *integer = false;
+                        crate::sexp::ffi::NA_REAL
+                    } else {
+                        v as f64
+                    });
+                } else if XLENGTH(node) >= 1 {
+                    *integer = false;
+                    ids.push(elt_real_safe(node, 0));
+                }
+            }
+        }
+        let mut integer = TYPEOF(x) != SEXPTYPE::REALSXP;
+        walk(x, &mut ids, &mut integer);
+        let result = if integer {
+            let out = Rf_allocVector3(SEXPTYPE::INTSXP, ids.len() as i64);
+            for (i, v) in ids.iter().enumerate() {
+                *INTEGER(out).add(i) = *v as i32;
+            }
+            out
+        } else {
+            let out = Rf_allocVector3(SEXPTYPE::REALSXP, ids.len() as i64);
+            for (i, v) in ids.iter().enumerate() {
+                *REAL(out).add(i) = *v;
+            }
+            out
+        };
+        result
     }
 }
 

@@ -833,6 +833,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "reorder",
             "function(x, ...) if (inherits(x, \"dendrogram\")) .rport_reorder_dendrogram(x, ..1) else .rport_reorder_default(x, ..1)",
         );
+        eval_base_binding(base_env, "as.hclust", "function(x, ...) UseMethod(\"as.hclust\")");
+        eval_base_binding(
+            base_env,
+            "as.hclust.default",
+            "function(x, ...) {\n\
+             if (inherits(x, \"hclust\")) x else\n\
+             stop(gettextf(\"argument 'x' cannot be coerced to class %s\", dQuote(\"hclust\")), domain = NA)\n\
+             }",
+        );
+        eval_base_binding(base_env, "tar", include_str!("gnu_tar.R"));
         eval_base_binding(base_env, "match.fun", include_str!("gnu_match_fun.R"));
         eval_base_binding(base_env, "summaryRprof", include_str!("gnu_summary_rprof.R"));
         eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));

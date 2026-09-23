@@ -83,22 +83,56 @@ pub(crate) unsafe fn apply_s3_closure_method(
 }
 
 /// R's `methods(generic)` — list methods known to the Rust runtime.
-pub unsafe fn do_methods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let generic_arg = CAR(args);
         if generic_arg.is_null() || generic_arg == R_NilValue() {
             return string_vector(&all_runtime_method_names());
         }
-        let generic = elt_to_string(generic_arg, 0);
+        let generic = if !call.is_null()
+            && TYPEOF(CADR(call)) == SEXPTYPE::SYMSXP
+        {
+            let pname = PRINTNAME(CADR(call));
+            if pname.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(pname))
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        } else {
+            elt_to_string(generic_arg, 0)
+        };
         if generic.is_empty() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
 
         let prefix = format!("{generic}.");
-        let methods = all_runtime_method_names()
+        let mut methods = all_runtime_method_names()
             .into_iter()
             .filter(|name| name.starts_with(&prefix))
             .collect::<Vec<_>>();
+        // Closures bound in base (GNU round.POSIXt, …) are visible to methods().
+        let base = crate::eval::runtime::base_env();
+        if !base.is_null() {
+            let mut cell = crate::sexp::accessors::FRAME(base);
+            while !cell.is_null() && cell != R_NilValue() {
+                let tag = TAG(cell);
+                if !tag.is_null() && tag != R_NilValue() {
+                    let pname = PRINTNAME(tag);
+                    if !pname.is_null() {
+                        let name = std::ffi::CStr::from_ptr(CHAR(pname))
+                            .to_string_lossy()
+                            .into_owned();
+                        if name.starts_with(&prefix) && !methods.iter().any(|m| m == &name) {
+                            methods.push(name);
+                        }
+                    }
+                }
+                cell = CDR(cell);
+            }
+        }
+        methods.sort();
         string_vector(&methods)
     }
 }
