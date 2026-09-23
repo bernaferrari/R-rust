@@ -6905,13 +6905,14 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             terms,
             crate::sexp::symbol::Rf_install(c"intercept".as_ptr()),
         );
-        let intercept = if intercept_attr.is_null()
-            || intercept_attr == R_NilValue()
-            || TYPEOF(intercept_attr) != SEXPTYPE::INTSXP
-        {
+        let intercept = if intercept_attr.is_null() || intercept_attr == R_NilValue() {
             1
-        } else {
+        } else if TYPEOF(intercept_attr) == SEXPTYPE::INTSXP || TYPEOF(intercept_attr) == SEXPTYPE::LGLSXP {
             *INTEGER(intercept_attr)
+        } else if TYPEOF(intercept_attr) == SEXPTYPE::REALSXP {
+            *REAL(intercept_attr) as i32
+        } else {
+            1
         };
         let labs = crate::sexp::attrib_core::getAttrib(
             terms,
