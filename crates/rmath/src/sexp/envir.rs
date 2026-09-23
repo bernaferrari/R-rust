@@ -1031,10 +1031,17 @@ fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>) -> bool {
     unsafe {
         let bc = code.as_raw();
         let code_ptr = crate::eval::bc_eval::BCODE_CODE(bc);
-        if code_ptr.is_null() {
+        let code_vec = crate::sexp::accessors::VECTOR_ELT(bc, 0);
+        if code_ptr.is_null()
+            || TYPEOF(code_vec) != SEXPTYPE::INTSXP
+            || crate::sexp::accessors::XLENGTH(code_vec) != 4
+        {
             return false;
         }
         let op = *code_ptr.add(1);
+        if *code_ptr.add(3) != crate::eval::bytecode::GNU_OP_RETURN {
+            return false;
+        }
         if op != crate::eval::bytecode::GNU_OP_GETVAR
             && op != crate::eval::bytecode::GNU_OP_GETVAR_MISSOK
         {

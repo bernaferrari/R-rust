@@ -215,6 +215,11 @@ pub unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
                             }
                             return if TYPEOF(expr) == SEXPTYPE::BCODESXP {
                                 substitute(expr, rho)
+                            } else if TYPEOF(expr) == SEXPTYPE::LANGSXP
+                                || TYPEOF(expr) == SEXPTYPE::LISTSXP
+                                || TYPEOF(expr) == SEXPTYPE::EXPRSXP
+                            {
+                                crate::mainutils::duplicate::Rf_duplicate(expr)
                             } else {
                                 expr
                             };
