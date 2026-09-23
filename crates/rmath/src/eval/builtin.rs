@@ -3673,7 +3673,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_chartr,
     },
     EvaluatedBuiltin {
-        name: "format",
+        name: "format.default",
         handler: crate::mainutils::essentials::do_format,
     },
     EvaluatedBuiltin {
