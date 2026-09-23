@@ -6689,21 +6689,6 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             );
         }
         let mut ans = data;
-        if !na_action.is_null() && na_action != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                data,
-                crate::sexp::symbol::Rf_install(c"terms".as_ptr()),
-                _terms,
-            );
-            if TYPEOF(na_action) == SEXPTYPE::STRSXP && XLENGTH(na_action) > 0 {
-                let raw = CHAR(STRING_ELT(na_action, 0));
-                na_action = crate::sexp::symbol::Rf_install(raw);
-            }
-            let call_na = Rf_lang2(na_action, data);
-            let _cn = protect(call_na);
-            ans = crate::eval::eval::Rf_eval(call_na, rho);
-            let _a = protect(ans);
-        }
         if !subset.is_null()
             && subset != R_NilValue()
             && subset != crate::sexp::globals::R_MissingArg()
@@ -6715,16 +6700,34 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 subset
             };
             let _idx = protect(index);
-            let ncol = XLENGTH(ans);
-            let cols = Rf_allocVector3(SEXPTYPE::INTSXP, ncol);
-            let _cols = protect(cols);
-            for i in 0..ncol {
-                *INTEGER(cols).add(i as usize) = (i + 1) as i32;
-            }
-            let args = Rf_cons(ans, Rf_cons(index, Rf_cons(cols, R_NilValue())));
+            let drop_val = Rf_ScalarLogical(0);
+            let _drop_val = protect(drop_val);
+            let drop_cell = Rf_cons(drop_val, R_NilValue());
+            SETTAG(drop_cell, crate::sexp::symbol::Rf_install(c"drop".as_ptr()));
+            let args = Rf_cons(
+                data,
+                Rf_cons(
+                    index,
+                    Rf_cons(crate::sexp::globals::R_MissingArg(), drop_cell),
+                ),
+            );
             let _args = protect(args);
             ans = crate::mainutils::subset::do_subset_dflt(_call, _op, args, rho);
             let _sub = protect(ans);
+        }
+        if !na_action.is_null() && na_action != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                ans,
+                crate::sexp::symbol::Rf_install(c"terms".as_ptr()),
+                _terms,
+            );
+            if TYPEOF(na_action) == SEXPTYPE::STRSXP && XLENGTH(na_action) > 0 {
+                let raw = CHAR(STRING_ELT(na_action, 0));
+                na_action = crate::sexp::symbol::Rf_install(raw);
+            }
+            let call_na = Rf_lang2(na_action, ans);
+            ans = crate::eval::eval::Rf_eval(call_na, rho);
+            let _a = protect(ans);
         }
         ans
     }
