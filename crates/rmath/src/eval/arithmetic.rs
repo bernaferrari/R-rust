@@ -981,7 +981,9 @@ unsafe fn propagate_unary_vector_attributes(result: SEXP, source: SEXP, result_l
         if LENGTH(source) as R_xlen_t == result_len {
             copy_attr_if_present(result, source, R_NamesSymbol());
         }
-        if has_class(source, "ts") || has_class(source, "mts") {
+        if TYPEOF(result) == TYPEOF(source)
+            && (has_class(source, "ts") || has_class(source, "mts"))
+        {
             copy_attr_if_present(result, source, crate::sexp::attrib_core::R_ClassSymbol());
             copy_attr_if_present(result, source, crate::sexp::attrib_core::R_TspSymbol());
         }
