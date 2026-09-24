@@ -1094,6 +1094,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "dev.interactive",
+            "function(orNone = FALSE) FALSE",
+        );
+        eval_base_binding(
+            base_env,
             "all.equal",
             "function(target, current, ...) UseMethod(\"all.equal\")",
         );

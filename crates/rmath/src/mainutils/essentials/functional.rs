@@ -5058,6 +5058,18 @@ static NO_DEVICE_PLOT_NEW: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 pub unsafe fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let dev = crate::mainutils::options::GetOption(c"device".as_ptr());
+        if !dev.is_null()
+            && dev != crate::sexp::globals::R_NilValue()
+            && TYPEOF(dev) == SEXPTYPE::CLOSXP
+        {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "no active or default device",
+            );
+        }
+    }
     #[cfg(feature = "renderplot-device")]
     unsafe {
         crate::mainutils::portable_plot::draw_builtin("plot.new", args)
