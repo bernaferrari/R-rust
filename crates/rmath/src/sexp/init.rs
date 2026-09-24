@@ -1343,6 +1343,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "as.list.factor",
+            "function(x, ...) { res <- vector(\"list\", length(x)); for (i in seq_along(x)) res[[i]] <- x[[i]]; if (is.null(names(x))) res else `names<-`(res, names(x)) }",
+        );
+        eval_base_binding(
+            base_env,
             "as.POSIXlt.POSIXct",
             include_str!("gnu_as_POSIXlt_POSIXct.R"),
         );
