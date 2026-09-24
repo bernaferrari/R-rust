@@ -387,6 +387,7 @@ unsafe fn errorcallMissingSubs(_x: SEXP, _call: SEXP) {
 
 /// Report out-of-bounds error (integer index).
 unsafe fn errorcallOutOfBounds(_x: SEXP, _subscript: c_int, _index: R_xlen_t, _call: SEXP) {
+    let _ = (_x, _subscript, _index, _call);
     std::panic::panic_any(RError {
         message: "subscript out of bounds".to_string(),
     });
@@ -394,6 +395,7 @@ unsafe fn errorcallOutOfBounds(_x: SEXP, _subscript: c_int, _index: R_xlen_t, _c
 
 /// Report out-of-bounds error (SEXP index).
 unsafe fn errorcallOutOfBoundsSEXP(_x: SEXP, _subscript: c_int, _sindex: SEXP, _call: SEXP) {
+    let _ = (_x, _subscript, _sindex, _call);
     std::panic::panic_any(RError {
         message: "subscript out of bounds".to_string(),
     });
@@ -2076,6 +2078,82 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 length_int(first)
             }
         }
+        unsafe fn fix_na_row_names(rows: SEXP) -> SEXP {
+            unsafe {
+                if rows.is_null() || TYPEOF(rows) != SEXPTYPE::STRSXP {
+                    return rows;
+                }
+                let n = XLENGTH(rows);
+                let mut labels: Vec<Option<String>> = Vec::with_capacity(n as usize);
+                let mut seen = std::collections::HashSet::new();
+                let mut dup = false;
+                let mut had_na = false;
+                let mut has_na_label = false;
+                for i in 0..n {
+                    let s = STRING_ELT(rows, i);
+                    if s.is_null() || s == crate::sexp::globals::R_NaString() {
+                        had_na = true;
+                        if !seen.insert(None) {
+                            dup = true;
+                        }
+                        labels.push(None);
+                    } else {
+                        let text = std::ffi::CStr::from_ptr(CHAR(s))
+                            .to_string_lossy()
+                            .into_owned();
+                        if text == "NA" {
+                            has_na_label = true;
+                        }
+                        if !seen.insert(Some(text.clone())) {
+                            dup = true;
+                        }
+                        labels.push(Some(text));
+                    }
+                }
+                if !had_na && !dup {
+                    return rows;
+                }
+                if !dup && has_na_label {
+                    dup = true;
+                }
+                for label in &mut labels {
+                    if label.is_none() {
+                        *label = Some("NA".to_string());
+                    }
+                }
+                let labels: Vec<String> = if dup {
+                    let mut used = std::collections::HashSet::new();
+                    let mut out = Vec::with_capacity(labels.len());
+                    for label in labels {
+                        let base = label.unwrap_or_default();
+                        if used.insert(base.clone()) {
+                            out.push(base);
+                            continue;
+                        }
+                        let mut k = 1u32;
+                        loop {
+                            let candidate = format!("{base}.{k}");
+                            if used.insert(candidate.clone()) {
+                                out.push(candidate);
+                                break;
+                            }
+                            k += 1;
+                        }
+                    }
+                    out
+                } else {
+                    labels.into_iter().map(|s| s.unwrap_or_default()).collect()
+                };
+                let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+                let _g = protect(ans);
+                for (i, label) in labels.iter().enumerate() {
+                    let cstr = std::ffi::CString::new(label.as_str()).unwrap_or_default();
+                    SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                }
+                ans
+            }
+        }
+
 
         /// GNU `[.data.frame` row-subsets a column as
         /// `if (length(dim(xj)) != 2L) xj[i] else xj[i, , drop = FALSE]`.
@@ -2137,7 +2215,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     }
                     return ans;
                 }
-                VectorSubset(rownames, sr, std::ptr::null_mut())
+                fix_na_row_names(VectorSubset(rownames, sr, std::ptr::null_mut()))
             }
         }
 
