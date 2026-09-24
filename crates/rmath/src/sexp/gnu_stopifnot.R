@@ -4,6 +4,9 @@ function(..., exprs, exprObject, local = TRUE)
     if (!missing(exprs) && is.call(e <- substitute(exprs)) && e[[1]] == quote(`{`) &&
         all(vapply(e[-1], is.null, NA)))
         return(invisible())
+    if (!missing(exprObject) && length(exprObject) == 0L)
+        return(invisible())
+
 
     if((has.e <- !missing(exprs)) || !missing(exprObject)) {
 	if(n || (has.e && !missing(exprObject)))

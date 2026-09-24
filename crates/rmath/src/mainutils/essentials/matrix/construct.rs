@@ -1194,7 +1194,16 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                         } else {
                             STRING_ELT(levels, (v - 1) as i64)
                         }
-                    } else if TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::LGLSXP {
+                    } else if TYPEOF(column) == SEXPTYPE::LGLSXP {
+                        let v = *INTEGER(column).add(src as usize);
+                        if v == NA_INTEGER {
+                            crate::sexp::globals::R_NaString()
+                        } else if v == 0 {
+                            crate::sexp::constructors::Rf_mkChar(c"FALSE".as_ptr())
+                        } else {
+                            crate::sexp::constructors::Rf_mkChar(c"TRUE".as_ptr())
+                        }
+                    } else if TYPEOF(column) == SEXPTYPE::INTSXP {
                         let v = *INTEGER(column).add(src as usize);
                         if v == NA_INTEGER {
                             crate::sexp::globals::R_NaString()
