@@ -1258,15 +1258,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "print.noquote",
-            "function(x, ...) {\n\
-             y <- x\n\
-             if (!is.null(cl <- attr(y, \"class\"))) {\n\
-               cl <- cl[cl != \"noquote\"]\n\
-               attr(y, \"class\") <- if (length(cl)) cl else NULL\n\
-             }\n\
-             print(y, quote = FALSE, ...)\n\
-             invisible(x)\n\
-             }",
+            include_str!("gnu_print_noquote.R"),
         );
         eval_base_binding(
             base_env,
