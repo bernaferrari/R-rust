@@ -92,16 +92,7 @@ pub(crate) unsafe fn errorNotSubsettable(x: SEXP) {
 /// Port of `errorMissingSubscript()` -- signals an error for missing subscripts.
 pub(crate) unsafe fn errorMissingSubscript(x: SEXP) {
     unsafe {
-        let t = TYPEOF(x);
-        let type_name = crate::mainutils::util_main::type2char(t);
-        let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
-        let msg = format!("object of type '{}' is missing a subscript", s);
-        let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
-        crate::mainutils::errors::Rf_error1(
-            b"invalid subscript\0".as_ptr() as *const core::ffi::c_char,
-            cmsg.as_ptr(),
-        );
-        unreachable!()
+        crate::mainutils::errors::R_MissingSubscriptError(x, R_NilValue());
     }
 }
 

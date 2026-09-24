@@ -2439,7 +2439,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let nsubs = length_int(subs);
 
         if nsubs == 0 {
-            errorcall(call, "no index specified");
+            crate::mainutils::errors::R_MissingSubscriptError(x, call);
         }
 
         /* Handle NULL case */

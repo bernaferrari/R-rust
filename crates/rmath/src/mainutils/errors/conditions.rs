@@ -947,6 +947,29 @@ pub unsafe fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
         )
     }
 }
+/// `x[[]]` / `x[[]] <-`: class `MissingSubscriptError`, message
+/// `"missing subscript"`, with `call` and `object` fields.
+pub unsafe fn R_MissingSubscriptError(x: SEXP, call: SEXP) -> ! {
+    unsafe {
+        let c_msg = std::ffi::CString::new("missing subscript").unwrap_or_default();
+        let cond = R_makeErrorCondition(
+            call,
+            b"MissingSubscriptError\0".as_ptr() as *const c_char,
+            std::ptr::null(),
+            1,
+            c_msg.as_ptr(),
+        );
+        let _guard = protect(cond);
+        R_setConditionField(
+            cond,
+            2,
+            b"object\0".as_ptr() as *const c_char,
+            x,
+        );
+        R_signalErrorCondition(cond, call);
+        unreachable!()
+    }
+}
 
 /// R_makeOutOfBoundsError — create an out-of-bounds error condition.
 /// Matches C's `SEXP R_makeOutOfBoundsError(SEXP x, int subscript, SEXP sindex, SEXP call)`
