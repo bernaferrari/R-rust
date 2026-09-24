@@ -334,11 +334,31 @@ pub unsafe fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if expr.is_null() {
             return R_NilValue();
         }
-        bquote_walk(expr, rho)
+        let splice = {
+            let mut cell = CDR(args);
+            let mut on = false;
+            while !cell.is_null() && cell != R_NilValue() {
+                let tag = TAG(cell);
+                let named = !tag.is_null() && tag != R_NilValue()
+                    && symbol_name(tag).as_deref() == Some("splice");
+                if named || (tag.is_null() || tag == R_NilValue()) {
+                    let v = crate::eval::eval::Rf_eval(CAR(cell), rho);
+                    if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 && *LOGICAL(v) != 0 {
+                        on = true;
+                    }
+                    if named {
+                        break;
+                    }
+                }
+                cell = CDR(cell);
+            }
+            on
+        };
+        bquote_walk(expr, rho, splice)
     }
 }
 
-unsafe fn bquote_walk(expr: SEXP, rho: SEXP) -> SEXP {
+unsafe fn bquote_walk(expr: SEXP, rho: SEXP, splice: bool) -> SEXP {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
@@ -358,7 +378,37 @@ unsafe fn bquote_walk(expr: SEXP, rho: SEXP) -> SEXP {
         let mut head = R_NilValue();
         let mut tail = R_NilValue();
         while !source.is_null() && source != R_NilValue() {
-            let value = bquote_walk(CAR(source), rho);
+            if splice && is_bquote_splice_call(CAR(source)) {
+                let unquoted = CAR(CDR(CAR(source)));
+                let value = crate::eval::eval::Rf_eval(unquoted, rho);
+                let mut elt = value;
+                if TYPEOF(value) == SEXPTYPE::EXPRSXP || TYPEOF(value) == SEXPTYPE::VECSXP {
+                    let n = XLENGTH(value);
+                    for i in 0..n {
+                        let cell = Rf_cons(VECTOR_ELT(value, i), R_NilValue());
+                        if head == R_NilValue() {
+                            head = cell;
+                        } else {
+                            SETCDR(tail, cell);
+                        }
+                        tail = cell;
+                    }
+                } else {
+                    while !elt.is_null() && elt != R_NilValue() && (TYPEOF(elt) == SEXPTYPE::LISTSXP || TYPEOF(elt) == SEXPTYPE::LANGSXP) {
+                        let cell = Rf_cons(CAR(elt), R_NilValue());
+                        if head == R_NilValue() {
+                            head = cell;
+                        } else {
+                            SETCDR(tail, cell);
+                        }
+                        tail = cell;
+                        elt = CDR(elt);
+                    }
+                }
+                source = CDR(source);
+                continue;
+            }
+            let value = bquote_walk(CAR(source), rho, splice);
             let cell = Rf_cons(value, R_NilValue());
             SETTAG(cell, TAG(source));
             if head == R_NilValue() {
@@ -389,5 +439,14 @@ unsafe fn is_bquote_unquote_call(expr: SEXP) -> bool {
         !args.is_null()
             && args != R_NilValue()
             && (CDR(args).is_null() || CDR(args) == R_NilValue())
+    }
+}
+unsafe fn is_bquote_splice_call(expr: SEXP) -> bool {
+    unsafe {
+        if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+            return false;
+        }
+        let head = CAR(expr);
+        TYPEOF(head) == SEXPTYPE::SYMSXP && symbol_name(head).as_deref() == Some("..")
     }
 }
