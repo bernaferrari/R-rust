@@ -984,16 +984,18 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         match &mut conn.kind {
             ConnKind::File => {
                 let mut old_pos = 0.0;
+                if let Some(reader) = conn.reader.as_mut() {
+                    if let Ok(p) = reader.stream_position() {
+                        old_pos = p as c_double;
+                    }
+                }
                 if let Some(ref mut file) = conn.file {
                     let seek_from = match origin {
                         1 => SeekFrom::Current(where_val as i64),
                         3 => SeekFrom::End(where_val as i64),
                         _ => SeekFrom::Start(where_val as u64),
                     };
-                    old_pos = match file.stream_position() {
-                        Ok(p) => p as c_double,
-                        Err(_) => 0.0,
-                    };
+
                     if !where_val.is_nan() {
                         match file.seek(seek_from) {
                             Ok(_) => {}
