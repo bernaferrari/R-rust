@@ -146,6 +146,11 @@ pub unsafe fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return result;
         }
+        if TYPEOF(x) == SEXPTYPE::LISTSXP || TYPEOF(x) == SEXPTYPE::LANGSXP {
+            let result = crate::mainutils::builtin::xlengthgets(x, new_len);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return result;
+        }
         let result = resize_vector(x, new_len);
         let _r = protect(result);
         resize_names(x, result, new_len);

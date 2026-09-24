@@ -1260,6 +1260,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "print.noquote",
             include_str!("gnu_print_noquote.R"),
         );
+        eval_base_binding(base_env, "ls", include_str!("gnu_ls.R"));
+        eval_base_binding(base_env, "objects", include_str!("gnu_ls.R"));
         eval_base_binding(
             base_env,
             "as.vector.factor",

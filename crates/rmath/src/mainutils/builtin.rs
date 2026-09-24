@@ -288,7 +288,10 @@ pub unsafe fn do_args(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_formals(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        let input = CAR(args);
+        let mut input = CAR(args);
+        if TYPEOF(input) == SEXPTYPE::PROMSXP {
+            input = crate::eval::eval::Rf_eval(input, _rho);
+        }
         if TYPEOF(input) == SEXPTYPE::CLOSXP {
             let f = FORMALS(input);
             RAISE_NAMED(f, crate::sexp::accessors::NAMED(input));
@@ -637,6 +640,33 @@ pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
         let xtype = TYPEOF(x);
         if xtype == SEXPTYPE::NILSXP {
             error("cannot set length of NULL");
+        }
+        if xtype == SEXPTYPE::LISTSXP || xtype == SEXPTYPE::LANGSXP {
+            if len <= 0 {
+                return R_NilValue();
+            }
+            let mut src = x;
+            let mut out = R_NilValue();
+            let mut tail = R_NilValue();
+            let mut i = 0i64;
+            while i < len {
+                let (car, tag, nxt) = if src.is_null() || src == R_NilValue() {
+                    (R_NilValue(), R_NilValue(), R_NilValue())
+                } else {
+                    (CAR(src), TAG(src), CDR(src))
+                };
+                let cell = crate::sexp::constructors::Rf_cons(car, R_NilValue());
+                crate::sexp::accessors::SETTAG(cell, tag);
+                if out.is_null() || out == R_NilValue() {
+                    out = cell;
+                } else {
+                    SETCDR(tail, cell);
+                }
+                tail = cell;
+                src = nxt;
+                i += 1;
+            }
+            return out;
         }
         let r = Rf_allocVector(xtype, len as c_int);
         let old_len = XLENGTH(x);
