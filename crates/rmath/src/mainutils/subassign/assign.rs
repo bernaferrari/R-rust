@@ -619,6 +619,25 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         };
 
         let _initial_x_guard = protect(x);
+        if nsubs == 1 && TYPEOF(x) == SEXPTYPE::INTSXP && TYPEOF(y) == SEXPTYPE::STRSXP {
+            let levels = getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
+            if !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP {
+                let n = XLENGTH(x);
+                let idx = crate::mainutils::subscript::get1index(CAR(subs), R_NilValue(), n, 0, 0, call);
+                if idx >= 0 && idx < n {
+                    let text = crate::mainutils::essentials::elt_to_string(y, 0);
+                    let mut code = NA_INTEGER;
+                    for j in 0..XLENGTH(levels) {
+                        if crate::mainutils::essentials::elt_to_string(levels, j) == text {
+                            code = (j as i32) + 1;
+                            break;
+                        }
+                    }
+                    *INTEGER(x).add(idx as usize) = code;
+                    return x;
+                }
+            }
+        }
         let mut xtop = x;
         let mut xup = x;
 
