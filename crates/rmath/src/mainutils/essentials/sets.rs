@@ -725,7 +725,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if !incomparables_are_none(incomparables) {
             let in_n = XLENGTH(incomparables);
             for i in 0..in_n {
-                incomparable_set.insert(duplicated_key(incomparables, i));
+                incomparable_set.insert(duplicated_key(incomparables, i, SEXPTYPE(TYPEOF(x))));
             }
         }
 
@@ -751,7 +751,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 *dst.add(i as usize) = FALSE;
             }
             for i in (0..n).rev() {
-                let s = duplicated_key(x, i);
+                let s = duplicated_key(x, i, SEXPTYPE(TYPEOF(x)));
                 if incomparable_set.contains(&s) {
                     *dst.add(i as usize) = FALSE;
                 } else if seen.contains(&s) {
@@ -761,7 +761,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     *dst.add(i as usize) = FALSE;
                     if seen.len() >= effective_nmax {
                         for j in 0..i {
-                            let sj = duplicated_key(x, j);
+                            let sj = duplicated_key(x, j, SEXPTYPE(TYPEOF(x)));
                             if !incomparable_set.contains(&sj) {
                                 *dst.add(j as usize) = TRUE;
                             }
@@ -774,7 +774,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             // Scan from first to last; first occurrence is original, later are duplicates
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
             for i in 0..n {
-                let s = duplicated_key(x, i);
+                let s = duplicated_key(x, i, SEXPTYPE(TYPEOF(x)));
                 if incomparable_set.contains(&s) {
                     *dst.add(i as usize) = FALSE;
                 } else if seen.contains(&s) {
@@ -785,7 +785,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     if seen.len() >= effective_nmax {
                         // Everything remaining is a duplicate
                         for j in (i + 1)..n {
-                            let sj = duplicated_key(x, j);
+                            let sj = duplicated_key(x, j, SEXPTYPE(TYPEOF(x)));
                             if incomparable_set.contains(&sj) {
                                 *dst.add(j as usize) = FALSE;
                             } else {
@@ -826,7 +826,7 @@ pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         if !incomparables_are_none(incomparables) {
             let in_n = XLENGTH(incomparables);
             for i in 0..in_n {
-                incomparable_set.insert(duplicated_key(incomparables, i));
+                incomparable_set.insert(duplicated_key(incomparables, i, SEXPTYPE(TYPEOF(x))));
             }
         }
 
@@ -841,7 +841,7 @@ pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             // From last: find last duplicated element index
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
             for i in (0..n).rev() {
-                let s = duplicated_key(x, i);
+                let s = duplicated_key(x, i, SEXPTYPE(TYPEOF(x)));
                 if !incomparable_set.contains(&s) {
                     if seen.contains(&s) {
                         return Rf_ScalarInteger((i + 1) as c_int);
@@ -858,7 +858,7 @@ pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             // From first: find first duplicated element index
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
             for i in 0..n {
-                let s = duplicated_key(x, i);
+                let s = duplicated_key(x, i, SEXPTYPE(TYPEOF(x)));
                 if !incomparable_set.contains(&s) {
                     if seen.contains(&s) {
                         return Rf_ScalarInteger((i + 1) as c_int);
@@ -2011,11 +2011,14 @@ fn atomic_unique_key(x: SEXP, index: R_xlen_t, target_type: SEXPTYPE) -> AtomicU
         }
     }
 }
-fn duplicated_key(x: SEXP, index: R_xlen_t) -> String {
+fn duplicated_key(x: SEXP, index: R_xlen_t, target: SEXPTYPE) -> String {
     unsafe {
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            match atomic_unique_key(x, index, SEXPTYPE(t)) {
+        if target == SEXPTYPE::REALSXP
+            || target == SEXPTYPE::INTSXP
+            || target == SEXPTYPE::LGLSXP
+            || target == SEXPTYPE::STRSXP
+        {
+            match atomic_unique_key(x, index, target) {
                 AtomicUniqueKey::Integer(v) => format!("i{v}"),
                 AtomicUniqueKey::Real(bits) => format!("r{bits}"),
                 AtomicUniqueKey::String(s) => format!("s{s}"),
