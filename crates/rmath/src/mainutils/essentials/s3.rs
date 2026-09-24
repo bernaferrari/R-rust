@@ -87,7 +87,7 @@ pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe {
         let generic_arg = CAR(args);
         if generic_arg.is_null() || generic_arg == R_NilValue() {
-            return string_vector(&all_runtime_method_names());
+            return methods_function(string_vector(&all_runtime_method_names()));
         }
         let generic = if !call.is_null()
             && TYPEOF(CADR(call)) == SEXPTYPE::SYMSXP
@@ -104,7 +104,7 @@ pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             elt_to_string(generic_arg, 0)
         };
         if generic.is_empty() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+            return methods_function(Rf_allocVector3(SEXPTYPE::STRSXP, 0));
         }
 
         let prefix = format!("{generic}.");
@@ -133,7 +133,7 @@ pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             }
         }
         methods.sort();
-        string_vector(&methods)
+        methods_function(string_vector(&methods))
     }
 }
 
@@ -145,6 +145,18 @@ fn all_runtime_method_names() -> Vec<String> {
     methods.sort();
     methods.dedup();
     methods
+}
+unsafe fn methods_function(ans: SEXP) -> SEXP {
+    unsafe {
+        let class = Rf_mkString(c"MethodsFunction".as_ptr());
+        let _g = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        ans
+    }
 }
 
 // ---------------------------------------------------------------------------
