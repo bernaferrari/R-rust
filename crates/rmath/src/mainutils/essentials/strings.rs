@@ -2212,37 +2212,37 @@ fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
         } else {
             0
         };
-        let mut texts = Vec::with_capacity(n as usize);
+        let mut texts: Vec<Option<String>> = Vec::with_capacity(n as usize);
         for i in 0..n {
             let v = *INTEGER(x).add(i as usize);
-            let s = if v == NA_INTEGER {
-                "NA".to_string()
+            if v == NA_INTEGER {
+                texts.push(None);
             } else if hex {
-                format!("{v:x}")
+                texts.push(Some(format!("{v:x}")));
             } else {
-                format!("{v:o}")
-            };
-            texts.push(s);
+                texts.push(Some(format!("{v:o}")));
+            }
         }
         if n > 1 {
-            let width = texts
-                .iter()
-                .filter(|s| s.as_str() != "NA")
-                .map(|s| s.len())
-                .max()
-                .unwrap_or(0);
+            let width = texts.iter().flatten().map(|s| s.len()).max().unwrap_or(0);
             for s in &mut texts {
-                if s.as_str() != "NA" {
-                    *s = format!("{s:0>width$}");
+                if let Some(text) = s {
+                    *text = format!("{text:0>width$}");
                 }
             }
         }
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
         for (i, s) in texts.iter().enumerate() {
-            let c = CString::new(s.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+            let ch = if let Some(text) = s {
+                let c = CString::new(text.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+                Rf_mkChar(c.as_ptr())
+            } else {
+                crate::sexp::globals::R_NaString()
+            };
+            SET_STRING_ELT(out, i as i64, ch);
         }
+        copy_mode_structure(out, x);
         out
     }
 }
@@ -2274,15 +2274,14 @@ pub(crate) fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
         let _o = protect(out);
         for i in 0..n {
             let v = *INTEGER(x).add(i as usize);
-            let s = if v == NA_INTEGER {
-                "NA".to_string()
-            } else if hex {
-                format!("{v:x}")
+            let ch = if v == NA_INTEGER {
+                crate::sexp::globals::R_NaString()
             } else {
-                format!("{v:o}")
+                let s = if hex { format!("{v:x}") } else { format!("{v:o}") };
+                let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
+                Rf_mkChar(c.as_ptr())
             };
-            let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+            SET_STRING_ELT(out, i as i64, ch);
         }
         if keep_str {
             copy_mode_structure(out, x);
