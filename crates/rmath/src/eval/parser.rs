@@ -1091,6 +1091,9 @@ impl<'arena> Parser<'arena> {
         let mut have_pipebind = false;
         loop {
             let tok = lexer.next_token();
+            if tok == Token::Invalid && lexer.pos > 0 {
+                lexer.last_token_start = lexer.pos - 1;
+            }
             let end = lexer.pos;
             let start = lexer.last_token_start;
             let is_eof = tok == Token::Eof;
@@ -1289,27 +1292,23 @@ impl<'arena> Parser<'arena> {
         let tok = self.tokens.get(index).cloned().unwrap_or(Token::Eof);
         let head = format!("unexpected {}", token_display(&tok));
         if matches!(tok, Token::Eof) {
-            // The REPL resets the parse context between attempts, so EOF
-            // errors surface without one.
             return ParseError(head);
         }
-        let end = self
-            .spans
-            .get(index)
-            .map(|&(_, end)| end)
-            .unwrap_or(self.source.len());
-        let start = end.saturating_sub(PARSE_CONTEXT_WINDOW);
-        let window: String = self.source[start..end].iter().collect();
+        let (start, end_span) = self.spans.get(index).copied().unwrap_or((0, self.source.len()));
+        let end = end_span;
+        let (ln, col) = self.line_col(start);
+        let loc = format!(" (<input>:{ln}:{})", col + 1);
+        let start_w = end.saturating_sub(PARSE_CONTEXT_WINDOW);
+        let window: String = self.source[start_w..end].iter().collect();
         let mut lines: Vec<&str> = window.split('\n').collect();
-        // getParseContext drops the empty line after a trailing newline.
-        if matches!(lines.last(), Some(last) if last.is_empty()) {
+        if matches!(lines.last(), Some(&"")) {
             lines.pop();
         }
         match lines.as_slice() {
-            [] | [""] => ParseError(head),
-            [line] => ParseError(format!("{head} in \"{line}\"")),
+            [] | [""] => ParseError(format!("{head}{loc}")),
+            [line] => ParseError(format!("{head} in \"{line}\"{loc}")),
             lines => ParseError(format!(
-                "{head} in:\n\"{}\n{}\"",
+                "{head} in:\n\"{}\n{}\"{loc}",
                 lines[lines.len() - 2],
                 lines[lines.len() - 1]
             )),
