@@ -389,7 +389,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         };
 
         let _initial_x_guard = protect(x);
-        let xtop = x;
+        let mut xtop = x;
         let mut xup = x;
 
         let dims = getAttrib(x, R_DimSymbol());
@@ -459,7 +459,33 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             thesub = CAR(subs);
             len = Rf_length(thesub);
             if len > 1 {
-                xup = vectorIndex(x, thesub, 0, len - 2, TRUE, call, TRUE);
+                x = crate::mainutils::duplicate::duplicate(x);
+                dynamic_guards.push(protect(x));
+                xtop = x;
+                let mut parent = x;
+                for i in 0..(len - 1) {
+                    let names = getAttrib(parent, crate::sexp::attrib_core::R_NamesSymbol());
+                    let indx = get1index(thesub, names, XLENGTH(parent), TRUE, i, call);
+                    if indx < 0 || indx >= XLENGTH(parent) {
+                        errorOutOfBoundsSEXP(parent, -1, thesub);
+                    }
+                    let child = if TYPEOF(parent) == SEXPTYPE::VECSXP
+                        || TYPEOF(parent) == SEXPTYPE::EXPRSXP
+                    {
+                        VECTOR_ELT(parent, indx)
+                    } else {
+                        R_NilValue()
+                    };
+                    if i < len - 2
+                        && (TYPEOF(child) == SEXPTYPE::VECSXP
+                            || TYPEOF(child) == SEXPTYPE::EXPRSXP)
+                    {
+                        let copy = crate::mainutils::duplicate::duplicate(child);
+                        SET_VECTOR_ELT(parent, indx, copy);
+                        parent = copy;
+                    }
+                }
+                xup = vectorIndex(x, thesub, 0, len - 2, TRUE, call, FALSE);
                 dynamic_guards.push(protect(xup));
                 off = OneIndex(
                     xup,
@@ -470,7 +496,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                     len - 2,
                     R_NilValue(),
                 );
-                x = vectorIndex(xup, thesub, len - 2, len - 1, TRUE, call, TRUE);
+                x = vectorIndex(xup, thesub, len - 2, len - 1, TRUE, call, FALSE);
                 dynamic_guards.push(protect(x));
                 recursed = true;
             }
