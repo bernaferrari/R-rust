@@ -548,6 +548,7 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
             return;
         }
         (*cptr).conexit = R_NilValue();
+        (*cptr).onexit_active = 1;
 
         let rho = (*cptr).cloenv;
         let chain_guard = crate::sexp::protect::protect(conexit);
@@ -560,6 +561,7 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
             }
             current = (*cptr).conexit;
         }
+        (*cptr).onexit_active = 0;
         drop(chain_guard);
     }
 }

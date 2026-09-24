@@ -827,6 +827,14 @@ unsafe fn do_return(args: SEXP, rho: SEXP) -> SEXP {
             Rf_eval(CAR(args), rho)
         };
         let _val_guard = protect(val);
+        let mut here = super::runtime::global_context();
+        while !here.is_null() {
+            if (*here).onexit_active != 0 {
+                (*here).returnValue = val;
+                return val;
+            }
+            here = (*here).nextcontext;
+        }
         super::context::findcontext_jump(
             crate::sexp::context::ctxt_flags::CTXT_FUNCTION
                 | crate::sexp::context::ctxt_flags::CTXT_BROWSER,

@@ -86,6 +86,7 @@ pub struct RCNTXT {
     pub protectCount: usize,
     /// on.exit expression list (conexit in R)
     pub conexit: SEXP,
+    pub onexit_active: i32,
     /// cleanup function pointer (cend in R)
     pub cend: Option<unsafe extern "C" fn(*mut std::os::raw::c_void)>,
     /// cleanup function data (cenddata in R)
@@ -119,6 +120,7 @@ impl RCNTXT {
             returnValue: ptr::null_mut(),
             protectCount: 0,
             conexit: ptr::null_mut(),
+            onexit_active: 0,
             cend: None,
             cenddata: ptr::null_mut(),
             srcref: ptr::null_mut(),
