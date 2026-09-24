@@ -454,28 +454,32 @@ fn qr_solve(x: &Array, y: &Array, coef: &mut Array, ier: &mut i32) {
     let mut yt = make_zero_matrix(y.ncol(), y.nrow());
     transpose_matrix(y, &mut yt);
 
-    let mut coeft = vec![0.0f64; (coef.ncol() * coef.nrow()) as usize];
-    let mut bcoef = vec![0.0f64; coeft.len()];
-
-    let mut info: c_int = 0;
-    unsafe {
-        crate::appl::linpack_qr::dqrsl(
-            xt.vec.as_mut_ptr(),
-            n,
-            n,
-            rank,
-            qraux.as_ptr(),
-            yt.vec.as_ptr(),
-            std::ptr::null_mut(),
-            coeft.as_mut_ptr(),
-            bcoef.as_mut_ptr(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            100,
-            &mut info,
-        );
+    let k = rank as usize;
+    let nrhs = y.ncol();
+    let mut coeft = vec![0.0f64; k * nrhs];
+    let mut qty = vec![0.0f64; n as usize];
+    let mut b = vec![0.0f64; k];
+    for col in 0..nrhs {
+        let mut info: c_int = 0;
+        unsafe {
+            crate::appl::linpack_qr::dqrsl(
+                xt.vec.as_mut_ptr(),
+                n,
+                n,
+                rank,
+                qraux.as_ptr(),
+                yt.vec.as_ptr().add(col * n as usize),
+                std::ptr::null_mut(),
+                qty.as_mut_ptr(),
+                b.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                100,
+                &mut info,
+            );
+        }
+        coeft[col * k..(col + 1) * k].copy_from_slice(&b);
     }
-    coeft.copy_from_slice(&bcoef);
 
     // Copy coeft back (column-major) and transpose to get coef (row-major)
     let mut coeft_arr = make_zero_matrix(coef.ncol(), coef.nrow());
