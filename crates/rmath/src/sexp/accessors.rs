@@ -813,12 +813,122 @@ pub unsafe fn CHAR_RW(x: SEXP) -> *mut c_char {
 // String/list element accessors
 // ---------------------------------------------------------------------------
 
+/// Why [`element_slot_decision`] refused a string or list element access.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ElementSlotRejectKind {
+    BadTag,
+    BadIndex,
+}
+
+/// Tag or index/buffer failure from [`element_slot_decision`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ElementSlotReject {
+    pub kind: ElementSlotRejectKind,
+}
+
+/// Pure accept/reject decision shared by [`checked_element_slot`].
+///
+/// `Ok(())` means the tag is legal for `string_only`, the index is in range,
+/// and the data pointer is non-null. A bad tag wins when the index is also
+/// illegal, matching the historical check order. This does not prove that
+/// `length` describes the real allocation.
+pub(crate) fn element_slot_decision(
+    tag: SEXPTYPE,
+    string_only: bool,
+    length: R_xlen_t,
+    index: R_xlen_t,
+    data_is_null: bool,
+) -> Result<(), ElementSlotReject> {
+    let valid_tag = if string_only {
+        tag == SEXPTYPE::STRSXP
+    } else {
+        matches!(
+            tag,
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::STRSXP | SEXPTYPE::BCODESXP
+        )
+    };
+    if !valid_tag {
+        return Err(ElementSlotReject {
+            kind: ElementSlotRejectKind::BadTag,
+        });
+    }
+    if index < 0 || index >= length || data_is_null {
+        return Err(ElementSlotReject {
+            kind: ElementSlotRejectKind::BadIndex,
+        });
+    }
+    Ok(())
+}
+
 /// Validate the tag and index before forming a pointer into a SEXP array.
 /// The caller must supply a live, initialized object (as for every raw accessor).
 #[inline]
 unsafe fn checked_element_slot(x: SEXP, i: R_xlen_t, string_only: bool) -> *mut SEXP {
     unsafe {
         let tag = (*x).sxpinfo.type_of();
+        let length = (*x).vecsxp_length();
+        let data = DATAPTR(x).cast::<SEXP>();
+        if let Err(reject) = element_slot_decision(tag, string_only, length, i, data.is_null()) {
+            match reject.kind {
+                ElementSlotRejectKind::BadTag => {
+                    std::panic::panic_any(super::context::RError {
+                        message: format!(
+                            "invalid {} element access for type {}",
+                            if string_only { "string" } else { "vector" },
+                            TYPEOF(x)
+                        ),
+                    });
+                }
+                ElementSlotRejectKind::BadIndex => {
+                    std::panic::panic_any(super::context::RError {
+                        message: format!(
+                            "invalid vector buffer/index: type {} length {} index {}",
+                            TYPEOF(x),
+                            length,
+                            i
+                        ),
+                    });
+                }
+            }
+        }
+        data.add(i as usize)
+    }
+}
+
+#[cfg(test)]
+mod element_slot_decision_tests {
+    use super::{ElementSlotRejectKind, element_slot_decision};
+    use crate::sexp::ffi::SEXPTYPE;
+
+    #[test]
+    fn extremes_follow_the_index_rule() {
+        assert!(
+            element_slot_decision(SEXPTYPE::STRSXP, true, i64::MAX, i64::MAX - 1, false).is_ok()
+        );
+        let low = element_slot_decision(SEXPTYPE::STRSXP, true, i64::MAX, i64::MIN, false)
+            .unwrap_err();
+        assert_eq!(low.kind, ElementSlotRejectKind::BadIndex);
+        let empty = element_slot_decision(SEXPTYPE::STRSXP, true, i64::MIN, 0, false).unwrap_err();
+        assert_eq!(empty.kind, ElementSlotRejectKind::BadIndex);
+    }
+}
+
+#[cfg(kani)]
+mod element_slot_kani {
+    use super::{ElementSlotRejectKind, element_slot_decision};
+    use crate::sexp::ffi::SEXPTYPE;
+
+    #[kani::proof]
+    fn element_slot_decision_complete() {
+        let raw: i32 = kani::any();
+        kani::assume((0..=32).contains(&raw));
+        let tag = SEXPTYPE(raw);
+        let string_only: bool = kani::any();
+        let length: i64 = kani::any();
+        let index: i64 = kani::any();
+        kani::assume((-2..=4).contains(&length) && (-2..=4).contains(&index));
+        let data_is_null: bool = kani::any();
+        let decision = element_slot_decision(tag, string_only, length, index, data_is_null);
         let valid_tag = if string_only {
             tag == SEXPTYPE::STRSXP
         } else {
@@ -827,28 +937,27 @@ unsafe fn checked_element_slot(x: SEXP, i: R_xlen_t, string_only: bool) -> *mut 
                 SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::STRSXP | SEXPTYPE::BCODESXP
             )
         };
-        if !valid_tag {
-            std::panic::panic_any(super::context::RError {
-                message: format!(
-                    "invalid {} element access for type {}",
-                    if string_only { "string" } else { "vector" },
-                    TYPEOF(x)
-                ),
-            });
+        match decision {
+            Ok(()) => {
+                assert!(valid_tag);
+                assert!(index >= 0 && index < length && !data_is_null);
+            }
+            Err(reject) if !valid_tag => {
+                assert_eq!(reject.kind, ElementSlotRejectKind::BadTag);
+            }
+            Err(reject) => {
+                assert_eq!(reject.kind, ElementSlotRejectKind::BadIndex);
+                assert!(index < 0 || index >= length || data_is_null);
+            }
         }
-        let length = (*x).vecsxp_length();
-        let data = DATAPTR(x).cast::<SEXP>();
-        if i < 0 || i >= length || data.is_null() {
-            std::panic::panic_any(super::context::RError {
-                message: format!(
-                    "invalid vector buffer/index: type {} length {} index {}",
-                    TYPEOF(x),
-                    length,
-                    i
-                ),
-            });
-        }
-        data.add(i as usize)
+        kani::cover(decision.is_ok() && tag == SEXPTYPE::STRSXP && string_only, "reachable");
+        kani::cover(decision.is_ok() && tag == SEXPTYPE::VECSXP && !string_only, "reachable");
+        kani::cover(decision.is_ok() && tag == SEXPTYPE::BCODESXP && !string_only, "reachable");
+        kani::cover(!string_only && tag == SEXPTYPE::BCODESXP, "reachable");
+        kani::cover(string_only && tag == SEXPTYPE::BCODESXP && decision.is_err(), "reachable");
+        kani::cover(index == -1 && decision.is_err(), "reachable");
+        kani::cover(data_is_null && decision.is_err(), "reachable");
+        kani::cover(tag == SEXPTYPE::INTSXP && decision.is_err(), "reachable");
     }
 }
 
@@ -924,6 +1033,11 @@ pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
 
 /// Get the i-th integer value.
 /// GNU `INTEGER_ELT` shares storage with `LGLSXP`.
+///
+/// This helper does not check the index, and the type test is a
+/// `debug_assert` in release builds. Callers must already hold a legal
+/// `INTSXP` or `LGLSXP` index. Checked list and string access goes through
+/// `checked_element_slot`. The safe object path is `Sexp::try_integer_elt`.
 pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
         if !is_valid_sexp_ptr(x) {

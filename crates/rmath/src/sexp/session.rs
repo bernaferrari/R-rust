@@ -362,7 +362,7 @@ struct ProtectScope {
     instance: usize,
     /// Legacy protection stack depth at scope entry.
     legacy_depth: usize,
-    /// Root-table entry depth at scope entry.
+    /// `RootTable::checkpoint()` generation at scope entry, not a slot count.
     root_depth: u64,
 }
 

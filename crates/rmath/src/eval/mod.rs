@@ -11,6 +11,7 @@
 //! - Method dispatch
 
 pub(crate) mod apply;
+pub(crate) mod argmatch;
 pub(crate) mod arithmetic;
 pub(crate) mod assignment;
 pub(crate) mod attrib_core;

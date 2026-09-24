@@ -55,3 +55,6 @@ libc = "0.2"
 [[bench]]
 name = "bench_eval"
 harness = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

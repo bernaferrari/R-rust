@@ -64,23 +64,29 @@ README's known-gaps ledger.
 The port of R's `PROTECT`/`UNPROTECT` mechanism, owned by the active
 `RInstance`:
 
-- **Indexed and typed.** Alongside the count-based
-  `protect_sexp`/`ProtectGuard`, `protect_sexp_with_index` returns an
-  `IndexedProtectGuard` over a typed `ProtectionSlot` — the shape of
-  upstream's `PROTECT_WITH_INDEX`/`REPROTECT` pair. Guards are
+- **Two storages.** `LegacyProtectionStack` is the count-based LIFO
+  stack behind `Rf_protect` / `Rf_unprotect`. `RootTable` is the
+  generational table behind Rust guards: stable slot indexes, a free
+  list, and a generation on every claim. Legacy `UNPROTECT` never
+  truncates root-table slots.
+- **Arbitrary-order root release.** Releasing a root tombstones that
+  slot and recycles its index. A stale `(index, generation)` handle is
+  a no-op, so it cannot evict the current occupant. Guards are
   owner-bound: each remembers the `RInstance` it was created against
-  (stored as an address with exposed provenance) and unprotects against
-  that instance even if the ambient current instance has switched.
-- **Generation-aware rooting.** A protected handle is a GC root: the
-  generational collector's root scan (`with_protected_objects`) reads
-  the protect stack, and heap edges into moved values go through the
-  remembered-set write barriers in `sexp/gengc.rs`.
-- **LIFO drop-order contract.** The stack is a plain `Vec`; releasing a
-  slot (`Vec::remove`) shifts later indices, so guards must drop in
-  reverse creation order — the natural order for RAII scopes. A
-  generation-based handle table that pins slots permanently and removes
-  the LIFO constraint is roadmap; until then the stack semantics stay
-  as upstream R's.
+  and unprotects against that instance even if the ambient current
+  instance has switched.
+- **Scope restore is a generation checkpoint.** `ProtectScope` saves
+  `RootTable::checkpoint()` and later calls `restore`. Managed roots
+  (safe RAII guards) survive. Unmanaged raw `protect` roots allocated
+  since the checkpoint are released. `RootTable::truncate` is a
+  separate index cut and is not what scope exit uses.
+- **Generation exhaustion is session-fatal and transactional.** The
+  counter uses `checked_add`. If it cannot advance, `claim` and
+  `release` panic with `root generation exhausted` before writing
+  entries, generations, the free list, or managed identities.
+- **The collector does not move live objects.** Root scans read both
+  storages. Old-to-young edges go through the remembered-set write
+  barriers in `sexp/gengc.rs`.
 
 ### `RootedSexp`: RAII rooting with a write barrier
 

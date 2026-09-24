@@ -253,14 +253,23 @@ pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
 /// This validates framing and version/opcode identity, while operand meaning
 /// (for example, whether a constant index is in range) remains a later
 /// compiler/interpreter concern.
-pub fn validate_gnu_bytecode_stream(code: &[c_int]) -> Result<(), String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GnuFrameReject {
+    Empty,
+    Version { version: c_int },
+    UnknownOpcode { opcode: c_int, offset: usize },
+    RangeOverflow { opcode: c_int },
+    Truncated { opcode: c_int, offset: usize, width: usize },
+}
+
+/// Framing decision without formatting. [`validate_gnu_bytecode_stream`] maps
+/// each variant to the historical error string.
+pub(crate) fn gnu_frame_decision(code: &[c_int]) -> Result<(), GnuFrameReject> {
     let Some(&version) = code.first() else {
-        return Err("GNU R bytecode stream is empty".to_string());
+        return Err(GnuFrameReject::Empty);
     };
     if !(GNU_BC_MIN_VERSION..=GNU_BC_MAX_VERSION).contains(&version) {
-        return Err(format!(
-            "BCMISMATCH: unsupported GNU R bytecode version {version} (supported {GNU_BC_MIN_VERSION}..={GNU_BC_MAX_VERSION})"
-        ));
+        return Err(GnuFrameReject::Version { version });
     }
 
     let mut pc = 1usize;
@@ -269,22 +278,119 @@ pub fn validate_gnu_bytecode_stream(code: &[c_int]) -> Result<(), String> {
         let opcode = code[pc];
         pc += 1;
         let Some(&width) = GNU_BC_OPERAND_WIDTHS.get(opcode as usize) else {
-            return Err(format!(
-                "BCMISMATCH: unknown GNU R bytecode opcode {opcode} at stream offset {opcode_position}"
-            ));
+            return Err(GnuFrameReject::UnknownOpcode {
+                opcode,
+                offset: opcode_position,
+            });
         };
         let width = width as usize;
-        let end = pc
-            .checked_add(width)
-            .ok_or_else(|| format!("GNU R bytecode operand range overflows at opcode {opcode}"))?;
+        let Some(end) = pc.checked_add(width) else {
+            return Err(GnuFrameReject::RangeOverflow { opcode });
+        };
         if end > code.len() {
-            return Err(format!(
-                "truncated GNU R bytecode opcode {opcode} at stream offset {opcode_position}: expected {width} operand(s)"
-            ));
+            return Err(GnuFrameReject::Truncated {
+                opcode,
+                offset: opcode_position,
+                width,
+            });
         }
         pc = end;
     }
     Ok(())
+}
+
+pub fn validate_gnu_bytecode_stream(code: &[c_int]) -> Result<(), String> {
+    gnu_frame_decision(code).map_err(|reject| match reject {
+        GnuFrameReject::Empty => "GNU R bytecode stream is empty".to_string(),
+        GnuFrameReject::Version { version } => format!(
+            "BCMISMATCH: unsupported GNU R bytecode version {version} (supported {GNU_BC_MIN_VERSION}..={GNU_BC_MAX_VERSION})"
+        ),
+        GnuFrameReject::UnknownOpcode { opcode, offset } => format!(
+            "BCMISMATCH: unknown GNU R bytecode opcode {opcode} at stream offset {offset}"
+        ),
+        GnuFrameReject::RangeOverflow { opcode } => {
+            format!("GNU R bytecode operand range overflows at opcode {opcode}")
+        }
+        GnuFrameReject::Truncated { opcode, offset, width } => format!(
+            "truncated GNU R bytecode opcode {opcode} at stream offset {offset}: expected {width} operand(s)"
+        ),
+    })
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::{
+        GNU_BC_MAX_VERSION, GNU_BC_MIN_VERSION, GNU_BC_OPCODE_COUNT, GNU_BC_OPERAND_WIDTHS,
+        gnu_frame_decision,
+    };
+
+    /// Independent framing walk. A mutant in the production validator must
+    /// disagree with this check. To see that, invert `end > code.len()` in
+    /// `validate_gnu_bytecode_stream` and rerun this harness; Kani reports
+    /// a failure. That mutant is not part of the default build.
+    fn independent_frame_ok(code: &[i32]) -> bool {
+        let Some(&version) = code.first() else {
+            return false;
+        };
+        if !(GNU_BC_MIN_VERSION..=GNU_BC_MAX_VERSION).contains(&version) {
+            return false;
+        }
+        let mut seen = [false; 12];
+        seen[0] = true;
+        let mut pc = 1usize;
+        while pc < code.len() {
+            let opcode = code[pc];
+            let Some(&width) = GNU_BC_OPERAND_WIDTHS.get(opcode as usize) else {
+                return false;
+            };
+            let width = width as usize;
+            let Some(end) = (pc + 1).checked_add(width) else {
+                return false;
+            };
+            if end > code.len() {
+                return false;
+            }
+            for index in pc..end {
+                if seen[index] {
+                    return false;
+                }
+                seen[index] = true;
+            }
+            pc = end;
+        }
+        pc == code.len() && seen[..code.len()].iter().all(|slot| *slot)
+    }
+
+    #[kani::proof]
+    fn kani_trivial_ok() {
+        assert_eq!(1 + 1, 2);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(13)]
+    fn validate_gnu_stream_partition() {
+        let mut raw = [0i32; 12];
+        let len: usize = kani::any();
+        kani::assume(len <= 12);
+        for slot in &mut raw {
+            *slot = kani::any();
+        }
+        let code = &raw[..len];
+        let result = gnu_frame_decision(code);
+        assert_eq!(result.is_ok(), independent_frame_ok(code));
+        if let Ok(()) = result {
+            assert!(independent_frame_ok(code));
+        }
+        let unknown = len >= 2
+            && code[0] == GNU_BC_MAX_VERSION
+            && (code[1] < 0 || code[1] as usize >= GNU_BC_OPCODE_COUNT);
+        if unknown {
+            assert!(result.is_err());
+        }
+        kani::cover(code.len() >= 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 0 && result.is_ok(), "reachable");
+        kani::cover(code.len() == 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 2 && result.is_err(), "reachable");
+        kani::cover(code.is_empty() && result.is_err(), "reachable");
+    }
 }
 
 /// Validate the pooled constant-return form of the bounded GNU adapter.

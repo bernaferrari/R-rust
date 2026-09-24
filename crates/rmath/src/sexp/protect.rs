@@ -223,7 +223,10 @@ pub(crate) struct RootTable {
     next_generation: Cell<u64>,
     /// Vacant entry indices available for reuse.
     free_list: RefCell<Vec<usize>>,
-    managed: RefCell<std::collections::HashSet<(usize, u64)>>,
+    /// Managed `(index, generation)` identities. A `Vec` keeps this
+    /// deterministic: `HashSet` would seed a process RNG on first insert,
+    /// which the verifier cannot model and the table does not need.
+    managed: RefCell<Vec<(usize, u64)>>,
 }
 
 impl RootTable {
@@ -241,9 +244,29 @@ impl RootTable {
         self.next_generation.get()
     }
 
+    fn managed_contains(&self, index: usize, generation: u64) -> bool {
+        self.managed
+            .borrow()
+            .iter()
+            .any(|&pair| pair == (index, generation))
+    }
+
+    fn managed_insert(&self, index: usize, generation: u64) {
+        let mut managed = self.managed.borrow_mut();
+        if !managed.contains(&(index, generation)) {
+            managed.push((index, generation));
+        }
+    }
+
+    fn managed_remove(&self, index: usize, generation: u64) {
+        self.managed
+            .borrow_mut()
+            .retain(|pair| *pair != (index, generation));
+    }
+
     fn retain_managed(&self, slot: ProtectionSlot) {
         if let Some(index) = slot.index {
-            self.managed.borrow_mut().insert((index, slot.generation));
+            self.managed_insert(index, slot.generation);
         }
     }
 
@@ -256,7 +279,7 @@ impl RootTable {
             .iter()
             .copied()
             .enumerate()
-            .filter(|&(i, g)| g >= checkpoint && !self.managed.borrow().contains(&(i, g)))
+            .filter(|&(i, g)| g >= checkpoint && !self.managed_contains(i, g))
             .map(|(i, g)| ProtectionSlot::from_stack_index(i, g))
             .collect();
         for slot in slots {
@@ -264,18 +287,23 @@ impl RootTable {
         }
     }
 
-    /// Allocate the next slot generation. Monotonic per table, so every
-    /// claim — including one that reuses a released index — is
-    /// distinguishable from every slot handle captured earlier.
-    fn next_gen(&self) -> u64 {
-        // P2: strictly-local Cell access; no ambient write intervenes.
+    /// Reserve the next slot generation before any other table write.
+    ///
+    /// On `Err` the counter is unchanged. Callers panic with
+    /// `root generation exhausted` before mutating entries, generations,
+    /// the free list, or managed identities. A later allocation failure
+    /// may skip the reserved value; that is preferable to publishing an
+    /// entry under the previous generation.
+    pub(crate) fn try_reserve_generation(&self) -> Result<u64, ()> {
         let generation = self.next_generation.get();
-        self.next_generation.set(
-            generation
-                .checked_add(1)
-                .expect("root generation exhausted"),
-        );
-        generation
+        let next = generation.checked_add(1).ok_or(())?;
+        self.next_generation.set(next);
+        Ok(generation)
+    }
+
+    #[cfg(any(test, kani))]
+    pub(crate) fn set_next_generation_for_test(&self, value: u64) {
+        self.next_generation.set(value);
     }
 
     /// Claim a slot for `s`, reusing a tombstoned index when one is free.
@@ -285,12 +313,16 @@ impl RootTable {
         // P2: strictly-local RefCell access. `reserve_slot_or_fail` may
         // allocate (try_reserve) and panic, but neither reenters the
         // interpreter nor touches the instance through another raw path.
+        // The generation is reserved first so exhaustion panics before
+        // any entry, free-list, or generation-log write.
+        let generation = self
+            .try_reserve_generation()
+            .expect("root generation exhausted");
         if let Some(index) = self.free_list.borrow_mut().pop() {
             let mut entries = self.entries.borrow_mut();
             let mut generations = self.generations.borrow_mut();
             if index < entries.len() && index < generations.len() {
                 entries[index] = s;
-                let generation = self.next_gen();
                 generations[index] = generation;
                 return (index, generation);
             }
@@ -301,7 +333,6 @@ impl RootTable {
         reserve_slot_or_fail(&mut entries, api);
         entries.push(s);
         let index = entries.len() - 1;
-        let generation = self.next_gen();
         let mut generations = self.generations.borrow_mut();
         debug_assert_eq!(
             generations.len(),
@@ -327,6 +358,21 @@ impl RootTable {
             return;
         };
         // P2: strictly-local RefCell access; no ambient write intervenes.
+        {
+            let entries = self.entries.borrow();
+            if index >= entries.len() {
+                return;
+            }
+            let generations = self.generations.borrow();
+            if index >= generations.len() || generations[index] != slot.generation {
+                return;
+            }
+        }
+        // Stale releases return above and must not consume a generation.
+        // Exhaustion panics before the occupant or managed set changes.
+        let generation = self
+            .try_reserve_generation()
+            .expect("root generation exhausted");
         let mut entries = self.entries.borrow_mut();
         if index >= entries.len() {
             return;
@@ -335,9 +381,9 @@ impl RootTable {
         if index >= generations.len() || generations[index] != slot.generation {
             return;
         }
-        self.managed.borrow_mut().remove(&(index, slot.generation));
+        self.managed_remove(index, slot.generation);
         entries[index] = std::ptr::null_mut();
-        generations[index] = self.next_gen();
+        generations[index] = generation;
         let mut free = self.free_list.borrow_mut();
         if !free.contains(&index) {
             free.push(index);
@@ -2260,5 +2306,122 @@ mod tests {
         session.gc();
         assert!(!root.is_stale());
         assert!(root.get().unwrap().is_environment());
+    }
+
+    fn token(n: usize) -> SEXP {
+        std::ptr::without_provenance_mut(n.max(1))
+    }
+
+    #[test]
+    fn claim_at_generation_max_panics_without_mutating() {
+        let table = RootTable::new();
+        let (index, generation) = table.claim(token(8), "test");
+        table.set_next_generation_for_test(u64::MAX);
+        let before_len = table.len();
+        let before_gen = table.generation_at(ProtectionSlot::from_stack_index(index, generation));
+        let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            table.claim(token(9), "test");
+        }));
+        let payload = err.expect_err("generation exhaustion must panic");
+        let message = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .unwrap_or("");
+        assert!(message.contains("root generation exhausted"), "{message}");
+        assert_eq!(table.len(), before_len);
+        assert_eq!(
+            table.generation_at(ProtectionSlot::from_stack_index(index, generation)),
+            before_gen
+        );
+        assert!(table.free_list.borrow().is_empty());
+    }
+
+    #[test]
+    fn release_at_generation_max_panics_without_mutating() {
+        let table = RootTable::new();
+        let (index, generation) = table.claim(token(8), "test");
+        let slot = ProtectionSlot::from_stack_index(index, generation);
+        table.set_next_generation_for_test(u64::MAX);
+        let before = table.with_entries(|entries| entries.to_vec());
+        let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            table.release(slot);
+        }));
+        let payload = err.expect_err("generation exhaustion must panic");
+        let message = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .unwrap_or("");
+        assert!(message.contains("root generation exhausted"), "{message}");
+        assert_eq!(table.with_entries(|entries| entries.to_vec()), before);
+        assert_eq!(table.generation_at(slot), Some(generation));
+        assert!(table.free_list.borrow().is_empty());
+    }
+}
+
+#[cfg(kani)]
+mod root_table_kani {
+    use super::{LegacyProtectionStack, ProtectionSlot, RootTable};
+
+    fn token(n: usize) -> super::SEXP {
+        std::ptr::without_provenance_mut(n.max(1))
+    }
+
+    #[kani::proof]
+    fn root_table_exhaustion_is_atomic() {
+        let table = RootTable::new();
+        table.set_next_generation_for_test(u64::MAX);
+        assert!(table.try_reserve_generation().is_err());
+        assert_eq!(table.next_generation.get(), u64::MAX);
+        assert_eq!(table.len(), 0);
+        assert!(table.free_list.borrow().is_empty());
+    }
+
+    /// A full symbolic operation trace is too large for the solver. These
+    /// harnesses each cover one transition the trace was meant to include.
+    #[kani::proof]
+    #[kani::unwind(3)]
+    fn root_table_ops_preserve_invariant() {
+        let table = RootTable::new();
+        let (index, generation) = table.claim(token(1), "kani");
+        let live = ProtectionSlot::from_stack_index(index, generation);
+        table.release(live);
+        let (reused, next_gen) = table.claim(token(2), "kani");
+        assert_eq!(reused, index);
+        let stale = ProtectionSlot::from_stack_index(index, generation);
+        table.release(stale);
+        assert_eq!(table.generation_at(ProtectionSlot::from_stack_index(reused, next_gen)), Some(next_gen));
+        assert_eq!(table.entries.borrow().len(), table.generations.borrow().len());
+        kani::cover(true, "reuse");
+        kani::cover(true, "stale release");
+    }
+
+    #[kani::proof]
+    #[kani::unwind(3)]
+    fn root_table_restore_keeps_managed() {
+        let table = RootTable::new();
+        let checkpoint = table.checkpoint();
+        let (raw_index, raw_gen) = table.claim(token(1), "kani");
+        let (kept_index, kept_gen) = table.claim(token(2), "kani");
+        let kept = ProtectionSlot::from_stack_index(kept_index, kept_gen);
+        table.retain_managed(kept);
+        table.restore(checkpoint);
+        assert_ne!(table.generation_at(ProtectionSlot::from_stack_index(raw_index, raw_gen)), Some(raw_gen));
+        assert_eq!(table.generation_at(kept), Some(kept_gen));
+        kani::cover(true, "managed survived");
+        kani::cover(true, "unmanaged cleared");
+    }
+
+    #[kani::proof]
+    #[kani::unwind(3)]
+    fn root_table_legacy_stack_is_disjoint() {
+        let table = RootTable::new();
+        let legacy = LegacyProtectionStack::new();
+        let _ = table.claim(token(1), "kani");
+        let before_len = table.len();
+        let before_gen = table.next_generation.get();
+        legacy.push(token(3), "kani");
+        legacy.pop_count(1);
+        assert_eq!(table.len(), before_len);
+        assert_eq!(table.next_generation.get(), before_gen);
     }
 }

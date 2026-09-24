@@ -292,6 +292,93 @@ pub struct BinaryReader<'a> {
     persist_hook_data: SEXP,
 }
 
+/// Why a declared vector length is not admitted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum VectorLengthReject {
+    Negative,
+    ZeroWidth,
+    Truncated,
+}
+
+/// Admit a declared vector length only when the remaining bytes can hold it.
+///
+/// `element_bytes == 0` in the binary body is [`VectorLengthReject::ZeroWidth`],
+/// not a division. ASCII bodies use a minimum of one byte per declared element.
+pub(crate) fn vector_length_decision(
+    len: i32,
+    remaining: usize,
+    element_bytes: usize,
+    ascii: bool,
+) -> Result<i32, VectorLengthReject> {
+    let count = usize::try_from(len).map_err(|_| VectorLengthReject::Negative)?;
+    let minimum = if ascii { 1 } else { element_bytes };
+    if minimum == 0 {
+        return Err(VectorLengthReject::ZeroWidth);
+    }
+    if count > remaining / minimum {
+        return Err(VectorLengthReject::Truncated);
+    }
+    Ok(len)
+}
+
+pub(crate) fn vector_length_fits(
+    len: i32,
+    remaining: usize,
+    element_bytes: usize,
+    ascii: bool,
+) -> Result<i32, String> {
+    vector_length_decision(len, remaining, element_bytes, ascii).map_err(|reject| match reject {
+        VectorLengthReject::Negative => "read error: negative vector length".to_string(),
+        VectorLengthReject::ZeroWidth => "read error: zero vector element width".to_string(),
+        VectorLengthReject::Truncated => "read error: truncated vector payload".to_string(),
+    })
+}
+
+#[cfg(test)]
+mod vector_length_fits_tests {
+    use super::vector_length_fits;
+
+    #[test]
+    fn zero_element_width_is_an_error() {
+        let err = vector_length_fits(1, 8, 0, false).unwrap_err();
+        assert!(err.contains("zero vector element width"));
+    }
+
+    #[test]
+    fn extremes_match_the_admission_rule() {
+        assert!(vector_length_fits(i32::MIN, 0, 1, false).unwrap_err().contains("negative"));
+        assert_eq!(vector_length_fits(0, 0, 4, false).unwrap(), 0);
+        assert!(vector_length_fits(i32::MAX, 4, 4, false).is_err());
+    }
+}
+
+#[cfg(kani)]
+mod vector_length_kani {
+    use super::{VectorLengthReject, vector_length_decision};
+
+    #[kani::proof]
+    fn vector_length_fits_rejects() {
+        let len: i32 = kani::any();
+        let remaining: usize = kani::any();
+        kani::assume(remaining <= 64);
+        let element_bytes: usize = kani::any();
+        kani::assume(matches!(element_bytes, 0 | 1 | 4 | 8 | 16));
+        let ascii: bool = kani::any();
+        let result = vector_length_decision(len, remaining, element_bytes, ascii);
+        let minimum = if ascii { 1 } else { element_bytes };
+        if len < 0 {
+            assert_eq!(result, Err(VectorLengthReject::Negative));
+        } else if minimum == 0 {
+            assert_eq!(result, Err(VectorLengthReject::ZeroWidth));
+        } else {
+            let count = len as usize;
+            assert_eq!(result.is_ok(), count <= remaining / minimum);
+        }
+        kani::cover(result.is_ok(), "accepted");
+        kani::cover(result.is_err() && len >= 0, "rejected nonnegative");
+    }
+}
+
 impl<'a> BinaryReader<'a> {
     pub fn new(data: &'a [u8]) -> Self {
         BinaryReader {
@@ -409,17 +496,7 @@ impl<'a> BinaryReader<'a> {
     /// encode. Check this before allocating its R payload, even without a budget.
     fn read_vector_length(&mut self, binary_element_bytes: usize) -> Result<i32, String> {
         let len = self.read_i32()?;
-        let count =
-            usize::try_from(len).map_err(|_| "read error: negative vector length".to_string())?;
-        let minimum = if self.ascii_body {
-            1
-        } else {
-            binary_element_bytes
-        };
-        if count > self.remaining() / minimum {
-            return Err("read error: truncated vector payload".into());
-        }
-        Ok(len)
+        vector_length_fits(len, self.remaining(), binary_element_bytes, self.ascii_body)
     }
 
     pub fn read_string_bytes(&mut self, len: usize) -> Result<Vec<u8>, String> {
