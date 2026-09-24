@@ -590,7 +590,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 }
             }
             return 1;
-        } else if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+        } else if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
             // LISTSXP/LANGSXP: recursive on CAR, CDR, TAG.
             // Normalize null CDR/TAG to R_NilValue so legacy null-terminated
             // chains compare equal to GNU-style Nil-terminated ones.
@@ -616,7 +616,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 if TYPEOF(nx) != TYPEOF(ny) {
                     return 0;
                 }
-                if TYPEOF(nx) != SEXPTYPE::LISTSXP && TYPEOF(nx) != SEXPTYPE::LANGSXP {
+                if TYPEOF(nx) != SEXPTYPE::LISTSXP && TYPEOF(nx) != SEXPTYPE::LANGSXP && TYPEOF(nx) != SEXPTYPE::DOTSXP {
                     return R_compute_identical(nx, ny, flags);
                 }
                 lx = nx;
@@ -648,18 +648,9 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             // ENVSXP/SYMSXP: pointer equality only (already checked x != y)
             return 0;
         } else if t == SEXPTYPE::PROMSXP {
-            // PROMSXP: compare value, expression, environment
-            let px = (*x).data.promsxp.value;
-            let py = (*y).data.promsxp.value;
             let ex = (*x).data.promsxp.expr;
             let ey = (*y).data.promsxp.expr;
-            let enx = (*x).data.promsxp.env;
-            let eny = (*y).data.promsxp.env;
-            return if px == py && ex == ey && enx == eny {
-                1
-            } else {
-                0
-            };
+            return R_compute_identical(ex, ey, flags);
         } else if t == SEXPTYPE::OBJSXP {
             // OBJSXP: attributes already tested, so all slots identical
             // (S4 and bare objects alike, e.g. .OBJSXP()-constructed ones).
