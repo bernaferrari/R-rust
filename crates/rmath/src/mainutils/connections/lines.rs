@@ -71,8 +71,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         if TYPEOF(scon) == SEXPTYPE::STRSXP {
             let path = check_string_arg(scon, "con");
-            let contents = crate::mainutils::browser_files::read_bytes_or_host(&path)
+            let raw = crate::mainutils::browser_files::read_bytes_or_host(&path)
                 .unwrap_or_else(|e| r_error(&format!("cannot open file '{}': {}", path, e)));
+            let contents = decompress_known(&raw);
             let lines = nul_normalized_lines(&contents, n, skip_nul);
             if lines.len() < n && _ok == 0 {
                 r_error("too few lines read in readLines");
@@ -504,4 +505,28 @@ fn read_crlf_line<R: BufRead>(reader: &mut R) -> io::Result<Option<String>> {
             }
         }
     }
+}
+
+fn decompress_known(raw: &[u8]) -> Vec<u8> {
+    use std::io::Read;
+    if raw.len() >= 2 && raw[0] == 0x1f && raw[1] == 0x8b {
+        let mut out = Vec::new();
+        if GzDecoder::new(raw).read_to_end(&mut out).is_ok() {
+            return out;
+        }
+    }
+    if raw.len() >= 3 && raw.starts_with(b"BZh") {
+        let mut out = Vec::new();
+        if BzDecoder::new(raw).read_to_end(&mut out).is_ok() {
+            return out;
+        }
+    }
+    if raw.len() >= 6 && raw.starts_with(&[0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]) {
+        let mut input = std::io::Cursor::new(raw);
+        let mut out = Vec::new();
+        if lzma_rs::xz_decompress(&mut input, &mut out).is_ok() {
+            return out;
+        }
+    }
+    raw.to_vec()
 }
