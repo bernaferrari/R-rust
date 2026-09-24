@@ -194,8 +194,20 @@ pub unsafe fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> S
         let _names_guard = protect(names);
         let blank = Rf_mkChar(c"".as_ptr());
 
-        let mut i: R_xlen_t = 0;
+        let mut any_tag = false;
         let mut cell = dots;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null() && tag != R_NilValue() {
+                any_tag = true;
+            }
+            cell = CDR(cell);
+        }
+        if !any_tag {
+            return R_NilValue();
+        }
+        let mut i: R_xlen_t = 0;
+        cell = dots;
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if tag.is_null() || tag == R_NilValue() {
@@ -207,7 +219,6 @@ pub unsafe fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> S
             i += 1;
             cell = CDR(cell);
         }
-
         names
     }
 }
