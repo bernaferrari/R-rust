@@ -3533,9 +3533,16 @@ pub unsafe fn do_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 unsafe fn string_arg_is_na(arg: SEXP) -> bool {
     unsafe {
-        TYPEOF(arg) == SEXPTYPE::STRSXP
-            && XLENGTH(arg) > 0
-            && STRING_ELT(arg, 0) == crate::sexp::globals::R_NaString()
+        if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
+            return false;
+        }
+        if TYPEOF(arg) == SEXPTYPE::STRSXP {
+            return STRING_ELT(arg, 0) == crate::sexp::globals::R_NaString();
+        }
+        if TYPEOF(arg) == SEXPTYPE::LGLSXP {
+            return *LOGICAL(arg) == crate::sexp::ffi::NA_LOGICAL;
+        }
+        false
     }
 }
 
@@ -3866,6 +3873,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             for i in 0..n {
                 SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
             }
+            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
             return result;
         }
         let replacement_missing = string_arg_is_na(replacement_arg);
