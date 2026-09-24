@@ -193,3 +193,10 @@ pub unsafe fn dpermdist1(x: SEXP) -> SEXP {
         ret
     }
 }
+pub unsafe extern "C-unwind" fn c_dpermdist1(x: SEXP) -> SEXP {
+    unsafe { dpermdist1(x) }
+}
+
+pub unsafe extern "C-unwind" fn c_dpermdist2(x: SEXP, m: SEXP) -> SEXP {
+    unsafe { dpermdist2(x, m) }
+}

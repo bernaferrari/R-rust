@@ -63,9 +63,13 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         }
         if sa == R_NilValue() || sb == R_NilValue() {
+            let complex = (!sa.is_null() && sa != R_NilValue() && TYPEOF(sa) == SEXPTYPE::CPLXSXP)
+                || (!sb.is_null() && sb != R_NilValue() && TYPEOF(sb) == SEXPTYPE::CPLXSXP);
             let other_real = (!sa.is_null() && sa != R_NilValue() && TYPEOF(sa) == SEXPTYPE::REALSXP)
                 || (!sb.is_null() && sb != R_NilValue() && TYPEOF(sb) == SEXPTYPE::REALSXP);
-            let kind = if op == "/" || op == "^" || other_real {
+            let kind = if complex {
+                SEXPTYPE::CPLXSXP
+            } else if op == "/" || op == "^" || other_real {
                 SEXPTYPE::REALSXP
             } else {
                 SEXPTYPE::INTSXP
