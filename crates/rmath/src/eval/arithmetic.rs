@@ -1190,7 +1190,9 @@ unsafe fn factor_as_character(f: SEXP) -> SEXP {
             } else {
                 let level = STRING_ELT(levels, (code - 1) as i64);
                 if level.is_null() || level == R_NaString() {
-                    Rf_mkChar(c"  NA ".as_ptr())
+                    let sentinel = na_level_sentinel(levels, n_levels);
+                    let c = std::ffi::CString::new(sentinel).unwrap_or_default();
+                    Rf_mkChar(c.as_ptr())
                 } else {
                     level
                 }
@@ -1200,6 +1202,50 @@ unsafe fn factor_as_character(f: SEXP) -> SEXP {
         out
     }
 }
+unsafe fn na_level_sentinel(levels: SEXP, n_levels: i32) -> String {
+    unsafe {
+        let mut sentinel = "  NA ".to_string();
+        loop {
+            let mut taken = false;
+            for i in 0..n_levels {
+                let level = STRING_ELT(levels, i as i64);
+                if level.is_null() || level == R_NaString() {
+                    continue;
+                }
+                if charsxp_to_string(level).as_deref() == Some(sentinel.as_str()) {
+                    taken = true;
+                    break;
+                }
+            }
+            if !taken {
+                return sentinel;
+            }
+            sentinel.push_str(" .");
+        }
+    }
+}
+
+unsafe fn rewritten_level_labels(f: SEXP) -> Vec<String> {
+    unsafe {
+        let levels = getAttrib(f, Rf_install(c"levels".as_ptr()));
+        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            return Vec::new();
+        }
+        let n_levels = LENGTH(levels);
+        let sentinel = na_level_sentinel(levels, n_levels);
+        let mut out = Vec::with_capacity(n_levels as usize);
+        for i in 0..n_levels {
+            let level = STRING_ELT(levels, i as i64);
+            if level.is_null() || level == R_NaString() {
+                out.push(sentinel.clone());
+            } else {
+                out.push(charsxp_to_string(level).unwrap_or_default());
+            }
+        }
+        out
+    }
+}
+
 
 /// Coerce a relop operand to character following the stock ladder; only
 /// logical/integer/real/complex/raw make it (the rest error like stock's
@@ -1288,9 +1334,8 @@ unsafe fn unordered_factor_compare(op: &str, call: SEXP, sa: SEXP, sb: SEXP) -> 
             relop_operand_to_character(sb)
         };
         if a_factor && b_factor {
-            // stock: when both sides convert, the level sets must match
-            let mut la = factor_levels(sa).unwrap_or_default();
-            let mut lb = factor_levels(sb).unwrap_or_default();
+            let mut la = rewritten_level_labels(sa);
+            let mut lb = rewritten_level_labels(sb);
             la.sort();
             lb.sort();
             if la != lb {
