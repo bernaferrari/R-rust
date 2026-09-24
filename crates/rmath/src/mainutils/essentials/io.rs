@@ -663,10 +663,18 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if file_arg.is_null() || file_arg == R_NilValue() || file_arg == R_MissingArg() {
                 scan_error("scan() requires a file path in the Android/headless runtime");
             }
-            if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
+            let filename = if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) == 1 {
+                let idx = *INTEGER(file_arg) as usize;
+                let table = crate::mainutils::connections::get_connection(idx);
+                table[idx]
+                    .as_ref()
+                    .map(|c| c.description.clone())
+                    .unwrap_or_default()
+            } else if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
                 scan_error("scan() currently supports character file paths only");
-            }
-            let filename = elt_to_string(file_arg, 0);
+            } else {
+                elt_to_string(file_arg, 0)
+            };
             if filename.is_empty() {
                 scan_error("scan() cannot read from an interactive console in this runtime");
             }
@@ -713,7 +721,13 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             elt_to_string(quote_arg, 0)
         };
-        let field_cap = if what_type == SEXPTYPE::VECSXP { -1 } else { nmax };
+        let n_arg = named_arg(args, "n");
+        let n_limit = match n_arg {
+            Some(v) if !v.is_null() && v != R_NilValue() => real_or_default(v, -1.0) as i64,
+            _ => -1_i64,
+        };
+        let item_cap = if n_limit >= 0 { n_limit } else { nmax };
+        let field_cap = if what_type == SEXPTYPE::VECSXP { -1 } else { item_cap };
         let values = split_scan_fields(&contents, &sep, &quote, field_cap);
         let n = values.len() as R_xlen_t;
         let quiet = match named_arg(args, "quiet") {
