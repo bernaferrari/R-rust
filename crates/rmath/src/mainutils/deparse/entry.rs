@@ -93,6 +93,15 @@ pub unsafe fn deparse1WithCutoff(
         let _svec_guard = protect(svec);
 
         deparse2(call, svec, &mut local_data);
+        if nlines > 0 && local_data.linenumber > 0 && (local_data.linenumber as i64) < nlines as i64 {
+            let used = local_data.linenumber;
+            let shrunk = Rf_allocVector(SEXPTYPE::STRSXP, used);
+            let _sh = protect(shrunk);
+            for i in 0..used {
+                SET_STRING_ELT(shrunk, i as i64, STRING_ELT(svec, i as i64));
+            }
+            svec = shrunk;
+        }
 
         if abbrev {
             let mut data = [0u8; 14];
