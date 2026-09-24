@@ -13669,9 +13669,9 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
-        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
-        let perl = named_logical_arg(args, "perl").unwrap_or(false);
-        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
+        let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
+        let perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
+        let fixed = logical_arg_by_name_or_position(args, "fixed", 4).unwrap_or(false);
         let n = XLENGTH(text);
 
         // grep.c drops perl when fixed = TRUE, so only a genuine perl run
@@ -13919,9 +13919,9 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
-        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
-        let perl = named_logical_arg(args, "perl").unwrap_or(false);
-        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
+        let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
+        let perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
+        let fixed = logical_arg_by_name_or_position(args, "fixed", 4).unwrap_or(false);
         // grep.c drops perl when fixed = TRUE, so only a genuine perl run
         // gets capture attribution (same guard as do_regexpr).
         let (capture_count, capture_names) = if perl && !fixed {
@@ -14223,9 +14223,9 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
-        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
-        let perl = named_logical_arg(args, "perl").unwrap_or(false);
-        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
+        let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
+        let perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
+        let fixed = logical_arg_by_name_or_position(args, "fixed", 4).unwrap_or(false);
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {

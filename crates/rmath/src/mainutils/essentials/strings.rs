@@ -3650,11 +3650,11 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if string_arg_is_na(pattern_arg) {
             return na_integer_vector(XLENGTH(x_arg));
         }
-        let value = named_logical_arg(args, "value").unwrap_or(false);
-        let invert = named_logical_arg(args, "invert").unwrap_or(false);
-        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
-        let perl = named_logical_arg(args, "perl").unwrap_or(false);
-        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
+        let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
+        let value = logical_arg_by_name_or_position(args, "value", 3).unwrap_or(false);
+        let perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
+        let fixed = logical_arg_by_name_or_position(args, "fixed", 5).unwrap_or(false);
+        let invert = logical_arg_by_name_or_position(args, "invert", 7).unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let matches = grep_match_indices(x_arg, &pattern, ignore_case, perl, fixed, invert);
 
@@ -3703,9 +3703,9 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if pattern_arg.is_null() || x_arg.is_null() || x_arg == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
-        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
-        let perl = named_logical_arg(args, "perl").unwrap_or(false);
-        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
+        let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
+        let perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
+        let fixed = logical_arg_by_name_or_position(args, "fixed", 5).unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
