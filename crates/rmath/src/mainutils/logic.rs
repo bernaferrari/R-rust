@@ -594,27 +594,36 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return binary_logic_raw(code, x, y);
         }
 
-        if TYPEOF(x) == SEXPTYPE::VECSXP
-            && TYPEOF(y) == SEXPTYPE::VECSXP
-            && XLENGTH(x) == 0
-            && XLENGTH(y) == 0
-        {
-            let out = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-            let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-            if !dim.is_null() && dim != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimSymbol(), dim);
-            } else {
-                let rn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::Rf_install(c"row.names".as_ptr()));
-                let nr = if rn.is_null() || rn == R_NilValue() { 0 } else { XLENGTH(rn) };
-                let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-                *INTEGER(d) = nr as i32;
-                *INTEGER(d).add(1) = 0;
-                crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimSymbol(), d);
-                let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-                crate::sexp::accessors::SET_VECTOR_ELT(dn, 0, if TYPEOF(rn) == SEXPTYPE::STRSXP { rn } else { Rf_allocVector3(SEXPTYPE::STRSXP, 0) });
-                crate::sexp::accessors::SET_VECTOR_ELT(dn, 1, Rf_allocVector3(SEXPTYPE::STRSXP, 0));
-                crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        let is_frame = |s: SEXP| unsafe {
+            let class = crate::sexp::attrib_core::getAttrib(s, crate::sexp::symbol::Rf_install(c"class".as_ptr()));
+            if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP || XLENGTH(class) < 1 {
+                return false;
             }
+            let p = crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(class, 0));
+            !p.is_null() && std::ffi::CStr::from_ptr(p).to_bytes() == b"data.frame"
+        };
+        if is_frame(x) && is_frame(y) && XLENGTH(x) == 0 && XLENGTH(y) == 0 {
+            let rn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::Rf_install(c"row.names".as_ptr()));
+            let compact = TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == 2 && *INTEGER(rn) == NA_INTEGER;
+            let nr = if compact {
+                (*INTEGER(rn).add(1) as i64).unsigned_abs()
+            } else if rn.is_null() || rn == R_NilValue() {
+                0
+            } else {
+                XLENGTH(rn) as u64
+            };
+            let out = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            *INTEGER(d) = nr as i32;
+            *INTEGER(d).add(1) = 0;
+            crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimSymbol(), d);
+            let row_names = if compact { R_NilValue() } else { rn };
+            let cn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let col_names = if TYPEOF(cn) == SEXPTYPE::STRSXP { cn } else { Rf_allocVector3(SEXPTYPE::STRSXP, 0) };
+            let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            crate::sexp::accessors::SET_VECTOR_ELT(dn, 0, row_names);
+            crate::sexp::accessors::SET_VECTOR_ELT(dn, 1, col_names);
+            crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
             return out;
         }
         let x_valid = x.is_null() || x == R_NilValue() || is_number(x);
