@@ -6273,7 +6273,15 @@ fn note_formula_intercept(expr: SEXP, sign: i32, intercept: &mut i32) {
             return;
         }
         let op = symbol_print_name(CAR(expr));
-        if op == "+" {
+        if op == "~" {
+            let mut cell = CDR(expr);
+            let mut last = R_NilValue();
+            while !cell.is_null() && cell != R_NilValue() {
+                last = CAR(cell);
+                cell = CDR(cell);
+            }
+            note_formula_intercept(last, sign, intercept);
+        } else if op == "+" {
             let mut cell = CDR(expr);
             while !cell.is_null() && cell != R_NilValue() {
                 note_formula_intercept(CAR(cell), sign, intercept);
@@ -7597,7 +7605,19 @@ pub unsafe fn do_drop_terms(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             rho,
         );
         let _f = protect(form);
-        mark_terms(form, 0, R_NilValue())
+        let marked = mark_terms(form, 0, R_NilValue());
+        let ic = crate::sexp::attrib_core::getAttrib(
+            obj,
+            crate::sexp::symbol::Rf_install(c"intercept".as_ptr()),
+        );
+        if !ic.is_null() && ic != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                marked,
+                crate::sexp::symbol::Rf_install(c"intercept".as_ptr()),
+                ic,
+            );
+        }
+        marked
     }
 }
 
