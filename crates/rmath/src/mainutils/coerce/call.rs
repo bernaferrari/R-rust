@@ -206,34 +206,57 @@ pub unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
                     if t != R_UnboundValue() {
                         if TYPEOF(t) == SEXPTYPE::PROMSXP {
                             let mut expr = PRCODE(t);
-                            while TYPEOF(expr) == SEXPTYPE::PROMSXP {
-                                expr = PRCODE(expr);
+                            let mut hops = 0;
+                            loop {
+                                if TYPEOF(expr) == SEXPTYPE::PROMSXP {
+                                    if hops >= 64 {
+                                        break;
+                                    }
+                                    let next = PRCODE(expr);
+                                    if next.is_null() || next == expr {
+                                        break;
+                                    }
+                                    expr = next;
+                                    hops += 1;
+                                    continue;
+                                }
+                                if TYPEOF(expr) == SEXPTYPE::BCODESXP {
+                                    let source = crate::eval::bc_eval::BCODE_EXPR(expr);
+                                    if source.is_null()
+                                        || source == R_NilValue()
+                                        || source == expr
+                                    {
+                                        break;
+                                    }
+                                    expr = source;
+                                    continue;
+                                }
+                                break;
                             }
-                            // ENSURE_NAMEDMAX
-                            if NAMED(expr) < 2 {
+                            if !expr.is_null() && NAMED(expr) < 2 {
                                 SET_NAMED(expr, 2);
                             }
-                            return if TYPEOF(expr) == SEXPTYPE::BCODESXP {
-                                substitute(expr, rho)
-                            } else if TYPEOF(expr) == SEXPTYPE::LANGSXP
-                                || TYPEOF(expr) == SEXPTYPE::LISTSXP
-                                || TYPEOF(expr) == SEXPTYPE::EXPRSXP
-                            {
-                                crate::mainutils::duplicate::Rf_duplicate(expr)
-                            } else {
-                                expr
-                            };
+                            return expr;
                         } else if TYPEOF(t) == SEXPTYPE::DOTSXP {
                             Rf_error(
                                 b"'...' used in an incorrect context\0".as_ptr() as *const c_char
                             );
                         }
                         if rho != R_GlobalEnv() {
-                            return if TYPEOF(t) == SEXPTYPE::BCODESXP {
-                                substitute(t, rho)
+                            let value = if TYPEOF(t) == SEXPTYPE::BCODESXP {
+                                let source = crate::eval::bc_eval::BCODE_EXPR(t);
+                                if source.is_null() || source == R_NilValue() {
+                                    t
+                                } else {
+                                    source
+                                }
                             } else {
                                 t
                             };
+                            if !value.is_null() && NAMED(value) < 2 {
+                                SET_NAMED(value, 2);
+                            }
+                            return value;
                         }
                     }
                 }
