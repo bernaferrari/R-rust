@@ -112,3 +112,68 @@ pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
     }
     ans
 }
+
+pub unsafe extern "C" fn c_eureka(
+    lr: *mut std::ffi::c_void,
+    r: *mut std::ffi::c_void,
+    g: *mut std::ffi::c_void,
+    f: *mut std::ffi::c_void,
+    var: *mut std::ffi::c_void,
+    a: *mut std::ffi::c_void,
+) {
+    unsafe {
+        let lr = *(lr as *mut i32) as usize;
+        if lr == 0 {
+            return;
+        }
+        let r = r as *mut f64;
+        let g = g as *mut f64;
+        let f = f as *mut f64;
+        let varp = var as *mut f64;
+        let a = a as *mut f64;
+        let at = |row: usize, col: usize| (col - 1) * lr + (row - 1);
+        let mut v = *r;
+        let mut d = *r.add(1);
+        *a = 1.0;
+        *f = *g.add(1) / v;
+        let mut q = *f * *r.add(1);
+        *varp = (1.0 - *f * *f) * *r;
+        if lr == 1 {
+            return;
+        }
+        for l in 2..=lr {
+            *a.add(l - 1) = -d / v;
+            if l > 2 {
+                let l1 = (l - 2) / 2;
+                let l2 = l1 + 1;
+                for j in 2..=l2 {
+                    let hold = *a.add(j - 1);
+                    let k = l - j + 1;
+                    *a.add(j - 1) = *a.add(j - 1) + *a.add(l - 1) * *a.add(k - 1);
+                    *a.add(k - 1) = *a.add(k - 1) + *a.add(l - 1) * hold;
+                }
+                if 2 * l1 != l - 2 {
+                    *a.add(l2) *= 1.0 + *a.add(l - 1);
+                }
+            }
+            v += *a.add(l - 1) * d;
+            *f.add(at(l, l)) = (*g.add(l) - q) / v;
+            for j in 1..l {
+                *f.add(at(l, j)) =
+                    *f.add(at(l - 1, j)) + *f.add(at(l, l)) * *a.add(l - j);
+            }
+            *varp.add(l - 1) =
+                *varp.add(l - 2) * (1.0 - *f.add(at(l, l)) * *f.add(at(l, l)));
+            if l == lr {
+                return;
+            }
+            d = 0.0;
+            q = 0.0;
+            for i in 1..=l {
+                let k = l - i + 2;
+                d += *a.add(i - 1) * *r.add(k - 1);
+                q += *f.add(at(l, i)) * *r.add(k - 1);
+            }
+        }
+    }
+}

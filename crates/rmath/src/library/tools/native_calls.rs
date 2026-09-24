@@ -89,6 +89,10 @@ pub fn lookup_c(name: &str) -> DL_FUNC {
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
             *mut std::ffi::c_void,
         )),
+        "eureka" => as_dl(crate::library::stats::burg::c_eureka as unsafe extern "C" fn(
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+        )),
         "kmeans_Lloyd" => as_dl(crate::library::stats::kmeans::c_kmeans_lloyd as unsafe extern "C" fn(
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
@@ -104,6 +108,7 @@ pub fn lookup_c(name: &str) -> DL_FUNC {
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
             *mut std::ffi::c_void, *mut std::ffi::c_void,
         )),
+
         "rbart" => as_dl(crate::library::stats::sbart::c_rbart as unsafe extern "C" fn(
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,

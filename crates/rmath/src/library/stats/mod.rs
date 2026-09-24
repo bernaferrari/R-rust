@@ -4,7 +4,7 @@ mod ansari;
 pub(crate) mod approx;
 mod bandwidths;
 pub(crate) mod bspline;
-mod burg;
+pub(crate) mod burg;
 mod chisqsim;
 pub(crate) mod complete_cases;
 mod d2x2xk;
