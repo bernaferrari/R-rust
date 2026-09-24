@@ -810,7 +810,19 @@ pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-        let alternatives = CDR(args);
+        let mut alternatives = CDR(args);
+        if !isNull(alternatives)
+            && CAR(alternatives) == crate::sexp::symbol::R_DotsSymbol()
+            && isNull(CDR(alternatives))
+        {
+            let dots = crate::sexp::envir::R_findVarInFrame(
+                rho,
+                crate::sexp::symbol::R_DotsSymbol(),
+            );
+            if TYPEOF(dots) == SEXPTYPE::DOTSXP {
+                alternatives = dots;
+            }
+        }
         let mut dflt: SEXP = std::ptr::null_mut();
 
         if TYPEOF(arg) == SEXPTYPE::STRSXP {
