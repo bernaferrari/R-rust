@@ -2638,7 +2638,6 @@ unsafe fn eval_sum(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
                             continue;
                         }
                         int_total += item as i64;
-                        real_total += item as f64;
                         complex_total.r += item as f64;
                     }
                 }
@@ -2692,10 +2691,13 @@ unsafe fn eval_sum(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
             if let Some(kind) = missing {
                 return Rf_ScalarReal(missing_real(kind));
             }
-            return Rf_ScalarReal(real_total);
+            return Rf_ScalarReal((int_total as f64) + real_total);
         }
-        if missing.is_some() || int_total > i32::MAX as i64 || int_total < i32::MIN as i64 {
+        if missing.is_some() {
             return Rf_ScalarInteger(NA_INTEGER);
+        }
+        if int_total > i32::MAX as i64 || int_total < i32::MIN as i64 {
+            return Rf_ScalarReal(int_total as f64);
         }
         Rf_ScalarInteger(int_total as i32)
     }
