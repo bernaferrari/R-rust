@@ -801,7 +801,12 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     0
                 };
                 if n < 1 {
-                    return R_NilValue();
+                    let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 0, 0);
+                    let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+                    *INTEGER(dims) = 0;
+                    *INTEGER(dims).add(1) = 0;
+                    crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimSymbol(), dims);
+                    return mat;
                 }
                 let mat = crate::mainutils::array::allocMatrix(
                     SEXPTYPE::REALSXP.as_c_int(),
