@@ -15076,14 +15076,16 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         let needle = elt_to_string(arg, 0);
         let mut exact: Option<i64> = None;
         let mut prefixes: Vec<i64> = Vec::new();
-        for i in 0..XLENGTH(choices) {
-            let choice = elt_to_string(choices, i);
-            if choice == needle {
-                exact = Some(i);
-                break;
-            }
-            if choice.starts_with(&needle) {
-                prefixes.push(i);
+        if !needle.is_empty() {
+            for i in 0..XLENGTH(choices) {
+                let choice = elt_to_string(choices, i);
+                if choice == needle {
+                    exact = Some(i);
+                    break;
+                }
+                if choice.starts_with(&needle) {
+                    prefixes.push(i);
+                }
             }
         }
         let idx = if let Some(i) = exact {
@@ -15091,7 +15093,24 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         } else if prefixes.len() == 1 {
             prefixes[0]
         } else {
-            crate::mainutils::errors::errorcall_str(call, "'arg' should be one of");
+            let mut shown = Vec::new();
+            for i in 0..XLENGTH(choices) {
+                let choice = elt_to_string(choices, i);
+                if !choice.is_empty() && !shown.contains(&choice) {
+                    shown.push(choice);
+                }
+            }
+            let list = shown
+                .iter()
+                .map(|s| format!("\"{s}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let msg = if shown.len() == 1 {
+                format!("'arg' should be {list}")
+            } else {
+                format!("'arg' should be one of {list}")
+            };
+            crate::mainutils::errors::errorcall_str(call, &msg);
         };
         match_arg_elt(choices, idx)
     }
