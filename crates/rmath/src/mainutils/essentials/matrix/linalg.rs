@@ -281,7 +281,18 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `chol(x)` — upper Cholesky factor.
 pub unsafe fn do_chol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = coerce_numeric_matrix(CAR(args));
+        let mut x = coerce_numeric_matrix(CAR(args));
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let has_dim = !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) == 2;
+        if !has_dim && crate::sexp::accessors::XLENGTH(x) == 1 {
+            x = crate::mainutils::duplicate::Rf_duplicate(x);
+            let _xd = protect(x);
+            let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            let _d = protect(d);
+            *INTEGER(d) = 1;
+            *INTEGER(d).add(1) = 1;
+            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), d);
+        }
         let mut pivot = FALSE;
         let mut cell = CDR(args);
         let mut pos = 0;
@@ -322,7 +333,18 @@ pub unsafe fn do_chol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `chol2inv(x, size = NCOL(x))` — inverse from an upper Cholesky / R factor.
 pub unsafe fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let has_dim = !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) == 2;
+        if !has_dim && crate::sexp::accessors::XLENGTH(x) == 1 {
+            x = crate::mainutils::duplicate::Rf_duplicate(x);
+            let _xd = protect(x);
+            let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            let _d = protect(d);
+            *INTEGER(d) = 1;
+            *INTEGER(d).add(1) = 1;
+            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), d);
+        }
         let size_arg = CADR(args);
         let size = if size_arg.is_null() || size_arg == R_NilValue() {
             let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
