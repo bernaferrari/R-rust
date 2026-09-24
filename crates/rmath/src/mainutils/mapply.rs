@@ -236,7 +236,20 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
         if longest == 0 || zero {
-            return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+            let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+            if use_names {
+                if let Some(&(v, _)) = varyings.first() {
+                    if TYPEOF(v) == SEXPTYPE::STRSXP {
+                        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+                        crate::sexp::attrib_core::setAttrib(
+                            ans,
+                            crate::sexp::attrib_core::R_NamesSymbol(),
+                            names,
+                        );
+                    }
+                }
+            }
+            return ans;
         }
 
         // --- MoreArgs: a vector list (names become tags) or a pairlist. ---
