@@ -888,6 +888,33 @@ fn tz_is_utc(tz: &str) -> bool {
 }
 
 
+unsafe fn posixlt_parses_every_string(lt: SEXP, x: SEXP) -> bool {
+    unsafe {
+        if lt.is_null() || lt == R_NilValue() || TYPEOF(lt) != SEXPTYPE::VECSXP {
+            return false;
+        }
+        let sec = VECTOR_ELT(lt, 0);
+        if sec.is_null() || TYPEOF(sec) != SEXPTYPE::REALSXP {
+            return false;
+        }
+        let n = XLENGTH(x);
+        if XLENGTH(sec) < n {
+            return false;
+        }
+        for i in 0..n {
+            let s = STRING_ELT(x, i);
+            if s.is_null() || s == R_NaString() {
+                continue;
+            }
+            let v = *REAL(sec).add(i as usize);
+            if !R_FINITE(v) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 unsafe fn posixlt_has_valid_time(x: SEXP) -> bool {
     unsafe {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP || XLENGTH(x) < 1 {
@@ -2059,11 +2086,14 @@ pub unsafe fn do_as_POSIXlt(
                 }
                 return convert_posixct_to_posixlt(ct, &tz_s);
             }
-            let try_fmts: &[&str] = if sample.contains(' ') {
-                &["%Y-%m-%d %H:%M:%OS", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
-            } else {
-                &["%Y-%m-%d", "%Y/%m/%d"]
-            };
+            let try_fmts: &[&str] = &[
+                "%Y-%m-%d %H:%M:%OS",
+                "%Y/%m/%d %H:%M:%OS",
+                "%Y-%m-%d %H:%M",
+                "%Y/%m/%d %H:%M",
+                "%Y-%m-%d",
+                "%Y/%m/%d",
+            ];
             let mut last = R_NilValue();
             for fmt in try_fmts {
                 let fmt_s = Rf_mkString(CString::new(*fmt).unwrap_or_default().as_ptr());
@@ -2075,7 +2105,7 @@ pub unsafe fn do_as_POSIXlt(
                     env,
                 );
                 let _last = protect(last);
-                if posixlt_has_valid_time(last) {
+                if posixlt_parses_every_string(last, x) {
                     if !tz_s.is_empty() {
                         setAttrib(
                             last,
@@ -2085,9 +2115,12 @@ pub unsafe fn do_as_POSIXlt(
                     }
                     return last;
                 }
-
             }
-            return last;
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "character string is not in a standard unambiguous format",
+            );
+
         }
         let (text, fmt) = if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
             let formatted = crate::mainutils::essentials::do_format_Date(
