@@ -594,6 +594,29 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return binary_logic_raw(code, x, y);
         }
 
+        if TYPEOF(x) == SEXPTYPE::VECSXP
+            && TYPEOF(y) == SEXPTYPE::VECSXP
+            && XLENGTH(x) == 0
+            && XLENGTH(y) == 0
+        {
+            let out = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            if !dim.is_null() && dim != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimSymbol(), dim);
+            } else {
+                let rn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::Rf_install(c"row.names".as_ptr()));
+                let nr = if rn.is_null() || rn == R_NilValue() { 0 } else { XLENGTH(rn) };
+                let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+                *INTEGER(d) = nr as i32;
+                *INTEGER(d).add(1) = 0;
+                crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimSymbol(), d);
+                let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+                crate::sexp::accessors::SET_VECTOR_ELT(dn, 0, if TYPEOF(rn) == SEXPTYPE::STRSXP { rn } else { Rf_allocVector3(SEXPTYPE::STRSXP, 0) });
+                crate::sexp::accessors::SET_VECTOR_ELT(dn, 1, Rf_allocVector3(SEXPTYPE::STRSXP, 0));
+                crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+            }
+            return out;
+        }
         let x_valid = x.is_null() || x == R_NilValue() || is_number(x);
         let y_valid = y.is_null() || y == R_NilValue() || is_number(y);
         if !x_valid || !y_valid {
