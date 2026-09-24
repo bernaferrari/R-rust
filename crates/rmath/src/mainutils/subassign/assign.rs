@@ -67,6 +67,7 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
                 value
             };
             if rows.len() as i64 == nrows
+                && rows.iter().enumerate().all(|(i, r)| *r == i as i64)
                 && XLENGTH(src) == nrows
                 && TYPEOF(col) == SEXPTYPE::REALSXP
                 && TYPEOF(src) == SEXPTYPE::INTSXP
