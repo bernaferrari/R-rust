@@ -2231,7 +2231,7 @@ pub unsafe fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let mut cols: Vec<SEXP> = Vec::new();
         let mut names: Vec<String> = Vec::new();
         let mut keep_out = true;
-        let mut strings_as_factors = true;
+        let mut strings_as_factors = false;
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
@@ -3343,8 +3343,12 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for (idx, entry) in entries.iter().enumerate() {
             match result_type {
                 t if t == SEXPTYPE::STRSXP => {
-                    let cstr = CString::new(entry.value.as_string()).unwrap_or_default();
-                    let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                    let charsxp = if matches!(entry.value, UnlistValue::NaString) {
+                        crate::sexp::globals::R_NaString()
+                    } else {
+                        let cstr = CString::new(entry.value.as_string()).unwrap_or_default();
+                        crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                    };
                     if !charsxp.is_null() {
                         let data = (*result).gengc_next_node as *mut SEXP;
                         *data.add(idx) = charsxp;
@@ -3446,6 +3450,7 @@ enum UnlistValue {
     Real(f64),
     Complex(Rcomplex),
     String(String),
+    NaString,
     Object(SEXP),
     /// Atomic element still owned by the input vector — materialize at fill.
     Element { parent: SEXP, index: R_xlen_t },
@@ -3463,7 +3468,7 @@ impl UnlistValue {
                     *value as i32
                 }
             }
-            Self::Complex(_) | Self::String(_) | Self::Object(_) | Self::Element { .. } => {
+            Self::Complex(_) | Self::String(_) | Self::NaString | Self::Object(_) | Self::Element { .. } => {
                 NA_INTEGER
             }
         }
@@ -3485,7 +3490,7 @@ impl UnlistValue {
             }
             Self::Real(value) => *value,
             Self::Complex(value) => value.r,
-            Self::String(_) | Self::Object(_) | Self::Element { .. } => NA_REAL,
+            Self::String(_) | Self::NaString | Self::Object(_) | Self::Element { .. } => NA_REAL,
 
         }
     }
@@ -3502,7 +3507,7 @@ impl UnlistValue {
             },
             Self::Real(value) => Rcomplex { r: *value, i: 0.0 },
             Self::Complex(value) => *value,
-            Self::String(_) | Self::Object(_) | Self::Element { .. } => Rcomplex {
+            Self::String(_) | Self::NaString | Self::Object(_) | Self::Element { .. } => Rcomplex {
                 r: NA_REAL,
                 i: NA_REAL,
             },
@@ -3538,6 +3543,7 @@ impl UnlistValue {
                 value.i
             ),
             Self::String(value) => value.clone(),
+            Self::NaString => "NA".to_string(),
             Self::Object(value) => elt_to_string(*value, 0),
             Self::Element { parent, index } => unsafe { elt_to_string(*parent, *index) },
         }
@@ -3597,7 +3603,7 @@ fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
         SEXPTYPE::VECSXP
     } else if entries
         .iter()
-        .any(|entry| matches!(entry.value, UnlistValue::String(_)))
+        .any(|entry| matches!(entry.value, UnlistValue::String(_) | UnlistValue::NaString))
     {
         SEXPTYPE::STRSXP
     } else if entries
@@ -3748,7 +3754,7 @@ unsafe fn collect_unlist_entries(
                 t if t == SEXPTYPE::STRSXP => {
                     let string = STRING_ELT(x, i);
                     if string.is_null() || string == crate::sexp::globals::R_NaString() {
-                        UnlistValue::String("NA".to_string())
+                        UnlistValue::NaString
                     } else {
                         UnlistValue::String(
                             CStr::from_ptr(CHAR(string)).to_string_lossy().into_owned(),

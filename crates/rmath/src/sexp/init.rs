@@ -1416,6 +1416,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "is.table", "function(x) inherits(x, \"table\")");
         eval_base_binding(base_env, "as.table", include_str!("gnu_as_table.R"));
         eval_base_binding(base_env, "table", include_str!("gnu_table.R"));
+        eval_base_binding(base_env, "conformToProto", include_str!("gnu_conform_to_proto.R"));
+        eval_base_binding(base_env, "strcapture", include_str!("gnu_strcapture.R"));
         eval_base_binding(base_env, "as.table.default", include_str!("gnu_as_table_default.R"));
         eval_base_binding(base_env, "as.array", include_str!("gnu_as_array.R"));
         eval_base_binding(base_env, "as.array.default", include_str!("gnu_as_array_default.R"));
