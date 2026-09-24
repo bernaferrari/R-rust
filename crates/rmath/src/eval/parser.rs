@@ -1901,8 +1901,9 @@ impl<'arena> Parser<'arena> {
     /// pipe's RHS began, for the "RHS variable must be a symbol" location.
     fn build_pipe(&mut self, lhs: SEXP, rhs: SEXP, rhs_start: usize) -> Result<SEXP, ParseError> {
         if unsafe { TYPEOF(rhs) } != SEXPTYPE::LANGSXP {
-            return Err(ParseError(
-                "The pipe operator requires a function call as RHS".to_string(),
+            return Err(self.token_position_error(
+                rhs_start,
+                "The pipe operator requires a function call as RHS",
             ));
         }
 
