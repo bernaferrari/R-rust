@@ -1521,12 +1521,22 @@ unsafe fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
         let out = Rf_allocVector3(SEXPTYPE::VECSXP, ncol);
         let _g = protect(out);
         for i in 0..ncol {
-            let mut cell = R_NilValue();
-            for &arg in arg_vecs.iter().rev() {
-                let value = if is_data_frame(arg) { VECTOR_ELT(arg, i) } else { arg };
-                cell = Rf_cons(value, cell);
-            }
-            SET_VECTOR_ELT(out, i, do_pminmax(cell, is_min));
+            let column = VECTOR_ELT(frame, i);
+            let nrow = XLENGTH(column);
+            let short = arg_vecs.iter().any(|arg| {
+                !is_data_frame(*arg) && XLENGTH(*arg) != nrow && XLENGTH(*arg) > 0
+            });
+            let value = if short {
+                pminmax_frame_column(column, arg_vecs, i, is_min)
+            } else {
+                let mut cell = R_NilValue();
+                for &arg in arg_vecs.iter().rev() {
+                    let value = if is_data_frame(arg) { VECTOR_ELT(arg, i) } else { arg };
+                    cell = Rf_cons(value, cell);
+                }
+                do_pminmax(cell, is_min)
+            };
+            SET_VECTOR_ELT(out, i, value);
         }
         let names = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
         if !names.is_null() && names != R_NilValue() {
@@ -1542,5 +1552,46 @@ unsafe fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
             Rf_mkString(c"data.frame".as_ptr()),
         );
         Some(out)
+    }
+}
+
+unsafe fn pminmax_frame_column(column: SEXP, arg_vecs: &[SEXP], _index: R_xlen_t, is_min: bool) -> SEXP {
+    unsafe {
+        let current = crate::mainutils::duplicate::Rf_duplicate(column);
+        let _g = protect(current);
+        let nrow = XLENGTH(current);
+        for &arg in arg_vecs {
+            if is_data_frame(arg) {
+                continue;
+            }
+            let olen = XLENGTH(arg);
+            if olen == 0 {
+                continue;
+            }
+            let mut change = vec![false; nrow as usize];
+            for i in 0..nrow {
+                let left = elt_real_safe(current, i);
+                let right = elt_real_safe(arg, i % olen);
+                if left.is_nan() || right.is_nan() {
+                    continue;
+                }
+                change[i as usize] = if is_min { left > right } else { left < right };
+            }
+            for i in 0..nrow {
+                if !change[i as usize] {
+                    continue;
+                }
+                let missing = i >= olen;
+                let value = if missing { NA_REAL } else { elt_real_safe(arg, i) };
+                if TYPEOF(current) == SEXPTYPE::INTSXP && !missing {
+                    *INTEGER(current).add(i as usize) = value as c_int;
+                } else if TYPEOF(current) == SEXPTYPE::INTSXP {
+                    *INTEGER(current).add(i as usize) = NA_INTEGER;
+                } else {
+                    *REAL(current).add(i as usize) = value;
+                }
+            }
+        }
+        current
     }
 }
