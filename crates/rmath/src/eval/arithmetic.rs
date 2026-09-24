@@ -81,6 +81,9 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             propagate_arithmetic_attributes(empty, src_a, src_b, 0);
             return empty;
         }
+        if let Some(frame) = data_frame_arith(op, sa, sb) {
+            return frame;
+        }
         if !is_numeric_operand(sa) || !is_numeric_operand(sb) {
             arithmetic_error("non-numeric argument to binary operator");
         }
@@ -1676,6 +1679,35 @@ unsafe fn data_frame_compare(op_name: &str, call: SEXP, lhs: SEXP, rhs: SEXP) ->
         SET_VECTOR_ELT(dimnames, 1, getAttrib(frame, R_NamesSymbol()));
         setAttrib(result, R_DimNamesSymbol(), dimnames);
         Some(result)
+    }
+}
+unsafe fn data_frame_arith(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
+    unsafe {
+        let lhs_frame = has_class(sa, "data.frame") && TYPEOF(sa) == SEXPTYPE::VECSXP;
+        let rhs_frame = has_class(sb, "data.frame") && TYPEOF(sb) == SEXPTYPE::VECSXP;
+        if !lhs_frame && !rhs_frame {
+            return None;
+        }
+        let frame = if lhs_frame { sa } else { sb };
+        let ncol = XLENGTH(frame);
+        let out = Rf_allocVector3(SEXPTYPE::VECSXP, ncol);
+        let _g = protect(out);
+        for i in 0..ncol {
+            let left = if lhs_frame { VECTOR_ELT(sa, i) } else { sa };
+            let right = if rhs_frame { VECTOR_ELT(sb, i) } else { sb };
+            let col = real_binary(op, left, right);
+            SET_VECTOR_ELT(out, i, col);
+        }
+        let names = getAttrib(frame, R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            setAttrib(out, R_NamesSymbol(), names);
+        }
+        let rows = getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
+        if !rows.is_null() && rows != R_NilValue() {
+            setAttrib(out, crate::sexp::attrib_core::R_RowNamesSymbol(), rows);
+        }
+        setAttrib(out, crate::sexp::attrib_core::R_ClassSymbol(), crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr()));
+        Some(out)
     }
 }
 

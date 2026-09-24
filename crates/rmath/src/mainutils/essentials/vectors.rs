@@ -655,6 +655,9 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
                 return crate::mainutils::duplicate::Rf_duplicate(first);
             }
         }
+        if let Some(frame) = pminmax_data_frame(&arg_vecs, is_min) {
+            return frame;
+        }
         if let Some(factor) = pminmax_factor_result(&arg_vecs, max_len, is_min, na_rm) {
             return factor;
         }
@@ -1490,5 +1493,54 @@ pub unsafe fn do_is_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 FALSE
             },
         )
+    }
+}
+
+unsafe fn is_data_frame(x: SEXP) -> bool {
+    unsafe {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::VECSXP {
+            return false;
+        }
+        let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        for i in 0..XLENGTH(class) {
+            if elt_to_string(class, i) == "data.frame" {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+unsafe fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
+    unsafe {
+        let frame = arg_vecs.iter().copied().find(|arg| is_data_frame(*arg))?;
+        let ncol = XLENGTH(frame);
+        let out = Rf_allocVector3(SEXPTYPE::VECSXP, ncol);
+        let _g = protect(out);
+        for i in 0..ncol {
+            let mut cell = R_NilValue();
+            for &arg in arg_vecs.iter().rev() {
+                let value = if is_data_frame(arg) { VECTOR_ELT(arg, i) } else { arg };
+                cell = Rf_cons(value, cell);
+            }
+            SET_VECTOR_ELT(out, i, do_pminmax(cell, is_min));
+        }
+        let names = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        }
+        let rows = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
+        if !rows.is_null() && rows != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_RowNamesSymbol(), rows);
+        }
+        crate::sexp::attrib_core::setAttrib(
+            out,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"data.frame".as_ptr()),
+        );
+        Some(out)
     }
 }
