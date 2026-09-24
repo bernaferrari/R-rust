@@ -444,7 +444,7 @@ fn brent_fmin(ax: f64, bx: f64, info: *mut core::ffi::c_void, tol: f64) -> f64 {
     let mut e: f64 = 0.0;
     let eval = |z: f64| {
         let y = unsafe { zeroin_call(z, info) };
-        if y.is_finite() { y } else { f64::MAX }
+        if y.is_finite() { y } else if y.is_sign_negative() { f64::MIN } else { f64::MAX }
     };
     let mut fx = eval(x);
     let mut fv = fx;
