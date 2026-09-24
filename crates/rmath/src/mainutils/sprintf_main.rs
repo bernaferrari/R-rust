@@ -856,7 +856,11 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                         fmtp,
                                         b"aAfeEgG\0".as_ptr() as *const c_char,
                                     ) {
-                                        error(b"invalid format '%s'; use format %f, %e, %g or %a for numeric objects\0".as_ptr() as *const c_char);
+                                        let shown = std::ffi::CStr::from_ptr(fmtp).to_string_lossy();
+                                        let msg = format!(
+                                            "invalid format '{shown}'; use format %f, %e, %g or %a for numeric objects\0"
+                                        );
+                                        error(msg.as_ptr() as *const c_char);
                                     }
                                     if R_FINITE(x) {
                                         let nc = crate::mainutils::r_format::r_snprintf_c(
