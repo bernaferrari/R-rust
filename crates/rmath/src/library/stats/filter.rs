@@ -383,6 +383,10 @@ pub unsafe fn acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
         ans
     }
 }
+pub unsafe extern "C-unwind" fn c_acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
+    unsafe { acf(x, lmax, sCor) }
+}
+
 
 pub unsafe fn do_acf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
