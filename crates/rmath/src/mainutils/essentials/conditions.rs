@@ -1406,15 +1406,27 @@ pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let text = condition_message_text(args, &["domain", "appendLF"]);
         let message = format!("{}\n", text);
         let condition = simple_condition(&message, &["simpleMessage", "message", "condition"]);
-        signal_calling_handlers(condition, rho);
-        // suppressMessages() gates signal-time emission via a depth counter
-        // (mirroring suppressWarnings' warning gate): the muffled message
-        // never reaches the output stream.
-        if crate::mainutils::errors::suppress_messages_depth() == 0 {
-            // Signal-time emission into the session's single interleaved
-            // output stream (sink-diversion-free, like upstream stderr
-            // traffic): keeps message() output in signal order with deferred
-            // warnings and auto-printed values (case 372).
+        let old_stack = restart_stack();
+        let restart = restart_entry("muffleMessage", R_NilValue(), R_NilValue());
+        let _restart_guard = protect(restart);
+        let new_stack = Rf_cons(restart, old_stack);
+        let _stack_guard = protect(new_stack);
+        set_restart_stack(new_stack);
+        let signaled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            signal_calling_handlers(condition, rho);
+        }));
+        set_restart_stack(old_stack);
+        let muffled = match signaled {
+            Ok(()) => false,
+            Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
+                Ok(signal) => match *signal {
+                    crate::sexp::context::RSignal::Restart(jump) if jump.target == restart => true,
+                    other => std::panic::panic_any(other),
+                },
+                Err(payload) => std::panic::resume_unwind(payload),
+            },
+        };
+        if !muffled && crate::mainutils::errors::suppress_messages_depth() == 0 {
             crate::sexp::output::capture_interleaved(&message);
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
