@@ -1002,6 +1002,41 @@ pub unsafe fn do_append(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let total = n + vlen;
         let tx = TYPEOF(x);
         let tv = TYPEOF(values);
+        if tx == SEXPTYPE::VECSXP && tv == SEXPTYPE::VECSXP {
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, total);
+            let _g = protect(result);
+            for i in 0..after {
+                SET_VECTOR_ELT(result, i, VECTOR_ELT(x, i));
+            }
+            for i in 0..vlen {
+                SET_VECTOR_ELT(result, after + i, VECTOR_ELT(values, i));
+            }
+            for i in after..n {
+                SET_VECTOR_ELT(result, i + vlen, VECTOR_ELT(x, i));
+            }
+            let xn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let vn = crate::sexp::attrib_core::getAttrib(values, crate::sexp::attrib_core::R_NamesSymbol());
+            if (!xn.is_null() && xn != R_NilValue()) || (!vn.is_null() && vn != R_NilValue()) {
+                let names = Rf_allocVector3(SEXPTYPE::STRSXP, total);
+                for i in 0..total {
+                    let src = if i < after {
+                        (xn, i)
+                    } else if i < after + vlen {
+                        (vn, i - after)
+                    } else {
+                        (xn, i - vlen)
+                    };
+                    let ch = if src.0.is_null() || src.0 == R_NilValue() || src.1 >= XLENGTH(src.0) {
+                        crate::sexp::constructors::Rf_mkChar(c"".as_ptr())
+                    } else {
+                        STRING_ELT(src.0, src.1)
+                    };
+                    SET_STRING_ELT(names, i, ch);
+                }
+                crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), names);
+            }
+            return result;
+        }
         let t = if tx == SEXPTYPE::STRSXP || tv == SEXPTYPE::STRSXP {
             SEXPTYPE::STRSXP
         } else if tx == SEXPTYPE::CPLXSXP || tv == SEXPTYPE::CPLXSXP {
