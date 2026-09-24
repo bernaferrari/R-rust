@@ -829,7 +829,7 @@ unsafe fn do_return(args: SEXP, rho: SEXP) -> SEXP {
         let _val_guard = protect(val);
         let mut here = super::runtime::global_context();
         while !here.is_null() {
-            if (*here).onexit_active != 0 {
+            if (*here).onexit_active != 0 && (*here).cloenv == rho {
                 (*here).returnValue = val;
                 return val;
             }

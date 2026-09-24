@@ -257,6 +257,20 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // subset/assign handlers expect (evalListKeepMissing).
                 slot_subs = super::dispatch::evalListKeepMissing(call_args, rho);
                 let _subs_guard = protect(slot_subs);
+                let mut cell = slot_subs;
+                while !cell.is_null() && cell != R_NilValue() {
+                    let sub = CAR(cell);
+                    if !sub.is_null() && TYPEOF(sub) == SEXPTYPE::SYMSXP {
+                        let name = crate::sexp::accessors::PRINTNAME(sub);
+                        if !name.is_null() && name != R_NilValue() {
+                            let s = crate::sexp::constructors::Rf_mkString(
+                                crate::sexp::accessors::CHAR(name),
+                            );
+                            crate::sexp::accessors::SETCAR(cell, s);
+                        }
+                    }
+                    cell = CDR(cell);
+                }
                 slot_subs
             };
 
