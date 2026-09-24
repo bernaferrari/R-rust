@@ -121,6 +121,11 @@ pub unsafe fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// `getNamespaceVersion(ns)` for a base package is the R version.
+pub unsafe fn do_getNamespaceVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_getRversion(call, op, args, rho) }
+}
+
 /// R's `R.version.string` — returns the full R version string.
 pub unsafe fn do_R_version_string(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

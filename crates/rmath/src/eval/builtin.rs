@@ -4740,6 +4740,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_getRversion,
     },
     EvaluatedBuiltin {
+        name: "getNamespaceVersion",
+        handler: crate::mainutils::essentials::do_getNamespaceVersion,
+    },
+    EvaluatedBuiltin {
         name: "R.Version",
         handler: crate::mainutils::essentials::do_R_Version,
     },
