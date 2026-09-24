@@ -10,7 +10,7 @@ function(target, current, ..., check.attributes = TRUE)
     if(n > 1L)
 	msg <- c(msg, paste(n, "NA mismatches"))
     else if (n == 1L)
-        msg <- c(msg, "1 NA mismatch")
+        msg <- c(msg, paste("1, NA mismatch"))
     else {
 	target  <- levels(target) [target [!nax]]
 	current <- levels(current)[current[!nay]]
