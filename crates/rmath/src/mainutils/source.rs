@@ -232,15 +232,56 @@ unsafe fn parse_text_arg(args: SEXP) -> SEXP {
     }
 }
 
+fn parse_input_loc(message: &str) -> (c_int, c_int) {
+    let Some(start) = message.rfind("(<input>:") else {
+        return (1, 1);
+    };
+    let rest = &message[start + "(<input>:".len()..];
+    let Some((nums, _)) = rest.split_once(')') else {
+        return (1, 1);
+    };
+    let mut parts = nums.split(':');
+    let line = parts.next().and_then(|s| s.parse().ok()).unwrap_or(1);
+    let col = parts.next().and_then(|s| s.parse().ok()).unwrap_or(1);
+    (line, col)
+}
+
 fn parse_failure(message: impl Into<String>) -> ! {
     let message = message.into();
+    let (line, col) = parse_input_loc(&message);
     unsafe {
         store_parse_error(
             &message,
             1,
-            R_GetParseErrorCol().max(1),
+            col.max(1),
             R_GetParseErrorFile(),
         );
+        let c_msg = std::ffi::CString::new(message.as_str()).unwrap_or_default();
+        let cond = crate::mainutils::errors::R_makeErrorCondition(
+            R_NilValue(),
+            b"parseError\0".as_ptr() as *const std::os::raw::c_char,
+            std::ptr::null(),
+            2,
+            c_msg.as_ptr(),
+        );
+        let _guard = protect(cond);
+        let lineno = crate::sexp::constructors::Rf_ScalarInteger(line);
+        let colno = crate::sexp::constructors::Rf_ScalarInteger(col);
+        crate::mainutils::errors::R_setConditionField(
+            cond,
+            2,
+            b"lineno\0".as_ptr() as *const std::os::raw::c_char,
+            lineno,
+        );
+        crate::mainutils::errors::R_setConditionField(
+            cond,
+            3,
+            b"colno\0".as_ptr() as *const std::os::raw::c_char,
+            colno,
+        );
+        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+            (*inst).error_state.signalled_condition = cond;
+        });
     }
     std::panic::panic_any(RError { message });
 }
