@@ -2672,6 +2672,86 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
+        if TYPEOF(x) == SEXPTYPE::INTSXP && TYPEOF(y) == SEXPTYPE::INTSXP {
+            let nx = XLENGTH(x) as usize;
+            let ny = XLENGTH(y) as usize;
+            if nx == 0 || ny == 0 {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "invalid 'xinds' argument",
+                );
+            }
+            let all = CAR(CDR(CDR(args)));
+            let ally = CAR(CDR(CDR(CDR(args))));
+            let all_x = !all.is_null() && TYPEOF(all) == SEXPTYPE::LGLSXP && XLENGTH(all) > 0 && *INTEGER(all) == TRUE;
+            let all_y = !ally.is_null() && TYPEOF(ally) == SEXPTYPE::LGLSXP && XLENGTH(ally) > 0 && *INTEGER(ally) == TRUE;
+            let mut ix: Vec<(i32, i32)> = (0..nx).map(|i| (*INTEGER(x).add(i), (i as i32) + 1)).collect();
+            let mut iy: Vec<(i32, i32)> = (0..ny).map(|i| (*INTEGER(y).add(i), (i as i32) + 1)).collect();
+            ix.sort_by_key(|p| p.0);
+            iy.sort_by_key(|p| p.0);
+            let nx_lone = ix.iter().position(|p| p.0 > 0).unwrap_or(nx);
+            let ny_lone = iy.iter().position(|p| p.0 > 0).unwrap_or(ny);
+            let mut pairs: Vec<(i32, i32)> = Vec::new();
+            let mut i = nx_lone;
+            let mut j = ny_lone;
+            while i < nx {
+                let tmp = ix[i].0;
+                let mut nnx = i;
+                while nnx < nx && ix[nnx].0 == tmp {
+                    nnx += 1;
+                }
+                while j < ny && iy[j].0 < tmp {
+                    j += 1;
+                }
+                let j0 = j;
+                while j < ny && iy[j].0 == tmp {
+                    j += 1;
+                }
+                for a in i..nnx {
+                    for b in j0..j {
+                        pairs.push((ix[a].1, iy[b].1));
+                    }
+                }
+                i = nnx;
+            }
+            let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+            let _a = protect(ans);
+            let ansx = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
+            let ansy = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
+            for (k, (xv, yv)) in pairs.iter().enumerate() {
+                *INTEGER(ansx).add(k) = *xv;
+                *INTEGER(ansy).add(k) = *yv;
+            }
+            SET_VECTOR_ELT(ans, 0, ansx);
+            SET_VECTOR_ELT(ans, 1, ansy);
+            if all_x {
+                let lone = Rf_allocVector3(SEXPTYPE::INTSXP, nx_lone as R_xlen_t);
+                for k in 0..nx_lone {
+                    *INTEGER(lone).add(k) = ix[k].1;
+                }
+                SET_VECTOR_ELT(ans, 2, lone);
+            }
+            if all_y {
+                let lone = Rf_allocVector3(SEXPTYPE::INTSXP, ny_lone as R_xlen_t);
+                for k in 0..ny_lone {
+                    *INTEGER(lone).add(k) = iy[k].1;
+                }
+                SET_VECTOR_ELT(ans, 3, lone);
+            }
+            let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
+            for (k, name) in ["xi", "yi", "x.alone", "y.alone"].iter().enumerate() {
+                let c = std::ffi::CString::new(*name).unwrap_or_default();
+                crate::sexp::accessors::SET_STRING_ELT(
+                    nms,
+                    k as R_xlen_t,
+                    crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+                );
+            }
+            crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), nms);
+            return ans;
+        }
+        let x = CAR(args);
+        let y = CAR(CDR(args));
         if TYPEOF(x) != SEXPTYPE::VECSXP || TYPEOF(y) != SEXPTYPE::VECSXP {
             crate::mainutils::errors::errorcall_str(
                 unsafe { crate::mainutils::errors::R_getCurrentCall() },

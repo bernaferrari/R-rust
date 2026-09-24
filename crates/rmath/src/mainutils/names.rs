@@ -1307,8 +1307,8 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         b"merge\0",
         None,
         0,
-        1,
-        2,
+        11,
+        4,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
