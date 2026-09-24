@@ -74,7 +74,12 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             } else {
                 SEXPTYPE::INTSXP
             };
-            return Rf_allocVector3(kind, 0);
+            let empty = Rf_allocVector3(kind, 0);
+            let _empty_guard = protect(empty);
+            let src_a = if sa == R_NilValue() { empty } else { sa };
+            let src_b = if sb == R_NilValue() { empty } else { sb };
+            propagate_arithmetic_attributes(empty, src_a, src_b, 0);
+            return empty;
         }
         if !is_numeric_operand(sa) || !is_numeric_operand(sb) {
             arithmetic_error("non-numeric argument to binary operator");
@@ -89,7 +94,10 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let use_real = op == "/" || op == "^" || a.clone().needs_real_with(b.clone());
         if n == 0 {
             let kind = if use_real { SEXPTYPE::REALSXP } else { SEXPTYPE::INTSXP };
-            return Rf_allocVector3(kind, 0);
+            let empty = Rf_allocVector3(kind, 0);
+            let _empty_guard = protect(empty);
+            propagate_arithmetic_attributes(empty, sa, sb, 0);
+            return empty;
         }
         let integer_overflow_can_warn = matches!(op, "+" | "-" | "*");
         let result_raw = if use_real {
