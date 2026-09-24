@@ -2813,7 +2813,7 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if *xr < 0 { store_na(out, dst as i64); } else { copy_elt(src, *xr, out, dst as i64); }
             }
             SET_VECTOR_ELT(result, col, out);
-            names.push(elt_to_string(xnames, xi as i64));
+            names.push(format!("\u{0}x:{}", elt_to_string(xnames, xi as i64)));
             col += 1;
         }
         for &yi in &y_extra {
@@ -2823,9 +2823,26 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if *yr < 0 { store_na(out, dst as i64); } else { copy_elt(src, *yr, out, dst as i64); }
             }
             SET_VECTOR_ELT(result, col, out);
-            names.push(elt_to_string(ynames, yi as i64));
+            names.push(format!("\u{0}y:{}", elt_to_string(ynames, yi as i64)));
             col += 1;
         }
+        let raw: Vec<String> = names.iter().map(|n| n.trim_start_matches(|c| c == '\u{0}' || c == 'x' || c == 'y' || c == ':').to_string()).collect();
+        let mut fixed = Vec::with_capacity(names.len());
+        for (i, tag) in names.iter().enumerate() {
+            let bare = if let Some(rest) = tag.strip_prefix('\u{0}') {
+                rest.split_once(':').map(|(_, b)| b).unwrap_or(tag)
+            } else {
+                tag.as_str()
+            };
+            let dup = raw.iter().filter(|r| r.as_str() == bare).count() > 1;
+            if dup && tag.starts_with('\u{0}') {
+                let side = if tag.as_bytes().get(1) == Some(&b'x') { ".x" } else { ".y" };
+                fixed.push(format!("{bare}{side}"));
+            } else {
+                fixed.push(bare.to_string());
+            }
+        }
+        names = fixed;
         set_string_names(result, &names);
         set_compact_row_names(result, nout);
         set_data_frame_class(result);
