@@ -1044,9 +1044,9 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
         }
         let result_type = if any_char || any_factor {
             SEXPTYPE::STRSXP
-        } else if all_logical {
+        } else if all_logical || ncol == 0 {
             SEXPTYPE::LGLSXP
-        } else if any_real || ncol == 0 {
+        } else if any_real {
             SEXPTYPE::REALSXP
         } else {
             SEXPTYPE::INTSXP
