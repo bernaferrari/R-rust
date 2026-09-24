@@ -678,6 +678,24 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let src = i + i * nrow;
                 copy_matrix_element(result, i as R_xlen_t, x, src as R_xlen_t);
             }
+            let dimnames = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            if !dimnames.is_null()
+                && dimnames != R_NilValue()
+                && TYPEOF(dimnames) == SEXPTYPE::VECSXP
+                && XLENGTH(dimnames) >= 1
+            {
+                let rn = VECTOR_ELT(dimnames, 0);
+                if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) >= n as i64 {
+                    crate::sexp::attrib_core::setAttrib(
+                        result,
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                        rn,
+                    );
+                }
+            }
             result
         } else {
             let nrow_arg = CAR(CDR(args));
