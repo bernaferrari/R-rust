@@ -4955,8 +4955,24 @@ macro_rules! portable_graphics_handlers {
 portable_graphics_handlers! {
     do_lines_default=>"lines.default",do_points_default=>"points.default",
     do_segments=>"segments",do_arrows=>"arrows",do_polygon=>"polygon",
-    do_text_default=>"text.default",do_title=>"title",do_box=>"box",do_axis=>"axis",do_plot_new=>"plot.new",do_plot_window=>"plot.window",
+    do_text_default=>"text.default",do_title=>"title",do_box=>"box",do_axis=>"axis",do_plot_window=>"plot.window",
 }
+static NO_DEVICE_PLOT_NEW: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub unsafe fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    #[cfg(feature = "renderplot-device")]
+    unsafe {
+        crate::mainutils::portable_plot::draw_builtin("plot.new", args)
+    }
+    #[cfg(not(feature = "renderplot-device"))]
+    {
+        let _ = args;
+        NO_DEVICE_PLOT_NEW.store(true, std::sync::atomic::Ordering::Relaxed);
+        crate::sexp::globals::R_NilValue()
+    }
+}
+
 
 /// GNU `rect(...)` — no device: `plot.new has not been called yet`.
 pub unsafe fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -4967,10 +4983,13 @@ pub unsafe fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = args;
-        crate::mainutils::errors::errorcall_str(
-            crate::mainutils::errors::R_getCurrentCall(),
-            "plot.new has not been called yet",
-        );
+        if !NO_DEVICE_PLOT_NEW.load(std::sync::atomic::Ordering::Relaxed) {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "plot.new has not been called yet",
+            );
+        }
+        crate::sexp::globals::R_NilValue()
     }
 }
 
