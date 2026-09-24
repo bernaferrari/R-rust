@@ -2367,7 +2367,40 @@ pub unsafe fn do_nclass_fd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         let n = x.len() as f64;
-        let mut h = 2.0 * nclass_iqr(x.clone());
+        let signif5 = |v: f64| {
+            if v == 0.0 || !v.is_finite() {
+                return v;
+            }
+            let digits = v.abs().log10().floor();
+            let scale = 10f64.powf(4.0 - digits);
+            (v * scale).round() / scale
+        };
+        let xs: Vec<f64> = x.iter().copied().map(signif5).collect();
+        let mut h = 2.0 * nclass_iqr(xs.clone());
+        if h == 0.0 {
+            let mut sorted = xs.clone();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let q7 = |p: f64| -> f64 {
+                let n = sorted.len();
+                if n == 0 {
+                    return f64::NAN;
+                }
+                if n == 1 {
+                    return sorted[0];
+                }
+                let idx = 1.0 + (n as f64 - 1.0) * p;
+                let j = idx.floor() as usize;
+                let g = idx - j as f64;
+                let a = sorted[(j.saturating_sub(1)).min(n - 1)];
+                let b = sorted[j.min(n - 1)];
+                (1.0 - g) * a + g * b
+            };
+            let mut al = 0.25;
+            while h == 0.0 && al / 2.0 >= 1.0 / 512.0 {
+                al /= 2.0;
+                h = (q7(1.0 - al) - q7(al)) / (1.0 - 2.0 * al);
+            }
+        }
         if h == 0.0 {
             h = 3.5 * nclass_sample_var(&x).sqrt();
         }
