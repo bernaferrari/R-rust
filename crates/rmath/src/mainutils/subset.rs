@@ -2938,7 +2938,7 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
         /* Atomic vector case */
         if isVectorAtomic(x) {
             let _ = call;
-            r_error("$ operator is invalid for atomic vectors");
+            crate::mainutils::errors::errorcall_str(call, "$ operator is invalid for atomic vectors");
         }
 
         /* Default: not subsettable */

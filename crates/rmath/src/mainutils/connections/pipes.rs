@@ -431,22 +431,38 @@ pub unsafe fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             r_error("invalid connection");
         };
 
-        let fields = [
-            format!("description={}", conn.description),
-            format!("class={}", conn.class),
-            format!("mode={}", conn.mode),
-            format!("opened={}", conn.isopen),
-            format!("can read={}", conn.canread),
-            format!("can write={}", conn.canwrite),
-            format!("can seek={}", conn.canseek),
-            format!("pushback={}", conn.pushback.len()),
+        let yesno = |flag: bool| if flag { "yes" } else { "no" };
+        let values = [
+            conn.description.as_str(),
+            conn.class.as_str(),
+            conn.mode.as_str(),
+            if conn.text { "text" } else { "binary" },
+            if conn.isopen { "opened" } else { "closed" },
+            yesno(conn.canread),
+            yesno(conn.canwrite),
         ];
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, fields.len() as c_int);
-        for (idx, field) in fields.iter().enumerate() {
-            let c_field = CString::new(field.as_str()).unwrap_or_default();
-            let charsxp = Rf_mkChar(c_field.as_ptr());
-            SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
+        let labels = [
+            "description",
+            "class",
+            "mode",
+            "text",
+            "opened",
+            "can read",
+            "can write",
+        ];
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
+        for (idx, (label, value)) in labels.iter().zip(values.iter()).enumerate() {
+            let lab = CString::new(*label).unwrap_or_default();
+            SET_STRING_ELT(names, idx as R_xlen_t, Rf_mkChar(lab.as_ptr()));
+            let val = CString::new(*value).unwrap_or_default();
+            SET_VECTOR_ELT(ans, idx as R_xlen_t, Rf_mkString(val.as_ptr()));
         }
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
         ans
     }
 }

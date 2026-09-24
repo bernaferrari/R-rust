@@ -1078,6 +1078,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "grepl", include_str!("gnu_grepl.R"));
         eval_base_binding(base_env, "regexpr", include_str!("gnu_regexpr.R"));
         eval_base_binding(base_env, "gregexpr", include_str!("gnu_gregexpr.R"));
+        eval_base_binding(
+            base_env,
+            "summary.connection",
+            "function(object, ...) .Internal(summary.connection(object))",
+        );
     eval_base_binding(base_env, ".traceback", include_str!("gnu_dot_traceback.R"));
     eval_base_binding(base_env, "traceback", include_str!("gnu_traceback.R"));
     eval_base_binding(base_env, "get_all_vars", include_str!("gnu_get_all_vars.R"));

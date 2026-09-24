@@ -2526,10 +2526,9 @@ impl<'arena> Parser<'arena> {
         let if_opener = self.group_opener.get(if_pos).copied().flatten();
         self.skip_newlines();
         if self.peek() == &Token::KwElse {
-            // Strict file-parse mode (`parse()`/`source()`) rejects every
-            // newline-crossing `else`; the interactive path gates on the
-            // group depth at the `if` keyword (see above).
-            if self.pos > body_end && (self.strict_newline_else || if_opener.is_none()) {
+            // A newline ends `else` only at top level. Inside `{` or `(`,
+            // GNU source() still attaches it (`if (cond)\n expr\n else expr`).
+            if self.pos > body_end && if_opener.is_none() {
                 return Err(self.unexpected_at(self.pos));
             }
             self.advance();
