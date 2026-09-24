@@ -523,6 +523,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              invisible()\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "as.list.data.frame",
+            "function(x, ...) { x <- unclass(x); attr(x, \"row.names\") <- NULL; x }",
+        );
+        eval_base_binding(
+            base_env,
+            "as.vector.data.frame",
+            "function(x, mode = \"any\") { x <- as.list.data.frame(x); if (mode %in% c(\"any\", \"list\")) x else as.vector(x, mode = mode) }",
+        );
         // GNU array.R / sapply.R: closures over .Internal, not primitives.
         // paste.R: .Internal(paste(list(...), sep, collapse, recycle0)).
         eval_base_binding(
