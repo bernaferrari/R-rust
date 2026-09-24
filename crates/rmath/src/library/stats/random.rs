@@ -509,6 +509,12 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_chisq_sim",
     "C_nextn",
     "C_BinDist",
+    "C_bw_den",
+    "C_bw_den_binned",
+    "C_bw_ucv",
+    "C_bw_bcv",
+    "C_bw_phi4",
+    "C_bw_phi6",
 ];
 
 unsafe extern "C-unwind" fn c_bindist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
@@ -558,6 +564,12 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "Rsm" => as_dl(super::smooth::c_rsm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "bw_den" => as_dl(super::bandwidths::c_bw_den as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "bw_den_binned" => as_dl(super::bandwidths::c_bw_den_binned as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "bw_ucv" => as_dl(super::bandwidths::c_bw_ucv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "bw_bcv" => as_dl(super::bandwidths::c_bw_bcv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "bw_phi4" => as_dl(super::bandwidths::c_bw_phi4 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "bw_phi6" => as_dl(super::bandwidths::c_bw_phi6 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "BinDist" => as_dl(c_bindist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "runmed" => as_dl(super::srunmed::c_runmed as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "tukeyline" => as_dl(super::line::c_tukeyline as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),

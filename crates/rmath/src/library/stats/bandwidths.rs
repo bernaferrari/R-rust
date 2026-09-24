@@ -179,11 +179,15 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
 
     let mut xmin = f64::INFINITY;
     let mut xmax = f64::NEG_INFINITY;
-    for &value in x {
+    for (i, &value) in x.iter().enumerate() {
         if !R_FINITE(value) {
+            let msg = std::ffi::CString::new(format!(
+                "non-finite x[{}] in bandwidth calculation",
+                i + 1
+            ))
+            .unwrap();
             unsafe {
-                Rf_error(b"non-finite x[%d] in bandwidth calculation\0".as_ptr()
-                    as *const core::ffi::c_char);
+                Rf_error(msg.as_ptr());
             }
         }
         if value < xmin {
@@ -258,4 +262,28 @@ pub unsafe fn bw_den_binned(sx: SEXP) -> SEXP {
     cnt[0] *= 0.5; // counts in the same bin got double-counted
 
     ans
+}
+
+pub unsafe extern "C-unwind" fn c_bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
+    unsafe { bw_den(nbin, sx) }
+}
+
+pub unsafe extern "C-unwind" fn c_bw_den_binned(sx: SEXP) -> SEXP {
+    unsafe { bw_den_binned(sx) }
+}
+
+pub unsafe extern "C-unwind" fn c_bw_ucv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+    unsafe { bw_ucv(sn, sd, cnt, sh) }
+}
+
+pub unsafe extern "C-unwind" fn c_bw_bcv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+    unsafe { bw_bcv(sn, sd, cnt, sh) }
+}
+
+pub unsafe extern "C-unwind" fn c_bw_phi4(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+    unsafe { bw_phi4(sn, sd, cnt, sh) }
+}
+
+pub unsafe extern "C-unwind" fn c_bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+    unsafe { bw_phi6(sn, sd, cnt, sh) }
 }
