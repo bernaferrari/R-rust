@@ -147,7 +147,8 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
                     let label = if !vnames.is_null() && TYPEOF(vnames) == SEXPTYPE::STRSXP && added < XLENGTH(vnames) {
                         crate::sexp::accessors::STRING_ELT(vnames, added)
                     } else {
-                        crate::sexp::constructors::Rf_mkChar(c"V".as_ptr())
+                        let label_s = format!("V{}", XLENGTH(frame) + 1);
+                        crate::sexp::constructors::Rf_mkChar(std::ffi::CString::new(label_s).unwrap().as_ptr())
                     };
                     crate::sexp::accessors::SET_STRING_ELT(new_names, XLENGTH(frame), label);
                     crate::sexp::attrib_core::setAttrib(wider, crate::sexp::attrib_core::R_NamesSymbol(), new_names);
@@ -266,6 +267,19 @@ unsafe fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
                 }
             }
             Some(out)
+        } else if TYPEOF(index) == SEXPTYPE::LGLSXP {
+            if XLENGTH(index) == 1 && crate::sexp::accessors::LOGICAL_ELT(index, 0) == crate::sexp::ffi::TRUE {
+                Some((0..n).collect())
+            } else {
+                let mut out = Vec::new();
+                for i in 0..n {
+                    let bit = crate::sexp::accessors::LOGICAL_ELT(index, (i % XLENGTH(index).max(1)) as i32);
+                    if bit == crate::sexp::ffi::TRUE {
+                        out.push(i);
+                    }
+                }
+                Some(out)
+            }
         } else {
             None
         }
@@ -434,6 +448,14 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
         {
             if let Some(updated) = data_frame_assign_matrix(x, CAR(subs), y) {
                 return updated;
+            }
+            let idx = CAR(subs);
+            if TYPEOF(idx) == SEXPTYPE::INTSXP || TYPEOF(idx) == SEXPTYPE::REALSXP {
+                let cell2 = crate::sexp::constructors::Rf_cons(idx, R_NilValue());
+                let pair = crate::sexp::constructors::Rf_cons(crate::sexp::globals::R_MissingArg(), cell2);
+                if let Some(updated) = data_frame_assign_cells(x, pair, y) {
+                    return updated;
+                }
             }
         }
 
