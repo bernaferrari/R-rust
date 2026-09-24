@@ -2602,7 +2602,7 @@ unsafe fn scan_summary_shape(args: SEXP, op: SummaryOp) -> SummaryShape {
                     }
                     shape.saw_complex = true;
                 }
-                t if t == SEXPTYPE::STRSXP => {}
+                t if t == SEXPTYPE::STRSXP => summary_error("invalid 'type' (character) of argument"),
                 _ => summary_error("invalid 'type' of argument"),
             }
             current = CDR(current);
