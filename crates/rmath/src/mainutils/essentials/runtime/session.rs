@@ -260,7 +260,12 @@ pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             output.push_str(&lines.join("\n"));
             output.push('\n');
         }
-        if file.is_empty() {
+        if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) >= 1 {
+            crate::mainutils::connections::connection_write_bytes(
+                *INTEGER(file_arg),
+                output.as_bytes(),
+            );
+        } else if file.is_empty() {
             if crate::sexp::output::is_capturing() {
                 crate::sexp::output::capture_stdout(&output);
             } else {
