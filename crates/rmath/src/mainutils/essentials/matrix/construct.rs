@@ -689,10 +689,19 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             {
                 let rn = VECTOR_ELT(dimnames, 0);
                 if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) >= n as i64 {
+                    let names = if XLENGTH(rn) == n as i64 {
+                        rn
+                    } else {
+                        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+                        for i in 0..n {
+                            SET_STRING_ELT(names, i as R_xlen_t, STRING_ELT(rn, i as R_xlen_t));
+                        }
+                        names
+                    };
                     crate::sexp::attrib_core::setAttrib(
                         result,
                         crate::sexp::attrib_core::R_NamesSymbol(),
-                        rn,
+                        names,
                     );
                 }
             }
