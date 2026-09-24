@@ -34,7 +34,9 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
         "par" => Some(unsafe { std::mem::transmute(c_par as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP) }),
         "plot_new" => Some(unsafe { std::mem::transmute(c_plot_new as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP) }),
         "plot_window" => Some(unsafe { std::mem::transmute(c_plot_window as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
-        "plotXY" | "plot_xy" => Some(unsafe { std::mem::transmute(c_plot_xy as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
+        "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "axis" | "box" | "segments" | "rect" | "polygon" | "strWidth" | "strHeight" => {
+            Some(unsafe { std::mem::transmute(c_plot_xy as unsafe extern "C-unwind" fn(SEXP) -> SEXP) })
+        }
 
         _ => None,
     }
@@ -42,7 +44,7 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
 
 pub unsafe fn install_call_symbols(env: SEXP) {
     unsafe {
-        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY"] {
+        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_strWidth", "C_strHeight"] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(
                 crate::sexp::symbol::Rf_install(cname.as_ptr()),

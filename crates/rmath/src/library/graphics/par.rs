@@ -1210,8 +1210,21 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         );
                         let n = XLENGTH(value);
                         if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) != n {
-                            par_error("invalid argument passed to par()");
-                        }
+                            for i in 0..n {
+                                let elt = VECTOR_ELT(value, i);
+                                if TYPEOF(elt) != SEXPTYPE::STRSXP {
+                                    par_error("invalid argument passed to par()");
+                                }
+                                for name in string_vector_values(elt) {
+                                    if !is_known_par(&name) {
+                                        par_error(format!(
+                                            "invalid value specified for graphical parameter \"{name}\""
+                                        ));
+                                    }
+                                    query_names.push(name);
+                                }
+                            }
+                        } else {
                         for i in 0..n {
                             let elt = STRING_ELT(names, i);
                             let name = std::ffi::CStr::from_ptr(CHAR(elt))
@@ -1227,6 +1240,7 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                             }
                             set_names.push(name);
                             set_values.push(sexp_to_par_value(VECTOR_ELT(value, i)));
+                        }
                         }
                     } else {
                         for name in string_vector_values(value) {
