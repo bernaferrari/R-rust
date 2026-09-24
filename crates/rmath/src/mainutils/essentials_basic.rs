@@ -2219,7 +2219,10 @@ pub unsafe fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
             if let Some(name) = tag_name(TAG(frame)) {
                 if all_names || !name.starts_with('.') {
                     let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
-                    let value = crate::sexp::envir::R_findVarInFrame(x, sym);
+                    let mut value = crate::sexp::envir::R_findVarInFrame(x, sym);
+                    if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                        value = crate::eval::eval::Rf_eval(value, x);
+                    }
                     if !value.is_null() && value != crate::sexp::globals::R_UnboundValue() {
                         entries.push((name, value));
                     }
