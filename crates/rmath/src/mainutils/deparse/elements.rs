@@ -518,7 +518,12 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             } else if (d.opts & DIGITS17 != 0) && R_FINITE(v) {
                                 with_deparse_runtime(|state| {
                                     let dig_buf = &mut state.dig_buf;
-                                    r_snprintf_c(dig_buf, b"%.17g", &[v.into()]);
+                                    libc::snprintf(
+                                        dig_buf.as_mut_ptr(),
+                                        dig_buf.len(),
+                                        b"%.17g\0".as_ptr() as *const libc::c_char,
+                                        v,
+                                    );
                                     strp = dig_buf.as_ptr() as *const c_char;
                                 });
                             } else {
@@ -554,10 +559,12 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             } else if (d.opts & DIGITS17 != 0) && R_FINITE(c.r) && R_FINITE(c.i) {
                                 with_deparse_runtime(|state| {
                                     let dig_cplx = &mut state.dig_cplx;
-                                    r_snprintf_c(
-                                        dig_cplx,
-                                        b"%.17g%+.17gi",
-                                        &[c.r.into(), c.i.into()],
+                                    libc::snprintf(
+                                        dig_cplx.as_mut_ptr(),
+                                        dig_cplx.len(),
+                                        b"%.17g%+.17gi\0".as_ptr() as *const libc::c_char,
+                                        c.r,
+                                        c.i,
                                     );
                                     strp = dig_cplx.as_ptr() as *const c_char;
                                 });
