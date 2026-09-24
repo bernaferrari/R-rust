@@ -796,6 +796,12 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             }
             return matrix_as_data_frame(x, dim);
         }
+        if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
+            x = crate::mainutils::duplicate::shallow_duplicate(x);
+            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), R_NilValue());
+            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), R_NilValue());
+        }
+
         if TYPEOF(x) == SEXPTYPE::VECSXP && !crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
             return list_as_data_frame(x);
         }

@@ -397,6 +397,18 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "as.data.frame.vector",
             include_str!("gnu_as_data_frame_vector.R"),
         );
+        eval_base_binding(
+            base_env,
+            "as.data.frame.array",
+            "function(x, ...) {\n\
+             if (length(dim(x)) == 1L) {\n\
+                 dim(x) <- NULL\n\
+                 class(x) <- NULL\n\
+                 as.data.frame.vector(x, ...)\n\
+             } else as.data.frame.default(x, ...)\n\
+             }",
+        );
+
         eval_base_binding(base_env, "as.data.frame.raw", "as.data.frame.vector");
         eval_base_binding(base_env, "as.data.frame.factor", "as.data.frame.vector");
         eval_base_binding(base_env, "as.data.frame.ordered", "as.data.frame.vector");
