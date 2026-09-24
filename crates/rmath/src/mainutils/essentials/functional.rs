@@ -3380,6 +3380,12 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 t if t == SEXPTYPE::LGLSXP => {
                     *LOGICAL(result).add(idx) = entry.value.as_logical();
                 }
+                t if t == SEXPTYPE::RAWSXP => {
+                    *RAW(result).add(idx) = match &entry.value {
+                        UnlistValue::Raw(byte) => *byte,
+                        other => other.as_integer() as u8,
+                    };
+                }
                 _ => {
                     *INTEGER(result).add(idx) = entry.value.as_integer();
                 }
@@ -3464,6 +3470,7 @@ enum UnlistValue {
     Real(f64),
     Complex(Rcomplex),
     String(String),
+    Raw(u8),
     NaString,
     Object(SEXP),
     /// Atomic element still owned by the input vector — materialize at fill.
@@ -3482,6 +3489,7 @@ impl UnlistValue {
                     *value as i32
                 }
             }
+            Self::Raw(value) => *value as i32,
             Self::Complex(_) | Self::String(_) | Self::NaString | Self::Object(_) | Self::Element { .. } => {
                 NA_INTEGER
             }
@@ -3504,6 +3512,7 @@ impl UnlistValue {
             }
             Self::Real(value) => *value,
             Self::Complex(value) => value.r,
+            Self::Raw(value) => *value as f64,
             Self::String(_) | Self::NaString | Self::Object(_) | Self::Element { .. } => NA_REAL,
 
         }
@@ -3521,6 +3530,7 @@ impl UnlistValue {
             },
             Self::Real(value) => Rcomplex { r: *value, i: 0.0 },
             Self::Complex(value) => *value,
+            Self::Raw(value) => Rcomplex { r: *value as f64, i: 0.0 },
             Self::String(_) | Self::NaString | Self::Object(_) | Self::Element { .. } => Rcomplex {
                 r: NA_REAL,
                 i: NA_REAL,
@@ -3559,6 +3569,7 @@ impl UnlistValue {
             Self::String(value) => value.clone(),
             Self::NaString => "NA".to_string(),
             Self::Object(value) => elt_to_string(*value, 0),
+            Self::Raw(value) => format!("{value:02x}"),
             Self::Element { parent, index } => unsafe { elt_to_string(*parent, *index) },
         }
     }
@@ -3640,6 +3651,11 @@ fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
         .any(|entry| matches!(entry.value, UnlistValue::Logical(_)))
     {
         SEXPTYPE::LGLSXP
+    } else if entries
+        .iter()
+        .any(|entry| matches!(entry.value, UnlistValue::Raw(_)))
+    {
+        SEXPTYPE::RAWSXP
     } else {
         SEXPTYPE::INTSXP
     }
@@ -3765,6 +3781,7 @@ unsafe fn collect_unlist_entries(
                 t if t == SEXPTYPE::INTSXP => UnlistValue::Integer(*INTEGER(x).add(i as usize)),
                 t if t == SEXPTYPE::REALSXP => UnlistValue::Real(*REAL(x).add(i as usize)),
                 t if t == SEXPTYPE::CPLXSXP => UnlistValue::Complex(*COMPLEX(x).add(i as usize)),
+                t if t == SEXPTYPE::RAWSXP => UnlistValue::Raw(*RAW(x).add(i as usize)),
                 t if t == SEXPTYPE::STRSXP => {
                     let string = STRING_ELT(x, i);
                     if string.is_null() || string == crate::sexp::globals::R_NaString() {
