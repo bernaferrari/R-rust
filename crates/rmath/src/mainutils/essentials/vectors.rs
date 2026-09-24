@@ -682,7 +682,12 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
                     continue;
                 }
                 let idx = i % n;
-                let v = elt_real_safe(arg, idx);
+                let mut v = elt_real_safe(arg, idx);
+                if crate::mainutils::essentials::sexp_has_class(arg_vecs[0], "difftime")
+                    && crate::mainutils::essentials::sexp_has_class(arg, "difftime")
+                {
+                    v *= difftime_unit_seconds(arg) / difftime_unit_seconds(arg_vecs[0]);
+                }
                 if v.to_bits() == R_NA_BIT_PATTERN || v.is_nan() {
                     seen_missing = true;
                     continue;
@@ -715,7 +720,31 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
             }
         }
         copy_pminmax_shape(arg_vecs[0], result, max_len);
+        if crate::mainutils::essentials::sexp_has_class(arg_vecs[0], "difftime") {
+            let class = crate::sexp::attrib_core::getAttrib(arg_vecs[0], crate::sexp::attrib_core::R_ClassSymbol());
+            crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
+            let units_sym = crate::sexp::symbol::Rf_install(c"units".as_ptr());
+            crate::sexp::attrib_core::setAttrib(result, units_sym, crate::sexp::attrib_core::getAttrib(arg_vecs[0], units_sym));
+        }
         result
+    }
+}
+fn difftime_unit_seconds(x: SEXP) -> f64 {
+    unsafe {
+        let units = crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::Rf_install(c"units".as_ptr()));
+        let name = if units.is_null() || units == R_NilValue() || TYPEOF(units) != SEXPTYPE::STRSXP {
+            "secs"
+        } else {
+            let p = crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(units, 0));
+            std::ffi::CStr::from_ptr(p).to_str().unwrap_or("secs")
+        };
+        match name {
+            "mins" => 60.0,
+            "hours" => 3600.0,
+            "days" => 86400.0,
+            "weeks" => 604800.0,
+            _ => 1.0,
+        }
     }
 }
 
