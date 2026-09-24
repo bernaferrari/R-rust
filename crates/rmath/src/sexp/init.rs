@@ -1099,6 +1099,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "callCC",
+            "function(fun) { value <- NULL; delayedAssign(\"throw\", return(value)); fun(function(v) { value <<- v; throw }) }",
+        );
+        eval_base_binding(
+            base_env,
+            "delayedAssign",
+            "function(x, value, eval.env = parent.frame(1), assign.env = parent.frame(1)) .Internal(delayedAssign(x, substitute(value), eval.env, assign.env))",
+        );
+        eval_base_binding(
+            base_env,
             "all.equal",
             "function(target, current, ...) UseMethod(\"all.equal\")",
         );
