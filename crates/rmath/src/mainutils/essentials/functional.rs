@@ -2744,6 +2744,27 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
         }
+        let sort_arg = merge_named_value(args, "sort");
+        let do_sort = sort_arg.is_null()
+            || sort_arg == R_NilValue()
+            || sort_arg == crate::sexp::globals::R_MissingArg()
+            || merge_named_true(args, "sort");
+        if do_sort && !by.is_empty() {
+            let xkey = VECTOR_ELT(x, x_by[0] as i64);
+            let ykey = VECTOR_ELT(y, y_by[0] as i64);
+            let key_of = |idx: i64, col: SEXP| -> String {
+                if idx < 0 {
+                    String::new()
+                } else {
+                    elt_to_string(col, idx)
+                }
+            };
+            pairs.sort_by(|a, b| {
+                let ka = if a.0 >= 0 { key_of(a.0, xkey) } else { key_of(a.1, ykey) };
+                let kb = if b.0 >= 0 { key_of(b.0, xkey) } else { key_of(b.1, ykey) };
+                ka.cmp(&kb)
+            });
+        }
         let nout = pairs.len() as i64;
         let x_extra: Vec<usize> = (0..XLENGTH(x) as usize)
             .filter(|i| !x_by.contains(i))
