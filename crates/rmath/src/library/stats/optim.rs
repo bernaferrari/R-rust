@@ -629,6 +629,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let res = Rf_allocVector(SEXPTYPE::VECSXP, 5);
         let _res_guard = protect(res);
+        SET_VECTOR_ELT(res, 4, R_NilValue());
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 5);
         let _names_guard = protect(names);
         SET_STRING_ELT(names, 0, Rf_mkChar(c"par".as_ptr()));
@@ -1125,7 +1126,13 @@ pub unsafe fn do_optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let options = Rf_allocVector3(SEXPTYPE::VECSXP, 9);
         let _o = protect(options);
         SET_VECTOR_ELT(options, 0, Rf_ScalarInteger(500));
-        SET_VECTOR_ELT(options, 1, Rf_ScalarReal(1.0));
+        let npar = XLENGTH(par).max(1);
+        let parscale = Rf_allocVector3(SEXPTYPE::REALSXP, npar);
+        let _ps = protect(parscale);
+        for i in 0..npar {
+            *REAL(parscale).add(i as usize) = 1.0;
+        }
+        SET_VECTOR_ELT(options, 1, parscale);
         SET_VECTOR_ELT(options, 2, Rf_ScalarReal(1.0));
         SET_VECTOR_ELT(options, 3, Rf_ScalarReal(f64::NEG_INFINITY));
         SET_VECTOR_ELT(options, 4, Rf_ScalarReal(f64::EPSILON.sqrt()));
