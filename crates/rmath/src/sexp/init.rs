@@ -901,6 +901,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "pdf", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "dev.off", "function(...) 1L");
         eval_base_binding(base_env, "postscript", "function(...) invisible(NULL)");
+        eval_base_binding(base_env, "legend", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "mtext", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "duplicated", include_str!("gnu_duplicated.R"));
         eval_base_binding(base_env, "duplicated.default", include_str!("gnu_duplicated_default.R"));
