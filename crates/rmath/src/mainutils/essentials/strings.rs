@@ -3042,8 +3042,30 @@ pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
         let n = XLENGTH(x);
+        let mut drop0 = false;
+        let mut scan = rest;
+        while !scan.is_null() && scan != R_NilValue() {
+            let tag = TAG(scan);
+            if !tag.is_null() && tag != R_NilValue() {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy();
+                if name == "drop0trailing" {
+                    drop0 = crate::main::coerce::asLogical(CAR(scan)) != 0;
+                }
+            }
+            scan = CDR(scan);
+        }
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _out = protect(out);
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            for i in 0..n {
+                let s = elt_to_string(x, i);
+                let s = pretty_num_one(&s, "", drop0, ".", "", 5);
+                let c = std::ffi::CString::new(s).unwrap_or_default();
+                SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+            }
+            return out;
+        }
         for i in 0..n {
             let elt = if TYPEOF(x) == SEXPTYPE::INTSXP {
                 Rf_ScalarInteger(*INTEGER(x).add(i as usize))
