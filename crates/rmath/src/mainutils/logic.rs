@@ -626,6 +626,26 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
             return out;
         }
+        let inherits_oct = |s: SEXP| unsafe {
+            crate::mainutils::objects::inherits2(s, c"octmode".as_ptr()) != 0
+        };
+        if inherits_oct(x) || inherits_oct(y) {
+            let a = crate::mainutils::essentials::do_as_octmode(
+                call, op, crate::sexp::constructors::Rf_cons(x, R_NilValue()), env,
+            );
+            let b = crate::mainutils::essentials::do_as_octmode(
+                call, op, crate::sexp::constructors::Rf_cons(y, R_NilValue()), env,
+            );
+            let combined = if code == 1 {
+                crate::mainutils::relop::do_bitwAnd(call, op, crate::sexp::constructors::Rf_cons(a, crate::sexp::constructors::Rf_cons(b, R_NilValue())), env)
+            } else {
+                crate::mainutils::relop::do_bitwOr(call, op, crate::sexp::constructors::Rf_cons(a, crate::sexp::constructors::Rf_cons(b, R_NilValue())), env)
+            };
+            let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            crate::sexp::accessors::SET_STRING_ELT(class, 0, crate::sexp::constructors::Rf_mkChar(c"octmode".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(combined, crate::sexp::attrib_core::R_ClassSymbol(), class);
+            return combined;
+        }
         let x_valid = x.is_null() || x == R_NilValue() || is_number(x);
         let y_valid = y.is_null() || y == R_NilValue() || is_number(y);
         if !x_valid || !y_valid {
