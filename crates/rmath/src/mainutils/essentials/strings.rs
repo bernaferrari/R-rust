@@ -3984,8 +3984,50 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         {
             return R_NilValue();
         }
+        let use_bytes = logical_arg_by_name_or_position(args, "useBytes", 6).unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let replacement = elt_to_string(replacement_arg, 0);
+        if use_bytes && TYPEOF(x_arg) == SEXPTYPE::STRSXP && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP {
+            let n = XLENGTH(x_arg);
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _result_guard = protect(result);
+            let pat = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(pattern_arg, 0))).to_bytes().to_vec();
+            let rep = if TYPEOF(replacement_arg) == SEXPTYPE::STRSXP && XLENGTH(replacement_arg) > 0 {
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(replacement_arg, 0))).to_bytes().to_vec()
+            } else {
+                Vec::new()
+            };
+            for i in 0..n {
+                let src_ch = STRING_ELT(x_arg, i);
+                if src_ch.is_null() || src_ch == crate::sexp::globals::R_NaString() || pat.is_empty() {
+                    SET_STRING_ELT(result, i, src_ch);
+                    continue;
+                }
+                let src = std::ffi::CStr::from_ptr(CHAR(src_ch)).to_bytes();
+                let mut out = Vec::new();
+                let mut p = 0;
+                let mut changed = false;
+                while p < src.len() {
+                    if src[p..].starts_with(&pat) {
+                        out.extend_from_slice(&rep);
+                        p += pat.len();
+                        changed = true;
+                        if !global { out.extend_from_slice(&src[p..]); break; }
+                    } else {
+                        out.push(src[p]);
+                        p += 1;
+                    }
+                }
+                if !changed {
+                    SET_STRING_ELT(result, i, src_ch);
+                } else {
+                    let cstr = std::ffi::CString::new(out).unwrap_or_default();
+                    SET_STRING_ELT(result, i, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+                }
+            }
+            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
+            return result;
+        }
         let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {

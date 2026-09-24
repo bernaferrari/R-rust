@@ -2385,7 +2385,40 @@ pub unsafe fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
         for i in 0..nrow {
             SET_STRING_ELT(rn, i as R_xlen_t, crate::sexp::constructors::Rf_mkChar(c"".as_ptr()));
         }
-        let cn = string_vector(&headers);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, ncol);
+        for j in 0..ncol {
+            let ch = if !col_names_attr.is_null()
+                && TYPEOF(col_names_attr) == SEXPTYPE::STRSXP
+                && j < XLENGTH(col_names_attr)
+            {
+                STRING_ELT(col_names_attr, j)
+            } else {
+                let label = CString::new(format!("[,{}]", j + 1)).unwrap_or_default();
+                Rf_mkChar(label.as_ptr())
+            };
+            let ch = {
+                let column = VECTOR_ELT(x, j);
+                let dim = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimSymbol());
+                let mc = if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
+                    *INTEGER(dim).add(1)
+                } else { 0 };
+                if mc > 1 {
+                    let dn = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimNamesSymbol());
+                    let cnames = if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 { VECTOR_ELT(dn, 1) } else { R_NilValue() };
+                    let mut bytes = Vec::new();
+                    let outer = CStr::from_ptr(CHAR(ch)).to_bytes();
+                    for k in 0..mc as i64 {
+                        bytes.extend_from_slice(outer);
+                        bytes.push(b'.');
+                        if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
+                            bytes.extend_from_slice(CStr::from_ptr(CHAR(STRING_ELT(cnames, k))).to_bytes());
+                        }
+                    }
+                    Rf_mkChar(CString::new(bytes).unwrap_or_default().as_ptr())
+                } else { ch }
+            };
+            SET_STRING_ELT(cn, j, ch);
+        }
         SET_VECTOR_ELT(dn, 0, rn);
         SET_VECTOR_ELT(dn, 1, cn);
         crate::sexp::attrib_core::setAttrib(
@@ -2507,16 +2540,16 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
         }
         let frame_names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         let mut leaves: Vec<SEXP> = Vec::new();
-        let mut leaf_names: Vec<String> = Vec::new();
+        let mut leaf_names: Vec<Vec<u8>> = Vec::new();
         let mut changed = false;
         for j in 0..XLENGTH(x) {
             let column = VECTOR_ELT(x, j);
             let outer = if !frame_names.is_null() && TYPEOF(frame_names) == SEXPTYPE::STRSXP && j < XLENGTH(frame_names) {
                 let ch = STRING_ELT(frame_names, j);
-                if ch.is_null() || ch == crate::sexp::globals::R_NaString() { String::new() } else {
-                    CStr::from_ptr(crate::sexp::accessors::CHAR(ch)).to_string_lossy().into_owned()
+                if ch.is_null() || ch == crate::sexp::globals::R_NaString() { Vec::new() } else {
+                    CStr::from_ptr(crate::sexp::accessors::CHAR(ch)).to_bytes().to_vec()
                 }
-            } else { String::new() };
+            } else { Vec::new() };
             let dim = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimSymbol());
             let mc = if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
                 *INTEGER(dim).add(1)
@@ -2541,10 +2574,17 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
                         }
                     }
                     leaves.push(piece);
-                    let inner = if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
-                        CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(cnames, k))).to_string_lossy().into_owned()
-                    } else { format!("{}", k + 1) };
-                    leaf_names.push(if outer.is_empty() { inner } else { format!("{outer}.{inner}") });
+                    let mut name = outer.clone();
+                    if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
+                        if !name.is_empty() { name.push(b'.'); }
+                        name.extend_from_slice(CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(cnames, k))).to_bytes());
+                    } else if !name.is_empty() {
+                        name.push(b'.');
+                        name.extend_from_slice((k + 1).to_string().as_bytes());
+                    } else {
+                        name = (k + 1).to_string().into_bytes();
+                    }
+                    leaf_names.push(name);
                 }
             } else {
                 leaves.push(column);
@@ -2556,7 +2596,7 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             let nm = Rf_allocVector3(SEXPTYPE::STRSXP, leaves.len() as i64);
             for (i, (col, name)) in leaves.iter().zip(leaf_names.iter()).enumerate() {
                 SET_VECTOR_ELT(flat, i as i64, *col);
-                let cs = CString::new(name.as_str()).unwrap_or_default();
+                let cs = CString::new(name.clone()).unwrap_or_default();
                 SET_STRING_ELT(nm, i as i64, crate::sexp::constructors::Rf_mkChar(cs.as_ptr()));
             }
             crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_NamesSymbol(), nm);
