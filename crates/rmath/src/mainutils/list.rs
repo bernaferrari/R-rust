@@ -64,6 +64,9 @@ unsafe fn namewalk(s: SEXP, d: &mut NameWalkData) {
 
         match TYPEOF(s) {
             SYMSXP_VAL => {
+                if s == crate::sexp::globals::R_MissingArg() {
+                    return;
+                }
                 name = PRINTNAME(s);
                 // skip blank symbols
                 if !CHAR(name).is_null() && *CHAR(name) == 0 {
