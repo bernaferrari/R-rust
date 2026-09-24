@@ -1188,7 +1188,12 @@ unsafe fn factor_as_character(f: SEXP) -> SEXP {
             let s = if code == NA_INTEGER || code <= 0 || code as R_xlen_t > n_levels as R_xlen_t {
                 R_NaString()
             } else {
-                STRING_ELT(levels, (code - 1) as i64)
+                let level = STRING_ELT(levels, (code - 1) as i64);
+                if level.is_null() || level == R_NaString() {
+                    Rf_mkChar(c"  NA ".as_ptr())
+                } else {
+                    level
+                }
             };
             SET_STRING_ELT(out, i as i64, s);
         }
