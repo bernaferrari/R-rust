@@ -187,6 +187,9 @@ pub unsafe fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> S
     unsafe {
         let dots = current_dots(rho);
         let len = dots_len(dots);
+        if len == 0 {
+            return R_NilValue();
+        }
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
         let _names_guard = protect(names);
         let blank = Rf_mkChar(c"".as_ptr());
