@@ -2198,6 +2198,38 @@ pub unsafe extern "C-unwind" fn PDF(args: SEXP) -> SEXP {
             }
         }
         crate::library::grdevices::device_registry::selectDevice(0);
+        let base = crate::sexp::globals::R_BaseEnv();
+        let sym = crate::sexp::symbol::Rf_install(c".Devices".as_ptr());
+        let old = crate::sexp::envir::R_findVarInFrame(base, sym);
+        let n = if !old.is_null()
+            && old != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(old) == SEXPTYPE::VECSXP
+        {
+            XLENGTH(old)
+        } else {
+            0
+        };
+        let devices = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, (n + 1) as i32);
+        for i in 0..n {
+            SET_VECTOR_ELT(devices, i, VECTOR_ELT(old, i));
+        }
+        if n == 0 {
+            SET_VECTOR_ELT(devices, 0, Rf_mkString(c"null device".as_ptr()));
+        }
+        SET_VECTOR_ELT(
+            devices,
+            if n == 0 { 0i64 } else { n },
+            Rf_mkString(c"pdf".as_ptr()),
+        );
+        // The n==0 arm wrote null device at 0 and then overwrites it. Fix below.
+        if n == 0 {
+            let both = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            SET_VECTOR_ELT(both, 0, Rf_mkString(c"null device".as_ptr()));
+            SET_VECTOR_ELT(both, 1, Rf_mkString(c"pdf".as_ptr()));
+            crate::sexp::envir::defineVar(sym, both, base);
+        } else {
+            crate::sexp::envir::defineVar(sym, devices, base);
+        }
         R_NilValue()
     }
 }

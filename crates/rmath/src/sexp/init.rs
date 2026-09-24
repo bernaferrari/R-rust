@@ -130,6 +130,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         let device = Rf_mkString(c"null device".as_ptr());
         let _device = super::protect::protect(device);
         defineVar(Rf_install_in_current(".Device"), device, base_env);
+        let devices = super::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 1);
+        super::accessors::SET_VECTOR_ELT(devices, 0, Rf_mkString(c"null device".as_ptr()));
+        defineVar(Rf_install_in_current(".Devices"), devices, base_env);
 
 
         // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
