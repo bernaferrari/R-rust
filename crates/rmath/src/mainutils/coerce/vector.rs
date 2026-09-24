@@ -487,7 +487,8 @@ pub unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             return rval;
         }
 
-        error("cannot coerce type to vector");
+        let from = unsafe { std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(v) as i32)).to_string_lossy() };
+        error(&format!("cannot coerce type '{from}' to vector"));
     }
 }
 
