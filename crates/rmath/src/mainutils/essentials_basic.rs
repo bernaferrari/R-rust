@@ -1325,7 +1325,22 @@ pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let (labels, counts): (Vec<String>, Vec<i64>) = counts.into_iter().unzip();
             (labels, counts)
         };
-
+        let mut labels = labels;
+        let mut counts = counts;
+        if let Some(excluded) = table_exclude(args) {
+            let mut kept_labels = Vec::new();
+            let mut kept_counts = Vec::new();
+            for (label, count) in labels.into_iter().zip(counts) {
+                let is_na = label == "\u{0}" || label == "<NA>";
+                let drop = excluded.iter().any(|item| item == &label || (is_na && item == "NA"));
+                if !drop {
+                    kept_labels.push(label);
+                    kept_counts.push(count);
+                }
+            }
+            labels = kept_labels;
+            counts = kept_counts;
+        }
         let len = counts.len() as R_xlen_t;
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, len);
         if result.is_null() {
@@ -1530,6 +1545,28 @@ fn table_use_na(args: SEXP) -> TableUseNa {
         TableUseNa::No
     }
 }
+fn table_exclude(args: SEXP) -> Option<Vec<String>> {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if arg_tag_name(current).as_deref() == Some("exclude") {
+                let value = CAR(current);
+                if value.is_null() || value == R_NilValue() {
+                    return None;
+                }
+                let mut out = Vec::new();
+                for i in 0..XLENGTH(value) {
+                    let text = crate::mainutils::essentials::elt_to_string(value, i);
+                    out.push(if text == "\u{0}" { "NA".to_string() } else { text });
+                }
+                return Some(out);
+            }
+            current = CDR(current);
+        }
+        None
+    }
+}
+
 
 fn factor_levels(x: SEXP) -> Option<SEXP> {
     unsafe {
