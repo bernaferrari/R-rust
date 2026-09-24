@@ -1093,7 +1093,7 @@ pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
+            crate::mainutils::errors::errorcall_str(_call, "'x' is NULL");
         }
 
         let y = CAR(CDR(args));

@@ -178,6 +178,9 @@ unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
     unsafe {
         reject_var_on_factor(x);
         reject_var_on_factor(y);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) == SEXPTYPE::NILSXP {
+            Rf_error(c"'x' is NULL".as_ptr());
+        }
         if TYPEOF(kendall) == SEXPTYPE::LGLSXP
             && XLENGTH(kendall) > 0
             && *LOGICAL(kendall) != 0
