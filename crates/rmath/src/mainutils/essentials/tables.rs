@@ -1812,6 +1812,9 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let n = XLENGTH(x);
         let t = TYPEOF(x);
+        if crate::mainutils::essentials::sexp_has_class(x, "data.frame") {
+            crate::mainutils::errors::errorcall_str(_call, "cannot xtfrm data frames");
+        }
         if t != SEXPTYPE::STRSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::REALSXP {
             return x;
         }

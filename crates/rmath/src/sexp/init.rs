@@ -509,6 +509,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             include_str!("gnu_as_data_frame_list.R"),
         );
         eval_base_binding(base_env, "data.frame", include_str!("gnu_data_frame.R"));
+        eval_base_binding(
+            base_env,
+            "xtfrm.data.frame",
+            "function(x) stop(\"cannot xtfrm data frames\")",
+        );
         // GNU array.R / sapply.R: closures over .Internal, not primitives.
         // paste.R: .Internal(paste(list(...), sep, collapse, recycle0)).
         eval_base_binding(
