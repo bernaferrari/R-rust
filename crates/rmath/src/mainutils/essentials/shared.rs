@@ -709,6 +709,9 @@ pub(crate) unsafe fn datetime_c_value(
                         return NA_REAL;
                     }
                     let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
+                    if text.is_empty() {
+                        return NA_REAL;
+                    }
                     return parse_iso_date_days(text).unwrap_or_else(|| {
                         base_error("character string is not in a standard unambiguous format");
                     });

@@ -612,7 +612,9 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                     NA_REAL
                 } else {
                     let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
-                    if text == "Inf" || text == "+Inf" {
+                    if text.is_empty() {
+                        NA_REAL
+                    } else if text == "Inf" || text == "+Inf" {
                         f64::INFINITY
                     } else if text == "-Inf" {
                         f64::NEG_INFINITY
@@ -625,7 +627,6 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                             )
                         })
                     }
-
                 };
                 *out.add(i as usize) = days;
             }
