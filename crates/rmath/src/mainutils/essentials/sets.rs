@@ -947,6 +947,29 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             1
         };
 
+        if margin == 0 {
+            let flat = crate::mainutils::duplicate::Rf_duplicate(x);
+            let _f = protect(flat);
+            crate::sexp::attrib_core::setAttrib(flat, Rf_install(c"dim".as_ptr()), R_NilValue());
+            crate::sexp::attrib_core::setAttrib(
+                flat,
+                Rf_install(c"dimnames".as_ptr()),
+                R_NilValue(),
+            );
+
+            let new_args = Rf_cons(flat, R_NilValue());
+            let _n = protect(new_args);
+            let result = do_duplicated(_call, _op, new_args, _rho);
+            let attrs = crate::sexp::accessors::ATTRIB(x);
+            if !attrs.is_null() && attrs != R_NilValue() {
+                crate::sexp::accessors::SET_ATTRIB(
+                    result,
+                    crate::mainutils::duplicate::Rf_duplicate(attrs),
+                );
+            }
+            return result;
+        }
+
         // For 2D arrays, support MARGIN=1 (rows) and MARGIN=2 (columns)
         if margin == 1 && dims_len == 2 {
             // Duplicate rows
