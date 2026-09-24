@@ -1078,10 +1078,9 @@ pub struct Parser<'arena> {
     /// group (e.g. a call inside the `if` body — the `if` stays open) from
     /// one that closes the `if`'s own group (the `if` is completed).
     group_opener: Vec<Option<usize>>,
-    /// Strict `parse()`/`source()` mode (see `parse_expressions_strict`):
-    /// newline-crossing `else` is always rejected. The interactive
-    /// top-level path leaves it false (lenient group-depth gate).
-    strict_newline_else: bool,
+    /// Newline-crossing `else` attaches only inside a group. Top-level
+    /// `if`/`else` split by a newline is an error for both `parse()` and
+    /// interactive input, so there is no separate strict flag.
     /// L-suffix warnings produced while tokenizing, keyed by token index.
     token_literal_warnings: Vec<(usize, String)>,
     /// GNU `parse(keep.source=TRUE)` / `source(keep.source=TRUE)`: attach
@@ -1090,11 +1089,9 @@ pub struct Parser<'arena> {
 }
 
 impl<'arena> Parser<'arena> {
-    /// Enable strict `parse()`/`source()` newline-`else` semantics on an
-    /// existing parser (see `parse_expressions_strict`).
-    pub fn set_strict_newline_else(&mut self, strict: bool) {
-        self.strict_newline_else = strict;
-    }
+    /// Kept so callers can request file-parse mode. Newline-`else` follows
+    /// the group opener either way.
+    pub fn set_strict_newline_else(&mut self, _strict: bool) {}
 
     pub fn new(input: &str, arena: &'arena mut RArena) -> Self {
         let mut lexer = Lexer::new(input);
@@ -1166,7 +1163,7 @@ impl<'arena> Parser<'arena> {
             inside_group,
             inside_nest,
             group_opener,
-            strict_newline_else: false,
+
             token_literal_warnings,
             keep_srcrefs: false,
         }
@@ -2960,7 +2957,7 @@ pub fn parse_expressions(input: &str, arena: &mut RArena) -> Result<Vec<SEXP>, P
 /// the lenient gate that attaches `else` inside an unclosed group.
 pub fn parse_expressions_strict(input: &str, arena: &mut RArena) -> Result<Vec<SEXP>, ParseError> {
     let mut parser = Parser::new(input, arena);
-    parser.strict_newline_else = true;
+    let _ = &mut parser;
     parser.parse_top_level_expressions()
 }
 
