@@ -1231,9 +1231,14 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
 pub unsafe fn C_plot_new(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let dd = GEcurrentDevice();
+        if dd.is_null() {
+            Rf_error(b"no active graphics device\0".as_ptr() as *const c_char);
+        }
         let recording = GRecording(call, dd);
         let dd = GNewPlot(recording);
-
+        if dd.is_null() {
+            Rf_error(b"no active graphics device\0".as_ptr() as *const c_char);
+        }
         let dp = dpptr(dd) as *mut GPar;
         let gp = gpptr(dd) as *mut GPar;
         (*dp).xlog = 0;
