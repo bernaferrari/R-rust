@@ -1849,6 +1849,12 @@ pub(crate) unsafe fn load_package_namespace(
             if package == "utils" {
                 crate::library::utils::install_utils_call_symbols(env);
             }
+            if package == "grDevices" {
+                crate::library::grdevices::install_call_symbols(env);
+            }
+            if package == "graphics" {
+                crate::library::graphics::install_call_symbols(env);
+            }
 
             let directives = read_namespace_directives(package_dir)?;
             ensure_namespace_info(package, package_dir, env, directives.as_ref());
@@ -1928,6 +1934,9 @@ pub(crate) unsafe fn load_package_namespace(
         }
         if package == "grDevices" {
             crate::library::grdevices::install_call_symbols(package_env);
+        }
+        if package == "graphics" {
+            crate::library::graphics::install_call_symbols(package_env);
         }
         ensure_namespace_info(package, package_dir, package_env, namespace.as_ref());
 
