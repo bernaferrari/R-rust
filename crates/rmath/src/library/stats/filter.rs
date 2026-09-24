@@ -5062,6 +5062,15 @@ fn deparse_call(expr: SEXP) -> String {
             args.push(piece);
             cell = CDR(cell);
         }
+        if (op == "[" || op == "[[") && !args.is_empty() {
+            let idx = args[1..]
+                .iter()
+                .map(|a| a.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let close = if op == "[[" { "]]" } else { "]" };
+            return format!("{}{}{}{}", args[0], op, idx, close);
+        }
         if op == ":" && args.len() == 2 {
             return format!("{}:{}", args[0], args[1]);
         }
