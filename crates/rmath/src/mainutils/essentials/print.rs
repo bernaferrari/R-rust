@@ -1935,25 +1935,23 @@ fn print_empty_data_frame(x: SEXP, ncol: R_xlen_t) {
 /// Mirrors stock `print.data.frame`: automatic compact row names (`c(NA, n)`
 /// stored as a length-2 integer vector) expand to `1..n`; explicit integer or
 /// character `row.names` are used verbatim.
-fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t) -> Vec<String> {
+fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t, limit: R_xlen_t) -> Vec<String> {
+    let n = nrow.min(limit).max(0);
     let row_names =
         unsafe { crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr())) };
     unsafe {
         if !row_names.is_null() {
             let t = TYPEOF(row_names);
             if t == SEXPTYPE::STRSXP && XLENGTH(row_names) == nrow {
-                return (0..nrow).map(|i| elt_to_string(row_names, i)).collect();
+                return (0..n).map(|i| elt_to_string(row_names, i)).collect();
             }
             if t == SEXPTYPE::INTSXP && nrow > 0 && XLENGTH(row_names) == nrow {
-                // Compact automatic row names are stored as c(NA_integer_, n);
-                // only a full-length vector of real integers names the rows.
-                // A length-0 integer vector has a null data pointer.
                 let data = INTEGER(row_names);
                 if !data.is_null() {
                     let first = *data;
                     let is_compact = XLENGTH(row_names) == 2 && first == crate::sexp::ffi::NA_INTEGER;
                     if !is_compact {
-                        return (0..nrow)
+                        return (0..n)
                             .map(|i| data.add(i as usize).read().to_string())
                             .collect();
                     }
@@ -1961,7 +1959,7 @@ fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t) -> Vec<String> {
             }
         }
     }
-    (1..=nrow).map(|i| i.to_string()).collect()
+    (1..=n).map(|i| i.to_string()).collect()
 }
 
 unsafe fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP {
@@ -2042,8 +2040,8 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         let print_rows = (nrow as usize).min(n0);
         let (headers, columns) =
             print_data_frame_column_texts(x, ncol, print_rows as R_xlen_t);
-        let row_labels = data_frame_row_labels(x, nrow);
-        let shown_labels = &row_labels[..print_rows.min(row_labels.len())];
+        let row_labels = data_frame_row_labels(x, nrow, print_rows as R_xlen_t);
+        let shown_labels = &row_labels[..];
         let row_width = shown_labels
             .iter()
             .map(|label| label.len())
