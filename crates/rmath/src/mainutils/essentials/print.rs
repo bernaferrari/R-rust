@@ -1082,6 +1082,9 @@ unsafe fn str_environment_brief(env: SEXP) -> String {
     }
 }
 
+static STR_LEVEL: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(100);
+static STR_LIST_LEN: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(99);
+
 unsafe fn str_list_summary(x: SEXP) -> String {
     unsafe { str_list_summary_indent(x, "  ..$ ") }
 }
@@ -1104,17 +1107,23 @@ unsafe fn str_list_summary_indent(x: SEXP, child_prefix: &str) -> String {
             })
             .collect();
         let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
+        let level = STR_LEVEL.load(std::sync::atomic::Ordering::Relaxed);
+        if level <= 1 {
+            return format!("List of {n}");
+        }
+        let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
         let mut out = format!("List of {n}");
-        let show = n.min(99);
+        let show = n.min(STR_LIST_LEN.load(std::sync::atomic::Ordering::Relaxed).max(0));
+        STR_LEVEL.store(level - 1, std::sync::atomic::Ordering::Relaxed);
         for i in 0..show {
             let name = format!("{:<name_width$}", raw_names[i as usize]);
             let elem = VECTOR_ELT(x, i);
             out.push_str(&format!(
                 "\n{child_prefix}{name}: {}",
                 str_atomic_summary_opts(elem, true, true)
-
             ));
         }
+        STR_LEVEL.store(level, std::sync::atomic::Ordering::Relaxed);
         if n > show {
             out.push_str("\n  .. [list output truncated]");
         }
@@ -1540,8 +1549,34 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 str_emit_nonstandard_attrs(x, &["names", "class", "row.names"]);
             } else {
-                // GNU str.default list.len = 99
-                let show = n.min(99);
+                let mut max_level = 100i64;
+                let mut list_len = 99i64;
+                let mut p = CDR(args);
+                while !p.is_null() && p != R_NilValue() {
+                    let tag = TAG(p);
+                    if !tag.is_null() && tag != R_NilValue() {
+                        let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(crate::sexp::accessors::PRINTNAME(tag))).to_string_lossy().into_owned();
+                        let v = CAR(p);
+                        let num = if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                            *INTEGER(v) as i64
+                        } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                            *REAL(v) as i64
+                        } else {
+                            i64::MIN
+                        };
+                        if num != i64::MIN && num != crate::sexp::ffi::NA_INTEGER as i64 {
+                            if name == "max.level" {
+                                max_level = num;
+                            } else if name == "list.len" {
+                                list_len = num;
+                            }
+                        }
+                    }
+                    p = CDR(p);
+                }
+                STR_LEVEL.store(max_level, std::sync::atomic::Ordering::Relaxed);
+                STR_LIST_LEN.store(list_len, std::sync::atomic::Ordering::Relaxed);
+                let show = n.min(list_len.max(0) as R_xlen_t);
                 str_emit_line(&format!("List of {n}"));
                 let raw_names: Vec<String> = (0..show)
                     .map(|i| {
