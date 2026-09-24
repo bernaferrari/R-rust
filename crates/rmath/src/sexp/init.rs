@@ -335,6 +335,20 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              x\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "split<-.data.frame",
+            "function(x, f, drop = FALSE, ..., value) {\n\
+             ix <- split(seq_len(nrow(x)), f, drop = drop, ...)\n\
+             n <- length(value)\n\
+             j <- 0\n\
+             for (i in ix) {\n\
+                 j <- j %% n + 1\n\
+                 x[i, ] <- value[[j]]\n\
+             }\n\
+             x\n\
+             }",
+        );
         eval_base_binding(base_env, "unsplit", include_str!("gnu_unsplit.R"));
         eval_base_binding(base_env, "stripchart", "function(x, ...) UseMethod(\"stripchart\")");
         eval_base_binding(
