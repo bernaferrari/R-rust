@@ -1818,6 +1818,20 @@ fn print_data_frame_column_texts(
         let mut columns = Vec::with_capacity(ncol as usize);
         for j in 0..ncol {
             let col = VECTOR_ELT(x, j as R_xlen_t);
+            if crate::mainutils::essentials::sexp_has_class(col, "data.frame") && XLENGTH(col) > 0 {
+                let (mut inner_headers, inner_columns) =
+                    print_data_frame_column_texts(col, XLENGTH(col), nrow);
+                if inner_headers.len() == 1
+                    && inner_headers[0].starts_with("[,")
+                    && has_names
+                    && j < XLENGTH(names)
+                {
+                    inner_headers[0] = elt_to_string(names, j);
+                }
+                headers.extend(inner_headers);
+                columns.extend(inner_columns);
+                continue;
+            }
             if !print_data_frame_column(col) {
                 continue;
             }
@@ -1971,11 +1985,22 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             return do_print(_call, _op, args, _rho);
         }
         let ncol = XLENGTH(x);
-        let nrow = if ncol > 0 {
-            let first = VECTOR_ELT(x, 0);
-            if first.is_null() { 0 } else { XLENGTH(first) }
-        } else {
-            0
+        let nrow = {
+            let rn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
+            if !rn.is_null() && rn != R_NilValue()
+                && TYPEOF(rn) == SEXPTYPE::INTSXP
+                && XLENGTH(rn) == 2
+                && *INTEGER(rn) == NA_INTEGER
+            {
+                (*INTEGER(rn).add(1) as i64).unsigned_abs() as i64
+            } else if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) > 0 {
+                XLENGTH(rn)
+            } else if ncol > 0 {
+                let first = VECTOR_ELT(x, 0);
+                if first.is_null() { 0 } else { XLENGTH(first) }
+            } else {
+                0
+            }
         };
         if ncol == 0 || nrow == 0 {
             print_empty_data_frame(x, ncol);
