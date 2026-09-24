@@ -396,11 +396,14 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
                 }
             }
             ConnKind::TextConnection => {
-                let mut lines = conn.text_lines.borrow_mut();
-                for j in 0..text_len {
-                    let line = string_elt(text, j);
-                    lines.push(line);
+                {
+                    let mut lines = conn.text_lines.borrow_mut();
+                    for j in 0..text_len {
+                        let line = string_elt(text, j);
+                        lines.push(line);
+                    }
                 }
+                conn.assign_text_output();
             }
             ConnKind::Pipe => {
                 if let Some(ref mut child) = conn.child
