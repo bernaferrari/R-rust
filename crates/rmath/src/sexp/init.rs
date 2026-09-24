@@ -1570,6 +1570,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              else .Internal(sort(x, decreasing, na.last, ...))\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "sort.int",
+            "function(x, partial = NULL, na.last = NA, decreasing = FALSE, ...) {\n\
+             decreasing <- as.logical(decreasing)\n\
+             if (!is.logical(decreasing) || length(decreasing) != 1L || is.na(decreasing))\n\
+                 stop(\"'decreasing' must be a length-1 logical vector.\\nDid you intend to set 'partial'?\")\n\
+             .Internal(sort(x, decreasing, na.last, ...))\n\
+             }",
+        );
         eval_base_binding(base_env, "diff.ts", include_str!("gnu_diff_ts.R"));
         eval_base_binding(
             base_env,
