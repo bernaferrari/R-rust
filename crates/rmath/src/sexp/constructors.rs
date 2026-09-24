@@ -307,6 +307,29 @@ pub unsafe fn Rf_length(x: SEXP) -> c_int {
                 current = (*current).data.listsxp.cdrval;
             }
             count
+        } else if t == SEXPTYPE::ENVSXP {
+            let mut count = 0i32;
+            let mut walk = |mut frame: SEXP| {
+                while !frame.is_null() && frame != R_NilValue() {
+                    let tag = (*frame).data.listsxp.tagval;
+                    if !tag.is_null() && tag != R_NilValue() {
+                        count += 1;
+                    }
+                    frame = (*frame).data.listsxp.cdrval;
+                }
+            };
+            walk((*x).data.envsxp.frame);
+            let hashtab = (*x).data.envsxp.hashtab;
+            if !hashtab.is_null()
+                && hashtab != R_NilValue()
+                && (*hashtab).sxpinfo.type_of() == SEXPTYPE::VECSXP
+            {
+                let n = super::accessors::XLENGTH(hashtab);
+                for i in 0..n {
+                    walk(super::accessors::VECTOR_ELT(hashtab, i));
+                }
+            }
+            count
         } else if matches!(
             t,
             SEXPTYPE::CHARSXP
