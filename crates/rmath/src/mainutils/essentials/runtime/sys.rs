@@ -2020,8 +2020,26 @@ pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             x
         };
         let _x = protect(x);
+        let lag = {
+            let arg = crate::mainutils::essentials::shared::arg_by_name_or_position(args, &["lag"], 1);
+            let v = if arg.is_null() || arg == R_NilValue() || arg == crate::sexp::globals::R_MissingArg() {
+                1.0
+            } else {
+                crate::mainutils::essentials::shared::real_or_default(arg, 1.0)
+            };
+            if v < 1.0 { 1 } else { v as usize }
+        };
+        let differences = {
+            let arg = crate::mainutils::essentials::shared::arg_by_name_or_position(args, &["differences"], 2);
+            let v = if arg.is_null() || arg == R_NilValue() || arg == crate::sexp::globals::R_MissingArg() {
+                1.0
+            } else {
+                crate::mainutils::essentials::shared::real_or_default(arg, 1.0)
+            };
+            if v < 1.0 { 1 } else { v as usize }
+        };
         let n = XLENGTH(x);
-        if n < 2 {
+        if n < 2 || n <= lag as R_xlen_t {
             let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
             let _e = protect(empty);
             set_single_class(empty, "difftime");
@@ -2046,16 +2064,11 @@ pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 0.0
             }
         };
-        let mut z = Vec::with_capacity((n - 1) as usize);
-        for i in 0..(n - 1) {
-            z.push(seconds_at(x, (i + 1) as usize) - seconds_at(x, i as usize));
+        let mut z = Vec::with_capacity((n as usize).saturating_sub(lag));
+        for i in 0..(n as usize - lag) {
+            z.push(seconds_at(x, i + lag) - seconds_at(x, i));
         }
-        let zz = z
-            .iter()
-            .copied()
-            .filter(|v| v.is_finite())
-            .map(|v| v.abs())
-            .fold(f64::INFINITY, f64::min);
+        let zz = z.iter().copied().filter(|v| v.is_finite()).map(|v| v.abs()).fold(f64::INFINITY, f64::min);
         let units = if !zz.is_finite() || zz < 60.0 {
             "secs"
         } else if zz < 3600.0 {
@@ -2071,10 +2084,21 @@ pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             "days" => 86_400.0,
             _ => 1.0,
         };
+        for v in &mut z {
+            *v /= scale;
+        }
+        for _ in 1..differences {
+            if z.len() <= lag {
+                z.clear();
+                break;
+            }
+            let next: Vec<f64> = (0..z.len() - lag).map(|i| z[i + lag] - z[i]).collect();
+            z = next;
+        }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, z.len() as i64);
         let _r = protect(result);
         for (i, v) in z.iter().enumerate() {
-            *REAL(result).add(i) = *v / scale;
+            *REAL(result).add(i) = *v;
         }
         set_single_class(result, "difftime");
         crate::sexp::attrib_core::setAttrib(

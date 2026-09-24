@@ -13,5 +13,6 @@ function(x, lag = 1L, differences = 1L, ...)
         for (i in seq_len(differences))
             r <- r[i1] - `length<-`(r, max(length(r) - lag, 0L))
     class(r) <- oldClass(x)
+    if (!is.null(u <- attr(x, "units"))) attr(r, "units") <- u
     r
 }
