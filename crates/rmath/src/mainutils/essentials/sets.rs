@@ -2215,6 +2215,34 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
 }
 
 /// R's `sort(x, decreasing, na.last)` — sort an atomic vector.
+unsafe fn copy_sorted_names(x: SEXP, result: SEXP, order: &[usize]) {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return;
+        }
+        if XLENGTH(names) != XLENGTH(x) {
+            return;
+        }
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, order.len() as R_xlen_t);
+        if out.is_null() {
+            return;
+        }
+        let _g = protect(out);
+        for (dst, src) in order.iter().enumerate() {
+            SET_STRING_ELT(out, dst as R_xlen_t, STRING_ELT(names, *src as R_xlen_t));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            out,
+        );
+    }
+}
+
 pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
@@ -2231,20 +2259,21 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let t = TYPEOF(x);
         let n = XLENGTH(x);
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let mut vals: Vec<i32> = Vec::with_capacity(n as usize);
-            let mut na_count = 0usize;
+            let mut vals: Vec<(i32, usize)> = Vec::with_capacity(n as usize);
+            let mut na_idx: Vec<usize> = Vec::new();
             for i in 0..n {
                 let value = *INTEGER(x).add(i as usize);
                 if value == NA_INTEGER {
-                    na_count += 1;
+                    na_idx.push(i as usize);
                 } else {
-                    vals.push(value);
+                    vals.push((value, i as usize));
                 }
             }
+            let na_count = na_idx.len();
             if decreasing {
-                vals.sort_by(|a, b| b.cmp(a));
+                vals.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
             } else {
-                vals.sort_unstable();
+                vals.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
             }
             let output_len = sorted_len(vals.len(), na_count, na_placement);
             let result = Rf_allocVector3(t, output_len as R_xlen_t);
@@ -2253,40 +2282,46 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let _result_guard = protect(result);
             let dst = INTEGER(result);
+            let mut order: Vec<usize> = Vec::with_capacity(output_len);
             let mut out = 0usize;
             if na_placement == SortNaPlacement::First {
-                for _ in 0..na_count {
+                for idx in &na_idx {
                     *dst.add(out) = NA_INTEGER;
+                    order.push(*idx);
                     out += 1;
                 }
             }
-            for value in vals {
-                *dst.add(out) = value;
+            for (value, idx) in &vals {
+                *dst.add(out) = *value;
+                order.push(*idx);
                 out += 1;
             }
             if na_placement == SortNaPlacement::Last {
-                for _ in 0..na_count {
+                for idx in &na_idx {
                     *dst.add(out) = NA_INTEGER;
+                    order.push(*idx);
                     out += 1;
                 }
             }
+            copy_sorted_names(x, result, &order);
             restore_datetime_or_difftime_class(x, result);
             result
         } else if t == SEXPTYPE::REALSXP {
-            let mut vals: Vec<f64> = Vec::with_capacity(n as usize);
-            let mut na_count = 0usize;
+            let mut vals: Vec<(f64, usize)> = Vec::with_capacity(n as usize);
+            let mut na_idx: Vec<usize> = Vec::new();
             for i in 0..n {
                 let value = *REAL(x).add(i as usize);
                 if ISNAN(value) {
-                    na_count += 1;
+                    na_idx.push(i as usize);
                 } else {
-                    vals.push(value);
+                    vals.push((value, i as usize));
                 }
             }
-            vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            if decreasing {
-                vals.reverse();
-            }
+            let na_count = na_idx.len();
+            vals.sort_by(|a, b| {
+                let ord = a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal);
+                if decreasing { ord.reverse() } else { ord }.then(a.1.cmp(&b.1))
+            });
             let output_len = sorted_len(vals.len(), na_count, na_placement);
             let result = Rf_allocVector3(t, output_len as R_xlen_t);
             if result.is_null() {
@@ -2294,23 +2329,28 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let _result_guard = protect(result);
             let dst = REAL(result);
+            let mut order: Vec<usize> = Vec::with_capacity(output_len);
             let mut out = 0usize;
             if na_placement == SortNaPlacement::First {
-                for _ in 0..na_count {
+                for idx in &na_idx {
                     *dst.add(out) = NA_REAL;
+                    order.push(*idx);
                     out += 1;
                 }
             }
-            for value in vals {
-                *dst.add(out) = value;
+            for (value, idx) in &vals {
+                *dst.add(out) = *value;
+                order.push(*idx);
                 out += 1;
             }
             if na_placement == SortNaPlacement::Last {
-                for _ in 0..na_count {
+                for idx in &na_idx {
                     *dst.add(out) = NA_REAL;
+                    order.push(*idx);
                     out += 1;
                 }
             }
+            copy_sorted_names(x, result, &order);
             restore_datetime_or_difftime_class(x, result);
             result
         } else if t == SEXPTYPE::STRSXP {
