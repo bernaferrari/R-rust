@@ -72,6 +72,27 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
         Some(frame)
     }
 }
+unsafe fn data_frame_assign_matrix(frame: SEXP, index: SEXP, value: SEXP) -> Option<SEXP> {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(index, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) != 2 || *INTEGER(dim).add(1) != 2 {
+            return None;
+        }
+        let n = XLENGTH(index) / 2;
+        for k in 0..n {
+            let row = crate::mainutils::essentials::elt_real_safe(index, k) as i64;
+            let col = crate::mainutils::essentials::elt_real_safe(index, k + n) as i64;
+            if row < 1 || col < 1 || col > XLENGTH(frame) {
+                continue;
+            }
+            let column = VECTOR_ELT(frame, col - 1);
+            let src = if XLENGTH(value) <= 1 { value } else { value };
+            let updated = assign_column_rows(column, &[row - 1], src, XLENGTH(src).max(1));
+            SET_VECTOR_ELT(frame, col - 1, updated);
+        }
+        Some(frame)
+    }
+}
 
 unsafe fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
     unsafe {
@@ -250,6 +271,14 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             && crate::mainutils::essentials::sexp_has_class(x, "data.frame")
         {
             if let Some(updated) = data_frame_assign_cells(x, subs, y) {
+                return updated;
+            }
+        }
+        if nsubs == 1
+            && TYPEOF(x) == SEXPTYPE::VECSXP
+            && crate::mainutils::essentials::sexp_has_class(x, "data.frame")
+        {
+            if let Some(updated) = data_frame_assign_matrix(x, CAR(subs), y) {
                 return updated;
             }
         }
