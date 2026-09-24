@@ -1822,7 +1822,7 @@ pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
             let _p = protect(result);
             for i in 0..n {
                 let elt = VECTOR_ELT(x, i);
-                let chars = if TYPEOF(elt) == SEXPTYPE::STRSXP && XLENGTH(elt) > 0 {
+                let chars = if TYPEOF(elt) == SEXPTYPE::STRSXP && XLENGTH(elt) == 1 {
                     STRING_ELT(elt, 0)
                 } else {
                     let line = crate::mainutils::deparse::deparse1(
