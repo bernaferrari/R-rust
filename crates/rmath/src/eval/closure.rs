@@ -573,6 +573,27 @@ fn is_function_sexp(value: SEXP) -> bool {
 
 
 /// This is a helper that separates environment creation from body evaluation.
+unsafe fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
+    unsafe {
+        let empty = crate::sexp::globals::R_EmptyEnv();
+        if cloenv.is_null() || crate::sexp::accessors::ENCLOS(cloenv) != empty {
+            return cloenv;
+        }
+        let Some(utils) = crate::mainutils::essentials::cached_namespace_by_name("utils") else {
+            return cloenv;
+        };
+        let symbol = crate::sexp::symbol::Rf_install(c"RweaveLatexRuncode".as_ptr());
+        let mut bound = crate::sexp::envir::R_findVarInFrame(utils, symbol);
+        if crate::sexp::accessors::TYPEOF(bound) == crate::sexp::ffi::SEXPTYPE::PROMSXP {
+            bound = crate::sexp::accessors::PRVALUE(bound);
+        }
+        if bound == op {
+            crate::sexp::accessors::SET_ENCLOS(cloenv, utils);
+        }
+        cloenv
+    }
+}
+
 pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         match (
@@ -597,6 +618,8 @@ pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SE
                     op,
                     cloenv.as_raw(),
                 ));
+                let cloenv = reparent_empty_utils_runner(op, cloenv.as_raw());
+                let cloenv = Sexp::from_raw_unchecked(cloenv);
 
                 let promised_args = crate::eval::dispatch::promiseArgs(arglist, rho);
                 let matched = match_closure_args(formals.clone().as_raw(), promised_args)
