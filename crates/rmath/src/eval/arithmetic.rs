@@ -190,7 +190,10 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         };
         let n = a.clone().recycled_len_with(b.clone());
         if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            let _empty_guard = protect(empty);
+            propagate_binary_vector_attributes(empty, sa, sb, 0);
+            return empty;
         }
         let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         let Some(result) = Sexp::from_raw(result_raw) else {
@@ -311,7 +314,6 @@ unsafe fn copy_dims_if_present(result: SEXP, source: SEXP, result_len: R_xlen_t)
 /// - If both operands carry `dims` they must be conformable, otherwise a
 ///   'non-conformable arrays' error is raised; the result takes dims from `x`
 ///   and dimnames from `x` (falling back to `y`).
-/// - If exactly one operand is an array (and the length-1 array recycling
 ///   special case does not apply, nor is the partner a length-0 non-array),
 ///   the result inherits that operand's dims/dimnames.
 /// - Otherwise (plain vectors) only `names` are propagated, from whichever
@@ -319,7 +321,7 @@ unsafe fn copy_dims_if_present(result: SEXP, source: SEXP, result_len: R_xlen_t)
 /// Arithmetic preserves non-shape attributes from a full-length operand;
 /// when lengths tie, the left operand overwrites matching right attributes.
 /// Comparisons use the separate shape-only path below (GNU arithmetic.c).
-pub(super) unsafe fn propagate_arithmetic_attributes(result: SEXP, a: SEXP, b: SEXP, n: R_xlen_t) {
+pub(crate) unsafe fn propagate_arithmetic_attributes(result: SEXP, a: SEXP, b: SEXP, n: R_xlen_t) {
     unsafe {
         if XLENGTH(b) == n {
             crate::mainutils::array::copyMostAttrib(b, result);
@@ -1475,7 +1477,12 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
                 // stock relop.c: either operand NULL yields logical(0)
                 if a == R_NilValue() || b == R_NilValue() {
-                    return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+                    let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+                    let _empty_guard = protect(empty);
+                    let src_a = if a == R_NilValue() { empty } else { a };
+                    let src_b = if b == R_NilValue() { empty } else { b };
+                    propagate_binary_vector_attributes(empty, src_a, src_b, 0);
+                    return empty;
                 }
                 if let Some(result) = data_frame_compare(op_name, call, a, b) {
                     return result;

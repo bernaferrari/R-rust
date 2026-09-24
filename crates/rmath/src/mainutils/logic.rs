@@ -594,9 +594,8 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return binary_logic_raw(code, x, y);
         }
 
-        // Validate types: both must be null or numeric
-        let x_valid = x.is_null() || is_number(x);
-        let y_valid = y.is_null() || is_number(y);
+        let x_valid = x.is_null() || x == R_NilValue() || is_number(x);
+        let y_valid = y.is_null() || y == R_NilValue() || is_number(y);
         if !x_valid || !y_valid {
             logic_error("operations are possible only for numeric, logical or complex types");
         }
@@ -606,7 +605,10 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Zero-length case
         if nx == 0 || ny == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            let _empty_guard = protect(empty);
+            crate::eval::arithmetic::propagate_arithmetic_attributes(empty, x, y, 0);
+            return empty;
         }
 
         // Coerce both to logical and apply binary logic
