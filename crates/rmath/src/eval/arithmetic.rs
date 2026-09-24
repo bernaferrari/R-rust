@@ -62,10 +62,15 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         if sa.is_null() || sb.is_null() {
             return R_NilValue();
         }
-        // stock arithmetic.c: NULL coerces to a zero-length numeric vector;
-        // any other non-numeric operand raises the binary-operator error.
         if sa == R_NilValue() || sb == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            let other_real = (!sa.is_null() && sa != R_NilValue() && TYPEOF(sa) == SEXPTYPE::REALSXP)
+                || (!sb.is_null() && sb != R_NilValue() && TYPEOF(sb) == SEXPTYPE::REALSXP);
+            let kind = if op == "/" || op == "^" || other_real {
+                SEXPTYPE::REALSXP
+            } else {
+                SEXPTYPE::INTSXP
+            };
+            return Rf_allocVector3(kind, 0);
         }
         if !is_numeric_operand(sa) || !is_numeric_operand(sb) {
             arithmetic_error("non-numeric argument to binary operator");
@@ -77,10 +82,11 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let n = a.clone().recycled_len_with(b.clone());
-        if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-        }
         let use_real = op == "/" || op == "^" || a.clone().needs_real_with(b.clone());
+        if n == 0 {
+            let kind = if use_real { SEXPTYPE::REALSXP } else { SEXPTYPE::INTSXP };
+            return Rf_allocVector3(kind, 0);
+        }
         let integer_overflow_can_warn = matches!(op, "+" | "-" | "*");
         let result_raw = if use_real {
             Rf_allocVector3(SEXPTYPE::REALSXP, n)
