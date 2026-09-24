@@ -1565,6 +1565,23 @@ unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
         } else {
             b
         };
+        let relop_ok = |s: SEXP| {
+            let t = TYPEOF(s);
+            t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::INTSXP
+                || t == SEXPTYPE::REALSXP
+                || t == SEXPTYPE::CPLXSXP
+                || t == SEXPTYPE::STRSXP
+                || t == SEXPTYPE::RAWSXP
+                || t == SEXPTYPE::VECSXP
+                || t == SEXPTYPE::EXPRSXP
+                || t == SEXPTYPE::LISTSXP
+        };
+        if !relop_ok(a) || !relop_ok(b) {
+            arithmetic_error(&format!(
+                "comparison ({op_name}) is possible only for atomic and list types"
+            ));
+        }
         // stock coercion ladder: string involvement compares as
         // character, then complex, then raw/numeric coercion.
         let a_str = TYPEOF(a) == SEXPTYPE::STRSXP;
