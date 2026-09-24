@@ -454,12 +454,11 @@ fn qr_solve(x: &Array, y: &Array, coef: &mut Array, ier: &mut i32) {
     let mut yt = make_zero_matrix(y.ncol(), y.nrow());
     transpose_matrix(y, &mut yt);
 
-    // Allocate coefficient array (column-major)
     let mut coeft = vec![0.0f64; (coef.ncol() * coef.nrow()) as usize];
+    let mut bcoef = vec![0.0f64; coeft.len()];
 
     let mut info: c_int = 0;
     unsafe {
-        // job=100: compute qty and b
         crate::appl::linpack_qr::dqrsl(
             xt.vec.as_mut_ptr(),
             n,
@@ -469,13 +468,14 @@ fn qr_solve(x: &Array, y: &Array, coef: &mut Array, ier: &mut i32) {
             yt.vec.as_ptr(),
             std::ptr::null_mut(),
             coeft.as_mut_ptr(),
-            std::ptr::null_mut(),
+            bcoef.as_mut_ptr(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             100,
             &mut info,
         );
     }
+    coeft.copy_from_slice(&bcoef);
 
     // Copy coeft back (column-major) and transpose to get coef (row-major)
     let mut coeft_arr = make_zero_matrix(coef.ncol(), coef.nrow());
@@ -1199,5 +1199,33 @@ pub unsafe fn multi_yw(
         for i in 0..var_out.len() {
             var_out[i] = v_forward.vec[i];
         }
+    }
+}
+
+pub unsafe extern "C" fn c_multi_yw(
+    acf: *mut std::ffi::c_void,
+    n: *mut std::ffi::c_void,
+    omax: *mut std::ffi::c_void,
+    nser: *mut std::ffi::c_void,
+    coef: *mut std::ffi::c_void,
+    pacf: *mut std::ffi::c_void,
+    var: *mut std::ffi::c_void,
+    aic: *mut std::ffi::c_void,
+    order: *mut std::ffi::c_void,
+    useaic: *mut std::ffi::c_void,
+) {
+    unsafe {
+        multi_yw(
+            acf as *mut f64,
+            n as *mut c_int,
+            omax as *mut c_int,
+            nser as *mut c_int,
+            coef as *mut f64,
+            pacf as *mut f64,
+            var as *mut f64,
+            aic as *mut f64,
+            order as *mut c_int,
+            useaic as *mut c_int,
+        );
     }
 }

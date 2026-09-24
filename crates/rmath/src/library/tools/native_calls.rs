@@ -93,6 +93,11 @@ pub fn lookup_c(name: &str) -> DL_FUNC {
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
         )),
+        "multi_yw" => as_dl(crate::library::stats::mar::c_multi_yw as unsafe extern "C" fn(
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
+            *mut std::ffi::c_void, *mut std::ffi::c_void,
+        )),
         "kmeans_Lloyd" => as_dl(crate::library::stats::kmeans::c_kmeans_lloyd as unsafe extern "C" fn(
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,

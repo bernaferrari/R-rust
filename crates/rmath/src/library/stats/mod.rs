@@ -37,7 +37,7 @@ pub(crate) mod loess;
 pub(crate) mod loessc;
 mod loglin;
 pub(crate) mod lowess;
-mod mar;
+pub(crate) mod mar;
 mod massdist;
 mod monospl;
 pub(crate) mod optim;
