@@ -1,6 +1,10 @@
 function(..., exprs, exprObject, local = TRUE)
 {
     n <- ...length()
+    if (!missing(exprs) && is.call(e <- substitute(exprs)) && e[[1]] == quote(`{`) &&
+        all(vapply(e[-1], is.null, NA)))
+        return(invisible())
+
     if((has.e <- !missing(exprs)) || !missing(exprObject)) {
 	if(n || (has.e && !missing(exprObject)))
 	    stop("Only one of 'exprs', 'exprObject' or expressions, not more")
