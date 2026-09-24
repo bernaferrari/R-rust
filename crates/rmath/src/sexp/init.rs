@@ -514,6 +514,15 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "xtfrm.data.frame",
             "function(x) stop(\"cannot xtfrm data frames\")",
         );
+        eval_base_binding(
+            base_env,
+            "remove.packages",
+            "function(pkgs, lib) {\n\
+             base <- pkgs %in% c(\"base\",\"compiler\",\"datasets\",\"graphics\",\"grDevices\",\"grid\",\"methods\",\"parallel\",\"splines\",\"stats\",\"stats4\",\"tcltk\",\"tools\",\"utils\")\n\
+             if (any(base)) stop(paste0(\"package '\", pkgs[base][1], \"' is a base package, and cannot be removed\"), call. = FALSE)\n\
+             invisible()\n\
+             }",
+        );
         // GNU array.R / sapply.R: closures over .Internal, not primitives.
         // paste.R: .Internal(paste(list(...), sep, collapse, recycle0)).
         eval_base_binding(
