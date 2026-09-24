@@ -759,6 +759,39 @@ pub fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupR
             return Ok(Sexp::from_raw(value));
         }
     }
+    let name = unsafe {
+        let pname = crate::sexp::accessors::PRINTNAME(raw);
+        if pname.is_null() {
+            String::new()
+        } else {
+            let chars = crate::sexp::accessors::CHAR(pname);
+            if chars.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(chars).to_string_lossy().into_owned()
+            }
+        }
+    };
+    if !name.is_empty() && !crate::eval::builtin::is_hidden_builtin_name(&name) {
+        if let Ok(cname) = std::ffi::CString::new(name.as_str()) {
+            let prim = unsafe { crate::mainutils::names::R_Primitive(cname.as_ptr()) };
+            if !prim.is_null() && prim != unsafe { R_NilValue() } {
+                let t = unsafe { TYPEOF(prim) };
+                if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP
+                {
+                    return Ok(Sexp::from_raw(prim));
+                }
+            }
+        }
+        if crate::eval::builtin::evaluated_builtin_handler(&name).is_some() {
+            let primitive = unsafe {
+                crate::eval::primitive::make_primitive_binding(&name, SEXPTYPE::BUILTINSXP)
+            };
+            if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
+                return Ok(Sexp::from_raw(primitive));
+            }
+        }
+    }
 
     Ok(None)
 
