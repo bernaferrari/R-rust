@@ -2810,7 +2810,16 @@ fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
             let exp = v.abs().log10().floor() as i32;
             let upper = format == "G";
             if exp < -4 || exp >= d as i32 {
-                formatc_exp(v, d.saturating_sub(1), upper)
+                let s = formatc_exp(v, d.saturating_sub(1), upper);
+                if alt {
+                    s
+                } else if let Some(idx) = s.rfind(['e', 'E']) {
+                    let (head, tail) = s.split_at(idx);
+                    let head = head.trim_end_matches('0').trim_end_matches('.');
+                    format!("{head}{tail}")
+                } else {
+                    s
+                }
             } else {
                 let decimals = (d as i32 - exp - 1).max(0) as usize;
                 let s = format!("{v:.decimals$}");
@@ -2875,7 +2884,7 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let width_arg = m.get(2).copied().unwrap_or(missing);
         let format_arg = m.get(3).copied().unwrap_or(missing);
 
-        let mut digits = if TYPEOF(x) == SEXPTYPE::INTSXP { 2i32 } else { 4 };
+        let mut digits = if TYPEOF(x) == SEXPTYPE::INTSXP { 2i32 } else { 7 };
         if !digits_arg.is_null() && digits_arg != R_NilValue() && digits_arg != missing {
             if TYPEOF(digits_arg) == SEXPTYPE::INTSXP && XLENGTH(digits_arg) > 0 {
                 digits = *INTEGER(digits_arg);
@@ -2887,7 +2896,7 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             digits = 6;
         }
 
-        let mut width = digits + 1;
+        let mut width = 0i32;
         if !width_arg.is_null() && width_arg != R_NilValue() && width_arg != missing {
             if TYPEOF(width_arg) == SEXPTYPE::INTSXP && XLENGTH(width_arg) > 0 {
                 width = *INTEGER(width_arg);
