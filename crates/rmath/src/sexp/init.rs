@@ -1768,6 +1768,33 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "isSymmetric",
+            "function(object, ...) UseMethod(\"isSymmetric\")",
+        );
+        eval_base_binding(
+            base_env,
+            "isSymmetric.matrix",
+            "function(object, tol = 100 * .Machine$double.eps, tol1 = 8 * tol, trans = \"C\", ...) {\n\
+             if (!is.matrix(object)) return(FALSE)\n\
+             d <- dim(object)\n\
+             if ((n <- d[1L]) != d[2L]) return(FALSE)\n\
+             iCplx <- is.complex(object) && trans == \"C\"\n\
+             if (n > 1L && length(tol1)) {\n\
+                 Cj <- if (iCplx) Conj else identity\n\
+                 for (i in unique(c(1L, 2L, n - 1L, n)))\n\
+                     if (is.character(all.equal(object[i, ], Cj(object[, i]), tolerance = tol1, ...)))\n\
+                         return(FALSE)\n\
+             }\n\
+             test <- if (iCplx)\n\
+                 all.equal.numeric(object, Conj(t(object)), tolerance = tol, ...)\n\
+             else\n\
+                 all.equal(object, t(object), tolerance = tol, ...)\n\
+             isTRUE(test)\n\
+             }",
+        );
+
+        eval_base_binding(
+            base_env,
             "La.svd",
             "function(x, nu = min(n, p), nv = min(n, p)) {\n\
              if (!is.logical(x) && !is.numeric(x) && !is.complex(x))\n\
