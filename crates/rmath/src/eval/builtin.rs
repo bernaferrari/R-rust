@@ -4103,6 +4103,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_str,
     },
     EvaluatedBuiltin {
+        name: "ls.str",
+        handler: crate::mainutils::essentials::do_ls_str,
+    },
+    EvaluatedBuiltin {
         name: "as.data.frame",
         handler: crate::mainutils::essentials::do_as_data_frame,
     },

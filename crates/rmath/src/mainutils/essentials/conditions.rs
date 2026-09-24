@@ -2152,6 +2152,32 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// `ls.str(envir)` — list names and `str` each value without forcing symbols.
+pub unsafe fn do_ls_str(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let names = do_ls(call, op, args, rho);
+        let _n = protect(names);
+        let mut env = rho;
+        let first = CAR(args);
+        if !first.is_null() && TYPEOF(first) == SEXPTYPE::ENVSXP {
+            env = first;
+        }
+        for i in 0..XLENGTH(names) {
+            let ch = STRING_ELT(names, i);
+            if ch.is_null() {
+                continue;
+            }
+            let sym = Rf_install(CHAR(ch));
+            let val = crate::sexp::envir::R_findVarInFrame(env, sym);
+            if val.is_null() || val == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            let _ = super::print::do_str(call, op, Rf_cons(val, R_NilValue()), rho);
+        }
+        names
+    }
+}
+
 /// R's `rm(list, envir)` — remove objects.
 pub unsafe fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
