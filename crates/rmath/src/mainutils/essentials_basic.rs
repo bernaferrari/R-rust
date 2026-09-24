@@ -1874,6 +1874,30 @@ pub unsafe fn do_as_logical(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         if let Some(ans) = dispatch_as(call, op, args, rho, b"as.logical\0") {
             return ans;
         }
+        let x = CAR(args);
+        if crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) != 0
+            && TYPEOF(x) == SEXPTYPE::INTSXP
+        {
+            let n = XLENGTH(x);
+            let levels = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
+            let out = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+            for i in 0..n {
+                let code = *INTEGER(x).add(i as usize);
+                let bit = if code == NA_INTEGER || levels.is_null() || code < 1 || code as i64 > XLENGTH(levels) {
+                    NA_LOGICAL
+                } else {
+                    let ch = STRING_ELT(levels, (code as i64) - 1);
+                    if ch.is_null() {
+                        NA_LOGICAL
+                    } else {
+                        let text = std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy();
+                        if text == "TRUE" || text == "T" { 1 } else if text == "FALSE" || text == "F" { 0 } else { NA_LOGICAL }
+                    }
+                };
+                *LOGICAL(out).add(i as usize) = bit;
+            }
+            return out;
+        }
         coerce_to_type(args, SEXPTYPE::LGLSXP.as_c_int())
     }
 }
