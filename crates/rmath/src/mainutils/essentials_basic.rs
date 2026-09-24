@@ -1294,6 +1294,7 @@ pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) > 0 {
             return table_data_frame(x);
         }
+
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
@@ -2036,21 +2037,12 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             for i in 0..n {
                 crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, VECTOR_ELT(x, i));
             }
-            let names =
-                crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
-            if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && XLENGTH(names) == n
-            {
-                let names = crate::mainutils::duplicate::duplicate(names);
-                if !names.is_null() {
-                    crate::eval::attrib_core::setAttrib(
-                        result,
-                        crate::eval::attrib_core::R_NamesSymbol(),
-                        names,
-                    );
-                }
+            let attrs = crate::sexp::accessors::ATTRIB(x);
+            if !attrs.is_null() && attrs != R_NilValue() {
+                crate::sexp::accessors::SET_ATTRIB(
+                    result,
+                    crate::mainutils::duplicate::duplicate(attrs),
+                );
             }
             return result;
         }

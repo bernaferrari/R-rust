@@ -507,6 +507,13 @@ pub unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             if !src.is_null() && !dst.is_null() {
                 ptr::copy_nonoverlapping(src as *const SEXP, dst as *mut SEXP, xlength(v) as usize);
             }
+            let attrs = crate::sexp::accessors::ATTRIB(v);
+            if !isNull(attrs) {
+                crate::sexp::accessors::SET_ATTRIB(
+                    rval,
+                    crate::mainutils::duplicate::duplicate(attrs),
+                );
+            }
             return rval;
         }
 
@@ -517,6 +524,13 @@ pub unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             let dst = DATAPTR(rval);
             if !src.is_null() && !dst.is_null() {
                 ptr::copy_nonoverlapping(src as *const SEXP, dst as *mut SEXP, xlength(v) as usize);
+            }
+            let attrs = crate::sexp::accessors::ATTRIB(v);
+            if !isNull(attrs) {
+                crate::sexp::accessors::SET_ATTRIB(
+                    rval,
+                    crate::mainutils::duplicate::duplicate(attrs),
+                );
             }
             return rval;
         }
