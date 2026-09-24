@@ -696,6 +696,20 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 };
                 *out.add(i as usize) = days;
             }
+        } else if TYPEOF(x) == SEXPTYPE::LGLSXP {
+            let mut all_na = true;
+            for i in 0..n {
+                if *INTEGER(x).add(i as usize) != NA_INTEGER {
+                    all_na = false;
+                    break;
+                }
+            }
+            if !all_na {
+                base_error("do not know how to convert 'x' to class \"Date\"");
+            }
+            for i in 0..n {
+                *out.add(i as usize) = NA_REAL;
+            }
         } else {
             base_error("do not know how to convert 'x' to class \"Date\"");
         }

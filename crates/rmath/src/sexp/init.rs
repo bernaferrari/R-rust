@@ -1402,7 +1402,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "as.Date.default",
-            "function(x, ...) { if (inherits(x, \"Date\")) x else stop(gettextf(\"do not know how to convert '%s' to class %s\", deparse1(substitute(x)), dQuote(\"Date\")), domain = NA) }",
+            "function(x, ...) { if (inherits(x, \"Date\")) x else if (is.null(x)) structure(numeric(), class = \"Date\") else if (is.logical(x) && all(is.na(x))) structure(as.numeric(x), class = \"Date\") else stop(gettextf(\"do not know how to convert '%s' to class %s\", deparse1(substitute(x)), dQuote(\"Date\")), domain = NA) }",
         );
         eval_base_binding(base_env, "print.Date", include_str!("gnu_print_Date.R"));
         eval_base_binding(
