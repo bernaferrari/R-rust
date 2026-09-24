@@ -582,26 +582,35 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
         if !dimnames.is_null() && dimnames != R_NilValue() {
             let new_dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, kept.len() as R_xlen_t);
             let _new_dimnames_guard = protect(new_dimnames);
+            let mut any = false;
             for (j, i) in kept_idx.iter().enumerate() {
-                SET_VECTOR_ELT(new_dimnames, j as R_xlen_t, slot(*i));
-            }
-            let dimnames_names = getAttrib(dimnames, sym_Names());
-            let _dimnames_names_guard = protect(dimnames_names);
-            if !isNull(dimnames_names) && TYPEOF(dimnames_names) == SEXPTYPE::STRSXP {
-                let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept.len() as R_xlen_t);
-                let _new_names = protect(new_names);
-                for (j, i) in kept_idx.iter().enumerate() {
-                    if (*i as R_xlen_t) < XLENGTH(dimnames_names) {
-                        SET_STRING_ELT(
-                            new_names,
-                            j as R_xlen_t,
-                            STRING_ELT(dimnames_names, *i as R_xlen_t),
-                        );
-                    }
+                let slot_i = slot(*i);
+                if !slot_i.is_null() && slot_i != R_NilValue() {
+                    any = true;
                 }
-                setAttrib(new_dimnames, sym_Names(), new_names);
+                SET_VECTOR_ELT(new_dimnames, j as R_xlen_t, slot_i);
             }
-            setAttrib(x, sym_DimNames(), new_dimnames);
+            if any {
+                let dimnames_names = getAttrib(dimnames, sym_Names());
+                let _dimnames_names_guard = protect(dimnames_names);
+                if !isNull(dimnames_names) && TYPEOF(dimnames_names) == SEXPTYPE::STRSXP {
+                    let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept.len() as R_xlen_t);
+                    let _new_names = protect(new_names);
+                    for (j, i) in kept_idx.iter().enumerate() {
+                        if (*i as R_xlen_t) < XLENGTH(dimnames_names) {
+                            SET_STRING_ELT(
+                                new_names,
+                                j as R_xlen_t,
+                                STRING_ELT(dimnames_names, *i as R_xlen_t),
+                            );
+                        }
+                    }
+                    setAttrib(new_dimnames, sym_Names(), new_names);
+                }
+                setAttrib(x, sym_DimNames(), new_dimnames);
+            } else {
+                setAttrib(x, sym_DimNames(), R_NilValue());
+            }
         }
         x
     }
