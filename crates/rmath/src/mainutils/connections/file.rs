@@ -980,20 +980,20 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             r_error("connection is not open");
         }
 
+        conn.pushback.clear();
         match &mut conn.kind {
             ConnKind::File => {
+                let mut old_pos = 0.0;
                 if let Some(ref mut file) = conn.file {
                     let seek_from = match origin {
                         1 => SeekFrom::Current(where_val as i64),
                         3 => SeekFrom::End(where_val as i64),
                         _ => SeekFrom::Start(where_val as u64),
                     };
-
-                    let old_pos = match file.stream_position() {
+                    old_pos = match file.stream_position() {
                         Ok(p) => p as c_double,
                         Err(_) => 0.0,
                     };
-
                     if !where_val.is_nan() {
                         match file.seek(seek_from) {
                             Ok(_) => {}
@@ -1002,9 +1002,18 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                             }
                         }
                     }
-
-                    return Rf_ScalarReal(old_pos);
                 }
+                if !where_val.is_nan() {
+                    if let Some(reader) = conn.reader.as_mut() {
+                        let seek_from = match origin {
+                            1 => SeekFrom::Current(where_val as i64),
+                            3 => SeekFrom::End(where_val as i64),
+                            _ => SeekFrom::Start(where_val as u64),
+                        };
+                        let _ = reader.seek(seek_from);
+                    }
+                }
+                return Rf_ScalarReal(old_pos);
             }
             ConnKind::RawConnection => {
                 let old_pos = conn.raw_pos as c_double;

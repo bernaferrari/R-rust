@@ -657,30 +657,42 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             Some(elt_to_string(text_arg, 0))
         };
+        let mut scan_conn_idx: Option<i32> = None;
+        let mut scan_conn_bytes: Vec<u8> = Vec::new();
         let contents = if let Some(text) = text {
             text
         } else {
             if file_arg.is_null() || file_arg == R_NilValue() || file_arg == R_MissingArg() {
                 scan_error("scan() requires a file path in the Android/headless runtime");
             }
-            let filename = if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) == 1 {
-                let idx = *INTEGER(file_arg) as usize;
-                let table = crate::mainutils::connections::get_connection(idx);
-                table[idx]
-                    .as_ref()
-                    .map(|c| c.description.clone())
-                    .unwrap_or_default()
+            let (filename, from_conn) = if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) == 1 {
+                let idx = *INTEGER(file_arg);
+                let mut bytes = Vec::new();
+                loop {
+                    let b = crate::mainutils::connections::connection_fgetc(idx);
+                    if b < 0 {
+                        break;
+                    }
+                    bytes.push(b as u8);
+                }
+                (String::from_utf8_lossy(&bytes).into_owned(), Some((idx, bytes)))
             } else if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
                 scan_error("scan() currently supports character file paths only");
             } else {
-                elt_to_string(file_arg, 0)
+                (elt_to_string(file_arg, 0), None)
             };
-            if filename.is_empty() {
+            if from_conn.is_none() && filename.is_empty() {
                 scan_error("scan() cannot read from an interactive console in this runtime");
             }
-            match crate::mainutils::browser_files::read_text_or_host(&filename) {
-                Ok(s) => s,
-                Err(err) => scan_error(format!("cannot open file '{filename}': {err}")),
+            if let Some((idx, bytes)) = from_conn {
+                scan_conn_idx = Some(idx);
+                scan_conn_bytes = bytes;
+                filename
+            } else {
+                match crate::mainutils::browser_files::read_text_or_host(&filename) {
+                    Ok(s) => s,
+                    Err(err) => scan_error(format!("cannot open file '{filename}': {err}")),
+                }
             }
         };
         let what_type = if what_arg.is_null() || what_arg == R_NilValue() {
@@ -729,6 +741,28 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let item_cap = if n_limit >= 0 { n_limit } else { nmax };
         let field_cap = if what_type == SEXPTYPE::VECSXP { -1 } else { item_cap };
         let values = split_scan_fields(&contents, &sep, &quote, field_cap);
+        if let Some(idx) = scan_conn_idx {
+            if field_cap >= 0 {
+                let bytes = &scan_conn_bytes;
+                let mut i = 0usize;
+                let mut seen = 0i64;
+                while i < bytes.len() && seen < field_cap {
+                    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                        i += 1;
+                    }
+                    if i >= bytes.len() {
+                        break;
+                    }
+                    while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+                        i += 1;
+                    }
+                    seen += 1;
+                }
+                if i < bytes.len() {
+                    crate::mainutils::connections::connection_pushback(idx, &bytes[i..]);
+                }
+            }
+        }
         let n = values.len() as R_xlen_t;
         let quiet = match named_arg(args, "quiet") {
             Some(q) if !q.is_null() && q != R_NilValue() && XLENGTH(q) > 0 => {
