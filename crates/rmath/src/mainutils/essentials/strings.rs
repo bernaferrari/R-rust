@@ -2884,8 +2884,13 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let width_arg = m.get(2).copied().unwrap_or(missing);
         let format_arg = m.get(3).copied().unwrap_or(missing);
 
-        let mut digits = if TYPEOF(x) == SEXPTYPE::INTSXP { 2i32 } else { 7 };
-        if !digits_arg.is_null() && digits_arg != R_NilValue() && digits_arg != missing {
+        let digits_missing = digits_arg.is_null()
+            || digits_arg == R_NilValue()
+            || digits_arg == missing;
+        let width_missing =
+            width_arg.is_null() || width_arg == R_NilValue() || width_arg == missing;
+        let mut digits = if TYPEOF(x) == SEXPTYPE::INTSXP { 2i32 } else { 4 };
+        if !digits_missing {
             if TYPEOF(digits_arg) == SEXPTYPE::INTSXP && XLENGTH(digits_arg) > 0 {
                 digits = *INTEGER(digits_arg);
             } else if TYPEOF(digits_arg) == SEXPTYPE::REALSXP && XLENGTH(digits_arg) > 0 {
@@ -2895,14 +2900,22 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if digits < 0 {
             digits = 6;
         }
-
-        let mut width = 0i32;
-        if !width_arg.is_null() && width_arg != R_NilValue() && width_arg != missing {
+        let mut width = if digits_missing && width_missing {
+            1
+        } else {
+            0
+        };
+        if !width_missing {
             if TYPEOF(width_arg) == SEXPTYPE::INTSXP && XLENGTH(width_arg) > 0 {
                 width = *INTEGER(width_arg);
             } else if TYPEOF(width_arg) == SEXPTYPE::REALSXP && XLENGTH(width_arg) > 0 {
                 width = *REAL(width_arg) as i32;
             }
+            if width == 0 {
+                width = digits;
+            }
+        } else if !(digits_missing && width_missing) {
+            width = digits + 1;
         }
 
         let mut format = if TYPEOF(x) == SEXPTYPE::INTSXP {
@@ -2921,13 +2934,15 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             }
         }
         let mut alt = false;
+        let mut zero_print: Option<String> = None;
+        let mut replace_zero = true;
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             if !tag.is_null() && tag != R_NilValue() {
                 let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                let value = CAR(cell);
                 if name == "flag" {
-                    let value = CAR(cell);
                     if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
                         let ch = STRING_ELT(value, 0);
                         if !ch.is_null() {
@@ -2935,6 +2950,21 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                                 .to_string_lossy()
                                 .contains('#');
                         }
+                    }
+                } else if name == "zero.print" {
+                    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+                        let ch = STRING_ELT(value, 0);
+                        if !ch.is_null() {
+                            zero_print = Some(
+                                std::ffi::CStr::from_ptr(CHAR(ch))
+                                    .to_string_lossy()
+                                    .into_owned(),
+                            );
+                        }
+                    }
+                } else if name == "replace.zero" {
+                    if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
+                        replace_zero = *LOGICAL(value) != 0;
                     }
                 }
             }
@@ -2945,6 +2975,7 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let n = XLENGTH(x);
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
+        let mut warned_zero = false;
         for i in 0..n {
             let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
                 *REAL(x).add(i as usize)
@@ -2963,7 +2994,20 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             } else {
                 formatc_one(v, digits, &format, alt)
             };
-            let s = pad_formatc_width(s, width);
+            let mut s = pad_formatc_width(s, width);
+            if v == 0.0 {
+                if let Some(zero) = zero_print.as_deref() {
+                    let (next, warn) = splice_formatc_zero(&s, zero, replace_zero);
+                    if warn && !warned_zero {
+                        warned_zero = true;
+                        crate::mainutils::errors::Rf_warning(
+                            c"'zero.print' is truncated to fit into formatted zeros; consider 'replace=TRUE'"
+                                .as_ptr(),
+                        );
+                    }
+                    s = next;
+                }
+            }
             let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
             SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
         }
@@ -2985,6 +3029,35 @@ fn pad_formatc_width(s: String, width: i32) -> String {
     } else {
         format!("{pad}{s}")
     }
+}
+fn splice_formatc_zero(field: &str, zero: &str, replace: bool) -> (String, bool) {
+    if replace {
+        return (zero.to_string(), false);
+    }
+    let chars: Vec<char> = field.chars().collect();
+    let nc = chars.len();
+    let z: Vec<char> = zero.chars().collect();
+    let nz = z.len();
+    let ind0 = chars.iter().position(|c| *c == '0').map(|i| i + 1).unwrap_or(1);
+    let warn = nc < nz;
+    let i2 = nc.min(nz.saturating_sub(1).saturating_add(ind0));
+    let i1 = 1isize.max(i2 as isize + 1 - nz as isize) as usize;
+    let mut out = chars;
+    let span = i2.saturating_sub(i1).saturating_add(1);
+    for (k, ch) in z.iter().take(span).enumerate() {
+        let at = i1 - 1 + k;
+        if at < out.len() {
+            out[at] = *ch;
+        }
+    }
+    if nc > i2 {
+        for at in i2..nc {
+            if at < out.len() {
+                out[at] = ' ';
+            }
+        }
+    }
+    (out.into_iter().collect(), warn)
 }
 
 
