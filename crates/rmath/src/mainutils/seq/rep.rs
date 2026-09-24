@@ -1160,6 +1160,10 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::mainutils::essentials::set_posixct_class(ans, &tz);
         } else if crate::mainutils::essentials::sexp_has_class(x, "Date") {
             crate::mainutils::essentials::set_single_class(ans, "Date");
+        } else if crate::mainutils::essentials::sexp_has_class(x, "difftime") {
+            setAttrib(ans, R_ClassSymbol(), getAttrib(x, R_ClassSymbol()));
+            let units = crate::sexp::symbol::Rf_install(c"units".as_ptr());
+            setAttrib(ans, units, getAttrib(x, units));
         }
 
 
