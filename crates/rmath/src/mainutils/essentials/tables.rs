@@ -1472,7 +1472,13 @@ pub unsafe fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if !call_sexp.is_null() {
                 (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }
-            return crate::eval::eval::Rf_eval(call_sexp, rho);
+            let result = crate::eval::eval::Rf_eval(call_sexp, rho);
+            let out = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+            let _g = protect(out);
+            SET_VECTOR_ELT(out, 0, result);
+            set_single_class(out, "by");
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return out;
         }
         data
     }
