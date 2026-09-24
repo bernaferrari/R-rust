@@ -2267,7 +2267,7 @@ fn copy_mode_structure(out: SEXP, x: SEXP) {
     }
 }
 
-fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
+pub(crate) fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
     unsafe {
         let n = if TYPEOF(x) == SEXPTYPE::INTSXP { XLENGTH(x) } else { 0 };
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
@@ -2291,7 +2291,7 @@ fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
     }
 }
 
-fn mode_keep_str(args: SEXP) -> bool {
+pub(crate) fn mode_keep_str(args: SEXP) -> bool {
     unsafe {
         let rest = CDR(args);
         if rest.is_null() || rest == R_NilValue() {

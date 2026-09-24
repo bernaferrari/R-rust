@@ -1743,48 +1743,18 @@ pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         }
         let x = CAR(args);
         if class_contains(x, "octmode") {
-            let n = XLENGTH(x);
-            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = protect(result);
-            for i in 0..n {
-                let value = *INTEGER(x).add(i as usize);
-                let text = if value == NA_INTEGER {
-                    None
-                } else {
-                    Some(format!("{:o}", value))
-                };
-                let charsxp = text
-                    .and_then(|text| CString::new(text).ok())
-                    .map(|text| Rf_mkChar(text.as_ptr()))
-                    .unwrap_or_else(|| crate::sexp::globals::R_NaString());
-                SET_STRING_ELT(result, i, charsxp);
-            }
-            return result;
+            return crate::mainutils::essentials::as_character_mode(
+                x,
+                false,
+                crate::mainutils::essentials::mode_keep_str(args),
+            );
         }
         if class_contains(x, "hexmode") {
-            let n = XLENGTH(x);
-            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = protect(result);
-            for i in 0..n {
-                let value = *INTEGER(x).add(i as usize);
-                let text = if value == NA_INTEGER {
-                    None
-                } else {
-                    Some(format!("{:x}", value))
-                };
-                let charsxp = text
-                    .and_then(|text| CString::new(text).ok())
-                    .map(|text| Rf_mkChar(text.as_ptr()))
-                    .unwrap_or_else(|| crate::sexp::globals::R_NaString());
-                SET_STRING_ELT(result, i, charsxp);
-            }
-            return result;
+            return crate::mainutils::essentials::as_character_mode(
+                x,
+                true,
+                crate::mainutils::essentials::mode_keep_str(args),
+            );
         }
         if class_contains(x, "POSIXct") && TYPEOF(x) == SEXPTYPE::REALSXP {
             let n = XLENGTH(x);
