@@ -765,6 +765,7 @@ pub unsafe fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
         let mut seen = std::collections::HashSet::<String>::new();
+        let mut next = std::collections::HashMap::<String, u32>::new();
         for i in 0..n {
             let ch = if TYPEOF(names) == SEXPTYPE::STRSXP {
                 STRING_ELT(names, i)
@@ -779,15 +780,17 @@ pub unsafe fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     .into_owned()
             };
             let unique = if seen.insert(base.clone()) {
+                next.insert(base.clone(), 1);
                 base
             } else {
-                let mut k = 1u32;
+                let mut k = next.get(&base).copied().unwrap_or(1);
                 loop {
                     let cand = format!("{base}{sep}{k}");
+                    k += 1;
                     if seen.insert(cand.clone()) {
+                        next.insert(base, k);
                         break cand;
                     }
-                    k += 1;
                 }
             };
             let c = CString::new(unique).unwrap_or_else(|_| CString::new("").unwrap());
