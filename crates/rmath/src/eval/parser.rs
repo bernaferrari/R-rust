@@ -2680,6 +2680,12 @@ impl<'arena> Parser<'arena> {
                 }
                 Token::Ident(name) => {
                     let name = name.clone();
+                    if pairs.iter().any(|(seen, _)| seen == &name) {
+                        return Err(self.token_position_error(
+                            self.pos,
+                            &format!("repeated formal argument '{name}'"),
+                        ));
+                    }
                     self.advance();
                     let default = if self.peek() == &Token::Assign {
                         self.advance();
