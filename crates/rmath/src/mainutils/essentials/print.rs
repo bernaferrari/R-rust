@@ -1534,18 +1534,41 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         }
                     })
                     .collect();
-                let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
-                for i in 0..ncol {
+                let mut list_len = ncol;
+                let mut p = CDR(args);
+                while !p.is_null() && p != R_NilValue() {
+                    let tag = TAG(p);
+                    if !tag.is_null() && tag != R_NilValue() {
+                        let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                            crate::sexp::accessors::PRINTNAME(tag),
+                        ))
+                        .to_string_lossy();
+                        if name == "list.len" {
+                            let v = CAR(p);
+                            if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                                list_len = (*INTEGER(v) as R_xlen_t).max(0);
+                            } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                                list_len = (*REAL(v) as R_xlen_t).max(0);
+                            }
+                        }
+                    }
+                    p = CDR(p);
+                }
+                let show = ncol.min(list_len);
+                let name_width = raw_names.iter().take(show as usize).map(String::len).max().unwrap_or(0);
+                for i in 0..show {
                     let name = format!("{:<name_width$}", raw_names[i as usize]);
                     let elem = VECTOR_ELT(x, i as i64);
                     str_emit_line(&format!(
                         " $ {name}: {}",
                         str_atomic_summary_opts(elem, false, true)
-
                     ));
                     if let Some(extra) = str_child_dimnames_lines(elem) {
                         str_emit_line(&extra);
                     }
+                }
+                if show < ncol {
+                    str_emit_line(" [list output truncated]");
                 }
                 str_emit_nonstandard_attrs(x, &["names", "class", "row.names"]);
             } else {
