@@ -1338,11 +1338,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "objects", include_str!("gnu_ls.R"));
         eval_base_binding(
             base_env,
-            "env.profile",
-            "function(env) list(size = length(ls(env, all.names = TRUE)), nchains = length(ls(env, all.names = TRUE)))",
-        );
-        eval_base_binding(
-            base_env,
             "as.vector.factor",
             include_str!("gnu_as_vector_factor.R"),
         );
