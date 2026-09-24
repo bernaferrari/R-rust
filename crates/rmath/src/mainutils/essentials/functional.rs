@@ -2654,7 +2654,7 @@ unsafe fn store_na(out: SEXP, i: i64) {
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             *INTEGER(out).add(i as usize) = crate::sexp::ffi::NA_INTEGER;
         } else if t == SEXPTYPE::REALSXP {
-            *REAL(out).add(i as usize) = f64::NAN;
+            *REAL(out).add(i as usize) = crate::sexp::ffi::NA_REAL;
         } else if t == SEXPTYPE::STRSXP {
             SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
         }
@@ -2845,7 +2845,7 @@ unsafe fn merge_keys_equal(a: SEXP, i: i64, b: SEXP, j: i64) -> bool {
             t if t == SEXPTYPE::REALSXP => {
                 *REAL(a).add(i as usize) == *REAL(b).add(j as usize)
             }
-            t if t == SEXPTYPE::STRSXP => STRING_ELT(a, i) == STRING_ELT(b, j),
+            t if t == SEXPTYPE::STRSXP => elt_to_string(a, i) == elt_to_string(b, j),
             _ => format_grid_elt(a, i) == format_grid_elt(b, j),
         }
     }
