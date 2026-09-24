@@ -1190,8 +1190,33 @@ pub unsafe fn BCODE_EXPR(x: SEXP) -> SEXP {
     }
 }
 
+fn expr_mentions_symbol(expr: SEXP, name: &str) -> bool {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() {
+            return false;
+        }
+        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+            let pn = crate::sexp::accessors::PRINTNAME(expr);
+            if pn.is_null() {
+                return false;
+            }
+            let text = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pn)).to_string_lossy();
+            return text == name;
+        }
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP || TYPEOF(expr) == SEXPTYPE::LISTSXP {
+            expr_mentions_symbol(CAR(expr), name) || expr_mentions_symbol(CDR(expr), name)
+        } else {
+            false
+        }
+    }
+}
+
 unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let source = BCODE_EXPR(body);
+        if expr_mentions_symbol(source, "C_modelframe") {
+            return crate::eval::eval::Rf_eval(source, rho);
+        }
         let code_vec = VECTOR_ELT(body, 0);
         let consts = BCODE_CONSTS(body);
         if code_vec.is_null() || TYPEOF(code_vec) != SEXPTYPE::INTSXP {
