@@ -922,17 +922,20 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
         // R_MissingArg has mark bit set; we check via a special approach
         // If s looks like a symbol with empty name, treat as missing.
         // The simpler approach: check if the symbol's printname is empty.
-        let is_missing = if isSymbol(s) {
-            let pn = PRINTNAME(s);
-            if isNull(pn) {
-                false
+        let is_missing = s == R_MissingArg()
+            || s.is_null()
+            || s == R_NilValue()
+            || if isSymbol(s) {
+                let pn = PRINTNAME(s);
+                if isNull(pn) {
+                    false
+                } else {
+                    let c = CHAR(pn);
+                    !c.is_null() && *c == 0
+                }
             } else {
-                let c = CHAR(pn);
-                !c.is_null() && *c == 0
-            }
-        } else {
-            false
-        };
+                false
+            };
 
         if is_missing {
             return crate::mainutils::duplicate::duplicate(x);
