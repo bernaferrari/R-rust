@@ -5234,6 +5234,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "order" => Some(crate::mainutils::essentials::do_order),
         "sort" => Some(crate::mainutils::essentials::do_sort),
         "mean" => Some(crate::mainutils::summary::do_mean),
+        "grepRaw" => Some(crate::mainutils::grep::do_grepraw),
 
 
         "save" => Some(crate::mainutils::saveload::do_save),

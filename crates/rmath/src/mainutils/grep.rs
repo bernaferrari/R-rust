@@ -1571,9 +1571,13 @@ pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         args = CDR(args);
         let text = CAR(args);
         args = CDR(args);
+        let _offset = CAR(args);
+        args = CDR(args);
         let igcase_opt = asBool2(CAR(args), call);
         args = CDR(args);
         let fixed_opt = asBool2(CAR(args), call);
+        args = CDR(args);
+        let _value = CAR(args);
         args = CDR(args);
         let _all_matches = asBool2(CAR(args), call);
         args = CDR(args);
