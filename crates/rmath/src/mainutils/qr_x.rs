@@ -274,6 +274,20 @@ pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                 }
             }
+            let dn = getAttrib(res, crate::sexp::attrib_core::R_DimNamesSymbol());
+            if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                let cn = VECTOR_ELT(dn, 1);
+                if !cn.is_null() && cn != R_NilValue() && TYPEOF(cn) == SEXPTYPE::STRSXP && XLENGTH(cn) as usize >= cols {
+                    let copy = crate::mainutils::duplicate::Rf_duplicate(cn);
+                    let _c = protect(copy);
+                    for i in 0..pvt_len {
+                        let dest = *INTEGER(pivot).add(i);
+                        if dest > 0 && (dest as usize) <= cols {
+                            SET_STRING_ELT(cn, (dest as R_xlen_t) - 1, STRING_ELT(copy, i as R_xlen_t));
+                        }
+                    }
+                }
+            }
         }
         res
     }
