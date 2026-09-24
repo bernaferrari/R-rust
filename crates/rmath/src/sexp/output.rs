@@ -2275,7 +2275,18 @@ fn format_list(x: Sexp<'_>) -> String {
 
 fn format_list_with_path(x: Sexp<'_>, path: &str) -> String {
     if x.clone().len() == 0 {
-        return format_with_printable_attributes("list()".to_string(), x);
+        let names = unsafe {
+            crate::sexp::attrib_core::getAttrib(
+                x.clone().as_raw(),
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            )
+        };
+        let body = if !names.is_null() && names != unsafe { crate::sexp::globals::R_NilValue() } {
+            "named list()"
+        } else {
+            "list()"
+        };
+        return format_with_printable_attributes(body.to_string(), x);
     }
     let names = list_names(x.clone());
     let mut sections = Vec::with_capacity(x.clone().len() as usize);

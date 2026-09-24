@@ -1324,8 +1324,27 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                     );
                 }
             } else {
-                // Empty list
-                if names != R_NilValue() {
+                let named = names != R_NilValue()
+                    || {
+                        let mut cell = crate::sexp::accessors::ATTRIB(s);
+                        let mut found = false;
+                        while !cell.is_null() && cell != R_NilValue() {
+                            let tag = crate::sexp::accessors::TAG(cell);
+                            if !tag.is_null() && tag != R_NilValue() {
+                                let pn = crate::sexp::accessors::PRINTNAME(tag);
+                                if !pn.is_null() {
+                                    let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pn));
+                                    if name.to_bytes() == b"names" {
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            cell = crate::sexp::accessors::CDR(cell);
+                        }
+                        found
+                    };
+                if named {
                     print!("named ");
                 }
                 println!("list()");
