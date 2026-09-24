@@ -824,6 +824,15 @@ unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
         options.insert("height".to_string(), pi(60));
         options.insert("add.smooth".to_string(), pl(TRUE));
         options.insert("ts.eps".to_string(), Rf_ScalarReal(1e-5));
+        let contrasts = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        SET_STRING_ELT(contrasts, 0, Rf_mkChar(c"contr.treatment".as_ptr()));
+        SET_STRING_ELT(contrasts, 1, Rf_mkChar(c"contr.poly".as_ptr()));
+        let cnames = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        SET_STRING_ELT(cnames, 0, Rf_mkChar(c"unordered".as_ptr()));
+        SET_STRING_ELT(cnames, 1, Rf_mkChar(c"ordered".as_ptr()));
+        setAttrib(contrasts, R_NamesSymbol(), cnames);
+        options.insert("contrasts".to_string(), contrasts);
+
 
     }
 }
