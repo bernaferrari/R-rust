@@ -630,10 +630,19 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 };
                 *out.add(i as usize) = days;
             }
-        } else if sexp_has_class(x, "POSIXct") && TYPEOF(x) == SEXPTYPE::REALSXP {
+        } else if sexp_has_class(x, "POSIXct")
+            && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
+        {
             for i in 0..n {
-                let seconds = *REAL(x).add(i as usize);
-                *out.add(i as usize) = if seconds.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                let seconds = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                    let v = *INTEGER(x).add(i as usize);
+                    if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                } else {
+                    *REAL(x).add(i as usize)
+                };
+                *out.add(i as usize) = if seconds.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                    || seconds.is_nan()
+                {
                     NA_REAL
                 } else {
                     (seconds / 86_400.0).floor()
@@ -1318,6 +1327,44 @@ pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             return R_NilValue();
         }
         let n = XLENGTH(x);
+        let breaks = CAR(CDR(args));
+        let numeric_breaks = !breaks.is_null()
+            && breaks != R_NilValue()
+            && (TYPEOF(breaks) == SEXPTYPE::REALSXP || TYPEOF(breaks) == SEXPTYPE::INTSXP)
+            && XLENGTH(breaks) == 1;
+        if numeric_breaks {
+            let days = crate::mainutils::duplicate::duplicate(x);
+            let _d = protect(days);
+            crate::sexp::attrib_core::setAttrib(days, crate::sexp::attrib_core::R_ClassSymbol(), R_NilValue());
+            let right_val = Rf_ScalarLogical(0);
+            let _r = protect(right_val);
+            let call_args = Rf_cons(
+                days,
+                Rf_cons(breaks, Rf_cons(R_NilValue(), Rf_cons(right_val, R_NilValue()))),
+            );
+            let res = super::super::sets::do_cut(_call, _op, call_args, _rho);
+            let _res = protect(res);
+            let codes = INTEGER(res);
+            let nlev = {
+                let lev = crate::sexp::attrib_core::getAttrib(res, crate::sexp::attrib_core::R_LevelsSymbol());
+                if lev.is_null() || lev == R_NilValue() { 0 } else { XLENGTH(lev) }
+            };
+            let labels = Rf_allocVector3(SEXPTYPE::STRSXP, nlev);
+            let _lab = protect(labels);
+            for lev in 0..nlev {
+                let mut label = String::from("NA");
+                for i in 0..n {
+                    if *codes.add(i as usize) == (lev as i32) + 1 {
+                        label = super::super::shared::date_days_to_iso(date_days_elt(x, i))
+                            .unwrap_or_else(|| "NA".to_string());
+                        break;
+                    }
+                }
+                SET_STRING_ELT(labels, lev, Rf_mkChar(CString::new(label).unwrap().as_ptr()));
+            }
+            crate::sexp::attrib_core::setAttrib(res, crate::sexp::attrib_core::R_LevelsSymbol(), labels);
+            return res;
+        }
         let mut days: Vec<f64> = Vec::with_capacity(n as usize);
         for i in 0..n {
             days.push(date_days_elt(x, i));
