@@ -1017,6 +1017,17 @@ pub unsafe fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             };
             *REAL(result).add(i as usize) = v;
         }
+        let names = crate::sexp::attrib_core::getAttrib(
+            tim,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
         set_single_class(result, "difftime");
         let u = Rf_mkString(CString::new(units.as_str()).unwrap_or_default().as_ptr());
         crate::sexp::attrib_core::setAttrib(
