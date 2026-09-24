@@ -2247,7 +2247,71 @@ fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
     }
 }
 
-/// GNU `format.hexmode` / `as.character.hexmode`.
+fn copy_mode_structure(out: SEXP, x: SEXP) {
+    unsafe {
+        use crate::sexp::attrib_core::{
+            getAttrib, setAttrib, R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol,
+        };
+        let dim = getAttrib(x, R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() {
+            setAttrib(out, R_DimSymbol(), dim);
+        }
+        let dn = getAttrib(x, R_DimNamesSymbol());
+        if !dn.is_null() && dn != R_NilValue() {
+            setAttrib(out, R_DimNamesSymbol(), dn);
+        }
+        let nm = getAttrib(x, R_NamesSymbol());
+        if !nm.is_null() && nm != R_NilValue() {
+            setAttrib(out, R_NamesSymbol(), nm);
+        }
+    }
+}
+
+fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
+    unsafe {
+        let n = if TYPEOF(x) == SEXPTYPE::INTSXP { XLENGTH(x) } else { 0 };
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let v = *INTEGER(x).add(i as usize);
+            let s = if v == NA_INTEGER {
+                "NA".to_string()
+            } else if hex {
+                format!("{v:x}")
+            } else {
+                format!("{v:o}")
+            };
+            let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
+            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+        }
+        if keep_str {
+            copy_mode_structure(out, x);
+        }
+        out
+    }
+}
+
+fn mode_keep_str(args: SEXP) -> bool {
+    unsafe {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            return false;
+        }
+        crate::mainutils::coerce::asLogical(CAR(rest)) == 1
+    }
+}
+
+/// GNU `as.character.hexmode`: unpadded `%x`; copy dim only if `keepStr`.
+pub unsafe fn do_as_character_hexmode(
+    _call: SEXP,
+    _op: SEXP,
+    args: SEXP,
+    _rho: SEXP,
+) -> SEXP {
+    unsafe { as_character_mode(CAR(args), true, mode_keep_str(args)) }
+}
+
+/// GNU `format.hexmode`: zero-pad to the widest value.
 pub unsafe fn do_format_hexmode(
     _call: SEXP,
     _op: SEXP,
@@ -2257,7 +2321,17 @@ pub unsafe fn do_format_hexmode(
     unsafe { format_mode_ints(CAR(args), true) }
 }
 
-/// GNU `format.octmode` / `as.character.octmode`.
+/// GNU `as.character.octmode`: unpadded `%o`; copy dim only if `keepStr`.
+pub unsafe fn do_as_character_octmode(
+    _call: SEXP,
+    _op: SEXP,
+    args: SEXP,
+    _rho: SEXP,
+) -> SEXP {
+    unsafe { as_character_mode(CAR(args), false, mode_keep_str(args)) }
+}
+
+/// GNU `format.octmode`: zero-pad to the widest value.
 pub unsafe fn do_format_octmode(
     _call: SEXP,
     _op: SEXP,
