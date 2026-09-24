@@ -269,10 +269,26 @@ pub unsafe fn NewExtractNames(
         }
 
         let n = xlength(v);
-        let names_sym = crate::eval::attrib_core::R_NamesSymbol();
-        let _names = getAttrib(v, names_sym);
-
         let t = TYPEOF(v);
+        let names_sym = crate::eval::attrib_core::R_NamesSymbol();
+        let mut _names = getAttrib(v, names_sym);
+        if (_names.is_null() || _names == R_NilValue())
+            && matches!(
+                t,
+                LGLSXP_I | INTSXP_I | REALSXP_I | CPLXSXP_I | STRSXP_I | RAWSXP_I
+            )
+        {
+            let dim = getAttrib(v, crate::eval::attrib_core::R_DimSymbol());
+            if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
+                let dn = getAttrib(v, crate::eval::attrib_core::R_DimNamesSymbol());
+                if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 1 {
+                    let first = VECTOR_ELT(dn, 0);
+                    if TYPEOF(first) == SEXPTYPE::STRSXP {
+                        _names = first;
+                    }
+                }
+            }
+        }
 
         match t {
             NILSXP_I => {

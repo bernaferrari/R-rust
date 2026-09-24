@@ -589,6 +589,16 @@ pub unsafe fn HasNames(x: SEXP) -> c_int {
             if Rf_isNull(getAttrib(x, names_sym)) == 0 {
                 return 1;
             }
+            let dim = getAttrib(x, crate::eval::attrib_core::R_DimSymbol());
+            if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
+                let dn = getAttrib(x, crate::eval::attrib_core::R_DimNamesSymbol());
+                if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 1 {
+                    let first = VECTOR_ELT(dn, 0);
+                    if !first.is_null() && first != R_NilValue() {
+                        return 1;
+                    }
+                }
+            }
         } else if isList(x) != 0 {
             let mut current = x;
             while !current.is_null() && current != R_NilValue() {

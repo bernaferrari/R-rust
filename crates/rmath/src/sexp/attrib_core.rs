@@ -103,6 +103,10 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
             current = CDR(current);
         }
 
+        if which == R_NamesSymbol() {
+            return names_from_one_dim(x);
+        }
+
         R_NilValue()
     }
 }
@@ -128,6 +132,24 @@ unsafe fn expand_compact_row_names(value: SEXP) -> SEXP {
             }
         }
         value
+    }
+}
+/// GNU `getAttrib`: a length-1 `dim` exposes `dimnames[[1]]` as `names`.
+unsafe fn names_from_one_dim(x: SEXP) -> SEXP {
+    unsafe {
+        let dim = getAttrib(x, R_DimSymbol());
+        if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 1 {
+            return R_NilValue();
+        }
+        let dn = getAttrib(x, R_DimNamesSymbol());
+        if TYPEOF(dn) != SEXPTYPE::VECSXP || XLENGTH(dn) < 1 {
+            return R_NilValue();
+        }
+        let first = super::accessors::VECTOR_ELT(dn, 0);
+        if first.is_null() || TYPEOF(first) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        first
     }
 }
 
