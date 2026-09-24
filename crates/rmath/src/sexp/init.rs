@@ -868,6 +868,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "anyDuplicated.data.frame",
+            "function(x, incomparables = FALSE, fromLast = FALSE, ...) {\n\
+             if (!isFALSE(incomparables)) .NotYetUsed(\"incomparables != FALSE\")\n\
+             if (any(i <- (lengths(lapply(x, dim)) == 2L)))\n\
+                 x[i] <- lapply(x[i], split.data.frame, seq_len(nrow(x)))\n\
+             anyDuplicated(do.call(Map, `names<-`(c(list, x), NULL)), fromLast = fromLast)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "Map",
             "function(f, ...) mapply(FUN = f, ..., SIMPLIFY = FALSE)",
         );
