@@ -633,6 +633,9 @@ pub unsafe fn do_validObject(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
         if object.is_null() || object == R_NilValue() {
             return Rf_ScalarLogical(TRUE);
         }
+        if let Some(msg) = super::print::factor_validity_message(object) {
+            std::panic::panic_any(RError { message: msg });
+        }
         let class_val = crate::sexp::attrib_core::getAttrib(
             object,
             crate::sexp::attrib_core::R_ClassSymbol(),

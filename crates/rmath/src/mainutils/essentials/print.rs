@@ -2201,11 +2201,49 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                 emit_print_text(&lv);
             }
         }
+        if let Some(msg) = factor_validity_message(x) {
+            let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
+            crate::mainutils::errors::Rf_warning1(cmsg.as_ptr());
+        }
 
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
 }
+pub(crate) unsafe fn factor_validity_message(x: SEXP) -> Option<String> {
+    unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let mut is_factor = false;
+        for i in 0..XLENGTH(class) {
+            let name = elt_to_string(class, i);
+            if name == "factor" || name == "ordered" {
+                is_factor = true;
+                break;
+            }
+        }
+        if !is_factor {
+            return None;
+        }
+        let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
+        if levels.is_null() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            return Some("factor levels must be \"character\"".to_string());
+        }
+        let n = XLENGTH(levels);
+        for i in 0..n {
+            let here = elt_to_string(levels, i);
+            for j in 0..i {
+                if elt_to_string(levels, j) == here {
+                    return Some(format!("duplicated level [{}] in factor", i + 1));
+                }
+            }
+        }
+        None
+    }
+}
+
 
 /// GNU `summary.data.frame` — character table of per-column summaries.
 pub unsafe fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
