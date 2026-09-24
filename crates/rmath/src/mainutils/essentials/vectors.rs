@@ -650,6 +650,11 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
             }
             current = CDR(current);
         }
+        if let Some(&first) = arg_vecs.first() {
+            if XLENGTH(first) == 0 && crate::sexp::accessors::OBJECT(first) != 0 {
+                return crate::mainutils::duplicate::Rf_duplicate(first);
+            }
+        }
         if let Some(factor) = pminmax_factor_result(&arg_vecs, max_len, is_min, na_rm) {
             return factor;
         }
