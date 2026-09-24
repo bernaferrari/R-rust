@@ -26,3 +26,26 @@ mod qdpdf;
 mod stubs;
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 mod winbitmap;
+
+pub fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
+    match name {
+        "PDF" | "C_PDF" => Some(unsafe {
+            std::mem::transmute::<
+                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
+                _,
+            >(devps::PDF)
+        }),
+        _ => None,
+    }
+}
+
+pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
+    unsafe {
+        let cname = std::ffi::CString::new("C_PDF").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(cname.as_ptr()),
+            crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
+            env,
+        );
+    }
+}

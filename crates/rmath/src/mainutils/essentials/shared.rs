@@ -1926,6 +1926,9 @@ pub(crate) unsafe fn load_package_namespace(
         if package == "utils" {
             crate::library::utils::install_utils_call_symbols(package_env);
         }
+        if package == "grDevices" {
+            crate::library::grdevices::install_call_symbols(package_env);
+        }
         ensure_namespace_info(package, package_dir, package_env, namespace.as_ref());
 
 
