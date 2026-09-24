@@ -4323,7 +4323,15 @@ pub(crate) fn parse_iso_date_days(text: &str) -> Option<f64> {
     let mut parts = text.split(sep);
     let year = parts.next()?.parse::<i64>().ok()?;
     let month = parts.next()?.parse::<i64>().ok()?;
-    let day = parts.next()?.parse::<i64>().ok()?;
+    let day_tok = parts.next()?;
+    let (day_digits, rest) = day_tok.split_once(char::is_whitespace).unwrap_or((day_tok, ""));
+    let day = day_digits.parse::<i64>().ok()?;
+    let rest = rest.trim();
+    if !rest.is_empty()
+        && rest.split(':').any(|piece| piece.parse::<u32>().is_err())
+    {
+        return None;
+    }
     if parts.next().is_some()
         || !(1..=12).contains(&month)
         || day < 1
