@@ -513,6 +513,14 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     compare_charsxp_for_sort(a.0, b.0) == std::cmp::Ordering::Equal
                 });
             }
+            t if t == SEXPTYPE::RAWSXP => {
+                let mut values: Vec<(u8, R_xlen_t)> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    values.push((*RAW(x).add(i as usize), i));
+                }
+                values.sort_by(|a, b| a.0.cmp(&b.0));
+                assign_tied_ranks(&mut ranks, &values, ties_method, 0, |a, b| a.0 == b.0);
+            }
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
                 let mut values: Vec<(c_int, R_xlen_t)> = Vec::with_capacity(n as usize);
                 for i in 0..n {
