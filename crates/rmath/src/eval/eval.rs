@@ -412,11 +412,20 @@ pub(crate) fn find_var_result<'a>(
         missing_arg_error(&name);
     }
     if binding.clone().typeof_() == SEXPTYPE::PROMSXP {
-        return eval_promise_safe(binding, rho).map(Some);
+        return eval_promise_safe(binding, rho).map(|v| { mark_named_on_read(v.clone().as_raw()); Some(v) });
     }
+    mark_named_on_read(binding.clone().as_raw());
     Ok(Some(binding))
 
 }
+fn mark_named_on_read(x: SEXP) {
+    unsafe {
+        if !x.is_null() && crate::sexp::accessors::NAMED(x) == 0 {
+            crate::sexp::accessors::SET_NAMED(x, 1);
+        }
+    }
+}
+
 
 /// Safe promise evaluation.
 fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
