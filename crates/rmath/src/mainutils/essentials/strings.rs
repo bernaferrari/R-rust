@@ -3654,8 +3654,10 @@ pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let value = named_logical_arg(args, "value").unwrap_or(false);
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
         let max_distance = agrep_max_distance(args, pattern_arg);
+        let fixed = named_logical_arg(args, "fixed").unwrap_or(true);
         let pattern = elt_to_string(pattern_arg, 0);
-        let matches = agrep_match_indices(x_arg, &pattern, max_distance, ignore_case);
+        let patterns: Vec<&str> = if fixed { vec![pattern.as_str()] } else { pattern.split('|').collect() };
+        let matches = agrep_match_any(x_arg, &patterns, max_distance, ignore_case);
 
         if value {
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
@@ -3771,9 +3773,9 @@ fn agrep_max_distance(args: SEXP, pattern_arg: SEXP) -> usize {
     }
 }
 
-unsafe fn agrep_match_indices(
+unsafe fn agrep_match_any(
     x: SEXP,
-    pattern: &str,
+    patterns: &[&str],
     max_distance: usize,
     ignore_case: bool,
 ) -> Vec<R_xlen_t> {
@@ -3784,7 +3786,10 @@ unsafe fn agrep_match_indices(
             if is_string_na(x, i) {
                 continue;
             }
-            if approximate_contains(pattern, &elt_to_string(x, i), max_distance, ignore_case) {
+            let text = elt_to_string(x, i);
+            if patterns.iter().any(|pattern| {
+                approximate_contains(pattern, &text, max_distance, ignore_case)
+            }) {
                 matches.push(i);
             }
         }
