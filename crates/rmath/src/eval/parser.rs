@@ -615,7 +615,15 @@ impl Lexer {
 
     /// GNU gram.y `StringValue`: \\a \\b \\f \\n \\r \\t \\v \\\\ \\' \\" \\`
     /// \\  \\<newline>, octal, \\xHH, \\u / \\U. Mix of Unicode and octal/hex
-    /// is an error. Nul is an error.
+    /// is an error. Nul is an error. The reported column is the character
+    /// just consumed, not the opening quote.
+    fn bad_escape(&mut self) -> Token {
+        if self.pos > 0 {
+            self.last_token_start = self.pos - 1;
+        }
+        Token::Invalid
+    }
+
     fn read_string(&mut self) -> Token {
         let quote = self.advance().unwrap_or('"');
         let mut bytes = Vec::new();
@@ -650,7 +658,7 @@ impl Lexer {
                 }
                 '0'..='7' => {
                     if use_wcs {
-                        return Token::Invalid;
+                        return self.bad_escape();
                     }
                     let mut octal = esc as u32 - '0' as u32;
                     if let Some(d) = self.peek_char() {
@@ -666,27 +674,27 @@ impl Lexer {
                         }
                     }
                     if octal == 0 || octal > 0xff {
-                        return Token::Invalid;
+                        return self.bad_escape();
                     }
                     bytes.push(octal as u8);
                     oct_or_hex = true;
                 }
                 'x' => {
                     if use_wcs {
-                        return Token::Invalid;
+                        return self.bad_escape();
                     }
                     let Some(val) = self.take_hex_digits(2) else {
-                        return Token::Invalid;
+                        return self.bad_escape();
                     };
                     if val == 0 {
-                        return Token::Invalid;
+                        return self.bad_escape();
                     }
                     bytes.push(val as u8);
                     oct_or_hex = true;
                 }
                 'u' | 'U' => {
                     if oct_or_hex {
-                        return Token::Invalid;
+                        return self.bad_escape();
                     }
                     let max = if esc == 'u' { 4 } else { 8 };
                     let delim = self.peek_char() == Some('{');
@@ -694,25 +702,25 @@ impl Lexer {
                         self.advance();
                     }
                     let Some(val) = self.take_hex_digits(max) else {
-                        return Token::Invalid;
+                        return self.bad_escape();
                     };
                     if delim {
                         if self.peek_char() != Some('}') {
-                            return Token::Invalid;
+                            return self.bad_escape();
                         }
                         self.advance();
                     }
                     if val == 0 {
-                        return Token::Invalid;
+                        return self.bad_escape();
                     }
                     let Some(ch) = char::from_u32(val) else {
-                        return Token::Invalid;
+                        return self.bad_escape();
                     };
                     let mut buf = [0u8; 4];
                     bytes.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
                     use_wcs = true;
                 }
-                _ => return Token::Invalid,
+                _ => return self.bad_escape(),
             }
         }
         match String::from_utf8(bytes.clone()) {
@@ -1091,9 +1099,6 @@ impl<'arena> Parser<'arena> {
         let mut have_pipebind = false;
         loop {
             let tok = lexer.next_token();
-            if tok == Token::Invalid && lexer.pos > 0 {
-                lexer.last_token_start = lexer.pos - 1;
-            }
             let end = lexer.pos;
             let start = lexer.last_token_start;
             let is_eof = tok == Token::Eof;
@@ -1296,8 +1301,12 @@ impl<'arena> Parser<'arena> {
         }
         let (start, end_span) = self.spans.get(index).copied().unwrap_or((0, self.source.len()));
         let end = end_span;
-        let (ln, col) = self.line_col(start);
-        let loc = format!(" (<input>:{ln}:{})", col + 1);
+        let loc = if matches!(tok, Token::Invalid) {
+            let (ln, col) = self.line_col(start);
+            format!(" (<input>:{ln}:{})", col + 1)
+        } else {
+            String::new()
+        };
         let start_w = end.saturating_sub(PARSE_CONTEXT_WINDOW);
         let window: String = self.source[start_w..end].iter().collect();
         let mut lines: Vec<&str> = window.split('\n').collect();
