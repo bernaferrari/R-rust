@@ -505,6 +505,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_logit_link", "C_logit_linkinv", "C_logit_mu_eta", "C_binomial_dev_resids",
     "C_DoubleCentre",
     "C_cutree",
+    "C_runmed",
     "C_chisq_sim",
     "C_nextn",
 ];
