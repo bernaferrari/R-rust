@@ -655,9 +655,44 @@ pub unsafe fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `attr(x, which) <- value` — set or remove a single attribute.
 pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut x = CAR(args);
-        let which = CAR(CDR(args));
-        let value = CAR(CDR(CDR(args)));
+        let mut x = R_NilValue();
+        let mut which = R_NilValue();
+        let mut value = R_NilValue();
+        let mut positional: Vec<SEXP> = Vec::new();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = crate::sexp::accessors::TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let pname = crate::sexp::accessors::PRINTNAME(tag);
+                if pname.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname))
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            } else {
+                String::new()
+            };
+            let arg = CAR(cell);
+            match name.as_str() {
+                "x" => x = arg,
+                "which" => which = arg,
+                "value" => value = arg,
+                _ => positional.push(arg),
+            }
+            cell = CDR(cell);
+        }
+        let mut rest = positional.into_iter();
+        if x.is_null() || x == R_NilValue() {
+            x = rest.next().unwrap_or(R_NilValue());
+        }
+        if which.is_null() || which == R_NilValue() {
+            which = rest.next().unwrap_or(R_NilValue());
+        }
+        if value.is_null() || value == R_NilValue() {
+            value = rest.next().unwrap_or(R_NilValue());
+        }
         if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
             return R_NilValue();
         }
