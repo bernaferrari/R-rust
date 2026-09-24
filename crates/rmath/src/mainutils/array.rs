@@ -464,10 +464,41 @@ unsafe fn set_dim_names_from_axes(target_dim: SEXP, source_dim: SEXP, axes: &[us
     }
 }
 
-unsafe fn parse_aperm_perm(perm: SEXP, ndim: usize) -> Vec<usize> {
+unsafe fn parse_aperm_perm(perm: SEXP, x: SEXP, ndim: usize) -> Vec<usize> {
     unsafe {
         let parsed = if perm.is_null() || perm == R_NilValue() {
             (0..ndim).rev().collect::<Vec<_>>()
+        } else if TYPEOF(perm) == SEXPTYPE::STRSXP {
+            if XLENGTH(perm) as usize != ndim {
+                array_error("'perm' is of wrong length");
+            }
+            let dimnames = getAttrib(x, R_DimNamesSymbol());
+            let dn_names = if dimnames.is_null() || dimnames == R_NilValue() {
+                R_NilValue()
+            } else {
+                getAttrib(dimnames, R_NamesSymbol())
+            };
+            if dn_names.is_null() || dn_names == R_NilValue() || TYPEOF(dn_names) != SEXPTYPE::STRSXP {
+                array_error("'perm' is of wrong length");
+            }
+            let mut values = Vec::with_capacity(ndim);
+            for index in 0..ndim {
+                let want_ptr = CHAR(STRING_ELT(perm, index as R_xlen_t));
+                let want = std::ffi::CStr::from_ptr(want_ptr).to_string_lossy();
+                let mut found = None;
+                for axis in 0..XLENGTH(dn_names) {
+                    let have_ptr = CHAR(STRING_ELT(dn_names, axis));
+                    if std::ffi::CStr::from_ptr(have_ptr).to_string_lossy() == want {
+                        found = Some(axis as usize);
+                        break;
+                    }
+                }
+                match found {
+                    Some(axis) => values.push(axis),
+                    None => array_error("'perm' is of wrong length"),
+                }
+            }
+            values
         } else if !is_numeric_type(perm) || XLENGTH(perm) as usize != ndim {
             array_error("'perm' is of wrong length");
         } else {
@@ -1160,7 +1191,7 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             }
         };
 
-        let perm = parse_aperm_perm(perm_arg, ndim);
+        let perm = parse_aperm_perm(perm_arg, x, ndim);
         let resize = parse_resize_arg(resize_arg);
 
         // Short-circuit identity permutation (PR#19069): when resizing and the

@@ -135,7 +135,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         defineVar(Rf_install_in_current(".Devices"), devices, base_env);
         let message_fn = crate::eval::primitive::make_primitive_binding("message", SEXPTYPE::BUILTINSXP);
         defineVar(Rf_install_in_current("message"), message_fn, base_env);
-
+        let inherits_fn = crate::eval::primitive::make_primitive_binding("inherits", SEXPTYPE::BUILTINSXP);
+        defineVar(Rf_install_in_current("inherits"), inherits_fn, base_env);
 
         // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
         // Installed after as.list so parse/eval can see the generic.
