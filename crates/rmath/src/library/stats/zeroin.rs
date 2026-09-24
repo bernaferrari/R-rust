@@ -432,6 +432,74 @@ pub unsafe fn zeroin2(
     }
 }
 
+fn brent_fmin(ax: f64, bx: f64, info: *mut core::ffi::c_void, tol: f64) -> f64 {
+    let c = (3.0 - 5.0_f64.sqrt()) * 0.5;
+    let mut eps = f64::EPSILON.sqrt();
+    let mut a = ax;
+    let mut b = bx;
+    let mut v = a + c * (b - a);
+    let mut w = v;
+    let mut x = v;
+    let mut d: f64 = 0.0;
+    let mut e: f64 = 0.0;
+    let eval = |z: f64| {
+        let y = unsafe { zeroin_call(z, info) };
+        if y.is_finite() { y } else { f64::MAX }
+    };
+    let mut fx = eval(x);
+    let mut fv = fx;
+    let mut fw = fx;
+    let tol3 = tol / 3.0;
+    loop {
+        let xm = (a + b) * 0.5;
+        let tol1 = eps * x.abs() + tol3;
+        let t2 = tol1 * 2.0;
+        if (x - xm).abs() <= t2 - (b - a) * 0.5 {
+            break;
+        }
+        let mut p = 0.0;
+        let mut q = 0.0;
+        let mut r = 0.0;
+        if e.abs() > tol1 {
+            r = (x - w) * (fx - fv);
+            q = (x - v) * (fx - fw);
+            p = (x - v) * q - (x - w) * r;
+            q = (q - r) * 2.0;
+            if q > 0.0 { p = -p; } else { q = -q; }
+            r = e;
+            e = d;
+        }
+        if p.abs() >= (q * 0.5 * r).abs() || p <= q * (a - x) || p >= q * (b - x) {
+            e = if x < xm { b - x } else { a - x };
+            d = c * e;
+        } else {
+            d = p / q;
+            let u = x + d;
+            if u - a < t2 || b - u < t2 {
+                d = if x >= xm { -tol1 } else { tol1 };
+            }
+        }
+        let u = if d.abs() >= tol1 { x + d } else if d > 0.0 { x + tol1 } else { x - tol1 };
+        let fu = eval(u);
+        if fu <= fx {
+            if u < x { b = x; } else { a = x; }
+            v = w; w = x; x = u;
+            fv = fw; fw = fx; fx = fu;
+        } else {
+            if u < x { a = u; } else { b = u; }
+            if fu <= fw || w == x {
+                v = w; fv = fw;
+                w = u; fw = fu;
+            } else if fu <= fv || v == x || v == w {
+                v = u; fv = fu;
+            }
+        }
+    }
+    let _ = eps;
+    x
+}
+
+
 /// `.External2(C_do_fmin, f, lower, upper, tol)` — scalar minimizer.
 pub unsafe fn do_fmin(
     _call: crate::sexp::ffi::SEXP,
@@ -446,33 +514,16 @@ pub unsafe fn do_fmin(
         let mut a = CDR(args);
         let fun = CAR(a);
         a = CDR(a);
-        let mut lo = crate::mainutils::coerce::asReal(CAR(a));
+        let xmin = crate::mainutils::coerce::asReal(CAR(a));
         a = CDR(a);
-        let mut hi = crate::mainutils::coerce::asReal(CAR(a));
+        let xmax = crate::mainutils::coerce::asReal(CAR(a));
+        a = CDR(a);
+        let tol = crate::mainutils::coerce::asReal(CAR(a));
         let mut ctx = ZeroinCtx { fun, rho };
         let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
-        let gr = (5.0f64.sqrt() - 1.0) / 2.0;
-        let mut x1 = hi - gr * (hi - lo);
-        let mut x2 = lo + gr * (hi - lo);
-        let mut f1 = zeroin_call(x1, info);
-        let mut f2 = zeroin_call(x2, info);
-        for _ in 0..80 {
-            if f1 < f2 {
-                hi = x2;
-                x2 = x1;
-                f2 = f1;
-                x1 = hi - gr * (hi - lo);
-                f1 = zeroin_call(x1, info);
-            } else {
-                lo = x1;
-                x1 = x2;
-                f1 = f2;
-                x2 = lo + gr * (hi - lo);
-                f2 = zeroin_call(x2, info);
-            }
-        }
+        let x = brent_fmin(xmin, xmax, info, tol);
         let out = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-        *REAL(out) = 0.5 * (lo + hi);
+        *REAL(out) = x;
         out
     }
 }
