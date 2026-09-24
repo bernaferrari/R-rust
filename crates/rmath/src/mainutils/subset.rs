@@ -917,13 +917,6 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
 /// when the index has the same number of columns as the dimension of x.
 unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
     unsafe {
-        if s == R_NilValue() || TYPEOF(s) == SEXPTYPE::SYMSXP {
-            // Missing arg check
-            let missing_sym = Rf_install(c"".as_ptr());
-            if s == R_NilValue() {
-                return crate::mainutils::duplicate::duplicate(x);
-            }
-        }
 
         // If s is R_MissingArg, duplicate x
         // R_MissingArg has mark bit set; we check via a special approach
