@@ -208,7 +208,9 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let sb_arr = !sb_dim.is_null() && sb_dim != R_NilValue();
         let al = XLENGTH(sa);
         let bl = XLENGTH(sb);
-        if (sa_arr && !sb_arr && al != bl && bl > 1) || (sb_arr && !sa_arr && al != bl && al > 1) {
+        if (sa_arr && !sb_arr && al > 0 && bl > 1 && al % bl != 0)
+            || (sb_arr && !sa_arr && bl > 0 && al > 1 && bl % al != 0)
+        {
             let (prod, obj) = if sa_arr { (al, bl) } else { (bl, al) };
             arithmetic_error(&format!("dims [product {prod}] do not match the length of object [{obj}]"));
         }
