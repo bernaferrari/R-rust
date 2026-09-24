@@ -1020,6 +1020,119 @@ unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
 /// become their level labels, and a mixed frame becomes character.
 pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
     unsafe {
+        let mut leaves: Vec<SEXP> = Vec::new();
+        let mut leaf_names: Vec<String> = Vec::new();
+        let frame_names = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut changed = false;
+        for j in 0..XLENGTH(frame) {
+            let column = VECTOR_ELT(frame, j);
+            let outer = if !frame_names.is_null()
+                && frame_names != R_NilValue()
+                && TYPEOF(frame_names) == SEXPTYPE::STRSXP
+                && j < XLENGTH(frame_names)
+            {
+                let ch = STRING_ELT(frame_names, j);
+                if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(ch))
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            } else {
+                String::new()
+            };
+            let dim = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimSymbol());
+            let matrix_cols = if !dim.is_null()
+                && dim != R_NilValue()
+                && TYPEOF(dim) == SEXPTYPE::INTSXP
+                && XLENGTH(dim) >= 2
+            {
+                Some(*INTEGER(dim).add(1))
+            } else {
+                None
+            };
+            if let Some(mc) = matrix_cols {
+                changed = true;
+                if mc == 0 {
+                    continue;
+                }
+                let mr = *INTEGER(dim) as i64;
+                let dn = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimNamesSymbol());
+                let cnames = if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                    VECTOR_ELT(dn, 1)
+                } else {
+                    R_NilValue()
+                };
+                for k in 0..mc as i64 {
+                    let piece = Rf_allocVector3(TYPEOF(column), mr);
+                    for r in 0..mr {
+                        let src = (k * mr + r) as usize;
+                        if TYPEOF(column) == SEXPTYPE::REALSXP {
+                            *REAL(piece).add(r as usize) = *REAL(column).add(src);
+                        } else if TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::LGLSXP {
+                            *INTEGER(piece).add(r as usize) = *INTEGER(column).add(src);
+                        }
+                    }
+                    leaves.push(piece);
+                    let inner = if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
+                        std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(cnames, k)))
+                            .to_string_lossy()
+                            .into_owned()
+                    } else {
+                        format!("{}", k + 1)
+                    };
+                    let labeled = TYPEOF(cnames) == SEXPTYPE::STRSXP;
+                    leaf_names.push(if mc == 1 {
+                        if outer.is_empty() { inner } else { outer.clone() }
+                    } else if outer.is_empty() {
+                        inner
+                    } else {
+                        format!("{outer}.{inner}")
+                    });
+                }
+                continue;
+            }
+            if crate::mainutils::objects::inherits2(column, c"data.frame".as_ptr()) != 0 {
+                changed = true;
+                let inner_names = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_NamesSymbol());
+                for k in 0..XLENGTH(column) {
+                    leaves.push(VECTOR_ELT(column, k));
+                    let inner = if !inner_names.is_null()
+                        && TYPEOF(inner_names) == SEXPTYPE::STRSXP
+                        && k < XLENGTH(inner_names)
+                    {
+                        let ch = STRING_ELT(inner_names, k);
+                        std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(ch))
+                            .to_string_lossy()
+                            .into_owned()
+                    } else {
+                        String::new()
+                    };
+                    leaf_names.push(if inner.is_empty() { outer.clone() } else if outer.is_empty() { inner } else { format!("{outer}.{inner}") });
+                }
+            } else {
+                leaves.push(column);
+                leaf_names.push(outer);
+            }
+        }
+        if changed {
+            let flat = Rf_allocVector3(SEXPTYPE::VECSXP, leaves.len() as i64);
+            let _flat = protect(flat);
+            let nm = Rf_allocVector3(SEXPTYPE::STRSXP, leaves.len() as i64);
+            for (i, (col, name)) in leaves.iter().zip(leaf_names.iter()).enumerate() {
+                SET_VECTOR_ELT(flat, i as i64, *col);
+                let cs = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+                SET_STRING_ELT(nm, i as i64, crate::sexp::constructors::Rf_mkChar(cs.as_ptr()));
+            }
+            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_NamesSymbol(), nm);
+            let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            SET_STRING_ELT(class, 0, crate::sexp::constructors::Rf_mkChar(c"data.frame".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_ClassSymbol(), class);
+            let rn = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
+            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+            return data_frame_as_matrix(flat);
+        }
         let nrow = data_frame_row_count(frame);
         let ncol = XLENGTH(frame);
         let mut any_char = false;
