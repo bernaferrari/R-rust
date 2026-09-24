@@ -147,7 +147,7 @@ pub unsafe fn pretty_values(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             eps,
             if bounds { 1 } else { 0 },
         );
-        if ndiv < 0 || ndiv > 1_000_000 {
+        if ndiv < 0 || ndiv > 10_000_000 {
             base_error("invalid 'n' argument");
         }
         let length = ndiv as usize + 1;

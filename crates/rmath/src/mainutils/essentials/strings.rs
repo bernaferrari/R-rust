@@ -2367,15 +2367,7 @@ pub unsafe fn do_nclass_fd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         let n = x.len() as f64;
-        let signif5 = |v: f64| {
-            if v == 0.0 || !v.is_finite() {
-                return v;
-            }
-            let digits = v.abs().log10().floor();
-            let scale = 10f64.powf(4.0 - digits);
-            (v * scale).round() / scale
-        };
-        let xs: Vec<f64> = x.iter().copied().map(signif5).collect();
+        let xs: Vec<f64> = x.iter().copied().map(|v| crate::fprec::fprec(v, 5.0)).collect();
         let mut h = 2.0 * nclass_iqr(xs.clone());
         if h == 0.0 {
             let mut sorted = xs.clone();

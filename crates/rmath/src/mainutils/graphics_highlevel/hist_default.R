@@ -39,11 +39,14 @@ function(x, breaks = "Sturges", freq = NULL, probability = NULL,
             nb <- min(as.integer(breaks), 1000000L)
         } else {
             method <- tolower(breaks[1L])
-            if (n < 2L) nb <- 1L
-            else if (method == "sturges") nb <- max(1L, ceiling(log2(max(1L, n)) + 1))
-            else if (method == "scott") nb <- max(1L, ceiling((max(x) - min(x)) / (3.5 * sqrt(sum((x - mean(x))^2) / max(1, n - 1)) / n^(1/3))))
-            else if (method == "fd" || method == "freedman-diaconis") nb <- max(1L, ceiling((max(x) - min(x)) / (2 * (q7(x, .75) - q7(x, .25)) / n^(1/3))))
-            else stop("unknown 'breaks' algorithm")
+            nb <- if (method == "sturges") nclass.Sturges(x)
+                  else if (method == "scott") nclass.scott(x)
+                  else if (method == "fd" || method == "freedman-diaconis") nclass.FD(x)
+                  else stop("unknown 'breaks' algorithm")
+            if (nb > 1e6) {
+                warning(gettextf("'breaks = %g' is too large and set to 1e6", nb), domain = NA)
+                nb <- 1e6
+            }
         }
         if (n == 0L) stop("'x' must contain finite values")
         breaks <- pretty(range(x), n = nb, min.n = 1)
@@ -69,14 +72,17 @@ function(x, breaks = "Sturges", freq = NULL, probability = NULL,
     fuzzybreaks <- breaks + fuzzv
     counts <- integer(nB - 1L)
 
-    for (i in seq_along(counts)) {
-        if (right) {
-            left <- if (i == 1L && include.lowest) x >= fuzzybreaks[i] else x > fuzzybreaks[i]
-            counts[i] <- sum(left & x <= fuzzybreaks[i + 1L])
-        } else {
-            upper <- if (i == nB - 1L && include.lowest) x <= fuzzybreaks[i + 1L] else x < fuzzybreaks[i + 1L]
-            counts[i] <- sum(x >= fuzzybreaks[i] & upper)
+    for (v in x) {
+        lo <- 1L
+        hi <- nB - 1L
+        while (lo < hi) {
+            mid <- (lo + hi) %/% 2L
+            if (v > fuzzybreaks[mid + 1L] || (right && v == fuzzybreaks[mid + 1L] && !(mid == nB - 1L && !include.lowest)))
+                lo <- mid + 1L
+            else
+                hi <- mid
         }
+        counts[lo] <- counts[lo] + 1L
     }
     if (sum(counts) < n) stop("some 'x' not counted; maybe 'breaks' do not span range of 'x'")
     dens <- counts / (n * h)
