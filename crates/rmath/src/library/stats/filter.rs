@@ -6357,7 +6357,17 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
         let order = Rf_allocVector3(SEXPTYPE::INTSXP, labels.len() as i64);
         let _ord = protect(order);
         for i in 0..labels.len() {
-            *INTEGER(order).add(i) = labels[i].matches(':').count() as i32 + 1;
+            let mut depth = 0i32;
+            let mut colons = 0i32;
+            for ch in labels[i].chars() {
+                match ch {
+                    '(' | '[' => depth += 1,
+                    ')' | ']' => depth = depth.saturating_sub(1),
+                    ':' if depth == 0 => colons += 1,
+                    _ => {}
+                }
+            }
+            *INTEGER(order).add(i) = colons + 1;
         }
         crate::sexp::attrib_core::setAttrib(
             form,
