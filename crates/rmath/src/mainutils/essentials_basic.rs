@@ -206,7 +206,7 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         let mut output = parts.join(&sep);
-        if fill && !output.ends_with('\n') {
+        if (fill || sep.contains('\n')) && !output.ends_with('\n') {
             output.push('\n');
         }
         emit_cat_output(&output, dest, append);

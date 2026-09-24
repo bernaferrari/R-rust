@@ -980,14 +980,17 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             r_error("connection is not open");
         }
 
-        conn.pushback.clear();
+        let pushed: usize = conn.pushback.iter().map(|b| b.len()).sum();
         match &mut conn.kind {
             ConnKind::File => {
                 let mut old_pos = 0.0;
                 if let Some(reader) = conn.reader.as_mut() {
                     if let Ok(p) = reader.stream_position() {
-                        old_pos = p as c_double;
+                        old_pos = p.saturating_sub(pushed as u64) as c_double;
                     }
+                }
+                if !where_val.is_nan() {
+                    conn.pushback.clear();
                 }
                 if let Some(ref mut file) = conn.file {
                     let seek_from = match origin {
