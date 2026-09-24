@@ -184,7 +184,12 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 let data = conn.text_data.clone();
                 let pos = conn.text_pos;
                 let remaining = &data[pos..];
-                for line_str in remaining.split('\n') {
+                let ends_with_nl = remaining.ends_with('\n');
+                let mut pieces: Vec<&str> = remaining.split('\n').collect();
+                if ends_with_nl {
+                    pieces.pop();
+                }
+                for line_str in pieces {
                     if lines.len() >= n {
                         break;
                     }
