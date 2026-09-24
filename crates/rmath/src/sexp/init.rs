@@ -1072,6 +1072,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "suppressPackageStartupMessages",
             "function (expr) withCallingHandlers(expr, packageStartupMessage = function(c) tryInvokeRestart(\"muffleMessage\"))",
         );
+        eval_base_binding(base_env, "sub", include_str!("gnu_sub.R"));
+        eval_base_binding(base_env, "gsub", include_str!("gnu_gsub.R"));
+        eval_base_binding(base_env, "grep", include_str!("gnu_grep.R"));
+        eval_base_binding(base_env, "grepl", include_str!("gnu_grepl.R"));
+        eval_base_binding(base_env, "regexpr", include_str!("gnu_regexpr.R"));
+        eval_base_binding(base_env, "gregexpr", include_str!("gnu_gregexpr.R"));
     eval_base_binding(base_env, ".traceback", include_str!("gnu_dot_traceback.R"));
     eval_base_binding(base_env, "traceback", include_str!("gnu_traceback.R"));
     eval_base_binding(base_env, "get_all_vars", include_str!("gnu_get_all_vars.R"));
