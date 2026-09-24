@@ -1270,6 +1270,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "[<-.difftime",
+            include_str!("gnu_subset_assign_difftime.R"),
+        );
+        eval_base_binding(
+            base_env,
             "as.double.difftime",
             "function(x, units = \"auto\", ...) {\n\
                  if (units != \"auto\") units(x) <- units\n\
