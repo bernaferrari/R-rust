@@ -1924,6 +1924,11 @@ pub unsafe fn do_as(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let class_name = elt_to_string(class_arg, 0);
         match class_name.as_str() {
+            "numeric"
+                if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::REALSXP =>
+            {
+                x
+            }
             "numeric" | "double" => do_as_double(_call, _op, args, _rho),
             "integer" => do_as_integer(_call, _op, args, _rho),
             "logical" => do_as_logical(_call, _op, args, _rho),
