@@ -256,6 +256,8 @@ pub unsafe fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) 
         let nk = LENGTH(knots);
         let ord = crate::main::coerce::asInteger(order);
         let nx = LENGTH(xvals);
+        let derivs = crate::main::coerce::coerceVector(derivs, SEXPTYPE::INTSXP.into());
+        let _derivs_guard = protect(derivs);
         let nd = LENGTH(derivs);
 
         let kk = REAL(knots);
