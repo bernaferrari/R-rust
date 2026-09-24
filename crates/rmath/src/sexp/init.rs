@@ -1348,6 +1348,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "getHook", include_str!("gnu_userhooks.R"));
         eval_base_binding(base_env, "grepRaw", include_str!("gnu_grepRaw.R"));
         eval_base_binding(base_env, "symnum", include_str!("gnu_symnum.R"));
+        eval_base_binding(base_env, "write.dcf", include_str!("gnu_write_dcf.R"));
         eval_base_binding(
             base_env,
             "c.noquote",
