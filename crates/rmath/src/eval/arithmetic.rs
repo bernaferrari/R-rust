@@ -1499,6 +1499,12 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if a.is_null() || b.is_null() {
                     return R_NilValue();
                 }
+                // Ops.data.frame compares NULL as an empty column and still
+                // returns a logical matrix. The scalar NULL shortcut below
+                // would drop that dimension.
+                if let Some(result) = data_frame_compare(op_name, call, a, b) {
+                    return result;
+                }
                 // stock relop.c: either operand NULL yields logical(0)
                 if a == R_NilValue() || b == R_NilValue() {
                     let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
@@ -1713,7 +1719,7 @@ unsafe fn data_frame_arith(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
 
 unsafe fn validate_data_frame_operand(value: SEXP, is_frame: bool, ncol: R_xlen_t) {
     unsafe {
-        if is_frame || TYPEOF(value) != SEXPTYPE::VECSXP {
+        if is_frame || value == R_NilValue() || TYPEOF(value) == SEXPTYPE::NILSXP || TYPEOF(value) != SEXPTYPE::VECSXP {
             return;
         }
         let len = XLENGTH(value);
@@ -1735,6 +1741,11 @@ unsafe fn data_frame_column_operand(
     unsafe {
         if is_frame {
             return (VECTOR_ELT(value, column), None);
+        }
+        if value == R_NilValue() || TYPEOF(value) == SEXPTYPE::NILSXP {
+            let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, nrow);
+            let guard = protect(empty);
+            return (empty, Some(guard));
         }
         if TYPEOF(value) == SEXPTYPE::VECSXP {
             let index = if XLENGTH(value) == 1 { 0 } else { column };
