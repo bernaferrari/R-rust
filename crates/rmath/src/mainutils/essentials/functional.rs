@@ -2950,7 +2950,7 @@ pub(crate) unsafe fn melt_table(value: SEXP) -> SEXP {
             total = total.saturating_mul(n.max(0));
         }
         let frame = Rf_allocVector3(SEXPTYPE::VECSXP, (nd as i64) + 1);
-        std::mem::forget(protect(frame));
+        let _frame_guard = protect(frame);
         let dimnames = crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimNamesSymbol());
         let dimnames_names = if !dimnames.is_null() && dimnames != R_NilValue() {
             crate::sexp::attrib_core::getAttrib(dimnames, crate::sexp::attrib_core::R_NamesSymbol())
