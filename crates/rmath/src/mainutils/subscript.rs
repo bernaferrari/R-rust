@@ -523,7 +523,7 @@ pub unsafe fn vectorIndex(
                 } else {
                     error("recursive indexing failed at level 1");
                 }
-            } else if TYPEOF(y) == SEXPTYPE::LISTSXP {
+            } else if TYPEOF(y) == SEXPTYPE::LISTSXP || TYPEOF(y) == SEXPTYPE::LANGSXP {
                 let mut p = y;
                 for _ in 0..indx {
                     p = CDR(p);
