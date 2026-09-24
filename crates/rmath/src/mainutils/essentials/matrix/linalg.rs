@@ -284,12 +284,13 @@ pub unsafe fn do_chol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut x = coerce_numeric_matrix(CAR(args));
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         let has_dim = !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) == 2;
-        if !has_dim && crate::sexp::accessors::XLENGTH(x) == 1 {
+        if !has_dim && crate::sexp::accessors::XLENGTH(x) > 0 {
+            let n = crate::sexp::accessors::XLENGTH(x) as i32;
             x = crate::mainutils::duplicate::Rf_duplicate(x);
             let _xd = protect(x);
             let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             let _d = protect(d);
-            *INTEGER(d) = 1;
+            *INTEGER(d) = n;
             *INTEGER(d).add(1) = 1;
             crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), d);
         }
