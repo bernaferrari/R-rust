@@ -1864,11 +1864,11 @@ pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
         for i in 0..n as usize {
             let elt = STRING_ELT(s, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
+            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
                 crate::sexp::accessors::SET_STRING_ELT(
                     ans,
                     i as crate::sexp::ffi::R_xlen_t,
-                    Rf_mkChar(b"NA\0".as_ptr() as *const _),
+                    crate::sexp::globals::R_NaString(),
                 );
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
