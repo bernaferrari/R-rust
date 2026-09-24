@@ -32,7 +32,7 @@ The recommendation is right about the objective: prove production memory, rootin
 
 002 and 003 can run in parallel after 001. 004 can start after 001; it must not rewrite either matcher until the oracle shows they agree.
 
-`argmatch_spec` is in the tree. A 2×2 symbolic run of that harness still builds a solver problem large enough to exhaust memory, so the machine-checked argument-match evidence that finished is the eleven-row oracle against both production matchers. The other harnesses below completed with `VERIFICATION:- SUCCESSFUL`.
+`argmatch_spec` proves the same three passes on name ids `0` and `1` (`"a"` and `"ab"`), with the caller supplying stack arrays. The string `starts_with` path stays out of that harness. The run finished with `VERIFICATION:- SUCCESSFUL`: 252 checks after simplification, symbolic execution 0.36s. A unit test checks that id prefix table against `str::starts_with` and against `match_formals` on every 2×2 input in the alphabet.
 
 ## Dependency notes
 
