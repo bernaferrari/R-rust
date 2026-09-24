@@ -439,7 +439,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         bit[0] = b'%' as c_char;
                         bit[1] = 0;
                     } else {
-                        let spec_chars = b"diosfeEgGxXaA";
+                        let spec_chars = b"diosfeEgGxXaAsc";
                         let mut skip: usize = 0;
                         {
                             let mut p = curFormat.add(1);
@@ -466,6 +466,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                             fmt[j] = *curFormat.add(j);
                         }
                         fmt[chunk] = 0;
+
 
                         let mut nthis: c_int = -1;
 
