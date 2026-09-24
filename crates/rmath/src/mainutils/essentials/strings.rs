@@ -3931,9 +3931,9 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let pattern_arg = CAR(args);
         let replacement_arg = CAR(CDR(args));
         let x_arg = CAR(CDR(CDR(args)));
-        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
-        let perl = named_logical_arg(args, "perl").unwrap_or(false);
-        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
+        let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 3).unwrap_or(false);
+        let perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
+        let fixed = logical_arg_by_name_or_position(args, "fixed", 5).unwrap_or(false);
         if pattern_arg.is_null()
             || replacement_arg.is_null()
             || x_arg.is_null()
