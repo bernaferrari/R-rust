@@ -1083,6 +1083,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "maintainer",
+            "function(pkg) { force(pkg); desc <- try(packageDescription(pkg), silent = TRUE); if (is.list(desc)) gsub(\"\\n\", \" \", desc$Maintainer, fixed = TRUE) else NA_character_ }",
+        );
+        eval_base_binding(
+            base_env,
             "all.equal",
             "function(target, current, ...) UseMethod(\"all.equal\")",
         );
