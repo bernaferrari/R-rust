@@ -508,7 +508,12 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_runmed",
     "C_chisq_sim",
     "C_nextn",
+    "C_BinDist",
 ];
+
+unsafe extern "C-unwind" fn c_bindist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
+    super::massdist::BinDist(sx, sw, slo, shi, sn)
+}
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
@@ -553,6 +558,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "Rsm" => as_dl(super::smooth::c_rsm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "BinDist" => as_dl(c_bindist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "runmed" => as_dl(super::srunmed::c_runmed as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "tukeyline" => as_dl(super::line::c_tukeyline as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "nextn" => as_dl(c_nextn as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
