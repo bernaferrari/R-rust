@@ -639,12 +639,13 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let ydim = crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_DimSymbol());
         let x_arr = !xdim.is_null() && xdim != R_NilValue();
         let y_arr = !ydim.is_null() && ydim != R_NilValue();
-        if (x_arr && nx != ny && ny != 0) || (y_arr && nx != ny && nx != 0) {
-            if !(x_arr && y_arr) {
-                logic_error(&format!(
-                    "dims [product {nx}] do not match the length of object [{ny}]"
-                ));
-            }
+        if (x_arr && !y_arr && nx > 0 && nx != ny && ny != 0)
+            || (y_arr && !x_arr && ny > 0 && nx != ny && nx != 0)
+        {
+            let (prod, obj) = if x_arr { (nx, ny) } else { (ny, nx) };
+            logic_error(&format!(
+                "dims [product {prod}] do not match the length of object [{obj}]"
+            ));
         }
         // Zero-length case
         if nx == 0 || ny == 0 {
