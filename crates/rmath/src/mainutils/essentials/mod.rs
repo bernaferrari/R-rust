@@ -29,7 +29,7 @@ mod functional;
 mod io;
 mod mathstats;
 mod matrix;
-mod print;
+pub(crate) mod print;
 mod registry;
 mod runtime;
 mod s3;

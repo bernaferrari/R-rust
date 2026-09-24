@@ -2761,6 +2761,50 @@ pub unsafe fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
+pub(crate) fn function_srcref_text(x: SEXP) -> Option<String> {
+    unsafe {
+        let sr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"srcref".as_ptr()));
+        if sr.is_null() || sr == R_NilValue() || TYPEOF(sr) != SEXPTYPE::INTSXP || XLENGTH(sr) < 3 {
+            return None;
+        }
+        let srcfile = crate::sexp::attrib_core::getAttrib(sr, Rf_install(c"srcfile".as_ptr()));
+        if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
+            return None;
+        }
+        let lines = crate::sexp::envir::R_findVarInFrame(srcfile, Rf_install(c"lines".as_ptr()));
+        if lines.is_null() || lines == R_NilValue() || TYPEOF(lines) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let first = *INTEGER(sr) as i64;
+        let first_col = *INTEGER(sr).add(1) as i64;
+        let last = *INTEGER(sr).add(2) as i64;
+        let last_col = *INTEGER(sr).add(3) as i64;
+        if first < 1 || last < first || last > XLENGTH(lines) {
+            return None;
+        }
+        let mut out = String::new();
+        for i in (first - 1)..last {
+            let s = STRING_ELT(lines, i);
+            let mut text = if !s.is_null() && s != crate::sexp::globals::R_NaString() {
+                let p = CHAR(s);
+                if p.is_null() { String::new() } else { std::ffi::CStr::from_ptr(p).to_str().unwrap_or("").to_string() }
+            } else {
+                String::new()
+            };
+            if i == first - 1 && first_col > 1 {
+                let start = (first_col as usize).saturating_sub(1).min(text.len());
+                text = text[start..].to_string();
+            }
+            if i == last - 1 && last_col > 0 && (last_col as usize) < text.len() && !(first == last && first_col > 1) {
+                text.truncate(last_col as usize);
+            }
+            out.push_str(&text);
+            out.push('\n');
+        }
+        Some(out)
+    }
+}
+
 /// R's `print.function(x)` — GNU PrintClosure: deparse the closure, then
 /// the enclosing environment pointer.
 pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -2776,6 +2820,11 @@ pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         }
         if t != SEXPTYPE::CLOSXP {
             emit_print_text("<primitive>\n");
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+        if let Some(source) = function_srcref_text(x) {
+            emit_print_text(&source);
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }

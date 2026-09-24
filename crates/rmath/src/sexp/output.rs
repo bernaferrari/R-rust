@@ -3115,6 +3115,12 @@ pub fn print_value(x: Sexp<'_>) {
 
     match x.clone().typeof_() {
         SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP | SEXPTYPE::CLOSXP => {
+            if x.clone().typeof_() == SEXPTYPE::CLOSXP {
+                if let Some(source) = crate::mainutils::essentials::print::function_srcref_text(x.clone().as_raw()) {
+                    emit(&source);
+                    return;
+                }
+            }
             let base = deparse_expression_one(x.clone().as_raw());
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }

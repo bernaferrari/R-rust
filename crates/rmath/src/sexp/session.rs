@@ -838,29 +838,34 @@ impl RSession {
 
         let expressions = {
             let _guard = self.activate();
-            super::memory::with_arena_in(self.instance, |arena| {
-                crate::eval::parser::parse_expressions(code, arena)
-            })
-        };
-        let expressions = match expressions {
-            Ok(exprs) => exprs,
-            Err(err) => {
-                // Map the failure while this session is still the scoped
-                // active instance: the mapping closures of embedding facades
-                // consult error-buffer state while converting the result.
-                // Parse failed before output capture started, so the capture
-                // is empty.
-                let message = err.to_string();
-                return self.with_active(|| {
-                    f(
-                        Err(REvalError { message }),
-                        super::output::RCapturedOutput::default(),
-                        false,
-                    )
-                });
+            let spans = super::memory::with_arena_in(self.instance, |arena| {
+                let mut parser = crate::eval::parser::Parser::new(code, arena);
+                parser.parse_top_level_with_spans()
+            });
+            let spans = match spans {
+                Ok(spans) => spans,
+                Err(err) => {
+                    let message = err.to_string();
+                    return self.with_active(|| {
+                        f(
+                            Err(REvalError { message }),
+                            super::output::RCapturedOutput::default(),
+                            false,
+                        )
+                    });
+                }
+            };
+            let exprs: Vec<SEXP> = spans.iter().map(|&(e, _, _)| e).collect();
+            let vec_sexp = unsafe { crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::EXPRSXP, exprs.len() as i64) };
+            unsafe {
+                for (i, &e) in exprs.iter().enumerate() {
+                    crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
+                }
+                crate::mainutils::srcref::attach_srcrefs_with_spans(&spans, code, "<text>", vec_sexp);
             }
+            exprs
         };
-
+        let expressions = expressions;
         self.with_active(|| {
             self.inst().output_capture.borrow_mut().start();
             // Stale error-buffer renders from a previous script must not be
