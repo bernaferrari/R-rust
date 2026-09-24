@@ -500,7 +500,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_doD", "C_deriv", "C_fft", "C_mvfft",
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_do_fmin", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
     "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_lowesw", "C_lowesp",
-    "C_kmeans_Lloyd", "C_kmeans_MacQueen", "C_Rsm", "C_tukeyline", "C_pRho", "C_pKendall", "C_ksmooth", "C_rfilter", "C_cfilter", "C_arma0_kfore", "C_psmirnov_exact",
+    "C_kmeans_Lloyd", "C_kmeans_MacQueen", "C_Rsm", "C_SWilk", "C_tukeyline", "C_pRho", "C_pKendall", "C_ksmooth", "C_rfilter", "C_cfilter", "C_arma0_kfore", "C_psmirnov_exact",
     "C_dpermdist1", "C_dpermdist2",
     "C_setup_starma", "C_free_starma", "C_Starma_method", "C_arma0fa",
     "C_get_s2", "C_get_resid", "C_set_trans", "C_Invtrans", "C_Dotrans", "C_Gradtrans", "C_Fexact",
@@ -522,6 +522,10 @@ const RAND_CALL_NAMES: &[&str] = &[
 
 unsafe extern "C-unwind" fn c_bindist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
     super::massdist::BinDist(sx, sw, slo, shi, sn)
+}
+
+unsafe extern "C-unwind" fn c_swilk(x: SEXP) -> SEXP {
+    super::swilk::SWilk(x)
 }
 
 pub fn lookup_call(name: &str) -> DL_FUNC {
@@ -567,6 +571,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "Rsm" => as_dl(super::smooth::c_rsm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "SWilk" => as_dl(c_swilk as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "bw_den" => as_dl(super::bandwidths::c_bw_den as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "bw_den_binned" => as_dl(super::bandwidths::c_bw_den_binned as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "bw_ucv" => as_dl(super::bandwidths::c_bw_ucv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
