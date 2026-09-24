@@ -814,13 +814,20 @@ pub unsafe fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
         let mut w: c_int = 0;
         let mut d: c_int = 0;
         let mut e: c_int = 0;
+        let mut mark = [b'.' as c_char, 0];
+        let opt = crate::mainutils::options::GetOption(c"OutDec".as_ptr());
+        if !opt.is_null() && opt != crate::sexp::globals::R_NilValue() && TYPEOF(opt) == SEXPTYPE::STRSXP && LENGTH(opt) >= 1 {
+            let ch = STRING_ELT(opt, 0);
+            if !ch.is_null() {
+                let p = CHAR(ch);
+                if !p.is_null() && *p != 0 {
+                    mark[0] = *p;
+                }
+            }
+        }
         formatReal(&x, 1, &mut w, &mut d, &mut e, 0);
-
-        // IEEE: normalize signed zero
         let x = if x == 0.0 { 0.0 } else { x };
-
-        // Use EncodeRealDrop0 for the formatted string
-        let s = EncodeRealDrop0(x, w, d, e, b".\0".as_ptr() as *const c_char);
+        let s = EncodeRealDrop0(x, w, d, e, mark.as_ptr());
         Rf_mkChar(s)
     }
 }

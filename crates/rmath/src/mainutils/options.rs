@@ -45,10 +45,8 @@ pub const R_MIN_EXPRESSIONS_OPT: c_int = 25;
 pub const R_MAX_EXPRESSIONS_OPT: c_int = 500000;
 
 /// From Print.h -- minimum valid scipen.
-const R_MIN_SCIPEN_OPT: c_int = 0;
-
-/// From Print.h -- maximum valid scipen.
-const R_MAX_SCIPEN_OPT: c_int = 50;
+const R_MIN_SCIPEN_OPT: c_int = -9;
+const R_MAX_SCIPEN_OPT: c_int = 9999;
 
 /// warn_type enumeration (from Defn.h / Rinternals.h).
 pub type warn_type = c_int;
