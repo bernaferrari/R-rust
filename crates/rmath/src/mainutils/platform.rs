@@ -2055,7 +2055,13 @@ pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 let tc = CStr::from_ptr(crate::sexp::accessors::CHAR(t))
                     .to_str()
                     .unwrap_or("");
-                *pa.add(i) = if fs::copy(fc, tc).is_ok() {
+                let dest = std::path::Path::new(tc);
+                let dest = if dest.is_dir() {
+                    dest.join(std::path::Path::new(fc).file_name().unwrap_or_default())
+                } else {
+                    dest.to_path_buf()
+                };
+                *pa.add(i) = if fs::copy(fc, &dest).is_ok() {
                     TRUE
                 } else {
                     FALSE
