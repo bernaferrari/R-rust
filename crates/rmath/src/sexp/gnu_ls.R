@@ -1,5 +1,5 @@
 {
-ls <- function (name, pos = -1L, envir = as.environment(pos), all.names = FALSE,
+ls <- function (name, pos = -1L, envir = if (missing(name) && identical(pos, -1L)) parent.frame() else as.environment(pos), all.names = FALSE,
                 pattern, sorted = TRUE)
 {
     if (!missing(name)) {
