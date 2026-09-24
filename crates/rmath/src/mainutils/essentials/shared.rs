@@ -3682,7 +3682,7 @@ pub(crate) fn find_package_example(topic: &str) -> String {
 /// Read a scalar real from a numeric SEXP, with default.
 pub(crate) fn real_or_default(x: SEXP, default: f64) -> f64 {
     unsafe {
-        if x.is_null() || x == R_NilValue() {
+        if x.is_null() || x == R_NilValue() || XLENGTH(x) < 1 {
             return default;
         }
         let t = TYPEOF(x);

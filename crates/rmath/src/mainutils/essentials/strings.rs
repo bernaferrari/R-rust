@@ -5554,11 +5554,19 @@ pub unsafe fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();
         }
-        let width = if width_arg.is_null() || width_arg == R_NilValue() {
-            usize::MAX
+        let n = XLENGTH(x_arg);
+        if n == 0 {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let width_len = if width_arg.is_null() || width_arg == R_NilValue() {
+            0
         } else {
-            real_or_default(width_arg, f64::MAX) as usize
+            XLENGTH(width_arg)
         };
+        if width_len == 0 {
+            super::shared::base_error("invalid 'width' argument");
+        }
+        let width = real_or_default(width_arg, f64::MAX) as usize;
 
         let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
