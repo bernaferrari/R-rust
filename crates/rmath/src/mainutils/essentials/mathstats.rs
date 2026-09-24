@@ -267,6 +267,9 @@ unsafe fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
                     if hits.len() == 1 {
                         bound[hits[0]] = CAR(cell);
                         seen[hits[0]] = true;
+                    } else {
+                        let msg = format!("unused argument ({name} = ...)\0");
+                        crate::mainutils::errors::Rf_error(msg.as_ptr() as *const _);
                     }
                 }
             }
@@ -277,6 +280,9 @@ unsafe fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
                 bound[i] = value;
                 seen[i] = true;
             }
+        }
+        if !seen[0] {
+            crate::mainutils::errors::Rf_error(b"argument \"x\" is missing, with no default\0".as_ptr() as *const _);
         }
         (bound[0], bound[1])
     }
