@@ -275,13 +275,13 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             },
         };
 
-        // Upstream eval.c stores the return value in cntxt.returnValue before
-        // endcontext runs the on.exit expressions, implicitly protecting it
-        // against a gc() called from a handler. The collector roots
-        // RCNTXT::returnValue (mark/update in gengc.rs), so parking the value
-        // there keeps it alive for the duration of the handlers.
-        if let BodyOutcome::Value(val) | BodyOutcome::Returned(val) = &outcome {
-            (*ctx).returnValue = *val;
+        if let BodyOutcome::Returned(val) = &outcome {
+            if unsafe { (*ctx).jumped } == 0 {
+                std::panic::panic_any(crate::sexp::context::RSignal::Return(*val));
+            }
+        }
+        if let BodyOutcome::Value(val) = &outcome {
+            unsafe { (*ctx).returnValue = *val; }
         }
 
         // Stock endcontext (context.c) saves R_Visible before running the
@@ -304,7 +304,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             BodyOutcome::Value(_) => unsafe {
                 super::jit::handle_exec_continuation((*ctx).returnValue)
             },
-            BodyOutcome::Returned(_) => (*ctx).returnValue,
+            BodyOutcome::Returned(_) => unsafe { (*ctx).returnValue },
             BodyOutcome::Signal(payload) => crate::sexp::context::handle_closure_signal(payload),
         }
     }

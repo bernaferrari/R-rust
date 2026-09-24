@@ -681,11 +681,7 @@ pub unsafe fn findcontext_jump_in(
                 if (flag & ctxt_flags::CTXT_LOOP) != 0 && env_ok {
                     R_jumpctxt(c, mask, val);
                 }
-            } else if env_ok
-                && ((flag & ctxt_flags::CTXT_FUNCTION) != 0
-                    || (flag & ctxt_flags::CTXT_RETURN) != 0
-                    || (flag & ctxt_flags::CTXT_BROWSER) != 0)
-            {
+            } else if env_ok && (flag & mask) != 0 {
                 R_jumpctxt(c, mask, val);
             }
             c = (*c).nextcontext;

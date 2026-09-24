@@ -221,6 +221,26 @@ pub unsafe fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `returnValue(default)`. The value parked on the current context
+/// before `on.exit` runs; an error or a frame that did not return uses
+/// the already-evaluated default.
+pub unsafe fn do_returnValue(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let ctx = crate::sexp::context::R_GlobalContext();
+        if !ctx.is_null() {
+            let value = (*ctx).returnValue;
+            if !value.is_null() {
+                return value;
+            }
+        }
+        if args.is_null() || args == crate::sexp::globals::R_NilValue() {
+            crate::sexp::globals::R_NilValue()
+        } else {
+            CAR(args)
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // do_args — args()
 // ---------------------------------------------------------------------------
