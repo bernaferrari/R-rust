@@ -847,6 +847,35 @@ fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     value_is_missing(val)
 }
 
+/// Missingness seen by a callee. A formal the caller did not supply is
+/// still `missing()` inside that function, but once a default promise is
+/// installed, passing the symbol onward is not a missing argument.
+/// `function(x = 1) g(x)` makes `missing(x)` false in `g`.
+fn propagated_missing(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
+    thread_local! {
+        static DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+    let depth = DEPTH.with(|d| d.get());
+    if depth > 64 {
+        return false;
+    }
+    DEPTH.with(|d| d.set(depth + 1));
+    let answer = if let Some(cell) = frame_binding_cell(rho.clone(), symbol.clone()) {
+        if unsafe { super::accessors::MISSING(cell) } != 0 {
+            match unsafe { Sexp::from_raw(super::accessors::CAR(cell)) } {
+                Some(val) => val == missing_arg_value() || value_is_missing(val),
+                None => true,
+            }
+        } else {
+            is_missing_safe(symbol, rho)
+        }
+    } else {
+        is_missing_safe(symbol, rho)
+    };
+    DEPTH.with(|d| d.set(depth));
+    answer
+}
+
 fn frame_binding_cell(rho: Sexp<'_>, symbol: Sexp<'_>) -> Option<SEXP> {
     let frame = rho.try_frame().ok()?;
     unsafe {
@@ -1013,7 +1042,7 @@ fn value_is_missing(val: Sexp<'_>) -> bool {
         if expr.clone().is_symbol()
             && let Ok(env) = root.clone().try_prenv()
         {
-            return is_missing_safe(expr, env);
+            return propagated_missing(expr, env);
         }
         if expr.clone().typeof_() == SEXPTYPE::BCODESXP
             && let Ok(env) = root.try_prenv()
@@ -1059,7 +1088,7 @@ fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>) -> bool {
         let Some(sym) = Sexp::from_raw(sym) else {
             return false;
         };
-        is_missing_safe(sym, env)
+        propagated_missing(sym, env)
     }
 }
 

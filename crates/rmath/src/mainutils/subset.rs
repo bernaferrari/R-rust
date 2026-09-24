@@ -2043,7 +2043,8 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     && length_int(rownames) == 2
                     && INTEGER_ELT(rownames, 0) == NA_INTEGER
                 {
-                    return INTEGER_ELT(rownames, 1).abs();
+                    let n = INTEGER_ELT(rownames, 1);
+                    return if n == c_int::MIN { 0 } else { n.abs() };
                 }
                 if !isNull(rownames) && length_int(rownames) > 0 {
                     return length_int(rownames);

@@ -2417,6 +2417,17 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             let _col_args_guard = protect(col_args);
             let formatted = crate::mainutils::essentials::do_format(call, op, col_args, rho);
             let formatted = mark_asis_if_character(formatted);
+            let names = crate::sexp::attrib_core::getAttrib(
+                col,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    formatted,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
             SET_VECTOR_ELT(out, i, formatted);
         }
         out

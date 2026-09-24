@@ -1793,7 +1793,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             ".register_print_data_frame",
-            "{ registerS3method(\"print\", \"data.frame\", function(x, ...) .Primitive(\"print.data.frame\")(x, ...)); TRUE }",
+            "{ registerS3method(\"print\", \"data.frame\", function(x, ...) print.data.frame(x, ...)); TRUE }",
         );
         eval_base_binding(
             base_env,

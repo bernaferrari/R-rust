@@ -4982,22 +4982,42 @@ pub unsafe fn do_alias(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+fn symbol_chars(expr: SEXP) -> Option<String> {
+    unsafe {
+        if expr.is_null()
+            || expr == R_NilValue()
+            || expr == crate::sexp::globals::R_MissingArg()
+            || TYPEOF(expr) != SEXPTYPE::SYMSXP
+        {
+            return None;
+        }
+        let print_name = PRINTNAME(expr);
+        if print_name.is_null() || print_name == R_NilValue() {
+            return None;
+        }
+        let raw = CHAR(print_name);
+        if raw.is_null() {
+            return None;
+        }
+        Some(std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned())
+    }
+}
+
 fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
     unsafe {
-        if expr.is_null() || expr == R_NilValue() {
+        if expr.is_null() || expr == R_NilValue() || expr == crate::sexp::globals::R_MissingArg() {
             return;
         }
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
-                .to_string_lossy()
-                .into_owned();
+            let Some(name) = symbol_chars(expr) else {
+                return;
+            };
             if !matches!(
                 name.as_str(),
                 "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
-            ) {
-                if !out.iter().any(|s| s == &name) {
-                    out.push(name);
-                }
+            ) && !out.iter().any(|s| s == &name)
+            {
+                out.push(name);
             }
             return;
         }
@@ -5014,9 +5034,7 @@ fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
 fn deparse_call(expr: SEXP) -> String {
     unsafe {
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            return std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
-                .to_string_lossy()
-                .into_owned();
+            return symbol_chars(expr).unwrap_or_default();
         }
         if TYPEOF(expr) == SEXPTYPE::INTSXP || TYPEOF(expr) == SEXPTYPE::LGLSXP {
             let v = *INTEGER(expr);
@@ -5032,18 +5050,13 @@ fn deparse_call(expr: SEXP) -> String {
         if TYPEOF(expr) != SEXPTYPE::LANGSXP {
             return String::new();
         }
-        let op = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(CAR(expr))))
-            .to_string_lossy()
-            .into_owned();
+        let op = symbol_chars(CAR(expr)).unwrap_or_default();
         let mut args = Vec::new();
         let mut cell = CDR(expr);
         while !cell.is_null() && cell != R_NilValue() {
             let mut piece = deparse_call(CAR(cell));
             let tag = TAG(cell);
-            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned();
+            if let Some(name) = symbol_chars(tag) {
                 piece = format!("{name} = {piece}");
             }
             args.push(piece);
@@ -5079,9 +5092,9 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>,
             }
         };
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
-                .to_string_lossy()
-                .into_owned();
+            let Some(name) = symbol_chars(expr) else {
+                return;
+            };
             if !matches!(
                 name.as_str(),
                 "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
@@ -5092,10 +5105,7 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>,
         }
         if TYPEOF(expr) == SEXPTYPE::LANGSXP {
             let op = CAR(expr);
-            if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
-                    .to_string_lossy()
-                    .into_owned();
+            if let Some(name) = symbol_chars(op) {
                 if name == "offset" {
                     return;
                 }
@@ -6205,14 +6215,7 @@ pub unsafe fn do_model_extract(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
 }
 
 fn symbol_print_name(sym: SEXP) -> String {
-    unsafe {
-        if sym.is_null() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
-            return String::new();
-        }
-        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(sym)))
-            .to_string_lossy()
-            .into_owned()
-    }
+    symbol_chars(sym).unwrap_or_default()
 }
 fn formula_constant(expr: SEXP) -> Option<f64> {
     unsafe {
