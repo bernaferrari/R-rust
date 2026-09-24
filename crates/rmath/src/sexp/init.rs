@@ -133,6 +133,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         let devices = super::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 1);
         super::accessors::SET_VECTOR_ELT(devices, 0, Rf_mkString(c"null device".as_ptr()));
         defineVar(Rf_install_in_current(".Devices"), devices, base_env);
+        let message_fn = crate::eval::primitive::make_primitive_binding("message", SEXPTYPE::BUILTINSXP);
+        defineVar(Rf_install_in_current("message"), message_fn, base_env);
 
 
         // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
