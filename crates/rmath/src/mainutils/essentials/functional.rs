@@ -2231,7 +2231,7 @@ pub unsafe fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let mut cols: Vec<SEXP> = Vec::new();
         let mut names: Vec<String> = Vec::new();
         let mut keep_out = true;
-        let mut strings_as_factors = false;
+        let mut strings_as_factors = true;
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);

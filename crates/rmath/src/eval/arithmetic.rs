@@ -2570,6 +2570,7 @@ unsafe fn scan_summary_shape(args: SEXP, op: SummaryOp) -> SummaryShape {
                     }
                     shape.saw_complex = true;
                 }
+                t if t == SEXPTYPE::STRSXP => {}
                 _ => summary_error("invalid 'type' of argument"),
             }
             current = CDR(current);
@@ -2752,6 +2753,85 @@ unsafe fn eval_prod(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
     }
 }
 
+unsafe fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP {
+    unsafe {
+        let mut best: Option<String> = None;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name_is(TAG(current), "na.rm") || tag_name_is(TAG(current), "finite") {
+                current = CDR(current);
+                continue;
+            }
+            let value = CAR(current);
+            let t = TYPEOF(value);
+            let n = XLENGTH(value);
+            for i in 0..n {
+                let text = if t == SEXPTYPE::STRSXP {
+                    let s = STRING_ELT(value, i);
+                    if s.is_null() || s == crate::sexp::globals::R_NaString() {
+                        if na_rm {
+                            continue;
+                        }
+                        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                        SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+                        return out;
+                    }
+                    std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy().into_owned()
+                } else if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
+                    let v = INTEGER_ELT(value, i as i32);
+                    if v == NA_INTEGER {
+                        if na_rm {
+                            continue;
+                        }
+                        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                        SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+                        return out;
+                    }
+                    v.to_string()
+                } else if t == SEXPTYPE::REALSXP {
+                    let v = REAL_ELT(value, i as i32);
+                    if v.is_nan() {
+                        if na_rm {
+                            continue;
+                        }
+                        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                        SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+                        return out;
+                    }
+                    if v.fract() == 0.0 && v.abs() < 1e15 {
+                        format!("{}", v as i64)
+                    } else {
+                        format!("{v}")
+                    }
+                } else {
+                    continue;
+                };
+                best = Some(match best {
+                    None => text,
+                    Some(prev) => {
+                        if op == SummaryOp::Min {
+                            if text < prev { text } else { prev }
+                        } else if text > prev {
+                            text
+                        } else {
+                            prev
+                        }
+                    }
+                });
+            }
+            current = CDR(current);
+        }
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if let Some(text) = best {
+            let cstr = std::ffi::CString::new(text).unwrap_or_default();
+            SET_STRING_ELT(out, 0, Rf_mkChar(cstr.as_ptr()));
+        } else {
+            SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+        }
+        out
+    }
+}
+
 unsafe fn eval_minmax(
     args: SEXP,
     shape: SummaryShape,
@@ -2771,6 +2851,20 @@ unsafe fn eval_minmax(
         } else {
             f64::NEG_INFINITY
         };
+        let mut saw_string = false;
+        let mut scan = args;
+        while !scan.is_null() && scan != R_NilValue() {
+            if !tag_name_is(TAG(scan), "na.rm") && !tag_name_is(TAG(scan), "finite") {
+                if TYPEOF(CAR(scan)) == SEXPTYPE::STRSXP {
+                    saw_string = true;
+                    break;
+                }
+            }
+            scan = CDR(scan);
+        }
+        if saw_string {
+            return eval_minmax_string(args, na_rm, op);
+        }
         let mut missing = None;
         let mut current = args;
 
