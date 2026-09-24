@@ -683,14 +683,14 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
                 }
                 let idx = i % n;
                 let mut v = elt_real_safe(arg, idx);
+                if v.to_bits() == R_NA_BIT_PATTERN || v.is_nan() {
+                    seen_missing = true;
+                    continue;
+                }
                 if crate::mainutils::essentials::sexp_has_class(arg_vecs[0], "difftime")
                     && crate::mainutils::essentials::sexp_has_class(arg, "difftime")
                 {
                     v *= difftime_unit_seconds(arg) / difftime_unit_seconds(arg_vecs[0]);
-                }
-                if v.to_bits() == R_NA_BIT_PATTERN || v.is_nan() {
-                    seen_missing = true;
-                    continue;
                 }
                 if !seen_value {
                     best = v;
