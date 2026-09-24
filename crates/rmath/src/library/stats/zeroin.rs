@@ -174,9 +174,47 @@ unsafe extern "C" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
         if XLENGTH(vr) < 1 {
             return f64::NAN;
         }
-        *REAL(vr)
+        finite_uniroot(*REAL(vr))
     }
 }
+fn finite_uniroot(v: f64) -> f64 {
+    if v.is_nan() {
+        UNIROOT_NOTE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        f64::MAX
+    } else if v == f64::NEG_INFINITY {
+        UNIROOT_NEG.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        f64::MIN
+    } else if v.is_infinite() {
+        UNIROOT_POS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        f64::MAX
+    } else {
+        v
+    }
+}
+
+fn flush_uniroot_warnings() {
+    let na = UNIROOT_NOTE.swap(0, std::sync::atomic::Ordering::Relaxed);
+    let neg = UNIROOT_NEG.swap(0, std::sync::atomic::Ordering::Relaxed);
+    let pos = UNIROOT_POS.swap(0, std::sync::atomic::Ordering::Relaxed);
+    unsafe {
+        for _ in 0..na {
+            crate::mainutils::errors::Rf_warning1(c"NA replaced by maximum positive value".as_ptr());
+        }
+        for _ in 0..neg {
+            crate::mainutils::errors::Rf_warning1(
+                c"-Inf replaced by maximally negative value".as_ptr(),
+            );
+        }
+        for _ in 0..pos {
+            crate::mainutils::errors::Rf_warning1(c"Inf replaced by maximum positive value".as_ptr());
+        }
+    }
+}
+
+static UNIROOT_NOTE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static UNIROOT_NEG: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static UNIROOT_POS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 
 /// GNU `uniroot(f, interval)`.
 pub unsafe fn do_uniroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
@@ -384,7 +422,7 @@ unsafe extern "C" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
         let expr = crate::sexp::constructors::Rf_lang2(call.f, arg);
         let _e = crate::sexp::protect::protect(expr);
         let result = crate::eval::eval::Rf_eval(expr, call.env);
-        crate::mainutils::coerce::asReal(result)
+        finite_uniroot(crate::mainutils::coerce::asReal(result))
     }
 }
 
@@ -424,6 +462,7 @@ pub unsafe fn zeroin2(
             &mut tol,
             &mut maxit,
         );
+        flush_uniroot_warnings();
         let out = Rf_allocVector(SEXPTYPE::REALSXP, 3);
         *REAL(out) = root;
         *REAL(out).add(1) = maxit as f64;
