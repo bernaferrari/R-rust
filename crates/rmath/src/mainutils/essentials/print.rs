@@ -2505,14 +2505,72 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             }
             return result;
         }
+        let frame_names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut leaves: Vec<SEXP> = Vec::new();
+        let mut leaf_names: Vec<String> = Vec::new();
+        let mut changed = false;
+        for j in 0..XLENGTH(x) {
+            let column = VECTOR_ELT(x, j);
+            let outer = if !frame_names.is_null() && TYPEOF(frame_names) == SEXPTYPE::STRSXP && j < XLENGTH(frame_names) {
+                let ch = STRING_ELT(frame_names, j);
+                if ch.is_null() || ch == crate::sexp::globals::R_NaString() { String::new() } else {
+                    CStr::from_ptr(crate::sexp::accessors::CHAR(ch)).to_string_lossy().into_owned()
+                }
+            } else { String::new() };
+            let dim = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimSymbol());
+            let mc = if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
+                *INTEGER(dim).add(1)
+            } else { -1 };
+            if mc == 0 {
+                changed = true;
+                continue;
+            }
+            if mc > 1 {
+                changed = true;
+                let mr = *INTEGER(dim) as i64;
+                let dn = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimNamesSymbol());
+                let cnames = if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 { VECTOR_ELT(dn, 1) } else { R_NilValue() };
+                for k in 0..mc as i64 {
+                    let piece = Rf_allocVector3(TYPEOF(column), mr);
+                    for r in 0..mr {
+                        let src = (k * mr + r) as usize;
+                        if TYPEOF(column) == SEXPTYPE::REALSXP {
+                            *REAL(piece).add(r as usize) = *REAL(column).add(src);
+                        } else if TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::LGLSXP {
+                            *INTEGER(piece).add(r as usize) = *INTEGER(column).add(src);
+                        }
+                    }
+                    leaves.push(piece);
+                    let inner = if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
+                        CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(cnames, k))).to_string_lossy().into_owned()
+                    } else { format!("{}", k + 1) };
+                    leaf_names.push(if outer.is_empty() { inner } else { format!("{outer}.{inner}") });
+                }
+            } else {
+                leaves.push(column);
+                leaf_names.push(outer);
+            }
+        }
+        let base = if changed {
+            let flat = Rf_allocVector3(SEXPTYPE::VECSXP, leaves.len() as i64);
+            let nm = Rf_allocVector3(SEXPTYPE::STRSXP, leaves.len() as i64);
+            for (i, (col, name)) in leaves.iter().zip(leaf_names.iter()).enumerate() {
+                SET_VECTOR_ELT(flat, i as i64, *col);
+                let cs = CString::new(name.as_str()).unwrap_or_default();
+                SET_STRING_ELT(nm, i as i64, crate::sexp::constructors::Rf_mkChar(cs.as_ptr()));
+            }
+            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_NamesSymbol(), nm);
+            let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_ClassSymbol(), class);
+            let rn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
+            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+            flat
+        } else { x };
+        let _base_guard = protect(base);
 
         let rest = format_data_frame_rest_args(args);
         let _rest_guard = protect(rest);
-        let out = crate::mainutils::duplicate::shallow_duplicate(x);
-        if out.is_null() {
-            return R_NilValue();
-        }
-        let _out_guard = protect(out);
+        let out = crate::mainutils::duplicate::shallow_duplicate(base);
         let ncol = XLENGTH(out);
         for i in 0..ncol {
             let col = VECTOR_ELT(out, i);
