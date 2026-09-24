@@ -1242,6 +1242,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "seq.default", include_str!("gnu_seq_default.R"));
         eval_base_binding(base_env, "units", "function(x) UseMethod(\"units\")");
         eval_base_binding(base_env, "units<-", "function(x, value) UseMethod(\"units<-\")");
+        eval_base_binding(
+            base_env,
+            "substring<-",
+            "function(text, first, last = NULL, value) `substr<-`(text, first, last, value)",
+        );
         eval_base_binding(base_env, "units.difftime", "function(x) attr(x, \"units\")");
         eval_base_binding(
             base_env,

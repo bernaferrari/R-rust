@@ -361,6 +361,13 @@ pub unsafe fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let cstr = CString::new(out).unwrap_or_default();
             SET_STRING_ELT(result, i, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
         }
+        let at = crate::sexp::accessors::ATTRIB(x);
+        if !at.is_null() && at != R_NilValue() {
+            crate::sexp::accessors::SET_ATTRIB(
+                result,
+                crate::mainutils::duplicate::Rf_duplicate(at),
+            );
+        }
         result
     }
 }
