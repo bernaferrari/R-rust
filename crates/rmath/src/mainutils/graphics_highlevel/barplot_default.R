@@ -53,7 +53,8 @@ function(height, width = 1, space = NULL, names.arg = NULL, legend.text = NULL,
         if (is.null(xlim)) xlim <- c(min(w.l), max(w.r))
         if (is.null(ylim)) ylim <- range(rAdj, hdraw + offset, na.rm = TRUE)
     }
-    if (beside && !vectorInput) w.m <- matrix(w.m, ncol = NC)
+    if (vectorInput) w.m <- matrix(w.m, ncol = 1L)
+    else if (beside) w.m <- matrix(w.m, ncol = NC)
     if (!plot) return(w.m)
     if (!add) {
         plot.new()
