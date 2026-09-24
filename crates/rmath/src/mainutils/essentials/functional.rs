@@ -2938,6 +2938,75 @@ pub(crate) unsafe fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> 
     }
 }
 
+pub(crate) unsafe fn melt_table(value: SEXP) -> SEXP {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
+        let nd = XLENGTH(dim) as usize;
+        let mut sizes = Vec::with_capacity(nd);
+        let mut total: i64 = 1;
+        for i in 0..nd {
+            let n = *INTEGER(dim).add(i) as i64;
+            sizes.push(n);
+            total = total.saturating_mul(n.max(0));
+        }
+        let frame = Rf_allocVector3(SEXPTYPE::VECSXP, (nd as i64) + 1);
+        std::mem::forget(protect(frame));
+        let dimnames = crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimNamesSymbol());
+        let dimnames_names = if !dimnames.is_null() && dimnames != R_NilValue() {
+            crate::sexp::attrib_core::getAttrib(dimnames, crate::sexp::attrib_core::R_NamesSymbol())
+        } else {
+            R_NilValue()
+        };
+        let mut names = Vec::with_capacity(nd + 1);
+        for d in 0..nd {
+            let col = Rf_allocVector3(SEXPTYPE::STRSXP, total);
+            SET_VECTOR_ELT(frame, d as i64, col);
+            let levels = if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP && (d as i64) < XLENGTH(dimnames) {
+                VECTOR_ELT(dimnames, d as i64)
+            } else {
+                R_NilValue()
+            };
+            for idx in 0..total {
+                let mut rem = idx;
+                for s in &sizes[..d] {
+                    rem /= (*s).max(1);
+                }
+                let level = if sizes[d] == 0 { 0 } else { rem % sizes[d] };
+                let text = if !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP && level < XLENGTH(levels) {
+                    elt_to_string(levels, level)
+                } else {
+                    (level + 1).to_string()
+                };
+                let cstr = std::ffi::CString::new(text).unwrap_or_default();
+                SET_STRING_ELT(col, idx, Rf_mkChar(cstr.as_ptr()));
+            }
+            let nm = if !dimnames_names.is_null() && TYPEOF(dimnames_names) == SEXPTYPE::STRSXP && (d as i64) < XLENGTH(dimnames_names) {
+                elt_to_string(dimnames_names, d as i64)
+            } else {
+                String::new()
+            };
+            names.push(if nm.is_empty() { format!("Var{}", d + 1) } else { nm });
+        }
+        let freq = Rf_allocVector3(SEXPTYPE::INTSXP, total);
+        SET_VECTOR_ELT(frame, nd as i64, freq);
+        for idx in 0..total {
+            let v = if TYPEOF(value) == SEXPTYPE::INTSXP {
+                *INTEGER(value).add(idx as usize)
+            } else if TYPEOF(value) == SEXPTYPE::REALSXP {
+                *REAL(value).add(idx as usize) as i32
+            } else {
+                0
+            };
+            *INTEGER(freq).add(idx as usize) = v;
+        }
+        names.push("Freq".to_string());
+        set_string_names(frame, &names);
+        set_compact_row_names(frame, total);
+        set_data_frame_class(frame);
+        frame
+    }
+}
+
 /// R's `data.frame(...)`: build a data-frame list while expanding data-frame arguments.
 pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -2994,7 +3063,11 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let mut nrow: Option<R_xlen_t> = None;
 
         for i in 0..XLENGTH(initial) {
-            let value = VECTOR_ELT(initial, i);
+            let mut value = VECTOR_ELT(initial, i);
+            if sexp_has_class(value, "table") {
+                value = melt_table(value);
+                filter_guards.push(protect(value));
+            }
             let arg_name = string_at_or_empty(arg_names, i);
             if sexp_has_class(value, "data.frame") && TYPEOF(value) == SEXPTYPE::VECSXP {
                 let inner_names = crate::sexp::attrib_core::getAttrib(

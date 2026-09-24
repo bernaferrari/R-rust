@@ -770,6 +770,9 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             let _ct = protect(ct);
             x = ct;
         }
+        if crate::mainutils::essentials::sexp_has_class(x, "table") {
+            return crate::mainutils::essentials::functional::melt_table(x);
+        }
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
             // GNU `as.data.frame.AsIs` for a 2-D object calls

@@ -488,6 +488,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "as.data.frame.table",
+            include_str!("gnu_as_data_frame_table.R"),
+        );
+        eval_base_binding(
+            base_env,
             "as.data.frame.list",
             include_str!("gnu_as_data_frame_list.R"),
         );

@@ -1212,9 +1212,88 @@ fn arg_tag_name(cell: SEXP) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 /// R's `table(...)` — counts occurrences of each unique value.
+unsafe fn table_data_frame(frame: SEXP) -> SEXP {
+    unsafe {
+        let nd = XLENGTH(frame) as usize;
+        let nrow = if nd == 0 { 0 } else { XLENGTH(VECTOR_ELT(frame, 0)) };
+        let mut labels: Vec<Vec<String>> = Vec::with_capacity(nd);
+        for j in 0..nd {
+            let col = VECTOR_ELT(frame, j as i64);
+            let mut seen = Vec::new();
+            if let Some(levels) = factor_levels(col) {
+                for i in 0..XLENGTH(levels) {
+                    seen.push(crate::mainutils::essentials::elt_to_string(levels, i));
+                }
+            } else {
+                for i in 0..XLENGTH(col) {
+                    let text = crate::mainutils::essentials::elt_to_string(col, i);
+                    if !seen.contains(&text) {
+                        seen.push(text);
+                    }
+                }
+            }
+            labels.push(seen);
+        }
+        let mut total: i64 = 1;
+        for labs in &labels {
+            total = total.saturating_mul(labs.len() as i64);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, total);
+        let _g = protect(result);
+        for i in 0..total {
+            *INTEGER(result).add(i as usize) = 0;
+        }
+        for row in 0..nrow {
+            let mut stride = 1i64;
+            let mut index = 0i64;
+            for j in 0..nd {
+                let col = VECTOR_ELT(frame, j as i64);
+                let text = crate::mainutils::essentials::elt_to_string(col, row);
+                let pos = labels[j].iter().position(|l| l == &text).unwrap_or(0) as i64;
+                index += pos * stride;
+                stride *= labels[j].len() as i64;
+            }
+            if index >= 0 && index < total {
+                *INTEGER(result).add(index as usize) += 1;
+            }
+        }
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, nd as i64);
+        for j in 0..nd {
+            *INTEGER(dim).add(j) = labels[j].len() as i32;
+        }
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, nd as i64);
+        let dnn = Rf_allocVector3(SEXPTYPE::STRSXP, nd as i64);
+        let frame_names = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
+        for j in 0..nd {
+            let labs = Rf_allocVector3(SEXPTYPE::STRSXP, labels[j].len() as i64);
+            for (i, lab) in labels[j].iter().enumerate() {
+                let cstr = std::ffi::CString::new(lab.as_str()).unwrap_or_default();
+                SET_STRING_ELT(labs, i as i64, Rf_mkChar(cstr.as_ptr()));
+            }
+            SET_VECTOR_ELT(dimnames, j as i64, labs);
+            let nm = if !frame_names.is_null() && TYPEOF(frame_names) == SEXPTYPE::STRSXP && (j as i64) < XLENGTH(frame_names) {
+                crate::mainutils::essentials::elt_to_string(frame_names, j as i64)
+            } else {
+                String::new()
+            };
+            let cstr = std::ffi::CString::new(nm).unwrap_or_default();
+            SET_STRING_ELT(dnn, j as i64, Rf_mkChar(cstr.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(dimnames, crate::sexp::attrib_core::R_NamesSymbol(), dnn);
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimNamesSymbol(), dimnames);
+        let class = Rf_mkString(c"table".as_ptr());
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        result
+    }
+}
+
 pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
+        if TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) > 0 {
+            return table_data_frame(x);
+        }
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }

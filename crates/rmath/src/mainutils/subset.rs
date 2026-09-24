@@ -585,8 +585,19 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
             }
             let dimnames_names = getAttrib(dimnames, sym_Names());
             let _dimnames_names_guard = protect(dimnames_names);
-            if !isNull(dimnames_names) {
-                setAttrib(new_dimnames, sym_Names(), dimnames_names);
+            if !isNull(dimnames_names) && TYPEOF(dimnames_names) == SEXPTYPE::STRSXP {
+                let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept.len() as R_xlen_t);
+                let _new_names = protect(new_names);
+                for (j, i) in kept_idx.iter().enumerate() {
+                    if (*i as R_xlen_t) < XLENGTH(dimnames_names) {
+                        SET_STRING_ELT(
+                            new_names,
+                            j as R_xlen_t,
+                            STRING_ELT(dimnames_names, *i as R_xlen_t),
+                        );
+                    }
+                }
+                setAttrib(new_dimnames, sym_Names(), new_names);
             }
             setAttrib(x, sym_DimNames(), new_dimnames);
         }
@@ -1396,7 +1407,23 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         if drop != 0 {
             result = DropDims(result);
         }
-
+        let class = getAttrib(x, Rf_install(c"class".as_ptr()));
+        if !isNull(class) && TYPEOF(class) == SEXPTYPE::STRSXP {
+            let mut is_table = false;
+            for i in 0..XLENGTH(class) {
+                let elt = STRING_ELT(class, i);
+                if !elt.is_null() {
+                    let bytes = std::ffi::CStr::from_ptr(CHAR(elt)).to_bytes();
+                    if bytes == b"table" {
+                        is_table = true;
+                        break;
+                    }
+                }
+            }
+            if is_table {
+                setAttrib(result, Rf_install(c"class".as_ptr()), class);
+            }
+        }
         result
     }
 }
@@ -2273,16 +2300,21 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 
         let preserve_date_class = crate::mainutils::essentials::sexp_has_class(x, "Date");
         let preserve_posixct_class = crate::mainutils::essentials::sexp_has_class(x, "POSIXct");
+        let preserve_table_class = crate::mainutils::essentials::sexp_has_class(x, "table");
 
         /* Remove erroneous attributes */
         if !isNull(ATTRIB(ans)) {
             setAttrib(ans, sym_Tsp(), R_NilValue());
-            if !data_frame_subset && !preserve_date_class && !preserve_posixct_class {
+            if !data_frame_subset
+                && !preserve_date_class
+                && !preserve_posixct_class
+                && !preserve_table_class
+            {
                 setAttrib(ans, sym_Class(), R_NilValue());
             }
         }
 
-        if preserve_date_class || preserve_posixct_class {
+        if preserve_date_class || preserve_posixct_class || preserve_table_class {
             setAttrib(ans, sym_Class(), getAttrib(x, sym_Class()));
             if preserve_posixct_class {
                 let tzone = getAttrib(x, sym_Tzone());
