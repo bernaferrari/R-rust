@@ -1993,9 +1993,10 @@ impl<'arena> Parser<'arena> {
             if TYPEOF(fun) == SEXPTYPE::SYMSXP {
                 let name = symbol_name_string(fun);
                 if is_special_rhs_function(&name) {
-                    return Err(ParseError(format!(
-                        "function '{name}' not supported in RHS call of a pipe"
-                    )));
+                    return Err(self.token_position_error(
+                        rhs_start,
+                        &format!("function '{name}' not supported in RHS call of a pipe"),
+                    ));
                 }
             }
 
