@@ -99,14 +99,21 @@ pub unsafe fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 
 pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let sfile = CAR(args);
-        args = CDR(args);
-        let sraw = CAR(args);
-        args = CDR(args);
-        let sopen = CAR(args);
-
-        let description = check_string_arg(sfile, "description");
-        let open = check_string_arg(sopen, "open");
+        let first = CAR(args);
+        let (sraw, sopen) = if TYPEOF(first) == SEXPTYPE::RAWSXP {
+            (first, CAR(CDR(args)))
+        } else {
+            args = CDR(args);
+            let sraw = CAR(args);
+            args = CDR(args);
+            (sraw, CAR(args))
+        };
+        let description = String::new();
+        let open = if sopen.is_null() || sopen == R_NilValue() {
+            String::new()
+        } else {
+            check_string_arg(sopen, "open")
+        };
         let open_mode = if open.is_empty() {
             "rb".to_string()
         } else {
