@@ -4146,20 +4146,12 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         } else if t == SEXPTYPE::RAWSXP {
             format!("{:02x}", *RAW(x).add(idx as usize))
         } else if t == SEXPTYPE::STRSXP {
-
             let charsxp = crate::sexp::accessors::STRING_ELT(x, idx);
-            if charsxp.is_null() {
+            if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
                 "NA".to_string()
             } else {
-                let s = crate::sexp::accessors::CHAR(charsxp);
-                if s.is_null() {
-                    "NA".to_string()
-                } else {
-                    std::ffi::CStr::from_ptr(s)
-                        .to_str()
-                        .unwrap_or("NA")
-                        .to_string()
-                }
+                let bytes = crate::sexp::accessors::charsxp_as_utf8(charsxp);
+                String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
             }
         } else if t == SEXPTYPE::SYMSXP {
             let pname = crate::sexp::accessors::PRINTNAME(x);
