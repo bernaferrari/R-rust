@@ -1942,8 +1942,9 @@ impl<'arena> Parser<'arena> {
 
             // A placeholder in the function position is never substitutable.
             if self.expr_contains_placeholder(fun) {
-                return Err(ParseError(
-                    "pipe placeholder cannot be used in the RHS function".to_string(),
+                return Err(self.token_position_error(
+                    rhs_start,
+                    "pipe placeholder cannot be used in the RHS function",
                 ));
             }
 
@@ -1953,8 +1954,9 @@ impl<'arena> Parser<'arena> {
                 let mut rest = CDR(CDR(rhs));
                 while rest != nil {
                     if self.expr_contains_placeholder(CAR(rest)) {
-                        return Err(ParseError(
-                            "pipe placeholder may only appear once".to_string(),
+                        return Err(self.token_position_error(
+                            rhs_start,
+                            "pipe placeholder may only appear once",
                         ));
                     }
                     rest = CDR(rest);
@@ -1970,15 +1972,17 @@ impl<'arena> Parser<'arena> {
                 if CAR(cell) == placeholder {
                     let tag = TAG(cell);
                     if tag.is_null() || tag == nil {
-                        return Err(ParseError(
-                            "pipe placeholder can only be used as a named argument".to_string(),
+                        return Err(self.token_position_error(
+                            rhs_start,
+                            "pipe placeholder can only be used as a named argument",
                         ));
                     }
                     let mut rest = CDR(cell);
                     while rest != nil {
                         if CAR(rest) == placeholder {
-                            return Err(ParseError(
-                                "pipe placeholder may only appear once".to_string(),
+                            return Err(self.token_position_error(
+                                rhs_start,
+                                "pipe placeholder may only appear once",
                             ));
                         }
                         rest = CDR(rest);
