@@ -2765,53 +2765,77 @@ unsafe fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP {
             let value = CAR(current);
             let t = TYPEOF(value);
             let n = XLENGTH(value);
-            for i in 0..n {
-                let text = if t == SEXPTYPE::STRSXP {
-                    let s = STRING_ELT(value, i);
-                    if s.is_null() || s == crate::sexp::globals::R_NaString() {
-                        if na_rm {
-                            continue;
-                        }
-                        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-                        SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
-                        return out;
-                    }
-                    std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy().into_owned()
-                } else if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
-                    let v = INTEGER_ELT(value, i as i32);
-                    if v == NA_INTEGER {
-                        if na_rm {
-                            continue;
-                        }
-                        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-                        SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
-                        return out;
-                    }
-                    v.to_string()
-                } else if t == SEXPTYPE::REALSXP {
-                    let v = REAL_ELT(value, i as i32);
-                    if v.is_nan() {
-                        if na_rm {
-                            continue;
-                        }
-                        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-                        SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
-                        return out;
-                    }
-                    if v.fract() == 0.0 && v.abs() < 1e15 {
-                        format!("{}", v as i64)
+            if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP {
+                let mut extreme: Option<f64> = None;
+                for i in 0..n {
+                    let v = if t == SEXPTYPE::REALSXP {
+                        REAL_ELT(value, i as i32)
                     } else {
-                        format!("{v}")
+                        let iv = INTEGER_ELT(value, i as i32);
+                        if iv == NA_INTEGER {
+                            if na_rm {
+                                continue;
+                            }
+                            let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                            SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+                            return out;
+                        }
+                        iv as f64
+                    };
+                    if t == SEXPTYPE::REALSXP && v.is_nan() {
+                        if na_rm {
+                            continue;
+                        }
+                        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                        SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+                        return out;
                     }
-                } else {
+                    extreme = Some(match extreme {
+                        None => v,
+                        Some(prev) => {
+                            if op == SummaryOp::Min { prev.min(v) } else { prev.max(v) }
+                        }
+                    });
+                }
+                if let Some(v) = extreme {
+                    let text = if t == SEXPTYPE::REALSXP && v.fract() != 0.0 {
+                        format!("{v}")
+                    } else {
+                        format!("{}", v as i64)
+                    };
+                    best = Some(match best {
+                        None => text,
+                        Some(prev) => {
+                            if (op == SummaryOp::Min && text < prev) || (op == SummaryOp::Max && text > prev) {
+                                text
+                            } else {
+                                prev
+                            }
+                        }
+                    });
+                }
+                current = CDR(current);
+                continue;
+            }
+            for i in 0..n {
+                if t != SEXPTYPE::STRSXP {
                     continue;
+                }
+                let s = STRING_ELT(value, i);
+                let text = if s.is_null() || s == crate::sexp::globals::R_NaString() {
+                    if na_rm {
+                        continue;
+                    }
+                    let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                    SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+                    return out;
+                } else {
+                    std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy().into_owned()
                 };
                 best = Some(match best {
                     None => text,
                     Some(prev) => {
-                        if op == SummaryOp::Min {
-                            if text < prev { text } else { prev }
-                        } else if text > prev {
+                        if (op == SummaryOp::Min && text < prev) || (op == SummaryOp::Max && text > prev) {
                             text
                         } else {
                             prev
