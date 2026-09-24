@@ -1560,18 +1560,8 @@ unsafe fn R_DispatchOrEvalSP(
 
         let _pa = protect(args_work);
         let disp = DispatchOrEval(call, op, generic, args_work, rho, ans, 0, 0);
-        if disp == 0 && !x_guard.is_none() {
-            // No method matched: evaluate the remaining arguments the same
-            // way as the non-object path so the default handler receives
-            // values (keeping R_MissingArg slots). Without this, non-literal
-            // subscripts like `df[2:3, ]` would reach do_subset_dflt as
-            // unevaluated language objects.
-            let rest = evalListKeepMissing(CDR(args), rho);
-            let _pr = protect(rest);
-            if !ans.is_null() {
-                *ans = CONS_NR(x, rest);
-            }
-        }
+        // DispatchOrEval already evaluated the argument list when no method matched.
+        let _ = x_guard;
         let _ = prom;
         disp
     }
