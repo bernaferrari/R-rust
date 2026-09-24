@@ -76,6 +76,24 @@ pub unsafe fn storage_mode_target(value: SEXP, allow_numeric: bool) -> Result<c_
 }
 
 /// R's `rownames(x)` — get row names attribute.
+/// Stored `row.names`, including the compact `c(NA, -n)` form.
+pub unsafe fn do_row_names_stored(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let which = crate::sexp::attrib_core::R_RowNamesSymbol();
+        let mut current = crate::sexp::accessors::ATTRIB(x);
+        while !current.is_null() && current != R_NilValue() {
+            if crate::sexp::accessors::TAG(current) == which {
+                return crate::sexp::accessors::CAR(current);
+            }
+            current = crate::sexp::accessors::CDR(current);
+        }
+        R_NilValue()
+    }
+}
 pub unsafe fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);

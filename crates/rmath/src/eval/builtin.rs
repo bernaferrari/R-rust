@@ -3741,6 +3741,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_rownames,
     },
     EvaluatedBuiltin {
+        name: "row.names.stored",
+        handler: crate::mainutils::essentials::do_row_names_stored,
+    },
+    EvaluatedBuiltin {
         name: "colnames",
         handler: crate::mainutils::essentials::do_colnames,
     },

@@ -362,7 +362,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             base_env,
             ".row_names_info",
             "function(x, type = 1L) {\n\
-             rn <- attr(x, \"row.names\")\n\
+             rn <- row.names.stored(x)\n\
              if (type == 0L) return(rn)\n\
              if (is.integer(rn) && length(rn) == 2L && is.na(rn[1L])) {\n\
                  if (type == 1L) rn[2L] else abs(rn[2L])\n\
