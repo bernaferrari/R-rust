@@ -5071,10 +5071,16 @@ fn deparse_call(expr: SEXP) -> String {
             let close = if op == "[[" { "]]" } else { "]" };
             return format!("{}{}{}{}", args[0], op, idx, close);
         }
+        if op == "(" && args.len() == 1 {
+            return format!("({})", args[0]);
+        }
         if op == ":" && args.len() == 2 {
             return format!("{}:{}", args[0], args[1]);
         }
-        if matches!(op.as_str(), "+" | "-" | "*" | "/" | "^") && args.len() == 2 {
+        if op == "^" && args.len() == 2 {
+            return format!("{}^{}", args[0], args[1]);
+        }
+        if matches!(op.as_str(), "+" | "-" | "*" | "/") && args.len() == 2 {
             return format!("{} {} {}", args[0], op, args[1]);
         }
         if op == "-" && args.len() == 1 {
@@ -6885,9 +6891,6 @@ unsafe fn character_row_names(rn: SEXP, n: i64) -> SEXP {
     }
 }
 fn term_label_matches(column: &str, label: &str) -> bool {
-    if column == label {
-        return true;
-    }
     let compact = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
     compact(column) == compact(label)
 }
