@@ -2826,7 +2826,14 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             names.push(format!("\u{0}y:{}", elt_to_string(ynames, yi as i64)));
             col += 1;
         }
-        let raw: Vec<String> = names.iter().map(|n| n.trim_start_matches(|c| c == '\u{0}' || c == 'x' || c == 'y' || c == ':').to_string()).collect();
+        let bare_of = |tag: &str| -> String {
+            if let Some(rest) = tag.strip_prefix('\u{0}') {
+                rest.split_once(':').map(|(_, b)| b.to_string()).unwrap_or_else(|| tag.to_string())
+            } else {
+                tag.to_string()
+            }
+        };
+        let raw: Vec<String> = names.iter().map(|n| bare_of(n)).collect();
         let mut fixed = Vec::with_capacity(names.len());
         for (i, tag) in names.iter().enumerate() {
             let bare = if let Some(rest) = tag.strip_prefix('\u{0}') {
