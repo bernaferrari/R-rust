@@ -1176,6 +1176,7 @@ pub(crate) unsafe fn set_factor_attrs(column: SEXP, levels: &[String]) {
             crate::sexp::attrib_core::R_ClassSymbol(),
             class,
         );
+        SET_OBJECT(column, 1);
     }
 }
 
@@ -2263,6 +2264,7 @@ unsafe fn set_factor_attrs_with_optional_levels(column: SEXP, levels: &[Option<S
             crate::sexp::attrib_core::R_ClassSymbol(),
             class,
         );
+        SET_OBJECT(column, 1);
     }
 }
 
@@ -2473,6 +2475,7 @@ unsafe fn replace_factor_levels(x: SEXP, value: SEXP) -> SEXP {
             crate::sexp::attrib_core::R_LevelsSymbol(),
             string_vector(&new_levels),
         );
+        SET_OBJECT(result, 1);
         result
     }
 }
