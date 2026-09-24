@@ -3764,7 +3764,7 @@ fn agrep_max_distance(args: SEXP, pattern_arg: SEXP) -> usize {
         if value <= 0.0 {
             return 0;
         }
-        if value <= 1.0 {
+        if value < 1.0 {
             let pattern_len = elt_to_string(pattern_arg, 0).chars().count().max(1);
             (value * pattern_len as f64).ceil() as usize
         } else {
