@@ -1299,6 +1299,30 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let warning_text =
             condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"]);
         let condition = simple_condition(&warning_text, &["simpleWarning", "warning", "condition"]);
+        let mut cond_classes = vec![
+            "simpleWarning".to_string(),
+            "warning".to_string(),
+            "condition".to_string(),
+        ];
+        let first = CAR(args);
+        if !first.is_null() && first != R_NilValue() {
+            let class = crate::eval::attrib_core::getAttrib(first, crate::eval::attrib_core::R_ClassSymbol());
+            if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
+                cond_classes.clear();
+                for i in 0..XLENGTH(class) {
+                    let elt = STRING_ELT(class, i);
+                    if !elt.is_null() {
+                        cond_classes.push(
+                            std::ffi::CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned(),
+                        );
+                    }
+                }
+            }
+        }
+        if crate::mainutils::errors::warning_class_suppressed(&cond_classes) {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return Rf_mkString(CString::new(warning_text).unwrap_or_default().as_ptr());
+        }
         // Muffle-aware calling-handler signal: a handler invoking the
         // dynamically scoped muffleWarning restart (upstream
         // invokeRestart inside withCallingHandlers(..., warning =))

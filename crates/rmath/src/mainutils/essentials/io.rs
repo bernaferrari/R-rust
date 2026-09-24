@@ -1409,12 +1409,47 @@ pub unsafe fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
         }
+        let mut classes: Option<Vec<String>> = None;
+        let mut cell = CDR(args);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let pname = crate::sexp::accessors::PRINTNAME(tag);
+                let name = if pname.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname))
+                        .to_string_lossy()
+                        .into_owned()
+                };
+                if name == "classes" {
+                    let value = crate::eval::eval::Rf_eval(CAR(cell), rho);
+                    if !value.is_null() && value != R_NilValue() && TYPEOF(value) == SEXPTYPE::STRSXP {
+                        let mut names = Vec::new();
+                        for i in 0..XLENGTH(value) {
+                            let elt = crate::sexp::accessors::STRING_ELT(value, i);
+                            if !elt.is_null() {
+                                names.push(
+                                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+                                        .to_string_lossy()
+                                        .into_owned(),
+                                );
+                            }
+                        }
+                        classes = Some(names);
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
         struct DepthGuard;
         impl Drop for DepthGuard {
             fn drop(&mut self) {
+                crate::mainutils::errors::pop_suppress_warning_classes();
                 crate::mainutils::errors::exit_suppress_warnings();
             }
         }
+        crate::mainutils::errors::push_suppress_warning_classes(classes);
         crate::mainutils::errors::enter_suppress_warnings();
         let _depth_guard = DepthGuard;
         crate::sexp::output::start_capture();

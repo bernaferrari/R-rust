@@ -242,6 +242,37 @@ pub(crate) fn enter_suppress_warnings() {
 pub(crate) fn exit_suppress_warnings() {
     with_error_state(|state| state.suppress_warnings -= 1);
 }
+thread_local! {
+    static SUPPRESS_WARNING_CLASSES: std::cell::RefCell<Vec<Option<Vec<String>>>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
+/// `None` muffles every warning. `Some` muffles only those classes.
+pub(crate) fn push_suppress_warning_classes(classes: Option<Vec<String>>) {
+    SUPPRESS_WARNING_CLASSES.with(|stack| stack.borrow_mut().push(classes));
+}
+
+pub(crate) fn pop_suppress_warning_classes() {
+    SUPPRESS_WARNING_CLASSES.with(|stack| {
+        stack.borrow_mut().pop();
+    });
+}
+
+pub(crate) fn warning_class_suppressed(classes: &[String]) -> bool {
+    if suppress_warnings_depth() <= 0 {
+        return false;
+    }
+    SUPPRESS_WARNING_CLASSES.with(|stack| {
+        let stack = stack.borrow();
+        let Some(filter) = stack.last() else {
+            return true;
+        };
+        match filter {
+            None => true,
+            Some(wanted) => classes.iter().any(|class| wanted.iter().any(|want| want == class)),
+        }
+    })
+}
 
 /// Depth of active `suppressMessages()` frames (see
 /// `ErrorState::suppress_messages`).
