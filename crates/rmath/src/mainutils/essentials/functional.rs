@@ -3790,6 +3790,17 @@ unsafe fn collect_unlist_entries(
             }
             return;
         }
+        if TYPEOF(x) == SEXPTYPE::LANGSXP
+            || TYPEOF(x) == SEXPTYPE::SYMSXP
+            || TYPEOF(x) == SEXPTYPE::CLOSXP
+            || TYPEOF(x) == SEXPTYPE::ENVSXP
+        {
+            out.push(UnlistEntry {
+                value: UnlistValue::Object(x),
+                name: prefix,
+            });
+            return;
+        }
 
         let names =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
