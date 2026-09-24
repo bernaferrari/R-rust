@@ -211,7 +211,7 @@ pub unsafe fn OneIndex(
                 } else if dblind > -1.0 || nx < 2 {
                     error("attempt to select less than one element in OneIndex");
                 } else if nx == 2 && dblind > -3.0 {
-                    _indx = (2.0 + dblind) as R_xlen_t;
+                    _indx = (2.0 + dblind.trunc()) as R_xlen_t;
                 } else {
                     error("attempt to select more than one element in OneIndex");
                 }
@@ -377,7 +377,7 @@ pub unsafe fn get1index(
                 } else if dblind > -1.0 || len < 2 {
                     error("attempt to select less than one element in get1index");
                 } else if len == 2 && dblind > -3.0 {
-                    indx = (2.0 + dblind) as R_xlen_t;
+                    indx = (2.0 + dblind.trunc()) as R_xlen_t;
                 } else {
                     error("attempt to select more than one element in get1index");
                 }
