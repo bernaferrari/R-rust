@@ -235,6 +235,15 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 rho
             };
             let target_expr = Rf_eval(CADR(lhs), target_env);
+            let var_sym_early = CADR(lhs);
+            let mut target_expr = target_expr;
+            if TYPEOF(var_sym_early) == SEXPTYPE::SYMSXP
+                && crate::sexp::envir::binding_is_locked_raw(rho, var_sym_early)
+            {
+                target_expr = crate::mainutils::duplicate::shallow_duplicate(target_expr);
+                let _locked_dup = protect(target_expr);
+            }
+
             let _target_guard = protect(target_expr);
 
             if symbol_name(func_sym).as_deref() == Some("$")

@@ -724,15 +724,13 @@ pub unsafe fn EnsureLocal(symbol: SEXP, rho: SEXP, ploc: *mut R_varloc_t) -> SEX
         if vl != R_UnboundValue() {
             // Found locally — evaluate (for promises) and copy if shared (C lines 2575-2576)
             vl = Rf_eval(symbol, rho);
-            if MAYBE_SHARED(vl) {
-                // Duplicate using R_shallow_duplicate_attr which may defer
-                // duplicating data until it is needed. If the data are duplicated,
-                // then the wrapper can be discarded at the end of the
-                // assignment process in try_assign_unwrap(). (C lines 2577-2586)
+            if MAYBE_SHARED(vl) || crate::sexp::envir::binding_is_locked_raw(rho, symbol) {
                 let _vl_guard = protect(vl);
                 vl = crate::mainutils::duplicate::R_shallow_duplicate_attr(vl);
-                defineVar(symbol, vl, rho);
-                INCREMENT_NAMED(vl);
+                if !crate::sexp::envir::binding_is_locked_raw(rho, symbol) {
+                    defineVar(symbol, vl, rho);
+                    INCREMENT_NAMED(vl);
+                }
             }
             // Look up the location for future mutation (C lines 2587-2589)
             let _vl_guard = protect(vl);
