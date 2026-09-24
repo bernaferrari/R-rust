@@ -1067,6 +1067,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "C_countfields", "\"C_countfields\"");
         eval_base_binding(base_env, "C_runmed", "\"C_runmed\"");
+        eval_base_binding(
+            base_env,
+            "suppressPackageStartupMessages",
+            "function (expr) withCallingHandlers(expr, packageStartupMessage = function(c) tryInvokeRestart(\"muffleMessage\"))",
+        );
     eval_base_binding(base_env, ".traceback", include_str!("gnu_dot_traceback.R"));
     eval_base_binding(base_env, "traceback", include_str!("gnu_traceback.R"));
     eval_base_binding(base_env, "get_all_vars", include_str!("gnu_get_all_vars.R"));
