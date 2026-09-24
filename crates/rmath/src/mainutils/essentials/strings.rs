@@ -2779,7 +2779,7 @@ fn formatc_exp(v: f64, digits: usize, upper: bool) -> String {
     }
 }
 
-fn formatc_one(v: f64, digits: i32, format: &str) -> String {
+fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
     let d = if digits < 0 { 6 } else { digits as usize };
     match format {
         "f" => format!("{v:.d$}"),
@@ -2805,7 +2805,7 @@ fn formatc_one(v: f64, digits: i32, format: &str) -> String {
             } else {
                 let decimals = (d as i32 - exp - 1).max(0) as usize;
                 let s = format!("{v:.decimals$}");
-                if s.contains('.') {
+                if !alt && s.contains('.') {
                     s.trim_end_matches('0')
                         .trim_end_matches('.')
                         .to_string()
@@ -2837,7 +2837,7 @@ fn formatc_one(v: f64, digits: i32, format: &str) -> String {
             };
             let decimals = (d as i32 - 1 - exp2).max(0) as usize;
             let s = format!("{rounded:.decimals$}");
-            if s.contains('.') {
+            if !alt && s.contains('.') {
                 s.trim_end_matches('0').trim_end_matches('.').to_string()
             } else {
                 s
@@ -2902,6 +2902,27 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 }
             }
         }
+        let mut alt = false;
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null() && tag != R_NilValue() {
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                if name == "flag" {
+                    let value = CAR(cell);
+                    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+                        let ch = STRING_ELT(value, 0);
+                        if !ch.is_null() {
+                            alt = std::ffi::CStr::from_ptr(CHAR(ch))
+                                .to_string_lossy()
+                                .contains('#');
+                        }
+                    }
+                }
+            }
+            cell = CDR(cell);
+        }
+
 
         let n = XLENGTH(x);
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
@@ -2922,7 +2943,7 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let s = if v.is_nan() {
                 "NA".to_string()
             } else {
-                formatc_one(v, digits, &format)
+                formatc_one(v, digits, &format, alt)
             };
             let s = pad_formatc_width(s, width);
             let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
