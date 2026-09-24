@@ -2500,6 +2500,7 @@ impl SummaryOp {
 struct SummaryShape {
     saw_real: bool,
     saw_complex: bool,
+    saw_string: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -2632,7 +2633,13 @@ unsafe fn scan_summary_shape(args: SEXP, op: SummaryOp) -> SummaryShape {
                     }
                     shape.saw_complex = true;
                 }
-                t if t == SEXPTYPE::STRSXP => summary_error("invalid 'type' (character) of argument"),
+                t if t == SEXPTYPE::STRSXP => {
+                    if matches!(op, SummaryOp::Min | SummaryOp::Max) {
+                        shape.saw_string = true;
+                    } else {
+                        summary_error("invalid 'type' (character) of argument");
+                    }
+                }
                 _ => summary_error("invalid 'type' of argument"),
             }
             current = CDR(current);
@@ -2928,6 +2935,9 @@ unsafe fn eval_minmax(
     op: SummaryOp,
 ) -> SEXP {
     unsafe {
+        if shape.saw_string {
+            return eval_minmax_string(args, na_rm, op);
+        }
         let mut seen = false;
         let mut int_best = if op == SummaryOp::Min {
             i32::MAX
