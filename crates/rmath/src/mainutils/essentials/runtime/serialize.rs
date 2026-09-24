@@ -62,13 +62,26 @@ pub unsafe fn do_Random_seed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 pub unsafe fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let file_arg = CAR(args);
-        let file_path = elt_to_string(file_arg, 0);
-        let bytes = match std::fs::read(&file_path) {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                std::panic::panic_any(RError {
-                    message: format!("cannot open compressed file '{}': {err}", file_path),
-                });
+        let bytes = if crate::mainutils::connections::inherits_class(file_arg, "connection") {
+            let idx = crate::mainutils::coerce::asInteger(file_arg);
+            let mut bytes = Vec::new();
+            loop {
+                let b = crate::mainutils::connections::connection_fgetc(idx);
+                if b < 0 {
+                    break;
+                }
+                bytes.push(b as u8);
+            }
+            bytes
+        } else {
+            let file_path = elt_to_string(file_arg, 0);
+            match std::fs::read(&file_path) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    std::panic::panic_any(RError {
+                        message: format!("cannot open compressed file '{}': {err}", file_path),
+                    });
+                }
             }
         };
 
@@ -140,11 +153,16 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
         let len = XLENGTH(raw) as usize;
         let bytes = std::slice::from_raw_parts(RAW(raw), len);
-        let file_path = elt_to_string(file_arg, 0);
-        if let Err(err) = std::fs::write(&file_path, bytes) {
-            std::panic::panic_any(RError {
-                message: format!("cannot open compressed file '{}': {err}", file_path),
-            });
+        if crate::mainutils::connections::inherits_class(file_arg, "connection") {
+            let idx = crate::mainutils::coerce::asInteger(file_arg);
+            crate::mainutils::connections::connection_write_bytes(idx, bytes);
+        } else {
+            let file_path = elt_to_string(file_arg, 0);
+            if let Err(err) = std::fs::write(&file_path, bytes) {
+                std::panic::panic_any(RError {
+                    message: format!("cannot open compressed file '{}': {err}", file_path),
+                });
+            }
         }
         // Stock saveRDS() returns invisible NULL; the top-level auto-print
         // depends on the exact flag.
