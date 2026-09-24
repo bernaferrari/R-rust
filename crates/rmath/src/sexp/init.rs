@@ -629,6 +629,17 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "droplevels.data.frame",
+            "function(x, except = NULL, exclude, ...) {\n\
+             ix <- vapply(x, is.factor, NA)\n\
+             if (!is.null(except)) ix[except] <- FALSE\n\
+             x[ix] <- if (missing(exclude)) lapply(x[ix], droplevels)\n\
+                      else lapply(x[ix], droplevels, exclude = exclude)\n\
+             x\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "ordered",
             "function(x = character(), ...) factor(x, ..., ordered = TRUE)",
         );
