@@ -1456,6 +1456,63 @@ pub unsafe fn do_cut_POSIXt(
         };
         let _x = protect(x);
         let n = XLENGTH(x);
+        let breaks = CAR(CDR(args));
+        let numeric_breaks = !breaks.is_null()
+            && breaks != R_NilValue()
+            && (TYPEOF(breaks) == SEXPTYPE::REALSXP || TYPEOF(breaks) == SEXPTYPE::INTSXP)
+            && XLENGTH(breaks) == 1;
+        if numeric_breaks {
+            let secs = crate::mainutils::duplicate::duplicate(x);
+            let _s = protect(secs);
+            crate::sexp::attrib_core::setAttrib(secs, crate::sexp::attrib_core::R_ClassSymbol(), R_NilValue());
+            let mut right = false;
+            let mut cell = CDR(CDR(args));
+            while !cell.is_null() && cell != R_NilValue() {
+                let tag = TAG(cell);
+                if !tag.is_null() && tag != R_NilValue() {
+                    let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                    if name == "right" {
+                        right = crate::mainutils::coerce::asLogical(CAR(cell)) == 1;
+                    }
+                }
+                cell = CDR(cell);
+            }
+            let right_val = Rf_ScalarLogical(if right { 1 } else { 0 });
+            let _r = protect(right_val);
+            let call_args = Rf_cons(
+                secs,
+                Rf_cons(breaks, Rf_cons(R_NilValue(), Rf_cons(right_val, R_NilValue()))),
+            );
+            let res = super::super::sets::do_cut(call, op, call_args, rho);
+            let _res = protect(res);
+            let codes = INTEGER(res);
+            let nlev = {
+                let lev = crate::sexp::attrib_core::getAttrib(res, crate::sexp::attrib_core::R_LevelsSymbol());
+                if lev.is_null() || lev == R_NilValue() { 0 } else { XLENGTH(lev) }
+            };
+            let labels = Rf_allocVector3(SEXPTYPE::STRSXP, nlev);
+            let _lab = protect(labels);
+            for lev in 0..nlev {
+                let mut label = String::from("NA");
+                for i in 0..n {
+                    if *codes.add(i as usize) == (lev as i32) + 1 {
+                        let secs = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                            let v = *INTEGER(x).add(i as usize);
+                            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                        } else {
+                            *REAL(x).add(i as usize)
+                        };
+                        let day = (secs / 86_400.0).floor();
+                        label = super::super::shared::date_days_to_iso(day).unwrap_or_else(|| "NA".to_string());
+                        break;
+                    }
+                }
+                SET_STRING_ELT(labels, lev, Rf_mkChar(std::ffi::CString::new(label).unwrap().as_ptr()));
+            }
+            crate::sexp::attrib_core::setAttrib(res, crate::sexp::attrib_core::R_LevelsSymbol(), labels);
+            return res;
+        }
+        let n = XLENGTH(x);
         let days = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _d = protect(days);
         for i in 0..n {
