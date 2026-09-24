@@ -561,6 +561,15 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "unique.data.frame",
+            "function(x, incomparables = FALSE, fromLast = FALSE, ...) {\n\
+             if (!isFALSE(incomparables))\n\
+                 .NotYetUsed(\"incomparables != FALSE\")\n\
+             x[!duplicated(x, fromLast = fromLast, ...), , drop = FALSE]\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "duplicated",
             "function(x, incomparables = FALSE, ...) UseMethod(\"duplicated\")",
         );
