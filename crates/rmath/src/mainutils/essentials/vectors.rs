@@ -492,7 +492,10 @@ unsafe fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) 
             && i < XLENGTH(arg_names)
         {
             let s = STRING_ELT(arg_names, i);
-            if !s.is_null() && s != R_NilValue() && *CHAR(s) != 0 {
+            if !s.is_null()
+                && s != R_NilValue()
+                && (s == crate::sexp::globals::R_NaString() || *CHAR(s) != 0)
+            {
                 Some(s)
             } else {
                 None
