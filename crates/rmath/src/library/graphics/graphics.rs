@@ -615,9 +615,10 @@ pub unsafe fn GMapWin2Fig(_dd: pGEDevDesc) {
 }
 
 /// GNewPlot -- begin a new plot (advance to new frame if needed).
-/// Stub: returns null pointer.
+/// Start a new plot on the current device. There is no separate plot
+/// object; the current GE device is the plot target.
 pub unsafe fn GNewPlot(_recording: Rboolean) -> pGEDevDesc {
-    std::ptr::null_mut()
+    unsafe { crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc }
 }
 
 /// GRecording -- check whether graphics operations should be recorded.

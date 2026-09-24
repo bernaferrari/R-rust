@@ -19,6 +19,13 @@ unsafe extern "C-unwind" fn c_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { plot::C_plot_new(call, op, args, rho) }
 }
+unsafe extern "C-unwind" fn c_plot_window(_args: SEXP) -> SEXP {
+    crate::sexp::globals::R_NilValue()
+}
+
+unsafe extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
+    crate::sexp::globals::R_NilValue()
+}
 
 
 pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
@@ -26,6 +33,8 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
     match bare {
         "par" => Some(unsafe { std::mem::transmute(c_par as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP) }),
         "plot_new" => Some(unsafe { std::mem::transmute(c_plot_new as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP) }),
+        "plot_window" => Some(unsafe { std::mem::transmute(c_plot_window as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
+        "plotXY" | "plot_xy" => Some(unsafe { std::mem::transmute(c_plot_xy as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
 
         _ => None,
     }
@@ -33,7 +42,7 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
 
 pub unsafe fn install_call_symbols(env: SEXP) {
     unsafe {
-        for name in ["C_par", "C_plot_new"] {
+        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY"] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(
                 crate::sexp::symbol::Rf_install(cname.as_ptr()),

@@ -2197,6 +2197,7 @@ pub unsafe extern "C-unwind" fn PDF(args: SEXP) -> SEXP {
                 }
             }
         }
+        crate::library::grdevices::device_registry::selectDevice(0);
         R_NilValue()
     }
 }

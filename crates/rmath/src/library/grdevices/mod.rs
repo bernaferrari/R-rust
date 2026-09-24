@@ -60,6 +60,9 @@ unsafe extern "C-unwind" fn c_devnext(args: crate::sexp::ffi::SEXP) -> crate::se
 unsafe extern "C-unwind" fn c_devprev(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { devices::devprev(args) }
 }
+unsafe extern "C-unwind" fn c_palette2(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe { colors::do_palette2(args) }
+}
 
 fn as_ext(f: unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) -> crate::unix::dynload::DL_FUNC {
     Some(unsafe { std::mem::transmute(f) })
@@ -69,6 +72,7 @@ pub fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
         "PDF" => as_ext(c_pdf),
+        "palette2" => as_ext(c_palette2),
         "devholdflush" => as_ext(c_devholdflush),
         "devcur" => as_ext(c_devcur),
         "devoff" => as_ext(c_devoff),
@@ -87,6 +91,7 @@ pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
     unsafe {
         for name in [
             "C_PDF",
+            "C_palette2",
             "C_devholdflush",
             "C_devcur",
             "C_devoff",
