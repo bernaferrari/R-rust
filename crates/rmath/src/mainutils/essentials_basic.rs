@@ -1845,6 +1845,25 @@ pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
             }
             return Rf_mkString(CHAR(name));
         }
+        if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::EXPRSXP {
+            let n = XLENGTH(x);
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _p = protect(result);
+            for i in 0..n {
+                let line = crate::mainutils::deparse::deparse1(
+                    VECTOR_ELT(x, i),
+                    false,
+                    crate::mainutils::deparse::SHOW_ATTR_OR_NMS,
+                );
+                let chars = if !line.is_null() && line != R_NilValue() && XLENGTH(line) > 0 {
+                    STRING_ELT(line, 0)
+                } else {
+                    Rf_mkChar(c"".as_ptr())
+                };
+                SET_STRING_ELT(result, i, chars);
+            }
+            return result;
+        }
         coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int())
     }
 }
