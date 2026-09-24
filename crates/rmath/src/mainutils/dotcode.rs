@@ -204,6 +204,9 @@ unsafe fn ported_call_name(op: SEXP) -> Option<String> {
                 .ok()
                 .map(str::to_string);
         }
+        if TYPEOF(op) == SEXPTYPE::VECSXP && XLENGTH(op) >= 1 {
+            return ported_call_name(VECTOR_ELT(op, 0));
+        }
         None
     }
 }
@@ -1163,6 +1166,9 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if fun.is_none() {
             if let Some(name) = ported_call_name(CAR(args)) {
                 fun = crate::library::tools::native_calls::lookup_c(&name);
+                if fun.is_none() {
+                    fun = crate::library::stats::random::lookup_call(&name);
+                }
             }
         }
 
@@ -1182,6 +1188,7 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             nargs += 1;
             pa = CDR(pa);
         }
+
 
         // Build the result vector
         let ans = Rf_allocVector(SEXPTYPE::VECSXP, nargs as c_int);
@@ -1204,6 +1211,7 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 pa = CDR(pa);
             }
             setAttrib(ans, Rf_install(b"names\0".as_ptr() as *const c_char), names);
+
         }
 
         // Marshal arguments to C types
