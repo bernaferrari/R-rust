@@ -1067,6 +1067,11 @@ pub struct Parser<'arena> {
     /// attaches to its `if` when the `if` sits inside such a group; at top
     /// level the newline terminates the `if` and `else` is a syntax error.
     inside_group: Vec<bool>,
+    /// Newline before an infix operator continues only inside `(` / `[`.
+    /// A `{` block is a statement list: `0\n-6` is a new unary minus, while
+    /// `(1\n-2)` is still binary minus. `1 +\n2` continues everywhere because
+    /// the operator is consumed before the newline.
+    inside_nest: Vec<bool>,
     /// Token index of the innermost unclosed `(`/`[`/`{` opener at each
     /// position (parallel to `inside_group`): `None` at top level. Used by
     /// `if_closed_before` to tell a `]`/`)`/`}` that merely closes an inner
@@ -1115,25 +1120,37 @@ impl<'arena> Parser<'arena> {
             }
         }
         let mut inside_group = Vec::with_capacity(tokens.len());
+        let mut inside_nest = Vec::with_capacity(tokens.len());
         let mut group_opener: Vec<Option<usize>> = Vec::with_capacity(tokens.len());
         let mut depth = 0usize;
+        let mut nest_stack: Vec<bool> = Vec::new();
         let mut opener_stack: Vec<usize> = Vec::new();
         for (idx, tok) in tokens.iter().enumerate() {
             inside_group.push(depth > 0);
+            inside_nest.push(nest_stack.last().copied().unwrap_or(false));
             group_opener.push(opener_stack.last().copied());
             match tok {
-                Token::LParen | Token::LBracket | Token::LBrace => {
+                Token::LParen | Token::LBracket => {
                     opener_stack.push(idx);
-                    depth += 1
+                    depth += 1;
+                    nest_stack.push(true);
+                }
+                Token::LBrace => {
+                    opener_stack.push(idx);
+                    depth += 1;
+                    nest_stack.push(false);
                 }
                 Token::LDoubleBracket => {
                     opener_stack.push(idx);
                     opener_stack.push(idx);
-                    depth += 2
+                    depth += 2;
+                    nest_stack.push(true);
+                    nest_stack.push(true);
                 }
                 Token::RParen | Token::RBracket | Token::RBrace => {
                     opener_stack.pop();
-                    depth = depth.saturating_sub(1)
+                    depth = depth.saturating_sub(1);
+                    nest_stack.pop();
                 }
                 _ => {}
             }
@@ -1147,6 +1164,7 @@ impl<'arena> Parser<'arena> {
             placeholder: std::ptr::null_mut(),
             have_pipebind,
             inside_group,
+            inside_nest,
             group_opener,
             strict_newline_else: false,
             token_literal_warnings,
@@ -1633,7 +1651,7 @@ impl<'arena> Parser<'arena> {
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
             if self.peek() == &Token::Newline
-                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+                && !self.inside_nest.get(self.pos).copied().unwrap_or(false)
             {
                 break;
             }
@@ -1660,7 +1678,7 @@ impl<'arena> Parser<'arena> {
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
             if self.peek() == &Token::Newline
-                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+                && !self.inside_nest.get(self.pos).copied().unwrap_or(false)
             {
                 return Ok(left);
             }
@@ -1696,7 +1714,7 @@ impl<'arena> Parser<'arena> {
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
             if self.peek() == &Token::Newline
-                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+                && !self.inside_nest.get(self.pos).copied().unwrap_or(false)
             {
                 return Ok(left);
             }
@@ -1773,7 +1791,7 @@ impl<'arena> Parser<'arena> {
         loop {
             // EatLines (gram.y): see the group gate in parse_tilde below.
             if self.peek() == &Token::Newline
-                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+                && !self.inside_nest.get(self.pos).copied().unwrap_or(false)
             {
                 return Ok(left);
             }
@@ -1798,7 +1816,7 @@ impl<'arena> Parser<'arena> {
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
             if self.peek() == &Token::Newline
-                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+                && !self.inside_nest.get(self.pos).copied().unwrap_or(false)
             {
                 return Ok(left);
             }
@@ -1828,7 +1846,7 @@ impl<'arena> Parser<'arena> {
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
             if self.peek() == &Token::Newline
-                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+                && !self.inside_nest.get(self.pos).copied().unwrap_or(false)
             {
                 return Ok(left);
             }
