@@ -1800,7 +1800,16 @@ pub unsafe fn zgetrf_(
         for (i, &p) in pivots.iter().take(m.min(n)).enumerate() {
             *ipiv.add(i) = p;
         }
-        *info = 0;
+        let k = m.min(n);
+        let mut info_val = 0;
+        for i in 0..k {
+            let d = u[(i, i)];
+            if d.re == 0.0 && d.im == 0.0 {
+                info_val = (i + 1) as core::ffi::c_int;
+                break;
+            }
+        }
+        *info = info_val;
     }
 }
 
