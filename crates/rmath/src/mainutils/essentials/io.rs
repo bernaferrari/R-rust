@@ -793,11 +793,18 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if nc <= 0 {
                 scan_error("scan() 'what' list is empty");
             }
+            let mut col_types = Vec::with_capacity(nc as usize);
             for j in 0..nc {
                 let tmpl = VECTOR_ELT(what_arg, j);
-                if TYPEOF(tmpl) != SEXPTYPE::STRSXP {
-                    scan_error("scan() list 'what' only supports character fields");
+                let ty = TYPEOF(tmpl);
+                if ty != SEXPTYPE::STRSXP
+                    && ty != SEXPTYPE::REALSXP
+                    && ty != SEXPTYPE::INTSXP
+                    && ty != SEXPTYPE::LGLSXP
+                {
+                    scan_error("scan() list 'what' only supports atomic fields");
                 }
+                col_types.push(ty);
             }
             let nrec = if nmax >= 0 {
                 nmax as R_xlen_t
@@ -808,7 +815,8 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let result = Rf_allocVector3(SEXPTYPE::VECSXP, nc);
             let _p = protect(result);
             for j in 0..nc {
-                let col = Rf_allocVector3(SEXPTYPE::STRSXP, nrec);
+                let ty = col_types[j as usize];
+                let col = Rf_allocVector3(ty, nrec);
                 SET_VECTOR_ELT(result, j, col);
                 for r in 0..nrec {
                     let idx = r * nc + j;
@@ -817,12 +825,29 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     } else {
                         ""
                     };
-                    let cstr = CString::new(text).unwrap_or_default();
-                    SET_STRING_ELT(
-                        col,
-                        r,
-                        crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
-                    );
+                    if ty == SEXPTYPE::STRSXP {
+                        let cstr = CString::new(text).unwrap_or_default();
+                        SET_STRING_ELT(
+                            col,
+                            r,
+                            crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                        );
+                    } else if ty == SEXPTYPE::REALSXP {
+                        *REAL(col).add(r as usize) = if text == "NA" || text.is_empty() {
+                            NA_REAL
+                        } else {
+                            crate::mainutils::coerce::parse_double_str(text).unwrap_or(NA_REAL)
+                        };
+                    } else if ty == SEXPTYPE::INTSXP {
+                        *INTEGER(col).add(r as usize) = if text == "NA" || text.is_empty() {
+                            NA_INTEGER
+                        } else {
+                            text.parse::<c_int>().unwrap_or(NA_INTEGER)
+                        };
+                    } else {
+                        *LOGICAL(col).add(r as usize) =
+                            parse_scan_logical(text).unwrap_or(NA_INTEGER);
+                    }
                 }
             }
             result
