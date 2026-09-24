@@ -590,6 +590,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"traceback\0",
+        None,
+        1,
+        11,
+        1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"seterrmessage\0",
         None,
         0,
@@ -5233,6 +5241,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         ".dfltStop" => Some(crate::mainutils::errors::do_dfltStop),
         ".dfltWarn" => Some(crate::mainutils::errors::do_dfltWarn),
         "geterrmessage" => Some(crate::mainutils::errors::do_geterrmessage),
+        "traceback" => Some(crate::mainutils::errors::do_traceback),
         "seterrmessage" => Some(crate::mainutils::errors::do_seterrmessage),
         "printDeferredWarnings" => Some(crate::mainutils::errors::do_printDeferredWarnings),
         "interruptsSuspended" => Some(crate::mainutils::errors::do_interruptsSuspended),
