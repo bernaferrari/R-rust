@@ -432,6 +432,51 @@ pub unsafe fn zeroin2(
     }
 }
 
+/// `.External2(C_do_fmin, f, lower, upper, tol)` — scalar minimizer.
+pub unsafe fn do_fmin(
+    _call: crate::sexp::ffi::SEXP,
+    _op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    rho: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, REAL};
+        use crate::sexp::constructors::Rf_allocVector;
+        use crate::sexp::ffi::SEXPTYPE;
+        let mut a = CDR(args);
+        let fun = CAR(a);
+        a = CDR(a);
+        let mut lo = crate::mainutils::coerce::asReal(CAR(a));
+        a = CDR(a);
+        let mut hi = crate::mainutils::coerce::asReal(CAR(a));
+        let mut ctx = ZeroinCtx { fun, rho };
+        let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
+        let gr = (5.0f64.sqrt() - 1.0) / 2.0;
+        let mut x1 = hi - gr * (hi - lo);
+        let mut x2 = lo + gr * (hi - lo);
+        let mut f1 = zeroin_call(x1, info);
+        let mut f2 = zeroin_call(x2, info);
+        for _ in 0..80 {
+            if f1 < f2 {
+                hi = x2;
+                x2 = x1;
+                f2 = f1;
+                x1 = hi - gr * (hi - lo);
+                f1 = zeroin_call(x1, info);
+            } else {
+                lo = x1;
+                x1 = x2;
+                f1 = f2;
+                x2 = lo + gr * (hi - lo);
+                f2 = zeroin_call(x2, info);
+            }
+        }
+        let out = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+        *REAL(out) = 0.5 * (lo + hi);
+        out
+    }
+}
+
 
 
 

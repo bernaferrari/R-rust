@@ -155,6 +155,9 @@ unsafe extern "C-unwind" fn c_fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_zeroin2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { super::zeroin::zeroin2(call, op, args, env) }
 }
+unsafe extern "C-unwind" fn c_do_fmin(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { super::zeroin::do_fmin(call, op, args, env) }
+}
 
 fn reject_var_on_factor(x: SEXP) {
     unsafe {
@@ -495,7 +498,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_cov", "C_cor", "C_Cdist", "C_hclust", "C_hcass2", "C_rbart", "C_bvalus", "C_numeric_deriv", "C_optim", "C_optimhess",
     "C_ARIMA_transPars", "C_ARIMA_CSS", "C_ARIMA_Like", "C_ARIMA_Invtrans", "C_ARIMA_undoPars", "C_ARIMA_Gradtrans", "C_TSconv", "C_getQ0",
     "C_doD", "C_deriv", "C_fft", "C_mvfft",
-    "C_ApproxTest", "C_Approx", "C_zeroin2", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
+    "C_ApproxTest", "C_Approx", "C_zeroin2", "C_do_fmin", "C_Fisher_sim", "C_kmns", "C_call_dqags", "C_call_dqagi",
     "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_lowesw", "C_lowesp",
     "C_kmeans_Lloyd", "C_kmeans_MacQueen", "C_Rsm", "C_tukeyline", "C_pRho", "C_pKendall", "C_ksmooth", "C_rfilter", "C_cfilter", "C_arma0_kfore", "C_psmirnov_exact",
     "C_dpermdist1", "C_dpermdist2",
@@ -607,6 +610,9 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         ),
         "zeroin2" => as_dl(
             c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "do_fmin" => as_dl(
+            c_do_fmin as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
         ),
         "Fisher_sim" => as_dl(c_fisher_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "setup_starma" => as_dl(super::starma_api::c_setup_starma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
