@@ -1118,10 +1118,12 @@ pub unsafe fn dgeqp3_(
             }
         }
 
-        // Initialize jpvt to 1-based column indices
+        // LAPACK: a nonzero jpvt entry is a fixed column and stays in place.
+        // Only jpvt == 0 columns are free to move. lm() fills 1..p, so a
+        // full-rank model must not swap the intercept with a larger predictor.
+        let fixed: Vec<bool> = (0..n_val).map(|j| *jpvt.add(j) != 0).collect();
         for j in 0..n_val {
-            let cur = *jpvt.add(j);
-            if cur == 0 {
+            if *jpvt.add(j) == 0 {
                 *jpvt.add(j) = (j + 1) as core::ffi::c_int;
             }
         }
@@ -1139,13 +1141,18 @@ pub unsafe fn dgeqp3_(
         // Householder QR with column pivoting
         for jj in 0..k {
             crate::eval::limits::poll_computation();
-            // Find pivot column (largest remaining norm)
-            let mut max_norm = 0.0f64;
+            // Find pivot column (largest remaining free norm)
+            let mut max_norm = -1.0f64;
             let mut pivot = jj;
-            for j in jj..n_val {
-                if col_norms_sq[j] > max_norm {
-                    max_norm = col_norms_sq[j];
-                    pivot = j;
+            if !fixed[jj] {
+                for j in jj..n_val {
+                    if fixed[j] {
+                        continue;
+                    }
+                    if col_norms_sq[j] > max_norm {
+                        max_norm = col_norms_sq[j];
+                        pivot = j;
+                    }
                 }
             }
 
