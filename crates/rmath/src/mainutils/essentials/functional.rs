@@ -2302,7 +2302,21 @@ pub unsafe fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let nx = lens[i];
             orep = if nx == 0 { 0 } else { orep / nx };
             if strings_as_factors && TYPEOF(x) == SEXPTYPE::STRSXP {
-                let fargs = Rf_cons(x, R_NilValue());
+                let mut uniq: Vec<String> = Vec::new();
+                for k in 0..XLENGTH(x) {
+                    let text = crate::mainutils::essentials::elt_to_string(x, k);
+                    if !uniq.iter().any(|u| u == &text) {
+                        uniq.push(text);
+                    }
+                }
+                let lev = Rf_allocVector3(SEXPTYPE::STRSXP, uniq.len() as i64);
+                let _lv = protect(lev);
+                for (k, text) in uniq.iter().enumerate() {
+                    let cstr = std::ffi::CString::new(text.as_str()).unwrap_or_default();
+                    SET_STRING_ELT(lev, k as i64, Rf_mkChar(cstr.as_ptr()));
+                }
+                let fargs = Rf_cons(lev, R_NilValue());
+                let fargs = Rf_cons(x, fargs);
                 let _fa = protect(fargs);
                 x = crate::mainutils::essentials::do_factor(_call, _op, fargs, _rho);
             }
