@@ -70,20 +70,10 @@ function(x, breaks = "Sturges", freq = NULL, probability = NULL,
     fuzzv <- if (right) c(if (include.lowest) -diddle else diddle, rep(diddle, nB - 1L))
              else c(rep(-diddle, nB - 1L), if (include.lowest) diddle else -diddle)
     fuzzybreaks <- breaks + fuzzv
-    counts <- integer(nB - 1L)
-
-    for (v in x) {
-        lo <- 1L
-        hi <- nB - 1L
-        while (lo < hi) {
-            mid <- (lo + hi) %/% 2L
-            if (v > fuzzybreaks[mid + 1L] || (right && v == fuzzybreaks[mid + 1L] && !(mid == nB - 1L && !include.lowest)))
-                lo <- mid + 1L
-            else
-                hi <- mid
-        }
-        counts[lo] <- counts[lo] + 1L
-    }
+    counts <- tabulate(
+        findInterval(x, fuzzybreaks, rightmost.closed = TRUE,
+                     all.inside = TRUE, left.open = right),
+        nbins = nB - 1L)
     if (sum(counts) < n) stop("some 'x' not counted; maybe 'breaks' do not span range of 'x'")
     dens <- counts / (n * h)
     mids <- 0.5 * (breaks[-nB] + breaks[-1L])
