@@ -2298,7 +2298,7 @@ pub unsafe fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 
         let values = INTEGER(ans);
         *values.add(0) = 8 * 1024 * 1024;
-        *values.add(1) = 0;
+        *values.add(1) = crate::sexp::ffi::NA_INTEGER;
         *values.add(2) = 1;
         *values.add(3) = 0;
 

@@ -1411,6 +1411,71 @@ pub unsafe fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         }
         let xt = TYPEOF(x);
+        if xt == SEXPTYPE::VECSXP {
+            let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
+            let is_df = !class.is_null()
+                && TYPEOF(class) == SEXPTYPE::STRSXP
+                && (0..XLENGTH(class)).any(|i| {
+                    let s = STRING_ELT(class, i);
+                    !s.is_null()
+                        && std::ffi::CStr::from_ptr(CHAR(s)).to_str().ok() == Some("data.frame")
+                });
+            if !is_df {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "'x' must be numeric",
+                );
+            }
+            let nc = XLENGTH(x);
+            let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nc);
+            let _a = protect(ans);
+            let mut rownames = R_NilValue();
+            for i in 0..nc {
+                let col = VECTOR_ELT(x, i);
+                let args_i = Rf_cons(col, Rf_cons(group, R_NilValue()));
+                let _ai = protect(args_i);
+                let summed = do_rowsum(_call, _op, args_i, _rho);
+                if i == 0 {
+                    let dn = crate::sexp::attrib_core::getAttrib(
+                        summed,
+                        crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    );
+                    if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) > 0 {
+                        rownames = VECTOR_ELT(dn, 0);
+                    }
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    summed,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                    R_NilValue(),
+                );
+                crate::sexp::attrib_core::setAttrib(
+                    summed,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    R_NilValue(),
+                );
+                SET_VECTOR_ELT(ans, i, summed);
+            }
+            let names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    ans,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+            if !rownames.is_null() && rownames != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(ans, Rf_install(c"row.names".as_ptr()), rownames);
+            }
+            let cls = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            let c = std::ffi::CString::new("data.frame").unwrap_or_default();
+            SET_STRING_ELT(cls, 0, Rf_mkChar(c.as_ptr()));
+            crate::sexp::attrib_core::setAttrib(ans, Rf_install(c"class".as_ptr()), cls);
+            return ans;
+        }
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
                 unsafe { crate::mainutils::errors::R_getCurrentCall() },
@@ -1501,7 +1566,13 @@ pub unsafe fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             SET_STRING_ELT(rn, i as i64, Rf_mkChar(cstr.as_ptr()));
         }
         SET_VECTOR_ELT(dn, 0, rn);
-        SET_VECTOR_ELT(dn, 1, R_NilValue());
+        let xdn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+        let cn = if !xdn.is_null() && xdn != R_NilValue() && TYPEOF(xdn) == SEXPTYPE::VECSXP && XLENGTH(xdn) > 1 {
+            VECTOR_ELT(xdn, 1)
+        } else {
+            R_NilValue()
+        };
+        SET_VECTOR_ELT(dn, 1, cn);
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_DimNamesSymbol(),
