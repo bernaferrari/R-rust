@@ -1559,6 +1559,48 @@ pub unsafe fn do_cut_POSIXt(
             crate::sexp::attrib_core::setAttrib(res, crate::sexp::attrib_core::R_LevelsSymbol(), labels);
             return res;
         }
+        if TYPEOF(breaks) == SEXPTYPE::STRSXP && XLENGTH(breaks) >= 1 {
+            let ch = STRING_ELT(breaks, 0);
+            let text = if ch.is_null() { String::new() } else { std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned() };
+            let mut parts = text.split_whitespace();
+            let first = parts.next().unwrap_or("");
+            let (count, unit) = if let Some(unit) = parts.next() {
+                (first.parse::<f64>().unwrap_or(0.0), unit)
+            } else {
+                (1.0, first)
+            };
+            let mult = if unit.starts_with("hour") { 3600.0 } else if unit.starts_with("min") { 60.0 } else if unit.starts_with("sec") { 1.0 } else { 0.0 };
+            if mult > 0.0 && count > 0.0 {
+                let step = count * mult;
+                let mut secs = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    secs.push(if TYPEOF(x) == SEXPTYPE::INTSXP {
+                        let v = *INTEGER(x).add(i as usize);
+                        if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                    } else { *REAL(x).add(i as usize) });
+                }
+                let min = secs.iter().copied().filter(|v| v.is_finite()).fold(f64::INFINITY, f64::min);
+                let start = if min.is_finite() { (min / step).floor() * step } else { 0.0 };
+                let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+                let mut nlev = 0i32;
+                for i in 0..n as usize {
+                    let code = if !secs[i].is_finite() { NA_INTEGER } else {
+                        let c = ((secs[i] - start) / step).floor() as i32 + 1;
+                        if c > nlev { nlev = c; }
+                        c
+                    };
+                    *INTEGER(result).add(i) = code;
+                }
+                let labels = Rf_allocVector3(SEXPTYPE::STRSXP, nlev as i64);
+                for k in 0..nlev {
+                    let label = format!("{}", start + (k as f64) * step);
+                    SET_STRING_ELT(labels, k as i64, Rf_mkChar(std::ffi::CString::new(label).unwrap().as_ptr()));
+                }
+                crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_LevelsSymbol(), labels);
+                crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), Rf_mkString(c"factor".as_ptr()));
+                return result;
+            }
+        }
         let n = XLENGTH(x);
         let days = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _d = protect(days);
