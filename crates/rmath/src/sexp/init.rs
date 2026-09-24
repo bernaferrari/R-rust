@@ -1302,6 +1302,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "print.POSIXlt", include_str!("gnu_print_POSIXt.R"));
         eval_base_binding(
             base_env,
+            ".valid.factor",
+            "function(object) {\n\
+             levs <- levels(object)\n\
+             if (!is.character(levs)) return(\"factor levels must be \\\"character\\\"\")\n\
+             if (d <- anyDuplicated(levs)) return(sprintf(\"duplicated level [%d] in factor\", d))\n\
+             TRUE\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "factor",
             "function(x = character(), levels, labels = levels,\n\
              exclude = NA, ordered = is.ordered(x), nmax = NA) {\n\
