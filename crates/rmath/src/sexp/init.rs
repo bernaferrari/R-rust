@@ -942,7 +942,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "Map",
-            "function(f, ...) mapply(FUN = f, ..., SIMPLIFY = FALSE)",
+            "function(f, ...) { f <- match.fun(f); mapply(FUN = f, ..., SIMPLIFY = FALSE) }",
         );
         eval_base_binding(base_env, "xy.coords", include_str!("gnu_xy_coords.R"));
         eval_base_binding(base_env, "fix", include_str!("gnu_fix.R"));

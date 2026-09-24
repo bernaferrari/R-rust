@@ -706,7 +706,13 @@ fn sexp_type_name(t: SEXPTYPE) -> &'static str {
 /// R's `Map(f, ...)` — apply f element-wise.
 pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let fun = callable_arg_by_name_or_position(args, &["f", "FUN"], 0, rho);
+        let raw = callable_arg_by_name_or_position(args, &["f", "FUN"], 0, rho);
+        let matched = Rf_cons(raw, R_NilValue());
+        let _m = protect(matched);
+        let call = Rf_cons(crate::sexp::symbol::Rf_install(c"match.fun".as_ptr()), matched);
+        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        let _c = protect(call);
+        let fun = crate::eval::eval::Rf_eval(call, rho);
 
         let x = eval_arg_by_name_or_position(args, &[], 1, rho);
         if fun.is_null() || x.is_null() || x == R_NilValue() {
