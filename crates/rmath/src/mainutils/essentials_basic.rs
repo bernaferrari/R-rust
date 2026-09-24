@@ -1821,15 +1821,20 @@ pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _p = protect(result);
             for i in 0..n {
-                let line = crate::mainutils::deparse::deparse1(
-                    VECTOR_ELT(x, i),
-                    false,
-                    crate::mainutils::deparse::SHOW_ATTR_OR_NMS,
-                );
-                let chars = if !line.is_null() && line != R_NilValue() && XLENGTH(line) > 0 {
-                    STRING_ELT(line, 0)
+                let elt = VECTOR_ELT(x, i);
+                let chars = if TYPEOF(elt) == SEXPTYPE::STRSXP && XLENGTH(elt) > 0 {
+                    STRING_ELT(elt, 0)
                 } else {
-                    Rf_mkChar(c"".as_ptr())
+                    let line = crate::mainutils::deparse::deparse1(
+                        elt,
+                        false,
+                        crate::mainutils::deparse::SHOW_ATTR_OR_NMS,
+                    );
+                    if !line.is_null() && line != R_NilValue() && XLENGTH(line) > 0 {
+                        STRING_ELT(line, 0)
+                    } else {
+                        Rf_mkChar(c"".as_ptr())
+                    }
                 };
                 SET_STRING_ELT(result, i, chars);
             }
