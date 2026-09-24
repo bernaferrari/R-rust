@@ -1695,6 +1695,21 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
 
 
 
+        eval_base_binding(
+            base_env,
+            "formals",
+            "function(fun = sys.function(sys.parent()), envir = parent.frame()) {\n\
+             if (is.character(fun))\n\
+                 fun <- get(fun, mode = \"function\", envir = envir)\n\
+             .Internal(formals(fun))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "formalArgs",
+            "function(def) names(formals(def))",
+        );
+
         // GNU formals.R: replacement functions are closures, not primitives.
         eval_base_binding(
             base_env,
