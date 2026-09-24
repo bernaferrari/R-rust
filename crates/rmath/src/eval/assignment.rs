@@ -513,6 +513,12 @@ unsafe fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_
 /// GNU `replaceCall(afun, *tmp*, rest, rhs)`: `afun(`*tmp*`, ...rest, rhs)`.
 unsafe fn replace_tmp_call(assign_fn: SEXP, tmp_sym: SEXP, rest: SEXP, rhs: SEXP) -> SEXP {
     unsafe {
+        let rhs = match TYPEOF(rhs) {
+            t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP => {
+                crate::sexp::memory_ext::R_mkEVPROMISE(R_NilValue(), rhs)
+            }
+            _ => rhs,
+        };
         let rhs_cell = crate::sexp::constructors::Rf_cons(rhs, R_NilValue());
         SETTAG(rhs_cell, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
         let _rhs_cell = protect(rhs_cell);
