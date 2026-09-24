@@ -100,6 +100,17 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return empty;
         }
         let integer_overflow_can_warn = matches!(op, "+" | "-" | "*");
+        let sa_dim = crate::sexp::attrib_core::getAttrib(sa, crate::sexp::attrib_core::R_DimSymbol());
+        let sb_dim = crate::sexp::attrib_core::getAttrib(sb, crate::sexp::attrib_core::R_DimSymbol());
+        let sa_arr = !sa_dim.is_null() && sa_dim != R_NilValue();
+        let sb_arr = !sb_dim.is_null() && sb_dim != R_NilValue();
+        let al = XLENGTH(sa);
+        let bl = XLENGTH(sb);
+        if sa_arr && !sb_arr && al == 1 && bl > 1 {
+            warn_simple("Recycling array of length 1 in array-vector arithmetic is deprecated.\n  Use c() or as.vector() instead.");
+        } else if sb_arr && !sa_arr && bl == 1 && al > 1 {
+            warn_simple("Recycling array of length 1 in vector-array arithmetic is deprecated.\n  Use c() or as.vector() instead.");
+        }
         let result_raw = if use_real {
             Rf_allocVector3(SEXPTYPE::REALSXP, n)
         } else {
@@ -188,6 +199,16 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let Some(b) = NumericVector::from_raw(sb) else {
             arithmetic_error("comparison of these types is not implemented");
         };
+        let sa_dim = crate::sexp::attrib_core::getAttrib(sa, crate::sexp::attrib_core::R_DimSymbol());
+        let sb_dim = crate::sexp::attrib_core::getAttrib(sb, crate::sexp::attrib_core::R_DimSymbol());
+        let sa_arr = !sa_dim.is_null() && sa_dim != R_NilValue();
+        let sb_arr = !sb_dim.is_null() && sb_dim != R_NilValue();
+        let al = XLENGTH(sa);
+        let bl = XLENGTH(sb);
+        if (sa_arr && !sb_arr && al != bl && bl != 0) || (sb_arr && !sa_arr && al != bl && al != 0) {
+            let (prod, obj) = if sa_arr { (al, bl) } else { (bl, al) };
+            arithmetic_error(&format!("dims [product {prod}] do not match the length of object [{obj}]"));
+        }
         let n = a.clone().recycled_len_with(b.clone());
         if n == 0 {
             let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);

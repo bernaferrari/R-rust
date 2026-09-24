@@ -603,6 +603,17 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let nx = XLENGTH(x);
         let ny = XLENGTH(y);
 
+        let xdim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let ydim = crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_DimSymbol());
+        let x_arr = !xdim.is_null() && xdim != R_NilValue();
+        let y_arr = !ydim.is_null() && ydim != R_NilValue();
+        if (x_arr && nx != ny && ny != 0) || (y_arr && nx != ny && nx != 0) {
+            if !(x_arr && y_arr) {
+                logic_error(&format!(
+                    "dims [product {nx}] do not match the length of object [{ny}]"
+                ));
+            }
+        }
         // Zero-length case
         if nx == 0 || ny == 0 {
             let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
