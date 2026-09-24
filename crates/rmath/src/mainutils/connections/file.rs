@@ -1101,3 +1101,116 @@ pub unsafe fn do_readTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
 pub unsafe fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
+
+fn bytes_of(from: SEXP) -> Vec<u8> {
+    unsafe {
+        if from.is_null() || from == R_NilValue() {
+            return Vec::new();
+        }
+        if TYPEOF(from) == SEXPTYPE::STRSXP && XLENGTH(from) > 0 {
+            let ch = STRING_ELT(from, 0);
+            if ch.is_null() {
+                return Vec::new();
+            }
+            return CStr::from_ptr(CHAR(ch)).to_bytes().to_vec();
+        }
+        if TYPEOF(from) == SEXPTYPE::RAWSXP {
+            let n = XLENGTH(from) as usize;
+            return std::slice::from_raw_parts(RAW(from), n).to_vec();
+        }
+        Vec::new()
+    }
+}
+
+fn raw_from(bytes: &[u8]) -> SEXP {
+    unsafe {
+        let out = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as i32);
+        if !bytes.is_empty() {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(out), bytes.len());
+        }
+        out
+    }
+}
+
+fn compress_type(args: SEXP) -> String {
+    unsafe {
+        let cell = CDR(args);
+        if cell.is_null() || cell == R_NilValue() {
+            return "gzip".to_string();
+        }
+        let value = CAR(cell);
+        if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+            let ch = STRING_ELT(value, 0);
+            if !ch.is_null() {
+                return CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned();
+            }
+        }
+        "gzip".to_string()
+    }
+}
+
+pub unsafe fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let input = bytes_of(CAR(args));
+        let mut output = Vec::new();
+        let kind = compress_type(args);
+        let result = if kind == "xz" {
+            lzma_rs::xz_compress(&mut &input[..], &mut output)
+        } else if kind == "bzip2" {
+            let mut enc = BzEncoder::new(output, BzCompression::default());
+            let _ = enc.write_all(&input);
+            output = enc.finish().unwrap_or_default();
+            Ok(())
+        } else if kind == "none" {
+            output = input.clone();
+            Ok(())
+        } else {
+            let mut enc = GzEncoder::new(output, GzCompression::default());
+            let _ = enc.write_all(&input);
+            output = enc.finish().unwrap_or_default();
+            Ok(())
+        };
+        if result.is_err() {
+            r_error("memCompress failed");
+        }
+        raw_from(&output)
+    }
+}
+
+pub unsafe fn do_memDecompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let input = bytes_of(CAR(args));
+        let kind = compress_type(args);
+        let mut output = Vec::new();
+        let result = if kind == "xz" {
+            lzma_rs::xz_decompress(&mut &input[..], &mut output)
+        } else if kind == "bzip2" {
+            let mut dec = BzDecoder::new(&input[..]);
+            let _ = dec.read_to_end(&mut output);
+            Ok(())
+        } else if kind == "none" {
+            output = input.clone();
+            Ok(())
+        } else {
+            let mut dec = GzDecoder::new(&input[..]);
+            let _ = dec.read_to_end(&mut output);
+            Ok(())
+        };
+        if result.is_err() {
+            r_error("memDecompress failed");
+        }
+        let as_char = {
+            let cell = CDR(CDR(args));
+            !cell.is_null()
+                && cell != R_NilValue()
+                && crate::mainutils::coerce::asLogical(CAR(cell)) == 1
+        };
+        if as_char {
+            let text = String::from_utf8_lossy(&output);
+            let c = CString::new(text.as_ref()).unwrap_or_default();
+            Rf_mkString(c.as_ptr())
+        } else {
+            raw_from(&output)
+        }
+    }
+}

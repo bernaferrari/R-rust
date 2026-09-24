@@ -4007,6 +4007,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::connections::do_xzfile,
     },
     EvaluatedBuiltin {
+        name: "memCompress",
+        handler: crate::mainutils::connections::do_memCompress,
+    },
+    EvaluatedBuiltin {
+        name: "memDecompress",
+        handler: crate::mainutils::connections::do_memDecompress,
+    },
+    EvaluatedBuiltin {
         name: "pipe",
         handler: crate::mainutils::essentials::do_pipe,
     },
