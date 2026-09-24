@@ -2122,21 +2122,24 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 }
                 let labels: Vec<String> = if dup {
                     let mut used = std::collections::HashSet::new();
+                    let mut next = std::collections::HashMap::new();
                     let mut out = Vec::with_capacity(labels.len());
                     for label in labels {
                         let base = label.unwrap_or_default();
                         if used.insert(base.clone()) {
+                            next.insert(base.clone(), 1u32);
                             out.push(base);
                             continue;
                         }
-                        let mut k = 1u32;
+                        let mut k = next.get(&base).copied().unwrap_or(1);
                         loop {
                             let candidate = format!("{base}.{k}");
+                            k += 1;
                             if used.insert(candidate.clone()) {
+                                next.insert(base, k);
                                 out.push(candidate);
                                 break;
                             }
-                            k += 1;
                         }
                     }
                     out

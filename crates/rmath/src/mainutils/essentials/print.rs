@@ -1804,6 +1804,31 @@ fn print_data_frame_show_row_names(args: SEXP) -> bool {
         true
     }
 }
+fn print_data_frame_max(args: SEXP) -> i64 {
+    unsafe {
+        let max_sym = Rf_install(c"max".as_ptr());
+        let mut arg = CDR(args);
+        while !arg.is_null() && arg != R_NilValue() {
+            if TAG(arg) == max_sym {
+                let value = CAR(arg);
+                if TYPEOF(value) == SEXPTYPE::INTSXP {
+                    let data = INTEGER(value);
+                    if !data.is_null() && *data != NA_INTEGER {
+                        return (*data as i64).max(1);
+                    }
+                }
+                if TYPEOF(value) == SEXPTYPE::REALSXP {
+                    let data = REAL(value);
+                    if !data.is_null() && data.read().is_finite() {
+                        return data.read() as i64;
+                    }
+                }
+            }
+            arg = CDR(arg);
+        }
+        crate::mainutils::options::GetOptionMaxPrint().max(1) as i64
+    }
+}
 /// GNU `print.data.frame` leaves character and logical NA unencoded
 /// (`na.encode = FALSE`) and `print.default` renders those as `<NA>`.
 /// Numeric NA stays `NA`.
@@ -2031,7 +2056,7 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 
         let show_row_names = print_data_frame_show_row_names(args);
         // GNU formats x[seq_len(n0),] so column/label widths ignore omitted rows.
-        let max_print = crate::mainutils::options::GetOptionMaxPrint().max(1) as R_xlen_t;
+        let max_print = print_data_frame_max(args) as R_xlen_t;
         let n0 = if ncol > 0 {
             (max_print / ncol) as usize
         } else {
