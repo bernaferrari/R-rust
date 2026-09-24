@@ -1923,6 +1923,9 @@ pub(crate) unsafe fn load_package_namespace(
             crate::library::tools::native_calls::install_tools_call_symbols(package_env);
             crate::library::tools::native_calls::install_tools_assert_closures(package_env);
         }
+        if package == "utils" {
+            crate::library::utils::install_utils_call_symbols(package_env);
+        }
         ensure_namespace_info(package, package_dir, package_env, namespace.as_ref());
 
 

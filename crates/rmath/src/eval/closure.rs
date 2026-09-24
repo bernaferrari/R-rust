@@ -576,7 +576,11 @@ fn is_function_sexp(value: SEXP) -> bool {
 unsafe fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let empty = crate::sexp::globals::R_EmptyEnv();
-        if cloenv.is_null() || crate::sexp::accessors::ENCLOS(cloenv) != empty {
+        if cloenv.is_null() {
+            return cloenv;
+        }
+        let parent = crate::sexp::accessors::ENCLOS(cloenv);
+        if !cloenv.is_null() && !parent.is_null() && parent != empty {
             return cloenv;
         }
         let Some(utils) = crate::mainutils::essentials::cached_namespace_by_name("utils") else {
@@ -585,7 +589,7 @@ unsafe fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
         let symbol = crate::sexp::symbol::Rf_install(c"RweaveLatexRuncode".as_ptr());
         let mut bound = crate::sexp::envir::R_findVarInFrame(utils, symbol);
         if crate::sexp::accessors::TYPEOF(bound) == crate::sexp::ffi::SEXPTYPE::PROMSXP {
-            bound = crate::sexp::accessors::PRVALUE(bound);
+            bound = crate::sexp::envir::forcePromise(bound);
         }
         if bound == op {
             crate::sexp::accessors::SET_ENCLOS(cloenv, utils);

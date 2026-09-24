@@ -1083,6 +1083,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "summary.connection",
             "function(object, ...) .Internal(summary.connection(object))",
         );
+        eval_base_binding(base_env, "srcfilecopy", include_str!("gnu_srcfilecopy.R"));
+
     eval_base_binding(base_env, ".traceback", include_str!("gnu_dot_traceback.R"));
     eval_base_binding(base_env, "traceback", include_str!("gnu_traceback.R"));
     eval_base_binding(base_env, "get_all_vars", include_str!("gnu_get_all_vars.R"));
