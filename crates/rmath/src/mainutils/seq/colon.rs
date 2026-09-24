@@ -87,7 +87,13 @@ pub unsafe fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
         // R's colon produces a descending range when n1 > n2; the naive
         // (n2 - n1) as unsigned cast wraps, so pass both ends through and
         // let R_compact_intrange pick the direction.
-        if n1 == n1 as i64 as c_double && n2 == n2 as i64 as c_double {
+        if n1 == n1 as i64 as c_double
+            && n2 == n2 as i64 as c_double
+            && n1 >= c_int::MIN as c_double
+            && n1 <= c_int::MAX as c_double
+            && n2 >= c_int::MIN as c_double
+            && n2 <= c_int::MAX as c_double
+        {
             return R_compact_intrange(n1 as i64 as R_xlen_t, n2 as i64 as R_xlen_t);
         }
 
@@ -436,7 +442,6 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else if one_arg {
             ans = seq_colon(1.0, lout as c_double, call);
         } else if by == R_MissingArg() {
-            // length.out specified, by missing
             let mut rfrom = asReal(from);
             let mut rto = asReal(to);
             let mut rby: c_double = 0.0;
