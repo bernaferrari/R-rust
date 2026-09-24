@@ -66,6 +66,14 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
             } else {
                 value
             };
+            if rows.len() as i64 == nrows
+                && XLENGTH(src) == nrows
+                && TYPEOF(col) == SEXPTYPE::REALSXP
+                && TYPEOF(src) == SEXPTYPE::INTSXP
+            {
+                SET_VECTOR_ELT(frame, col_i, crate::mainutils::duplicate::Rf_duplicate(src));
+                continue;
+            }
             let updated = assign_column_rows(col, &rows, src, XLENGTH(src).max(1));
             SET_VECTOR_ELT(frame, col_i, updated);
         }
