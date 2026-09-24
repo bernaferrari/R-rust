@@ -93,12 +93,7 @@ pub unsafe fn do_cmpfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if fun.is_null() || fun == R_NilValue() {
             compiler_error("cannot compile a non-function");
         }
-        if let Some(options) = options
-            && !options.is_null()
-            && options != R_NilValue()
-        {
-            compiler_error("portable compiler does not support compiler options");
-        }
+        let _options = options;
 
         match compiler_cmpfun(fun) {
             Ok(compiled) => compiled,
