@@ -1991,6 +1991,8 @@ fn atomic_unique_key(x: SEXP, index: R_xlen_t, target_type: SEXPTYPE) -> AtomicU
                     AtomicUniqueKey::Real(crate::sexp::ffi::R_NA_BIT_PATTERN)
                 } else if value.is_nan() {
                     AtomicUniqueKey::Real(f64::NAN.to_bits())
+                } else if value == 0.0 {
+                    AtomicUniqueKey::Real(0)
                 } else {
                     AtomicUniqueKey::Real(value.to_bits())
                 }
