@@ -890,7 +890,12 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> S
             x,
             crate::sexp::attrib_core::R_NamesSymbol(),
         );
-        let named = !names.is_null()
+        let has_dim = !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 1;
+        let named = !has_dim
+            && !names.is_null()
             && names != R_NilValue()
             && TYPEOF(names) == SEXPTYPE::STRSXP
             && XLENGTH(names) > 0;
