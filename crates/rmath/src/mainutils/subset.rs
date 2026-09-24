@@ -923,8 +923,6 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
         // If s looks like a symbol with empty name, treat as missing.
         // The simpler approach: check if the symbol's printname is empty.
         let is_missing = s == R_MissingArg()
-            || s.is_null()
-            || s == R_NilValue()
             || if isSymbol(s) {
                 let pn = PRINTNAME(s);
                 if isNull(pn) {
@@ -2227,7 +2225,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             }
             let dim = getAttrib(x, sym_Dim());
             let ndim = length_int(dim);
-            let ans = VectorSubset(ax, if nsubs == 1 { CAR(subs) } else { R_NilValue() }, call);
+            let ans = VectorSubset(ax, if nsubs == 1 { CAR(subs) } else { R_MissingArg() }, call);
             let ans_guard = protect(ans);
 
             /* One-dimensional arrays should keep their dimension unless drop && len == 1 */
