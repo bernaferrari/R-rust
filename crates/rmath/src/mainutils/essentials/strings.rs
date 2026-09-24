@@ -764,8 +764,8 @@ pub unsafe fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
+        let mut bases: Vec<String> = Vec::with_capacity(n as usize);
         let mut seen = std::collections::HashSet::<String>::new();
-        let mut next = std::collections::HashMap::<String, u32>::new();
         for i in 0..n {
             let ch = if TYPEOF(names) == SEXPTYPE::STRSXP {
                 STRING_ELT(names, i)
@@ -779,8 +779,14 @@ pub unsafe fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     .to_string_lossy()
                     .into_owned()
             };
-            let unique = if seen.insert(base.clone()) {
-                next.insert(base.clone(), 1);
+            seen.insert(base.clone());
+            bases.push(base);
+        }
+        let mut kept = std::collections::HashSet::<String>::new();
+        let mut next = std::collections::HashMap::<String, u32>::new();
+        for (i, base) in bases.into_iter().enumerate() {
+            let unique = if kept.insert(base.clone()) {
+                next.entry(base.clone()).or_insert(1);
                 base
             } else {
                 let mut k = next.get(&base).copied().unwrap_or(1);
@@ -794,7 +800,7 @@ pub unsafe fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 }
             };
             let c = CString::new(unique).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+            SET_STRING_ELT(out, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
         }
         out
     }
