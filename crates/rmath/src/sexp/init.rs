@@ -1580,6 +1580,17 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Internal(sort(x, decreasing, na.last, ...))\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "getOption",
+            "function(x, default = NULL) {\n\
+             if (missing(default)) .Internal(getOption(x))\n\
+             else {\n\
+                 ans <- .Internal(getOption(x))\n\
+                 if (is.null(ans)) default else ans\n\
+             }\n\
+             }",
+        );
         eval_base_binding(base_env, "diff.ts", include_str!("gnu_diff_ts.R"));
         eval_base_binding(
             base_env,
