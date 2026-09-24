@@ -394,6 +394,13 @@ unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
                         c_int::from(z.r != 0.0 || z.i != 0.0)
                     }
                 }
+                t if t == SEXPTYPE::RAWSXP => {
+                    if Rf_length(x) < 1 {
+                        crate::sexp::ffi::NA_LOGICAL
+                    } else {
+                        c_int::from(*crate::sexp::accessors::RAW(x) != 0)
+                    }
+                }
                 _ => crate::sexp::ffi::NA_LOGICAL,
             }
         };
