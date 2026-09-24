@@ -207,6 +207,9 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
         ans
     }
 }
+pub unsafe extern "C-unwind" fn c_tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
+    unsafe { tukeyline(x, y, iter, call) }
+}
 
 /// GNU `line(x, y)` Tukey resistant line.
 pub unsafe fn do_line(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
