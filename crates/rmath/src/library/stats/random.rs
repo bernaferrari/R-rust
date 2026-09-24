@@ -199,6 +199,25 @@ unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
         } else {
             (XLENGTH(x) as usize, 1usize)
         };
+        let method = if TYPEOF(_na_method) == SEXPTYPE::INTSXP && XLENGTH(_na_method) > 0 {
+            *INTEGER(_na_method)
+        } else {
+            4
+        };
+        let y_null = y.is_null() || y == R_NilValue();
+        if y_null && method == 4 && ncx == 1 {
+            let mut any_na = false;
+            for i in 0..n {
+                let v = *REAL(x).add(i);
+                if v.is_nan() {
+                    any_na = true;
+                    break;
+                }
+            }
+            if any_na {
+                return Rf_ScalarReal(crate::sexp::ffi::NA_REAL);
+            }
+        }
         let y_null = y.is_null() || y == R_NilValue();
         if y_null {
             let ans = if ncx == 1 {

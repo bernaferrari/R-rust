@@ -2358,7 +2358,15 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let f: fn(f64) -> f64 = match op_name {
             "abs" => f64::abs,
-            "sqrt" => |v: f64| if v < 0.0 { f64::NAN } else { libm::sqrt(v) },
+            "sqrt" => |v: f64| {
+                if v.is_nan() {
+                    v
+                } else if v < 0.0 {
+                    f64::NAN
+                } else {
+                    libm::sqrt(v)
+                }
+            },
             "log" => |v: f64| libm::log(v),
             "log2" => |v: f64| libm::log2(v),
             "log10" => |v: f64| libm::log10(v),
