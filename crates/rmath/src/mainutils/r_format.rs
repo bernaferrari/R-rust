@@ -520,7 +520,8 @@ fn format_fixed(v: f64, precision: usize) -> String {
     format!("{v:.precision$}")
 }
 
-/// %e with precision: mantissa in [1,10), exponent always with sign and >=2 digits.
+/// %e with precision. The mantissa comes from Rust's correctly rounded
+/// scientific format; the exponent is rewritten as C `e+XX` (at least two digits).
 fn format_exponent(v: f64, precision: usize, upper: bool) -> String {
     let e_char = if upper { 'E' } else { 'e' };
     if v.is_nan() {
@@ -538,21 +539,11 @@ fn format_exponent(v: f64, precision: usize, upper: bool) -> String {
         return format!("{s}{e_char}+00");
     }
     let neg = v.is_sign_negative();
-    let av = v.abs();
-    // 10^-50 underflows f64 powi before the mantissa is formed.
-    // log10m1 = log10(|v|) - floor(log10(|v|)) stays in [0, 1).
-    let log10v = av.log10();
-    let mut exp = log10v.floor() as i32;
-    let mut mant = 10f64.powf(log10v - exp as f64);
-    let scale = 10f64.powi(precision as i32);
-    mant = (mant * scale).round() / scale;
-    if mant >= 10.0 {
-        mant = 1.0;
-        exp += 1;
-    }
-    let digits = format!("{mant:.precision$}");
+    let rendered = format!("{:.*e}", precision, v.abs());
+    let (mant, exp_txt) = rendered.split_once('e').unwrap_or((rendered.as_str(), "0"));
+    let exp: i32 = exp_txt.parse().unwrap_or(0);
     format!(
-        "{}{digits}{e_char}{}{:02}",
+        "{}{mant}{e_char}{}{:02}",
         if neg { "-" } else { "" },
         if exp < 0 { '-' } else { '+' },
         exp.abs()
