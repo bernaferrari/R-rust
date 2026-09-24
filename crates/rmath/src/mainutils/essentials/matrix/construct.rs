@@ -685,19 +685,32 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !dimnames.is_null()
                 && dimnames != R_NilValue()
                 && TYPEOF(dimnames) == SEXPTYPE::VECSXP
-                && XLENGTH(dimnames) >= 1
+                && XLENGTH(dimnames) >= 2
             {
                 let rn = VECTOR_ELT(dimnames, 0);
-                if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) >= n as i64 {
-                    let names = if XLENGTH(rn) == n as i64 {
-                        rn
-                    } else {
-                        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
-                        for i in 0..n {
-                            SET_STRING_ELT(names, i as R_xlen_t, STRING_ELT(rn, i as R_xlen_t));
-                        }
-                        names
-                    };
+                let cn = VECTOR_ELT(dimnames, 1);
+                let same = !rn.is_null()
+                    && rn != R_NilValue()
+                    && !cn.is_null()
+                    && cn != R_NilValue()
+                    && TYPEOF(rn) == SEXPTYPE::STRSXP
+                    && TYPEOF(cn) == SEXPTYPE::STRSXP
+                    && XLENGTH(rn) >= n as i64
+                    && XLENGTH(cn) >= n as i64
+                    && (0..n).all(|i| {
+                        let a = STRING_ELT(rn, i as R_xlen_t);
+                        let b = STRING_ELT(cn, i as R_xlen_t);
+                        !a.is_null()
+                            && !b.is_null()
+                            && (a == b
+                                || std::ffi::CStr::from_ptr(CHAR(a))
+                                    == std::ffi::CStr::from_ptr(CHAR(b)))
+                    });
+                if same {
+                    let names = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+                    for i in 0..n {
+                        SET_STRING_ELT(names, i as R_xlen_t, STRING_ELT(rn, i as R_xlen_t));
+                    }
                     crate::sexp::attrib_core::setAttrib(
                         result,
                         crate::sexp::attrib_core::R_NamesSymbol(),
