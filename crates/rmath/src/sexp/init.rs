@@ -1649,6 +1649,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
 
         // GNU apply.R: n-d arrays, empty-extent MARGIN, and FUN=NULL collapse.
         eval_base_binding(base_env, "apply", include_str!("gnu_apply.R"));
+        eval_base_binding(base_env, "Vectorize", include_str!("gnu_vectorize.R"));
         eval_base_binding(
             base_env,
             "determinant",

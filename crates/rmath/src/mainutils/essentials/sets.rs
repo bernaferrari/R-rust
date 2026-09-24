@@ -1329,11 +1329,44 @@ fn match_common_type(x: SEXP, table: SEXP) -> SEXPTYPE {
         };
         if xtype == SEXPTYPE::STRSXP || ttype == SEXPTYPE::STRSXP {
             SEXPTYPE::STRSXP
+        } else if xtype == SEXPTYPE::CPLXSXP || ttype == SEXPTYPE::CPLXSXP {
+            SEXPTYPE::CPLXSXP
         } else if xtype == SEXPTYPE::REALSXP || ttype == SEXPTYPE::REALSXP {
             SEXPTYPE::REALSXP
         } else {
             SEXPTYPE::INTSXP
         }
+    }
+}
+
+unsafe fn complex_match_key(x: SEXP, index: R_xlen_t) -> MatchKey {
+    unsafe {
+        let z = match TYPEOF(x) {
+            t if t == SEXPTYPE::CPLXSXP => crate::sexp::accessors::COMPLEX_ELT(x, index as c_int),
+            t if t == SEXPTYPE::REALSXP => {
+                let r = REAL_ELT(x, index as c_int);
+                crate::sexp::ffi::Rcomplex { r, i: 0.0 }
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                let v = INTEGER_ELT(x, index as c_int);
+                let r = if v == NA_INTEGER { NA_REAL } else { v as f64 };
+                crate::sexp::ffi::Rcomplex { r, i: 0.0 }
+            }
+            _ => return MatchKey::Missing,
+        };
+        if crate::sexp::ffi::R_IsNA(z.r) || crate::sexp::ffi::R_IsNA(z.i) {
+            return MatchKey::String("\u{0}CNA".to_string());
+        }
+        let part = |v: f64| -> u64 {
+            if ISNAN(v) {
+                f64::NAN.to_bits()
+            } else if v == 0.0 {
+                0
+            } else {
+                v.to_bits()
+            }
+        };
+        MatchKey::String(format!("\u{0}C{:x}:{:x}", part(z.r), part(z.i)))
     }
 }
 
@@ -1363,6 +1396,7 @@ unsafe fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey
                     MatchKey::String(elt_to_string(x, index))
                 }
             }
+            SEXPTYPE::CPLXSXP => complex_match_key(x, index),
             SEXPTYPE::REALSXP => {
                 let value = match TYPEOF(x) {
                     t if t == SEXPTYPE::REALSXP => REAL_ELT(x, index as c_int),

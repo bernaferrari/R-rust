@@ -65,7 +65,8 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         let body = VECTOR_ELT(arglist, (n - 1) as R_xlen_t);
         let _body_guard = protect(body);
         let bt = TYPEOF(body);
-        if bt == SEXPTYPE::LISTSXP
+        if bt == SEXPTYPE::NILSXP
+            || bt == SEXPTYPE::LISTSXP
             || bt == SEXPTYPE::LANGSXP
             || bt == SEXPTYPE::SYMSXP
             || bt == SEXPTYPE::EXPRSXP

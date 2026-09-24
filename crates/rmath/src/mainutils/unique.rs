@@ -112,21 +112,14 @@ pub fn cplx_eq(x: Rcomplex, y: Rcomplex) -> bool {
     if !ISNAN(x.r) && !ISNAN(x.i) && !ISNAN(y.r) && !ISNAN(y.i) {
         return x.r == y.r && x.i == y.i;
     }
-
-    // x has NA
     if R_IsNA(x.r) || R_IsNA(x.i) {
         return R_IsNA(y.r) || R_IsNA(y.i);
     }
-
-    // y has NA but x doesn't
     if R_IsNA(y.r) || R_IsNA(y.i) {
         return false;
     }
-
-    // Neither has NA but at least one has NaN
     let re_eq = (ISNAN(x.r) && ISNAN(y.r)) || (!ISNAN(x.r) && !ISNAN(y.r) && x.r == y.r);
     let im_eq = (ISNAN(x.i) && ISNAN(y.i)) || (!ISNAN(x.i) && !ISNAN(y.i) && x.i == y.i);
-
     re_eq && im_eq
 }
 

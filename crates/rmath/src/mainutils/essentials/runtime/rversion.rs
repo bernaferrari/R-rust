@@ -164,19 +164,15 @@ pub unsafe fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fn_arg = CAR(args);
-        if fn_arg.is_null() || fn_arg == R_NilValue() {
+        if fn_arg.is_null() || fn_arg == R_NilValue() || TYPEOF(fn_arg) != SEXPTYPE::CLOSXP {
+            crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function".as_ptr());
             return R_NilValue();
         }
-        let t = TYPEOF(fn_arg);
-        if t == SEXPTYPE::CLOSXP {
-            let formals = crate::sexp::accessors::FORMALS(fn_arg);
-            if formals.is_null() {
-                R_NilValue()
-            } else {
-                formals
-            }
-        } else {
+        let formals = crate::sexp::accessors::FORMALS(fn_arg);
+        if formals.is_null() {
             R_NilValue()
+        } else {
+            formals
         }
     }
 }
@@ -295,26 +291,22 @@ unsafe fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
 pub unsafe fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fn_arg = CAR(args);
-        if fn_arg.is_null() || fn_arg == R_NilValue() {
+        if fn_arg.is_null() || fn_arg == R_NilValue() || TYPEOF(fn_arg) != SEXPTYPE::CLOSXP {
+            crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function".as_ptr());
             return R_NilValue();
         }
-        let t = TYPEOF(fn_arg);
-        if t == SEXPTYPE::CLOSXP {
-            let body = crate::sexp::accessors::BODY(fn_arg);
-            if body.is_null() {
-                R_NilValue()
-            } else if TYPEOF(body) == SEXPTYPE::BCODESXP {
-                let source = crate::eval::bc_eval::BCODE_EXPR(body);
-                if source.is_null() || source == R_NilValue() {
-                    body
-                } else {
-                    source
-                }
-            } else {
+        let body = crate::sexp::accessors::BODY(fn_arg);
+        if body.is_null() {
+            R_NilValue()
+        } else if TYPEOF(body) == SEXPTYPE::BCODESXP {
+            let source = crate::eval::bc_eval::BCODE_EXPR(body);
+            if source.is_null() || source == R_NilValue() {
                 body
+            } else {
+                source
             }
         } else {
-            R_NilValue()
+            body
         }
     }
 }
