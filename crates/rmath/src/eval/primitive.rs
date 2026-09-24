@@ -198,6 +198,7 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "cat"
             | "print"
             | "print.default"
+            | "print.data.frame"
             | "print.factor"
             | "print.function"
             | "str"
