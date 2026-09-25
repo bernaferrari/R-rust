@@ -4252,7 +4252,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 crate::sexp::attrib_core::setAttrib(
                     result,
                     crate::sexp::attrib_core::R_NamesSymbol(),
-                    src_names,
+                    crate::mainutils::duplicate::Rf_duplicate(src_names),
                 );
             }
             return result;
@@ -4316,7 +4316,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_NamesSymbol(),
-                src_names,
+                crate::mainutils::duplicate::Rf_duplicate(src_names),
             );
         }
         result
