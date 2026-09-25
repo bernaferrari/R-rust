@@ -5126,9 +5126,10 @@ unsafe fn record_plot_window(args: SEXP) {
             set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
         }
         if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
-            let lo = y0.ceil();
-            let hi = y1.floor();
-            set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), (hi - lo).max(1.0)]));
+            let lo = y0.ceil().clamp(-307.0, 308.0);
+            let hi = y1.floor().clamp(lo, 308.0);
+            let n = if hi - lo > 3.0 { 1.0 } else { (hi - lo).max(1.0) };
+            set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
         } else {
             set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
         }
