@@ -1607,13 +1607,22 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let mut header = format!("List of {n}");
                 if TYPEOF(class_attr) == SEXPTYPE::STRSXP && XLENGTH(class_attr) > 0 {
                     let cname = elt_to_string(class_attr, 0);
-                    let meth = format!("length.{cname}\0");
-                    let sym = Rf_install(meth.as_ptr() as *const std::os::raw::c_char);
-                    let found = crate::sexp::envir::R_findVar(
-                        sym,
-                        crate::sexp::globals::R_GlobalEnv(),
+                    let len_args = Rf_cons(x, R_NilValue());
+                    let _len_guard = protect(len_args);
+                    let len_sexp = crate::eval::arithmetic::do_length(
+                        R_NilValue(),
+                        R_NilValue(),
+                        len_args,
+                        _rho,
                     );
-                    if found != crate::sexp::globals::R_UnboundValue() {
+                    let dispatched = if TYPEOF(len_sexp) == SEXPTYPE::INTSXP && XLENGTH(len_sexp) > 0 {
+                        *INTEGER(len_sexp) as i64
+                    } else if TYPEOF(len_sexp) == SEXPTYPE::REALSXP && XLENGTH(len_sexp) > 0 {
+                        *REAL(len_sexp) as i64
+                    } else {
+                        n as i64
+                    };
+                    if dispatched != n as i64 {
                         header = format!("Class '{cname}'  hidden list of {n}");
                     }
                 }
