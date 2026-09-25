@@ -43,6 +43,34 @@ pub unsafe fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             XLENGTH(y)
         };
         let t = TYPEOF(x);
+        if t == SEXPTYPE::VECSXP {
+            let key_of = |obj: SEXP, i: R_xlen_t| {
+                let elt = VECTOR_ELT(obj, i);
+                if elt.is_null() || elt == R_NilValue() {
+                    "NULL".to_string()
+                } else {
+                    elt_to_string(elt, 0)
+                }
+            };
+            let mut y_keys = std::collections::BTreeSet::new();
+            for i in 0..yn {
+                y_keys.insert(key_of(y, i));
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            let mut result_indices = Vec::new();
+            for i in 0..xn {
+                let key = key_of(x, i);
+                if !y_keys.contains(&key) && seen.insert(key) {
+                    result_indices.push(i);
+                }
+            }
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, result_indices.len() as R_xlen_t);
+            let _g = protect(result);
+            for (out, &src) in result_indices.iter().enumerate() {
+                SET_VECTOR_ELT(result, out as R_xlen_t, VECTOR_ELT(x, src));
+            }
+            return result;
+        }
         let sexptype = SEXPTYPE(t);
         let mut y_keys: std::collections::BTreeSet<AtomicUniqueKey> =
             std::collections::BTreeSet::new();
