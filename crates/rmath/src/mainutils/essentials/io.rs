@@ -582,7 +582,7 @@ fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64) -> Vec<S
         sep: sep.chars().next(),
         quotes: quote.chars().collect(),
         comment: None,
-        allow_escape: true,
+        allow_escape: false,
         strip_white: sep.is_empty(),
         blank_lines_skip: true,
     };
