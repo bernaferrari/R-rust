@@ -944,6 +944,21 @@ unsafe fn first_cbind_rownames(
 }
 
 
+unsafe fn matrix_column_vector(arg: SEXP, j: R_xlen_t, nrow: R_xlen_t) -> SEXP {
+    unsafe {
+        let ty = TYPEOF(arg);
+        let out = Rf_allocVector3(ty, nrow);
+        if out.is_null() {
+            return out;
+        }
+        let _p = protect(out);
+        for i in 0..nrow {
+            copy_bind_value(out, i, SEXPTYPE(ty), arg, i + j * nrow);
+        }
+        out
+    }
+}
+
 unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> SEXP {
     unsafe {
         let mut columns: Vec<SEXP> = Vec::new();
@@ -968,6 +983,28 @@ unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> S
                         child
                     });
                 }
+            } else if is_bind_matrix(arg) && arg_ncol > 1 {
+                let cn = crate::sexp::attrib_core::getAttrib(
+                    arg,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                );
+                let cnames = if !cn.is_null() && cn != R_NilValue() && TYPEOF(cn) == SEXPTYPE::VECSXP && XLENGTH(cn) >= 2 {
+                    VECTOR_ELT(cn, 1)
+                } else {
+                    R_NilValue()
+                };
+                for j in 0..arg_ncol {
+                    columns.push(matrix_column_vector(arg, j, arg_nrow));
+                    let child = string_at_or_empty(cnames, j);
+                    names.push(if child.is_empty() {
+                        if arg_ncol == 1 { name.clone() } else { format!("{name}{j}") }
+                    } else {
+                        child
+                    });
+                }
+            } else if is_bind_matrix(arg) && arg_ncol == 1 {
+                columns.push(matrix_column_vector(arg, 0, arg_nrow));
+                names.push(name.clone());
             } else {
                 columns.push(arg);
                 names.push(name.clone());

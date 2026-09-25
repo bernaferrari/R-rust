@@ -5087,7 +5087,17 @@ fn deparse_call(expr: SEXP) -> String {
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
             return symbol_chars(expr).unwrap_or_default();
         }
-        if TYPEOF(expr) == SEXPTYPE::INTSXP || TYPEOF(expr) == SEXPTYPE::LGLSXP {
+        if TYPEOF(expr) == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(expr);
+            return if v == NA_INTEGER {
+                "NA".to_string()
+            } else if v == 0 {
+                "FALSE".to_string()
+            } else {
+                "TRUE".to_string()
+            };
+        }
+        if TYPEOF(expr) == SEXPTYPE::INTSXP {
             let v = *INTEGER(expr);
             return if v == NA_INTEGER {
                 "NA".to_string()
