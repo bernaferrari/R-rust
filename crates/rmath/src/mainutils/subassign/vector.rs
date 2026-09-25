@@ -442,6 +442,26 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
             && TYPEOF(s) == SEXPTYPE::STRSXP
             && XLENGTH(s) == 1
         {
+            if isNull(y) {
+                let name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(s, 0))).to_string_lossy();
+                let names = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
+                if !isNull(names) && TYPEOF(names) == STRSXP {
+                    for i in 0..XLENGTH(names) {
+                        let col = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_string_lossy();
+                        if col == name {
+                            let which = Rf_ScalarInteger((i + 1) as i32);
+                            let _w = protect(which);
+                            let result = DeleteListElements(x, which);
+                            let dim = getAttrib(result, crate::eval::attrib_core::R_DimSymbol());
+                            if !isNull(dim) && TYPEOF(dim) == INTSXP && XLENGTH(dim) == 2 {
+                                *INTEGER(dim).add(1) = XLENGTH(result) as i32;
+                            }
+                            return result;
+                        }
+                    }
+                }
+                return x;
+            }
             // `[<-.data.frame` on one name takes a length-1 list as that
             // column (`within` assigns `data[nl] <- l`). A longer list is
             // left for `$<-`, which warns about extra variables.

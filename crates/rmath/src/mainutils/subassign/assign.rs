@@ -89,6 +89,11 @@ unsafe fn drop_data_frame_columns(frame: SEXP, index: SEXP) -> SEXP {
             crate::sexp::attrib_core::R_ClassSymbol(),
             crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr()),
         );
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let nrow = if XLENGTH(frame) > 0 { XLENGTH(VECTOR_ELT(frame, 0)) } else { 0 };
+        *INTEGER(dim) = nrow as i32;
+        *INTEGER(dim).add(1) = keep as i32;
+        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimSymbol(), dim);
         let rn = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
         if !rn.is_null() && rn != R_NilValue() {
             crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
@@ -534,6 +539,33 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             if let Some(updated) = data_frame_assign_cells(x, subs, y) {
                 return updated;
             }
+            if value_deletes_columns(y) {
+                let row = CAR(subs);
+                if row == crate::sexp::globals::R_MissingArg() || isNull(row) {
+                    let col = CADR(subs);
+                    let index = if TYPEOF(col) == SEXPTYPE::STRSXP {
+                        let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+                        let which = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(col));
+                        for i in 0..XLENGTH(col) {
+                            let want = crate::mainutils::essentials::elt_to_string(col, i);
+                            let mut found = NA_INTEGER;
+                            if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                                for j in 0..XLENGTH(names) {
+                                    if crate::mainutils::essentials::elt_to_string(names, j) == want {
+                                        found = (j as i32) + 1;
+                                        break;
+                                    }
+                                }
+                            }
+                            *INTEGER(which).add(i as usize) = found;
+                        }
+                        which
+                    } else {
+                        col
+                    };
+                    return drop_data_frame_columns(x, index);
+                }
+            }
         }
         if nsubs == 1
             && TYPEOF(x) == SEXPTYPE::VECSXP
@@ -695,6 +727,19 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             let j = crate::mainutils::subscript::get1index(CADR(subs), names, ncols, 0, 0, call);
             if j < 0 || j >= ncols {
                 return x;
+            }
+            if isNull(y) {
+                let row = CAR(subs);
+                if row == crate::sexp::globals::R_MissingArg() || isNull(row) {
+                    let which = Rf_ScalarInteger((j + 1) as i32);
+                    let _w = protect(which);
+                    let result = crate::mainutils::subassign::vector::DeleteListElements(x, which);
+                    let dim = getAttrib(result, crate::sexp::attrib_core::R_DimSymbol());
+                    if !isNull(dim) && TYPEOF(dim) == INTSXP && XLENGTH(dim) == 2 {
+                        *INTEGER(dim).add(1) = XLENGTH(result) as i32;
+                    }
+                    return result;
+                }
             }
             let col = VECTOR_ELT(x, j);
             let nrows = XLENGTH(col);
