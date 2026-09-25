@@ -880,6 +880,7 @@ where
 {
     let mut result = String::with_capacity(text.len());
     let mut search_from = 0usize;
+    let mut prev_nonzero = false;
 
     loop {
         let remaining = &text[search_from..];
@@ -888,23 +889,33 @@ where
             break;
         };
         let m = captures.first().and_then(|whole| *whole)?;
-        result.push_str(&remaining[..m.start]);
-        append_r_replacement(&mut result, replacement, remaining, &captures);
-        search_from += m.end;
-
-        if !global {
-            result.push_str(&text[search_from..]);
-            break;
-        }
-
-        if m.start == m.end {
-            let Some(ch) = text[search_from..].chars().next() else {
-                break;
-            };
+        let zero = m.start == m.end;
+        if zero && prev_nonzero && m.start == 0 && !remaining.is_empty() {
+            let ch = remaining.chars().next().unwrap();
             result.push(ch);
             search_from += ch.len_utf8();
+            prev_nonzero = false;
+        } else {
+            result.push_str(&remaining[..m.start]);
+            append_r_replacement(&mut result, replacement, remaining, &captures);
+            search_from += m.end;
+            if !global {
+                result.push_str(&text[search_from..]);
+                break;
+            }
+            if zero {
+                let Some(ch) = text[search_from..].chars().next() else {
+                    break;
+                };
+                result.push(ch);
+                search_from += ch.len_utf8();
+            }
+            prev_nonzero = !zero;
         }
-        if search_from >= text.len() {
+        if search_from >= text.len() && !zero {
+            break;
+        }
+        if search_from > text.len() {
             break;
         }
     }
