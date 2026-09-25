@@ -1561,6 +1561,17 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  lines(lowess(x[ok], y[ok], f = span, iter = iter), col = col.smooth, ...)\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "strheight",
+            "function(s, units = \"user\", cex = NULL, ...) {\n\
+             if (is.null(cex)) cex <- par(\"cex\")\n\
+             h <- par(\"cin\")[2] * cex\n\
+             if (units == \"user\") h <- h * diff(par(\"usr\")[3:4]) / par(\"pin\")[2]\n\
+             rep(h, length(s))\n\
+             }",
+        );
+
 
         eval_base_binding(
             base_env,
