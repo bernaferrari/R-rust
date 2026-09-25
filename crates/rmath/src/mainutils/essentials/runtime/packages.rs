@@ -85,6 +85,20 @@ unsafe fn attach_recommended_package_stub(package: &str) {
         if package_attached(package) {
             return;
         }
+        if package == "stats4" {
+            let env = crate::sexp::memory_ext::NewEnvironment(
+                R_NilValue(),
+                crate::sexp::globals::R_BaseEnv(),
+                R_NilValue(),
+            );
+            if env.is_null() {
+                package_error("could not attach package 'stats4'");
+            }
+            let _env = protect(env);
+            define_package_metadata(package, env);
+            attach_package_env(env);
+            return;
+        }
         let lib_path = find_package_path(package);
         if !lib_path.is_empty() {
             let package_dir = Path::new(&lib_path);

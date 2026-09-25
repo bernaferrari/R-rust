@@ -225,13 +225,15 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  fit <- optim(start, fn)\n\
                  par <- fit$par\n\
                  names(par) <- nm\n\
-                 structure(list(coef = par), class = \"mle\")\n\
+                 list(coefficients = par)\n\
              }",
         );
         eval_base_binding(
             base_env,
-            "coef.mle",
-            "function(object, ...) object$coef",
+            "coef.default",
+            "function(object, ...) {\n\
+                 if (!is.null(object$coefficients)) object$coefficients else object$coef\n\
+             }",
         );
         // GNU New-Internal.R: NextMethod is a closure over .Internal so extra
         // named args land in `...` and CADDR(.Internal args) stays the dots
