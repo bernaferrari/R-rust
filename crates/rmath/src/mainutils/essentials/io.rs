@@ -2269,7 +2269,7 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let header_row = data.remove(0);
             col_names = header_row
                 .iter()
-                .map(|f| f.text.trim().to_string())
+                .map(|f| f.text.trim().replace(['\n', '\r'], "."))
                 .collect();
         } else if !col_names_arg.is_null()
             && col_names_arg != R_NilValue()
