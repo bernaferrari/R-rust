@@ -5116,8 +5116,17 @@ fn padded_range(v: &[f64]) -> (f64, f64) {
     if lo == hi {
         return (lo - 1.0, hi + 1.0);
     }
-    let extra = (hi - lo) * 0.04;
-    (lo - extra, hi + extra)
+    let extra = if hi.abs() > 100.0 || lo.abs() > 100.0 {
+        0.04 * hi - 0.04 * lo
+    } else {
+        (hi - lo) * 0.04
+    };
+    let a = lo - extra;
+    let b = hi + extra;
+    (
+        if a.is_finite() { a } else { f64::MIN },
+        if b.is_finite() { b } else { f64::MAX },
+    )
 }
 
 fn pretty_axp(lo0: f64, hi0: f64) -> (f64, f64, f64) {
