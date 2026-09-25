@@ -164,6 +164,12 @@ pub unsafe fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // C: errorcall(call, _("argument of length 0"));
                 errorcall(call, b"argument of length 0\0".as_ptr() as *const c_char);
             }
+            if std::env::var("_R_CHECK_LENGTH_COLON_").ok().as_deref() == Some("true") {
+                errorcall(
+                    call,
+                    b"numerical expression has length > 1\0".as_ptr() as *const c_char,
+                );
+            }
             warningcall(
                 call,
                 b"numerical expression has length > 1\0".as_ptr() as *const c_char,
