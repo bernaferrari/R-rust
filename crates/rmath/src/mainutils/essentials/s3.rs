@@ -159,24 +159,12 @@ pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             .into_iter()
             .filter(|name| name.starts_with(&prefix))
             .collect::<Vec<_>>();
-        // Closures bound in base (GNU round.POSIXt, …) are visible to methods().
         let base = crate::eval::runtime::base_env();
         if !base.is_null() {
-            let mut cell = crate::sexp::accessors::FRAME(base);
-            while !cell.is_null() && cell != R_NilValue() {
-                let tag = TAG(cell);
-                if !tag.is_null() && tag != R_NilValue() {
-                    let pname = PRINTNAME(tag);
-                    if !pname.is_null() {
-                        let name = std::ffi::CStr::from_ptr(CHAR(pname))
-                            .to_string_lossy()
-                            .into_owned();
-                        if name.starts_with(&prefix) && !methods.iter().any(|m| m == &name) {
-                            methods.push(name);
-                        }
-                    }
+            for name in crate::mainutils::essentials::shared::frame_binding_names(base, true) {
+                if name.starts_with(&prefix) && !methods.iter().any(|m| m == &name) {
+                    methods.push(name);
                 }
-                cell = CDR(cell);
             }
         }
         methods.sort();
