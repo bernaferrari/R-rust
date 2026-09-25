@@ -855,9 +855,6 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                     errorOutOfBoundsSEXP(x, -1, thesub);
                 }
                 if offset >= XLENGTH(x) {
-                    if TYPEOF(x) == SEXPTYPE::EXPRSXP {
-                        errorOutOfBoundsSEXP(x, offset as i32, thesub);
-                    }
                     stretch = offset + 1;
                 }
             } else {
