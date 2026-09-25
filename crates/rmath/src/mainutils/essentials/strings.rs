@@ -4922,6 +4922,17 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 *data.add(i as usize) = charsxp;
             }
         }
+        {
+            use crate::sexp::attrib_core::{getAttrib, setAttrib, R_DimNamesSymbol, R_DimSymbol};
+            let dim = getAttrib(x, R_DimSymbol());
+            if !dim.is_null() && dim != R_NilValue() {
+                setAttrib(result, R_DimSymbol(), dim);
+            }
+            let dn = getAttrib(x, R_DimNamesSymbol());
+            if !dn.is_null() && dn != R_NilValue() {
+                setAttrib(result, R_DimNamesSymbol(), dn);
+            }
+        }
 
         crate::mainutils::format::format_set_R_print(pinned_print);
         crate::mainutils::options::SetOptionByName("digits", saved_digits);
