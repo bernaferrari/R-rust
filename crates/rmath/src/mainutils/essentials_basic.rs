@@ -1825,11 +1825,22 @@ pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
                 let chars = if TYPEOF(elt) == SEXPTYPE::STRSXP && XLENGTH(elt) == 1 {
                     STRING_ELT(elt, 0)
                 } else {
-                    let line = crate::mainutils::deparse::deparse1(
-                        elt,
-                        false,
-                        crate::mainutils::deparse::SHOW_ATTR_OR_NMS,
-                    );
+                    let line = if TYPEOF(x) == SEXPTYPE::EXPRSXP {
+                        crate::mainutils::deparse::deparse1WithCutoff(
+                            elt,
+                            false,
+                            500,
+                            true,
+                            crate::mainutils::deparse::SHOW_ATTR_OR_NMS,
+                            -1,
+                        )
+                    } else {
+                        crate::mainutils::deparse::deparse1(
+                            elt,
+                            false,
+                            crate::mainutils::deparse::SHOW_ATTR_OR_NMS,
+                        )
+                    };
                     if !line.is_null() && line != R_NilValue() && XLENGTH(line) > 0 {
                         STRING_ELT(line, 0)
                     } else {
