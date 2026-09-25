@@ -1435,6 +1435,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "pretty.POSIXt", include_str!("gnu_pretty_date.R"));
         eval_base_binding(base_env, "Reduce", include_str!("gnu_reduce.R"));
         eval_base_binding(base_env, "axTicks", include_str!("gnu_axTicks.R"));
+        eval_base_binding(base_env, "axisTicks", include_str!("gnu_axis_ticks.R"));
         eval_base_binding(base_env, "bxp", include_str!("gnu_bxp.R"));
         eval_base_binding(base_env, "reformulate", include_str!("gnu_reformulate.R"));
         eval_base_binding(base_env, ".Deprecated", include_str!("gnu_deprecated.R"));
