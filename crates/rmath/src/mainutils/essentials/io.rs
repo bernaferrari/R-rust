@@ -582,6 +582,7 @@ fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64) -> Vec<S
         sep: sep.chars().next(),
         quotes: quote.chars().collect(),
         comment: None,
+        allow_escape: true,
         strip_white: sep.is_empty(),
         blank_lines_skip: true,
     };
@@ -1827,6 +1828,7 @@ struct TableParseSpec {
     comment: Option<char>,
     strip_white: bool,
     blank_lines_skip: bool,
+    allow_escape: bool,
 }
 
 fn table_push_field(
@@ -1862,7 +1864,16 @@ fn parse_table_records(content: &str, spec: &TableParseSpec) -> Vec<Vec<TableFie
 
     while let Some(c) = chars.next() {
         if let Some(q) = quote {
-            if c == q {
+            if spec.allow_escape && c == '\\' {
+                if let Some(next) = chars.next() {
+                    field.push(match next {
+                        'n' => '\n',
+                        't' => '\t',
+                        'r' => '\r',
+                        other => other,
+                    });
+                }
+            } else if c == q {
                 if chars.peek() == Some(&q) {
                     chars.next();
                     field.push(q);
@@ -2220,6 +2231,7 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             sep,
             quotes: quote_text.chars().collect(),
             comment: comment_text.chars().next(),
+            allow_escape: false,
             strip_white,
             blank_lines_skip,
         };
