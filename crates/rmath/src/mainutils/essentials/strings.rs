@@ -906,8 +906,8 @@ pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let mut results = Vec::with_capacity(n as usize);
         for i in 0..n {
             let ch = STRING_ELT(names, i);
-            let raw = if ch.is_null() {
-                String::new()
+            let raw = if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                "NA".to_string()
             } else {
                 std::ffi::CStr::from_ptr(CHAR(ch))
                     .to_string_lossy()
