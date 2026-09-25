@@ -180,6 +180,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  rep(1, length(s))\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "as.graphicsAnnot",
+            "function(x) if (is.language(x) || !is.object(x)) x else as.character(x)",
+        );
         // GNU New-Internal.R: NextMethod is a closure over .Internal so extra
         // named args land in `...` and CADDR(.Internal args) stays the dots
         // symbol. A primitive NextMethod would evaluate those extras and hit
