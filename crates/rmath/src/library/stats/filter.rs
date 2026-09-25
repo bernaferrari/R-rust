@@ -2681,6 +2681,14 @@ pub unsafe fn do_kalman_forecast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         result
     }
 }
+pub unsafe extern "C-unwind" fn c_kalman_fore(n_ahead: SEXP, model: SEXP, _update: SEXP) -> SEXP {
+    unsafe {
+        let args = crate::sexp::constructors::Rf_cons(model, R_NilValue());
+        let args = crate::sexp::constructors::Rf_cons(n_ahead, args);
+        do_kalman_forecast(R_NilValue(), R_NilValue(), args, R_NilValue())
+    }
+}
+
 
 /// GNU `KalmanSmooth(y, mod)` — Rauch–Tung–Striebel smoother, state dim 1.
 pub unsafe fn do_kalman_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
