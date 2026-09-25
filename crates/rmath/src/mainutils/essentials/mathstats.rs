@@ -310,8 +310,8 @@ pub unsafe fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
         }
 
-        if x_arg.is_null() || x_arg == R_NilValue() {
-            return R_NilValue();
+        if x_arg.is_null() || x_arg == R_NilValue() || x_arg == R_MissingArg() {
+            crate::mainutils::errors::Rf_error(b"argument \"x\" is missing, with no default\0".as_ptr() as *const _);
         }
         // Stock routes complex x to complex_math2 (main/complex.c): round
         // each part with the same ties-even fround as the real path.
@@ -320,7 +320,7 @@ pub unsafe fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 (fround(re, digits), fround(im, digits))
             });
         }
-        let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
+        let digits = if digits_arg.is_null() || digits_arg == R_NilValue() || digits_arg == R_MissingArg() {
             0.0
         } else {
             real_or_default(digits_arg, 0.0)
@@ -636,7 +636,7 @@ pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let digits_arg = force(m.get(1).copied().unwrap_or(missing));
 
         if x_arg.is_null() || x_arg == R_NilValue() || x_arg == missing {
-            return R_NilValue();
+            crate::mainutils::errors::Rf_error(b"argument \"x\" is missing, with no default\0".as_ptr() as *const _);
         }
         if TYPEOF(x_arg) == SEXPTYPE::CPLXSXP {
             return math2_complex(call, x_arg, digits_arg, 6.0, "signif", z_prec_r);
