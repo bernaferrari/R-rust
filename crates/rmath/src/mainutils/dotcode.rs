@@ -1171,6 +1171,13 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
             }
         }
+        if fun.is_none() {
+            if let Some(name) = ported_call_name(CAR(args)) {
+                if name == "dtrco" {
+                    return fortran_dtrco(call_args);
+                }
+            }
+        }
 
         if fun.is_none() {
             return R_NilValue();
@@ -1575,7 +1582,132 @@ unsafe fn R_FindNativeSymbolFromDLL(
 // Tests
 // ---------------------------------------------------------------------------
 
-#[cfg(test)]
+unsafe fn fortran_dtrco(args: SEXP) -> SEXP {
+    unsafe {
+        let z = CAR(args);
+        let n = *crate::sexp::accessors::INTEGER(CAR(CDR(CDR(args)))) as usize;
+        let ldt = n;
+        let job_cell = CDR(CDR(CDR(CDR(CDR(args)))));
+        let job = if job_cell.is_null() { 1 } else { *crate::sexp::accessors::INTEGER(CAR(job_cell)) };
+        let lower = job == 0;
+        let t = crate::sexp::accessors::REAL(z);
+        let at = |i: usize, j: usize| *t.add(j * ldt + i);
+        let mut work = vec![0.0f64; n.max(1)];
+        let mut tnorm: f64 = 0.0;
+        for j in 0..n {
+            let l = if lower { n - j } else { j + 1 };
+            let i1 = if lower { j } else { 0 };
+            let mut s: f64 = 0.0;
+            for i in 0..l {
+                s += at(i1 + i, j).abs();
+            }
+            tnorm = tnorm.max(s);
+        }
+        let mut ek: f64 = 1.0;
+        for kk in 0..n {
+            let k = if lower { n - 1 - kk } else { kk };
+            if work[k] != 0.0 {
+                ek = ek.copysign(-work[k]);
+            }
+            if (ek - work[k]).abs() > at(k, k).abs() {
+                let s = at(k, k).abs() / (ek - work[k]).abs();
+                for v in &mut work {
+                    *v *= s;
+                }
+                ek *= s;
+            }
+            let mut wk = ek - work[k];
+            let mut wkm = -ek - work[k];
+            let mut s = wk.abs();
+            let mut sm = wkm.abs();
+            let diag = at(k, k);
+            if diag != 0.0 {
+                wk /= diag;
+                wkm /= diag;
+            } else {
+                wk = 1.0;
+                wkm = 1.0;
+            }
+            if kk + 1 != n {
+                let (j1, j2) = if lower { (0, k) } else { (k + 1, n) };
+                for j in j1..j2 {
+                    sm += (work[j] + wkm * at(k, j)).abs();
+                    work[j] += wk * at(k, j);
+                    s += work[j].abs();
+                }
+                if s < sm {
+                    let w = wkm - wk;
+                    wk = wkm;
+                    for j in j1..j2 {
+                        work[j] += w * at(k, j);
+                    }
+                }
+            }
+            work[k] = wk;
+        }
+        let mut asum = work.iter().map(|v| v.abs()).sum::<f64>();
+        if asum != 0.0 {
+            let s = 1.0 / asum;
+            for v in &mut work {
+                *v *= s;
+            }
+        }
+        let mut ynorm = 1.0;
+        for kk in 0..n {
+            let k = if lower { kk } else { n - 1 - kk };
+            if work[k].abs() > at(k, k).abs() && at(k, k) != 0.0 {
+                let s = at(k, k).abs() / work[k].abs();
+                for v in &mut work {
+                    *v *= s;
+                }
+                ynorm *= s;
+            }
+            if at(k, k) != 0.0 {
+                work[k] /= at(k, k);
+            } else {
+                work[k] = 1.0;
+            }
+            if kk + 1 < n {
+                let w = -work[k];
+                let i1 = if lower { k + 1 } else { 0 };
+                let count = n - kk - 1;
+                for i in 0..count {
+                    work[i1 + i] += w * at(i1 + i, k);
+                }
+            }
+        }
+        asum = work.iter().map(|v| v.abs()).sum::<f64>();
+        if asum != 0.0 {
+            let s = 1.0 / asum;
+            ynorm *= s;
+        }
+        let rcond = if tnorm != 0.0 { ynorm / tnorm } else { 0.0 };
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 6);
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, 6);
+        let mut pa = args;
+        for i in 0..6 {
+            if pa.is_null() || pa == R_NilValue() {
+                break;
+            }
+            SET_VECTOR_ELT(ans, i, CAR(pa));
+            let tag = TAG(pa);
+            let ch = if tag.is_null() || tag == R_NilValue() {
+                Rf_mkChar(b"\0".as_ptr() as *const c_char)
+            } else {
+                PRINTNAME(tag)
+            };
+            SET_STRING_ELT(names, i, ch);
+            pa = CDR(pa);
+        }
+        let k = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+        *crate::sexp::accessors::REAL(k) = rcond;
+        SET_VECTOR_ELT(ans, 3, k);
+        SET_STRING_ELT(names, 3, Rf_mkChar(b"k\0".as_ptr() as *const c_char));
+        setAttrib(ans, Rf_install(b"names\0".as_ptr() as *const c_char), names);
+        ans
+    }
+}
+
 mod tests {
     use super::*;
     use crate::sexp::RSession;
