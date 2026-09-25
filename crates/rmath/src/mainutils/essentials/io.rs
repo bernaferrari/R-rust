@@ -2873,6 +2873,25 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             };
             widths.push(w);
         }
+        let mut header = false;
+        let mut cell = args;
+        let mut arg_i = 0i32;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let named = !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP;
+            let name = if named {
+                CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy().into_owned()
+            } else {
+                String::new()
+            };
+            if name == "header" || (name.is_empty() && arg_i == 2) {
+                let v = CAR(cell);
+                header = crate::main::coerce::asLogical(v) == TRUE;
+            }
+            arg_i += 1;
+            cell = CDR(cell);
+        }
+
 
         // Read file
         let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
@@ -2887,13 +2906,18 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             return R_NilValue();
         }
 
+        let header_names = if header && !lines.is_empty() {
+            lines[0].split_whitespace().map(|s| s.to_string()).collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let data_lines: Vec<&str> = if header { lines.iter().skip(1).copied().collect() } else { lines };
         let ncols = widths.iter().filter(|&&width| width >= 0).count();
-        let nrows = lines.len();
-
+        let nrows = data_lines.len();
         let mut col_text: Vec<Vec<String>> = vec![vec![String::new(); nrows]; ncols];
         let mut col_num: Vec<Vec<f64>> = vec![vec![NA_REAL; nrows]; ncols];
         let mut col_numeric = vec![true; ncols];
-        for (i, line) in lines.iter().enumerate() {
+        for (i, line) in data_lines.iter().enumerate() {
             let mut pos = 0usize;
             let mut out_col = 0usize;
             let bytes = line.as_bytes();
@@ -2953,7 +2977,8 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 col
             };
             SET_VECTOR_ELT(result, j as R_xlen_t, col);
-            let cstr = CString::new(format!("V{}", j + 1)).unwrap_or_default();
+            let label = header_names.get(j).cloned().unwrap_or_else(|| format!("V{}", j + 1));
+            let cstr = CString::new(label).unwrap_or_default();
             SET_STRING_ELT(names_vec, j as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
         }
 
