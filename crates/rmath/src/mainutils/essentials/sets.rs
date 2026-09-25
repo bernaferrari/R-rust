@@ -366,12 +366,22 @@ fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
     }
 }
 
+fn reject_unorderable(x: SEXP) {
+    let t = unsafe { TYPEOF(x) };
+    if t == SEXPTYPE::VECSXP || t == SEXPTYPE::RAWSXP || t == SEXPTYPE::LISTSXP {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "unimplemented type in 'order'".to_string(),
+        });
+    }
+}
+
 pub(crate) fn ordered_atomic_indices(
     x: SEXP,
     decreasing: bool,
     na_placement: SortNaPlacement,
 ) -> Vec<R_xlen_t> {
     unsafe {
+        reject_unorderable(x);
         let n = XLENGTH(x);
         let mut missing_indices: Vec<R_xlen_t> = Vec::new();
         let mut ordered_indices: Vec<R_xlen_t> = match TYPEOF(x) {
@@ -519,6 +529,7 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
+        reject_unorderable(x);
         let n = XLENGTH(x);
         let na_placement = order_na_placement(args, 1);
         let ties_method = rank_ties_method(args);
@@ -2338,6 +2349,7 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        reject_unorderable(x);
         let decreasing = sort_logical_arg(args, &["decreasing"], 1).unwrap_or(false);
         let na_placement = sort_na_placement(args);
         if sort_logical_arg(args, &["index.return"], 99).unwrap_or(false) {
