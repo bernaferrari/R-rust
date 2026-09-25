@@ -85,28 +85,53 @@ pub(crate) unsafe fn apply_s3_closure_method(
 /// R's `methods(generic)` — list methods known to the Rust runtime.
 pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let generic_arg = CAR(args);
+        let mut class_arg = R_NilValue();
+        let mut generic_arg = R_NilValue();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if tag.is_null() || tag == R_NilValue() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            if name == "class" {
+                class_arg = CAR(cell);
+            } else if name.is_empty() && generic_arg == R_NilValue() {
+                generic_arg = CAR(cell);
+            }
+            cell = CDR(cell);
+        }
+        if !class_arg.is_null() && class_arg != R_NilValue() {
+            if XLENGTH(class_arg) > 1 {
+                crate::mainutils::errors::Rf_warning(
+                    c"'class' is of length > 1; only the first element will be used".as_ptr(),
+                );
+            }
+            let class_name = elt_to_string(class_arg, 0);
+            let suffix = format!(".{class_name}");
+            let mut methods = all_runtime_method_names()
+                .into_iter()
+                .filter(|name| name.ends_with(&suffix))
+                .collect::<Vec<_>>();
+            methods.sort();
+            let ans = methods_function(string_vector(&methods));
+            let info = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+            let info_class = Rf_mkString(c"data.frame".as_ptr());
+            crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_ClassSymbol(), info_class);
+            let info_names = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+            crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_NamesSymbol(), info_names);
+            let row_names = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+            crate::sexp::attrib_core::setAttrib(info, crate::sexp::symbol::Rf_install(c"row.names".as_ptr()), row_names);
+            crate::sexp::attrib_core::setAttrib(ans, crate::sexp::symbol::Rf_install(c"info".as_ptr()), info);
+            return ans;
+        }
         if generic_arg.is_null() || generic_arg == R_NilValue() {
             return methods_function(string_vector(&all_runtime_method_names()));
         }
-        let generic = if !call.is_null()
-            && TYPEOF(CADR(call)) == SEXPTYPE::SYMSXP
-        {
-            let pname = PRINTNAME(CADR(call));
-            if pname.is_null() {
-                String::new()
-            } else {
-                std::ffi::CStr::from_ptr(CHAR(pname))
-                    .to_string_lossy()
-                    .into_owned()
-            }
-        } else {
-            elt_to_string(generic_arg, 0)
-        };
-        if generic.is_empty() {
-            return methods_function(Rf_allocVector3(SEXPTYPE::STRSXP, 0));
-        }
-
+        let generic = elt_to_string(generic_arg, 0);
         let prefix = format!("{generic}.");
         let mut methods = all_runtime_method_names()
             .into_iter()
