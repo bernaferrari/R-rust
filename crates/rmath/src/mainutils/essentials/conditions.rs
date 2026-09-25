@@ -1293,12 +1293,34 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+fn condition_object(value: SEXP) -> SEXP {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return std::ptr::null_mut();
+        }
+        if condition_classes(value).iter().any(|class| class == "condition") {
+            value
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+}
+
 /// R's `warning(...)` — issue warning.
 pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let warning_text =
-            condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"]);
-        let condition = simple_condition(&warning_text, &["simpleWarning", "warning", "condition"]);
+        let first = CAR(args);
+        let passed = condition_object(first);
+        let warning_text = if !passed.is_null() {
+            condition_message_of(passed).unwrap_or_default()
+        } else {
+            condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"])
+        };
+        let condition = if !passed.is_null() {
+            passed
+        } else {
+            simple_condition(&warning_text, &["simpleWarning", "warning", "condition"])
+        };
         let mut cond_classes = vec![
             "simpleWarning".to_string(),
             "warning".to_string(),
@@ -1342,7 +1364,18 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         // (upstream vwarningcall signals through R_HandlerStack and the
         // exiting handler takes over; the warning is then neither
         // printed nor collected).
-        if try_catch_wants(&["simpleWarning", "warning", "condition"]) {
+        if try_catch_wants(&["simpleWarning", "warning", "condition"])
+            || (!passed.is_null()
+                && try_catch_wants(
+                    &condition_classes(passed)
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>(),
+                ))
+        {
+            if !passed.is_null() {
+                set_signalled_condition(passed);
+            }
             std::panic::panic_any(crate::sexp::context::RSignal::Warning {
                 message: warning_text,
             });
@@ -1679,12 +1712,18 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 let payload = match payload.downcast::<crate::sexp::context::RSignal>() {
                     Ok(signal) => match *signal {
                         crate::sexp::context::RSignal::Warning { message } => {
-                            let classes = ["simpleWarning", "warning", "condition"];
+                            let stashed = signalled_condition();
+                            let condition = if !stashed.is_null() {
+                                set_signalled_condition(std::ptr::null_mut());
+                                stashed
+                            } else {
+                                simple_warning_condition(&message)
+                            };
+                            let classes = condition_classes(condition);
                             let matching = handlers
                                 .iter()
-                                .find(|(tag, _)| classes.contains(&tag.as_str()));
+                                .find(|(tag, _)| classes.iter().any(|class| class == tag));
                             if let Some((_, handler)) = matching {
-                                let condition = simple_warning_condition(&message);
                                 let _cond_guard = protect(condition);
                                 let call =
                                     crate::sexp::constructors::Rf_lang2(*handler, condition);
