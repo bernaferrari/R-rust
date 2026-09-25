@@ -855,8 +855,9 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
                 if iS {
                     SET_STRING_ELT(tmp, 0, PRINTNAME(x));
                 } else {
-                    // deparse1line_ex stub returns R_NilValue, use null
-                    SET_STRING_ELT(tmp, 0, ptr::null_mut());
+                    let dep = crate::mainutils::deparse::deparse1line(x, false);
+                    let _dep = crate::sexp::protect::protect(dep);
+                    SET_STRING_ELT(tmp, 0, STRING_ELT(dep, 0));
                 }
             }
             x = tmp;
@@ -872,7 +873,9 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
                 if iS {
                     SET_STRING_ELT(tmp, 0, PRINTNAME(y));
                 } else {
-                    SET_STRING_ELT(tmp, 0, ptr::null_mut());
+                    let dep = crate::mainutils::deparse::deparse1line(y, false);
+                    let _dep = crate::sexp::protect::protect(dep);
+                    SET_STRING_ELT(tmp, 0, STRING_ELT(dep, 0));
                 }
             }
             y = tmp;

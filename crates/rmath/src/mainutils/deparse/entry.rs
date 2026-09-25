@@ -506,7 +506,14 @@ pub unsafe fn deparse1w(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 /// terms.formula where a term label must be a single line.
 pub unsafe fn deparse1line(call: SEXP, abbrev: bool) -> SEXP {
     unsafe {
-        let temp = deparse1WithCutoff(call, abbrev, MAX_CUTOFF, true, SIMPLEDEPARSE, -1);
+        let temp = deparse1WithCutoff(
+            call,
+            abbrev,
+            MAX_CUTOFF,
+            true,
+            DEFAULTDEPARSE | DIGITS17,
+            -1,
+        );
         let _temp_guard = protect(temp);
         let lines = LENGTH(temp);
         if lines > 1 {

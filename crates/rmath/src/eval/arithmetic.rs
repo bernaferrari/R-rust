@@ -1608,12 +1608,12 @@ unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
         }
         // stock relop.c: symbols and calls deparse to strings first
         let a = if TYPEOF(a) == SEXPTYPE::SYMSXP || TYPEOF(a) == SEXPTYPE::LANGSXP {
-            crate::mainutils::deparse::deparse1s(a)
+            crate::mainutils::deparse::deparse1line(a, false)
         } else {
             a
         };
         let b = if TYPEOF(b) == SEXPTYPE::SYMSXP || TYPEOF(b) == SEXPTYPE::LANGSXP {
-            crate::mainutils::deparse::deparse1s(b)
+            crate::mainutils::deparse::deparse1line(b, false)
         } else {
             b
         };
