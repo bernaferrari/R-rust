@@ -2625,6 +2625,8 @@ const NON_GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
         ],
         false,
     ),
+    proto("rep.int", &[arg("x"), arg("times")], false),
+    proto("rep_len", &[arg("x"), arg("length.out")], false),
     proto("...elt", &[arg("n")], false),
     proto(
         ".C",
