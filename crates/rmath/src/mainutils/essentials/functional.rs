@@ -5217,12 +5217,35 @@ unsafe fn record_window_limits(args: SEXP) {
         if xv.len() < 2 || yv.len() < 2 {
             return;
         }
-        let (xa0, xa1, xn) = pretty_axp(xv[0], xv[1]);
-        let (ya0, ya1, yn) = pretty_axp(yv[0], yv[1]);
+        let log_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["log"], 2);
+        let log = if log_arg.is_null() || TYPEOF(log_arg) != SEXPTYPE::STRSXP || XLENGTH(log_arg) == 0 {
+            String::new()
+        } else {
+            let chars = CHAR(STRING_ELT(log_arg, 0));
+            if chars.is_null() { String::new() } else { std::ffi::CStr::from_ptr(chars).to_string_lossy().into_owned() }
+        };
+        let xlog = log.contains('x');
+        let ylog = log.contains('y');
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
         set_plot_parameter("usr", ParValue::Real(vec![xv[0], xv[1], yv[0], yv[1]]));
-        set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
-        set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
+        set_plot_parameter("xlog", ParValue::Logical(vec![if xlog { 1 } else { 0 }]));
+        set_plot_parameter("ylog", ParValue::Logical(vec![if ylog { 1 } else { 0 }]));
+        if xlog {
+            let lo = xv[0].ceil();
+            let hi = xv[1].floor();
+            set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), (hi - lo).max(1.0)]));
+        } else {
+            let (xa0, xa1, xn) = pretty_axp(xv[0], xv[1]);
+            set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
+        }
+        if ylog {
+            let lo = yv[0].ceil();
+            let hi = yv[1].floor();
+            set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), (hi - lo).max(1.0)]));
+        } else {
+            let (ya0, ya1, yn) = pretty_axp(yv[0], yv[1]);
+            set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
+        }
     }
 }
 
