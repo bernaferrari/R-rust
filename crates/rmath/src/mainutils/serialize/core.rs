@@ -290,6 +290,7 @@ pub struct BinaryReader<'a> {
 
 
     persist_hook_data: SEXP,
+    persist_cache: std::collections::HashMap<String, SEXP>,
 }
 
 /// Why a declared vector length is not admitted.
@@ -391,6 +392,7 @@ impl<'a> BinaryReader<'a> {
             persist_hook: ptr::null_mut(),
             persist_hook_func: None,
             persist_hook_data: ptr::null_mut(),
+            persist_cache: std::collections::HashMap::new(),
         }
     }
 
@@ -1673,6 +1675,20 @@ unsafe fn read_item_body(
                 }
                 SET_STRING_ELT(names, i as R_xlen_t, value);
             }
+            let mut cache_key = String::new();
+            for i in 0..len {
+                if i > 0 {
+                    cache_key.push('\0');
+                }
+                let raw = CHAR(STRING_ELT(names, i as R_xlen_t));
+                if !raw.is_null() {
+                    cache_key.push_str(&std::ffi::CStr::from_ptr(raw).to_string_lossy());
+                }
+            }
+            if let Some(&cached) = reader.persist_cache.get(&cache_key) {
+                ref_table.add(cached);
+                return Ok(cached);
+            }
             let restored = if let Some(func) = reader.persist_hook_func {
                 func(names, reader.persist_hook_data)
             } else if reader.persist_hook.is_null() || reader.persist_hook == R_NilValue() {
@@ -1680,6 +1696,7 @@ unsafe fn read_item_body(
             } else {
                 CallHook(names, reader.persist_hook)
             };
+            reader.persist_cache.insert(cache_key, restored);
             let _restored_guard = protect(restored);
             ref_table.add(restored);
             return Ok(restored);
