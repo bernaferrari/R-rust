@@ -13555,6 +13555,21 @@ pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         for i in 0..n {
             let elt = STRING_ELT(path_arg, i);
             if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                if must_work == TRUE {
+                    base_error(format!(
+                        "path[{}]=\"{}\": No such file or directory",
+                        i + 1,
+                        "NA"
+                    ));
+                }
+                if must_work == NA_INTEGER {
+                    let msg = std::ffi::CString::new(format!(
+                        "path[{}]=\"NA\": No such file or directory",
+                        i + 1
+                    ))
+                    .unwrap_or_default();
+                    crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                }
                 SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
                 continue;
             }

@@ -1478,8 +1478,11 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
         for i in 0..n as usize {
             let elt = STRING_ELT(files, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
+            if elt.is_null()
+                || elt == R_NilValue()
+                || elt == crate::sexp::globals::R_NaString()
+            {
+                *pa.add(i) = -1;
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
