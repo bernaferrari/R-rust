@@ -4249,10 +4249,12 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 && TYPEOF(src_names) == SEXPTYPE::STRSXP
                 && XLENGTH(src_names) == n
             {
+                let dup = crate::mainutils::duplicate::Rf_duplicate(src_names);
+                let _g = protect(dup);
                 crate::sexp::attrib_core::setAttrib(
                     result,
                     crate::sexp::attrib_core::R_NamesSymbol(),
-                    crate::mainutils::duplicate::Rf_duplicate(src_names),
+                    dup,
                 );
             }
             return result;
@@ -4313,10 +4315,12 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             && TYPEOF(src_names) == SEXPTYPE::STRSXP
             && XLENGTH(src_names) == n
         {
+            let dup = crate::mainutils::duplicate::Rf_duplicate(src_names);
+            let _g = protect(dup);
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_NamesSymbol(),
-                crate::mainutils::duplicate::Rf_duplicate(src_names),
+                dup,
             );
         }
         result
