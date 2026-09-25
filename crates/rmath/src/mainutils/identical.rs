@@ -259,14 +259,27 @@ unsafe fn attr_pairlist_len_filtered(object: SEXP, list: SEXP, flags: c_int) -> 
 /// when `ignore.srcref` is the default.
 unsafe fn body_expr_no_src(fun: SEXP, flags: c_int) -> SEXP {
     unsafe {
-        let body = BODY(fun);
+        let mut body = BODY(fun);
+        if !body.is_null() && TYPEOF(body) == SEXPTYPE::BCODESXP {
+            let source = crate::eval::bc_eval::BCODE_EXPR(body);
+            if !source.is_null() && source != R_NilValue() {
+                body = source;
+            }
+        }
         if flags & IDENT_USE_SRCREF != 0 {
             return body;
         }
-        let copy = crate::mainutils::duplicate::duplicate(body);
-        if copy.is_null() {
+        let has_src = [c"srcref", c"srcfile", c"wholeSrcref"].iter().any(|name| {
+            let attr = crate::sexp::attrib_core::getAttrib(
+                body,
+                crate::sexp::symbol::Rf_install(name.as_ptr()),
+            );
+            !attr.is_null() && attr != R_NilValue()
+        });
+        if !has_src {
             return body;
         }
+        let copy = crate::mainutils::duplicate::duplicate(body);
         let _g = crate::sexp::protect::protect(copy);
         for name in [c"srcref", c"srcfile", c"wholeSrcref"] {
             crate::sexp::attrib_core::setAttrib(

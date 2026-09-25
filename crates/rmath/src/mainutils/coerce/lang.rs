@@ -75,6 +75,8 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             || bt == SEXPTYPE::INTSXP
             || bt == SEXPTYPE::REALSXP
             || bt == SEXPTYPE::STRSXP
+            || bt == SEXPTYPE::STRSXP
+            || bt == SEXPTYPE::CPLXSXP
             || bt == SEXPTYPE::LGLSXP
         {
             crate::mainutils::dstruct::mkCLOSXP(pargs, body, envir)
