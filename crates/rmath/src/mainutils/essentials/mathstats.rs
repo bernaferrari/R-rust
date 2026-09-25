@@ -54,6 +54,12 @@ pub unsafe fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
         let n = XLENGTH(x_arg);
         let t = TYPEOF(x_arg);
+        if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "non-numeric argument to mathematical function",
+            );
+        }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
