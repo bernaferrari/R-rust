@@ -413,7 +413,7 @@ pub unsafe fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for i in 0..n {
             let mag = if t == SEXPTYPE::CPLXSXP {
                 let z = *COMPLEX(x).add(i as usize);
-                if z.r.is_nan() || z.i.is_nan() {
+                if !z.r.is_finite() || !z.i.is_finite() {
                     continue;
                 }
                 (z.r * z.r + z.i * z.i).sqrt()
@@ -429,7 +429,7 @@ pub unsafe fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 } else {
                     continue;
                 };
-                if v.is_nan() {
+                if !v.is_finite() {
                     continue;
                 }
                 v.abs()
