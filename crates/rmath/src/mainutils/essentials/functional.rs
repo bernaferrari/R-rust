@@ -5095,8 +5095,15 @@ unsafe fn record_plot_window(args: SEXP) {
             LOG_Y_LO.store(lo.floor() as i32, std::sync::atomic::Ordering::Relaxed);
             LOG_Y_HI.store(hi.floor() as i32, std::sync::atomic::Ordering::Relaxed);
         }
-        let (mut x0, mut x1) = padded_range(&xv);
-        let (mut y0, mut y1) = padded_range(&yv);
+        let xaxs_i = matches!(crate::library::graphics::par::parameter("xaxs"), crate::library::graphics::par::ParValue::String(s) if s == "i");
+        let yaxs_i = matches!(crate::library::graphics::par::parameter("yaxs"), crate::library::graphics::par::ParValue::String(s) if s == "i");
+        let tight = |v: &[f64]| {
+            let lo = v.iter().copied().filter(|x| x.is_finite()).fold(f64::INFINITY, f64::min);
+            let hi = v.iter().copied().filter(|x| x.is_finite()).fold(f64::NEG_INFINITY, f64::max);
+            if lo.is_finite() { (lo, hi) } else { (0.0, 1.0) }
+        };
+        let (mut x0, mut x1) = if xaxs_i { tight(&xv) } else { padded_range(&xv) };
+        let (mut y0, mut y1) = if yaxs_i { tight(&yv) } else { padded_range(&yv) };
         if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
             if 10f64.powf(x0) == 0.0 { x0 = (1.01 * f64::MIN_POSITIVE).log10(); }
             if x1 >= 308.25035 { x1 = (0.99 * f64::MAX).log10(); }
