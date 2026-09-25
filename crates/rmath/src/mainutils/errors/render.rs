@@ -771,24 +771,26 @@ pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *m
                 String::new()
             };
 
+            let mut out = String::new();
             if dcall.is_empty() {
-                eprint!("Warning:");
+                out.push_str("Warning:");
             } else {
-                eprint!("Warning in {} :", dcall);
-                // Check if first line fits on same line
+                out.push_str("Warning in ");
+                out.push_str(&dcall);
+                out.push_str(" :");
                 let msg_first_line = fmt_str
                     .find('\n')
                     .map(|i| &fmt_str[..i])
                     .unwrap_or(&fmt_str);
                 if 18 + dcall.len() + msg_first_line.len() > LONGWARN {
-                    eprintln!();
-                    eprint!(" ");
+                    out.push('\n');
+                    out.push(' ');
                 }
             }
-            eprintln!(" {}", fmt_str);
-
+            out.push(' ');
+            out.push_str(&fmt_str);
+            out.push('\n');
             if r_show_warn_calls() && !call.is_null() && isNull(call) == 0 {
-                // Respect .signalSimpleWarning hook if present by filtering the traceback accordingly
                 let sigsym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
                 let tr = if SYMVALUE(sigsym) != globals::R_UnboundValue() {
                     R_ConciseTraceback(call, 1)
@@ -796,9 +798,12 @@ pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *m
                     R_ConciseTraceback(call, 0)
                 };
                 if !tr.is_empty() {
-                    eprintln!("Calls: {}", tr);
+                    out.push_str("Calls: ");
+                    out.push_str(&tr);
+                    out.push('\n');
                 }
             }
+            crate::sexp::output::capture_stderr(&out);
         } else {
             // w == 0: collect warnings
             if collect_warnings() == 0 {
