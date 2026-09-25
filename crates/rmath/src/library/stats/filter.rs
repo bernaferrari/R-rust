@@ -2615,8 +2615,12 @@ pub unsafe fn do_kalman_run(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let n = fit.resid.len();
         let values = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _v = protect(values);
-        *REAL(values) = fit.lik;
-        *REAL(values).add(1) = fit.s2;
+        *REAL(values) = fit.s2;
+        *REAL(values).add(1) = if fit.s2 > 0.0 {
+            2.0 * fit.lik - fit.s2.ln()
+        } else {
+            0.0
+        };
         crate::mainutils::essentials::set_string_names(
             values,
             &["Lik".to_string(), "s2".to_string()],
