@@ -402,6 +402,29 @@ fn install(coords: Coordinates) {
     set_plot_parameter("usr", ParValue::Real(coords.limits.to_vec()));
     set_plot_parameter("xlog", ParValue::Logical(vec![i32::from(coords.log[0])]));
     set_plot_parameter("ylog", ParValue::Logical(vec![i32::from(coords.log[1])]));
+    if !coords.log[0] {
+        set_linear_axp("xaxp", coords.limits[0], coords.limits[1]);
+    }
+    if !coords.log[1] {
+        set_linear_axp("yaxp", coords.limits[2], coords.limits[3]);
+    }
+}
+fn set_linear_axp(name: &str, lo: f64, hi: f64) {
+    if !lo.is_finite() || !hi.is_finite() || lo == hi {
+        return;
+    }
+    let ticks = pretty_linear_ticks(lo, hi, 5.);
+    if ticks.len() < 2 {
+        return;
+    }
+    set_plot_parameter(
+        name,
+        ParValue::Real(vec![
+            ticks[0],
+            ticks[ticks.len() - 1],
+            (ticks.len() - 1) as f64,
+        ]),
+    );
 }
 unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinates, bool) {
     unsafe {

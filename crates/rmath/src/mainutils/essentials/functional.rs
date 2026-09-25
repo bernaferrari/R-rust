@@ -5034,8 +5034,134 @@ pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     }
     #[cfg(not(feature = "renderplot-device"))]
     {
-        let _ = (call, op, args, rho);
+        let _ = (call, op, rho);
+        record_plot_window(args);
         crate::sexp::globals::R_NilValue()
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+unsafe fn record_plot_window(args: SEXP) {
+    unsafe {
+        let x = crate::mainutils::essentials::arg_by_name_or_position(args, &["x"], 0);
+        if x.is_null() || x == crate::sexp::globals::R_NilValue() {
+            return;
+        }
+        let y = crate::mainutils::essentials::arg_by_name_or_position(args, &["y"], 1);
+        let y_missing = y.is_null()
+            || y == crate::sexp::globals::R_NilValue()
+            || y == crate::sexp::globals::R_MissingArg();
+        let mut yv = if y_missing {
+            numeric_plot_values(x)
+        } else {
+            numeric_plot_values(y)
+        };
+        let mut xv = if y_missing {
+            (1..=yv.len()).map(|i| i as f64).collect()
+        } else {
+            numeric_plot_values(x)
+        };
+        if xv.is_empty() || yv.is_empty() {
+            return;
+        }
+        if xv.len() != yv.len() {
+            let n = xv.len().min(yv.len());
+            xv.truncate(n);
+            yv.truncate(n);
+        }
+        let (x0, x1) = padded_range(&xv);
+        let (y0, y1) = padded_range(&yv);
+        let (xa0, xa1, xn) = pretty_axp(x0, x1);
+        let (ya0, ya1, yn) = pretty_axp(y0, y1);
+        use crate::library::graphics::par::{ParValue, set_plot_parameter};
+        set_plot_parameter("usr", ParValue::Real(vec![x0, x1, y0, y1]));
+        set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
+        set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+fn numeric_plot_values(x: SEXP) -> Vec<f64> {
+    unsafe {
+        let n = crate::sexp::accessors::XLENGTH(x) as usize;
+        let t = crate::sexp::accessors::TYPEOF(x);
+        if t == crate::sexp::ffi::SEXPTYPE::REALSXP {
+            (0..n).map(|i| crate::sexp::accessors::REAL(x).add(i).read()).collect()
+        } else if t == crate::sexp::ffi::SEXPTYPE::INTSXP {
+            (0..n)
+                .map(|i| crate::sexp::accessors::INTEGER(x).add(i).read() as f64)
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+fn padded_range(v: &[f64]) -> (f64, f64) {
+    let mut lo = f64::INFINITY;
+    let mut hi = f64::NEG_INFINITY;
+    for x in v {
+        if x.is_finite() {
+            lo = lo.min(*x);
+            hi = hi.max(*x);
+        }
+    }
+    if !lo.is_finite() {
+        return (0.0, 1.0);
+    }
+    if lo == hi {
+        return (lo - 1.0, hi + 1.0);
+    }
+    let extra = (hi - lo) * 0.04;
+    (lo - extra, hi + extra)
+}
+
+fn pretty_axp(lo0: f64, hi0: f64) -> (f64, f64, f64) {
+    let mut lo = lo0;
+    let mut hi = hi0;
+    let mut ndiv = 5i32;
+    let high = [0.8f64, 1.7, 1.125];
+    let unit = unsafe {
+        crate::appl::pretty::R_pretty(&mut lo, &mut hi, &mut ndiv, 1, 0.25, high.as_ptr(), 2, 0)
+    };
+    if lo * unit < lo0 - 1e-10 * unit {
+        lo += 1.0;
+    }
+    if hi * unit > hi0 + 1e-10 * unit {
+        hi -= 1.0;
+    }
+    let n = (hi - lo).max(1.0);
+    (lo * unit, hi * unit, n)
+}
+pub unsafe fn do_plot_window(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    #[cfg(feature = "renderplot-device")]
+    unsafe {
+        crate::mainutils::portable_plot::draw_builtin("plot.window", args)
+    }
+    #[cfg(not(feature = "renderplot-device"))]
+    unsafe {
+        record_window_limits(args);
+        crate::sexp::globals::R_NilValue()
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+unsafe fn record_window_limits(args: SEXP) {
+    unsafe {
+        let xlim = crate::mainutils::essentials::arg_by_name_or_position(args, &["xlim"], 0);
+        let ylim = crate::mainutils::essentials::arg_by_name_or_position(args, &["ylim"], 1);
+        let xv = numeric_plot_values(xlim);
+        let yv = numeric_plot_values(ylim);
+        if xv.len() < 2 || yv.len() < 2 {
+            return;
+        }
+        let (xa0, xa1, xn) = pretty_axp(xv[0], xv[1]);
+        let (ya0, ya1, yn) = pretty_axp(yv[0], yv[1]);
+        use crate::library::graphics::par::{ParValue, set_plot_parameter};
+        set_plot_parameter("usr", ParValue::Real(vec![xv[0], xv[1], yv[0], yv[1]]));
+        set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
+        set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
     }
 }
 
@@ -5052,7 +5178,7 @@ macro_rules! portable_graphics_handlers {
 portable_graphics_handlers! {
     do_lines_default=>"lines.default",do_points_default=>"points.default",
     do_segments=>"segments",do_arrows=>"arrows",do_polygon=>"polygon",
-    do_text_default=>"text.default",do_title=>"title",do_box=>"box",do_axis=>"axis",do_plot_window=>"plot.window",
+    do_text_default=>"text.default",do_title=>"title",do_box=>"box",do_axis=>"axis",
 }
 static NO_DEVICE_PLOT_NEW: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
