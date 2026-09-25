@@ -4747,6 +4747,76 @@ pub unsafe fn do_model_weights(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     unsafe { named_list_elt(CAR(args), "(weights)") }
 }
 
+fn pure_interaction_width(rhs: SEXP, data: SEXP) -> Option<f64> {
+    unsafe fn walk(expr: SEXP, vars: &mut Vec<String>) {
+        unsafe {
+            if expr.is_null() || expr == R_NilValue() {
+                return;
+            }
+            if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+                vars.push(
+                    std::ffi::CStr::from_ptr(CHAR(PRINTNAME(expr)))
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+                return;
+            }
+            if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+                return;
+            }
+            let op = CAR(expr);
+            let name = if TYPEOF(op) == SEXPTYPE::SYMSXP {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                String::new()
+            };
+            if name != ":" && name != "+" && name != "-" {
+                return;
+            }
+            let mut cell = CDR(expr);
+            while !cell.is_null() && cell != R_NilValue() {
+                walk(CAR(cell), vars);
+                cell = CDR(cell);
+            }
+        }
+    }
+    unsafe {
+        let mut vars = Vec::new();
+        walk(rhs, &mut vars);
+        if vars.len() < 2 || TYPEOF(data) != SEXPTYPE::VECSXP {
+            return None;
+        }
+        let names = crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut width = 1.0f64;
+        for var in &vars {
+            let mut col = R_NilValue();
+            if TYPEOF(names) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(names) {
+                    let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
+                        .to_string_lossy();
+                    if nm == var.as_str() {
+                        col = VECTOR_ELT(data, i);
+                        break;
+                    }
+                }
+            }
+            let levels = crate::sexp::attrib_core::getAttrib(
+                col,
+                crate::sexp::symbol::Rf_install(c"levels".as_ptr()),
+            );
+            let nlev = if TYPEOF(levels) == SEXPTYPE::STRSXP && XLENGTH(levels) > 0 {
+                XLENGTH(levels) as f64
+            } else {
+                return None;
+            };
+            width *= nlev;
+        }
+        Some(width)
+    }
+}
+
 /// GNU `model.matrix(~x)` — intercept plus one numeric column.
 pub unsafe fn do_model_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -4762,6 +4832,17 @@ pub unsafe fn do_model_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
         };
         if rhs.is_null() || rhs == R_NilValue() {
             return R_NilValue();
+        }
+        let data = CAR(CDR(args));
+        if let Some(width) = pure_interaction_width(rhs, data) {
+            if width > i32::MAX as f64 {
+                let shown = format!("{width:.0e}").replace('e', "e+");
+                let msg = std::ffi::CString::new(format!(
+                    "term 1 would require {shown} columns"
+                ))
+                .unwrap_or_default();
+                crate::main::errors::Rf_error(msg.as_ptr());
+            }
         }
         let xname = if TYPEOF(rhs) == SEXPTYPE::SYMSXP {
             std::ffi::CStr::from_ptr(CHAR(PRINTNAME(rhs)))
@@ -7632,6 +7713,7 @@ fn interaction_column_names(data: SEXP, lab: &str) -> Vec<String> {
     unsafe {
         let names = crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
         let mut groups = Vec::new();
+        let mut width = 1.0f64;
         for part in split_top_level_colon(lab) {
             let mut colx = R_NilValue();
             if TYPEOF(names) == SEXPTYPE::STRSXP {
@@ -7651,10 +7733,20 @@ fn interaction_column_names(data: SEXP, lab: &str) -> Vec<String> {
             if crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
                 || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0
             {
-                groups.push(contrast_suffixes(colx, part));
+                let suffixes = contrast_suffixes(colx, part);
+                width *= (suffixes.len() + 1) as f64;
+                groups.push(suffixes);
             } else {
                 groups.push(vec![part.to_string()]);
             }
+        }
+        if width > i32::MAX as f64 {
+            let shown = format!("{width:.0e}").replace('e', "e+");
+            let msg = std::ffi::CString::new(format!(
+                "term 1 would require {shown} columns"
+            ))
+            .unwrap_or_default();
+            crate::main::errors::Rf_error(msg.as_ptr());
         }
         let mut names_out = vec![String::new()];
         for group in &groups {
