@@ -1966,7 +1966,51 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
         }
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
-        ans
+        if _args.is_null() || _args == crate::sexp::globals::R_NilValue() {
+            return ans;
+        }
+        let what = crate::sexp::accessors::CAR(_args);
+        if what.is_null() || what == crate::sexp::globals::R_NilValue() || what == crate::sexp::globals::R_MissingArg() {
+            return ans;
+        }
+        let nwhat = crate::sexp::accessors::XLENGTH(what);
+        let out = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), nwhat);
+        let _out = protect(out);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), nwhat);
+        let _on = protect(out_names);
+        for i in 0..nwhat {
+            let wanted = if crate::sexp::accessors::TYPEOF(what) == SEXPTYPE::STRSXP.as_c_int() {
+                let elt = crate::sexp::accessors::STRING_ELT(what, i);
+                if elt.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            } else {
+                String::new()
+            };
+            let mut found = false;
+            for (j, name) in names.iter().enumerate() {
+                if *name == wanted {
+                    *crate::sexp::accessors::LOGICAL(out).add(i as usize) =
+                        *crate::sexp::accessors::LOGICAL(ans).add(j);
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                *crate::sexp::accessors::LOGICAL(out).add(i as usize) = FALSE;
+            }
+            SET_STRING_ELT(
+                out_names,
+                i,
+                Rf_mkChar(CString::new(wanted).unwrap_or_default().as_ptr()),
+            );
+        }
+        crate::eval::attrib_core::setAttrib(out, crate::eval::attrib_core::R_NamesSymbol(), out_names);
+        out
     }
 }
 

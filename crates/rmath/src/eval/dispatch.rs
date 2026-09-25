@@ -207,7 +207,7 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
                 let allow = if !head.is_null() && TYPEOF(head) == SEXPTYPE::SYMSXP {
                     let name = crate::sexp::accessors::CHAR(crate::sexp::accessors::PRINTNAME(head));
                     let name = if name.is_null() { "" } else { std::ffi::CStr::from_ptr(name).to_str().unwrap_or("") };
-                    matches!(name, "colMeans" | "colSums" | "rowMeans" | "rowSums")
+                    matches!(name, "colMeans" | "colSums" | "rowMeans" | "rowSums" | "dput")
                 } else {
                     false
                 };

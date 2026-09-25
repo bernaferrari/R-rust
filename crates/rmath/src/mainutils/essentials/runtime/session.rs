@@ -189,7 +189,11 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let output = format!("{}\n", lines.join("\n"));
 
-        let file = if file_arg.is_null() || file_arg == R_NilValue() || XLENGTH(file_arg) == 0 {
+        let file = if file_arg.is_null()
+            || file_arg == R_NilValue()
+            || file_arg == R_MissingArg()
+            || XLENGTH(file_arg) == 0
+        {
             String::new()
         } else {
             elt_to_string(file_arg, 0)
