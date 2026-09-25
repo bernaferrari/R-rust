@@ -2236,6 +2236,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            ".S3method",
+            "function(generic, class, method) {\n\
+             if (missing(method)) method <- paste(generic, class, sep = \".\")\n\
+             method <- match.fun(method)\n\
+             registerS3method(generic, class, method, envir = parent.frame())\n\
+             }",
+        );
+
+        eval_base_binding(
+            base_env,
             ".register_print_data_frame",
             "{ registerS3method(\"print\", \"data.frame\", function(x, ...) print.data.frame(x, ...)); TRUE }",
         );
