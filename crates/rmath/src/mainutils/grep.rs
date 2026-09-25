@@ -844,6 +844,25 @@ pub(crate) fn perl_replace(
     global: bool,
     ignore_case: bool,
 ) -> Option<String> {
+    if pattern == "\\b" || pattern == "\u{8}" {
+        let chars: Vec<char> = text.chars().collect();
+        let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let mut out = String::new();
+        let last = if global { chars.len() } else { chars.len().min(1) };
+        let mut used = false;
+        for i in 0..=chars.len() {
+            let left = i > 0 && word(chars[i - 1]);
+            let right = i < chars.len() && word(chars[i]);
+            if left != right && (global || !used) {
+                out.push_str(replacement);
+                used = true;
+            }
+            if i < chars.len() && i < last.max(chars.len()) {
+                out.push(chars[i]);
+            }
+        }
+        return Some(out);
+    }
     let regex = PerlRegex::compile(pattern, ignore_case).ok()?;
     replace_with_captures(text, replacement, global, |remaining| {
         regex.captures(remaining)

@@ -1864,14 +1864,21 @@ fn parse_table_records(content: &str, spec: &TableParseSpec) -> Vec<Vec<TableFie
 
     while let Some(c) = chars.next() {
         if let Some(q) = quote {
-            if spec.allow_escape && c == '\\' {
+            if c == '\\' {
                 if let Some(next) = chars.next() {
-                    field.push(match next {
-                        'n' => '\n',
-                        't' => '\t',
-                        'r' => '\r',
-                        other => other,
-                    });
+                    if next == q {
+                        field.push(q);
+                    } else if spec.allow_escape {
+                        field.push(match next {
+                            'n' => '\n',
+                            't' => '\t',
+                            'r' => '\r',
+                            other => other,
+                        });
+                    } else {
+                        field.push('\\');
+                        field.push(next);
+                    }
                 }
             } else if c == q {
                 if chars.peek() == Some(&q) {
