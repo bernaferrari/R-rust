@@ -205,16 +205,9 @@ pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             setAttrib(out, R_DimSymbol(), dims);
             out
         };
-        // Cdqrls stores DGEQP3 tau and does not set useLAPACK. qr.qy would
-        // otherwise divide by tau. The duplicate keeps that flag off the lm
-        // object, which qr.fitted still rejects.
-        let qobj = crate::mainutils::duplicate::Rf_duplicate(object);
-        let _qobj = protect(qobj);
-        setAttrib(
-            qobj,
-            crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()),
-            Rf_ScalarLogical(1),
-        );
+        // A plain qr() is LINPACK. qr() sets useLAPACK only for lapack=TRUE.
+        // Stamping it here made qr.qy treat dqrdc2 qraux as DGEQP3 tau.
+        let qobj = object;
         let qy_tail = Rf_cons(r_use, R_NilValue());
         let _qy_tail = protect(qy_tail);
         let qy_args = Rf_cons(qobj, qy_tail);
