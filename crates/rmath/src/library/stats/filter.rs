@@ -2688,11 +2688,27 @@ pub unsafe extern "C-unwind" fn c_kalman_fore(n_ahead: SEXP, model: SEXP, _updat
         do_kalman_forecast(R_NilValue(), R_NilValue(), args, R_NilValue())
     }
 }
-pub unsafe extern "C-unwind" fn c_kalman_like(y: SEXP, model: SEXP, _nit: SEXP, _fast: SEXP, _update: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn c_kalman_like(y: SEXP, model: SEXP, _nit: SEXP, fast: SEXP, _update: SEXP) -> SEXP {
     unsafe {
+        let want_run = TYPEOF(fast) == SEXPTYPE::LGLSXP
+            && LENGTH(fast) >= 1
+            && *LOGICAL(fast) == 1;
         let args = crate::sexp::constructors::Rf_cons(model, R_NilValue());
         let args = crate::sexp::constructors::Rf_cons(y, args);
-        do_kalman_like(R_NilValue(), R_NilValue(), args, R_NilValue())
+        if want_run {
+            return do_kalman_run(R_NilValue(), R_NilValue(), args, R_NilValue());
+        }
+        let Some(fit) = kalman_run_1d(y, model) else {
+            return R_NilValue();
+        };
+        let out = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        *REAL(out) = fit.s2;
+        *REAL(out).add(1) = if fit.s2 > 0.0 {
+            2.0 * fit.lik - fit.s2.ln()
+        } else {
+            0.0
+        };
+        out
     }
 }
 
@@ -2771,6 +2787,10 @@ pub unsafe fn do_kalman_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             *REAL(sm).add(i) = smooth[i];
             *REAL(va).add(i) = svar[i].max(0.0);
         }
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dim) = n as i32;
+        *INTEGER(dim).add(1) = 1;
+        crate::sexp::attrib_core::setAttrib(sm, crate::sexp::attrib_core::R_DimSymbol(), dim);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, sm);
