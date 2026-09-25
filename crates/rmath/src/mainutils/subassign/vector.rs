@@ -286,12 +286,24 @@ pub(crate) unsafe fn SubassignTypeFix(
                 *x = coerceVector(*x, EXPRSXP);
             }
 
-            2001 | 2002 | 2006 | 2010 | 2013 | 2014 | 2015 | 2016 | 2019 => {
+            2001 | 2002 | 2006 | 2010 | 2013 | 2014 | 2015 | 2016 => {
                 // expression <- various
                 if level == 1 {
                     *y = coerceVector(*y, VECSXP);
                 } else {
                     redo_which = false;
+                }
+            }
+
+            2019 => {
+                // expression <- list
+                if level == 1 {
+                    *y = coerceVector(*y, VECSXP);
+                } else {
+                    crate::mainutils::errors::Rf_error(
+                        b"incompatible types (from list to expression)\0".as_ptr()
+                            as *const core::ffi::c_char,
+                    );
                 }
             }
 
