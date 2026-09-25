@@ -2101,10 +2101,14 @@ pub unsafe fn do_gl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 .map(|i| elt_to_string(labels_arg, i))
                 .collect::<Vec<_>>()
         };
-        if (0..levels.len()).any(|i| levels[i + 1..].iter().any(|other| other == &levels[i])) {
-            std::panic::panic_any(RError {
-                message: "factor level [2] is duplicated".to_string(),
-            });
+        if !labels_arg.is_null() && labels_arg != R_NilValue() {
+            if let Some(dup) = (1..levels.len())
+                .find(|i| levels[..*i].iter().any(|earlier| earlier == &levels[*i]))
+            {
+                std::panic::panic_any(RError {
+                    message: format!("factor level [{}] is duplicated", dup + 1),
+                });
+            }
         }
         let ordered_arg = arg_by_name_or_position(args, &["ordered"], 4);
         let ordered = if ordered_arg.is_null() || ordered_arg == R_NilValue() {
