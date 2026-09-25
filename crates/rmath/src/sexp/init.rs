@@ -1394,6 +1394,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "seq.Date", include_str!("gnu_seq_Date.R"));
         eval_base_binding(base_env, "pretty.POSIXt", include_str!("gnu_pretty_date.R"));
         eval_base_binding(base_env, "Reduce", include_str!("gnu_reduce.R"));
+        eval_base_binding(base_env, "axTicks", include_str!("gnu_axTicks.R"));
         eval_base_binding(base_env, "getHook", include_str!("gnu_userhooks.R"));
         eval_base_binding(base_env, "grepRaw", include_str!("gnu_grepRaw.R"));
         eval_base_binding(base_env, "symnum", include_str!("gnu_symnum.R"));
