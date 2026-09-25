@@ -2828,35 +2828,116 @@ pub unsafe fn ztrcon_(
     unsafe {
         let n_val = *n as usize;
         let lda_val = *lda as usize;
-        let diag_byte = *diag;
-
+        let is_upper = *_uplo == b'U' || *_uplo == b'u';
+        let is_unit = *diag == b'U' || *diag == b'u';
+        *info = 0;
         if n_val == 0 {
-            *rcond = 0.0;
-            *info = 0;
+            *rcond = 1.0;
             return;
         }
-
-        let is_unit = diag_byte == b'U' || diag_byte == b'u';
-        let mut min_diag = f64::INFINITY;
-        let mut max_diag = 0.0f64;
-
-        for i in 0..n_val {
-            let rc = *a.add(i + i * lda_val);
-            let d = if is_unit {
-                1.0
+        let cabs = |z: Rcomplex| (z.r * z.r + z.i * z.i).sqrt();
+        let cmul = |a: Rcomplex, b: Rcomplex| Rcomplex {
+            r: a.r * b.r - a.i * b.i,
+            i: a.r * b.i + a.i * b.r,
+        };
+        let cdiv = |a: Rcomplex, b: Rcomplex| {
+            let d = b.r * b.r + b.i * b.i;
+            if d == 0.0 {
+                Rcomplex { r: 0.0, i: 0.0 }
             } else {
-                (rc.r * rc.r + rc.i * rc.i).sqrt()
-            };
-            min_diag = min_diag.min(d);
-            max_diag = max_diag.max(d);
+                Rcomplex {
+                    r: (a.r * b.r + a.i * b.i) / d,
+                    i: (a.i * b.r - a.r * b.i) / d,
+                }
+            }
+        };
+        let aij = |i: usize, j: usize| -> Rcomplex {
+            if i == j && is_unit {
+                return Rcomplex { r: 1.0, i: 0.0 };
+            }
+            let stored = if is_upper { i <= j } else { i >= j };
+            if stored {
+                *a.add(i + j * lda_val)
+            } else {
+                Rcomplex { r: 0.0, i: 0.0 }
+            }
+        };
+        let mut anorm = 0.0f64;
+        for j in 0..n_val {
+            let mut s = 0.0f64;
+            for i in 0..n_val {
+                s += cabs(aij(i, j));
+            }
+            anorm = anorm.max(s);
         }
-
-        if max_diag == 0.0 {
+        if anorm == 0.0 {
             *rcond = 0.0;
-        } else {
-            *rcond = min_diag / (max_diag * n_val as f64);
+            return;
         }
-        *info = 0;
+        let mut solve = |x: &mut [Rcomplex], conj_trans: bool| {
+            let upper = if conj_trans { !is_upper } else { is_upper };
+            let coeff = |row: usize, col: usize| {
+                let z = if conj_trans { aij(col, row) } else { aij(row, col) };
+                if conj_trans {
+                    Rcomplex { r: z.r, i: -z.i }
+                } else {
+                    z
+                }
+            };
+            if upper {
+                for i in (0..n_val).rev() {
+                    let mut s = x[i];
+                    for j in (i + 1)..n_val {
+                        let p = cmul(coeff(i, j), x[j]);
+                        s.r -= p.r;
+                        s.i -= p.i;
+                    }
+                    x[i] = cdiv(s, coeff(i, i));
+                }
+            } else {
+                for i in 0..n_val {
+                    let mut s = x[i];
+                    for j in 0..i {
+                        let p = cmul(coeff(i, j), x[j]);
+                        s.r -= p.r;
+                        s.i -= p.i;
+                    }
+                    x[i] = cdiv(s, coeff(i, i));
+                }
+            }
+        };
+        let mut x = vec![Rcomplex { r: 0.0, i: 0.0 }; n_val];
+        let scale = 1.0 / n_val as f64;
+        for z in &mut x {
+            z.r = scale;
+        }
+        solve(&mut x, false);
+        let mut est: f64 = x.iter().map(|z| cabs(*z)).sum();
+        for z in &mut x {
+            let m = cabs(*z);
+            if m == 0.0 {
+                *z = Rcomplex { r: 1.0, i: 0.0 };
+            } else {
+                *z = Rcomplex { r: z.r / m, i: -z.i / m };
+            }
+        }
+        solve(&mut x, true);
+        let j = x
+            .iter()
+            .enumerate()
+            .max_by(|a, b| cabs(*a.1).total_cmp(&cabs(*b.1)))
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        for (i, z) in x.iter_mut().enumerate() {
+            *z = if i == j {
+                Rcomplex { r: 1.0, i: 0.0 }
+            } else {
+                Rcomplex { r: 0.0, i: 0.0 }
+            };
+        }
+        solve(&mut x, false);
+        est = est.max(x.iter().map(|z| cabs(*z)).sum());
+        *rcond = if est == 0.0 { 0.0 } else { 1.0 / (anorm * est) };
     }
 }
 
