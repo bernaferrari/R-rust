@@ -180,7 +180,28 @@ pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             }
         }
         methods.sort();
-        methods_function(string_vector(&methods))
+        let ans = methods_function(string_vector(&methods));
+        let n = methods.len() as i64;
+        let info = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let from = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let visible = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let rows = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        for i in 0..n {
+            SET_STRING_ELT(from, i, Rf_mkChar(c"base".as_ptr()));
+            *crate::sexp::accessors::LOGICAL(visible).add(i as usize) = 1;
+            let cname = std::ffi::CString::new(methods[i as usize].as_str()).unwrap_or_default();
+            SET_STRING_ELT(rows, i, Rf_mkChar(cname.as_ptr()));
+        }
+        SET_VECTOR_ELT(info, 0, from);
+        SET_VECTOR_ELT(info, 1, visible);
+        let inames = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        SET_STRING_ELT(inames, 0, Rf_mkChar(c"from".as_ptr()));
+        SET_STRING_ELT(inames, 1, Rf_mkChar(c"visible".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_NamesSymbol(), inames);
+        crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_ClassSymbol(), Rf_mkString(c"data.frame".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(info, crate::sexp::symbol::Rf_install(c"row.names".as_ptr()), rows);
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::symbol::Rf_install(c"info".as_ptr()), info);
+        ans
     }
 }
 
