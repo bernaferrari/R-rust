@@ -3975,12 +3975,27 @@ pub(crate) fn grep_match_indices(
         }
         let n = XLENGTH(x);
         let mut matches = Vec::new();
+        let mut utf8_warned = false;
         for i in 0..n {
             if is_string_na(x, i) {
                 if invert {
                     matches.push(i);
                 }
                 continue;
+            }
+            if !utf8_warned && TYPEOF(x) == SEXPTYPE::STRSXP {
+                let elt = STRING_ELT(x, i);
+                if crate::sexp::accessors::getCharCE(elt) == 2 {
+                    let bytes = std::ffi::CStr::from_ptr(CHAR(elt)).to_bytes();
+                    if std::str::from_utf8(bytes).is_err() {
+                        utf8_warned = true;
+                        let msg = format!("input string {} is invalid UTF-8\0", i + 1);
+                        crate::mainutils::errors::warningcall(
+                            crate::sexp::globals::R_NilValue(),
+                            msg.as_ptr() as *const std::os::raw::c_char,
+                        );
+                    }
+                }
             }
             let matched =
                 grep_value_matches(&elt_to_string(x, i), pattern, ignore_case, perl, fixed);
