@@ -1558,6 +1558,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "download.file",
+            "function(url, destfile, method, quiet = FALSE, mode = \"w\", cacheOK = TRUE, extra = getOption(\"download.file.extra\"), headers = NULL, ...) { method <- if (missing(method)) getOption(\"download.file.method\", default = \"auto\") else method; match.arg(method, c(\"auto\", \"internal\", \"libcurl\", \"wget\", \"curl\", \"lynx\")); stop(\"download.file is not implemented\") }",
+        );
+        eval_base_binding(
+            base_env,
             "length<-.POSIXct",
             include_str!("gnu_lengthgets_POSIXct.R"),
         );
