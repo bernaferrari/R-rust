@@ -1264,6 +1264,7 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 crate::mainutils::essentials::tables::list_element_by_name(first, "message")
             {
                 let text = elt_to_string(msg, 0);
+                crate::mainutils::errors::save_error_traceback();
                 set_signalled_condition(first);
                 signal_calling_handlers(first, _rho);
                 // `.dfltStop(message, call)` uses conditionCall semantics:
@@ -1287,6 +1288,7 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             R_NilValue()
         };
+        crate::mainutils::errors::save_error_traceback();
         crate::mainutils::errors::errorcall_str(call, &s);
 
 

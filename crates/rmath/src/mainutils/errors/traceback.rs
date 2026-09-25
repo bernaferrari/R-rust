@@ -72,6 +72,26 @@ pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
         s
     }
 }
+pub unsafe fn save_error_traceback() {
+    unsafe {
+        let trace = R_GetTracebackOnly(1);
+        if trace.is_null() || trace == globals::R_NilValue() || crate::sexp::accessors::LENGTH(trace) == 0 {
+            return;
+        }
+        let _g = crate::sexp::protect::protect(trace);
+        let mut cell = trace;
+        while !cell.is_null() && cell != globals::R_NilValue() {
+            let call = CAR(cell);
+            if !call.is_null() && call != globals::R_NilValue() {
+                SETCAR(cell, crate::mainutils::duplicate::duplicate(call));
+            }
+            cell = CDR(cell);
+        }
+        let symbol = crate::sexp::symbol::Rf_install(c".Traceback".as_ptr());
+        crate::sexp::envir::defineVar(symbol, trace, crate::eval::runtime::base_env());
+    }
+}
+
 
 /// R_ConciseTraceback — return a concise call chain as a string.
 /// Ported from errors.c R_ConciseTraceback().

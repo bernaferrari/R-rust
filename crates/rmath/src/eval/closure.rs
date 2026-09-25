@@ -629,6 +629,7 @@ pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SE
                 let matched = match_closure_args(formals.clone().as_raw(), promised_args)
                     .unwrap_or_else(|message| {
                         crate::mainutils::errors::record_error_call(call, true);
+                        crate::mainutils::errors::save_error_traceback();
                         std::panic::panic_any(crate::sexp::context::RSignal::Error { message })
                     });
 
