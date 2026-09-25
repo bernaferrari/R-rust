@@ -227,9 +227,13 @@ pub fn open_gz_conn(conn: &mut RConn, mode: &str) -> io::Result<()> {
     if mode.starts_with('r') || mode.starts_with('a') || mode.contains('+') {
         let path = Path::new(&conn.description);
         if path.exists() {
-            let file = File::open(path)?;
-            let mut decoder = GzDecoder::new(file);
-            decoder.read_to_end(&mut conn.raw_data)?;
+            let mut file = File::open(path)?;
+            let mut decoder = GzDecoder::new(&mut file);
+            if decoder.read_to_end(&mut conn.raw_data).is_err() {
+                conn.raw_data.clear();
+                let mut plain = File::open(path)?;
+                plain.read_to_end(&mut conn.raw_data)?;
+            }
         } else if mode.starts_with('r') {
             return Err(io::Error::new(io::ErrorKind::NotFound, "file not found"));
         }
@@ -481,7 +485,11 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         let _compression = CAR(args);
 
         let description = check_string_arg(scmd, "description");
-        let open = check_string_arg(sopen, "open");
+        let open = if sopen.is_null() || sopen == R_NilValue() || sopen == crate::sexp::globals::R_MissingArg() {
+            String::new()
+        } else {
+            check_string_arg(sopen, "open")
+        };
         let open_mode = if open.is_empty() {
             "r".to_string()
         } else {

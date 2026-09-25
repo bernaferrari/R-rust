@@ -1199,7 +1199,7 @@ unsafe fn string_vector_from_names(names: &[String]) -> SEXP {
     }
 }
 
-unsafe fn save_ascii_objects(list: SEXP, file_sexp: SEXP, ascii_flag: SEXP, envir: SEXP) -> SEXP {
+unsafe fn save_ascii_objects(list: SEXP, file_sexp: SEXP, ascii_flag: SEXP, envir: SEXP, version: c_int) -> SEXP {
     unsafe {
         if file_sexp.is_null() {
             error("'file' must be non-empty string");
@@ -1228,7 +1228,8 @@ unsafe fn save_ascii_objects(list: SEXP, file_sexp: SEXP, ascii_flag: SEXP, envi
         };
         let mut writer = BufWriter::new(file);
 
-        let _ = R_WriteMagic(&mut writer, R_MAGIC_ASCII_V3);
+        let magic = if version <= 2 { R_MAGIC_ASCII_V2 } else { R_MAGIC_ASCII_V3 };
+        let _ = R_WriteMagic(&mut writer, magic);
 
         let n = if list.is_null() {
             0
@@ -1402,7 +1403,7 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let ascii_flag = CADDR(args);
         let envir = CAD5R(args);
 
-        save_ascii_objects(list, file_sexp, ascii_flag, envir)
+        save_ascii_objects(list, file_sexp, ascii_flag, envir, 3)
     }
 }
 
@@ -1418,7 +1419,14 @@ pub unsafe fn do_save_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         let _list_guard = protect(list);
 
         let file = eval_named_arg(args, rho, "file");
-        let ascii = eval_named_arg(args, rho, "ascii");
+
+        let version_arg = eval_named_arg(args, rho, "version");
+        let version = if version_arg.is_null() || version_arg == R_NilValue() {
+            3
+        } else {
+            let v = crate::mainutils::coerce::asInteger(version_arg);
+            if v <= 2 { 2 } else { 3 }
+        };
         let envir = {
             let candidate = eval_named_arg(args, rho, "envir");
             if candidate.is_null() || candidate == R_NilValue() {
@@ -1430,6 +1438,7 @@ pub unsafe fn do_save_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         // Binary XDR is not implemented. The default ascii=FALSE path still
         // writes the ASCII image, looked up in `envir`, so save(one, envir=)
         // records that binding instead of failing closed.
+        let ascii = eval_named_arg(args, rho, "ascii");
         let ascii = if ascii.is_null()
             || ascii == R_NilValue()
             || crate::mainutils::coerce::asInteger(ascii) == 0
@@ -1439,7 +1448,7 @@ pub unsafe fn do_save_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             ascii
         };
         let _ascii = protect(ascii);
-        let result = save_ascii_objects(list, file, ascii, envir);
+        let result = save_ascii_objects(list, file, ascii, envir, version);
         // Stock save() returns invisible NULL/names; the top-level
         // auto-print depends on the exact flag.
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
