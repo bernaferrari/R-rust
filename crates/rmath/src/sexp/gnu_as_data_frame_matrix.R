@@ -18,7 +18,7 @@ function(x, row.names = NULL, optional = FALSE, make.names = TRUE, ...,
         for (i in ic)
             value[[i]] <- as.vector(x[, i])
     }
-    autoRN <- (is.null(row.names) || length(row.names) != nrows)
+    autoRN <- (is.null(row.names) || length(row.names) != nrows || (nrows == 0L && !length(row.names)))
     if (length(collabs) == ncols)
         names(value) <- collabs %||% character()
     else if (!optional)
