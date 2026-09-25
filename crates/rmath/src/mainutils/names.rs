@@ -4241,6 +4241,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"getAllConnections\0",
+        None,
+        0,
+        11,
+        0,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"list.files\0",
         None,
         0,

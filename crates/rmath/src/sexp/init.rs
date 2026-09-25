@@ -1306,6 +1306,25 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "summary.connection",
             "function(object, ...) .Internal(summary.connection(object))",
         );
+        eval_base_binding(
+            base_env,
+            "getAllConnections",
+            "function() .Internal(getAllConnections())",
+        );
+        eval_base_binding(
+            base_env,
+            "showConnections",
+            "function(all = FALSE) {\n\
+             set <- getAllConnections()\n\
+             if (!all) set <- set[set > 2L]\n\
+             ans <- matrix(\"\", length(set), 7L)\n\
+             for (i in seq_along(set)) ans[i, ] <- unlist(summary.connection(set[i]))\n\
+             rownames(ans) <- set\n\
+             colnames(ans) <- c(\"description\", \"class\", \"mode\", \"text\", \"isopen\",\n\
+                                \"can read\", \"can write\")\n\
+             if (!all) ans[ans[, 5L] == \"opened\", , drop = FALSE] else ans[, , drop = FALSE]\n\
+             }",
+        );
         eval_base_binding(base_env, "srcfilecopy", include_str!("gnu_srcfilecopy.R"));
 
     eval_base_binding(base_env, ".traceback", include_str!("gnu_dot_traceback.R"));

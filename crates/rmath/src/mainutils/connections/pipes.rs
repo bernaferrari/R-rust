@@ -429,7 +429,8 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 pub unsafe fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
-        if !inherits_class(scon, "connection") {
+        let integer_index = TYPEOF(scon) == SEXPTYPE::INTSXP || TYPEOF(scon) == SEXPTYPE::REALSXP;
+        if !inherits_class(scon, "connection") && !integer_index {
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
@@ -470,6 +471,23 @@ pub unsafe fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             crate::sexp::attrib_core::R_NamesSymbol(),
             names,
         );
+        ans
+    }
+}
+
+pub unsafe fn do_getAllConnections(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let table = connection_table();
+        let mut ids = Vec::new();
+        for (i, slot) in table.iter().enumerate() {
+            if slot.is_some() {
+                ids.push(i as i32);
+            }
+        }
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ids.len() as R_xlen_t);
+        for (i, id) in ids.iter().enumerate() {
+            *INTEGER(ans).add(i) = *id;
+        }
         ans
     }
 }
