@@ -5232,6 +5232,9 @@ fn deparse_call(expr: SEXP) -> String {
     unsafe {
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
             let name = symbol_chars(expr).unwrap_or_default();
+            if name.is_empty() {
+                return String::new();
+            }
             if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(name.as_bytes()) {
                 return name;
             }
