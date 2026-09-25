@@ -867,9 +867,14 @@ pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             let cell = Rf_cons(value, call_args);
             guards.push(protect(cell));
             if TYPEOF(names) == SEXPTYPE::STRSXP && i < XLENGTH(names) {
-                let chars = CHAR(STRING_ELT(names, i));
-                if !chars.is_null() && *chars != 0 {
-                    SETTAG(cell, Rf_install(chars));
+                let name_elt = STRING_ELT(names, i);
+                if name_elt == crate::sexp::globals::R_NaString() {
+                    SETTAG(cell, Rf_install(c"NA".as_ptr()));
+                } else {
+                    let chars = CHAR(name_elt);
+                    if !chars.is_null() && *chars != 0 {
+                        SETTAG(cell, Rf_install(chars));
+                    }
                 }
             }
             call_args = cell;

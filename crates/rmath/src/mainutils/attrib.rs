@@ -21,7 +21,7 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, CADDR, CADR, CAR, CDR, PRINTNAME, SET_STRING_ELT, SET_VECTOR_ELT, TAG,
+    ATTRIB, CADDR, CADR, CAR, CDR, PRINTNAME, SET_STRING_ELT, SET_VECTOR_ELT, TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -274,8 +274,14 @@ pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
         let mut x = CAR(args);
         let val = CADR(args);
+        let val = if val.is_null() || val == R_NilValue() || TYPEOF(val) == SEXPTYPE::STRSXP {
+            val
+        } else {
+            crate::mainutils::coerce::coerceVector(val, SEXPTYPE::STRSXP.as_c_int())
+        };
         x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
         let _x = protect(x);
+        let _v = protect(val);
         crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_NamesSymbol(), val);
         x
     }

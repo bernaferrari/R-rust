@@ -161,9 +161,13 @@ pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if !names.is_null() && names != R_NilValue() {
                 let name_elt = STRING_ELT(names, i as R_xlen_t);
                 if !name_elt.is_null() && name_elt != R_NilValue() {
-                    let ch = CHAR(name_elt);
-                    if !ch.is_null() && *ch != 0 {
-                        SETTAG(c, installTrChar(name_elt));
+                    if name_elt == crate::sexp::globals::R_NaString() {
+                        SETTAG(c, Rf_install(c"NA".as_ptr()));
+                    } else {
+                        let ch = CHAR(name_elt);
+                        if !ch.is_null() && *ch != 0 {
+                            SETTAG(c, installTrChar(name_elt));
+                        }
                     }
                 }
             }
