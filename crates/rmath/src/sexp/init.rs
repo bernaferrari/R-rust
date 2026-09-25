@@ -1530,6 +1530,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "list2DF",
+            "function(x = list(), nrow = 0L) { stopifnot(is.list(x), is.null(nrow) || nrow >= 0L); if (n <- length(x)) { if (length(nrow <- unique(lengths(x))) > 1L) stop(\"all variables should have the same length\") } else if (is.null(nrow)) nrow <- 0L; if (is.null(names(x))) names(x) <- character(n); class(x) <- \"data.frame\"; attr(x, \"row.names\") <- .set_row_names(nrow); x }",
+        );
+        eval_base_binding(
+            base_env,
             "length<-.POSIXct",
             include_str!("gnu_lengthgets_POSIXct.R"),
         );
