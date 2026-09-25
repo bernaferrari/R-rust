@@ -5145,6 +5145,12 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             }
         }
         if internal_val.is_null() || internal_val == R_NilValue() {
+            if let Some(handler) = internal_builtin_handler(&name_str) {
+                let actual_args = CDR(s);
+                let evaluated_args =
+                    crate::eval::dispatch::evalList(actual_args, env, call, -1);
+                return handler(s, R_NilValue(), evaluated_args, env);
+            }
             panic_any(RError {
                 message: format!("there is no .Internal function '{}'", name_str),
             });
@@ -5242,6 +5248,7 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
+        "refcnt" => Some(do_refcnt),
         "Recall" => Some(crate::eval::eval::do_recall),
         "file.show" => Some(crate::mainutils::platform::do_fileshow),
         "stop" => Some(crate::mainutils::errors::do_stop_internal),
@@ -5304,6 +5311,17 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
 }
 
 /// R's `.Internal(builtins(internal))` — sorted builtin/internal name listing.
+pub unsafe fn do_refcnt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(args)
+        };
+        crate::sexp::constructors::Rf_ScalarInteger(crate::sexp::accessors::NAMED(x))
+    }
+}
+
 pub unsafe fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let internal = if args.is_null() || args == R_NilValue() {

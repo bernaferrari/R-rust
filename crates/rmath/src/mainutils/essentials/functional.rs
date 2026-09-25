@@ -3437,8 +3437,8 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         if TYPEOF(x) == SEXPTYPE::LISTSXP {
             x = crate::mainutils::coerce::coerceVector(x, SEXPTYPE::VECSXP.as_c_int());
-            let _pair = protect(x);
         }
+        let _pair = protect(x);
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             return x;
         }
