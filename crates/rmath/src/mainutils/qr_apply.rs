@@ -114,12 +114,11 @@ unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) ->
         if XLENGTH(a) < k as R_xlen_t {
             err("invalid QR decomposition fields");
         }
-        let lap = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
-        // Cdqrls stores DGEQP3 tau and does not set the flag. Only an
-        // explicit FALSE is the LINPACK u[0]=qraux storage.
-        let lap = !(TYPEOF(lap) == SEXPTYPE::LGLSXP
-            && XLENGTH(lap) == 1
-            && LOGICAL_ELT(lap, 0) == 0);
+        let lap_attr = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
+        // GNU uses LAPACK only when useLAPACK is TRUE. A plain qr() is LINPACK.
+        let lap = TYPEOF(lap_attr) == SEXPTYPE::LGLSXP
+            && XLENGTH(lap_attr) == 1
+            && LOGICAL_ELT(lap_attr, 0) != 0;
         let t = if lap {
             k
         } else {
