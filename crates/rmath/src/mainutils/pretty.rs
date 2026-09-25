@@ -190,6 +190,75 @@ pub unsafe fn pretty_values(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         result
     }
 }
+/// Base `.pretty`: the `R_pretty` components, not the expanded tick vector.
+pub unsafe fn dot_pretty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x_expr = arg_by_name_or_position(args, &["x"], 0);
+        if x_expr.is_null() || x_expr == R_NilValue() {
+            return R_NilValue();
+        }
+        let x_real = coerceVector(x_expr, SEXPTYPE::REALSXP.as_c_int());
+        let _x_guard = protect(x_real);
+        let mut lo = f64::INFINITY;
+        let mut up = f64::NEG_INFINITY;
+        let mut any = false;
+        for i in 0..XLENGTH(x_real) as usize {
+            let value = *REAL(x_real).add(i);
+            if value.is_finite() {
+                any = true;
+                lo = lo.min(value);
+                up = up.max(value);
+            }
+        }
+        if !any {
+            return R_NilValue();
+        }
+        let n = scalar_real(arg_by_name_or_position(args, &["n"], 1), "n", 5.0) as i32;
+        let min_n = scalar_real(
+            arg_by_name_or_position(args, &["min.n"], 2),
+            "min.n",
+            (n / 3) as f64,
+        ) as i32;
+        let shrink = scalar_real(arg_by_name_or_position(args, &["shrink.sml"], 3), "shrink.sml", 0.75);
+        let high_u_bias = scalar_real(arg_by_name_or_position(args, &["high.u.bias"], 4), "high.u.bias", 1.5);
+        let u5_bias = scalar_real(
+            arg_by_name_or_position(args, &["u5.bias"], 5),
+            "u5.bias",
+            0.5 + 1.5 * high_u_bias,
+        );
+        let eps = scalar_real(arg_by_name_or_position(args, &["eps.correct"], 6), "eps.correct", 0.0) as i32;
+        let f_min = scalar_real(arg_by_name_or_position(args, &["f.min"], 7), "f.min", 2.0_f64.powi(-20));
+        let bounds = scalar_bool(arg_by_name_or_position(args, &["bounds"], 8), "bounds", true);
+        let mut ndiv = n;
+        let high_u_fact = [high_u_bias, u5_bias, f_min];
+        let unit = R_pretty(&mut lo, &mut up, &mut ndiv, min_n, shrink, high_u_fact.as_ptr(), eps, if bounds { 1 } else { 0 });
+        let (len, names): (usize, &[&str]) = if bounds {
+            (3, &["l", "u", "n"])
+        } else {
+            (4, &["ns", "nu", "n", "unit"])
+        };
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t);
+        let _g = protect(result);
+        let name_vec = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        let _ng = protect(name_vec);
+        for (i, name) in names.iter().enumerate() {
+            let c = std::ffi::CString::new(*name).unwrap_or_default();
+            crate::sexp::accessors::SET_STRING_ELT(name_vec, i as R_xlen_t, crate::sexp::constructors::Rf_mkChar(c.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), name_vec);
+        if bounds {
+            crate::sexp::accessors::SET_VECTOR_ELT(result, 0, crate::sexp::constructors::Rf_ScalarReal(lo));
+            crate::sexp::accessors::SET_VECTOR_ELT(result, 1, crate::sexp::constructors::Rf_ScalarReal(up));
+            crate::sexp::accessors::SET_VECTOR_ELT(result, 2, crate::sexp::constructors::Rf_ScalarInteger(ndiv));
+        } else {
+            crate::sexp::accessors::SET_VECTOR_ELT(result, 0, crate::sexp::constructors::Rf_ScalarReal(lo));
+            crate::sexp::accessors::SET_VECTOR_ELT(result, 1, crate::sexp::constructors::Rf_ScalarReal(up));
+            crate::sexp::accessors::SET_VECTOR_ELT(result, 2, crate::sexp::constructors::Rf_ScalarInteger(ndiv));
+            crate::sexp::accessors::SET_VECTOR_ELT(result, 3, crate::sexp::constructors::Rf_ScalarReal(unit));
+        }
+        result
+    }
+}
 
 /// The public `pretty` generic.
 pub unsafe fn do_pretty(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

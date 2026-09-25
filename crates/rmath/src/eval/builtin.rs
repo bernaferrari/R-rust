@@ -927,6 +927,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: ".rport_pretty",
         handler: crate::mainutils::pretty::pretty_values,
     },
+    EvaluatedBuiltin {
+        name: ".pretty",
+        handler: crate::mainutils::pretty::dot_pretty,
+    },
     #[cfg(feature = "renderplot-device")]
     EvaluatedBuiltin {
         name: ".rport_rasterImage",

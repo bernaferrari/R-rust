@@ -313,6 +313,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "pretty",
     "pretty.default",
     ".rport_pretty",
+    ".pretty",
     "hist",
     "hist.default",
     "barplot",
