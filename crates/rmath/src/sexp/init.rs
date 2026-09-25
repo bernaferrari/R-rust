@@ -877,6 +877,20 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "Summary.data.frame",
+            "function(..., na.rm = FALSE) {\n\
+                args <- list(...)\n\
+                args <- lapply(args, function(x) {\n\
+                    x <- as.matrix(x)\n\
+                    if (!is.numeric(x) && !is.logical(x) && !is.complex(x))\n\
+                        stop(\"only defined on a data frame with all numeric-alike variables\")\n\
+                    x\n\
+                })\n\
+                do.call(.Generic, c(args, na.rm = na.rm))\n\
+            }",
+        );
+        eval_base_binding(
+            base_env,
             "diag<-",
             "function(x, value) {\n\
                 dx <- dim(x)\n\
