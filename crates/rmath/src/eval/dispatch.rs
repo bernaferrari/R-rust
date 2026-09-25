@@ -265,9 +265,7 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
                 if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
                     let mut dh = h;
                     while !dh.is_null() && dh != R_NilValue() {
-                        let cell_value = if CAR(dh) == R_MissingArg()
-                            || TYPEOF(CAR(dh)) == SEXPTYPE::PROMSXP
-                        {
+                        let cell_value = if CAR(dh) == R_MissingArg() {
                             CAR(dh)
                         } else {
                             mkPROMISE(CAR(dh), rho)
