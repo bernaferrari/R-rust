@@ -5101,8 +5101,28 @@ unsafe fn record_plot_window(args: SEXP) {
         let (ya0, ya1, yn) = pretty_axp(y0, y1);
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
         set_plot_parameter("usr", ParValue::Real(vec![x0, x1, y0, y1]));
-        set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
-        set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
+        set_plot_parameter(
+            "xlog",
+            ParValue::Logical(vec![if LOG_X.load(std::sync::atomic::Ordering::Relaxed) { 1 } else { 0 }]),
+        );
+        set_plot_parameter(
+            "ylog",
+            ParValue::Logical(vec![if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) { 1 } else { 0 }]),
+        );
+        if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
+            let lo = x0.ceil();
+            let hi = x1.floor();
+            set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), (hi - lo).max(1.0)]));
+        } else {
+            set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
+        }
+        if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
+            let lo = y0.ceil();
+            let hi = y1.floor();
+            set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), (hi - lo).max(1.0)]));
+        } else {
+            set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
+        }
     }
 }
 static LOG_X: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -5247,14 +5267,19 @@ pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return crate::sexp::globals::R_NilValue();
         }
-        let logged = if side == 1.0 || side == 3.0 {
-            LOG_X.load(std::sync::atomic::Ordering::Relaxed)
-        } else {
-            LOG_Y.load(std::sync::atomic::Ordering::Relaxed)
-        };
+        let log_name = if side == 1.0 || side == 3.0 { "xlog" } else { "ylog" };
+        let logged = matches!(
+            crate::library::graphics::par::parameter(log_name),
+            crate::library::graphics::par::ParValue::Logical(v) if v.first().copied() == Some(1)
+        );
         if logged {
-            let lo = if side == 1.0 || side == 3.0 { LOG_X_LO.load(std::sync::atomic::Ordering::Relaxed) } else { LOG_Y_LO.load(std::sync::atomic::Ordering::Relaxed) };
-            let hi = if side == 1.0 || side == 3.0 { LOG_X_HI.load(std::sync::atomic::Ordering::Relaxed) } else { LOG_Y_HI.load(std::sync::atomic::Ordering::Relaxed) };
+            let usr = crate::library::graphics::par::parameter("usr");
+            let crate::library::graphics::par::ParValue::Real(u) = usr else {
+                return crate::sexp::globals::R_NilValue();
+            };
+            let (lo0, hi0) = if side == 1.0 || side == 3.0 { (u[0], u[1]) } else { (u[2], u[3]) };
+            let lo = lo0.ceil() as i32;
+            let hi = hi0.floor() as i32;
             if hi >= lo {
                 let n = (hi - lo + 1) as R_xlen_t;
                 let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
