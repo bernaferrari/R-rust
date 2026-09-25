@@ -146,9 +146,26 @@ fn create_log_at_vector(mut axp: [f64; 3], usr: [f64; 2], nint: c_int, style: c_
     }
     ticks.sort_by(f64::total_cmp);
     ticks.dedup_by(|a, b| (*a - *b).abs() <= f64::EPSILON * a.abs().max(b.abs()).max(1.0));
-    if ticks.len() > nint.max(1) as usize + 1 && style == 1 {
-        let step = (ticks.len() - 1) / nint.max(1) as usize + 1;
-        ticks = ticks.into_iter().step_by(step).collect();
+    if style == 1 {
+        let lo = axp[0].log10().ceil() as i32;
+        let hi = axp[1].log10().floor() as i32;
+        let d0 = hi - lo;
+        let mut ne = if nint > 0 { d0 / nint } else { d0 };
+        while ne > 1 && nint.max(1) * ne > d0 {
+            ne -= 1;
+        }
+        if ne < 1 {
+            ne = 1;
+        }
+        ticks.clear();
+        let mut e = lo;
+        while e <= hi {
+            let tick = 10_f64.powi(e);
+            if tick >= lower && tick <= upper {
+                ticks.push(tick);
+            }
+            e += ne;
+        }
     }
     if reversed {
         ticks.reverse();
