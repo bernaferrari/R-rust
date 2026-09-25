@@ -1784,6 +1784,15 @@ impl<'arena> Parser<'arena> {
     }
 
     fn parse_addition(&mut self) -> Result<SEXP, ParseError> {
+        if self.peek() == &Token::Tilde {
+            self.advance();
+            self.skip_newlines();
+            let body = self.parse_addition()?;
+            unsafe {
+                let op = Rf_install(c"~".as_ptr());
+                return self.lang2(op, body);
+            }
+        }
         let mut left = self.parse_multiplication()?;
         loop {
             // EatLines (gram.y): see the group gate in parse_tilde below.
