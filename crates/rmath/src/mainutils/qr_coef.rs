@@ -172,11 +172,10 @@ pub unsafe fn do_qr_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             return finish(coef, p, ny, matrix, f, y, pivot);
         }
         let lap = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
-        // Cdqrls stores DGEQP3 tau and does not set the flag. Only an
-        // explicit FALSE is the LINPACK path.
-        let lap = !(TYPEOF(lap) == SEXPTYPE::LGLSXP
+        // GNU uses LAPACK only when useLAPACK is TRUE.
+        let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP
             && XLENGTH(lap) == 1
-            && LOGICAL_ELT(lap, 0) == 0);
+            && LOGICAL_ELT(lap, 0) != 0;
         if lap {
             let kk = XLENGTH(qraux) as c_int;
             if kk < 0 || kk as usize > n_us.min(p_us) {
