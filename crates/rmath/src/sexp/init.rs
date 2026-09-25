@@ -456,9 +456,34 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "numeric_version",
-            "function(x, strict = TRUE) structure(x, class = \"numeric_version\")",
+            "function(x, strict = TRUE) { if (inherits(x, \"numeric_version\")) return(x); y <- rep.int(list(integer()), length(x)); ok <- !is.na(x); y[ok] <- lapply(strsplit(as.character(x)[ok], \"[.]\"), as.integer); class(y) <- \"numeric_version\"; y }",
         );
         eval_base_binding(base_env, "as.numeric_version", "numeric_version");
+        eval_base_binding(
+            base_env,
+            "[.numeric_version",
+            "function(x, i, j) { xx <- unclass(x); if (missing(i)) i <- seq_along(xx); y <- if (missing(j)) xx[i] else lapply(xx[i], `[`, j); bad <- vapply(y, function(t) is.null(t) || anyNA(t), NA); if (any(bad)) y[bad] <- rep.int(list(integer()), sum(bad)); class(y) <- class(x); y }",
+        );
+        eval_base_binding(
+            base_env,
+            "format.numeric_version",
+            "function(x, ...) { x <- unclass(x); y <- rep.int(NA_character_, length(x)); ind <- lengths(x) > 0L; y[ind] <- unlist(lapply(x[ind], paste, collapse = \".\")); y }",
+        );
+        eval_base_binding(
+            base_env,
+            "is.na.numeric_version",
+            "function(x) lengths(unclass(x)) == 0L",
+        );
+        eval_base_binding(
+            base_env,
+            "[<-.numeric_version",
+            "function(x, i, j, value) { y <- unclass(x); if (missing(j)) y[i] <- list(integer()) else y[i] <- Map(`[<-`, y[i], list(j), list(as.integer(value))); class(y) <- class(x); y }",
+        );
+        eval_base_binding(
+            base_env,
+            "is.na<-.numeric_version",
+            "function(x, value) { x[value] <- list(integer()); x }",
+        );
         eval_base_binding(base_env, "as.Date", "as.Date");
         eval_base_binding(base_env, "as.POSIXct", "as.POSIXct");
         eval_base_binding(
