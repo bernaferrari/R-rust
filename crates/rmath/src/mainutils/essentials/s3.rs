@@ -131,7 +131,29 @@ pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if generic_arg.is_null() || generic_arg == R_NilValue() {
             return methods_function(string_vector(&all_runtime_method_names()));
         }
-        let generic = elt_to_string(generic_arg, 0);
+        let mut generic = String::new();
+        if TYPEOF(generic_arg) == SEXPTYPE::STRSXP {
+            generic = elt_to_string(generic_arg, 0);
+        } else {
+            let mut call_cell = CDR(call);
+            while !call_cell.is_null() && call_cell != R_NilValue() {
+                let tag = TAG(call_cell);
+                let tagged = !tag.is_null() && tag != R_NilValue();
+                if !tagged {
+                    let expr = CAR(call_cell);
+                    if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+                        let pname = PRINTNAME(expr);
+                        if !pname.is_null() {
+                            generic = std::ffi::CStr::from_ptr(CHAR(pname))
+                                .to_string_lossy()
+                                .into_owned();
+                        }
+                    }
+                    break;
+                }
+                call_cell = CDR(call_cell);
+            }
+        }
         let prefix = format!("{generic}.");
         let mut methods = all_runtime_method_names()
             .into_iter()
