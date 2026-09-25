@@ -15726,6 +15726,9 @@ pub unsafe fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 pub(crate) unsafe fn search_env_from_position(pos: c_int) -> SEXP {
 
     unsafe {
+        if pos == -1 {
+            return crate::sexp::globals::R_GlobalEnv();
+        }
         if pos > 0
             && let Some((_, env)) = search_path_entries().get((pos - 1) as usize)
         {
