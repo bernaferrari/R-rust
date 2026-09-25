@@ -1436,9 +1436,20 @@ pub unsafe fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SE
 /// R's `message(...)` — print message.
 pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let text = condition_message_text(args, &["domain", "appendLF"]);
-        let message = format!("{}\n", text);
-        let condition = simple_condition(&message, &["simpleMessage", "message", "condition"]);
+        let first = CAR(args);
+        let passed = condition_object(first);
+        let text = if !passed.is_null() {
+            condition_message_of(passed).unwrap_or_default()
+        } else {
+            condition_message_text(args, &["domain", "appendLF"])
+        };
+        let message = if text.ends_with('\n') { text } else { format!("{text}\n") };
+        let condition = if !passed.is_null() {
+            passed
+        } else {
+            simple_condition(&message, &["simpleMessage", "message", "condition"])
+        };
+        let classes = condition_classes(condition);
         let old_stack = restart_stack();
         let restart = restart_entry("muffleMessage", R_NilValue(), R_NilValue());
         let _restart_guard = protect(restart);
@@ -1459,7 +1470,14 @@ pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 Err(payload) => std::panic::resume_unwind(payload),
             },
         };
-        if !muffled && crate::mainutils::errors::suppress_messages_depth() == 0 {
+        if !muffled
+            && !crate::mainutils::errors::message_class_suppressed(&classes)
+            && try_catch_wants(&classes.iter().map(String::as_str).collect::<Vec<_>>())
+        {
+            set_signalled_condition(condition);
+            std::panic::panic_any(crate::sexp::context::RSignal::Message { message });
+        }
+        if !muffled && !crate::mainutils::errors::message_class_suppressed(&classes) {
             crate::sexp::output::capture_interleaved(&message);
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
@@ -1711,6 +1729,24 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             Err(payload) => {
                 let payload = match payload.downcast::<crate::sexp::context::RSignal>() {
                     Ok(signal) => match *signal {
+                        crate::sexp::context::RSignal::Message { message: _ } => {
+                            let stashed = signalled_condition();
+                            set_signalled_condition(std::ptr::null_mut());
+                            let classes = condition_classes(stashed);
+                            let matching = handlers
+                                .iter()
+                                .find(|(tag, _)| classes.iter().any(|class| class == tag));
+                            if let Some((_, handler)) = matching {
+                                let _cond_guard = protect(stashed);
+                                let call = crate::sexp::constructors::Rf_lang2(*handler, stashed);
+                                let handled = crate::eval::eval::Rf_eval(call, rho);
+                                run_finally();
+                                return handled;
+                            }
+                            std::panic::resume_unwind(Box::new(
+                                crate::sexp::context::RSignal::Message { message: String::new() },
+                            ));
+                        }
                         crate::sexp::context::RSignal::Warning { message } => {
                             let stashed = signalled_condition();
                             let condition = if !stashed.is_null() {

@@ -460,6 +460,9 @@ pub enum RSignal {
     Warning {
         message: String,
     },
+    Message {
+        message: String,
+    },
     /// Non-local return from `invokeRestart()` to the matching `withRestarts()`.
     Restart(RestartJump),
     /// Abort to the embedding boundary without entering R error handlers.

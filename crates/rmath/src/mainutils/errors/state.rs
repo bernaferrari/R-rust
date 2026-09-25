@@ -287,6 +287,37 @@ pub(crate) fn enter_suppress_messages() {
 pub(crate) fn exit_suppress_messages() {
     with_error_state(|state| state.suppress_messages -= 1);
 }
+thread_local! {
+    static SUPPRESS_MESSAGE_CLASSES: std::cell::RefCell<Vec<Option<Vec<String>>>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
+pub(crate) fn push_suppress_message_classes(classes: Option<Vec<String>>) {
+    SUPPRESS_MESSAGE_CLASSES.with(|stack| stack.borrow_mut().push(classes));
+}
+
+pub(crate) fn pop_suppress_message_classes() {
+    SUPPRESS_MESSAGE_CLASSES.with(|stack| {
+        stack.borrow_mut().pop();
+    });
+}
+
+pub(crate) fn message_class_suppressed(classes: &[String]) -> bool {
+    if suppress_messages_depth() <= 0 {
+        return false;
+    }
+    SUPPRESS_MESSAGE_CLASSES.with(|stack| {
+        let stack = stack.borrow();
+        let Some(filter) = stack.last() else {
+            return true;
+        };
+        match filter {
+            None => true,
+            Some(wanted) => classes.iter().any(|class| wanted.iter().any(|want| want == class)),
+        }
+    })
+}
+
 
 pub(super) fn set_no_break_warning(val: bool) {
     with_error_state(|state| state.no_break_warning = val);
