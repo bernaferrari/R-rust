@@ -1167,16 +1167,24 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                     SET_VECTOR_ELT(
                         newdimnames,
                         0,
-                        ExtractSubset(VECTOR_ELT(dimnames, 0), sr, call),
+                        if nrs == 0 {
+                            R_NilValue()
+                        } else {
+                            ExtractSubset(VECTOR_ELT(dimnames, 0), sr, call)
+                        },
                     );
                     SET_VECTOR_ELT(
                         newdimnames,
                         1,
-                        ExtractSubset(VECTOR_ELT(dimnames, 1), sc, call),
+                        if ncs == 0 {
+                            R_NilValue()
+                        } else {
+                            ExtractSubset(VECTOR_ELT(dimnames, 1), sc, call)
+                        },
                     );
                 } else {
-                    SET_VECTOR_ELT(newdimnames, 0, ExtractSubset(CAR(dimnames), sr, call));
-                    SET_VECTOR_ELT(newdimnames, 1, ExtractSubset(CADR(dimnames), sc, call));
+                    SET_VECTOR_ELT(newdimnames, 0, if nrs == 0 { R_NilValue() } else { ExtractSubset(CAR(dimnames), sr, call) });
+                    SET_VECTOR_ELT(newdimnames, 1, if ncs == 0 { R_NilValue() } else { ExtractSubset(CADR(dimnames), sc, call) });
                 }
                 setAttrib(newdimnames, sym_Names(), dimnamesnames);
                 setAttrib(result, sym_DimNames(), newdimnames);
