@@ -2877,6 +2877,10 @@ pub unsafe fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         } else {
             bytes.len()
         };
+        if bytes[..take].contains(&0) {
+            crate::mainutils::errors::Rf_warning(c"truncating string with embedded nuls".as_ptr());
+        }
+        let take = bytes[..take].iter().position(|b| *b == 0).unwrap_or(take);
         let result = String::from_utf8_lossy(&bytes[..take]).into_owned();
         Rf_mkString(CString::new(result).unwrap_or_default().as_ptr())
     }
@@ -2917,6 +2921,7 @@ pub unsafe fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if nchars >= 0 && (nchars as usize) < text.len() {
             text.truncate(nchars as usize);
         }
+        text.push('\0');
         if !eos_arg.is_null() && eos_arg != R_NilValue() && TYPEOF(eos_arg) == SEXPTYPE::STRSXP {
             text.push_str(&elt_to_string(eos_arg, 0));
         }
