@@ -947,6 +947,81 @@ pub unsafe fn loess_ise(
     }
 }
 
+pub unsafe extern "C" fn c_loess_ise(
+    y: *mut c_double,
+    x: *mut c_double,
+    x_evaluate: *mut c_double,
+    weights: *mut c_double,
+    span: *mut c_double,
+    degree: *mut c_int,
+    nonparametric: *mut c_int,
+    drop_square: *mut c_int,
+    sum_drop_sqr: *mut c_int,
+    cell: *mut c_double,
+    d: *mut c_int,
+    n: *mut c_int,
+    m: *mut c_int,
+    fit: *mut c_double,
+    L: *mut c_double,
+) {
+    let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        loess_ise(
+            y, x, x_evaluate, weights, span, degree, nonparametric, drop_square,
+            sum_drop_sqr, cell, d, n, m, fit, L,
+        );
+    }));
+    if ran.is_err() {
+        unsafe {
+            let mm = (*m).max(0) as usize;
+            let nn = (*n).max(0) as usize;
+            for i in 0..mm {
+                *fit.add(i) = f64::NAN;
+            }
+            for i in 0..(mm.saturating_mul(nn)) {
+                *L.add(i) = f64::NAN;
+            }
+        }
+    }
+}
+
+pub unsafe extern "C" fn c_loess_dfitse(
+    y: *mut c_double,
+    x: *mut c_double,
+    x_evaluate: *mut c_double,
+    weights: *mut c_double,
+    robust: *mut c_double,
+    family: *mut c_int,
+    span: *mut c_double,
+    degree: *mut c_int,
+    nonparametric: *mut c_int,
+    drop_square: *mut c_int,
+    sum_drop_sqr: *mut c_int,
+    d: *mut c_int,
+    n: *mut c_int,
+    m: *mut c_int,
+    fit: *mut c_double,
+    L: *mut c_double,
+) {
+    let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        loess_dfitse(
+            y, x, x_evaluate, weights, robust, family, span, degree, nonparametric,
+            drop_square, sum_drop_sqr, d, n, m, fit, L,
+        );
+    }));
+    if ran.is_err() {
+        unsafe {
+            let mm = (*m).max(0) as usize;
+            let nn = (*n).max(0) as usize;
+            for i in 0..mm {
+                *fit.add(i) = f64::NAN;
+            }
+            for i in 0..(mm.saturating_mul(nn)) {
+                *L.add(i) = f64::NAN;
+            }
+        }
+    }
+}
+
 /// Set per-instance tau/lv/liv and allocate workspace arrays v[1..lv], iv[1..liv].
 unsafe fn loess_workspace(
     d: c_int,

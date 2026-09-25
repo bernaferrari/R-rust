@@ -521,7 +521,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_ARIMA_transPars", "C_ARIMA_CSS", "C_ARIMA_Like", "C_ARIMA_Invtrans", "C_ARIMA_undoPars", "C_ARIMA_Gradtrans", "C_TSconv", "C_getQ0",
     "C_doD", "C_deriv", "C_fft", "C_mvfft",
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_do_fmin", "C_Fisher_sim", "C_kmns", "C_eureka", "C_multi_yw", "C_call_dqags", "C_call_dqagi",
-    "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_lowesw", "C_lowesp",
+    "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_loess_ise", "C_loess_dfitse", "C_lowesw", "C_lowesp",
     "C_kmeans_Lloyd", "C_kmeans_MacQueen", "C_Rsm", "C_acf", "C_pacf1", "C_SWilk", "C_nls_iter", "C_tukeyline", "C_pRho", "C_pKendall", "C_ksmooth", "C_rfilter", "C_cfilter", "C_arma0_kfore", "C_KalmanFore", "C_KalmanLike", "C_KalmanSmooth", "C_psmirnov_exact", "C_rWishart", "C_ar2ma",
     "C_dpermdist1", "C_dpermdist2",
     "C_setup_starma", "C_free_starma", "C_Starma_method", "C_arma0fa",

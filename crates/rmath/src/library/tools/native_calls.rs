@@ -156,6 +156,18 @@ pub fn lookup_c(name: &str) -> DL_FUNC {
             ) = crate::library::stats::loessc::loess_ifit;
             as_dl(f)
         }
+        "loess_ise" => as_dl(crate::library::stats::loessc::c_loess_ise as unsafe extern "C" fn(
+            *mut c_double, *mut c_double, *mut c_double, *mut c_double,
+            *mut c_double, *mut c_int, *mut c_int, *mut c_int,
+            *mut c_int, *mut c_double, *mut c_int, *mut c_int,
+            *mut c_int, *mut c_double, *mut c_double,
+        )),
+        "loess_dfitse" => as_dl(crate::library::stats::loessc::c_loess_dfitse as unsafe extern "C" fn(
+            *mut c_double, *mut c_double, *mut c_double, *mut c_double,
+            *mut c_double, *mut c_int, *mut c_double, *mut c_int,
+            *mut c_int, *mut c_int, *mut c_int, *mut c_int,
+            *mut c_int, *mut c_int, *mut c_double, *mut c_double,
+        )),
         "lowesw" => as_dl(crate::library::stats::loessc::c_lowesw as unsafe extern "C" fn(
             *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
         )),
