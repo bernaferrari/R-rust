@@ -1018,7 +1018,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                 }
                 if let Some(ref mut file) = conn.file {
                     let seek_from = match origin {
-                        1 => SeekFrom::Current(where_val as i64),
+                        2 => SeekFrom::Current(where_val as i64),
                         3 => SeekFrom::End(where_val as i64),
                         _ => SeekFrom::Start(where_val as u64),
                     };
@@ -1035,7 +1035,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                 if !where_val.is_nan() {
                     if let Some(reader) = conn.reader.as_mut() {
                         let seek_from = match origin {
-                            1 => SeekFrom::Current(where_val as i64),
+                            2 => SeekFrom::Current(where_val as i64),
                             3 => SeekFrom::End(where_val as i64),
                             _ => SeekFrom::Start(where_val as u64),
                         };
@@ -1048,7 +1048,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                 let old_pos = conn.raw_pos as c_double;
                 if !where_val.is_nan() {
                     let new_pos = match origin {
-                        1 => (conn.raw_pos as i64 + where_val as i64) as usize,
+                        2 => (conn.raw_pos as i64 + where_val as i64) as usize,
                         3 => (conn.raw_data.len() as i64 + where_val as i64) as usize,
                         _ => where_val as usize,
                     };
@@ -1060,7 +1060,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                 let old_pos = conn.text_pos as c_double;
                 if !where_val.is_nan() {
                     let new_pos = match origin {
-                        1 => (conn.text_pos as i64 + where_val as i64) as usize,
+                        2 => (conn.text_pos as i64 + where_val as i64) as usize,
                         3 => (conn.text_data.len() as i64 + where_val as i64) as usize,
                         _ => where_val as usize,
                     };

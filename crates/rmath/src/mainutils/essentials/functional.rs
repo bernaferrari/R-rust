@@ -5093,6 +5093,29 @@ unsafe fn record_plot_window(args: SEXP) {
         };
         let (mut x0, mut x1) = if xaxs_i { tight(&xv) } else { padded_range(&xv) };
         let (mut y0, mut y1) = if yaxs_i { tight(&yv) } else { padded_range(&yv) };
+        let apply_limit = |current: (f64, f64), name: &str, logged: bool| {
+            let arg = crate::mainutils::essentials::arg_by_name_or_position(args, &[name], usize::MAX);
+            let v = numeric_plot_values(arg);
+            if v.len() < 2 || !v[0].is_finite() || !v[1].is_finite() {
+                return current;
+            }
+            let (mut a, mut b) = (v[0], v[1]);
+            if logged {
+                if a <= 0.0 || b <= 0.0 {
+                    return current;
+                }
+                a = a.log10();
+                b = b.log10();
+            }
+            let extra = (b - a).abs() * 0.04;
+            if a <= b {
+                (a - extra, b + extra)
+            } else {
+                (a + extra, b - extra)
+            }
+        };
+        let (mut x0, mut x1) = apply_limit((x0, x1), "xlim", LOG_X.load(std::sync::atomic::Ordering::Relaxed));
+        let (mut y0, mut y1) = apply_limit((y0, y1), "ylim", LOG_Y.load(std::sync::atomic::Ordering::Relaxed));
         if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
             if x0 < -1074.0 * std::f64::consts::LOG10_2 { x0 = (1.01 * f64::MIN_POSITIVE).log10(); }
             if x1 >= 308.25035 { x1 = (0.99 * f64::MAX).log10(); }
@@ -5114,18 +5137,22 @@ unsafe fn record_plot_window(args: SEXP) {
             ParValue::Logical(vec![if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) { 1 } else { 0 }]),
         );
         if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
-            let lo = x0.ceil().clamp(-307.0, 308.0);
-            let hi = x1.floor().clamp(lo, 308.0);
+            let (a, b) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
+            let lo = a.ceil().clamp(-307.0, 308.0);
+            let hi = b.floor().clamp(lo, 308.0);
             let n = if hi - lo <= 2.0 { 3.0 } else if hi - lo <= 3.0 { 2.0 } else { 1.0 };
-            set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
+            let (p0, p1) = if x0 <= x1 { (10f64.powf(lo), 10f64.powf(hi)) } else { (10f64.powf(hi), 10f64.powf(lo)) };
+            set_plot_parameter("xaxp", ParValue::Real(vec![p0, p1, n]));
         } else {
             set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
         }
         if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
-            let lo = y0.ceil().clamp(-307.0, 308.0);
-            let hi = y1.floor().clamp(lo, 308.0);
+            let (a, b) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
+            let lo = a.ceil().clamp(-307.0, 308.0);
+            let hi = b.floor().clamp(lo, 308.0);
             let n = if hi - lo <= 2.0 { 3.0 } else if hi - lo <= 3.0 { 2.0 } else { 1.0 };
-            set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
+            let (p0, p1) = if y0 <= y1 { (10f64.powf(lo), 10f64.powf(hi)) } else { (10f64.powf(hi), 10f64.powf(lo)) };
+            set_plot_parameter("yaxp", ParValue::Real(vec![p0, p1, n]));
         } else {
             set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
         }
