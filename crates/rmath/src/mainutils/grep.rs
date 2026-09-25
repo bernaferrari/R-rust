@@ -832,9 +832,13 @@ pub(crate) fn ere_replace(
     ignore_case: bool,
 ) -> Option<String> {
     let regex = TreRegex::compile(pattern, ignore_case).ok()?;
-    replace_with_captures(text, replacement, global, |remaining| {
-        regex.captures(remaining)
-    })
+    replace_with_captures(
+        text,
+        replacement,
+        global,
+        pattern.starts_with('^'),
+        |remaining| regex.captures(remaining),
+    )
 }
 
 pub(crate) fn perl_replace(
@@ -864,15 +868,20 @@ pub(crate) fn perl_replace(
         return Some(out);
     }
     let regex = PerlRegex::compile(pattern, ignore_case).ok()?;
-    replace_with_captures(text, replacement, global, |remaining| {
-        regex.captures(remaining)
-    })
+    replace_with_captures(
+        text,
+        replacement,
+        global,
+        pattern.starts_with('^') || pattern.starts_with("\\A"),
+        |remaining| regex.captures(remaining),
+    )
 }
 
 fn replace_with_captures<F>(
     text: &str,
     replacement: &str,
     global: bool,
+    anchored: bool,
     mut captures_at: F,
 ) -> Option<String>
 where
@@ -881,9 +890,12 @@ where
     let mut result = String::with_capacity(text.len());
     let mut search_from = 0usize;
     let mut prev_nonzero = false;
-
     loop {
         let remaining = &text[search_from..];
+        if anchored && search_from > 0 {
+            result.push_str(remaining);
+            break;
+        }
         let Some(captures) = captures_at(remaining) else {
             result.push_str(remaining);
             break;
