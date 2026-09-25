@@ -5175,7 +5175,8 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>,
                 name.as_str(),
                 "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
             ) {
-                record(name, expr, out, nodes);
+                let stored = if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(name.as_bytes()) { name } else { format!("`{name}`") };
+                record(stored, expr, out, nodes);
             }
             return;
         }
@@ -6986,7 +6987,12 @@ unsafe fn character_row_names(rn: SEXP, n: i64) -> SEXP {
     }
 }
 fn term_label_matches(column: &str, label: &str) -> bool {
-    let compact = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    let compact = |s: &str| {
+        s.trim_matches('`')
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+    };
     compact(column) == compact(label)
 }
 
