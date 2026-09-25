@@ -5181,7 +5181,47 @@ macro_rules! portable_graphics_handlers {
 portable_graphics_handlers! {
     do_lines_default=>"lines.default",do_points_default=>"points.default",
     do_segments=>"segments",do_arrows=>"arrows",do_polygon=>"polygon",
-    do_text_default=>"text.default",do_title=>"title",do_box=>"box",do_axis=>"axis",
+    do_text_default=>"text.default",do_title=>"title",do_box=>"box",
+}
+pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    #[cfg(feature = "renderplot-device")]
+    unsafe {
+        return crate::mainutils::portable_plot::draw_builtin("axis", args);
+    }
+    #[cfg(not(feature = "renderplot-device"))]
+    unsafe {
+        let side_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["side"], 0);
+        let side = if side_arg.is_null() || XLENGTH(side_arg) == 0 {
+            1.0
+        } else {
+            *REAL(crate::mainutils::coerce::coerceVector(side_arg, SEXPTYPE::REALSXP.as_c_int()))
+        };
+        let usr = crate::library::graphics::par::parameter("usr");
+        let crate::library::graphics::par::ParValue::Real(u) = usr else {
+            return crate::sexp::globals::R_NilValue();
+        };
+        if u.len() < 4 {
+            return crate::sexp::globals::R_NilValue();
+        }
+        let (lo, hi, n) = if side == 1.0 || side == 3.0 {
+            pretty_axp(u[0], u[1])
+        } else {
+            pretty_axp(u[2], u[3])
+        };
+        if !lo.is_finite() || !hi.is_finite() || !(1.0..=100.0).contains(&n) {
+            return crate::sexp::globals::R_NilValue();
+        }
+        let steps = n as usize;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, (steps + 1) as R_xlen_t);
+        if result.is_null() {
+            return crate::sexp::globals::R_NilValue();
+        }
+        for i in 0..=steps {
+            let t = i as f64 / steps as f64;
+            *REAL(result).add(i) = lo * (1.0 - t) + hi * t;
+        }
+        result
+    }
 }
 static NO_DEVICE_PLOT_NEW: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);

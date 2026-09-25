@@ -163,17 +163,31 @@ pub extern "C" fn R_pretty(
         }
     }
 
-    while ns * unit > unsafe { *lo } + ROUNDING_EPS * unit {
+    if !ns.is_finite() {
+        ns = 0.0;
+    }
+    if !nu.is_finite() {
+        nu = 0.0;
+    }
+    let mut guard = 0;
+    while ns * unit > unsafe { *lo } + ROUNDING_EPS * unit && guard < 10000 {
         ns -= 1.0;
+        guard += 1;
     }
-    while !(ns * unit).is_finite() {
+    guard = 0;
+    while !(ns * unit).is_finite() && ns.is_finite() && guard < 10000 {
         ns += 1.0;
+        guard += 1;
     }
-    while nu * unit < unsafe { *up } - ROUNDING_EPS * unit {
+    guard = 0;
+    while nu * unit < unsafe { *up } - ROUNDING_EPS * unit && guard < 10000 {
         nu += 1.0;
+        guard += 1;
     }
-    while !(nu * unit).is_finite() {
+    guard = 0;
+    while !(nu * unit).is_finite() && nu.is_finite() && guard < 10000 {
         nu -= 1.0;
+        guard += 1;
     }
 
     let k = (0.5 + nu - ns) as i32;

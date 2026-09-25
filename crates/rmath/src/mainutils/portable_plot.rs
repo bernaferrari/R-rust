@@ -1168,7 +1168,7 @@ fn axis(
     at: &[f64],
     labels: &[crate::mainutils::plotmath::Label],
     color: Color,
-) {
+) -> Vec<f64> {
     let horizontal = side == 1 || side == 3;
     let coord = if horizontal { 0 } else { 1 };
     let positions: Vec<_> = if at.is_empty() {
@@ -1277,6 +1277,7 @@ fn axis(
             },
         );
     }
+    positions
 }
 
 #[cfg(test)]
@@ -1863,7 +1864,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 } else {
                     style.color(0)
                 };
-                axis(
+                let ticks = axis(
                     &mut *renderer(),
                     c,
                     side[0] as usize,
@@ -1871,6 +1872,13 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                     &labels,
                     axis_color,
                 );
+                let result = Rf_allocVector3(SEXPTYPE::REALSXP, ticks.len() as R_xlen_t);
+                if !result.is_null() {
+                    for (i, tick) in ticks.iter().enumerate() {
+                        *REAL(result).add(i) = *tick;
+                    }
+                }
+                return result;
             }
             _ => base_error(format!("graphics primitive '{name}' is not implemented")),
         }
