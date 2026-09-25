@@ -2095,11 +2095,6 @@ pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
     unsafe {
         let nr = crate::main::util_main::nrows(x as *const std::ffi::c_void);
         let nc = crate::main::util_main::ncols(x as *const std::ffi::c_void);
-        if nr != 2 || nc != 2 {
-            let ans = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-            *REAL(ans) = f64::NAN;
-            return ans;
-        }
         fn asInteger_local(s: SEXP) -> c_int {
             unsafe { crate::main::coerce::asInteger(s) }
         }
