@@ -1480,6 +1480,26 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "print.Date", include_str!("gnu_print_Date.R"));
         eval_base_binding(
             base_env,
+            "print.octmode",
+            "function(x, ...) { if(length(x)) print(format(x), ...) else cat(\"<0-length octmode>\\n\"); invisible(x) }",
+        );
+        eval_base_binding(
+            base_env,
+            "print.hexmode",
+            "function(x, ...) { if(length(x)) print(format(x), ...) else cat(\"<0-length hexmode>\\n\"); invisible(x) }",
+        );
+        eval_base_binding(
+            base_env,
+            "print.roman",
+            "function(x, quote = FALSE, ...) { if(length(x)) print(as.character.roman(x), quote = quote, ...) else cat(\"<0-length roman>\\n\"); invisible(x) }",
+        );
+        eval_base_binding(
+            base_env,
+            "as.roman",
+            "function(x) { if (is.double(x) || is.logical(x)) x <- as.integer(x); if (!is.integer(x)) stop(\"cannot coerce 'x' to roman\"); if (length(x)) x[x <= 0L | x > 4999L] <- NA; class(x) <- \"roman\"; x }",
+        );
+        eval_base_binding(
+            base_env,
             "length<-.POSIXct",
             include_str!("gnu_lengthgets_POSIXct.R"),
         );
