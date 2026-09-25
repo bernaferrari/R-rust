@@ -62,6 +62,13 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             }
             current = CDR(current);
         }
+        let mut check = pargs;
+        while !check.is_null() && check != R_NilValue() {
+            if TYPEOF(TAG(check)) != SEXPTYPE::SYMSXP {
+                error("invalid formal argument list for \"as.function\"");
+            }
+            check = CDR(check);
+        }
         let body = VECTOR_ELT(arglist, (n - 1) as R_xlen_t);
         let _body_guard = protect(body);
         let bt = TYPEOF(body);
