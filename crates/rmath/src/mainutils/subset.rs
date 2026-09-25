@@ -1980,6 +1980,24 @@ unsafe fn has_class_factor(x: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Default method for `[`. Handles vector, matrix, and array subsetting.
+unsafe fn language_subscript_keeps_all(x: SEXP, sub: SEXP) -> bool {
+    unsafe {
+        if sub.is_null() || sub == R_NilValue() || TYPEOF(sub) != SEXPTYPE::INTSXP {
+            return false;
+        }
+        let n = length_int(x);
+        if n <= 0 || XLENGTH(sub) != n as i64 {
+            return false;
+        }
+        for i in 0..n {
+            if *INTEGER(sub).add(i as usize) != i + 1 {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (op, rho);
@@ -2353,6 +2371,10 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         /* Convert back to LANGSXP if original was a language object */
         let _lang_ans_guard;
         if xtype == SEXPTYPE::LANGSXP {
+            let sub = if nsubs == 1 { CAR(subs) } else { R_NilValue() };
+            if language_subscript_keeps_all(x, sub) {
+                return x;
+            }
             ax = ans;
             ans = allocLang(length_int(ax));
             _lang_ans_guard = Some(protect(ans));
