@@ -262,6 +262,39 @@ pub(crate) enum GnuFrameReject {
     Truncated { opcode: c_int, offset: usize, width: usize },
 }
 
+/// Next instruction boundary after the opcode at `opcode_pc`.
+///
+/// The advance is `1 + GNU_BC_OPERAND_WIDTHS[opcode]` when that opcode is
+/// known and the operands fit. [`gnu_frame_decision`] and the GNU bytecode
+/// executor both step with this function.
+pub(crate) fn gnu_next_pc(
+    opcode_pc: usize,
+    opcode: c_int,
+    len: usize,
+) -> Result<usize, GnuFrameReject> {
+    let Some(&width) = (opcode >= 0)
+        .then(|| GNU_BC_OPERAND_WIDTHS.get(opcode as usize))
+        .flatten()
+    else {
+        return Err(GnuFrameReject::UnknownOpcode {
+            opcode,
+            offset: opcode_pc,
+        });
+    };
+    let width = width as usize;
+    let Some(end) = opcode_pc.checked_add(1).and_then(|pc| pc.checked_add(width)) else {
+        return Err(GnuFrameReject::RangeOverflow { opcode });
+    };
+    if end > len {
+        return Err(GnuFrameReject::Truncated {
+            opcode,
+            offset: opcode_pc,
+            width,
+        });
+    }
+    Ok(end)
+}
+
 /// Framing decision without formatting. [`validate_gnu_bytecode_stream`] maps
 /// each variant to the historical error string.
 pub(crate) fn gnu_frame_decision(code: &[c_int]) -> Result<(), GnuFrameReject> {
@@ -274,27 +307,8 @@ pub(crate) fn gnu_frame_decision(code: &[c_int]) -> Result<(), GnuFrameReject> {
 
     let mut pc = 1usize;
     while pc < code.len() {
-        let opcode_position = pc;
         let opcode = code[pc];
-        pc += 1;
-        let Some(&width) = GNU_BC_OPERAND_WIDTHS.get(opcode as usize) else {
-            return Err(GnuFrameReject::UnknownOpcode {
-                opcode,
-                offset: opcode_position,
-            });
-        };
-        let width = width as usize;
-        let Some(end) = pc.checked_add(width) else {
-            return Err(GnuFrameReject::RangeOverflow { opcode });
-        };
-        if end > code.len() {
-            return Err(GnuFrameReject::Truncated {
-                opcode,
-                offset: opcode_position,
-                width,
-            });
-        }
-        pc = end;
+        pc = gnu_next_pc(pc, opcode, code.len())?;
     }
     Ok(())
 }
@@ -391,6 +405,35 @@ mod kani_proofs {
         kani::cover(code.len() == 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 2 && result.is_err(), "reachable");
         kani::cover(code.is_empty() && result.is_err(), "reachable");
     }
+
+    /// Every opcode's step is the width table. Invert `end > len` in
+    /// `gnu_next_pc` and this harness fails. That mutant is not in the default build.
+    #[kani::proof]
+    fn gnu_next_pc_matches_width_table() {
+        let opcode: i32 = kani::any();
+        kani::assume((0..GNU_BC_OPCODE_COUNT as i32).contains(&opcode));
+        let opcode_pc: usize = kani::any();
+        let len: usize = kani::any();
+        kani::assume(opcode_pc <= 8 && len <= 16);
+        let width = GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
+        let result = super::gnu_next_pc(opcode_pc, opcode, len);
+        let summed = opcode_pc.checked_add(1).and_then(|pc| pc.checked_add(width));
+        match (result, summed) {
+            (Ok(end), Some(expect)) => {
+                assert_eq!(end, expect);
+                assert!(end <= len);
+            }
+            (Err(super::GnuFrameReject::Truncated { .. }), Some(expect)) => {
+                assert!(expect > len);
+            }
+            (Err(super::GnuFrameReject::RangeOverflow { .. }), None) => {}
+            _ => assert!(false),
+        }
+        let unknown = super::gnu_next_pc(0, -1, 4);
+        assert!(matches!(unknown, Err(super::GnuFrameReject::UnknownOpcode { .. })));
+        kani::cover(result.is_ok(), "advances");
+        kani::cover(matches!(result, Err(super::GnuFrameReject::Truncated { .. })), "truncated");
+    }
 }
 
 /// Validate the pooled constant-return form of the bounded GNU adapter.
@@ -471,8 +514,9 @@ fn gnu_for_step_from_start_target(code: &[c_int], target: usize) -> Result<usize
         Some(GNU_OP_STEPFOR) => Ok(target),
         Some(GNU_OP_STARTLOOPCNTXT) => {
             let isfor = code.get(target + 1).copied().unwrap_or(-1);
-            let after =
-                target + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_STARTLOOPCNTXT as usize] as usize;
+            let after = gnu_next_pc(target, GNU_OP_STARTLOOPCNTXT, code.len()).map_err(|_| {
+                format!("GNU STARTFOR entry target {target} is not a STEPFOR instruction")
+            })?;
             if isfor != 1 || code.get(after) != Some(&GNU_OP_GOTO) {
                 return Err(format!(
                     "GNU STARTFOR entry target {target} is not a STEPFOR instruction"
@@ -495,7 +539,9 @@ fn gnu_for_step_from_start_target(code: &[c_int], target: usize) -> Result<usize
 }
 
 fn gnu_stepfor_exits_through_endfor(code: &[c_int], step_pc: usize) -> bool {
-    let next = step_pc + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_STEPFOR as usize] as usize;
+    let Ok(next) = gnu_next_pc(step_pc, GNU_OP_STEPFOR, code.len()) else {
+        return false;
+    };
     if code.get(next) == Some(&GNU_OP_ENDFOR) {
         return true;
     }
@@ -503,7 +549,9 @@ fn gnu_stepfor_exits_through_endfor(code: &[c_int], step_pc: usize) -> bool {
         return false;
     }
     let isfor = code.get(next + 1).copied();
-    let after = next + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_ENDLOOPCNTXT as usize] as usize;
+    let Ok(after) = gnu_next_pc(next, GNU_OP_ENDLOOPCNTXT, code.len()) else {
+        return false;
+    };
     isfor == Some(1) && code.get(after) == Some(&GNU_OP_ENDFOR)
 }
 
@@ -928,7 +976,20 @@ fn validate_gnu_adapter_impl(
             }
             _ => supported = false,
         }
-        pc += GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
+        pc = gnu_next_pc(opcode_pc, opcode, code.len()).map_err(|reject| match reject {
+            GnuFrameReject::UnknownOpcode { opcode, offset } => format!(
+                "BCMISMATCH: unknown GNU R bytecode opcode {opcode} at stream offset {offset}"
+            ),
+            GnuFrameReject::RangeOverflow { opcode } => {
+                format!("GNU R bytecode operand range overflows at opcode {opcode}")
+            }
+            GnuFrameReject::Truncated { opcode, offset, width } => format!(
+                "truncated GNU R bytecode opcode {opcode} at stream offset {offset}: expected {width} operand(s)"
+            ),
+            GnuFrameReject::Empty | GnuFrameReject::Version { .. } => {
+                "GNU R bytecode stream is empty".to_string()
+            }
+        })?;
     }
 
     for (branch_pc, target) in branches {
@@ -998,7 +1059,9 @@ fn validate_gnu_adapter_impl(
         depths[instruction_pc] = Some(depth);
         loop_stacks[instruction_pc] = Some(loop_stack.clone());
         let opcode = code[instruction_pc];
-        let next = instruction_pc + 1 + GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
+        let Ok(next) = gnu_next_pc(instruction_pc, opcode, code.len()) else {
+            return Ok(false);
+        };
         match opcode {
             GNU_OP_RETURN | GNU_OP_RETURNJMP => {
                 if !call_stack.is_empty() {
@@ -1072,7 +1135,7 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 if depth >= 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
@@ -1099,7 +1162,7 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 if depth + 3 > 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 pending.push((next, depth + 3, loop_stack, call_stack.clone()));
             }
@@ -1118,7 +1181,7 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 if depth + 3 > 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 pending.push((next, depth + 3, loop_stack, call_stack.clone()));
             }
@@ -1153,7 +1216,7 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 if depth + 1 > 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 let mut entered = call_stack.clone();
                 entered.push(depth - 1);
@@ -1186,7 +1249,7 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 if depth + 1 > 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 let mut entered = call_stack.clone();
                 entered.push(depth - 2);
@@ -1205,7 +1268,7 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 if depth >= 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack));
             }
@@ -1385,7 +1448,7 @@ fn validate_gnu_adapter_impl(
             GNU_OP_BASEGUARD => {
                 pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
                 if depth >= 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 pending.push((
                     code[instruction_pc + 2] as usize,
@@ -1397,7 +1460,7 @@ fn validate_gnu_adapter_impl(
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_DDVAL
             | GNU_OP_DDVAL_MISSOK | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
                 if depth >= 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
@@ -1408,7 +1471,7 @@ fn validate_gnu_adapter_impl(
             }
             GNU_OP_MAKECLOSURE | GNU_OP_CALLSPECIAL => {
                 if depth >= 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
@@ -1439,7 +1502,7 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG
             | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG | GNU_OP_PUSHFALSEARG => {
                 if depth >= 64 {
-                    return Err("GNU bytecode exceeds bounded stack limit".into());
+                    return Ok(false);
                 }
                 if matches!(
                     opcode,
@@ -1492,7 +1555,7 @@ fn validate_gnu_adapter_impl(
             }
             GNU_OP_INCLNKSTK => {
                 if depth >= 64 {
-                    return Err("GNU bytecode exceeds bounded stack limit".into());
+                    return Ok(false);
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
@@ -1587,7 +1650,7 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
                 if depth >= 64 {
-                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                    return Ok(false);
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
