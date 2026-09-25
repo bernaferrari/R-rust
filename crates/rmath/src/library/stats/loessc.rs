@@ -153,6 +153,55 @@ fn predict_model(model: &super::loess::Model, queries: &[Vec<f64>]) -> Result<Ve
         .predict_with_execution(queries, false, &super::loess::Execution::new(&|| Ok(())))
         .map(|(fitted, _)| fitted)
 }
+fn engine_loess_se(
+    y: *mut c_double,
+    x: *mut c_double,
+    x_evaluate: *mut c_double,
+    weights: *mut c_double,
+    span: *mut c_double,
+    degree: *mut c_int,
+    nonparametric: *mut c_int,
+    drop_square: *mut c_int,
+    d: *mut c_int,
+    n: *mut c_int,
+    m: *mut c_int,
+    fit: *mut c_double,
+    leverages: *mut c_double,
+) {
+    unsafe {
+        let model = fit_loess_model(
+            y, x, weights, *d, *n, *span, *degree, *nonparametric, drop_square,
+            0.2, false, false, false,
+        );
+        let model = match model {
+            Ok(model) => model,
+            Err(message) => fail_loess(&message),
+        };
+        let mm = (*m).max(0) as usize;
+        let nn = (*n).max(0) as usize;
+        let queries = column_major_rows(x_evaluate, mm, *d as usize);
+        let (fitted, se) = match model.predict_with_execution(
+            &queries,
+            true,
+            &super::loess::Execution::new(&|| Ok(())),
+        ) {
+            Ok(pair) => pair,
+            Err(message) => fail_loess(&message),
+        };
+        write_fit(fit, &fitted);
+        if leverages.is_null() {
+            return;
+        }
+        for i in 0..(mm.saturating_mul(nn)) {
+            *leverages.add(i) = 0.0;
+        }
+        for i in 0..mm {
+            let weight = if weights.is_null() { 1.0 } else { *weights.add(i.min(nn.saturating_sub(1))) };
+            let scale = if weight > 0.0 { weight.sqrt() } else { 1.0 };
+            *leverages.add(i) = se.get(i).copied().unwrap_or(0.0) * scale;
+        }
+    }
+}
 fn fail_loess(message: &str) -> ! {
     let mut bytes = message.as_bytes().to_vec();
     bytes.push(0);
@@ -964,23 +1013,11 @@ pub unsafe extern "C" fn c_loess_ise(
     fit: *mut c_double,
     L: *mut c_double,
 ) {
-    let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        loess_ise(
+    unsafe {
+        engine_loess_se(
             y, x, x_evaluate, weights, span, degree, nonparametric, drop_square,
-            sum_drop_sqr, cell, d, n, m, fit, L,
+            d, n, m, fit, L,
         );
-    }));
-    if ran.is_err() {
-        unsafe {
-            let mm = (*m).max(0) as usize;
-            let nn = (*n).max(0) as usize;
-            for i in 0..mm {
-                *fit.add(i) = f64::NAN;
-            }
-            for i in 0..(mm.saturating_mul(nn)) {
-                *L.add(i) = f64::NAN;
-            }
-        }
     }
 }
 
@@ -1002,23 +1039,16 @@ pub unsafe extern "C" fn c_loess_dfitse(
     fit: *mut c_double,
     L: *mut c_double,
 ) {
-    let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        loess_dfitse(
-            y, x, x_evaluate, weights, robust, family, span, degree, nonparametric,
-            drop_square, sum_drop_sqr, d, n, m, fit, L,
+    unsafe {
+        let w = if !robust.is_null() && !family.is_null() && *family != 1 {
+            robust
+        } else {
+            weights
+        };
+        engine_loess_se(
+            y, x, x_evaluate, w, span, degree, nonparametric, drop_square,
+            d, n, m, fit, L,
         );
-    }));
-    if ran.is_err() {
-        unsafe {
-            let mm = (*m).max(0) as usize;
-            let nn = (*n).max(0) as usize;
-            for i in 0..mm {
-                *fit.add(i) = f64::NAN;
-            }
-            for i in 0..(mm.saturating_mul(nn)) {
-                *L.add(i) = f64::NAN;
-            }
-        }
     }
 }
 

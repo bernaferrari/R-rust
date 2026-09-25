@@ -878,6 +878,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(x) is.logical(x) && length(x) == 1L && !is.na(x) && !x",
         );
         eval_base_binding(base_env, "force", "function(x) x");
+        eval_base_binding(base_env, "enquote", "function(cl) as.call(list(quote(base::quote), cl))");
         // GNU eval.R / which.R / stop.R: these are closures over .Internal,
         // not FunTab primitives. Binding them into the base frame makes
         // exists()/as.list(baseenv()) match GNU; .Internal still dispatches
