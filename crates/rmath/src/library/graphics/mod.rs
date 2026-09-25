@@ -26,6 +26,9 @@ unsafe extern "C-unwind" fn c_plot_window(_args: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
     crate::sexp::globals::R_NilValue()
 }
+unsafe extern "C-unwind" fn c_bin_count(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
+    unsafe { stem::C_BinCount(x, breaks, right, lowest) }
+}
 unsafe extern "C-unwind" fn c_str_metric(args: SEXP) -> SEXP {
     unsafe {
         let mut cell = crate::sexp::accessors::CDR(args);
@@ -64,6 +67,11 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
         "strWidth" | "strHeight" => {
             Some(unsafe { std::mem::transmute(c_str_metric as unsafe extern "C-unwind" fn(SEXP) -> SEXP) })
         }
+        "BinCount" => Some(unsafe {
+            std::mem::transmute(
+                c_bin_count as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+            )
+        }),
 
         _ => None,
     }
@@ -71,7 +79,7 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
 
 pub unsafe fn install_call_symbols(env: SEXP) {
     unsafe {
-        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_strWidth", "C_strHeight"] {
+        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_strWidth", "C_strHeight", "C_BinCount"] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(
                 crate::sexp::symbol::Rf_install(cname.as_ptr()),
