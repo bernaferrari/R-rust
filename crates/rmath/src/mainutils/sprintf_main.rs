@@ -460,7 +460,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         chunk = skip + 2;
                         if cur + chunk > n {
                             let shown = std::ffi::CStr::from_ptr(curFormat).to_string_lossy();
-                            let msg = format!("unrecognised format specification '{shown}'\0");
+                            let msg = format!("invalid format specification '{shown}'\0");
                             error(msg.as_ptr() as *const c_char);
                         }
 
@@ -708,7 +708,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                     let shown = std::ffi::CStr::from_ptr(fmtp)
                                         .to_string_lossy()
                                         .replace('%', "%%");
-                                    let msg = format!("unrecognised format specification '{shown}'\0");
+                                    let msg = format!("invalid format specification '{shown}'\0");
                                     error(msg.as_ptr() as *const c_char);
                                 }
                                 match spec as u8 {
