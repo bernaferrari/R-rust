@@ -7084,7 +7084,36 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
                     let nc = *INTEGER(dim).add(1) as usize;
                     term_cols.push(vec![Vec::new(); nc]);
-                    term_names.push((1..=nc).map(|k| format!("{lab}{k}")).collect());
+                    let dn = crate::sexp::attrib_core::getAttrib(
+                        colx,
+                        crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    );
+                    let colnames = if !dn.is_null()
+                        && dn != R_NilValue()
+                        && TYPEOF(dn) == SEXPTYPE::VECSXP
+                        && XLENGTH(dn) >= 2
+                    {
+                        crate::sexp::accessors::VECTOR_ELT(dn, 1)
+                    } else {
+                        R_NilValue()
+                    };
+                    let names = if TYPEOF(colnames) == SEXPTYPE::STRSXP
+                        && XLENGTH(colnames) as usize == nc
+                    {
+                        (0..nc)
+                            .map(|k| {
+                                let elt = crate::sexp::accessors::STRING_ELT(colnames, k as i64);
+                                let text = crate::sexp::accessors::charsxp_as_utf8(elt);
+                                format!(
+                                    "{lab}{}",
+                                    String::from_utf8_lossy(&text)
+                                )
+                            })
+                            .collect()
+                    } else {
+                        (1..=nc).map(|k| format!("{lab}{k}")).collect()
+                    };
+                    term_names.push(names);
                 } else {
                     term_cols.push(Vec::new());
                     term_names.push(vec![lab.clone()]);
