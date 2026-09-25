@@ -641,6 +641,20 @@ pub unsafe fn do_file_create(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `unlink(x, recursive)` — delete files or directories.
+fn unlink_glob(pat: &str, name: &str) -> bool {
+    fn rec(pat: &[u8], name: &[u8]) -> bool {
+        if pat.is_empty() {
+            return name.is_empty();
+        }
+        match pat[0] {
+            b'*' => rec(&pat[1..], name) || (!name.is_empty() && rec(pat, &name[1..])),
+            b'?' => !name.is_empty() && rec(&pat[1..], &name[1..]),
+            c => !name.is_empty() && name[0] == c && rec(&pat[1..], &name[1..]),
+        }
+    }
+    rec(pat.as_bytes(), name.as_bytes())
+}
+
 pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -651,16 +665,24 @@ pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let mut count = 0;
         for i in 0..n {
             let path = elt_to_string(x, i);
-            let p = std::path::Path::new(&path);
-            let result = if p.is_dir() {
-                std::fs::remove_dir_all(p)
+            let targets = if path.contains('*') || path.contains('?') {
+                let dir = std::path::Path::new(&path).parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
+                let pat = std::path::Path::new(&path).file_name().and_then(|s| s.to_str()).unwrap_or(&path).to_string();
+                match std::fs::read_dir(dir) {
+                    Ok(entries) => entries.filter_map(|e| e.ok()).filter(|e| unlink_glob(&pat, &e.file_name().to_string_lossy())).map(|e| e.path()).collect(),
+                    Err(_) => Vec::new(),
+                }
             } else {
-                std::fs::remove_file(p)
+                vec![std::path::PathBuf::from(&path)]
             };
-            if result.is_ok() {
-                count += 1;
+            for p in targets {
+                let result = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+                if result.is_ok() {
+                    count += 1;
+                }
             }
         }
+
         let result = Rf_ScalarInteger(count);
         crate::sexp::globals::set_R_Visible(FALSE);
         result

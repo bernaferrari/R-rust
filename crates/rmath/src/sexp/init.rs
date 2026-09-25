@@ -214,6 +214,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "mosaicplot",
+            "function(x, ...) NULL",
+        );
+        eval_base_binding(
+            base_env,
             "mle",
             "function(minuslogl, start, ...) {\n\
                  nm <- names(formals(minuslogl))\n\
