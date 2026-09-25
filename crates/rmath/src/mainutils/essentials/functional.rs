@@ -2176,23 +2176,7 @@ pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             current = CDR(current);
         }
         if has_names {
-            let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            if !names_vec.is_null() {
-                let _names_guard = protect(names_vec);
-                for (j, name) in name_parts.iter().enumerate() {
-                    let cstr = CString::new(name.as_str()).unwrap_or_default();
-                    let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-                    if !charsxp.is_null() {
-                        let data = (*names_vec).gengc_next_node as *mut SEXP;
-                        *data.add(j) = charsxp;
-                    }
-                }
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    Rf_install(c"names".as_ptr()),
-                    names_vec,
-                );
-            }
+            set_string_names(result, &name_parts);
         }
         result
     }
