@@ -36,7 +36,7 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let default_method = Rf_mkString(c"default".as_ptr());
         let scmd = positional_or(args, 0, empty);
         let sopen = positional_or(args, 1, empty);
-        let _enc = positional_or(args, 2, native);
+        let _enc = arg_by_name_or_position(args, 2, &["encoding"], native);
         let _block = positional_or(args, 3, Rf_ScalarLogical(crate::sexp::ffi::TRUE));
         let _method = positional_or(args, 4, default_method);
         let raw = check_logical_arg(
@@ -46,6 +46,10 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         let mut description = check_string_arg(scmd, "description");
         let open = check_string_arg(sopen, "open");
+        let encoding = check_string_arg(_enc, "encoding");
+        if encoding == "unknown" {
+            r_error("invalid connection");
+        }
         // GNU file("") is an anonymous temporary opened read/write.
         if description.is_empty() {
             if !open.is_empty() && open != "w+" && open != "w+b" {
