@@ -370,19 +370,18 @@ pub unsafe fn get1index(
         } else if stype == SEXPTYPE::REALSXP {
             let dblind = REAL_ELT(s, _pos);
             if !dblind.is_nan() {
-                if dblind.is_infinite() && dblind.is_sign_negative() {
-                    error("attempt to select less than one element in get1index");
-                }
                 if dblind >= 1.0 {
                     if dblind.is_finite() {
                         indx = (dblind - 1.0) as R_xlen_t;
                     }
-                } else if dblind > -1.0 || len < 2 {
-                    error("attempt to select less than one element in get1index");
-                } else if len == 2 && dblind > -3.0 {
-                    indx = (2.0 + dblind.trunc()) as R_xlen_t;
+                } else if dblind <= -1.0 {
+                    if len == 2 && dblind > -3.0 {
+                        indx = (2.0 + dblind.trunc()) as R_xlen_t;
+                    } else {
+                        error("invalid negative subscript in get1index <real>");
+                    }
                 } else {
-                    error("attempt to select more than one element in get1index");
+                    error("attempt to select less than one element in get1index");
                 }
             }
         } else if stype == SEXPTYPE::STRSXP {
