@@ -971,7 +971,17 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         args = CDR(args);
         let where_val = as_real(CAR(args));
         args = CDR(args);
-        let origin = as_integer(CAR(args));
+        let origin_arg = CAR(args);
+        let origin = if TYPEOF(origin_arg) == SEXPTYPE::STRSXP {
+            match CStr::from_ptr(CHAR(STRING_ELT(origin_arg, 0))).to_string_lossy().as_ref() {
+                "start" => 1,
+                "current" => 2,
+                "end" => 3,
+                _ => 1,
+            }
+        } else {
+            as_integer(origin_arg)
+        };
         args = CDR(args);
         let rw = as_integer(CAR(args));
 
@@ -990,8 +1000,15 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 
         match &mut conn.kind {
             ConnKind::File => {
+                if let Some(writer) = conn.writer.as_mut() {
+                    let _ = writer.flush();
+                }
                 let mut old_pos = 0.0;
-                if let Some(reader) = conn.reader.as_mut() {
+                if let Some(file) = conn.file.as_mut() {
+                    if let Ok(p) = file.stream_position() {
+                        old_pos = p as c_double;
+                    }
+                } else if let Some(reader) = conn.reader.as_mut() {
                     if let Ok(p) = reader.stream_position() {
                         old_pos = p as c_double;
                     }
