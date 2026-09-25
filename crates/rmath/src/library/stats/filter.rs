@@ -8064,3 +8064,40 @@ pub unsafe fn do_C(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 
 
+
+/// GNU `C_ar2ma(ar, npsi)` — MA(∞) coefficients from an AR polynomial.
+pub unsafe extern "C-unwind" fn c_ar2ma(ar: SEXP, npsi: SEXP) -> SEXP {
+    unsafe {
+        let p = XLENGTH(ar) as usize;
+        let ns = if TYPEOF(npsi) == SEXPTYPE::INTSXP {
+            INTEGER(npsi).read()
+        } else {
+            REAL(npsi).read() as i32
+        };
+        let ns = ns.max(0) as usize;
+        let ns1 = ns + p + 1;
+        let mut psi = vec![0.0; ns1];
+        for i in 0..p {
+            psi[i] = if TYPEOF(ar) == SEXPTYPE::REALSXP {
+                REAL(ar).add(i).read()
+            } else {
+                INTEGER(ar).add(i).read() as f64
+            };
+        }
+        for i in 0..ns1.saturating_sub(p + 1) {
+            for j in 0..p {
+                let phi = if TYPEOF(ar) == SEXPTYPE::REALSXP {
+                    REAL(ar).add(j).read()
+                } else {
+                    INTEGER(ar).add(j).read() as f64
+                };
+                psi[i + j + 1] += phi * psi[i];
+            }
+        }
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, ns as i64);
+        for i in 0..ns {
+            REAL(ans).add(i).write(psi[i]);
+        }
+        ans
+    }
+}
