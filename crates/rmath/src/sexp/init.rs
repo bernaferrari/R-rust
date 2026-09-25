@@ -224,6 +224,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "[.simple.list",
+            "function(x, i) structure(unclass(x)[i], class = \"simple.list\")",
+        );
+        eval_base_binding(
+            base_env,
             "mle",
             "function(minuslogl, start, ...) {\n\
                  nm <- names(formals(minuslogl))\n\
