@@ -23,7 +23,7 @@ use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, R_RowNamesSymbol, getAttrib, setAttrib,
 };
 use crate::sexp::constructors::{Rf_allocList, Rf_allocVector, Rf_allocVector3, Rf_mkChar};
-use crate::sexp::envir::{R_findVarInFrame, defineVar};
+use crate::sexp::envir::{R_findVar, R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NaString, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
@@ -1256,7 +1256,7 @@ unsafe fn save_ascii_objects(list: SEXP, file_sexp: SEXP, ascii_flag: SEXP, envi
             let _ = OutNewlineAscii(&mut writer);
 
             let sym = Rf_install(name);
-            let value = R_findVarInFrame(envir, sym);
+            let value = R_findVar(sym, envir);
             if value == R_UnboundValue() {
                 error(&format!("object '{}' not found", name_str));
             }
