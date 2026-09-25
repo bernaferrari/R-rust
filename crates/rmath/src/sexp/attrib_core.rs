@@ -86,9 +86,6 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
         }
 
         let attrib = ATTRIB(x);
-        if attrib.is_null() || attrib == R_NilValue() {
-            return R_NilValue();
-        }
 
         // Linear search through attribute pairlist
         let mut current = attrib;
@@ -102,6 +99,36 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
             }
             current = CDR(current);
         }
+        if which == R_NamesSymbol() {
+            let t = TYPEOF(x);
+            if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
+                let mut n = 0i32;
+                let mut scan = x;
+                while !scan.is_null() && scan != R_NilValue() {
+                    n += 1;
+                    scan = CDR(scan);
+                }
+                if n > 0 {
+                    let out = Rf_allocVector(SEXPTYPE::STRSXP, n);
+                    let _g = super::protect::protect(out);
+                    let mut cell = x;
+                    let mut i = 0i64;
+                    while !cell.is_null() && cell != R_NilValue() && i < n as i64 {
+                        let tag = TAG(cell);
+                        let s = if tag.is_null() || tag == R_NilValue() {
+                            Rf_mkChar(b"\0".as_ptr() as *const std::os::raw::c_char)
+                        } else {
+                            super::accessors::PRINTNAME(tag)
+                        };
+                        super::accessors::SET_STRING_ELT(out, i, s);
+                        cell = CDR(cell);
+                        i += 1;
+                    }
+                    return out;
+                }
+            }
+        }
+
 
         if which == R_NamesSymbol() {
             return names_from_one_dim(x);
