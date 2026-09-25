@@ -310,7 +310,7 @@ pub unsafe fn getLexicalContext_in(instance: *mut RInstance, rho: SEXP) -> *mut 
         if c.is_null() {
             return ptr::null_mut();
         }
-        while !(*c).nextcontext.is_null() {
+        while !c.is_null() {
             if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv == rho {
                 return c;
             }
