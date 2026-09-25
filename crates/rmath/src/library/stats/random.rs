@@ -530,6 +530,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_logit_link", "C_logit_linkinv", "C_logit_mu_eta", "C_binomial_dev_resids",
     "C_DoubleCentre",
     "C_cutree",
+    "C_monoFC_m",
     "C_runmed",
     "C_chisq_sim",
     "C_nextn",
@@ -669,6 +670,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "binomial_dev_resids" => as_dl(super::family::c_binomial_dev_resids as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "DoubleCentre" => as_dl(super::dblcen::c_double_centre as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "cutree" => as_dl(super::hclust_utils::c_cutree as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "monoFC_m" => as_dl(super::hclust_utils::c_mono_fc_m as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         _ => super::distn::lookup_call(name),
     }
 }

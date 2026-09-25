@@ -297,3 +297,41 @@ pub unsafe fn do_cutree(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+pub unsafe extern "C-unwind" fn c_mono_fc_m(m: SEXP, sx: SEXP) -> SEXP {
+    unsafe {
+        let n = crate::sexp::accessors::XLENGTH(m);
+        if n < 2 {
+            crate::main::errors::Rf_error(b"length(m) must be at least two\0".as_ptr() as *const i8);
+        }
+        if crate::sexp::accessors::TYPEOF(sx) != SEXPTYPE::REALSXP
+            || crate::sexp::accessors::XLENGTH(sx) != n - 1
+        {
+            crate::main::errors::Rf_error(
+                b"Argument Sx must be numeric vector one shorter than m[]\0".as_ptr() as *const i8,
+            );
+        }
+        let val = crate::mainutils::duplicate::Rf_duplicate(m);
+        let _g = protect_sexp(val);
+        let mv = crate::sexp::accessors::REAL(val);
+        let sv = crate::sexp::accessors::REAL(sx);
+        for k in 0..(n - 1) as usize {
+            let sk = *sv.add(k);
+            if sk == 0.0 {
+                *mv.add(k) = 0.0;
+                *mv.add(k + 1) = 0.0;
+            } else {
+                let alpha = *mv.add(k) / sk;
+                let beta = *mv.add(k + 1) / sk;
+                let a2b3 = 2.0 * alpha + beta - 3.0;
+                let ab23 = alpha + 2.0 * beta - 3.0;
+                if a2b3 > 0.0 && ab23 > 0.0 && alpha * (a2b3 + ab23) < a2b3 * a2b3 {
+                    let tau_s = 3.0 * sk / (alpha * alpha + beta * beta).sqrt();
+                    *mv.add(k) = tau_s * alpha;
+                    *mv.add(k + 1) = tau_s * beta;
+                }
+            }
+        }
+        val
+    }
+}
+
