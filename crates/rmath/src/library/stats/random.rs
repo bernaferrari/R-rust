@@ -885,6 +885,7 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
             GetRNGstate();
             let ra = REAL(a);
 
+            let mut overflow_rx = 0.0f64;
             if type_ == SEXPTYPE::INTSXP {
                 let ix = INTEGER(x);
                 let mut i: R_xlen_t = 0;
@@ -898,6 +899,7 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
                         *ix.add(i as usize) = NA_INTEGER;
                     } else if rx > c_int::MAX as c_double || rx <= c_int::MIN as c_double {
                         i0 = i;
+                        overflow_rx = rx;
                         use_type = SEXPTYPE::REALSXP;
                         break;
                     } else {
@@ -908,16 +910,13 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
             }
             if use_type == SEXPTYPE::REALSXP {
                 let mut x_real_guard = None;
-                // If we switched from INTSXP, we need to re-read the data
-                // For simplicity, re-allocate and fill from i0
                 let x_real = if type_ == SEXPTYPE::INTSXP {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
                     x_real_guard = Some(protect(xr));
-                    // Copy integer results to real
                     for i in 0..i0 {
                         *REAL(xr).add(i as usize) = *INTEGER(x).add(i as usize) as c_double;
                     }
-                    *REAL(xr).add(i0 as usize) = fn_ptr(*ra.add((i0 % na) as usize));
+                    *REAL(xr).add(i0 as usize) = overflow_rx;
                     xr
                 } else {
                     x
@@ -983,6 +982,7 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
             let ra = REAL(a);
             let rb = REAL(b);
 
+            let mut overflow_rx = 0.0f64;
             if type_ == SEXPTYPE::INTSXP {
                 let ix = INTEGER(x);
                 let mut i: R_xlen_t = 0;
@@ -996,6 +996,7 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
                         *ix.add(i as usize) = NA_INTEGER;
                     } else if rx > c_int::MAX as c_double || rx <= c_int::MIN as c_double {
                         i0 = i;
+                        overflow_rx = rx;
                         use_type = SEXPTYPE::REALSXP;
                         break;
                     } else {
@@ -1012,8 +1013,7 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
                     for i in 0..i0 {
                         *REAL(xr).add(i as usize) = *INTEGER(x).add(i as usize) as c_double;
                     }
-                    *REAL(xr).add(i0 as usize) =
-                        fn_ptr(*ra.add((i0 % na) as usize), *rb.add((i0 % nb) as usize));
+                    *REAL(xr).add(i0 as usize) = overflow_rx;
                     xr
                 } else {
                     x
@@ -1084,6 +1084,7 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
             let rb = REAL(b);
             let rc = REAL(c);
 
+            let mut overflow_rx = 0.0f64;
             if type_ == SEXPTYPE::INTSXP {
                 let ix = INTEGER(x);
                 let mut i: R_xlen_t = 0;
@@ -1101,6 +1102,7 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
                         *ix.add(i as usize) = NA_INTEGER;
                     } else if rx > c_int::MAX as c_double || rx <= c_int::MIN as c_double {
                         i0 = i;
+                        overflow_rx = rx;
                         use_type = SEXPTYPE::REALSXP;
                         break;
                     } else {
@@ -1117,11 +1119,7 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
                     for i in 0..i0 {
                         *REAL(xr).add(i as usize) = *INTEGER(x).add(i as usize) as c_double;
                     }
-                    *REAL(xr).add(i0 as usize) = fn_ptr(
-                        *ra.add((i0 % na) as usize),
-                        *rb.add((i0 % nb) as usize),
-                        *rc.add((i0 % nc) as usize),
-                    );
+                    *REAL(xr).add(i0 as usize) = overflow_rx;
                     xr
                 } else {
                     x
