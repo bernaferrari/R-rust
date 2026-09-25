@@ -219,6 +219,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "dir",
+            "function(...) list.files(...)",
+        );
+        eval_base_binding(
+            base_env,
             "mle",
             "function(minuslogl, start, ...) {\n\
                  nm <- names(formals(minuslogl))\n\

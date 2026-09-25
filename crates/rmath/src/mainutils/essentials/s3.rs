@@ -662,7 +662,11 @@ pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return Rf_ScalarInteger(0);
         }
         let n = XLENGTH(x);
-        let mut count = 0;
+        let recursive = {
+            let flag = CADR(args);
+            !flag.is_null() && flag != R_NilValue() && TYPEOF(flag) == SEXPTYPE::LGLSXP && XLENGTH(flag) > 0 && *LOGICAL(flag) != 0
+        };
+        let mut failed = false;
         for i in 0..n {
             let path = elt_to_string(x, i);
             let targets = if path.contains('*') || path.contains('?') {
@@ -676,14 +680,21 @@ pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 vec![std::path::PathBuf::from(&path)]
             };
             for p in targets {
-                let result = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
-                if result.is_ok() {
-                    count += 1;
+                let result = if p.is_dir() {
+                    if recursive { std::fs::remove_dir_all(&p) } else { std::fs::remove_dir(&p) }
+                } else {
+                    std::fs::remove_file(&p)
+                };
+                if let Err(err) = result {
+                    if err.kind() != std::io::ErrorKind::NotFound {
+                        failed = true;
+                    }
                 }
             }
         }
+        let result = Rf_ScalarInteger(if failed { 1 } else { 0 });
 
-        let result = Rf_ScalarInteger(count);
+
         crate::sexp::globals::set_R_Visible(FALSE);
         result
     }
