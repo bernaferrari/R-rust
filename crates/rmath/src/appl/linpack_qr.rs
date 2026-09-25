@@ -394,7 +394,7 @@ pub unsafe fn dqrsl(
             dcopy(k as c_int, qty, 1, xb, 1);
         }
         if cr && k < n {
-            dcopy((n - k) as c_int, qty.add(kp1), 1, rsd.add(kp1), 1);
+            dcopy((n - k) as c_int, qty.add(k), 1, rsd.add(k), 1);
         }
         if cxb && kp1 <= n {
             for i in kp1..n {

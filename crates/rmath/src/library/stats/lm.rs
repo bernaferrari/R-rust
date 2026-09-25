@@ -82,110 +82,60 @@ unsafe fn dqrls_rust(
     qraux: *mut c_double,
 ) {
     unsafe {
-        use crate::modules::lapack::backend;
-
         let n_us = n as usize;
         let p_us = p as usize;
         let ny_us = ny as usize;
-        let k = n_us.min(p_us);
 
-        // Residuals are y - X β. `qr` is overwritten by the factorization,
-        // so keep the original columns (column-major, like GNU dqrls).
-        let x_orig: Vec<f64> = std::slice::from_raw_parts(qr, n_us * p_us).to_vec();
-
-        // --- 1. QR with column pivoting (dgeqp3) ---------------------------
-        let mut info = 0i32;
-        let mut lwork = -1i32;
-        let mut work_query = [0.0f64; 1];
-        backend::dgeqp3_(
-            &n,
-            &p,
+        let mut work = vec![0.0f64; (2 * p_us).max(1)];
+        let mut krank: c_int = 0;
+        crate::appl::linpack_qr::dqrdc2(
             qr,
-            &n,
-            pivot,
+            n,
+            n,
+            p,
+            tol,
+            &mut krank,
             qraux,
-            work_query.as_mut_ptr(),
-            &lwork,
-            &mut info,
-        );
-        lwork = work_query[0] as i32;
-        let mut work = vec![0.0f64; lwork.max(1) as usize];
-        backend::dgeqp3_(
-            &n,
-            &p,
-            qr,
-            &n,
             pivot,
-            qraux,
             work.as_mut_ptr(),
-            &lwork,
-            &mut info,
         );
+        *rank = krank;
+        let rank_us = krank.max(0) as usize;
 
-        // --- 2. Form Q^T * y (effects) using Householder vectors -----------
-        // effects is a copy of y on entry; we apply the reflectors in place.
-        for j in 0..ny_us {
-            for i in 0..n_us {
-                *effects.add(i + j * n_us) = *y.add(i + j * n_us);
-            }
-        }
-        for jj in 0..k {
-            let tau_val = *qraux.add(jj);
-            if tau_val == 0.0 {
+        for col in 0..ny_us {
+            if rank_us == 0 {
+                for i in 0..n_us {
+                    *effects.add(i + col * n_us) = *y.add(i + col * n_us);
+                    *residuals.add(i + col * n_us) = *y.add(i + col * n_us);
+                }
+                for j in 0..p_us {
+                    *coefficients.add(j + col * p_us) = 0.0;
+                }
                 continue;
             }
-            // v = [1, qr[jj+1:n, jj]]
-            for col in 0..ny_us {
-                let mut dot = *effects.add(jj + col * n_us);
-                for i in (jj + 1)..n_us {
-                    dot += *qr.add(i + jj * n_us) * *effects.add(i + col * n_us);
-                }
-                dot *= tau_val;
-                *effects.add(jj + col * n_us) -= dot;
-                for i in (jj + 1)..n_us {
-                    *effects.add(i + col * n_us) -= dot * *qr.add(i + jj * n_us);
-                }
+            let ycol = y.add(col * n_us);
+            let mut info = 0;
+            let mut coef = vec![0.0f64; p_us.max(1)];
+            crate::appl::linpack_qr::dqrsl(
+                qr,
+                n,
+                n,
+                rank_us as c_int,
+                qraux,
+                ycol,
+                std::ptr::null_mut(),
+                effects.add(col * n_us),
+                coef.as_mut_ptr(),
+                residuals.add(col * n_us),
+                std::ptr::null_mut(),
+                1110,
+                &mut info,
+            );
+            for j in 0..rank_us.min(p_us) {
+                *coefficients.add(j + col * p_us) = coef[j];
             }
-        }
-
-        // --- 3. Determine rank from diagonal of R -------------------------
-        let mut rnk = 0usize;
-        if k > 0 {
-            let max_r = (0..k)
-                .map(|j| (*qr.add(j + j * n_us)).abs())
-                .fold(0.0f64, f64::max);
-            let thresh = tol * max_r;
-            rnk = (0..k)
-                .take_while(|&j| (*qr.add(j + j * n_us)).abs() > thresh)
-                .count();
-        }
-        *rank = rnk as c_int;
-
-        // --- 4. Solve R[0:rnk, 0:rnk] * beta = effects[0:rnk] -------------
-        for col in 0..ny_us {
-            for j in (0..rnk).rev() {
-                let mut sum = *effects.add(j + col * n_us);
-                for i in (j + 1)..rnk {
-                    sum -= *qr.add(j + i * n_us) * *coefficients.add(i + col * p_us);
-                }
-                let diag = *qr.add(j + j * n_us);
-                *coefficients.add(j + col * p_us) = if diag != 0.0 { sum / diag } else { 0.0 };
-            }
-            // zero out the trailing part (rank-deficient case)
-            for j in rnk..p_us {
+            for j in rank_us..p_us {
                 *coefficients.add(j + col * p_us) = 0.0;
-            }
-        }
-
-        // --- 5. Compute residuals = y - X_orig * beta (pivoted columns) ---
-        for col in 0..ny_us {
-            for i in 0..n_us {
-                let mut xb = 0.0f64;
-                for j in 0..p_us {
-                    let orig_col = (*pivot.add(j) - 1) as usize;
-                    xb += x_orig[i + orig_col * n_us] * *coefficients.add(j + col * p_us);
-                }
-                *residuals.add(i + col * n_us) = *y.add(i + col * n_us) - xb;
             }
         }
     }
