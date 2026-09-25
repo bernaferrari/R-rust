@@ -386,6 +386,53 @@ pub unsafe fn acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
 pub unsafe extern "C-unwind" fn c_acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
     unsafe { acf(x, lmax, sCor) }
 }
+pub unsafe extern "C-unwind" fn c_pacf1(acf: SEXP, lmax: SEXP) -> SEXP {
+    unsafe {
+        let lagmax = as_integer(lmax);
+        if lagmax < 1 {
+            return Rf_allocVector(SEXPTYPE::REALSXP, 0);
+        }
+        let acf = coerceVector(acf, SEXPTYPE::REALSXP.as_c_int());
+        let _acf = protect(acf);
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, lagmax);
+        let _ans = protect(ans);
+        let cor = REAL(acf);
+        let p = REAL(ans);
+        let nlag = lagmax as usize;
+        let mut w = vec![0.0f64; nlag];
+        let mut v = vec![0.0f64; nlag];
+        w[0] = *cor.add(1);
+        *p = w[0];
+        for ll in 1..nlag {
+            let mut a = *cor.add(ll + 1);
+            let mut b = 1.0;
+            for i in 0..ll {
+                a -= w[i] * *cor.add(ll - i);
+                b -= w[i] * *cor.add(i + 1);
+            }
+            let c = a / b;
+            *p.add(ll) = c;
+            if ll + 1 == nlag {
+                break;
+            }
+            w[ll] = c;
+            for i in 0..ll {
+                v[ll - i - 1] = w[i];
+            }
+            for i in 0..ll {
+                w[i] -= c * v[i];
+            }
+        }
+        let d = Rf_allocVector(SEXPTYPE::INTSXP, 3);
+        let _d = protect(d);
+        *INTEGER(d) = lagmax;
+        *INTEGER(d).add(1) = 1;
+        *INTEGER(d).add(2) = 1;
+        setAttrib(ans, R_DimSymbol(), d);
+        ans
+    }
+}
+
 
 
 pub unsafe fn do_acf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
