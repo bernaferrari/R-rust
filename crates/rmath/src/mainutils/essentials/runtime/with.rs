@@ -118,6 +118,13 @@ pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             return R_NilValue();
         }
         let data = crate::eval::eval::Rf_eval(data_expr, rho);
+        let data = if TYPEOF(data) != SEXPTYPE::VECSXP {
+            let cell = Rf_cons(data, R_NilValue());
+            let _g = protect(cell);
+            crate::mainutils::essentials::s3::do_as_data_frame(R_NilValue(), R_NilValue(), cell, rho)
+        } else {
+            data
+        };
         if data.is_null() || data == R_NilValue() || TYPEOF(data) != SEXPTYPE::VECSXP {
             return data;
         }
