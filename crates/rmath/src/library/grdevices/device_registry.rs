@@ -947,9 +947,68 @@ pub(crate) fn draw_raster(
     .unwrap_or(false)
 }
 
+unsafe fn open_default_device() {
+    unsafe {
+        let defdev = crate::mainutils::options::GetOption(c"device".as_ptr());
+        let missing = defdev.is_null() || defdev == R_NilValue();
+        if !missing && crate::sexp::accessors::TYPEOF(defdev) == SEXPTYPE::CLOSXP {
+            let call = crate::sexp::constructors::Rf_cons(defdev, R_NilValue());
+            if !call.is_null() {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            let _ = crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv());
+        } else if !missing
+            && crate::sexp::accessors::TYPEOF(defdev) == SEXPTYPE::STRSXP
+            && crate::sexp::accessors::XLENGTH(defdev) > 0
+        {
+            let name = crate::sexp::symbol::Rf_install(
+                crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(defdev, 0)),
+            );
+            let call = crate::sexp::constructors::Rf_cons(name, R_NilValue());
+            if !call.is_null() {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            let _ = crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv());
+        } else {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "no active or default device",
+            );
+        }
+        if NoDevices() != 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "no active device and default getOption(\"device\") is invalid",
+            );
+        }
+    }
+}
 #[unsafe(export_name = "rmath_GEcurrentDevice")]
-pub unsafe extern "C" fn GEcurrentDevice() -> pGEDevDesc {
-    with_registry(|registry| registry.current_ptr())
+pub unsafe extern "C-unwind" fn GEcurrentDevice() -> pGEDevDesc {
+    unsafe {
+        if NoDevices() != 0 {
+            static OPENING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if OPENING
+                .compare_exchange(
+                    false,
+                    true,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_ok()
+            {
+                struct ClearFlag;
+                impl Drop for ClearFlag {
+                    fn drop(&mut self) {
+                        OPENING.store(false, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
+                let _clear = ClearFlag;
+                open_default_device();
+            }
+        }
+        with_registry(|registry| registry.current_ptr())
+    }
 }
 
 pub unsafe extern "C" fn GEgetDevice(dev: c_int) -> pGEDevDesc {
