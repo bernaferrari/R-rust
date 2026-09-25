@@ -500,13 +500,19 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
         let _indx_guard = protect(indx);
         let n = XLENGTH(indx);
 
-        // NAs are not allowed in subscripted assignments. Upstream
-        // (subassign.c) raises this while processing the subscript, before any
-        // typed assignment arm; `gi()` maps NA indices to the NA_INTEGER
-        // sentinel for both INTSXP and expanded-logical subscripts.
+        // GNU errors on NA subscripts, except a length-1 replacement through
+        // a logical index: those NA positions are left unchanged.
         if TYPEOF(x) != RAWSXP {
+            let mut na_slots = 0i64;
             for i in 0..n {
                 if gi(indx, i) == NA_INTEGER as R_xlen_t {
+                    na_slots += 1;
+                }
+            }
+            if na_slots > 0 {
+                let scalar_rhs = XLENGTH(y) <= 1;
+                let logical = TYPEOF(s) == SEXPTYPE::LGLSXP;
+                if !(scalar_rhs && logical) {
                     crate::mainutils::errors::Rf_error(
                         b"NAs are not allowed in subscripted assignments\0".as_ptr()
                             as *const core::ffi::c_char,
