@@ -1313,6 +1313,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "getConnection",
+            "function(what) .Internal(getConnection(what))",
+        );
+        eval_base_binding(
+            base_env,
             "showConnections",
             "function(all = FALSE) {\n\
              set <- getAllConnections()\n\

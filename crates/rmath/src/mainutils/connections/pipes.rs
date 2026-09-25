@@ -374,14 +374,11 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             r_error("invalid connection");
         }
 
-        let Some(_conn) = table[n].as_ref() else {
-            r_error("invalid connection");
-        };
-
-        // Build a list with connection info
-        // Return the integer index (like R's getConnection)
+        let class_name = table[n].as_ref().map(|conn| conn.class.clone()).unwrap_or_else(|| "connection".to_string());
         drop(table);
-        Rf_ScalarInteger(n as c_int)
+        let ans = Rf_ScalarInteger(n as c_int);
+        set_connection_class(ans, &class_name);
+        ans
     }
 }
 

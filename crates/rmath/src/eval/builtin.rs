@@ -3995,6 +3995,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::connections::do_getAllConnections,
     },
     EvaluatedBuiltin {
+        name: "getConnection",
+        handler: crate::mainutils::connections::do_getConnection,
+    },
+    EvaluatedBuiltin {
         name: "flush",
         handler: crate::mainutils::essentials::do_flush,
     },
