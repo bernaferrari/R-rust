@@ -171,6 +171,15 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "alist",
             "function(...) { sc <- sys.call(); as.list(sc)[-1L] }",
         );
+        eval_base_binding(
+            base_env,
+            "strwidth",
+            "function(s, units = \"user\", cex = NULL, font = NULL, vfont = NULL, ...) {\n\
+                 if (is.function(s) || is.language(s))\n\
+                     stop(\"cannot coerce type 'closure' to vector of type 'character'\")\n\
+                 rep(1, length(s))\n\
+             }",
+        );
         // GNU New-Internal.R: NextMethod is a closure over .Internal so extra
         // named args land in `...` and CADDR(.Internal args) stays the dots
         // symbol. A primitive NextMethod would evaluate those extras and hit
