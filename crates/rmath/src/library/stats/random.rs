@@ -910,7 +910,7 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
                 let mut x_real_guard = None;
                 // If we switched from INTSXP, we need to re-read the data
                 // For simplicity, re-allocate and fill from i0
-                let x_real = if type_ == SEXPTYPE::INTSXP && i0 > 0 {
+                let x_real = if type_ == SEXPTYPE::INTSXP {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
                     x_real_guard = Some(protect(xr));
                     // Copy integer results to real
@@ -923,7 +923,7 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
                     x
                 };
                 let rx = REAL(x_real);
-                let start = if type_ == SEXPTYPE::INTSXP && i0 > 0 {
+                let start = if type_ == SEXPTYPE::INTSXP {
                     i0 + 1
                 } else {
                     0
@@ -1006,7 +1006,7 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
             }
             if use_type == SEXPTYPE::REALSXP {
                 let mut x_real_guard = None;
-                let x_real = if type_ == SEXPTYPE::INTSXP && i0 > 0 {
+                let x_real = if type_ == SEXPTYPE::INTSXP {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
                     x_real_guard = Some(protect(xr));
                     for i in 0..i0 {
@@ -1019,7 +1019,7 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
                     x
                 };
                 let rx = REAL(x_real);
-                let start = if type_ == SEXPTYPE::INTSXP && i0 > 0 {
+                let start = if type_ == SEXPTYPE::INTSXP {
                     i0 + 1
                 } else {
                     0
@@ -1111,7 +1111,7 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
             }
             if use_type == SEXPTYPE::REALSXP {
                 let mut x_real_guard = None;
-                let x_real = if type_ == SEXPTYPE::INTSXP && i0 > 0 {
+                let x_real = if type_ == SEXPTYPE::INTSXP {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
                     x_real_guard = Some(protect(xr));
                     for i in 0..i0 {
@@ -1127,7 +1127,7 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
                     x
                 };
                 let rx = REAL(x_real);
-                let start = if type_ == SEXPTYPE::INTSXP && i0 > 0 {
+                let start = if type_ == SEXPTYPE::INTSXP {
                     i0 + 1
                 } else {
                     0
