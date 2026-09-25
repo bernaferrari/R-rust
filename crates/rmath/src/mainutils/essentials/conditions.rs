@@ -2297,7 +2297,10 @@ pub unsafe fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         // Constant-folded string like '"x"' may arrive as a
                         // call node; evaluate it and accept a string.
                         let val = crate::eval::eval::Rf_eval(expr, rho);
-                        if !val.is_null() && TYPEOF(val) == SEXPTYPE::STRSXP && XLENGTH(val) > 0 {
+                        if !val.is_null()
+                            && TYPEOF(val) == SEXPTYPE::STRSXP
+                            && XLENGTH(val) == 1
+                        {
                             let pn = crate::sexp::accessors::STRING_ELT(val, 0);
                             if !pn.is_null() && pn != crate::sexp::globals::R_NaString() {
                                 names.push(
