@@ -1541,6 +1541,29 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "extendrange",
+            "function(x, r = range(x, na.rm = TRUE), f = 0.05) {\n\
+             if(!missing(r) && length(r) != 2)\n\
+                 stop(\"'r' must be a \\\"range\\\", hence of length 2\")\n\
+             f <- if(length(f) == 1L) c(-f, f) else c(-f[1L], f[2L])\n\
+             r + f * diff(r)\n\
+             }",
+        );
+
+        eval_base_binding(
+            base_env,
+            "panel.smooth",
+            "function(x, y, col = par(\"col\"), bg = NA, pch = par(\"pch\"),\n\
+             cex = 1, col.smooth = 2, span = 2/3, iter = 3, ...) {\n\
+             points(x, y, pch = pch, col = col, bg = bg, cex = cex)\n\
+             ok <- is.finite(x) & is.finite(y)\n\
+             if (any(ok))\n\
+                 lines(lowess(x[ok], y[ok], f = span, iter = iter), col = col.smooth, ...)\n\
+             }",
+        );
+
+        eval_base_binding(
+            base_env,
             "as.factor",
             "function(x) {\n\
              if (is.factor(x)) x\n\
