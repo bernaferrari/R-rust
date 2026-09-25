@@ -2688,6 +2688,22 @@ pub unsafe extern "C-unwind" fn c_kalman_fore(n_ahead: SEXP, model: SEXP, _updat
         do_kalman_forecast(R_NilValue(), R_NilValue(), args, R_NilValue())
     }
 }
+pub unsafe extern "C-unwind" fn c_kalman_like(y: SEXP, model: SEXP, _nit: SEXP, _fast: SEXP, _update: SEXP) -> SEXP {
+    unsafe {
+        let args = crate::sexp::constructors::Rf_cons(model, R_NilValue());
+        let args = crate::sexp::constructors::Rf_cons(y, args);
+        do_kalman_like(R_NilValue(), R_NilValue(), args, R_NilValue())
+    }
+}
+
+pub unsafe extern "C-unwind" fn c_kalman_smooth(y: SEXP, model: SEXP, _nit: SEXP) -> SEXP {
+    unsafe {
+        let args = crate::sexp::constructors::Rf_cons(model, R_NilValue());
+        let args = crate::sexp::constructors::Rf_cons(y, args);
+        do_kalman_smooth(R_NilValue(), R_NilValue(), args, R_NilValue())
+    }
+}
+
 
 
 /// GNU `KalmanSmooth(y, mod)` — Rauch–Tung–Striebel smoother, state dim 1.
