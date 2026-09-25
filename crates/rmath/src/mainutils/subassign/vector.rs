@@ -430,6 +430,14 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
             && TYPEOF(s) == SEXPTYPE::STRSXP
             && XLENGTH(s) == 1
         {
+            // `[<-.data.frame` on one name takes a length-1 list as that
+            // column (`within` assigns `data[nl] <- l`). A longer list is
+            // left for `$<-`, which warns about extra variables.
+            let y = if TYPEOF(y) == SEXPTYPE::VECSXP && XLENGTH(y) == 1 {
+                VECTOR_ELT(y, 0)
+            } else {
+                y
+            };
             let args = Rf_cons(x, Rf_cons(s, Rf_cons(y, R_NilValue())));
             let _a = protect(args);
             return crate::mainutils::essentials::do_dollar_set(R_NilValue(), R_NilValue(), args, rho);
