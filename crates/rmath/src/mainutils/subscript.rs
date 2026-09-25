@@ -370,6 +370,9 @@ pub unsafe fn get1index(
         } else if stype == SEXPTYPE::REALSXP {
             let dblind = REAL_ELT(s, _pos);
             if !dblind.is_nan() {
+                if dblind.is_infinite() && dblind.is_sign_negative() {
+                    error("attempt to select less than one element in get1index");
+                }
                 if dblind >= 1.0 {
                     if dblind.is_finite() {
                         indx = (dblind - 1.0) as R_xlen_t;
