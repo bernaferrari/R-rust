@@ -88,7 +88,7 @@ pub unsafe fn real_math1(
         }
         let _p = protect(result);
         let dst = REAL(result);
-
+        let mut naflag = false;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
                 *REAL(x).add(i as usize)
@@ -103,11 +103,18 @@ pub unsafe fn real_math1(
                 NA_REAL
             };
 
-            *dst.add(i as usize) = if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            let out = if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 NA_REAL
             } else {
                 f(val)
             };
+            if val.is_finite() && out.is_nan() {
+                naflag = true;
+            }
+            *dst.add(i as usize) = out;
+        }
+        if naflag {
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
         }
         result
     }
