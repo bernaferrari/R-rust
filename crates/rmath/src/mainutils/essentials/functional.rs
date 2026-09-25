@@ -5095,8 +5095,16 @@ unsafe fn record_plot_window(args: SEXP) {
             LOG_Y_LO.store(lo.floor() as i32, std::sync::atomic::Ordering::Relaxed);
             LOG_Y_HI.store(hi.floor() as i32, std::sync::atomic::Ordering::Relaxed);
         }
-        let (x0, x1) = padded_range(&xv);
-        let (y0, y1) = padded_range(&yv);
+        let (mut x0, mut x1) = padded_range(&xv);
+        let (mut y0, mut y1) = padded_range(&yv);
+        if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
+            if 10f64.powf(x0) == 0.0 { x0 = (1.01 * f64::MIN_POSITIVE).log10(); }
+            if x1 >= 308.25035 { x1 = (0.99 * f64::MAX).log10(); }
+        }
+        if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
+            if 10f64.powf(y0) == 0.0 { y0 = (1.01 * f64::MIN_POSITIVE).log10(); }
+            if y1 >= 308.25035 { y1 = (0.99 * f64::MAX).log10(); }
+        }
         let (xa0, xa1, xn) = pretty_axp(x0, x1);
         let (ya0, ya1, yn) = pretty_axp(y0, y1);
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
@@ -5110,9 +5118,10 @@ unsafe fn record_plot_window(args: SEXP) {
             ParValue::Logical(vec![if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) { 1 } else { 0 }]),
         );
         if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
-            let lo = x0.ceil();
-            let hi = x1.floor();
-            set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), (hi - lo).max(1.0)]));
+            let lo = x0.ceil().clamp(-307.0, 308.0);
+            let hi = x1.floor().clamp(lo, 308.0);
+            let n = if hi - lo > 3.0 { 1.0 } else { (hi - lo).max(1.0) };
+            set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
         } else {
             set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
         }
@@ -5226,21 +5235,34 @@ unsafe fn record_window_limits(args: SEXP) {
         };
         let xlog = log.contains('x');
         let ylog = log.contains('y');
+        let mut x_lo = xv[0];
+        let mut x_hi = xv[1];
+        let mut y_lo = yv[0];
+        let mut y_hi = yv[1];
+        if xlog {
+            if 10f64.powf(x_lo) == 0.0 { x_lo = (1.01 * f64::MIN_POSITIVE).log10(); }
+            if x_hi >= 308.25035 { x_hi = (0.99 * f64::MAX).log10(); }
+        }
+        if ylog {
+            if 10f64.powf(y_lo) == 0.0 { y_lo = (1.01 * f64::MIN_POSITIVE).log10(); }
+            if y_hi >= 308.25035 { y_hi = (0.99 * f64::MAX).log10(); }
+        }
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
-        set_plot_parameter("usr", ParValue::Real(vec![xv[0], xv[1], yv[0], yv[1]]));
+        set_plot_parameter("usr", ParValue::Real(vec![x_lo, x_hi, y_lo, y_hi]));
         set_plot_parameter("xlog", ParValue::Logical(vec![if xlog { 1 } else { 0 }]));
         set_plot_parameter("ylog", ParValue::Logical(vec![if ylog { 1 } else { 0 }]));
         if xlog {
-            let lo = xv[0].ceil();
-            let hi = xv[1].floor();
-            set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), (hi - lo).max(1.0)]));
+            let lo = x_lo.ceil().clamp(-307.0, 308.0);
+            let hi = x_hi.floor().clamp(lo, 308.0);
+            let n = if hi - lo > 3.0 { 1.0 } else { (hi - lo).max(1.0) };
+            set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
         } else {
             let (xa0, xa1, xn) = pretty_axp(xv[0], xv[1]);
             set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
         }
         if ylog {
-            let lo = yv[0].ceil();
-            let hi = yv[1].floor();
+            let lo = yv[0].ceil().clamp(-307.0, 308.0);
+            let hi = yv[1].floor().clamp(lo, 308.0);
             set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), (hi - lo).max(1.0)]));
         } else {
             let (ya0, ya1, yn) = pretty_axp(yv[0], yv[1]);
@@ -5301,8 +5323,8 @@ pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 return crate::sexp::globals::R_NilValue();
             };
             let (lo0, hi0) = if side == 1.0 || side == 3.0 { (u[0], u[1]) } else { (u[2], u[3]) };
-            let lo = lo0.ceil() as i32;
-            let hi = hi0.floor() as i32;
+            let lo = (lo0.ceil() as i32).clamp(-307, 308);
+            let hi = (hi0.floor() as i32).clamp(lo, 308);
             if hi >= lo {
                 let n = (hi - lo + 1) as R_xlen_t;
                 let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
