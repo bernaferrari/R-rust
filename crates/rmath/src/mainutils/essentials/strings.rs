@@ -1112,6 +1112,56 @@ fn adist_levenshtein(a: &str, b: &str) -> i32 {
     }
     prev[m]
 }
+fn adist_path(a: &str, b: &str) -> (i32, String, i32, i32, i32) {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let n = a.len();
+    let m = b.len();
+    let mut dp = vec![vec![0i32; m + 1]; n + 1];
+    for i in 0..=n {
+        dp[i][0] = i as i32;
+    }
+    for j in 0..=m {
+        dp[0][j] = j as i32;
+    }
+    for i in 1..=n {
+        for j in 1..=m {
+            let sub = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            dp[i][j] = (dp[i - 1][j] + 1)
+                .min(dp[i][j - 1] + 1)
+                .min(dp[i - 1][j - 1] + sub);
+        }
+    }
+    let mut i = n;
+    let mut j = m;
+    let mut ops = Vec::new();
+    let mut del = 0i32;
+    let mut ins = 0i32;
+    let mut sub = 0i32;
+    while i > 0 || j > 0 {
+        if i > 0 && j > 0 && a[i - 1] == b[j - 1] && dp[i][j] == dp[i - 1][j - 1] {
+            ops.push('M');
+            i -= 1;
+            j -= 1;
+        } else if i > 0 && j > 0 && dp[i][j] == dp[i - 1][j - 1] + 1 {
+            ops.push('S');
+            sub += 1;
+            i -= 1;
+            j -= 1;
+        } else if j > 0 && dp[i][j] == dp[i][j - 1] + 1 {
+            ops.push('I');
+            ins += 1;
+            j -= 1;
+        } else if i > 0 {
+            ops.push('D');
+            del += 1;
+            i -= 1;
+        }
+    }
+    ops.reverse();
+    (dp[n][m], ops.into_iter().collect(), del, ins, sub)
+}
+
 
 /// GNU `adist(x, y)` Levenshtein distances as an integer matrix.
 pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1123,6 +1173,7 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let nx = XLENGTH(x);
         let mut y = x;
         let mut ignore_case = false;
+        let mut counts = false;
         let mut cell = CDR(args);
         let mut positional = 0;
         while !cell.is_null() && cell != R_NilValue() {
@@ -1138,6 +1189,10 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if named == "ignore.case" {
                 if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
                     ignore_case = *LOGICAL(value) == TRUE;
+                }
+            } else if named == "counts" {
+                if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
+                    counts = *LOGICAL(value) == TRUE;
                 }
             } else if named == "y"
                 || (named.is_empty()
@@ -1161,6 +1216,7 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             ny as c_int,
         );
         let _m = protect(mat);
+        let mut paths: Vec<(String, i32, i32, i32)> = Vec::new();
         for j in 0..ny {
             let ych = STRING_ELT(y, j);
             let mut ys = if ych.is_null() {
@@ -1185,8 +1241,44 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if ignore_case {
                     xs = xs.to_lowercase();
                 }
-                *INTEGER(mat).add((i + j * nx) as usize) = adist_levenshtein(&xs, &ys);
+                let (dist, trafo, del, ins, sub) = adist_path(&xs, &ys);
+                *INTEGER(mat).add((i + j * nx) as usize) = dist;
+                if counts {
+                    paths.push((trafo, del, ins, sub));
+                }
             }
+        }
+        if counts {
+            let trafos = Rf_allocVector3(SEXPTYPE::STRSXP, nx * ny);
+            let _t = protect(trafos);
+            let cnt = Rf_allocVector3(SEXPTYPE::INTSXP, nx * ny * 3);
+            let _c = protect(cnt);
+            for (k, (trafo, del, ins, sub)) in paths.iter().enumerate() {
+                let cstr = std::ffi::CString::new(trafo.as_str()).unwrap_or_default();
+                SET_STRING_ELT(trafos, k as i64, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+                *INTEGER(cnt).add(k) = *del;
+                *INTEGER(cnt).add(k + (nx * ny) as usize) = *ins;
+                *INTEGER(cnt).add(k + (2 * nx * ny) as usize) = *sub;
+            }
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
+            *INTEGER(dim).add(0) = nx as i32;
+            *INTEGER(dim).add(1) = ny as i32;
+            *INTEGER(dim).add(2) = 3;
+            crate::sexp::attrib_core::setAttrib(cnt, crate::sexp::attrib_core::R_DimSymbol(), dim);
+            let dnames = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+            let layer = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+            for (i, name) in ["del", "ins", "sub"].iter().enumerate() {
+                let cstr = std::ffi::CString::new(*name).unwrap();
+                SET_STRING_ELT(layer, i as i64, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+            }
+            SET_VECTOR_ELT(dnames, 2, layer);
+            crate::sexp::attrib_core::setAttrib(cnt, crate::sexp::attrib_core::R_DimNamesSymbol(), dnames);
+            let tdim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            *INTEGER(tdim).add(0) = nx as i32;
+            *INTEGER(tdim).add(1) = ny as i32;
+            crate::sexp::attrib_core::setAttrib(trafos, crate::sexp::attrib_core::R_DimSymbol(), tdim);
+            crate::sexp::attrib_core::setAttrib(mat, crate::sexp::symbol::Rf_install(c"trafos".as_ptr()), trafos);
+            crate::sexp::attrib_core::setAttrib(mat, crate::sexp::symbol::Rf_install(c"counts".as_ptr()), cnt);
         }
         mat
     }
