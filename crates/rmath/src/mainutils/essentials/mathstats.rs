@@ -15727,7 +15727,17 @@ pub(crate) unsafe fn search_env_from_position(pos: c_int) -> SEXP {
 
     unsafe {
         if pos == -1 {
-            return crate::sexp::globals::R_GlobalEnv();
+            let mut ctx = crate::sexp::context::R_GlobalContext();
+            while !ctx.is_null() {
+                if (*ctx).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
+                    let parent = (*ctx).sysparent;
+                    if !parent.is_null() && parent != R_NilValue() {
+                        return parent;
+                    }
+                    break;
+                }
+                ctx = (*ctx).nextcontext;
+            }
         }
         if pos > 0
             && let Some((_, env)) = search_path_entries().get((pos - 1) as usize)
