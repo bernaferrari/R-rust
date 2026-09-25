@@ -1446,10 +1446,10 @@ fn validate_gnu_adapter_impl(
                 pending.push((next, depth, exited, call_stack.clone()));
             }
             GNU_OP_BASEGUARD => {
-                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
                 if depth >= 64 {
                     return Ok(false);
                 }
+                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
                 pending.push((
                     code[instruction_pc + 2] as usize,
                     depth + 1,

@@ -1194,6 +1194,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "all.equal.formula",
+            include_str!("gnu_all_equal_formula.R"),
+        );
+        eval_base_binding(
+            base_env,
             "all.equal.raw",
             include_str!("gnu_all_equal_raw.R"),
         );
