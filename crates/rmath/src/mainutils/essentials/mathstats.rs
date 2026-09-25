@@ -407,48 +407,79 @@ pub unsafe fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if n == 0 {
             return x;
         }
-        let mut mx = 0.0f64;
-        let mut any_finite = false;
-        let t = TYPEOF(x);
-        for i in 0..n {
-            let mag = if t == SEXPTYPE::CPLXSXP {
-                let z = *COMPLEX(x).add(i as usize);
-                if !z.r.is_finite() || !z.i.is_finite() {
-                    continue;
-                }
-                (z.r * z.r + z.i * z.i).sqrt()
-            } else {
-                let v = if t == SEXPTYPE::REALSXP {
-                    *REAL(x).add(i as usize)
-                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    let iv = *INTEGER(x).add(i as usize);
-                    if iv == NA_INTEGER {
-                        continue;
-                    }
-                    iv as f64
-                } else {
-                    continue;
-                };
-                if !v.is_finite() {
-                    continue;
-                }
-                v.abs()
-            };
-            any_finite = true;
-            if mag > mx {
-                mx = mag;
-            }
-        }
-        if !any_finite {
-            return x;
-        }
-        let adj = if mx > 0.0 && mx.is_finite() {
-            (digits - mx.log10()).max(0.0)
-        } else if mx.is_infinite() {
+        let rest = CDR(CDR(args));
+        let mfun = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(rest)
+        };
+        let min_cell = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CDR(rest)
+        };
+        let min_d = if min_cell.is_null()
+            || min_cell == R_NilValue()
+            || CAR(min_cell) == crate::sexp::globals::R_MissingArg()
+        {
             0.0
         } else {
-            digits
+            real_or_default(CAR(min_cell), 0.0)
         };
+        let ina = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _ina = protect(ina);
+        let mut any_observed = false;
+        let t = TYPEOF(x);
+        for i in 0..n {
+            let missing = if t == SEXPTYPE::CPLXSXP {
+                let z = *COMPLEX(x).add(i as usize);
+                z.r.is_nan() || z.i.is_nan()
+            } else if t == SEXPTYPE::REALSXP {
+                (*REAL(x).add(i as usize)).is_nan()
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                *INTEGER(x).add(i as usize) == NA_INTEGER
+            } else {
+                false
+            };
+            *INTEGER(ina).add(i as usize) = if missing { 1 } else { 0 };
+            if !missing {
+                any_observed = true;
+            }
+        }
+        if !any_observed {
+            return x;
+        }
+        let mx = if TYPEOF(mfun) == SEXPTYPE::CLOSXP {
+            let mc = crate::sexp::constructors::Rf_lang3(mfun, x, ina);
+            let _mc = protect(mc);
+            let got = crate::eval::eval::Rf_eval(mc, rho);
+            real_or_default(got, 0.0)
+        } else {
+            let mut mx = 0.0f64;
+            for i in 0..n {
+                if *INTEGER(ina).add(i as usize) != 0 {
+                    continue;
+                }
+                let mag = if t == SEXPTYPE::CPLXSXP {
+                    let z = *COMPLEX(x).add(i as usize);
+                    (z.r * z.r + z.i * z.i).sqrt()
+                } else if t == SEXPTYPE::REALSXP {
+                    (*REAL(x).add(i as usize)).abs()
+                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                    (*INTEGER(x).add(i as usize) as f64).abs()
+                } else {
+                    0.0
+                };
+                if mag > mx {
+                    mx = mag;
+                }
+            }
+            mx
+        };
+        if mx.is_infinite() && digits.is_infinite() {
+            return x;
+        }
+        let adj = if mx > 0.0 { (digits - mx.log10()).max(min_d) } else { digits };
         let d = Rf_ScalarReal(adj);
         let _d = protect(d);
         let packed = Rf_cons(x, Rf_cons(d, R_NilValue()));
