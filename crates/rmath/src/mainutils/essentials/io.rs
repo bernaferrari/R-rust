@@ -721,6 +721,17 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             contents
         };
+        let skip_arg = by_slot(&["skip"], 6);
+        let skip_n: usize = if skip_arg.is_null() || skip_arg == R_NilValue() {
+            0
+        } else {
+            real_or_default(skip_arg, 0.0).max(0.0) as usize
+        };
+        let contents = if skip_n == 0 {
+            contents
+        } else {
+            contents.split('\n').skip(skip_n).collect::<Vec<_>>().join("\n")
+        };
         let sep_arg = by_slot(&["sep"], 3);
         let sep = if sep_arg.is_null() || sep_arg == R_NilValue() {
             String::new()
@@ -753,6 +764,15 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if field_cap >= 0 {
                 let bytes = &scan_conn_bytes;
                 let mut i = 0usize;
+                if skip_n > 0 {
+                    let mut lines = 0usize;
+                    while i < bytes.len() && lines < skip_n {
+                        if bytes[i] == b'\n' {
+                            lines += 1;
+                        }
+                        i += 1;
+                    }
+                }
                 let mut seen = 0i64;
                 while i < bytes.len() && seen < field_cap {
                     while i < bytes.len() && bytes[i].is_ascii_whitespace() {
