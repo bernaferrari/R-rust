@@ -941,6 +941,17 @@ impl RSession {
                 let _expr_guard = result.as_ref().ok().map(|value| {
                     RootedSexp::try_root(value.clone()).ok()
                 });
+                if let Ok(value) = result.as_ref() {
+                    let visible = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
+                    unsafe {
+                        crate::mainutils::main::Rf_callToplevelHandlers(
+                            raw_expr,
+                            value.clone().as_raw(),
+                            crate::sexp::ffi::TRUE,
+                            visible,
+                        );
+                    }
+                }
                 // main.c REPL loop: upstream auto-prints EVERY visible
                 // top-level expression (PrintValueEnv), not just the final
                 // one. Intermediate values render through the same formatter

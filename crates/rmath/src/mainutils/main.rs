@@ -374,8 +374,48 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
         };
 
         let keep = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            let call = make_task_callback_call(fun, expr, value, succeeded, visible, data);
-            let result = crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv());
+            let rho = crate::sexp::memory_ext::NewEnvironment(
+                R_NilValue(),
+                crate::sexp::globals::R_GlobalEnv(),
+                R_NilValue(),
+            );
+            let _rho = crate::sexp::protect::protect(rho);
+            let expr_v = if expr.is_null() { R_NilValue() } else { expr };
+            let value_v = if value.is_null() { R_NilValue() } else { value };
+            let sym = |name: &str| {
+                let c = std::ffi::CString::new(name).unwrap();
+                crate::sexp::symbol::Rf_install(c.as_ptr())
+            };
+            crate::sexp::envir::defineVar(sym("expr"), expr_v, rho);
+            crate::sexp::envir::defineVar(sym("value"), value_v, rho);
+            crate::sexp::envir::defineVar(
+                sym("succeeded"),
+                Rf_ScalarLogical(if succeeded != 0 { TRUE } else { FALSE }),
+                rho,
+            );
+            crate::sexp::envir::defineVar(
+                sym("visible"),
+                Rf_ScalarLogical(if visible != 0 { TRUE } else { FALSE }),
+                rho,
+            );
+            let mut args = Rf_cons(sym("visible"), R_NilValue());
+            args = Rf_cons(sym("succeeded"), args);
+            args = Rf_cons(sym("value"), args);
+            args = Rf_cons(sym("expr"), args);
+            if !data.is_null() && data != R_NilValue() {
+                crate::sexp::envir::defineVar(sym("data"), data, rho);
+                args = Rf_cons(sym("data"), args);
+                // data is last: rebuild in order expr, value, succeeded, visible, data
+                args = Rf_cons(sym("visible"), Rf_cons(sym("data"), R_NilValue()));
+                args = Rf_cons(sym("succeeded"), args);
+                args = Rf_cons(sym("value"), args);
+                args = Rf_cons(sym("expr"), args);
+            }
+            let call = Rf_cons(fun, args);
+            if !call.is_null() {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            let result = crate::eval::eval::Rf_eval(call, rho);
             crate::mainutils::coerce::asLogical(result) == TRUE
         }))
         .unwrap_or(false);
