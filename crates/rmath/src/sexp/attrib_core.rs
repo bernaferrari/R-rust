@@ -103,12 +103,17 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
             let t = TYPEOF(x);
             if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
                 let mut n = 0i32;
+                let mut any = false;
                 let mut scan = x;
                 while !scan.is_null() && scan != R_NilValue() {
+                    let tag = TAG(scan);
+                    if !tag.is_null() && tag != R_NilValue() {
+                        any = true;
+                    }
                     n += 1;
                     scan = CDR(scan);
                 }
-                if n > 0 {
+                if n > 0 && any {
                     let out = Rf_allocVector(SEXPTYPE::STRSXP, n);
                     let _g = super::protect::protect(out);
                     let mut cell = x;
