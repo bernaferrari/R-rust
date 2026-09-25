@@ -58,8 +58,25 @@ pub fn write_text_or_host(path: &str, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 pub fn read_text_or_host(path: &str) -> io::Result<String> {
-    String::from_utf8(read_bytes_or_host(path)?)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+    use std::io::Read;
+    let bytes = read_bytes_or_host(path)?;
+    let text = if bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b {
+        let mut out = Vec::new();
+        flate2::read::GzDecoder::new(&bytes[..]).read_to_end(&mut out)?;
+        out
+    } else if bytes.len() >= 3 && bytes.starts_with(b"BZh") {
+        let mut out = Vec::new();
+        bzip2::read::BzDecoder::new(&bytes[..]).read_to_end(&mut out)?;
+        out
+    } else if bytes.len() >= 6 && bytes.starts_with(&[0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]) {
+        let mut out = Vec::new();
+        lzma_rs::xz_decompress(&mut &bytes[..], &mut out)
+            .map_err(|err| io::Error::other(err.to_string()))?;
+        out
+    } else {
+        bytes
+    };
+    String::from_utf8(text).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 impl BrowserFileStore {

@@ -528,14 +528,15 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
 
 pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
+        let original = args;
         let scmd = CAR(args);
-        args = CDR(args);
-        let sopen = CAR(args);
-        args = CDR(args);
-        let _compression = CAR(args);
-
+        let sopen = arg_by_name_or_position(original, 1, &["open"], R_NilValue());
         let description = check_string_arg(scmd, "description");
-        let open = check_string_arg(sopen, "open");
+        let open = if sopen.is_null() || sopen == R_NilValue() || sopen == crate::sexp::globals::R_MissingArg() {
+            String::new()
+        } else {
+            check_string_arg(sopen, "open")
+        };
         let open_mode = if open.is_empty() {
             String::new()
         } else {
@@ -570,21 +571,18 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
 
 pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
+        let original = args;
         let scmd = CAR(args);
-        args = CDR(args);
-        let sopen = CAR(args);
-        args = CDR(args);
-        let _compression = CAR(args);
-
+        let sopen = arg_by_name_or_position(original, 1, &["open"], R_NilValue());
         let description = check_string_arg(scmd, "description");
-        let open = check_string_arg(sopen, "open");
-        let open_mode = if open.is_empty() {
-            "r".to_string()
+        let open = if sopen.is_null() || sopen == R_NilValue() || sopen == crate::sexp::globals::R_MissingArg() {
+            String::new()
         } else {
-            open
+            check_string_arg(sopen, "open")
         };
-
+        let open_mode = if open.is_empty() { String::new() } else { open };
         let mut conn = RConn::new("xzfile", &description, &open_mode, ConnKind::XzFile);
+
         conn.canseek = false;
         conn.text = !open_mode.contains('b');
 
