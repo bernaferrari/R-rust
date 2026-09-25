@@ -2001,7 +2001,7 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
                 }
             }
             if !found {
-                *crate::sexp::accessors::LOGICAL(out).add(i as usize) = FALSE;
+                *crate::sexp::accessors::LOGICAL(out).add(i as usize) = crate::sexp::ffi::NA_LOGICAL;
             }
             SET_STRING_ELT(
                 out_names,
