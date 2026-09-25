@@ -949,15 +949,7 @@ pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         }
         if unique {
             let mut order: Vec<usize> = (0..results.len()).collect();
-            order.sort_by_key(|&i| {
-                if from_na[i] {
-                    2
-                } else if originals[i] != results[i] {
-                    1
-                } else {
-                    0
-                }
-            });
+            order.sort_by_key(|&i| if from_na[i] { 2 } else if originals[i] != results[i] { 1 } else { 0 });
             let tmp = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _t = protect(tmp);
             for (j, &i) in order.iter().enumerate() {
