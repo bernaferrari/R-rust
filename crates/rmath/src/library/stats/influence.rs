@@ -142,35 +142,11 @@ unsafe extern "C" {
 // Pure rust-backend lminfl (LAPACK QR / dormqr convention)
 // ---------------------------------------------------------------------------
 
-/// Apply Q from a LAPACK QR factorization to `y` in place (`y := Q y`).
-/// Reflectors use the same storage as `dgeqp3` / rust-backend `Cdqrls`.
-#[cfg(not(feature = "fortran-backend"))]
-fn apply_q_lapack(qr: &[f64], ldx: usize, n: usize, k: usize, tau: &[f64], y: &mut [f64]) {
-    let ju = k.min(n);
-    // Q = H_0 ... H_{ju-1}  ⇒  apply H_{ju-1}, ..., H_0
-    for jj in (0..ju).rev() {
-        let tau_val = tau[jj];
-        if tau_val == 0.0 {
-            continue;
-        }
-        let mut dot = y[jj];
-        for i in (jj + 1)..n {
-            dot += qr[i + jj * ldx] * y[i];
-        }
-        dot *= tau_val;
-        y[jj] -= dot;
-        for i in (jj + 1)..n {
-            y[i] -= dot * qr[i + jj * ldx];
-        }
-    }
-}
 
-/// Core algorithm matching GNU `lminfl.f`, for LAPACK-style QR from `dgeqp3`
-/// (as produced by rust-backend `Cdqrls`).
+/// Core algorithm matching GNU `lminfl.f` on a LINPACK QR from `dqrdc2`.
 ///
-/// `qr` is column-major with leading dimension `ldx` (at least `n` rows and
-/// `k` columns of Householder vectors). `qraux` holds LAPACK `tau` values.
-/// `resid` / `sigma` are column-major `n × q`.
+/// `qr` is column-major with leading dimension `ldx`. `qraux` is the
+/// LINPACK auxiliary vector. `resid` / `sigma` are column-major `n × q`.
 #[cfg(not(feature = "fortran-backend"))]
 pub(crate) fn lminfl_compute(
     qr: &[f64],
@@ -197,20 +173,35 @@ pub(crate) fn lminfl_compute(
         *h = 0.0;
     }
 
-    // hat_ii = sum_{j=0}^{k-1} Q_{ij}^2 for the thin Q from LAPACK QR (dgeqp3).
-    // Q = H_0 H_1 ... H_{k-1} with H_j = I - tau_j v_j v_j^T (v_j has 1 on the
-    // diagonal and the subdiagonal of qr column j). Apply Q to e_j by applying
-    // reflectors in reverse — the same convention as rust-backend Cdqrls /
-    // dqrls_rust (which applies them forward for Q^T).
+    // hat_ii = sum_j Q_{ij}^2. Stored QR is LINPACK (`dqrdc2`), so each
+    // column of Q comes from `dqrsl(..., e_j, job=10000)`, as in `lminfl.f`.
     if n > 0 && k > 0 {
         let k_eff = k.min(n);
-        let mut work = vec![0.0f64; n];
+        let mut y = vec![0.0f64; n];
+        let mut qy = vec![0.0f64; n];
+        let mut info = 0i32;
         for j in 0..k_eff {
-            work.fill(0.0);
-            work[j] = 1.0;
-            apply_q_lapack(qr, ldx, n, k_eff, qraux, &mut work);
+            y.fill(0.0);
+            y[j] = 1.0;
+            unsafe {
+                crate::appl::linpack_qr::dqrsl(
+                    qr.as_ptr() as *mut f64,
+                    ldx as i32,
+                    n as i32,
+                    k_eff as i32,
+                    qraux.as_ptr(),
+                    y.as_ptr(),
+                    qy.as_mut_ptr(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    10000,
+                    &mut info,
+                );
+            }
             for i in 0..n {
-                hat[i] += work[i] * work[i];
+                hat[i] += qy[i] * qy[i];
             }
         }
     }
@@ -413,55 +404,29 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
 #[cfg(all(test, not(feature = "fortran-backend")))]
 mod tests {
     use super::lminfl_compute;
-    use crate::modules::lapack::backend;
-    use std::os::raw::c_int;
 
-    /// Factor X (column-major n×p) with dgeqp3; returns (qr, tau, rank estimate).
+
+    /// Factor X (column-major n×p) with LINPACK `dqrdc2`.
     fn factor_qr(x: &[f64], n: usize, p: usize, tol: f64) -> (Vec<f64>, Vec<f64>, usize) {
         let mut qr = x.to_vec();
+        let mut qraux = vec![0.0f64; p];
         let mut jpvt = vec![0i32; p];
-        let mut tau = vec![0.0f64; n.min(p)];
-        let n_i = n as c_int;
-        let p_i = p as c_int;
-        let mut info = 0i32;
-        let mut lwork = -1i32;
-        let mut work_query = [0.0f64; 1];
+        let mut work = vec![0.0f64; p * 2];
+        let mut k = 0i32;
         unsafe {
-            backend::dgeqp3_(
-                &n_i,
-                &p_i,
+            crate::appl::linpack_qr::dqrdc2(
                 qr.as_mut_ptr(),
-                &n_i,
+                n as i32,
+                n as i32,
+                p as i32,
+                tol,
+                &mut k,
+                qraux.as_mut_ptr(),
                 jpvt.as_mut_ptr(),
-                tau.as_mut_ptr(),
-                work_query.as_mut_ptr(),
-                &lwork,
-                &mut info,
-            );
-            lwork = work_query[0] as i32;
-            let mut work = vec![0.0f64; lwork as usize];
-            backend::dgeqp3_(
-                &n_i,
-                &p_i,
-                qr.as_mut_ptr(),
-                &n_i,
-                jpvt.as_mut_ptr(),
-                tau.as_mut_ptr(),
                 work.as_mut_ptr(),
-                &lwork,
-                &mut info,
             );
         }
-        assert_eq!(info, 0);
-        let kmax = n.min(p);
-        let max_r = (0..kmax)
-            .map(|j| qr[j + j * n].abs())
-            .fold(0.0f64, f64::max);
-        let thresh = tol * max_r;
-        let rank = (0..kmax)
-            .take_while(|&j| qr[j + j * n].abs() > thresh)
-            .count();
-        (qr, tau, rank)
+        (qr, qraux, k as usize)
     }
 
     #[test]
