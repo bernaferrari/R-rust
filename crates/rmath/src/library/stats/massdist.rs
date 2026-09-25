@@ -70,15 +70,14 @@ pub unsafe fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEX
     unsafe {
         let n = as_integer(sn);
         if n == NA_INTEGER || n <= 0 {
-            // Return a length-0 real vector on error (matches R's error behavior
-            // in this C-level function; the R wrapper calls error() itself).
-            return Rf_allocVector(SEXPTYPE::REALSXP, 0);
+            crate::main::errors::Rf_error(
+                b"invalid 'n'\0".as_ptr() as *const std::os::raw::c_char,
+            );
         }
 
         let n_xlen = n as R_xlen_t;
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2 * n);
         let _ans_guard = protect(ans);
-
         let xlo = as_real(slo);
         let xhi = as_real(shi);
 
