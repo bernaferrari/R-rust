@@ -657,9 +657,29 @@ unsafe fn set_product_dimnames(result: SEXP, kind: MatProductKind, x: SEXP, y: S
         };
         let xd = getAttrib(x, R_DimNamesSymbol());
         let yd = getAttrib(y, R_DimNamesSymbol());
-        let axis = |dn: SEXP, i| {
-            if dn != R_NilValue() && !dn.is_null() && XLENGTH(dn) == 2 {
-                VECTOR_ELT(dn, i)
+        let axis = |dn: SEXP, i: i32| {
+            if dn != R_NilValue()
+                && !dn.is_null()
+                && TYPEOF(dn) == SEXPTYPE::VECSXP
+                && (XLENGTH(dn) > i as i64 || (XLENGTH(dn) == 1 && i == 0))
+            {
+                VECTOR_ELT(dn, if XLENGTH(dn) == 1 { 0 } else { i as i64 })
+            } else {
+                R_NilValue()
+            }
+        };
+        let axis_label = |dn: SEXP, i: i32| {
+            if dn == R_NilValue() || dn.is_null() {
+                return R_NilValue();
+            }
+            let nm = getAttrib(dn, R_NamesSymbol());
+            if nm == R_NilValue() || nm.is_null() || TYPEOF(nm) != SEXPTYPE::STRSXP {
+                return R_NilValue();
+            }
+            if XLENGTH(nm) > i as i64 {
+                STRING_ELT(nm, i as i64)
+            } else if XLENGTH(nm) == 1 && i == 0 {
+                STRING_ELT(nm, 0)
             } else {
                 R_NilValue()
             }
@@ -671,6 +691,19 @@ unsafe fn set_product_dimnames(result: SEXP, kind: MatProductKind, x: SEXP, y: S
             let _names = protect(names);
             SET_VECTOR_ELT(names, 0, row);
             SET_VECTOR_ELT(names, 1, col);
+            let labels = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+            let _labels = protect(labels);
+            let rl = axis_label(xd, xa);
+            let cl = axis_label(yd, ya);
+            if rl != R_NilValue() {
+                SET_STRING_ELT(labels, 0, rl);
+            }
+            if cl != R_NilValue() {
+                SET_STRING_ELT(labels, 1, cl);
+            }
+            if rl != R_NilValue() || cl != R_NilValue() {
+                setAttrib(names, R_NamesSymbol(), labels);
+            }
             setAttrib(result, R_DimNamesSymbol(), names);
         }
     }
