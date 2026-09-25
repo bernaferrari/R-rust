@@ -512,24 +512,32 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
         let _indx_guard = protect(indx);
         let n = XLENGTH(indx);
 
-        // GNU errors on NA subscripts, except a length-1 replacement through
-        // a logical index: those NA positions are left unchanged.
-        if TYPEOF(x) != RAWSXP {
-            let mut na_slots = 0i64;
-            for i in 0..n {
-                if gi(indx, i) == NA_INTEGER as R_xlen_t {
-                    na_slots += 1;
+        // A length-1 replacement skips NA positions. A longer replacement
+        // through an index that contains NA is an error.
+        if TYPEOF(x) != RAWSXP && XLENGTH(y) > 1 {
+            let src = s;
+            let sn = XLENGTH(src);
+            let mut has_na = false;
+            if TYPEOF(src) == SEXPTYPE::INTSXP || TYPEOF(src) == SEXPTYPE::LGLSXP {
+                for i in 0..sn {
+                    if INTEGER_ELT(src, i as i32) == NA_INTEGER {
+                        has_na = true;
+                        break;
+                    }
+                }
+            } else if TYPEOF(src) == SEXPTYPE::REALSXP {
+                for i in 0..sn {
+                    if REAL_ELT(src, i as i32).is_nan() {
+                        has_na = true;
+                        break;
+                    }
                 }
             }
-            if na_slots > 0 {
-                let scalar_rhs = XLENGTH(y) <= 1;
-                let logical = TYPEOF(s) == SEXPTYPE::LGLSXP;
-                if !(scalar_rhs && logical) {
-                    crate::mainutils::errors::Rf_error(
-                        b"NAs are not allowed in subscripted assignments\0".as_ptr()
-                            as *const core::ffi::c_char,
-                    );
-                }
+            if has_na {
+                crate::mainutils::errors::Rf_error(
+                    b"NAs are not allowed in subscripted assignments\0".as_ptr()
+                        as *const core::ffi::c_char,
+                );
             }
         }
 

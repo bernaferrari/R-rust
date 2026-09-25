@@ -86,6 +86,19 @@ pub(crate) unsafe fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEX
         if n == 0 {
             return x;
         }
+        if ny > 1 {
+            for j in 0..kk {
+                for i in 0..bound[j] {
+                    if *subs[j].add(i as usize) == NA_INTEGER {
+                        crate::mainutils::errors::Rf_error(
+                            b"NAs are not allowed in subscripted assignments\0".as_ptr()
+                                as *const core::ffi::c_char,
+                        );
+                    }
+                }
+            }
+        }
+
 
         let _x_guard = protect(x);
         let _y_guard = if x == y {
