@@ -1896,6 +1896,69 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     }
 }
 
+/// Bytecode `[` calls `do_subset_dflt` and skips the S3 `[.factor` fixup.
+/// `[.factor` defaults to `drop = FALSE`, so unused levels stay.
+pub unsafe fn finish_factor_subset(orig: SEXP, result: SEXP) -> SEXP {
+    unsafe {
+        if !has_class_factor(orig) {
+            return result;
+        }
+        let _r_guard = protect(result);
+        let _o_guard = protect(orig);
+        let levels = getAttrib(orig, crate::eval::attrib_core::R_LevelsSymbol());
+        if !isNull(levels) {
+            setAttrib(result, crate::eval::attrib_core::R_LevelsSymbol(), levels);
+        }
+        let class_attr = getAttrib(orig, sym_Class());
+        if !isNull(class_attr) {
+            setAttrib(result, sym_Class(), class_attr);
+        }
+        let contrasts = getAttrib(orig, sym_Contrasts());
+        if !isNull(contrasts) {
+            setAttrib(result, sym_Contrasts(), contrasts);
+        }
+        result
+    }
+}
+pub unsafe fn factor_replacement_codes(target: SEXP, value: SEXP, call: SEXP) -> SEXP {
+    unsafe {
+        if !has_class_factor(target)
+            || TYPEOF(target) != SEXPTYPE::INTSXP
+            || TYPEOF(value) != SEXPTYPE::STRSXP
+        {
+            return value;
+        }
+        let levels = getAttrib(target, crate::eval::attrib_core::R_LevelsSymbol());
+        if isNull(levels) || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            return value;
+        }
+        let nv = XLENGTH(value);
+        let codes = Rf_allocVector3(SEXPTYPE::INTSXP, nv);
+        let _cg = protect(codes);
+        for i in 0..nv {
+            let vs = crate::sexp::accessors::STRING_ELT(value, i);
+            let mut code: c_int = NA_INTEGER;
+            if !vs.is_null() && vs != crate::sexp::globals::R_NaString() {
+                let vb = crate::sexp::accessors::CHAR(vs);
+                for (j, lev) in (0..XLENGTH(levels)).enumerate() {
+                    let ls = crate::sexp::accessors::STRING_ELT(levels, lev);
+                    if !ls.is_null()
+                        && ls != crate::sexp::globals::R_NaString()
+                        && std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(ls)).to_bytes()
+                            == std::ffi::CStr::from_ptr(vb).to_bytes()
+                    {
+                        code = (j + 1) as c_int;
+                        break;
+                    }
+                }
+            }
+            *crate::sexp::accessors::INTEGER(codes).add(i as usize) = code;
+        }
+        let _ = call;
+        codes
+    }
+}
+
 /// The `drop = TRUE` tail of upstream `[.factor`:
 /// `factor(y, exclude = if (anyNA(levels(x))) NULL else NA)`.
 ///

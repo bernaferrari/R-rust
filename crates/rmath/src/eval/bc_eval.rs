@@ -61,10 +61,10 @@ unsafe fn gnu_pending_call(words: &[c_int], mut pc: usize, consts: SEXP) -> SEXP
                 }
                 break;
             }
-            pc = match super::bytecode::gnu_next_pc(pc, opcode, words.len()) {
-                Ok(next) => next,
-                Err(_) => break,
+            let Some(&width) = super::bytecode::GNU_BC_OPERAND_WIDTHS.get(opcode as usize) else {
+                break;
             };
+            pc += 1 + width as usize;
         }
         crate::mainutils::errors::R_getCurrentCall()
     }
@@ -739,12 +739,13 @@ unsafe fn eval_gnu_vecsubset(call: SEXP, x: SEXP, index: SEXP, rho: SEXP, subset
                 rho,
             )
         } else {
-            crate::mainutils::subset::do_subset(
+            let result = crate::mainutils::subset::do_subset_dflt(
                 call,
                 crate::sexp::symbol::Rf_install(c"[".as_ptr()),
                 args,
                 rho,
-            )
+            );
+            crate::mainutils::subset::finish_factor_subset(x, result)
         }
     }
 }
@@ -780,12 +781,13 @@ unsafe fn eval_gnu_subset_indices(
                 rho,
             )
         } else {
-            crate::mainutils::subset::do_subset(
+            let result = crate::mainutils::subset::do_subset_dflt(
                 call,
                 crate::sexp::symbol::Rf_install(c"[".as_ptr()),
                 args,
                 rho,
-            )
+            );
+            crate::mainutils::subset::finish_factor_subset(x, result)
         }
     }
 }
@@ -804,6 +806,7 @@ unsafe fn eval_gnu_vecsubassign(
         if crate::sexp::accessors::NAMED(x) > 1 {
             x = crate::mainutils::duplicate::shallow_duplicate(x);
         }
+        let rhs = crate::mainutils::subset::factor_replacement_codes(x, rhs, call);
         let value = Rf_cons(rhs, R_NilValue());
         crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
         let args = Rf_cons(x, Rf_cons(index, value));
@@ -816,7 +819,7 @@ unsafe fn eval_gnu_vecsubassign(
                 rho,
             )
         } else {
-            crate::mainutils::subset::do_subassign(
+            crate::mainutils::subassign::do_subassign_dflt(
                 call,
                 crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
                 args,
@@ -857,7 +860,7 @@ unsafe fn eval_gnu_matsubassign(
                 rho,
             )
         } else {
-            crate::mainutils::subset::do_subassign(
+            crate::mainutils::subassign::do_subassign_dflt(
                 call,
                 crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
                 args,
@@ -907,7 +910,7 @@ unsafe fn eval_gnu_subassign_indices(
                 rho,
             )
         } else {
-            crate::mainutils::subset::do_subassign(
+            crate::mainutils::subassign::do_subassign_dflt(
                 call,
                 crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
                 args,
@@ -1248,14 +1251,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
         // streams without guessing an argument count from the call object.
         let mut gnu_call_frames: Vec<GnuCallFrame> = Vec::new();
         while pc < words.len() {
-            let opcode_pc = pc;
             let opcode = words[pc];
-            let fallthrough = match super::bytecode::gnu_next_pc(opcode_pc, opcode, words.len()) {
-                Ok(next) => next,
-                Err(_) => bc_error(format!(
-                    "truncated GNU bytecode opcode {opcode} at stream offset {opcode_pc}"
-                )),
-            };
             pc += 1;
             match opcode {
                 super::bytecode::GNU_OP_RETURN => {
@@ -1275,7 +1271,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_BRIFNOT => {
                     let _call_index = words[pc];
                     let target = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let condition = stack_pop_checked(&mut stack, "GNU BRIFNOT");
                     let branch =
                         with_stack_rooted(&stack, condition, || eval_bc_condition(condition));
@@ -1286,7 +1282,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_AND1ST => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let value = stack_top_checked(&stack, "GNU AND1ST");
                     let val = with_stack_rooted(&stack, value, || {
@@ -1302,7 +1298,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_AND2ND => {
                     let call_index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let value = stack_pop_checked(&mut stack, "GNU AND2ND");
                     let val = with_stack_rooted(&stack, value, || {
@@ -1320,7 +1316,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_OR1ST => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let value = stack_top_checked(&stack, "GNU OR1ST");
                     let val = with_stack_rooted(&stack, value, || {
@@ -1336,7 +1332,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_OR2ND => {
                     let call_index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let value = stack_pop_checked(&mut stack, "GNU OR2ND");
                     let val = with_stack_rooted(&stack, value, || {
@@ -1391,7 +1387,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_LDCONST => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     super::runtime::set_visible(TRUE);
                     stack.push(VECTOR_ELT(consts, index as i64));
                 }
@@ -1411,7 +1407,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_GETVAR | super::bytecode::GNU_OP_GETVAR_MISSOK => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                         bc_error(format!(
@@ -1441,7 +1437,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_DECLNK_N => {
                     let count = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     if stack.depth() < count + 2 {
                         bc_error("GNU DECLNK_N count exceeds the stack depth");
                     }
@@ -1479,7 +1475,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_GETINTLBUILTIN => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                         bc_error(format!(
@@ -1533,7 +1529,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_DDVAL | super::bytecode::GNU_OP_DDVAL_MISSOK => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                         bc_error(format!(
@@ -1549,7 +1545,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_MAKECLOSURE => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let fb = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(fb) != SEXPTYPE::VECSXP || LENGTH(fb) < 2 {
                         bc_error(format!(
@@ -1622,7 +1618,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_CALLSPECIAL => {
                     let call_index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU CALLSPECIAL requires a call in the constant pool");
@@ -1691,7 +1687,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 | super::bytecode::GNU_OP_GETGLOBFUN
                 | super::bytecode::GNU_OP_GETSYMFUN => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                         bc_error(format!(
@@ -1773,7 +1769,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_MAKEPROM => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let expression = VECTOR_ELT(consts, index as i64);
                     if gnu_call_frames.is_empty() {
                         bc_error("GNU MAKEPROM has no active GETFUN call");
@@ -1793,7 +1789,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let value = match opcode {
                         super::bytecode::GNU_OP_PUSHCONSTARG => {
                             let index = words[pc] as usize;
-                            pc = fallthrough;
+                            pc += 1;
                             VECTOR_ELT(consts, index as i64)
                         }
                         super::bytecode::GNU_OP_PUSHNULLARG => R_NilValue(),
@@ -1860,7 +1856,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_SETTAG => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let tag = VECTOR_ELT(consts, index as i64);
                     if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) != SEXPTYPE::SYMSXP {
                         bc_error("GNU SETTAG requires a symbol or NULL tag");
@@ -1883,7 +1879,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_CALL | super::bytecode::GNU_OP_CALLBUILTIN => {
                     let builtin_only = opcode == super::bytecode::GNU_OP_CALLBUILTIN;
                     let call_index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let frame = gnu_call_frames
                         .pop()
                         .unwrap_or_else(|| bc_error("GNU CALL has no active GETFUN call"));
@@ -1975,7 +1971,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_BASEGUARD => {
                     let expression_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let expression = VECTOR_ELT(consts, expression_index as i64);
                     if expression.is_null() || TYPEOF(expression) != SEXPTYPE::LANGSXP {
                         bc_error("GNU BASEGUARD requires a call in the constant pool");
@@ -2000,7 +1996,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_SETVAR | super::bytecode::GNU_OP_SETVAR2 => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                         bc_error(format!(
@@ -2050,7 +2046,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let _limit_check = super::limits::check_eval_depth()
                         .unwrap_or_else(|message| bc_error(message));
                     let body_start = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let Some(state) = for_loops.last_mut() else {
                         bc_error("GNU STEPFOR has no active loop");
                     };
@@ -2081,7 +2077,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU unary operator requires a call in the constant pool");
                     }
-                    pc = fallthrough;
+                    pc += 1;
                     let value = stack_pop_checked(&mut stack, "GNU unary operator");
                     let symbol = if opcode == super::bytecode::GNU_OP_UMINUS {
                         c"-"
@@ -2105,7 +2101,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU math opcode requires a call in the constant pool");
                     }
-                    pc = fallthrough;
+                    pc += 1;
                     let value = stack_pop_checked(&mut stack, "GNU math opcode");
                     let symbol = if opcode == super::bytecode::GNU_OP_SQRT {
                         c"sqrt"
@@ -2129,7 +2125,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU logarithm opcode requires a call in the constant pool");
                     }
-                    pc = fallthrough;
+                    pc += 1;
                     let result = if opcode == super::bytecode::GNU_OP_LOG {
                         let value = stack_pop_checked(&mut stack, "GNU LOG");
                         let result = with_stack_rooted(&stack, value, || {
@@ -2169,7 +2165,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU MATH1 requires a call in the constant pool");
                     }
-                    pc = fallthrough;
+                    pc += 2;
                     let names = [
                         "floor", "ceiling", "sign", "expm1", "log1p", "cos", "sin", "tan",
                         "acos", "asin", "atan", "cosh", "sinh", "tanh", "acosh", "asinh",
@@ -2217,7 +2213,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU binary operator requires a call in the constant pool");
                     }
-                    pc = fallthrough;
+                    pc += 1;
                     let b = stack_pop_checked(&mut stack, "GNU binary operator");
                     let a = stack_pop_checked(&mut stack, "GNU binary operator");
                     let symbol = match opcode {
@@ -2262,7 +2258,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU logic operator requires a call in the constant pool");
                     }
-                    pc = fallthrough;
+                    pc += 1;
                     let b = stack_pop_checked(&mut stack, "GNU logic operator");
                     let a = stack_pop_checked(&mut stack, "GNU logic operator");
                     let symbol = if opcode == super::bytecode::GNU_OP_AND {
@@ -2298,7 +2294,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU NOT requires a call in the constant pool");
                     }
-                    pc = fallthrough;
+                    pc += 1;
                     let value = stack_pop_checked(&mut stack, "GNU NOT");
                     let result = with_stack_rooted(&stack, value, || {
                         eval_gnu_logic(call, c"!", value, None, rho)
@@ -2311,7 +2307,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU COLON requires a call in the constant pool");
                     }
-                    pc = fallthrough;
+                    pc += 1;
                     let rhs = stack_pop_checked(&mut stack, "GNU COLON");
                     let lhs = stack_pop_checked(&mut stack, "GNU COLON");
                     let result = with_stack_rooted(&stack, lhs, || {
@@ -2353,7 +2349,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error(format!("{name} requires a call in the constant pool"));
                     }
-                    pc = fallthrough;
+                    pc += 1;
                     let value = stack_pop_checked(&mut stack, name);
                     let result = with_stack_rooted(&stack, value, || {
                         let symbol = if opcode == super::bytecode::GNU_OP_SEQALONG {
@@ -2379,7 +2375,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_DOLLAR => {
                     let call_index = words[pc] as usize;
                     let symbol_index = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let symbol = VECTOR_ELT(consts, symbol_index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
@@ -2397,7 +2393,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_DOLLARGETS => {
                     let call_index = words[pc] as usize;
                     let symbol_index = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let symbol = VECTOR_ELT(consts, symbol_index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
@@ -2414,7 +2410,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_STARTASSIGN => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                         bc_error(format!(
@@ -2455,7 +2451,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_ENDASSIGN => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                         bc_error(format!(
@@ -2480,7 +2476,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_STARTASSIGN2 => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                         bc_error(format!(
@@ -2513,7 +2509,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_ENDASSIGN2 => {
                     let index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
                     if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                         bc_error(format!(
@@ -2529,7 +2525,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 | super::bytecode::GNU_OP_STARTSUBSET2 => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let x = stack_top_checked(&stack, "GNU STARTSUBSET");
                     let generic = if opcode == super::bytecode::GNU_OP_STARTSUBSET2 {
@@ -2606,7 +2602,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                 rho,
                             )
                         } else {
-                            crate::mainutils::subset::do_subset(
+                            crate::mainutils::subset::do_subset_dflt(
                                 frame.call,
                                 crate::sexp::symbol::Rf_install(c"[".as_ptr()),
                                 args,
@@ -2622,7 +2618,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 | super::bytecode::GNU_OP_STARTSUBASSIGN2 => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     if stack.depth() < 2 {
                         bc_error("GNU STARTSUBASSIGN requires lhs and rhs");
@@ -2722,7 +2718,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                 rho,
                             )
                         } else {
-                            crate::mainutils::subset::do_subassign(
+                            crate::mainutils::subassign::do_subassign_dflt(
                                 frame.call,
                                 crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
                                 args,
@@ -2736,7 +2732,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_STARTSUBSET_N | super::bytecode::GNU_OP_STARTSUBSET2_N => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let x = stack_top_checked(&stack, "GNU STARTSUBSET_N");
                     let generic = if opcode == super::bytecode::GNU_OP_STARTSUBSET2_N {
@@ -2756,7 +2752,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 | super::bytecode::GNU_OP_STARTSUBASSIGN2_N => {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let rhs = stack_top_checked(&stack, "GNU STARTSUBASSIGN_N rhs");
                     let lhs_slot = stack.depth() - 2;
@@ -2786,7 +2782,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_VECSUBSET | super::bytecode::GNU_OP_VECSUBSET2 => {
                     let call_index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let index = stack_pop_checked(&mut stack, "GNU VECSUBSET index");
                     let x = stack_pop_checked(&mut stack, "GNU VECSUBSET object");
@@ -2799,7 +2795,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_MATSUBSET | super::bytecode::GNU_OP_MATSUBSET2 => {
                     let call_index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let column = stack_pop_checked(&mut stack, "GNU MATSUBSET column");
                     let row = stack_pop_checked(&mut stack, "GNU MATSUBSET row");
@@ -2819,7 +2815,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_SUBSET_N | super::bytecode::GNU_OP_SUBSET2_N => {
                     let call_index = words[pc] as usize;
                     let rank = words[pc + 1];
-                    pc = fallthrough;
+                    pc += 2;
                     if rank < 0 {
                         bc_error("GNU SUBSET_N rank is negative");
                     }
@@ -2844,7 +2840,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_VECSUBASSIGN | super::bytecode::GNU_OP_VECSUBASSIGN2 => {
                     let call_index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let index = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN index");
                     let rhs = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN rhs");
@@ -2858,7 +2854,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_MATSUBASSIGN
                 | super::bytecode::GNU_OP_MATSUBASSIGN2 => {
                     let call_index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let call = VECTOR_ELT(consts, call_index as i64);
                     let column = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN column");
                     let row = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN row");
@@ -2881,7 +2877,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 | super::bytecode::GNU_OP_SUBASSIGN2_N => {
                     let call_index = words[pc] as usize;
                     let rank = words[pc + 1];
-                    pc = fallthrough;
+                    pc += 2;
                     if rank < 0 {
                         bc_error("GNU SUBASSIGN_N rank is negative");
                     }
@@ -2908,7 +2904,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_SETTER_CALL => {
                     let call_index = words[pc] as usize;
                     let vexpr_index = words[pc + 1] as usize;
-                    pc = fallthrough;
+                    pc += 2;
                     let frame = gnu_call_frames.pop().unwrap_or_else(|| {
                         bc_error("GNU SETTER_CALL has no active GETFUN call")
                     });
@@ -2963,7 +2959,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
 
                 super::bytecode::GNU_OP_GETTER_CALL => {
                     let call_index = words[pc] as usize;
-                    pc = fallthrough;
+                    pc += 1;
                     let frame = gnu_call_frames.pop().unwrap_or_else(|| {
                         bc_error("GNU GETTER_CALL has no active GETFUN call")
                     });
@@ -3031,7 +3027,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_STARTLOOPCNTXT => {
                     let _is_for_loop = words[pc];
                     let break_target = words[pc + 1];
-                    pc = fallthrough;
+                    pc += 2;
                     // GNU duplicates for-loop node-stack state when is_for_loop
                     // is set. The adapter keeps that state in for_loops, so
                     // only the recoverable next/break pc pair is recorded.
@@ -3044,7 +3040,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_ENDLOOPCNTXT => {
                     let _is_for_loop = words[pc];
-                    pc = fallthrough;
+                    pc += 1;
                     if loop_stack.pop().is_none() {
                         bc_error("GNU ENDLOOPCNTXT has no active loop context");
                     }
@@ -3055,7 +3051,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_DOTCALL => {
                     let call_index = words[pc] as usize;
                     let nargs = words[pc + 1];
-                    pc = fallthrough;
+                    pc += 2;
                     if nargs < 0 {
                         bc_error(format!("GNU DOTCALL nargs {nargs} is negative"));
                     }
