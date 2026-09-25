@@ -322,11 +322,12 @@ pub unsafe fn runmed(
                     xx = xx_buf.as_ptr();
                 }
                 NA_FAIL => {
-                    eprintln!(
-                        "runmed(x, .., na.action=\"na.fail\"): have NAs starting at x[{}]",
-                        firstNA
-                    );
-                    return std::ptr::null_mut();
+                    let msg = std::ffi::CString::new(format!(
+                        "runmed(x, .., na.action=\"na.fail\"): have NAs starting at x[{firstNA}]"
+                    ))
+                    .unwrap_or_default();
+                    Rf_error(msg.as_ptr());
+                    unreachable!();
                 }
                 _ => {
                     Rf_error(b"runmed(): invalid 'na.action'\0".as_ptr() as *const _);
