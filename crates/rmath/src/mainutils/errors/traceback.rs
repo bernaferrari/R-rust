@@ -171,11 +171,7 @@ pub unsafe fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
 pub unsafe fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        let skip = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
-            *INTEGER(CAR(args))
-        } else {
-            crate::sexp::ffi::NA_INTEGER
-        };
+        let skip = crate::mainutils::coerce::asInteger(CAR(args));
         if skip == crate::sexp::ffi::NA_INTEGER || skip < 0 {
             errorcall(call, b"invalid 'skip' value\x00".as_ptr() as *const c_char);
         }
