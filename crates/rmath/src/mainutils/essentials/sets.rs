@@ -1297,7 +1297,13 @@ pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        let n = XLENGTH(x);
+        let x_lt = crate::mainutils::essentials::sexp_has_class(x, "POSIXlt");
+        let table_lt = crate::mainutils::essentials::sexp_has_class(table, "POSIXlt");
+        let n = if x_lt && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) > 0 {
+            XLENGTH(VECTOR_ELT(x, 0))
+        } else {
+            XLENGTH(x)
+        };
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -1315,15 +1321,18 @@ pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let mut lookup: BTreeMap<MatchKey, c_int> = BTreeMap::new();
         if !table.is_null() && table != R_NilValue() {
-            let tn = XLENGTH(table);
+            let tn = if table_lt && TYPEOF(table) == SEXPTYPE::VECSXP && XLENGTH(table) > 0 {
+                XLENGTH(VECTOR_ELT(table, 0))
+            } else {
+                XLENGTH(table)
+            };
             for i in 0..tn {
-                lookup
-                    .entry(match_key(table, i, common_type))
-                    .or_insert((i + 1) as c_int);
+                let key = if table_lt { posixlt_key(table, i) } else { match_key(table, i, common_type) };
+                lookup.entry(key).or_insert((i + 1) as c_int);
             }
         }
         for i in 0..n {
-            let key = match_key(x, i, common_type);
+            let key = if x_lt { posixlt_key(x, i) } else { match_key(x, i, common_type) };
             *dst.add(i as usize) = if incomparable_set.contains(&key) {
                 nomatch
             } else {
@@ -1331,6 +1340,23 @@ pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             };
         }
         result
+    }
+}
+
+unsafe fn posixlt_key(x: SEXP, index: R_xlen_t) -> MatchKey {
+    unsafe {
+        let mut parts = String::new();
+        let ncomp = XLENGTH(x);
+        for c in 0..ncomp {
+            let col = VECTOR_ELT(x, c);
+            parts.push('\u{1f}');
+            if col.is_null() || XLENGTH(col) == 0 {
+                continue;
+            }
+            let i = index % XLENGTH(col);
+            parts.push_str(&elt_to_string(col, i));
+        }
+        MatchKey::String(parts)
     }
 }
 
