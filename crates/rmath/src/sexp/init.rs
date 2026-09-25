@@ -958,6 +958,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "persp", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "heat.colors", "function(n, ...) rep(\"#FF0000\", n)");
         eval_base_binding(base_env, "rainbow", "function(n, ...) rep(\"#FF0000\", n)");
+        eval_base_binding(base_env, "plot.formula", include_str!("gnu_plot_formula.R"));
+        eval_base_binding(base_env, "plot.data.frame", "function(x, ...) invisible(NULL)");
         eval_base_binding(base_env, "colorRamp", include_str!("gnu_color_ramp.R"));
         eval_base_binding(
             base_env,
