@@ -212,6 +212,27 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  rep(\"#000000\", n)\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "mle",
+            "function(minuslogl, start, ...) {\n\
+                 nm <- names(formals(minuslogl))\n\
+                 start <- unlist(start[nm])\n\
+                 fn <- function(par) {\n\
+                     names(par) <- nm\n\
+                     do.call(minuslogl, as.list(par))\n\
+                 }\n\
+                 fit <- optim(start, fn)\n\
+                 par <- fit$par\n\
+                 names(par) <- nm\n\
+                 structure(list(coef = par), class = \"mle\")\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "coef.mle",
+            "function(object, ...) object$coef",
+        );
         // GNU New-Internal.R: NextMethod is a closure over .Internal so extra
         // named args land in `...` and CADDR(.Internal args) stays the dots
         // symbol. A primitive NextMethod would evaluate those extras and hit
