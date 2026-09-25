@@ -949,7 +949,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "fix", include_str!("gnu_fix.R"));
         eval_base_binding(base_env, "edit", "function(name, ...) name");
         eval_base_binding(base_env, "image", "function(...) invisible(NULL)");
-        eval_base_binding(base_env, "contour", "function(...) invisible(NULL)");
+        eval_base_binding(
+            base_env,
+            "contour",
+            "function(x, ...) { lv <- list(...)$levels; if (!is.null(lv)) { bad <- which(!is.finite(lv)); if (length(bad)) stop(sprintf('non-finite level values: levels[%d] = %g', bad[1L], lv[bad[1L]])) }; invisible(NULL) }",
+        );
         eval_base_binding(base_env, "persp", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "heat.colors", "function(n, ...) rep(\"#FF0000\", n)");
         eval_base_binding(base_env, "colorRamp", include_str!("gnu_color_ramp.R"));
