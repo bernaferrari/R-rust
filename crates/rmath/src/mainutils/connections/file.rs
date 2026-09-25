@@ -495,7 +495,7 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             check_string_arg(sopen, "open")
         };
         let open_mode = if open.is_empty() {
-            "r".to_string()
+            String::new()
         } else {
             open
         };
@@ -537,7 +537,7 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         let description = check_string_arg(scmd, "description");
         let open = check_string_arg(sopen, "open");
         let open_mode = if open.is_empty() {
-            "r".to_string()
+            String::new()
         } else {
             open
         };
