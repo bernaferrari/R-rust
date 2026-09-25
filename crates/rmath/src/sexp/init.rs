@@ -1155,6 +1155,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "summaryRprof", include_str!("gnu_summary_rprof.R"));
         eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));
         eval_base_binding(base_env, "kappa", include_str!("gnu_kappa.R"));
+        eval_base_binding(base_env, "kappa.default", include_str!("gnu_kappa_default.R"));
         eval_base_binding(base_env, "kappa.lm", include_str!("gnu_kappa_lm.R"));
         eval_base_binding(base_env, "kappa.qr", include_str!("gnu_kappa_qr.R"));
         eval_base_binding(base_env, ".kappa_tri", include_str!("gnu_kappa_tri.R"));
