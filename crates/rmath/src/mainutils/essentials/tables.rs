@@ -1906,12 +1906,15 @@ fn explicit_factor_levels_optional(levels_arg: SEXP) -> Vec<Option<String>> {
                 continue;
             }
             let level = elt_to_string(levels_arg, i);
-            if !levels
+            if levels
                 .iter()
                 .any(|existing| existing.as_deref() == Some(level.as_str()))
             {
-                levels.push(Some(level));
+                std::panic::panic_any(RError {
+                    message: format!("factor level [{}] is duplicated", i + 1),
+                });
             }
+            levels.push(Some(level));
         }
         levels
     }
@@ -2098,6 +2101,11 @@ pub unsafe fn do_gl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 .map(|i| elt_to_string(labels_arg, i))
                 .collect::<Vec<_>>()
         };
+        if (0..levels.len()).any(|i| levels[i + 1..].iter().any(|other| other == &levels[i])) {
+            std::panic::panic_any(RError {
+                message: "factor level [2] is duplicated".to_string(),
+            });
+        }
         let ordered_arg = arg_by_name_or_position(args, &["ordered"], 4);
         let ordered = if ordered_arg.is_null() || ordered_arg == R_NilValue() {
             false
@@ -2404,6 +2412,19 @@ pub unsafe fn do_levels_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             return R_NilValue();
         }
 
+        if TYPEOF(value) == SEXPTYPE::STRSXP {
+            let mut seen = Vec::new();
+            for i in 0..XLENGTH(value) {
+                let level = elt_to_string(value, i);
+                if seen.iter().any(|existing: &String| existing == &level) {
+                    crate::mainutils::errors::errorcall_str(
+                        call,
+                        &format!("factor level [{}] is duplicated", i + 1),
+                    );
+                }
+                seen.push(level);
+            }
+        }
         let result = if inherits_class(x, "factor") {
             replace_factor_levels(x, value)
         } else {
