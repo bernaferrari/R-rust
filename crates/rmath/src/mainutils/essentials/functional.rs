@@ -5072,6 +5072,29 @@ unsafe fn record_plot_window(args: SEXP) {
             xv.truncate(n);
             yv.truncate(n);
         }
+        let log_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["log"], 10);
+        let log = if log_arg.is_null() || TYPEOF(log_arg) != SEXPTYPE::STRSXP || XLENGTH(log_arg) == 0 {
+            String::new()
+        } else {
+            let chars = CHAR(STRING_ELT(log_arg, 0));
+            if chars.is_null() { String::new() } else { std::ffi::CStr::from_ptr(chars).to_string_lossy().into_owned() }
+        };
+        LOG_X.store(log.contains('x'), std::sync::atomic::Ordering::Relaxed);
+        LOG_Y.store(log.contains('y'), std::sync::atomic::Ordering::Relaxed);
+        if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
+            xv = xv.into_iter().filter(|v| *v > 0.0).map(|v| v.log10()).collect();
+            let lo = xv.iter().copied().filter(|v| v.is_finite()).fold(f64::INFINITY, f64::min);
+            let hi = xv.iter().copied().filter(|v| v.is_finite()).fold(f64::NEG_INFINITY, f64::max);
+            LOG_X_LO.store(lo.floor() as i32, std::sync::atomic::Ordering::Relaxed);
+            LOG_X_HI.store(hi.floor() as i32, std::sync::atomic::Ordering::Relaxed);
+        }
+        if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
+            yv = yv.into_iter().filter(|v| *v > 0.0).map(|v| v.log10()).collect();
+            let lo = yv.iter().copied().filter(|v| v.is_finite()).fold(f64::INFINITY, f64::min);
+            let hi = yv.iter().copied().filter(|v| v.is_finite()).fold(f64::NEG_INFINITY, f64::max);
+            LOG_Y_LO.store(lo.floor() as i32, std::sync::atomic::Ordering::Relaxed);
+            LOG_Y_HI.store(hi.floor() as i32, std::sync::atomic::Ordering::Relaxed);
+        }
         let (x0, x1) = padded_range(&xv);
         let (y0, y1) = padded_range(&yv);
         let (xa0, xa1, xn) = pretty_axp(x0, x1);
@@ -5082,6 +5105,12 @@ unsafe fn record_plot_window(args: SEXP) {
         set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
     }
 }
+static LOG_X: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static LOG_X_LO: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static LOG_X_HI: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static LOG_Y_LO: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static LOG_Y_HI: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static LOG_Y: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(not(feature = "renderplot-device"))]
 fn numeric_plot_values(x: SEXP) -> Vec<f64> {
@@ -5124,8 +5153,8 @@ fn padded_range(v: &[f64]) -> (f64, f64) {
     let a = lo - extra;
     let b = hi + extra;
     (
-        if a.is_finite() { a } else { f64::MIN },
-        if b.is_finite() { b } else { f64::MAX },
+        if a.is_finite() { a } else { lo },
+        if b.is_finite() { b } else { hi },
     )
 }
 
@@ -5217,6 +5246,23 @@ pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, (steps + 1) as R_xlen_t);
         if result.is_null() {
             return crate::sexp::globals::R_NilValue();
+        }
+        let logged = if side == 1.0 || side == 3.0 {
+            LOG_X.load(std::sync::atomic::Ordering::Relaxed)
+        } else {
+            LOG_Y.load(std::sync::atomic::Ordering::Relaxed)
+        };
+        if logged {
+            let lo = if side == 1.0 || side == 3.0 { LOG_X_LO.load(std::sync::atomic::Ordering::Relaxed) } else { LOG_Y_LO.load(std::sync::atomic::Ordering::Relaxed) };
+            let hi = if side == 1.0 || side == 3.0 { LOG_X_HI.load(std::sync::atomic::Ordering::Relaxed) } else { LOG_Y_HI.load(std::sync::atomic::Ordering::Relaxed) };
+            if hi >= lo {
+                let n = (hi - lo + 1) as R_xlen_t;
+                let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+                for i in 0..n {
+                    *REAL(result).add(i as usize) = 10f64.powi(lo + i as i32);
+                }
+                return result;
+            }
         }
         for i in 0..=steps {
             let t = i as f64 / steps as f64;
