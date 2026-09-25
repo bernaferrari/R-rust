@@ -224,7 +224,30 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
             }
 
         }
-        let rows = subscript_positions(CAR(subs), nrows)?;
+        let rows = if TYPEOF(row_index) == SEXPTYPE::STRSXP {
+            let rn = crate::sexp::attrib_core::getAttrib(
+                frame,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+            );
+            let mut out = Vec::new();
+            for i in 0..XLENGTH(row_index) {
+                let want = elt_to_string(row_index, i);
+                let mut found = None;
+                if !rn.is_null() && TYPEOF(rn) == SEXPTYPE::STRSXP {
+                    for j in 0..XLENGTH(rn) {
+                        if elt_to_string(rn, j) == want {
+                            found = Some(j);
+                            break;
+                        }
+                    }
+                }
+                found?;
+                out.push(found.unwrap());
+            }
+            out
+        } else {
+            subscript_positions(row_index, nrows)?
+        };
         let cols = column_positions(frame, CADR(subs))?;
         if cols.is_empty() || rows.is_empty() {
             return Some(frame);
@@ -406,6 +429,16 @@ unsafe fn assign_column_rows(col: SEXP, rows: &[i64], value: SEXP, value_len: i6
                 *INTEGER(col).add(row as usize) = *INTEGER(value).add(src_i as usize);
             } else if TYPEOF(col) == SEXPTYPE::REALSXP {
                 *REAL(col).add(row as usize) = elt_real_safe(value, src_i);
+            } else if TYPEOF(col) == SEXPTYPE::LGLSXP {
+                let v = if TYPEOF(value) == SEXPTYPE::LGLSXP {
+                    crate::sexp::accessors::LOGICAL_ELT(value, src_i as i32)
+                } else if TYPEOF(value) == SEXPTYPE::INTSXP {
+                    *INTEGER(value).add(src_i as usize)
+                } else {
+                    let n = elt_real_safe(value, src_i);
+                    if n.is_nan() { NA_INTEGER } else { n as c_int }
+                };
+                *crate::sexp::accessors::LOGICAL(col).add(row as usize) = v;
             } else if TYPEOF(col) == SEXPTYPE::STRSXP && TYPEOF(value) == SEXPTYPE::STRSXP {
                 SET_STRING_ELT(col, row, STRING_ELT(value, src_i));
             } else if TYPEOF(col) == SEXPTYPE::INTSXP {
@@ -665,20 +698,43 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             }
             let col = VECTOR_ELT(x, j);
             let nrows = XLENGTH(col);
-            let i = crate::mainutils::subscript::get1index(CAR(subs), R_NilValue(), nrows, 0, 0, call);
+            let rownames = getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
+            let i = crate::mainutils::subscript::get1index(CAR(subs), rownames, nrows, 0, 0, call);
             if i < 0 || i >= nrows {
                 return x;
             }
-            let v = if TYPEOF(y) == SEXPTYPE::REALSXP {
-                *REAL(y)
-            } else if TYPEOF(y) == SEXPTYPE::INTSXP {
-                *INTEGER(y) as f64
-            } else {
-                return x;
-            };
             match TYPEOF(col) {
-                t if t == SEXPTYPE::REALSXP => *REAL(col).add(i as usize) = v,
-                t if t == SEXPTYPE::INTSXP => *INTEGER(col).add(i as usize) = v as i32,
+                t if t == SEXPTYPE::STRSXP => {
+                    if TYPEOF(y) == SEXPTYPE::STRSXP && XLENGTH(y) > 0 {
+                        SET_STRING_ELT(col, i, STRING_ELT(y, 0));
+                    }
+                }
+                t if t == SEXPTYPE::LGLSXP => {
+                    let v = if TYPEOF(y) == SEXPTYPE::LGLSXP && XLENGTH(y) > 0 {
+                        *LOGICAL(y)
+                    } else if TYPEOF(y) == SEXPTYPE::INTSXP && XLENGTH(y) > 0 {
+                        *INTEGER(y)
+                    } else {
+                        return x;
+                    };
+                    *LOGICAL(col).add(i as usize) = v;
+                }
+                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP => {
+                    let v = if TYPEOF(y) == SEXPTYPE::REALSXP && XLENGTH(y) > 0 {
+                        *REAL(y)
+                    } else if TYPEOF(y) == SEXPTYPE::INTSXP && XLENGTH(y) > 0 {
+                        *INTEGER(y) as f64
+                    } else if TYPEOF(y) == SEXPTYPE::LGLSXP && XLENGTH(y) > 0 {
+                        *LOGICAL(y) as f64
+                    } else {
+                        return x;
+                    };
+                    if TYPEOF(col) == SEXPTYPE::REALSXP {
+                        *REAL(col).add(i as usize) = v;
+                    } else {
+                        *INTEGER(col).add(i as usize) = v as i32;
+                    }
+                }
                 _ => {}
             }
             return x;
