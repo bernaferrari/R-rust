@@ -118,6 +118,60 @@ unsafe fn force_bind_arg(cell: SEXP) -> SEXP {
     }
 }
 
+unsafe fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Option<SEXP> {
+    unsafe {
+        let mut user_args = args;
+        let mut ctx = crate::sexp::context::R_GlobalContext();
+        while !ctx.is_null() {
+            let seen = (*ctx).call;
+            if !seen.is_null() && TYPEOF(seen) == SEXPTYPE::LANGSXP {
+                let head = CAR(seen);
+                if TYPEOF(head) == SEXPTYPE::SYMSXP {
+                    let pname = crate::sexp::accessors::PRINTNAME(head);
+                    let label = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname)).to_string_lossy();
+                    if label == generic {
+                        user_args = CDR(seen);
+                        break;
+                    }
+                }
+            }
+            ctx = (*ctx).nextcontext;
+        }
+        let mut a = args;
+        while !a.is_null() && a != R_NilValue() {
+            let obj = force_bind_arg(a);
+            let class = crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
+            if TYPEOF(class) == SEXPTYPE::STRSXP && XLENGTH(class) > 0 {
+                let name = super::super::shared::elt_to_string(class, 0);
+                if let Some(sym) = crate::mainutils::objects::s3_method_symbol(generic, &name) {
+                    let table = crate::sexp::envir::R_findVarInFrame(
+                        crate::sexp::globals::R_GlobalEnv(),
+                        crate::mainutils::objects::S3MethodsTable_symbol(),
+                    );
+                    let method = if TYPEOF(table) == SEXPTYPE::ENVSXP {
+                        crate::sexp::envir::R_findVarInFrame(table, sym)
+                    } else {
+                        crate::sexp::globals::R_UnboundValue()
+                    };
+                    if crate::mainutils::essentials::s3::is_function_value(method) {
+                        let _m = protect(method);
+                        return Some(crate::eval::closure::applyClosure(
+                            call,
+                            method,
+                            user_args,
+                            rho,
+                            crate::sexp::globals::R_NilValue(),
+                            TRUE,
+                        ));
+                    }
+                }
+            }
+            a = CDR(a);
+        }
+        None
+    }
+}
+
 
 
 
@@ -129,6 +183,10 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let (deparse_level, args) = eval_bind_internal_args(call, args, rho);
         let _args_guard = protect(args);
+        if let Some(ans) = try_s3_bind(call, args, rho, "cbind") {
+            return ans;
+        }
+
         if deparse_level >= 0
             && let Some(ans) = try_methods_bind(call, args, rho, b"cbind\0", deparse_level)
         {
