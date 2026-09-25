@@ -239,7 +239,14 @@ impl Lexer {
                     Token::Minus
                 }
             }
-            '*' => Token::Star,
+            '*' => {
+                if self.peek_char() == Some('*') {
+                    self.advance();
+                    Token::Caret
+                } else {
+                    Token::Star
+                }
+            }
             '/' => Token::Slash,
             '^' => Token::Caret,
             '%' => {
