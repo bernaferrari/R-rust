@@ -291,13 +291,32 @@ unsafe fn attached_package_paths() -> SEXP {
 pub unsafe fn do_package_version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package_arg = arg_by_name_or_position(args, &["pkg", "package"], 0);
+        let lib_arg = arg_by_name_or_position(args, &["lib.loc"], 1);
         let package = elt_to_string(package_arg, 0);
-        match package_description_fields(&package) {
-            Ok(fields) => match fields.get("Version") {
-                Some(version) => string_vector(std::slice::from_ref(version)),
-                None => package_error(format!("package '{}' has no Version field", package)),
-            },
-            Err(message) => package_error(message),
+        let fields = if !lib_arg.is_null()
+            && lib_arg != R_NilValue()
+            && TYPEOF(lib_arg) == SEXPTYPE::STRSXP
+            && XLENGTH(lib_arg) > 0
+        {
+            let lib = elt_to_string(lib_arg, 0);
+            let description = std::path::Path::new(&lib).join(&package).join("DESCRIPTION");
+            let content = match std::fs::read_to_string(&description) {
+                Ok(content) => content,
+                Err(err) => package_error(format!(
+                    "there is no package called '{}': {err}",
+                    package
+                )),
+            };
+            crate::mainutils::essentials::shared::description_fields(&content)
+        } else {
+            match package_description_fields(&package) {
+                Ok(fields) => fields,
+                Err(message) => package_error(message),
+            }
+        };
+        match fields.get("Version") {
+            Some(version) => string_vector(std::slice::from_ref(version)),
+            None => package_error(format!("package '{}' has no Version field", package)),
         }
     }
 }
