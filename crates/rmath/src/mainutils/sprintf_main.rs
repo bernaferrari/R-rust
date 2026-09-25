@@ -459,7 +459,9 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         }
                         chunk = skip + 2;
                         if cur + chunk > n {
-                            error(b"unrecognised format specification\0".as_ptr() as *const c_char);
+                            let shown = std::ffi::CStr::from_ptr(curFormat).to_string_lossy();
+                            let msg = format!("unrecognised format specification '{shown}'\0");
+                            error(msg.as_ptr() as *const c_char);
                         }
 
                         for j in 0..chunk {
@@ -696,6 +698,19 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
                             if ns == 0 {
                                 let spec = *sprintf_findspec(fmtp);
+                                let spec_b = spec as u8;
+                                if !matches!(
+                                    spec_b,
+                                    b'd' | b'i' | b'o' | b'u' | b'x' | b'X' | b'f' | b'F' | b'e'
+                                        | b'E' | b'g' | b'G' | b'a' | b'A' | b'c' | b's' | b'p'
+                                        | b'n' | b'%'
+                                ) {
+                                    let shown = std::ffi::CStr::from_ptr(fmtp)
+                                        .to_string_lossy()
+                                        .replace('%', "%%");
+                                    let msg = format!("unrecognised format specification '{shown}'\0");
+                                    error(msg.as_ptr() as *const c_char);
+                                }
                                 match spec as u8 {
                                     b'd' | b'i' | b'o' | b'x' | b'X' => {
                                         if TYPEOF(_this) == REALSXP {
