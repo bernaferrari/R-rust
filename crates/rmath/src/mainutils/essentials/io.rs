@@ -958,6 +958,10 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let filename = elt_to_string(file_arg, 0);
         let sep = sep.as_str();
         let _ = row_names;
+        let rn = crate::sexp::attrib_core::getAttrib(
+            x_arg,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+        );
 
         let mut output = String::new();
         let n = XLENGTH(x_arg);
@@ -983,6 +987,9 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 && TYPEOF(names) == SEXPTYPE::STRSXP
             {
                 let mut header = Vec::new();
+                if row_names {
+                    header.push(String::new());
+                }
                 for j in 0..ncols {
                     let charsxp = crate::sexp::accessors::STRING_ELT(names, j);
                     if !charsxp.is_null() {
@@ -1007,6 +1014,14 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             // Write rows
             for i in 0..nrows {
                 let mut row = Vec::new();
+                if row_names {
+                    let label = if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == nrows {
+                        elt_to_string(rn, i)
+                    } else {
+                        (i + 1).to_string()
+                    };
+                    row.push(format!("\"{}\"", label.replace('"', "\"\"")));
+                }
                 for j in 0..ncols {
                     let col = VECTOR_ELT(x_arg, j);
                     if !col.is_null() && col != R_NilValue() {
@@ -1736,7 +1751,16 @@ pub unsafe fn do_write_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             for i in 0..nrow {
                 let mut row_parts: Vec<String> = Vec::new();
                 if write_row_names {
-                    row_parts.push((i + 1).to_string());
+                    let rn = crate::sexp::attrib_core::getAttrib(
+                        x,
+                        crate::sexp::attrib_core::R_RowNamesSymbol(),
+                    );
+                    let label = if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == nrow {
+                        format!("\"{}\"", elt_to_string(rn, i))
+                    } else {
+                        (i + 1).to_string()
+                    };
+                    row_parts.push(label);
                 }
                 for j in 0..ncols {
                     let col = VECTOR_ELT(x, j);
@@ -2087,7 +2111,7 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             elt_to_string(sep_arg, 0)
         };
         let sep = sep_text.chars().next();
-        let header = !header_arg.is_null()
+        let mut header = !header_arg.is_null()
             && header_arg != R_NilValue()
             && real_or_default(header_arg, 0.0) != 0.0;
         let quote_text = if quote_arg.is_null() || quote_arg == R_NilValue() {
@@ -2194,6 +2218,14 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
         let mut data: Vec<Vec<TableField>> = records;
         let mut col_names: Vec<String> = Vec::new();
+        if !header
+            && data.len() >= 2
+            && data[0].len() + 1 == data[1].len()
+            && data[1..].iter().all(|row| row.len() == data[1].len())
+        {
+            header = true;
+        }
+
         if header {
             let header_row = data.remove(0);
             col_names = header_row
@@ -2208,6 +2240,32 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 .map(|i| elt_to_string(col_names_arg, i))
                 .collect();
         }
+        let mut taken_row_names: Option<Vec<String>> = None;
+        if header
+            && !col_names.is_empty()
+            && !data.is_empty()
+            && data.iter().all(|row| row.len() == col_names.len() + 1)
+        {
+            let mut names = Vec::with_capacity(data.len());
+            for row in &mut data {
+                names.push(row.remove(0).text);
+            }
+            taken_row_names = Some(names);
+        }
+        if taken_row_names.is_none()
+            && header
+            && col_names.first().is_some_and(|name| name.is_empty())
+            && data.iter().all(|row| row.len() == col_names.len())
+        {
+            col_names.remove(0);
+            let mut names = Vec::with_capacity(data.len());
+            for row in &mut data {
+                names.push(row.remove(0).text);
+            }
+            taken_row_names = Some(names);
+        }
+
+
 
         let mut ncols = col_names.len();
         for row in &data {
@@ -2402,7 +2460,15 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             && row_names_arg != R_NilValue()
             && TYPEOF(row_names_arg) == SEXPTYPE::STRSXP
             && XLENGTH(row_names_arg) == nrow;
-        if explicit_row_names {
+        if let Some(names) = taken_row_names {
+            let labels = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+            let _labels_guard = protect(labels);
+            for (i, name) in names.iter().enumerate() {
+                let cstr = CString::new(name.as_str()).unwrap_or_default();
+                SET_STRING_ELT(labels, i as R_xlen_t, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+            }
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.names".as_ptr()), labels);
+        } else if explicit_row_names {
             crate::sexp::attrib_core::setAttrib(
                 result,
                 Rf_install(c"row.names".as_ptr()),
