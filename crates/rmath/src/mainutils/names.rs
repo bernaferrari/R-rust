@@ -4016,6 +4016,30 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"refcnt\0",
+        None,
+        0,
+        11,
+        1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
+        b"addTaskCallback\0",
+        None,
+        0,
+        11,
+        2,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
+        b"removeTaskCallback\0",
+        None,
+        0,
+        11,
+        1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"capabilities\0",
         None,
         0,
@@ -5249,6 +5273,8 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
         "refcnt" => Some(do_refcnt),
+        "addTaskCallback" => Some(do_add_task_callback),
+        "removeTaskCallback" => Some(do_remove_task_callback),
         "Recall" => Some(crate::eval::eval::do_recall),
         "file.show" => Some(crate::mainutils::platform::do_fileshow),
         "stop" => Some(crate::mainutils::errors::do_stop_internal),
@@ -5307,6 +5333,21 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "load" => Some(crate::mainutils::saveload::do_load),
         "strptime" => Some(crate::mainutils::datetime::do_strptime),
         _ => None,
+    }
+}
+pub unsafe fn do_add_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let fun = CAR(args);
+        let data = crate::sexp::accessors::CADR(args);
+        let id = crate::mainutils::main::Rf_addTaskCallback(fun, data);
+        crate::sexp::constructors::Rf_ScalarInteger(id)
+    }
+}
+pub unsafe fn do_remove_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let which = CAR(args);
+        let ok = crate::mainutils::main::Rf_removeTaskCallback(which);
+        crate::sexp::constructors::Rf_ScalarLogical(ok)
     }
 }
 
