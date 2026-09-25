@@ -7299,7 +7299,15 @@ fn factor_contrast_columns(colx: SEXP) -> Vec<Vec<f64>> {
                 return cols;
             }
         }
-        let nlev = codes.iter().copied().filter(|c| *c > 0).max().unwrap_or(1) as usize;
+        let levels = crate::sexp::attrib_core::getAttrib(
+            colx,
+            crate::sexp::symbol::Rf_install(c"levels".as_ptr()),
+        );
+        let nlev = if TYPEOF(levels) == SEXPTYPE::STRSXP && XLENGTH(levels) > 0 {
+            XLENGTH(levels) as usize
+        } else {
+            codes.iter().copied().filter(|c| *c > 0).max().unwrap_or(1) as usize
+        };
         let mut cols = Vec::new();
         for lev in 2..=nlev {
             cols.push(codes.iter().map(|&c| if c == lev as i32 { 1.0 } else { 0.0 }).collect());
