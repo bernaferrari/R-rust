@@ -1340,7 +1340,28 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
                 argument = CDR(argument);
                 continue;
             }
-            let value = crate::eval::eval::Rf_eval(CAR(argument), rho);
+            let expr = CAR(argument);
+            if expr == crate::sexp::symbol::R_DotsSymbol() {
+                let h = crate::sexp::envir::R_findVar(expr, rho);
+                if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
+                    let mut dh = h;
+                    while !dh.is_null() && dh != R_NilValue() {
+                        let value = crate::eval::eval::Rf_eval(CAR(dh), rho);
+                        let _value_root = protect(value);
+                        if crate::sexp::globals::R_Visible() != FALSE {
+                            let print_args = Rf_cons(value, R_NilValue());
+                            let _print_args_root = protect(print_args);
+                            crate::mainutils::essentials_basic::do_print(
+                                _call, _op, print_args, rho,
+                            );
+                        }
+                        dh = CDR(dh);
+                    }
+                    argument = CDR(argument);
+                    continue;
+                }
+            }
+            let value = crate::eval::eval::Rf_eval(expr, rho);
             let _value_root = protect(value);
             if crate::sexp::globals::R_Visible() != FALSE {
                 let print_args = Rf_cons(value, R_NilValue());
