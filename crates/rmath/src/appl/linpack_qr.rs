@@ -355,7 +355,7 @@ pub unsafe fn dqrsl(
         if cqy {
             let mut jj: usize = 0;
             while jj < ju {
-                let j = ju - jj;
+                let j = ju - 1 - jj;
                 if *qraux.add(j) == 0.0 {
                     jj += 1;
                     continue;
@@ -430,7 +430,7 @@ pub unsafe fn dqrsl(
         if cr || cxb {
             let mut jj: usize = 0;
             while jj < ju {
-                let j = ju - jj;
+                let j = ju - 1 - jj;
                 if *qraux.add(j) == 0.0 {
                     jj += 1;
                     continue;
