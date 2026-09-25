@@ -306,35 +306,64 @@ pub unsafe fn dgesv_(
             return;
         }
 
-        let a_mat = read_mat_f64(a, n, n, lda_val);
-        let b_mat = read_mat_f64(b, n, nrhs, ldb_val);
-
-        let lu = a_mat.partial_piv_lu();
-
-        // Check for singularity
-        let u = lu.U();
-        for i in 0..n {
-            if u[(i, i)].abs() == 0.0 {
-                *info = (i + 1) as core::ffi::c_int;
+        for k in 0..n {
+            let mut piv = k;
+            let mut max = (*a.add(k + k * lda_val)).abs();
+            for i in (k + 1)..n {
+                let v = (*a.add(i + k * lda_val)).abs();
+                if v > max {
+                    max = v;
+                    piv = i;
+                }
+            }
+            *ipiv.add(k) = (piv + 1) as core::ffi::c_int;
+            if piv != k {
+                for j in 0..n {
+                    let pa = a.add(k + j * lda_val);
+                    let pb = a.add(piv + j * lda_val);
+                    let tmp = *pa;
+                    *pa = *pb;
+                    *pb = tmp;
+                }
+            }
+            let diag = *a.add(k + k * lda_val);
+            if diag == 0.0 {
+                *info = (k + 1) as core::ffi::c_int;
                 return;
             }
-        }
-
-        let x = lu.solve(&b_mat);
-        write_owned_f64(&x, b, n, nrhs, ldb_val);
-
-        // Also write LU factors and pivot to a/ipiv
-        let l = lu.L();
-        for j in 0..n {
-            for i in 0..n {
-                let val = if i > j { l[(i, j)] } else { u[(i, j)] };
-                *a.add(i + j * lda_val) = val;
+            for i in (k + 1)..n {
+                let lik = *a.add(i + k * lda_val) / diag;
+                *a.add(i + k * lda_val) = lik;
+                for j in (k + 1)..n {
+                    let u = *a.add(k + j * lda_val);
+                    *a.add(i + j * lda_val) -= lik * u;
+                }
             }
         }
-        let bwd = get_bwd_perm(lu.P());
-        let pivots = perm_bwd_to_ipiv(&bwd, n);
-        for (i, &p) in pivots.iter().enumerate() {
-            *ipiv.add(i) = p;
+        for rhs in 0..nrhs {
+            let col = b.add(rhs * ldb_val);
+            for k in 0..n {
+                let piv = (*ipiv.add(k) as usize) - 1;
+                if piv != k {
+                    let tmp = *col.add(k);
+                    *col.add(k) = *col.add(piv);
+                    *col.add(piv) = tmp;
+                }
+            }
+            for i in 0..n {
+                let mut s = *col.add(i);
+                for k in 0..i {
+                    s -= *a.add(i + k * lda_val) * *col.add(k);
+                }
+                *col.add(i) = s;
+            }
+            for i in (0..n).rev() {
+                let mut s = *col.add(i);
+                for k in (i + 1)..n {
+                    s -= *a.add(i + k * lda_val) * *col.add(k);
+                }
+                *col.add(i) = s / *a.add(i + i * lda_val);
+            }
         }
         *info = 0;
     }
