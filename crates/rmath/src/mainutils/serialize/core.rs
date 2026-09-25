@@ -1697,8 +1697,8 @@ unsafe fn read_item_body(
                 CallHook(names, reader.persist_hook)
             };
             let _restored_guard = protect(restored);
-            reader.persist_cache.insert(cache_key, restored);
             ref_table.add(restored);
+            reader.persist_cache.insert(cache_key, restored);
             return Ok(restored);
         } else if stype == NILVALUE_SXP {
             Ok(R_NilValue())
