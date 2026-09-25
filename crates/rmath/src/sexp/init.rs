@@ -1070,6 +1070,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "getAnywhere", include_str!("gnu_getAnywhere.R"));
         eval_base_binding(base_env, "prompt", include_str!("gnu_prompt.R"));
         eval_base_binding(base_env, "shQuote", include_str!("gnu_shquote.R"));
+        eval_base_binding(
+            base_env,
+            "?",
+            "{ `?` <- function(e1, e2) NULL; `?` }",
+        );
+        eval_base_binding(base_env, "help", "{ help <- function(...) NULL; help }");
         eval_base_binding(base_env, "prompt.default", include_str!("gnu_prompt_default.R"));
         eval_base_binding(
             base_env,
