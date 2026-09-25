@@ -194,6 +194,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  list(list(given = parts[-n], family = parts[n]))\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "as.single",
+            "function(x, ...) UseMethod(\"as.single\")",
+        );
+        eval_base_binding(
+            base_env,
+            "as.single.default",
+            "function(x, ...) structure(as.double(x), Csingle = TRUE)",
+        );
         // GNU New-Internal.R: NextMethod is a closure over .Internal so extra
         // named args land in `...` and CADDR(.Internal args) stays the dots
         // symbol. A primitive NextMethod would evaluate those extras and hit
