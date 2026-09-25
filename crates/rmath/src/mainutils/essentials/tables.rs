@@ -2101,7 +2101,7 @@ pub unsafe fn do_gl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 .map(|i| elt_to_string(labels_arg, i))
                 .collect::<Vec<_>>()
         };
-        if !labels_arg.is_null() && labels_arg != R_NilValue() {
+        if !labels_arg.is_null() && labels_arg != R_NilValue() && levels.len() as i64 == n as i64 {
             if let Some(dup) = (1..levels.len())
                 .find(|i| levels[..*i].iter().any(|earlier| earlier == &levels[*i]))
             {
