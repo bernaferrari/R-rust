@@ -794,10 +794,26 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 LGLSXP => {
                                     let x =
                                         *LOGICAL(_this).add((ns % thislen as R_xlen_t) as usize);
-                                    if sprintf_checkfmt(fmtp, b"di\0".as_ptr() as *const c_char) {
+                                    let conv = *fmtp.add(c_strlen(fmtp).saturating_sub(1));
+                                    if conv == b's' as c_char {
+                                        let word: &[u8] = if x == NA_LOGICAL {
+                                            b"NA"
+                                        } else if x != 0 {
+                                            b"TRUE"
+                                        } else {
+                                            b"FALSE"
+                                        };
+                                        let nc = crate::mainutils::r_format::r_snprintf_c(
+                                            &mut bit,
+                                            CStr::from_ptr(fmtp).to_bytes(),
+                                            &[CArg::Str(word)],
+                                        ) as c_int;
+                                        if nc > MAXLINE as c_int {
+                                            error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
+                                        }
+                                    } else if sprintf_checkfmt(fmtp, b"di\0".as_ptr() as *const c_char) {
                                         error(b"invalid format '%s'; use format %d or %i for logical objects\0".as_ptr() as *const c_char);
-                                    }
-                                    if x == NA_LOGICAL {
+                                    } else if x == NA_LOGICAL {
                                         let fmtp_len = c_strlen(fmtp);
                                         *fmt.as_mut_ptr().add(fmtp_len - 1) = b's' as c_char;
                                         *fmt.as_mut_ptr().add(fmtp_len) = 0;
@@ -933,13 +949,13 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                         error(b"invalid format '%s'; use format %s for character objects\0".as_ptr() as *const c_char);
                                     }
 
-                                    ss = if use_UTF8 {
-                                        translateCharUTF8(STRING_ELT(
-                                            _this,
-                                            ns % thislen as R_xlen_t,
-                                        ))
+                                    let elt = STRING_ELT(_this, ns % thislen as R_xlen_t);
+                                    ss = if elt == crate::sexp::globals::R_NaString() {
+                                        b"NA\0".as_ptr() as *const c_char
+                                    } else if use_UTF8 {
+                                        translateCharUTF8(elt)
                                     } else {
-                                        translateChar(STRING_ELT(_this, ns % thislen as R_xlen_t))
+                                        translateChar(elt)
                                     };
                                     if *fmtp.add(1) != b's' as c_char {
                                         if c_strlen(ss) > MAXLINE {
