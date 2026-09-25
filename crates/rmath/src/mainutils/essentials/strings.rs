@@ -3910,13 +3910,14 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 x_arg,
                 crate::sexp::attrib_core::R_NamesSymbol(),
             );
-            if !src_names.is_null() && TYPEOF(src_names) == SEXPTYPE::STRSXP {
+            if !src_names.is_null()
+                && TYPEOF(src_names) == SEXPTYPE::STRSXP
+                && XLENGTH(src_names) == XLENGTH(x_arg)
+            {
                 let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, XLENGTH(result));
                 let _out_names = protect(out_names);
                 for (out_idx, src_idx) in index.iter().enumerate() {
-                    if *src_idx < XLENGTH(src_names) {
-                        SET_STRING_ELT(out_names, out_idx as R_xlen_t, STRING_ELT(src_names, *src_idx));
-                    }
+                    SET_STRING_ELT(out_names, out_idx as R_xlen_t, STRING_ELT(src_names, *src_idx));
                 }
                 crate::sexp::attrib_core::setAttrib(
                     result,
