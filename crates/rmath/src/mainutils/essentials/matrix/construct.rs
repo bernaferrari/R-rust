@@ -777,31 +777,45 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 return result;
             }
 
-            // Create diagonal matrix from vector
             let n = XLENGTH(x) as usize;
             let t = TYPEOF(x);
             if !supported_matrix_type(t) {
                 return R_NilValue();
             }
-            let result = Rf_allocVector3(t, (n * n) as R_xlen_t);
+            let ncol_arg = CAR(CDR(CDR(args)));
+            let ncol_given = !ncol_arg.is_null()
+                && ncol_arg != R_NilValue()
+                && ncol_arg != crate::sexp::globals::R_MissingArg();
+            let nrow = if nrow_given {
+                real_or_default(nrow_arg, 0.0).max(0.0) as usize
+            } else {
+                n
+            };
+            let ncol = if ncol_given {
+                real_or_default(ncol_arg, 0.0).max(0.0) as usize
+            } else {
+                nrow
+            };
+            let ndiag = nrow.min(ncol);
+            let cells = nrow.saturating_mul(ncol);
+            let result = Rf_allocVector3(t, cells as R_xlen_t);
             if result.is_null() {
                 return R_NilValue();
             }
             let _result_guard = protect(result);
-
-            for i in 0..n * n {
+            for i in 0..cells {
                 set_matrix_zero(result, i as R_xlen_t);
             }
-            for i in 0..n {
-                let dst = i + i * n;
-                copy_matrix_element(result, dst as R_xlen_t, x, i as R_xlen_t);
+            if n > 0 {
+                for i in 0..ndiag {
+                    let dst = i + i * nrow;
+                    copy_matrix_element(result, dst as R_xlen_t, x, (i % n) as R_xlen_t);
+                }
             }
-
-            // Set dim
             let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             if !dim.is_null() {
-                *INTEGER(dim) = n as c_int;
-                *INTEGER(dim).add(1) = n as c_int;
+                *INTEGER(dim) = nrow as c_int;
+                *INTEGER(dim).add(1) = ncol as c_int;
                 crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
             }
             result

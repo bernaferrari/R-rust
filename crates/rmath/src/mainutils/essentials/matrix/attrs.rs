@@ -561,6 +561,30 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 return coerced;
             }
         }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) == 2
+            && TYPEOF(value) == SEXPTYPE::STRSXP
+        {
+            let n = XLENGTH(value);
+            let eq = |i: i64, s: &[u8]| {
+                let ch = STRING_ELT(value, i);
+                !ch.is_null() && std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes() == s
+            };
+            if (n == 1 && eq(0, b"matrix")) || (n == 2 && eq(0, b"matrix") && eq(1, b"array")) {
+                let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+                let _x = protect(x);
+                crate::sexp::attrib_core::setAttrib(
+                    x,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    R_NilValue(),
+                );
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                return x;
+            }
+        }
         let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
         let _x = protect(x);
         crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);

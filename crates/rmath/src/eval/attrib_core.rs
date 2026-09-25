@@ -307,8 +307,29 @@ pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
         if klass.is_null() || klass == R_NilValue() {
             return x;
         }
-
         let class_sym = R_ClassSymbol();
+
+        let dim = getAttrib(x, R_DimSymbol());
+        let two_d = !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) == 2;
+        if two_d && TYPEOF(klass) == SEXPTYPE::STRSXP {
+            let n = XLENGTH(klass);
+            let is_matrix = |i: i64| {
+                let ch = STRING_ELT(klass, i);
+                !ch.is_null()
+                    && std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes() == b"matrix"
+            };
+            let is_array = |i: i64| {
+                let ch = STRING_ELT(klass, i);
+                !ch.is_null() && std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes() == b"array"
+            };
+            if (n == 1 && is_matrix(0)) || (n == 2 && is_matrix(0) && is_array(1)) {
+                setAttrib(x, class_sym, R_NilValue());
+                return x;
+            }
+        }
         setAttrib(x, class_sym, klass);
         x
     }
