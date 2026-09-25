@@ -931,6 +931,14 @@ impl RSession {
                         }
                         result = Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
                         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                        unsafe {
+                            crate::mainutils::main::Rf_callToplevelHandlers(
+                                raw_expr,
+                                crate::sexp::globals::R_NilValue(),
+                                crate::sexp::ffi::FALSE,
+                                0,
+                            );
+                        }
                         crate::sexp::gengc::run_pending_gc_if_quiescent();
                         continue;
                     }
@@ -941,17 +949,7 @@ impl RSession {
                 let _expr_guard = result.as_ref().ok().map(|value| {
                     RootedSexp::try_root(value.clone()).ok()
                 });
-                if let Ok(value) = result.as_ref() {
-                    let visible = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
-                    unsafe {
-                        crate::mainutils::main::Rf_callToplevelHandlers(
-                            raw_expr,
-                            value.clone().as_raw(),
-                            crate::sexp::ffi::TRUE,
-                            visible,
-                        );
-                    }
-                }
+                let visible_flag = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
                 // main.c REPL loop: upstream auto-prints EVERY visible
                 // top-level expression (PrintValueEnv), not just the final
                 // one. Intermediate values render through the same formatter
@@ -969,6 +967,16 @@ impl RSession {
 
 
 
+                }
+                if let Ok(value) = result.as_ref() {
+                    unsafe {
+                        crate::mainutils::main::Rf_callToplevelHandlers(
+                            raw_expr,
+                            value.clone().as_raw(),
+                            crate::sexp::ffi::TRUE,
+                            visible_flag,
+                        );
+                    }
                 }
                 // main.c REPL tail: after each top-level expression, upstream
                 // flushes deferred warnings so they interleave with printed
@@ -1109,6 +1117,17 @@ impl RSession {
 
 
 
+                }
+                if let Ok(value) = result.as_ref() {
+                    let visible_flag = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
+                    unsafe {
+                        crate::mainutils::main::Rf_callToplevelHandlers(
+                            raw_expr,
+                            value.clone().as_raw(),
+                            crate::sexp::ffi::TRUE,
+                            visible_flag,
+                        );
+                    }
                 }
                 // Same main.c REPL-tail flush as the plain script loop; the
                 // final statement's warnings flush at result assembly.
