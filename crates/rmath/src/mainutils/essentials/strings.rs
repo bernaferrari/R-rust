@@ -4305,7 +4305,20 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 *data.add(i as usize) = charsxp;
             }
         }
-        crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
+        let src_names = crate::sexp::attrib_core::getAttrib(
+            x_arg,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !src_names.is_null()
+            && TYPEOF(src_names) == SEXPTYPE::STRSXP
+            && XLENGTH(src_names) == n
+        {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                src_names,
+            );
+        }
         result
 
     }
