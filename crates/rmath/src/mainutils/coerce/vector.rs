@@ -451,9 +451,28 @@ pub unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             let xnew = Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t);
             let _xnew_guard = protect(xnew);
             let mut xptr = v;
+            let mut any_tag = false;
             for i in 0..len {
                 SET_VECTOR_ELT(xnew, i as R_xlen_t, CAR(xptr));
+                if !TAG(xptr).is_null() && TAG(xptr) != R_NilValue() {
+                    any_tag = true;
+                }
                 xptr = CDR(xptr);
+            }
+            if any_tag {
+                let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+                let _ng = protect(names);
+                let mut xptr = v;
+                for i in 0..len {
+                    let tag = TAG(xptr);
+                    if !tag.is_null() && tag != R_NilValue() {
+                        SET_STRING_ELT(names, i as R_xlen_t, PRINTNAME(tag));
+                    } else {
+                        SET_STRING_ELT(names, i as R_xlen_t, R_BlankString());
+                    }
+                    xptr = CDR(xptr);
+                }
+                setAttrib(xnew, R_NamesSymbol(), names);
             }
             return xnew;
         }

@@ -3431,11 +3431,14 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return ans;
         }
-        let x = CAR(args);
+        let mut x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-
+        if TYPEOF(x) == SEXPTYPE::LISTSXP {
+            x = crate::mainutils::coerce::coerceVector(x, SEXPTYPE::VECSXP.as_c_int());
+            let _pair = protect(x);
+        }
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             return x;
         }
