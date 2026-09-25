@@ -1500,6 +1500,36 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "person",
+            "function(given = NULL, family = NULL, middle = NULL, email = NULL, role = NULL, comment = NULL, first = NULL, last = NULL) structure(list(), class = \"person\")",
+        );
+        eval_base_binding(
+            base_env,
+            "print.person",
+            "function(x, ...) { if (length(x)) print(format(x, ...)) else cat(\"person()\\n\"); invisible(x) }",
+        );
+        eval_base_binding(
+            base_env,
+            "bibentry",
+            "function(bibtype = NULL, textVersion = NULL, header = NULL, footer = NULL, key = NULL, ..., other = list(), mheader = NULL, mfooter = NULL) { if (length(c(list(...), other))) stop(\"non-empty bibentry is not implemented\"); structure(list(), class = \"bibentry\") }",
+        );
+        eval_base_binding(
+            base_env,
+            "print.bibentry",
+            "function(x, ...) { n <- length(x); if (!n) { cl <- class(x)[[1L]]; cat(if (cl == \"bibentry\") \"bibentry()\" else sprintf(\"<0-length %s>\", cl), \"\\n\", sep = \"\") } else print(unclass(x), ...); invisible(x) }",
+        );
+        eval_base_binding(
+            base_env,
+            "citation",
+            "function(package = \"base\", lib.loc = NULL, auto = NULL) structure(list(), class = c(\"citation\", \"bibentry\"))",
+        );
+        eval_base_binding(
+            base_env,
+            "[.citation",
+            "function(x, i, j, drop = TRUE) structure(list(), class = class(x))",
+        );
+        eval_base_binding(
+            base_env,
             "length<-.POSIXct",
             include_str!("gnu_lengthgets_POSIXct.R"),
         );
