@@ -2668,13 +2668,18 @@ impl<'arena> Parser<'arena> {
             for (i, v) in lloc.iter().enumerate() {
                 *p.add(i) = *v;
             }
+            let cls = self.scalar_string("srcref")?;
+            let class_cell = self.cons(cls, R_NilValue())?;
+            SETTAG(class_cell, crate::sexp::attrib_core::R_ClassSymbol());
+            SET_ATTRIB(srcref, class_cell);
             let fn_sym = Rf_install(c"function".as_ptr());
             let nil = R_NilValue();
             // GNU gram.y: lang4(function, formals, body, R_NilValue) plus
             // a `srcref` attribute. Putting the integer vector in the 4th
             // language slot made inner `function()` AST cells differ under
             // `identical(..., ignore.srcref=TRUE)`.
-            let srcref_cell = self.cons(nil, nil)?;
+            let fourth = if self.keep_srcrefs { srcref } else { nil };
+            let srcref_cell = self.cons(fourth, nil)?;
             let body_cell = self.cons(body, srcref_cell)?;
             let formals_cell = self.cons(formals, body_cell)?;
             let call = self.cons(fn_sym, formals_cell)?;
