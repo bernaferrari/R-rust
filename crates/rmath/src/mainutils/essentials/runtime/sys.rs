@@ -1095,6 +1095,17 @@ fn iso_arg_num(x: SEXP, default: f64) -> f64 {
 
 unsafe fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, tz: &str) -> SEXP {
     unsafe {
+        if !(1.0..=12.0).contains(&month) {
+            let na = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
+            *REAL(na) = f64::NAN;
+            let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+            SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
+            SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(na, crate::sexp::attrib_core::R_ClassSymbol(), class);
+            let tzone = Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr());
+            crate::sexp::attrib_core::setAttrib(na, crate::sexp::symbol::Rf_install(c"tzone".as_ptr()), tzone);
+            return na;
+        }
         let stamp = format!(
             "{:04}-{:02}-{:02} {:02}:{:02}:{:09.6}",
             year as i32,
