@@ -4009,8 +4009,26 @@ pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 return R_NilValue();
             }
             let _result_guard = protect(result);
-            for (out_idx, src_idx) in matches.into_iter().enumerate() {
-                SET_STRING_ELT(result, out_idx as R_xlen_t, STRING_ELT(x_arg, src_idx));
+            let names = crate::sexp::attrib_core::getAttrib(x_arg, crate::sexp::attrib_core::R_NamesSymbol());
+            let out_names = if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == XLENGTH(x_arg)
+            {
+                let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
+                let _names_guard = protect(out_names);
+                out_names
+            } else {
+                R_NilValue()
+            };
+            for (out_idx, src_idx) in matches.iter().enumerate() {
+                SET_STRING_ELT(result, out_idx as R_xlen_t, STRING_ELT(x_arg, *src_idx));
+                if out_names != R_NilValue() {
+                    SET_STRING_ELT(out_names, out_idx as R_xlen_t, STRING_ELT(names, *src_idx));
+                }
+            }
+            if out_names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), out_names);
             }
             result
         } else {

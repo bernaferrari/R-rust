@@ -1149,13 +1149,10 @@ pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let mut match_indices: Vec<R_xlen_t> = Vec::new();
 
         if value_opt {
-            // value=TRUE: return matching strings
-            let ans = allocVector(SEXPTYPE::STRSXP, n);
-            let _ans_guard = protect(ans);
+            let mut matched_at: Vec<R_xlen_t> = Vec::new();
             for i in 0..n {
                 let text_charsxp = STRING_ELT(text, i as R_xlen_t);
                 if isNA_STRING(text_charsxp) {
-                    SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
                     continue;
                 }
                 let text_str = cstr_to_string(CHAR(text_charsxp));
@@ -1166,13 +1163,27 @@ pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     ere_nodes.as_deref(),
                     igcase_opt,
                 );
-                let m = if invert { !matched } else { matched };
-                if m {
-                    SET_STRING_ELT(ans, i as R_xlen_t, text_charsxp);
-                } else {
-                    let empty_str = c"";
-                    SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(empty_str.as_ptr()));
+                if if invert { !matched } else { matched } {
+                    matched_at.push(i);
                 }
+            }
+            let ans = allocVector(SEXPTYPE::STRSXP, matched_at.len() as R_xlen_t);
+            let _ans_guard = protect(ans);
+            for (j, i) in matched_at.iter().enumerate() {
+                SET_STRING_ELT(ans, j as R_xlen_t, STRING_ELT(text, *i));
+            }
+            let names = getAttrib(text, crate::eval::attrib_core::R_NamesSymbol());
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == n
+            {
+                let out_names = allocVector(SEXPTYPE::STRSXP, matched_at.len() as R_xlen_t);
+                let _names_guard = protect(out_names);
+                for (j, i) in matched_at.iter().enumerate() {
+                    SET_STRING_ELT(out_names, j as R_xlen_t, STRING_ELT(names, *i));
+                }
+                setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), out_names);
             }
             return ans;
         } else if PRIMVAL(op) != 0 {

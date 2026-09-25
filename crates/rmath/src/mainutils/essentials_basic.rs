@@ -1851,7 +1851,17 @@ pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
             }
             return result;
         }
-        coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int())
+        let result = coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int());
+        let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !result.is_null()
+            && result != R_NilValue()
+            && !names.is_null()
+            && names != R_NilValue()
+            && XLENGTH(names) == XLENGTH(result)
+        {
+            crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        }
+        result
     }
 }
 
