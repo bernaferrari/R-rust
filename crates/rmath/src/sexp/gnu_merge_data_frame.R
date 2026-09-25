@@ -123,7 +123,7 @@ merge.data.frame <-
             cnm <- nm.y %in% nm
             nm.y[cnm] <- paste0(nm.y[cnm], suffixes[2L])
         }
-        y <- y[c(m$yi, if(all.x) rep.int(1L, nxx), if(all.y) m$y.alone),
+        y <- y[c(m$yi, if(all.x) rep.int(NA_integer_, nxx), if(all.y) m$y.alone),
                -by.y, drop = FALSE]
         if(all.x) {
             zap <- (lxy+1L):(lxy+nxx)
