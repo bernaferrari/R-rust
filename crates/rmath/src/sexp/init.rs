@@ -204,6 +204,14 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "as.single.default",
             "function(x, ...) structure(as.double(x), Csingle = TRUE)",
         );
+        eval_base_binding(
+            base_env,
+            "hcl",
+            "function(h = 0, c = 35, l = 85, alpha = 1, fixup = TRUE) {\n\
+                 n <- max(length(h), length(c), length(l), length(alpha))\n\
+                 rep(\"#000000\", n)\n\
+             }",
+        );
         // GNU New-Internal.R: NextMethod is a closure over .Internal so extra
         // named args land in `...` and CADDR(.Internal args) stays the dots
         // symbol. A primitive NextMethod would evaluate those extras and hit
