@@ -125,7 +125,11 @@ unsafe fn apply(args: SEXP, job: Job) -> SEXP {
             err("not implemented for complex 'qr'")
         }
         let lap = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
-        let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP && XLENGTH(lap) == 1 && LOGICAL_ELT(lap, 0) == 1;
+        // Cdqrls stores DGEQP3 tau and does not set the flag. Only an
+        // explicit FALSE is the LINPACK path, which this routine supports.
+        let lap = !(TYPEOF(lap) == SEXPTYPE::LGLSXP
+            && XLENGTH(lap) == 1
+            && LOGICAL_ELT(lap, 0) == 0);
         if lap {
             err("not supported for LAPACK QR")
         }

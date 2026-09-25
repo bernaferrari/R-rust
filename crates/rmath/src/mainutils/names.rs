@@ -5204,6 +5204,9 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             crate::mainutils::errors::attribute_handler_errors(s, || {
                 f(s, internal_val, evaluated_args, env)
             })
+        } else if name == "inspect" {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            R_NilValue()
         } else {
             panic_any(RError {
                 message: format!("internal function '{name}' is not implemented"),
