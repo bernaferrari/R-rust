@@ -903,10 +903,14 @@ pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
         let mut originals = Vec::with_capacity(n as usize);
+        let mut from_na = Vec::with_capacity(n as usize);
         let mut results = Vec::with_capacity(n as usize);
         for i in 0..n {
             let ch = STRING_ELT(names, i);
-            let raw = if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            let is_na = ch == crate::sexp::globals::R_NaString();
+            let raw = if ch.is_null() {
+                String::new()
+            } else if is_na {
                 "NA".to_string()
             } else {
                 std::ffi::CStr::from_ptr(CHAR(ch))
@@ -914,6 +918,7 @@ pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     .into_owned()
             };
             originals.push(raw.clone());
+            from_na.push(is_na);
             let mut s = raw;
             let need_prefix = if s.is_empty() {
                 true
@@ -944,7 +949,15 @@ pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         }
         if unique {
             let mut order: Vec<usize> = (0..results.len()).collect();
-            order.sort_by_key(|&i| originals[i] != results[i]);
+            order.sort_by_key(|&i| {
+                if from_na[i] {
+                    2
+                } else if originals[i] != results[i] {
+                    1
+                } else {
+                    0
+                }
+            });
             let tmp = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _t = protect(tmp);
             for (j, &i) in order.iter().enumerate() {
