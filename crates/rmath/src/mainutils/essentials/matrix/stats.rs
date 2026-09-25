@@ -168,6 +168,31 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
 
+        if entries.len() >= 2
+            && entries.iter().all(|(arg, _, _, _)| sexp_has_class(*arg, "ts"))
+        {
+            let phase = |arg: SEXP| unsafe {
+                let tsp = crate::sexp::attrib_core::getAttrib(
+                    arg,
+                    crate::sexp::attrib_core::R_TspSymbol(),
+                );
+                if tsp.is_null() || TYPEOF(tsp) != SEXPTYPE::REALSXP || XLENGTH(tsp) < 3 {
+                    return None;
+                }
+                let start = *REAL(tsp);
+                let freq = *REAL(tsp).add(2);
+                let scaled = start * freq;
+                Some((scaled - scaled.floor(), freq))
+            };
+            if let Some(first) = phase(entries[0].0) {
+                if entries.iter().skip(1).any(|(arg, _, _, _)| {
+                    phase(*arg).is_none_or(|(p, f)| (p - first.0).abs() > 1e-8 || (f - first.1).abs() > 1e-8)
+                }) {
+                    base_error("not all series have the same phase".to_string());
+                }
+            }
+        }
+
         if entries
             .iter()
             .any(|(arg, _, _, _)| sexp_has_class(*arg, "data.frame"))
