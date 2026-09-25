@@ -784,6 +784,8 @@ unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
         options.insert("deparse.cutoff".to_string(), pi(60));
         options.insert("digits".to_string(), pi(7));
         options.insert("na.action".to_string(), pm(c"na.omit".as_ptr()));
+        options.insert("show.coef.Pvalues".to_string(), pl(TRUE));
+        options.insert("show.signif.stars".to_string(), pl(TRUE));
         options.insert("echo".to_string(), pl(TRUE));
         options.insert("quiet".to_string(), pl(FALSE));
         options.insert("verbose".to_string(), pl(FALSE));
