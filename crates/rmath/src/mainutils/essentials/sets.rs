@@ -2315,8 +2315,11 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
 }
 
 /// R's `sort(x, decreasing, na.last)` — sort an atomic vector.
-unsafe fn copy_sorted_names(x: SEXP, result: SEXP, order: &[usize]) {
+unsafe fn copy_sorted_names(x: SEXP, result: SEXP, order: &[usize], keep: bool) {
     unsafe {
+        if !keep {
+            return;
+        }
         let names = crate::sexp::attrib_core::getAttrib(
             x,
             crate::sexp::attrib_core::R_NamesSymbol(),
@@ -2355,6 +2358,8 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if sort_logical_arg(args, &["index.return"], 99).unwrap_or(false) {
             return sort_with_index(x, decreasing, na_placement);
         }
+        let partial = arg_by_name_or_position(args, &["partial"], usize::MAX);
+        let keep_names = partial.is_null() || partial == R_NilValue();
 
 
         let t = TYPEOF(x);
@@ -2404,7 +2409,7 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     out += 1;
                 }
             }
-            copy_sorted_names(x, result, &order);
+            copy_sorted_names(x, result, &order, keep_names);
             restore_datetime_or_difftime_class(x, result);
             result
         } else if t == SEXPTYPE::REALSXP {
@@ -2451,7 +2456,7 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     out += 1;
                 }
             }
-            copy_sorted_names(x, result, &order);
+            copy_sorted_names(x, result, &order, keep_names);
             restore_datetime_or_difftime_class(x, result);
             result
         } else if t == SEXPTYPE::STRSXP {
