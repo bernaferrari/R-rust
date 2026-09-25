@@ -870,6 +870,7 @@ pub(super) unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result
         // Finally: gobble up all unused actuals into ..., or error.
         if let Some(dots_idx) = dots_formal_index {
             let mut dots = PairlistBuilder::new();
+            let mut collected = 0usize;
             for i in 0..supplied_cells.len() {
                 if used[i] != 0 {
                     continue;
@@ -883,11 +884,16 @@ pub(super) unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result
                 };
                 dots.push(Sexp::from_raw_unchecked(CAR(supplied_cells[i])), tag)
                     .map_err(|err| sexp_err("dots argument pairlist build", err))?;
+                collected += 1;
             }
-            let dots_value = dots
-                .finish_as_type(SEXPTYPE::DOTSXP)
-                .map_err(|err| sexp_err("dots argument pairlist wrap", err))?;
-            SETCAR(result_cells[dots_idx], dots_value.as_raw());
+            if collected == 0 {
+                SETCAR(result_cells[dots_idx], R_MissingArg());
+            } else {
+                let dots_value = dots
+                    .finish_as_type(SEXPTYPE::DOTSXP)
+                    .map_err(|err| sexp_err("dots argument pairlist wrap", err))?;
+                SETCAR(result_cells[dots_idx], dots_value.as_raw());
+            }
         } else {
             // Show bad arguments in the call without evaluating them:
             // unwrap promises back to their expressions for deparsing.
