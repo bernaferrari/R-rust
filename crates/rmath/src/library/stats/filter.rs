@@ -6158,8 +6158,24 @@ pub unsafe fn do_vcov_aliased(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `makepredictcall(var, call)` — return `call` unchanged.
-pub unsafe fn do_makepredictcall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(CDR(args)) }
+pub unsafe fn do_makepredictcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let var = CAR(args);
+        let pred = CAR(CDR(args));
+        if !var.is_null()
+            && var != R_NilValue()
+            && crate::mainutils::objects::inherits2(var, c"poly".as_ptr()) != 0
+        {
+            let sym = crate::sexp::symbol::Rf_install(c"makepredictcall.poly".as_ptr());
+            let fun = crate::sexp::envir::findFun(sym, rho);
+            if !fun.is_null() && fun != crate::sexp::globals::R_UnboundValue() {
+                let lang = crate::sexp::constructors::Rf_lang3(fun, var, pred);
+                return crate::eval::eval::Rf_eval(lang, rho);
+            }
+        }
+        let _ = (call, op);
+        pred
+    }
 }
 
 
