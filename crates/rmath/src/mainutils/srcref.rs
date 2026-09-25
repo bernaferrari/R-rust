@@ -13,8 +13,15 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 
-/// Byte offset -> (1-based line, 1-based column) in `src`.
-fn line_col(src: &str, byte: usize) -> (i32, i32) {
+/// Char offset -> (1-based line, 1-based byte column). Lexer spans index
+/// `Vec<char>`, not UTF-8 bytes; a multibyte character before the span
+/// would otherwise shift every later srcref left.
+fn line_col(src: &str, char_index: usize) -> (i32, i32) {
+    let byte = src
+        .char_indices()
+        .nth(char_index)
+        .map(|(i, _)| i)
+        .unwrap_or(src.len());
     let bytes = src.as_bytes();
     let mut line = 1i32;
     let mut last_nl = -1i64;
@@ -28,11 +35,12 @@ fn line_col(src: &str, byte: usize) -> (i32, i32) {
     (line, col)
 }
 
-/// GNU 8-integer lloc for a byte span. Safe to call while the parse arena
+/// GNU 8-integer lloc for a char span. Safe to call while the parse arena
 /// is held; allocation happens on the caller.
 pub(crate) fn srcref_lloc(src: &str, start: usize, end: usize) -> [i32; 8] {
     let (fl, fc) = line_col(src, start);
-    let (ll, lc) = line_col(src, end.saturating_sub(1));
+    let end_char = end.saturating_sub(1);
+    let (ll, lc) = line_col(src, end_char);
     [fl, fc, ll, lc, fc, lc, fl, ll]
 }
 
