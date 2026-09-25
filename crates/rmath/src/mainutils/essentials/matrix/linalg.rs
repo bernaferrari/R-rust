@@ -327,6 +327,45 @@ pub unsafe fn do_chol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !dim.is_null() && dim != R_NilValue() {
             crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
         }
+        let src_names = crate::sexp::attrib_core::getAttrib(
+            CAR(args),
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if !src_names.is_null()
+            && src_names != R_NilValue()
+            && TYPEOF(src_names) == SEXPTYPE::VECSXP
+            && XLENGTH(src_names) == 2
+        {
+            let out_names = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _on = protect(out_names);
+            SET_VECTOR_ELT(out_names, 0, VECTOR_ELT(src_names, 0));
+            let cols = VECTOR_ELT(src_names, 1);
+            let piv = crate::sexp::attrib_core::getAttrib(ans, Rf_install(c"pivot".as_ptr()));
+            if !piv.is_null()
+                && piv != R_NilValue()
+                && TYPEOF(piv) == SEXPTYPE::INTSXP
+                && TYPEOF(cols) == SEXPTYPE::STRSXP
+                && XLENGTH(cols) == XLENGTH(piv)
+            {
+                let n = XLENGTH(piv);
+                let ordered = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+                let _ord = protect(ordered);
+                for j in 0..n {
+                    let source = *INTEGER(piv).add(j as usize);
+                    if source >= 1 && source as i64 <= n {
+                        SET_STRING_ELT(ordered, j, STRING_ELT(cols, (source - 1) as i64));
+                    }
+                }
+                SET_VECTOR_ELT(out_names, 1, ordered);
+            } else {
+                SET_VECTOR_ELT(out_names, 1, cols);
+            }
+            crate::sexp::attrib_core::setAttrib(
+                ans,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                out_names,
+            );
+        }
         ans
     }
 }
