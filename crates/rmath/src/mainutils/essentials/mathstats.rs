@@ -12130,12 +12130,25 @@ pub unsafe fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `plot.stepfun(x)` — knot/height coordinates (no device).
 pub unsafe fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let fun = CAR(args);
-        if fun.is_null() || fun == R_NilValue() {
+        let mut fun = CAR(args);
+        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+            fun = crate::eval::eval::Rf_eval(fun, rho);
+        }
+        if fun.is_null() || fun == R_NilValue() || TYPEOF(fun) != SEXPTYPE::CLOSXP {
             return R_NilValue();
         }
-        let kn = do_knots(call, op, args, rho);
-        let _k = protect(kn);
+        let kn = {
+            let env = crate::sexp::accessors::CLOENV(fun);
+            let mut found = R_NilValue();
+            for name in [c"x", c"vals"] {
+                let v = crate::sexp::envir::R_findVarInFrame(env, Rf_install(name.as_ptr()));
+                if !v.is_null() && v != R_NilValue() && v != crate::sexp::globals::R_UnboundValue() {
+                    found = v;
+                    break;
+                }
+            }
+            found
+        };
         if kn.is_null() || kn == R_NilValue() || XLENGTH(kn) < 1 {
             return R_NilValue();
         }
@@ -12175,9 +12188,7 @@ pub unsafe fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         for i in 0..nt - 1 {
             *REAL(mids).add(i) = 0.5 * (ti[i] + ti[i + 1]);
         }
-        let ev = crate::sexp::constructors::Rf_lang2(fun, mids);
-        let _e = protect(ev);
-        let yv = crate::eval::eval::Rf_eval(ev, rho);
+        let yv = stepfun_heights(fun, mids);
         let _y = protect(yv);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
@@ -12187,6 +12198,29 @@ pub unsafe fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         result
     }
 }
+unsafe fn stepfun_heights(fun: SEXP, mids: SEXP) -> SEXP {
+    unsafe {
+        let env = crate::sexp::accessors::CLOENV(fun);
+        let x = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"x".as_ptr()));
+        let y = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"y".as_ptr()));
+        let nv = XLENGTH(mids) as usize;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
+        if x.is_null() || y.is_null() || x == crate::sexp::globals::R_UnboundValue() {
+            return result;
+        }
+        let n = XLENGTH(x) as usize;
+        for j in 0..nv {
+            let t = elt_real_safe(mids, j as i64);
+            let mut i = 0usize;
+            while i < n && elt_real_safe(x, i as i64) <= t {
+                i += 1;
+            }
+            *REAL(result).add(j) = elt_real_safe(y, i as i64);
+        }
+        result
+    }
+}
+
 
 /// GNU `plot.ecdf(x)` — `plot.stepfun` then `abline`; returns invisible NULL.
 pub unsafe fn do_plot_ecdf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -15181,6 +15215,45 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         if TYPEOF(choices) != SEXPTYPE::STRSXP || XLENGTH(choices) == 0 {
             crate::mainutils::errors::errorcall_str(call, "'arg' should be one of");
         }
+        let several_cell = CDR(choices_cell);
+        let several_ok = if several_cell.is_null() || several_cell == R_NilValue() {
+            false
+        } else {
+            let flag = crate::eval::eval::Rf_eval(CAR(several_cell), rho);
+            !flag.is_null() && flag != R_NilValue() && crate::main::coerce::asLogical(flag) == 1
+        };
+        if several_ok {
+            let mut hits: Vec<String> = Vec::new();
+            for a in 0..XLENGTH(arg) {
+                let needle = elt_to_string(arg, a);
+                if needle.is_empty() {
+                    continue;
+                }
+                let mut exact: Option<i64> = None;
+                let mut prefixes: Vec<i64> = Vec::new();
+                for i in 0..XLENGTH(choices) {
+                    let choice = elt_to_string(choices, i);
+                    if choice == needle {
+                        exact = Some(i);
+                        break;
+                    }
+                    if choice.starts_with(&needle) {
+                        prefixes.push(i);
+                    }
+                }
+                if let Some(i) = exact.or_else(|| if prefixes.len() == 1 { prefixes.pop() } else { None }) {
+                    hits.push(elt_to_string(choices, i));
+                }
+            }
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, hits.len() as i64);
+            let _result = protect(result);
+            for (i, hit) in hits.iter().enumerate() {
+                let cstr = std::ffi::CString::new(hit.as_str()).unwrap_or_default();
+                SET_STRING_ELT(result, i as i64, Rf_mkChar(cstr.as_ptr()));
+            }
+            return result;
+        }
+
 
         if crate::mainutils::identical::R_compute_identical(arg, choices, 0) != 0 {
             return match_arg_first(choices);
