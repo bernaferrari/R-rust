@@ -1572,40 +1572,163 @@ pub unsafe fn dtrcon_(
     unsafe {
         let n_val = *n as usize;
         let lda_val = *lda as usize;
-        let uplo_byte = *uplo;
-        let diag_byte = *diag;
-
+        let norm_byte = *_norm;
+        let inf_norm = norm_byte == b'I' || norm_byte == b'i';
+        let is_upper = *uplo == b'U' || *uplo == b'u';
+        let is_unit = *diag == b'U' || *diag == b'u';
+        *info = 0;
         if n_val == 0 {
-            *rcond = 0.0;
-            *info = 0;
+            *rcond = 1.0;
             return;
         }
-
-        // For triangular matrix, condition ≈ 1 / (||diag||_inf * ||T^-1||_inf)
-        // Simplified: rcond ≈ min|diag| / max|diag| * (1/n)
-        let mut min_diag = f64::INFINITY;
-        let mut max_diag = 0.0f64;
-        let is_unit = diag_byte == b'U' || diag_byte == b'u';
-
-        for i in 0..n_val {
-            let d = if is_unit {
-                1.0
-            } else {
-                match uplo_byte {
-                    b'U' | b'u' => *a.add(i + i * lda_val),
-                    _ => *a.add(i + i * lda_val),
+        let aij = |i: usize, j: usize| -> f64 {
+            if i == j && is_unit {
+                return 1.0;
+            }
+            let stored = if is_upper { i <= j } else { i >= j };
+            if stored { *a.add(i + j * lda_val) } else { 0.0 }
+        };
+        let mut anorm = 0.0f64;
+        if inf_norm {
+            for i in 0..n_val {
+                let mut s = 0.0f64;
+                for j in 0..n_val {
+                    s += aij(i, j).abs();
                 }
-            };
-            min_diag = min_diag.min(d.abs());
-            max_diag = max_diag.max(d.abs());
-        }
-
-        if max_diag == 0.0 {
-            *rcond = 0.0;
+                anorm = anorm.max(s);
+            }
         } else {
-            *rcond = min_diag / (max_diag * n_val as f64);
+            for j in 0..n_val {
+                let mut s = 0.0f64;
+                for i in 0..n_val {
+                    s += aij(i, j).abs();
+                }
+                anorm = anorm.max(s);
+            }
         }
-        *info = 0;
+        if anorm == 0.0 {
+            *rcond = 0.0;
+            return;
+        }
+        // Solve op(T) y = x. trans: apply T^T.
+        let mut solve = |x: &mut [f64], trans: bool| {
+            let upper = if trans { !is_upper } else { is_upper };
+            if upper {
+                for i in (0..n_val).rev() {
+                    let mut s = x[i];
+                    for j in (i + 1)..n_val {
+                        let c = if trans { aij(j, i) } else { aij(i, j) };
+                        s -= c * x[j];
+                    }
+                    let d = if is_unit { 1.0 } else if trans { aij(i, i) } else { aij(i, i) };
+                    x[i] = if d == 0.0 { 0.0 } else { s / d };
+                }
+            } else {
+                for i in 0..n_val {
+                    let mut s = x[i];
+                    for j in 0..i {
+                        let c = if trans { aij(j, i) } else { aij(i, j) };
+                        s -= c * x[j];
+                    }
+                    let d = if is_unit { 1.0 } else { aij(i, i) };
+                    x[i] = if d == 0.0 { 0.0 } else { s / d };
+                }
+            }
+        };
+        // DLACN2 on inv(T). KASE 1: inv(T)*x, KASE 2: inv(T)^T*x.
+        let mut x = vec![0.0f64; n_val];
+        let mut v = vec![0.0f64; n_val];
+        let mut isgn = vec![0i32; n_val];
+        let mut isave = [0i32; 3];
+        let mut est = 0.0f64;
+        let mut kase = 0i32;
+        let sgn = |z: f64| if z >= 0.0 { 1.0 } else { -1.0 };
+        for _ in 0..n_val.saturating_mul(8).max(16) {
+            if kase == 0 {
+                let s = 1.0 / n_val as f64;
+                x.fill(s);
+                kase = 1;
+                isave[0] = 1;
+            } else {
+                match isave[0] {
+                    1 => {
+                        if n_val == 1 {
+                            est = x[0].abs();
+                            kase = 0;
+                        } else {
+                            est = x.iter().map(|z| z.abs()).sum();
+                            for i in 0..n_val {
+                                x[i] = sgn(x[i]);
+                                isgn[i] = x[i] as i32;
+                            }
+                            kase = 2;
+                            isave[0] = 2;
+                        }
+                    }
+                    2 => {
+                        isave[1] = x.iter().enumerate().max_by(|a, b| a.1.abs().total_cmp(&b.1.abs())).map(|(i, _)| i).unwrap_or(0) as i32;
+                        isave[2] = 2;
+                        x.fill(0.0);
+                        x[isave[1] as usize] = 1.0;
+                        kase = 1;
+                        isave[0] = 3;
+                    }
+                    3 => {
+                        v.copy_from_slice(&x);
+                        let estold = est;
+                        est = v.iter().map(|z| z.abs()).sum();
+                        let repeated = (0..n_val).all(|i| (sgn(x[i]) as i32) == isgn[i]);
+                        if repeated || est <= estold {
+                            let mut altsgn = 1.0f64;
+                            for i in 0..n_val {
+                                x[i] = altsgn * ((i as f64) / (n_val as f64 - 1.0) + 1.0);
+                                altsgn = -altsgn;
+                            }
+                            kase = 1;
+                            isave[0] = 5;
+                        } else {
+                            for i in 0..n_val {
+                                x[i] = sgn(x[i]);
+                                isgn[i] = x[i] as i32;
+                            }
+                            kase = 2;
+                            isave[0] = 4;
+                        }
+                    }
+                    4 => {
+                        let jlast = isave[1] as usize;
+                        isave[1] = x.iter().enumerate().max_by(|a, b| a.1.abs().total_cmp(&b.1.abs())).map(|(i, _)| i).unwrap_or(0) as i32;
+                        if x[jlast] != x[isave[1] as usize].abs() && isave[2] < 5 {
+                            isave[2] += 1;
+                            x.fill(0.0);
+                            x[isave[1] as usize] = 1.0;
+                            kase = 1;
+                            isave[0] = 3;
+                        } else {
+                            let mut altsgn = 1.0f64;
+                            for i in 0..n_val {
+                                x[i] = altsgn * ((i as f64) / (n_val as f64 - 1.0) + 1.0);
+                                altsgn = -altsgn;
+                            }
+                            kase = 1;
+                            isave[0] = 5;
+                        }
+                    }
+                    _ => {
+                        let temp = x.iter().map(|z| z.abs()).sum::<f64>() / (n_val as f64 * 3.0) * 2.0;
+                        if temp > est {
+                            est = temp;
+                        }
+                        kase = 0;
+                    }
+                }
+            }
+            if kase == 0 {
+                break;
+            }
+            solve(&mut x, kase == 2);
+        }
+        *rcond = if est == 0.0 { 0.0 } else { 1.0 / (anorm * est) };
     }
 }
 
