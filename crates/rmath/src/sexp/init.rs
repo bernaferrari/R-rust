@@ -2029,6 +2029,20 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "body",
+            "function(fun = sys.function(sys.parent())) {\n\
+             if (is.character(fun))\n\
+                 fun <- get(fun, mode = \"function\", envir = parent.frame())\n\
+             .Internal(body(fun))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "Sys.info",
+            "function() .Internal(Sys.info())",
+        );
+        eval_base_binding(
+            base_env,
             "formalArgs",
             "function(def) names(formals(def))",
         );
@@ -2039,6 +2053,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "body<-",
             "function (fun, envir = environment(fun), value) {\n\
              if (!is.function(fun)) warning(\"'fun' is not a function\")\n\
+
              if (is.expression(value)) {\n\
                  if (length(value) > 1L)\n\
                      warning(\"using the first element of 'value' of type \\\"expression\\\"\")\n\
@@ -2054,6 +2069,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "formals<-",
             "function (fun, envir = environment(fun), value) {\n\
              if (!is.function(fun)) warning(\"'fun' is not a function\")\n\
+
              bd <- body(fun)\n\
              as.function(c(value,\n\
                  if (is.null(bd) || is.atomic(bd) || is.list(bd)) list(bd) else bd),\n\

@@ -325,8 +325,16 @@ unsafe fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
 pub unsafe fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fn_arg = CAR(args);
-        if fn_arg.is_null() || fn_arg == R_NilValue() || TYPEOF(fn_arg) != SEXPTYPE::CLOSXP {
+        if fn_arg.is_null()
+            || fn_arg == R_NilValue()
+            || (TYPEOF(fn_arg) != SEXPTYPE::CLOSXP
+                && TYPEOF(fn_arg) != SEXPTYPE::BUILTINSXP
+                && TYPEOF(fn_arg) != SEXPTYPE::SPECIALSXP)
+        {
             crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function".as_ptr());
+            return R_NilValue();
+        }
+        if TYPEOF(fn_arg) != SEXPTYPE::CLOSXP {
             return R_NilValue();
         }
         let body = crate::sexp::accessors::BODY(fn_arg);
