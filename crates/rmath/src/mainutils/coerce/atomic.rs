@@ -557,17 +557,40 @@ pub fn string_from_real_for_complex(x: c_double) -> String {
         } else {
             "Inf".to_string()
         }
-    } else if x.fract() == 0.0 {
-        format!("{x:.0}")
     } else {
-        let mut s = format!("{x:.15}");
-        while s.ends_with('0') {
-            s.pop();
-        }
-        if s.ends_with('.') {
-            s.pop();
-        }
-        s
+        let fixed = if x.fract() == 0.0 {
+            format!("{x:.0}")
+        } else {
+            let mut s = format!("{x:.15}");
+            while s.ends_with('0') {
+                s.pop();
+            }
+            if s.ends_with('.') {
+                s.pop();
+            }
+            s
+        };
+        let ax = x.abs();
+        let sci = if ax == 0.0 {
+            fixed.clone()
+        } else {
+            let exp = ax.log10().floor() as i32;
+            let mant = ax / 10f64.powi(exp);
+            let mant_s = if (mant - mant.round()).abs() < 1e-10 {
+                format!("{:.0}", mant.round())
+            } else {
+                let mut s = format!("{mant:.6}");
+                while s.ends_with('0') {
+                    s.pop();
+                }
+                if s.ends_with('.') {
+                    s.pop();
+                }
+                s
+            };
+            format!("{mant_s}e{:+03}", exp)
+        };
+        if sci.len() < fixed.len() { sci } else { fixed }
     }
 }
 
