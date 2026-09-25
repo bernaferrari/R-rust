@@ -5054,6 +5054,23 @@ fn symbol_chars(expr: SEXP) -> Option<String> {
     }
 }
 
+fn collect_i_calls(expr: SEXP, out: &mut Vec<SEXP>) {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() || TYPEOF(expr) != SEXPTYPE::LANGSXP {
+            return;
+        }
+        if symbol_chars(CAR(expr)).as_deref() == Some("I") {
+            out.push(expr);
+            return;
+        }
+        let mut cell = CDR(expr);
+        while !cell.is_null() && cell != R_NilValue() {
+            collect_i_calls(CAR(cell), out);
+            cell = CDR(cell);
+        }
+    }
+}
+
 fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
     unsafe {
         if expr.is_null() || expr == R_NilValue() || expr == crate::sexp::globals::R_MissingArg() {
@@ -5085,7 +5102,11 @@ fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
 fn deparse_call(expr: SEXP) -> String {
     unsafe {
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            return symbol_chars(expr).unwrap_or_default();
+            let name = symbol_chars(expr).unwrap_or_default();
+            if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(name.as_bytes()) {
+                return name;
+            }
+            return format!("`{name}`");
         }
         if TYPEOF(expr) == SEXPTYPE::LGLSXP {
             let v = *INTEGER(expr);
@@ -5290,20 +5311,57 @@ pub unsafe fn do_model_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         let mut names = Vec::new();
         collect_formula_symbols(form, &mut names);
-        if names.is_empty() {
+        let mut i_calls = Vec::new();
+        collect_i_calls(form, &mut i_calls);
+        if names.is_empty() && i_calls.is_empty() {
             return R_NilValue();
         }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as i64);
-        let _r = protect(result);
-        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
-        let _on = protect(out_names);
-        for (i, name) in names.iter().enumerate() {
+        let env = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            _rho,
+            R_NilValue(),
+        );
+        let _env = protect(env);
+        if !data.is_null() && data != R_NilValue() && TYPEOF(data) == SEXPTYPE::VECSXP {
+            let data_names = crate::sexp::attrib_core::getAttrib(
+                data,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if TYPEOF(data_names) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(data) {
+                    let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(data_names, i)))
+                        .to_string_lossy()
+                        .into_owned();
+                    if let Ok(c) = std::ffi::CString::new(nm) {
+                        crate::sexp::envir::defineVar(
+                        crate::sexp::symbol::Rf_install(c.as_ptr()),
+                            VECTOR_ELT(data, i),
+                            env,
+                        );
+                    }
+                }
+            }
+        }
+        let mut cols: Vec<(String, SEXP)> = Vec::new();
+        for name in names {
             let col = if !data.is_null() && data != R_NilValue() {
-                named_list_elt(data, name)
+                named_list_elt(data, &name)
             } else {
                 R_NilValue()
             };
-            SET_VECTOR_ELT(result, i as i64, col);
+            cols.push((name, col));
+        }
+        for call in i_calls {
+            let name = deparse_call(call);
+            let val = crate::eval::eval::Rf_eval(call, env);
+            cols.push((name, val));
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, cols.len() as i64);
+        let _r = protect(result);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, cols.len() as i64);
+        let _on = protect(out_names);
+        for (i, (name, col)) in cols.iter().enumerate() {
+            SET_VECTOR_ELT(result, i as i64, *col);
             let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
             SET_STRING_ELT(out_names, i as i64, Rf_mkChar(c.as_ptr()));
         }
