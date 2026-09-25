@@ -133,15 +133,19 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             let x = elt_complex_coerce(sa, i);
             let y = elt_complex_coerce(sb, i);
 
-            if is_na_complex(x) || is_na_complex(y) {
+            if op != "+" && op != "-" && (is_na_complex(x) || is_na_complex(y)) {
                 *dst.add(i as usize) = NA_COMPLEX;
                 continue;
             }
 
             let val = match op {
-                "+" => Rcomplex {
-                    r: x.r + y.r,
-                    i: x.i + y.i,
+                "+" => {
+                    let na = crate::sexp::ffi::NA_REAL;
+                    let r_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+                    Rcomplex {
+                        r: if r_na(x.r) || r_na(y.r) { na } else { x.r + y.r },
+                        i: if r_na(x.i) || r_na(y.i) { na } else { x.i + y.i },
+                    }
                 },
                 "-" => Rcomplex {
                     r: x.r - y.r,

@@ -316,14 +316,12 @@ pub unsafe fn ComplexFromInteger(x: c_int, _warn: *mut c_int) -> Rcomplex {
 }
 
 /// Convert real to complex.
-///
-/// Returns `Rcomplex { r: NA_REAL, i: NA_REAL }` if `x` is R's NA (specific bit pattern).
-/// For other values (including non-NA NaN), passes through with `i = 0.0`.
+/// GNU `as.complex` keeps the imaginary part 0, including for `NA_real_`.
 pub unsafe fn ComplexFromReal(x: c_double, _warn: *mut c_int) -> Rcomplex {
     if R_IsNA(x) {
         Rcomplex {
             r: NA_REAL,
-            i: NA_REAL,
+            i: 0.0,
         }
     } else {
         Rcomplex { r: x, i: 0.0 }
