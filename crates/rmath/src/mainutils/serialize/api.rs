@@ -800,7 +800,14 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
         let xdr = arg_by_name_or_position(args, "xdr", 3);
         let hook = arg_by_name_or_position(args, "refhook", 5);
-        R_serialize_with_xdr(object, R_NilValue(), ascii, xdr, version, hook)
+        let raw = R_serialize_with_xdr(object, R_NilValue(), ascii, xdr, version, hook);
+        if TYPEOF(conn) == SEXPTYPE::INTSXP {
+            let n = XLENGTH(raw) as usize;
+            let bytes = std::slice::from_raw_parts(RAW(raw), n);
+            crate::mainutils::connections::connection_write_bytes(*INTEGER(conn), bytes);
+            return R_NilValue();
+        }
+        raw
     }
 }
 
@@ -815,20 +822,28 @@ pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
             error("wrong number of arguments");
         }
 
-        // serializeToConn(object, connection, ascii)
         let object = CAR(args);
-        let _conn = CADR(args);
-
-        // Serialize to a raw vector, then the connection layer would write it
-        //  do the serialization
-        R_serialize_with_xdr(
+        let conn = CADR(args);
+        let raw = R_serialize_with_xdr(
             object,
             R_NilValue(),
             R_NilValue(),
             R_NilValue(),
             R_NilValue(),
             R_NilValue(),
-        )
+        );
+        if conn.is_null() || conn == R_NilValue() || TYPEOF(conn) != SEXPTYPE::INTSXP {
+            return raw;
+        }
+        let index = *INTEGER(conn) as usize;
+        let guard = crate::mainutils::connections::get_connection(index);
+        let path = guard[index].as_ref().unwrap().description.clone();
+        let n = XLENGTH(raw) as usize;
+        let bytes = std::slice::from_raw_parts(RAW(raw), n);
+        if std::fs::write(&path, bytes).is_err() {
+            error("cannot write to connection");
+        }
+        R_NilValue()
     }
 }
 
@@ -843,14 +858,19 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
             error("wrong number of arguments");
         }
 
-        // unserializeFromConn(connection, hook)
         let conn = CAR(args);
         let hook = arg_by_name_or_position(args, "refhook", 1);
-        // If the first argument is a raw vector, use R_unserialize directly
         if !conn.is_null() && TYPEOF(conn) == SEXPTYPE::RAWSXP {
             return R_unserialize(conn, hook);
         }
-
+        if !conn.is_null() && TYPEOF(conn) == SEXPTYPE::INTSXP {
+            let bytes = crate::mainutils::connections::connection_read_all(*INTEGER(conn));
+            let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as i64);
+            if !bytes.is_empty() {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw), bytes.len());
+            }
+            return R_unserialize(raw, hook);
+        }
         error("'connection' must be a connection");
     }
 }

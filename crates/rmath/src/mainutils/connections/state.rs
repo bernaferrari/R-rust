@@ -644,6 +644,28 @@ pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
     write_bytes_to_conn(conn, bytes);
 }
 
+pub(crate) fn connection_read_all(n: c_int) -> Vec<u8> {
+    use std::io::Read;
+    let index = checked_connection_index(n);
+    let mut table = connection_table();
+    let Some(conn) = table[index].as_mut() else {
+        r_error("invalid connection");
+    };
+    if !conn.isopen {
+        r_error("connection is not open");
+    }
+    if !conn.canread {
+        r_error("cannot read from this connection");
+    }
+    let mut bytes = Vec::new();
+    if let Some(reader) = conn.reader.as_mut() {
+        if reader.read_to_end(&mut bytes).is_err() {
+            r_error("cannot read from connection");
+        }
+    }
+    bytes
+}
+
 fn append_text_connection_write(conn: &mut RConn, bytes: &[u8]) {
     if bytes.is_empty() {
         return;

@@ -195,10 +195,12 @@ fn engine_loess_se(
         for i in 0..(mm.saturating_mul(nn)) {
             *leverages.add(i) = 0.0;
         }
+        let j0 = (0..nn).find(|&j| !weights.is_null() && *weights.add(j) > 0.0).unwrap_or(0);
+        let wj = if weights.is_null() || nn == 0 { 1.0 } else { *weights.add(j0) };
+        let scale = if wj > 0.0 { wj.sqrt() } else { 1.0 };
+        let s = if model.s.is_finite() && model.s > 0.0 { model.s } else { 1.0 };
         for i in 0..mm {
-            let weight = if weights.is_null() { 1.0 } else { *weights.add(i.min(nn.saturating_sub(1))) };
-            let scale = if weight > 0.0 { weight.sqrt() } else { 1.0 };
-            *leverages.add(i) = se.get(i).copied().unwrap_or(0.0) * scale;
+            *leverages.add(i + j0 * mm) = se.get(i).copied().unwrap_or(0.0) / s * scale;
         }
     }
 }
