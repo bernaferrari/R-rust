@@ -5105,11 +5105,11 @@ unsafe fn record_plot_window(args: SEXP) {
         let (mut x0, mut x1) = if xaxs_i { tight(&xv) } else { padded_range(&xv) };
         let (mut y0, mut y1) = if yaxs_i { tight(&yv) } else { padded_range(&yv) };
         if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
-            if 10f64.powf(x0) == 0.0 { x0 = (1.01 * f64::MIN_POSITIVE).log10(); }
+            if x0 < -1074.0 * std::f64::consts::LOG10_2 { x0 = (1.01 * f64::MIN_POSITIVE).log10(); }
             if x1 >= 308.25035 { x1 = (0.99 * f64::MAX).log10(); }
         }
         if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
-            if 10f64.powf(y0) == 0.0 { y0 = (1.01 * f64::MIN_POSITIVE).log10(); }
+            if y0 < -1074.0 * std::f64::consts::LOG10_2 { y0 = (1.01 * f64::MIN_POSITIVE).log10(); }
             if y1 >= 308.25035 { y1 = (0.99 * f64::MAX).log10(); }
         }
         let (xa0, xa1, xn) = pretty_axp(x0, x1);
@@ -5127,7 +5127,7 @@ unsafe fn record_plot_window(args: SEXP) {
         if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
             let lo = x0.ceil().clamp(-307.0, 308.0);
             let hi = x1.floor().clamp(lo, 308.0);
-            let n = if hi - lo > 3.0 { 1.0 } else { (hi - lo).max(1.0) };
+            let n = if hi - lo <= 2.0 { 3.0 } else if hi - lo <= 3.0 { 2.0 } else { 1.0 };
             set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
         } else {
             set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
@@ -5135,7 +5135,7 @@ unsafe fn record_plot_window(args: SEXP) {
         if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
             let lo = y0.ceil().clamp(-307.0, 308.0);
             let hi = y1.floor().clamp(lo, 308.0);
-            let n = if hi - lo > 3.0 { 1.0 } else { (hi - lo).max(1.0) };
+            let n = if hi - lo <= 2.0 { 3.0 } else if hi - lo <= 3.0 { 2.0 } else { 1.0 };
             set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
         } else {
             set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
@@ -5248,11 +5248,11 @@ unsafe fn record_window_limits(args: SEXP) {
         let mut y_lo = yv[0];
         let mut y_hi = yv[1];
         if xlog {
-            if 10f64.powf(x_lo) == 0.0 { x_lo = (1.01 * f64::MIN_POSITIVE).log10(); }
+            if x_lo < -1074.0 * std::f64::consts::LOG10_2 { x_lo = (1.01 * f64::MIN_POSITIVE).log10(); }
             if x_hi >= 308.25035 { x_hi = (0.99 * f64::MAX).log10(); }
         }
         if ylog {
-            if 10f64.powf(y_lo) == 0.0 { y_lo = (1.01 * f64::MIN_POSITIVE).log10(); }
+            if y_lo < -1074.0 * std::f64::consts::LOG10_2 { y_lo = (1.01 * f64::MIN_POSITIVE).log10(); }
             if y_hi >= 308.25035 { y_hi = (0.99 * f64::MAX).log10(); }
         }
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
@@ -5262,7 +5262,7 @@ unsafe fn record_window_limits(args: SEXP) {
         if xlog {
             let lo = x_lo.ceil().clamp(-307.0, 308.0);
             let hi = x_hi.floor().clamp(lo, 308.0);
-            let n = if hi - lo > 3.0 { 1.0 } else { (hi - lo).max(1.0) };
+            let n = if hi - lo <= 2.0 { 3.0 } else if hi - lo <= 3.0 { 2.0 } else { 1.0 };
             set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
         } else {
             let (xa0, xa1, xn) = pretty_axp(xv[0], xv[1]);
@@ -5271,7 +5271,8 @@ unsafe fn record_window_limits(args: SEXP) {
         if ylog {
             let lo = yv[0].ceil().clamp(-307.0, 308.0);
             let hi = yv[1].floor().clamp(lo, 308.0);
-            set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), (hi - lo).max(1.0)]));
+            let n = if hi - lo <= 2.0 { 3.0 } else if hi - lo <= 3.0 { 2.0 } else { 1.0 };
+            set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
         } else {
             let (ya0, ya1, yn) = pretty_axp(yv[0], yv[1]);
             set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
