@@ -2419,7 +2419,12 @@ pub unsafe fn do_levels_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         if TYPEOF(value) == SEXPTYPE::STRSXP {
             let mut seen = Vec::new();
             for i in 0..XLENGTH(value) {
-                let level = elt_to_string(value, i);
+                let ch = STRING_ELT(value, i);
+                let level = if ch == crate::sexp::globals::R_NaString() {
+                    "\u{0}NA".to_string()
+                } else {
+                    elt_to_string(value, i)
+                };
                 if seen.iter().any(|existing: &String| existing == &level) {
                     crate::mainutils::errors::errorcall_str(
                         call,
