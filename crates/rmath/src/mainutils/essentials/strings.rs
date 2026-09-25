@@ -4912,6 +4912,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 &decimal_mark,
                 &small_mark,
                 small_interval,
+                trim,
             );
         }
         for (i, text) in encoded_strings.iter().enumerate() {
@@ -4951,6 +4952,7 @@ fn pretty_num_inplace(
     decimal_mark: &str,
     small_mark: &str,
     small_interval: usize,
+    trim: bool,
 ) {
     let before: Vec<usize> = strings.iter().map(|s| s.chars().count()).collect();
     for s in strings.iter_mut() {
@@ -4966,7 +4968,7 @@ fn pretty_num_inplace(
             }
         }
     }
-    if strings
+    if !trim && strings
         .iter()
         .zip(&before)
         .any(|(s, old)| s.chars().count() > *old)
