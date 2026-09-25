@@ -2576,7 +2576,8 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
             let col = VECTOR_ELT(x, j);
             let nrows = XLENGTH(col);
-            let i = crate::mainutils::subscript::get1index(CAR(subs), R_NilValue(), nrows, pok, 0, call);
+            let rownames = getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
+            let i = crate::mainutils::subscript::get1index(CAR(subs), rownames, nrows, pok, 0, call);
             if i < 0 || i >= nrows {
                 errorcall(call, "subscript out of bounds");
             }
