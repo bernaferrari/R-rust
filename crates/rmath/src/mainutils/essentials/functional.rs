@@ -5196,29 +5196,22 @@ pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             *REAL(crate::mainutils::coerce::coerceVector(side_arg, SEXPTYPE::REALSXP.as_c_int()))
         };
-        let usr = crate::library::graphics::par::parameter("usr");
-        let crate::library::graphics::par::ParValue::Real(u) = usr else {
+        let name = if side == 1.0 || side == 3.0 { "xaxp" } else { "yaxp" };
+        let axp = crate::library::graphics::par::parameter(name);
+        let crate::library::graphics::par::ParValue::Real(a) = axp else {
             return crate::sexp::globals::R_NilValue();
         };
-        if u.len() < 4 {
+        if a.len() < 3 || !a[0].is_finite() || !a[1].is_finite() {
             return crate::sexp::globals::R_NilValue();
         }
-        let (lo, hi, n) = if side == 1.0 || side == 3.0 {
-            pretty_axp(u[0], u[1])
-        } else {
-            pretty_axp(u[2], u[3])
-        };
-        if !lo.is_finite() || !hi.is_finite() || !(1.0..=100.0).contains(&n) {
-            return crate::sexp::globals::R_NilValue();
-        }
-        let steps = n as usize;
+        let steps = a[2].max(1.0).min(100.0) as usize;
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, (steps + 1) as R_xlen_t);
         if result.is_null() {
             return crate::sexp::globals::R_NilValue();
         }
         for i in 0..=steps {
             let t = i as f64 / steps as f64;
-            *REAL(result).add(i) = lo * (1.0 - t) + hi * t;
+            *REAL(result).add(i) = a[0] * (1.0 - t) + a[1] * t;
         }
         result
     }
