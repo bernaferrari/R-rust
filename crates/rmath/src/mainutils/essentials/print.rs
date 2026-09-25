@@ -1476,7 +1476,7 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 " symbol".to_string()
             };
             str_emit_line(&format!("{} {}", prefix, lines.join(" ")));
-
+            str_emit_nonstandard_attrs(x, &["names"]);
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }
