@@ -605,6 +605,17 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let _guard = protect(result);
         let out = REAL(result);
 
+        let format_arg = arg_by_name_or_position(args, &["format"], 1);
+        let format = if TYPEOF(format_arg) == SEXPTYPE::STRSXP && XLENGTH(format_arg) > 0 {
+            let ch = STRING_ELT(format_arg, 0);
+            if ch.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned()
+            }
+        } else {
+            String::new()
+        };
         if TYPEOF(x) == SEXPTYPE::STRSXP {
             for i in 0..n {
                 let value = STRING_ELT(x, i);
@@ -620,6 +631,11 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                         f64::NEG_INFINITY
                     } else if text.eq_ignore_ascii_case("NaN") {
                         f64::NAN
+                    } else if format == "%Y"
+                        && text.len() == 4
+                        && text.chars().all(|c| c.is_ascii_digit())
+                    {
+                        parse_iso_date_days(&format!("{text}-01-01")).unwrap_or(NA_REAL)
                     } else {
                         parse_iso_date_days(text).unwrap_or_else(|| {
                             base_error(
