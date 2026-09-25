@@ -499,7 +499,13 @@ fn needs_scientific(v: f64) -> bool {
     }
     let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
     let exponent = v.abs().log10().floor() as i32;
-    !(-4..digits).contains(&exponent)
+    if (-4..digits).contains(&exponent) {
+        return false;
+    }
+    let scipen = unsafe { crate::mainutils::options::GetOptionScipen() };
+    let fixed = if exponent >= 0 { exponent + 1 } else { -exponent + 1 };
+    let sci = 6 + exponent.abs().to_string().len() as i32;
+    fixed > sci + scipen
 }
 
 fn is_finite_r_number(v: f64) -> bool {
