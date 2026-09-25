@@ -733,6 +733,14 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             elt_to_string(quote_arg, 0)
         };
+        let na_arg = by_slot(&["na.strings"], 8);
+        let na_strings: Vec<String> = if na_arg.is_null() || na_arg == R_NilValue() {
+            vec!["NA".to_string()]
+        } else if TYPEOF(na_arg) == SEXPTYPE::STRSXP {
+            (0..XLENGTH(na_arg)).map(|i| elt_to_string(na_arg, i)).collect()
+        } else {
+            vec!["NA".to_string()]
+        };
         let n_arg = named_arg(args, "n");
         let n_limit = match n_arg {
             Some(v) if !v.is_null() && v != R_NilValue() => real_or_default(v, -1.0) as i64,
@@ -782,8 +790,10 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let _p = protect(result);
             let dst = INTEGER(result);
             for (i, value) in values.iter().enumerate() {
-                let parsed = if value == "NA" {
+                let parsed = if na_strings.iter().any(|s| s == value) {
                     NA_INTEGER
+                } else if value == "NA" {
+                    scan_error(format!("scan() expected an integer, got '{value}'"))
                 } else {
                     value.parse::<c_int>().unwrap_or_else(|_| {
                         scan_error(format!("scan() expected an integer, got '{value}'"))
@@ -800,8 +810,10 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let _p = protect(result);
             let dst = REAL(result);
             for (i, value) in values.iter().enumerate() {
-                let parsed = if value == "NA" {
+                let parsed = if na_strings.iter().any(|s| s == value) {
                     NA_REAL
+                } else if value == "NA" {
+                    scan_error(format!("scan() expected a real, got '{value}'"))
                 } else {
                     crate::mainutils::coerce::parse_double_str(value).unwrap_or_else(|| {
                         scan_error(format!("scan() expected a real, got '{value}'"))
