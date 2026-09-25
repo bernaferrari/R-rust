@@ -1509,10 +1509,10 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              nx <- names(x)\n\
              matchAsChar <- is.object(x) ||\n\
                  !(is.character(x) || is.integer(x) || is.logical(x))\n\
+             if (matchAsChar) x <- as.character(x)\n\
              if (missing(levels)) {\n\
                  y <- unique(x, nmax = nmax)\n\
                  ind <- order(y)\n\
-                 if (matchAsChar) y <- as.character(y)\n\
                  levels <- unique(y[ind])\n\
              }\n\
              force(ordered)\n\
