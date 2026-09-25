@@ -114,11 +114,10 @@ pub unsafe fn do_qr_Q(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             qr_q_error("invalid QR decomposition fields")
         }
         let lapack_flag = getAttrib(obj, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
-        // Cdqrls stores DGEQP3 tau and does not set the flag. Only an
-        // explicit FALSE is the LINPACK u[0]=qraux storage.
-        let lapack = !(TYPEOF(lapack_flag) == SEXPTYPE::LGLSXP
+        // GNU uses LAPACK only when useLAPACK is TRUE. A plain qr() is LINPACK.
+        let lapack = TYPEOF(lapack_flag) == SEXPTYPE::LGLSXP
             && XLENGTH(lapack_flag) == 1
-            && LOGICAL_ELT(lapack_flag, 0) == 0);
+            && LOGICAL_ELT(lapack_flag, 0) != 0;
         let transforms = if lapack {
             k
         } else {
