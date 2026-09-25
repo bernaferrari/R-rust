@@ -2416,24 +2416,6 @@ pub unsafe fn do_levels_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             return R_NilValue();
         }
 
-        if TYPEOF(value) == SEXPTYPE::STRSXP {
-            let mut seen = Vec::new();
-            for i in 0..XLENGTH(value) {
-                let ch = STRING_ELT(value, i);
-                let level = if ch == crate::sexp::globals::R_NaString() {
-                    "\u{0}NA".to_string()
-                } else {
-                    elt_to_string(value, i)
-                };
-                if seen.iter().any(|existing: &String| existing == &level) {
-                    crate::mainutils::errors::errorcall_str(
-                        call,
-                        &format!("factor level [{}] is duplicated", i + 1),
-                    );
-                }
-                seen.push(level);
-            }
-        }
         let result = if inherits_class(x, "factor") {
             replace_factor_levels(x, value)
         } else {
