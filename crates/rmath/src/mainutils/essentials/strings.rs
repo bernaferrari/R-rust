@@ -3879,7 +3879,31 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
         if string_arg_is_na(pattern_arg) {
-            return na_integer_vector(XLENGTH(x_arg));
+            let value = logical_arg_by_name_or_position(args, "value", 3).unwrap_or(false);
+            let n = XLENGTH(x_arg);
+            if !value {
+                return na_integer_vector(n);
+            }
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _result_guard = protect(result);
+            for i in 0..n {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+            }
+            let src_names = crate::sexp::attrib_core::getAttrib(
+                x_arg,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !src_names.is_null()
+                && TYPEOF(src_names) == SEXPTYPE::STRSXP
+                && XLENGTH(src_names) == n
+            {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    src_names,
+                );
+            }
+            return result;
         }
         let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
         let value = logical_arg_by_name_or_position(args, "value", 3).unwrap_or(false);
@@ -3993,7 +4017,31 @@ pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
         if string_arg_is_na(pattern_arg) {
-            return na_integer_vector(XLENGTH(x_arg));
+            let value = named_logical_arg(args, "value").unwrap_or(false);
+            let n = XLENGTH(x_arg);
+            if !value {
+                return na_integer_vector(n);
+            }
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _result_guard = protect(result);
+            for i in 0..n {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+            }
+            let src_names = crate::sexp::attrib_core::getAttrib(
+                x_arg,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !src_names.is_null()
+                && TYPEOF(src_names) == SEXPTYPE::STRSXP
+                && XLENGTH(src_names) == n
+            {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    src_names,
+                );
+            }
+            return result;
         }
         let value = named_logical_arg(args, "value").unwrap_or(false);
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
