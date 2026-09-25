@@ -1600,7 +1600,24 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 STR_LEVEL.store(max_level, std::sync::atomic::Ordering::Relaxed);
                 STR_LIST_LEN.store(list_len, std::sync::atomic::Ordering::Relaxed);
                 let show = n.min(list_len.max(0) as R_xlen_t);
-                str_emit_line(&format!("List of {n}"));
+                let class_attr = crate::sexp::attrib_core::getAttrib(
+                    x,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                );
+                let mut header = format!("List of {n}");
+                if TYPEOF(class_attr) == SEXPTYPE::STRSXP && XLENGTH(class_attr) > 0 {
+                    let cname = elt_to_string(class_attr, 0);
+                    let meth = format!("length.{cname}\0");
+                    let sym = Rf_install(meth.as_ptr() as *const std::os::raw::c_char);
+                    let found = crate::sexp::envir::R_findVar(
+                        sym,
+                        crate::sexp::globals::R_GlobalEnv(),
+                    );
+                    if found != crate::sexp::globals::R_UnboundValue() {
+                        header = format!("Class '{cname}'  hidden list of {n}");
+                    }
+                }
+                str_emit_line(&header);
                 let raw_names: Vec<String> = (0..show)
                     .map(|i| {
                         if has_names && i < XLENGTH(names) {
