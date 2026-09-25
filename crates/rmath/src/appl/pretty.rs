@@ -137,8 +137,16 @@ pub extern "C" fn R_pretty(
         }
     }
 
-    let mut ns = floor(lo_ / unit + ROUNDING_EPS);
-    let mut nu = ceil(up_ / unit - ROUNDING_EPS);
+    let lo_use = if lo_.is_finite() { lo_ } else if lo_.is_sign_negative() { -cell } else { cell };
+    let up_use = if up_.is_finite() { up_ } else if up_.is_sign_negative() { -cell } else { cell };
+    let mut ns = floor(lo_use / unit + ROUNDING_EPS);
+    let mut nu = ceil(up_use / unit - ROUNDING_EPS);
+    if !ns.is_finite() {
+        ns = -(dbL_MAX / unit).floor();
+    }
+    if !nu.is_finite() {
+        nu = (dbL_MAX / unit).floor();
+    }
 
     if eps_correction > 0 && (eps_correction > 1 || !i_small) {
         let d_max = dbL_MAX * (1.0 - ldexp(dbL_EPSILON, -1));
@@ -163,12 +171,6 @@ pub extern "C" fn R_pretty(
         }
     }
 
-    if !ns.is_finite() {
-        ns = 0.0;
-    }
-    if !nu.is_finite() {
-        nu = 0.0;
-    }
     let mut guard = 0;
     while ns * unit > unsafe { *lo } + ROUNDING_EPS * unit && guard < 10000 {
         ns -= 1.0;
