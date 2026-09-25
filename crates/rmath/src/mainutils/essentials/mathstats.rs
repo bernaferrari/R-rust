@@ -14884,8 +14884,7 @@ pub unsafe fn do_beta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         apply_binary_scalar_fn(call, a, b, |x, y| {
-            crate::special::gamma::gammafn(x) * crate::special::gamma::gammafn(y)
-                / crate::special::gamma::gammafn(x + y)
+            crate::special::lbeta::lbeta(x, y).exp()
         })
     }
 }
