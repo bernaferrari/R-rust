@@ -115,7 +115,11 @@ unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) ->
             err("invalid QR decomposition fields");
         }
         let lap = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
-        let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP && XLENGTH(lap) == 1 && LOGICAL_ELT(lap, 0) == 1;
+        // Cdqrls stores DGEQP3 tau and does not set the flag. Only an
+        // explicit FALSE is the LINPACK u[0]=qraux storage.
+        let lap = !(TYPEOF(lap) == SEXPTYPE::LGLSXP
+            && XLENGTH(lap) == 1
+            && LOGICAL_ELT(lap, 0) == 0);
         let t = if lap {
             k
         } else {
@@ -195,24 +199,43 @@ unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) ->
             if tau == 0.0 {
                 continue;
             }
-            let scale = if lap { 1.0 } else { 1.0 / tau };
+            let scale = if lap { 1.0 } else { 0.0 };
             for col in 0..cols {
                 crate::eval::limits::poll_computation();
-                let mut dot = *REAL(out).add(j + col * m);
-                for i in j + 1..m {
-                    if i % 4096 == 0 {
-                        crate::eval::limits::poll_computation();
+                if lap {
+                    let mut dot = *REAL(out).add(j + col * m);
+                    for i in j + 1..m {
+                        if i % 4096 == 0 {
+                            crate::eval::limits::poll_computation();
+                        }
+                        dot += *REAL(f).add(i + j * m) * *REAL(out).add(i + col * m);
                     }
-                    dot += *REAL(f).add(i + j * m) * scale * *REAL(out).add(i + col * m)
-                }
-                let z = tau * dot;
-                *REAL(out).add(j + col * m) -= z;
-                for i in j + 1..m {
-                    if i % 4096 == 0 {
-                        crate::eval::limits::poll_computation();
+                    let z = tau * dot;
+                    *REAL(out).add(j + col * m) -= z;
+                    for i in j + 1..m {
+                        if i % 4096 == 0 {
+                            crate::eval::limits::poll_computation();
+                        }
+                        *REAL(out).add(i + col * m) -= z * *REAL(f).add(i + j * m);
                     }
-                    *REAL(out).add(i + col * m) -= z * scale * *REAL(f).add(i + j * m)
+                } else {
+                    let mut dot = tau * *REAL(out).add(j + col * m);
+                    for i in j + 1..m {
+                        if i % 4096 == 0 {
+                            crate::eval::limits::poll_computation();
+                        }
+                        dot += *REAL(f).add(i + j * m) * *REAL(out).add(i + col * m);
+                    }
+                    let t = -dot / tau;
+                    *REAL(out).add(j + col * m) += t * tau;
+                    for i in j + 1..m {
+                        if i % 4096 == 0 {
+                            crate::eval::limits::poll_computation();
+                        }
+                        *REAL(out).add(i + col * m) += t * *REAL(f).add(i + j * m);
+                    }
                 }
+                let _ = scale;
             }
         }
         if matrix {
