@@ -2917,6 +2917,7 @@ impl<'arena> Parser<'arena> {
                 match self.peek() {
                     Token::Assign => {
                         self.advance();
+                        self.skip_newlines();
                         let val = if self.peek() == &Token::Comma || self.peek() == &Token::RParen {
                             unsafe { crate::sexp::globals::R_MissingArg() }
                         } else {
