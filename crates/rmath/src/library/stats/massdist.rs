@@ -17,18 +17,9 @@ use crate::sexp::protect::protect;
 // Helper: asInteger -- extract a scalar integer from an SEXP
 // ---------------------------------------------------------------------------
 
-/// Extract a scalar integer value from an SEXP.
-/// Returns NA_INTEGER if the SEXP is NULL or not an integer/real vector.
+/// GNU `asInteger`: doubles such as `max(n, 512)` are valid bin counts.
 unsafe fn as_integer(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            return NA_INTEGER;
-        }
-        if INTEGER(s).is_null() {
-            return NA_INTEGER;
-        }
-        *INTEGER(s)
-    }
+    unsafe { crate::mainutils::coerce::asInteger(s) }
 }
 
 // ---------------------------------------------------------------------------
