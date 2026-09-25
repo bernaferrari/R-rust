@@ -429,15 +429,38 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
 
-        eval_base_binding(base_env, "as.data.frame.raw", "as.data.frame.vector");
-        eval_base_binding(base_env, "as.data.frame.factor", "as.data.frame.vector");
-        eval_base_binding(base_env, "as.data.frame.ordered", "as.data.frame.vector");
-        eval_base_binding(base_env, "as.data.frame.integer", "as.data.frame.vector");
-        eval_base_binding(base_env, "as.data.frame.logical", "as.data.frame.vector");
-        eval_base_binding(base_env, "as.data.frame.numeric", "as.data.frame.vector");
-        eval_base_binding(base_env, "as.data.frame.complex", "as.data.frame.vector");
-        eval_base_binding(base_env, "as.data.frame.Date", "as.data.frame.vector");
-        eval_base_binding(base_env, "as.data.frame.POSIXct", "as.data.frame.vector");
+        for cls in [
+            "raw",
+            "factor",
+            "ordered",
+            "integer",
+            "logical",
+            "numeric",
+            "complex",
+            "Date",
+            "difftime",
+            "POSIXct",
+            "noquote",
+            "numeric_version",
+        ] {
+            let src = format!(
+                "function(x, ...) {{ if (!exists(\".Generic\", inherits = FALSE)) warning(\"Direct call of 'as.data.frame.{cls}()' is deprecated.  Use 'as.data.frame.vector()' or 'as.data.frame()' instead\", call. = TRUE, domain = NA); as.data.frame.vector(x, ...) }}"
+            );
+            eval_base_binding(base_env, &format!("as.data.frame.{cls}"), &src);
+        }
+        eval_base_binding(
+            base_env,
+            "noquote",
+            "function(obj) structure(obj, class = \"noquote\")",
+        );
+        eval_base_binding(
+            base_env,
+            "numeric_version",
+            "function(x, strict = TRUE) structure(x, class = \"numeric_version\")",
+        );
+        eval_base_binding(base_env, "as.numeric_version", "numeric_version");
+        eval_base_binding(base_env, "as.Date", "as.Date");
+        eval_base_binding(base_env, "as.POSIXct", "as.POSIXct");
         eval_base_binding(
             base_env,
             "as.data.frame.POSIXlt",
