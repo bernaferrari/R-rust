@@ -3890,20 +3890,39 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 return R_NilValue();
             }
             let _result_guard = protect(result);
-            for (out_idx, src_idx) in matches.into_iter().enumerate() {
+            let index = matches.clone();
+            for (out_idx, src_idx) in index.iter().enumerate() {
                 if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
-                    SET_STRING_ELT(result, out_idx as R_xlen_t, STRING_ELT(x_arg, src_idx));
+                    SET_STRING_ELT(result, out_idx as R_xlen_t, STRING_ELT(x_arg, *src_idx));
                 } else {
                     SET_STRING_ELT(
                         result,
                         out_idx as R_xlen_t,
                         Rf_mkChar(
-                            CString::new(elt_to_string(x_arg, src_idx))
+                            CString::new(elt_to_string(x_arg, *src_idx))
                                 .unwrap_or_default()
                                 .as_ptr(),
                         ),
                     );
                 }
+            }
+            let src_names = crate::sexp::attrib_core::getAttrib(
+                x_arg,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !src_names.is_null() && TYPEOF(src_names) == SEXPTYPE::STRSXP {
+                let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, XLENGTH(result));
+                let _out_names = protect(out_names);
+                for (out_idx, src_idx) in index.iter().enumerate() {
+                    if *src_idx < XLENGTH(src_names) {
+                        SET_STRING_ELT(out_names, out_idx as R_xlen_t, STRING_ELT(src_names, *src_idx));
+                    }
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    out_names,
+                );
             }
             result
         } else {
