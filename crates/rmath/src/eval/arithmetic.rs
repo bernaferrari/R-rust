@@ -2243,15 +2243,18 @@ unsafe fn copy_all_attrib(dst: SEXP, src: SEXP) {
 /// ceiling, floor, trunc, round, sign.
 pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if args.is_null() || args == R_NilValue() {
+            let op_name = get_op_name(op, call);
+            arithmetic_error(format!(
+                "0 arguments passed to '{op_name}' which requires 1"
+            ));
+        }
         crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
         if let Some(result) = try_group_dispatch(b"Math\0", call, op, args, rho) {
             return result;
         }
         let op_name = get_op_name(op, call);
         let x = CAR(args);
-        if x.is_null() {
-            return R_NilValue();
-        }
         if x == R_NilValue() {
             // stock Math1: NULL is not numeric and errors
             arithmetic_error("non-numeric argument to mathematical function");

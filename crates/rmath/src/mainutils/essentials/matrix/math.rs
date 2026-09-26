@@ -302,12 +302,21 @@ pub unsafe fn do_tanpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `sin(x)` — sine function.
 pub unsafe fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if args.is_null() || args == R_NilValue() {
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "0 arguments passed to 'sin' which requires 1",
+            );
+        }
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
         }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "non-numeric argument to mathematical function",
+            );
         }
 
 
