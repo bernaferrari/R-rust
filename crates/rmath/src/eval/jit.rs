@@ -731,6 +731,25 @@ unsafe fn tailcall_promise_args(call: SEXP, rho: SEXP) -> SEXP {
             if TYPEOF(expr) == SEXPTYPE::PROMSXP {
                 expr = crate::sexp::accessors::PRCODE(expr);
             }
+            if expr == crate::sexp::symbol::R_DotsSymbol() {
+                let dots = crate::sexp::envir::R_findVarInFrame(rho, expr);
+                let mut n = 0i32;
+                if TYPEOF(dots) == SEXPTYPE::DOTSXP {
+                    let mut dh = dots;
+                    while !dh.is_null() && dh != R_NilValue() {
+                        n += 1;
+                        dh = CDR(dh);
+                    }
+                }
+                src = CDR(src);
+                for _ in 0..n {
+                    if dst.is_null() || dst == R_NilValue() {
+                        break;
+                    }
+                    dst = CDR(dst);
+                }
+                continue;
+            }
             if TYPEOF(expr) == SEXPTYPE::SYMSXP {
                 let found = crate::sexp::envir::R_findVarInFrame(rho, expr);
                 if found == R_MissingArg()

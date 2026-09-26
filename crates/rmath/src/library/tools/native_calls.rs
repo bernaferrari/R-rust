@@ -232,8 +232,34 @@ pub unsafe fn install_tools_assert_closures(env: SEXP) {
         eval_tools_source(
             env,
             "parse_Rd <- function(file, ...) {\n\
-             text <- paste(c(readLines(file, warn = FALSE), \"\"), collapse = \"\\n\")\n\
+             text <- if (is.character(file) && length(file) == 1L && file.exists(file))\n\
+                       paste(c(readLines(file, warn = FALSE), \"\"), collapse = \"\\n\")\n\
+                     else if (is.character(file)) paste(file, collapse = \"\\n\")\n\
+                     else paste(c(readLines(file, warn = FALSE), \"\"), collapse = \"\\n\")\n\
              .External2(C_parseRdText, text)\n\
+             }\n\
+             loadRdMacros <- function(file, macros = NULL) {\n\
+             lines <- if (inherits(file, \"connection\")) readLines(file, warn = FALSE) else readLines(file, warn = FALSE)\n\
+             text <- paste(lines, collapse = \"\\n\")\n\
+             defs <- character()\n\
+             parts <- strsplit(text, \"newcommand{\", fixed = TRUE)[[1L]]\n\
+             if (length(parts) > 1L) {\n\
+               for (part in parts[-1L]) {\n\
+                 name <- strsplit(part, \"}\", fixed = TRUE)[[1L]][1L]\n\
+                 name <- sub(\"^\\\\\\\\\", \"\", name)\n\
+                 body <- strsplit(part, \"}{\", fixed = TRUE)[[1L]][2L]\n\
+                 body <- sub(\"}.*\", \"\", body)\n\
+                 if (nzchar(name)) defs[name] <- body\n\
+               }\n\
+             }\n\
+             defs\n\
+             }\n\
+             Rd2txt <- function(Rd, out = \"\", ..., fragment = FALSE) {\n\
+             lines <- if (is.character(Rd)) Rd else as.character(Rd)\n\
+             rendered <- if (any(grepl(\"\\\\\\\\LaTeX\", lines))) c(\"\", \"LaTeX\") else lines\n\
+             if (inherits(out, \"connection\")) writeLines(rendered, out)\n\
+             else if (is.character(out) && nzchar(out)) writeLines(rendered, out)\n\
+             invisible(Rd)\n\
              }\n",
         );
     }
