@@ -249,6 +249,17 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if key_vecs.is_empty() || key_vecs[0].is_null() || key_vecs[0] == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
+        let kt = TYPEOF(key_vecs[0]);
+        if kt != SEXPTYPE::LGLSXP
+            && kt != SEXPTYPE::INTSXP
+            && kt != SEXPTYPE::REALSXP
+            && kt != SEXPTYPE::CPLXSXP
+            && kt != SEXPTYPE::STRSXP
+            && kt != SEXPTYPE::RAWSXP
+        {
+            base_error("unimplemented type in 'order'".to_string());
+        }
+
         let ordered_indices = if key_vecs.len() == 1 {
             ordered_atomic_indices(key_vecs[0], decreasing, na_placement)
         } else {
@@ -1724,6 +1735,14 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             return do_cut_POSIXt(_call, _op, args, _rho);
         }
+        if sexp_has_class(x, "dendrogram") {
+            let sym = Rf_install(b"cut.dendrogram\0".as_ptr() as *const libc::c_char);
+            let fun = crate::eval::eval::Rf_eval(sym, crate::sexp::globals::R_BaseEnv());
+            if !fun.is_null() && fun != R_NilValue() && TYPEOF(fun) == SEXPTYPE::CLOSXP {
+                return crate::eval::closure::applyClosure(_call, fun, args, _rho, _rho, 0);
+            }
+        }
+
         let n = XLENGTH(x);
         let mut break_pts: Vec<f64> = Vec::new();
         if !breaks_arg.is_null() && breaks_arg != R_NilValue() {
