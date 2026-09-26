@@ -569,11 +569,21 @@ pub unsafe fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
     unsafe {
         let data = CAR(_args);
         let con = CAR(CDR(_args));
-        let new_line = if CDR(CDR(_args)) == R_NilValue() {
-            true
-        } else {
-            check_logical_arg(CAR(CDR(CDR(_args))), "newLine") != 0
-        };
+        let mut new_line = true;
+        let mut cell = CDR(CDR(_args));
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = crate::sexp::accessors::TAG(cell);
+            let name = if tag.is_null() {
+                None
+            } else {
+                crate::sexp::symbol::symbol_name_from_ptr(tag)
+            };
+            if name.as_deref().unwrap_or("").is_empty() || name.as_deref() == Some("newLine") {
+                new_line = check_logical_arg(CAR(cell), "newLine") != 0;
+                break;
+            }
+            cell = CDR(cell);
+        }
 
         if TYPEOF(data) != SEXPTYPE::STRSXP {
             r_error("'data' must be a character vector");
