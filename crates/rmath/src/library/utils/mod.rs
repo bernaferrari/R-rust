@@ -27,6 +27,12 @@ pub(crate) unsafe fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
                 _,
             >(c_octsize)
         }),
+        "objectSize" | "C_objectSize" => Some(unsafe {
+            std::mem::transmute::<
+                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
+                _,
+            >(c_object_size)
+        }),
         "typeconvert" | "C_typeconvert" => Some(unsafe {
             std::mem::transmute::<
                 unsafe extern "C-unwind" fn(
@@ -51,6 +57,9 @@ unsafe extern "C-unwind" fn c_readtablehead(args: crate::sexp::ffi::SEXP) -> cra
 }
 unsafe extern "C-unwind" fn c_octsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { stubs::octsize(args) }
+}
+unsafe extern "C-unwind" fn c_object_size(x: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe { size::objectSize(x) }
 }
 
 unsafe extern "C-unwind" fn c_typeconvert(
@@ -80,6 +89,12 @@ pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
         crate::sexp::envir::defineVar(
             crate::sexp::symbol::Rf_install(convert.as_ptr()),
             crate::sexp::constructors::Rf_mkString(convert.as_ptr()),
+            env,
+        );
+        let size = std::ffi::CString::new("C_objectSize").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(size.as_ptr()),
+            crate::sexp::constructors::Rf_mkString(size.as_ptr()),
             env,
         );
         let parsed = crate::sexp::memory::with_arena(|arena| {
