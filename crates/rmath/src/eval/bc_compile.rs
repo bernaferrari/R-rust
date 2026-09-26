@@ -96,6 +96,13 @@ impl BytecodeCompiler {
                     if expr == R_DotsSymbol() {
                         return false;
                     }
+                    // A missing subscript (`x[]`) is the R_MissingArg sentinel,
+                    // not a variable lookup.
+                    if expr == crate::sexp::globals::R_MissingArg() {
+                        let idx = self.add_const(expr);
+                        self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                        return true;
+                    }
                     let idx = self.add_const(expr);
                     self.emit_operand(opcodes::OP_GETVAR, idx);
                     true
@@ -321,6 +328,9 @@ impl BytecodeCompiler {
         unsafe {
             let lhs = CAR(CDR(expr));
             let rhs = CAR(CDR(CDR(expr)));
+            if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
+                return self.compile_subassign(expr, false);
+            }
             let binds_compiled_fun = is_function_syntax(rhs);
             if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
                 return false;
@@ -334,6 +344,61 @@ impl BytecodeCompiler {
         }
     }
 
+    /// `x[] <- rhs` is `` `<-`(`[`(x, ...), rhs) ``. The value is the
+    /// modified object, which for a full replacement of a length-1 vector
+    /// is the RHS, and the symbol is written back.
+    unsafe fn compile_subassign(&mut self, expr: SEXP, superassign: bool) -> bool {
+        unsafe {
+            let lhs = CAR(CDR(expr));
+            let rhs = CAR(CDR(CDR(expr)));
+            if TYPEOF(lhs) != SEXPTYPE::LANGSXP {
+                return false;
+            }
+            let double = match symbol_name_from_sexp(CAR(lhs)).as_deref() {
+                Some("[") => false,
+                Some("[[") => true,
+                _ => return false,
+            };
+            let object = CAR(CDR(lhs));
+            if TYPEOF(object) != SEXPTYPE::SYMSXP || !self.compile_expr(object) {
+                return false;
+            }
+            let mut index = CDR(CDR(lhs));
+            let mut n_index = 0;
+            while !index.is_null() && index != R_NilValue() {
+                n_index += 1;
+                if !self.compile_expr(CAR(index)) {
+                    return false;
+                }
+                index = CDR(index);
+            }
+            if n_index == 0 {
+                let missing = crate::sexp::globals::R_MissingArg();
+                let missing_idx = self.add_const(missing);
+                self.emit_operand(opcodes::OP_PUSHCONST, missing_idx);
+                n_index = 1;
+            }
+            if !self.compile_expr(rhs) {
+                return false;
+            }
+            let op_sym = crate::sexp::symbol::Rf_install(if double {
+                c"[[<-".as_ptr()
+            } else {
+                c"[<-".as_ptr()
+            });
+            let fun_idx = self.add_const(op_sym);
+            self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
+            self.emit_operand(opcodes::OP_CALL, n_index + 2);
+            let symbol_idx = self.add_const(object);
+            if superassign {
+                self.emit_operand(opcodes::OP_SETVAR2, symbol_idx);
+            } else {
+                self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
+            }
+            true
+        }
+    }
+
 
     /// `<<-`: compile the value, then store into the enclosing frame via
     /// OP_SETVAR2 (eval.c SETVAR2 semantics; the value stays on the stack).
@@ -341,6 +406,9 @@ impl BytecodeCompiler {
         unsafe {
             let lhs = CAR(CDR(expr));
             let rhs = CAR(CDR(CDR(expr)));
+            if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
+                return self.compile_subassign(expr, true);
+            }
             if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
                 return false;
             }
@@ -498,6 +566,10 @@ fn is_eager_builtin_call(name: &str) -> bool {
             | "seq_len"
             | "seq_along"
             | ":"
+            | "["
+            | "[<-"
+            | "[["
+            | "[[<-"
     )
 }
 

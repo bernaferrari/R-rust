@@ -3358,8 +3358,12 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
                         let forced =
                             with_stack_rooted(&stack, val, || unsafe { forcePromise(val) });
+                        crate::sexp::accessors::SET_NAMED(forced, 2);
                         stack.push(forced);
                     } else {
+                        // GNU GETVAR marks the loaded value shared so a later
+                        // `[<-` duplicates instead of mutating this stack slot.
+                        crate::sexp::accessors::SET_NAMED(val, 2);
                         stack.push(val);
                     }
                 }
