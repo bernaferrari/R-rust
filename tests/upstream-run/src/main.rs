@@ -31,6 +31,23 @@ fn main() -> ExitCode {
             std::env::set_var("TZ", "UTC");
         }
     }
+    if std::env::var_os("COPYFILE_DISABLE").is_none() {
+        unsafe {
+            std::env::set_var("COPYFILE_DISABLE", "1");
+        }
+    }
+    if std::env::var_os("SRCDIR").is_none() {
+        if let Some(dir) = std::path::Path::new(path).parent() {
+            if let Some(dir) = dir.to_str() {
+                if !dir.is_empty() {
+                    unsafe {
+                        std::env::set_var("SRCDIR", dir);
+                    }
+                }
+            }
+        }
+    }
+
 
     let mut session = RSession::new();
     session.enable_host_process_capabilities();
