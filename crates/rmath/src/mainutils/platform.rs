@@ -968,23 +968,23 @@ pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let secs = if nt == 0 {
                 f64::NAN
             } else {
-                *REAL(times).add(i.min(nt as usize - 1))
+                *REAL(times).add(i % nt as usize)
             };
             let ok = if elt.is_null() || !secs.is_finite() {
                 false
             } else {
                 let path = crate::sexp::accessors::CHAR(elt);
-                let text = std::ffi::CStr::from_ptr(path).to_string_lossy();
-                let when = UNIX_EPOCH + Duration::from_secs_f64(secs);
-                OpenOptions::new()
-                    .write(true)
-                    .open(text.as_ref())
-                    .and_then(|f| f.set_modified(when))
-                    .is_ok()
+                let whole = secs.trunc() as i64;
+                let nsec = ((secs - whole as f64) * 1e9) as i64;
+                let ts = libc::timespec {
+                    tv_sec: whole,
+                    tv_nsec: nsec,
+                };
+                let times_buf = [ts, ts];
+                libc::utimensat(libc::AT_FDCWD, path, times_buf.as_ptr(), 0) == 0
             };
             *LOGICAL(ans).add(i) = if ok { 1 } else { 0 };
         }
-        let _ = SET_STRING_ELT;
         ans
     }
 }
