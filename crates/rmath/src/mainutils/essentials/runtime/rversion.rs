@@ -40,12 +40,16 @@ use crate::sexp::symbol::Rf_install;
 // R runtime essentials
 // ---------------------------------------------------------------------------
 
+#[cfg(target_os = "macos")]
+const R_VERSION_OS: &str = "darwin";
+#[cfg(not(target_os = "macos"))]
+const R_VERSION_OS: &str = std::env::consts::OS;
 unsafe fn make_r_version_list(simple_list_class: bool) -> SEXP {
     unsafe {
         let fields = [
             ("platform", "rust-port"),
             ("arch", std::env::consts::ARCH),
-            ("os", std::env::consts::OS),
+            ("os", R_VERSION_OS),
             ("system", "rust-port"),
             ("status", ""),
             ("major", "4"),
