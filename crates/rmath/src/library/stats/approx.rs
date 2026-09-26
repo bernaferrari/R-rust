@@ -36,7 +36,7 @@ fn approx1(v: c_double, x: &[c_double], y: &[c_double], meth: &appr_meth) -> c_d
         return meth.yhigh;
     }
 
-    while i < j - 1 {
+    while j > i + 1 {
         let ij = (i + j) / 2;
         if v < x[ij] {
             j = ij;

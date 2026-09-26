@@ -1881,9 +1881,10 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         );
 
         let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
-        // GNU exists(x, where, envir, frame, mode, inherits). A string at
-        // position 1 is `where` (search-path name), not `mode`.
-        let mode_arg = arg_by_name_or_position(args, &["mode"], 4);
+        // The base closure is
+        // exists(x, where, envir, frame, mode, inherits) and calls
+        // .Internal(exists(x, envir, mode, inherits)). mode is argument 2.
+        let mode_arg = arg_by_name_or_position(args, &["mode"], 2);
         let mode = if mode_arg.is_null() || mode_arg == R_NilValue() || XLENGTH(mode_arg) == 0 {
             "any".to_string()
         } else if TYPEOF(mode_arg) == SEXPTYPE::STRSXP {
