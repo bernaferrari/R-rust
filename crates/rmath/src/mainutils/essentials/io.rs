@@ -660,6 +660,10 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let mut scan_conn_idx: Option<i32> = None;
         let mut scan_conn_bytes: Vec<u8> = Vec::new();
+        let nlines = match named_arg(args, "nlines") {
+            Some(nl) if !nl.is_null() && nl != R_NilValue() => real_or_default(nl, -1.0) as i64,
+            _ => -1_i64,
+        };
         let contents = if let Some(text) = text {
             text
         } else {
@@ -669,12 +673,19 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let (filename, from_conn) = if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) == 1 {
                 let idx = *INTEGER(file_arg);
                 let mut bytes = Vec::new();
+                let mut lines_read = 0i64;
                 loop {
                     let b = crate::mainutils::connections::connection_fgetc(idx);
                     if b < 0 {
                         break;
                     }
                     bytes.push(b as u8);
+                    if nlines >= 0 && b == b'\n' as i32 {
+                        lines_read += 1;
+                        if lines_read >= nlines {
+                            break;
+                        }
+                    }
                 }
                 (String::from_utf8_lossy(&bytes).into_owned(), Some((idx, bytes)))
             } else if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
@@ -706,11 +717,7 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             real_or_default(nmax_arg, -1.0) as i64
         };
-        let nlines = match named_arg(args, "nlines") {
-            Some(nl) if !nl.is_null() && nl != R_NilValue() => real_or_default(nl, -1.0) as i64,
-            _ => -1_i64,
-        };
-        // nlines: only the first `nlines` lines are read (partial last line kept).
+        // nlines already limited the connection read. Trim a path/text source the same way.
         let contents = if nlines >= 0 {
             let mut kept: Vec<&str> = contents.split('\n').take(nlines as usize).collect();
             if let Some(last) = kept.last_mut() {
@@ -3066,6 +3073,7 @@ pub unsafe fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if !eos_arg.is_null() && eos_arg != R_NilValue() && TYPEOF(eos_arg) == SEXPTYPE::STRSXP {
             text.push_str(&elt_to_string(eos_arg, 0));
         }
+        text.push('\0');
 
         if inherits_class(con_arg, "connection") {
             let connection = connection_index(con_arg);
