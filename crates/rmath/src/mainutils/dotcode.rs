@@ -954,29 +954,41 @@ pub fn R_doDotCall(fun: DL_FUNC, nargs: c_int, cargs: &[SEXP], call: SEXP) -> SE
 /// .External / .External2 handler.
 pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        if native_extension_policy_enabled() {
-            native_extension_policy_error(call, ".External");
-        }
-
-        let mut ofun: DL_FUNC = None;
-        let mut symbol = R_RegisteredNativeSymbol::new(R_EXTERNAL_SYM);
-        let _vmax = vmaxget();
-        let mut buf = [0u8; MAX_SYMBOL_BYTES];
-
         if Rf_length(args) < 1 {
             errorcall(call, "'.NAME' is missing");
         }
         check1arg2(args, call, ".NAME");
-        let _args = resolveNativeRoutine(
-            args,
-            &mut ofun,
-            &mut symbol,
-            &mut buf,
-            ptr::null_mut(),
-            ptr::null_mut(),
-            call,
-            env,
-        );
+
+        let mut ofun: DL_FUNC = None;
+        if let Some(name) = ported_call_name(CAR(args)) {
+            ofun = crate::library::methods::native_calls::lookup(&name)
+                .or_else(|| crate::library::tools::native_calls::lookup(&name))
+                .or_else(|| crate::library::stats::random::lookup_call(&name))
+                .or_else(|| crate::library::splines::splines::lookup(&name))
+                .or_else(|| crate::library::utils::lookup(&name))
+                .or_else(|| crate::library::grdevices::lookup(&name))
+                .or_else(|| crate::library::graphics::lookup(&name));
+        }
+        if ofun.is_none() && native_extension_policy_enabled() {
+            native_extension_policy_error(call, ".External");
+        }
+
+        let mut symbol = R_RegisteredNativeSymbol::new(R_EXTERNAL_SYM);
+        let _vmax = vmaxget();
+        let mut buf = [0u8; MAX_SYMBOL_BYTES];
+
+        if ofun.is_none() {
+            let _args = resolveNativeRoutine(
+                args,
+                &mut ofun,
+                &mut symbol,
+                &mut buf,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                call,
+                env,
+            );
+        }
 
         if ofun.is_none() {
             if let Some(name) = ported_call_name(CAR(args)) {

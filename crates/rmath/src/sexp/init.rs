@@ -1071,7 +1071,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             include_str!("gnu_proportions.R"),
         );
         eval_base_binding(base_env, "prop.table", "proportions");
-        eval_base_binding(base_env, "pdf", "function(...) invisible(NULL)");
+        eval_base_binding(base_env, "C_PDF", "\"C_PDF\"");
+        eval_base_binding(base_env, "pdf", "function(file = \"Rplots.pdf\", ...) .External(C_PDF, file)");
         eval_base_binding(base_env, "dev.off", "function(...) 1L");
         eval_base_binding(base_env, "postscript", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "legend", "function(...) invisible(NULL)");
