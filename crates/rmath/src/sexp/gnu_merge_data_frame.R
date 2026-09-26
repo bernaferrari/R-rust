@@ -51,7 +51,7 @@ merge.data.frame <-
             names(y)[cnm] <- paste0(nm.y[cnm], suffixes[2L])
         }
         if (nx == 0L || ny == 0L) {
-            res <- cbind(x[FALSE, ], y[FALSE, ])
+            res <- cbind(x[FALSE, , drop = FALSE], y[FALSE, , drop = FALSE])
         } else {
             ij <- expand.grid(seq_len(nx), seq_len(ny))
             res <- cbind(x[ij[, 1L], , drop = FALSE],
