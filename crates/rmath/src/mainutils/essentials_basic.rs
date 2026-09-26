@@ -219,6 +219,7 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 enum CatDest {
     Stdout,
     Stderr,
+    Conn(i32),
     Path(String),
 }
 
@@ -233,10 +234,12 @@ unsafe fn cat_file_dest(file_arg: SEXP) -> CatDest {
             } else {
                 1
             };
-            return if idx == 2 {
+            return if idx <= 1 {
+                CatDest::Stdout
+            } else if idx == 2 {
                 CatDest::Stderr
             } else {
-                CatDest::Stdout
+                CatDest::Conn(idx)
             };
         }
         let path = elt_to_string(file_arg, 0);
@@ -298,6 +301,9 @@ fn emit_cat_output(output: &str, dest: CatDest, append: bool) {
             } else {
                 print!("{output}");
             }
+        }
+        CatDest::Conn(idx) => {
+            crate::mainutils::connections::connection_write_bytes(idx, output.as_bytes());
         }
     }
 }
@@ -1851,17 +1857,7 @@ pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
             }
             return result;
         }
-        let result = coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int());
-        let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        if !result.is_null()
-            && result != R_NilValue()
-            && !names.is_null()
-            && names != R_NilValue()
-            && XLENGTH(names) == XLENGTH(result)
-        {
-            crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), names);
-        }
-        result
+        coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int())
     }
 }
 
