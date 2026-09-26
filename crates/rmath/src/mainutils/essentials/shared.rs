@@ -1852,6 +1852,9 @@ pub(crate) unsafe fn load_package_namespace(
             if package == "grDevices" {
                 crate::library::grdevices::install_call_symbols(env);
             }
+            if package == "grid" {
+                crate::library::grid::install_call_symbols(env);
+            }
             if package == "graphics" {
                 crate::library::graphics::install_call_symbols(env);
             }
@@ -1934,6 +1937,9 @@ pub(crate) unsafe fn load_package_namespace(
         }
         if package == "grDevices" {
             crate::library::grdevices::install_call_symbols(package_env);
+        }
+        if package == "grid" {
+            crate::library::grid::install_call_symbols(package_env);
         }
         if package == "graphics" {
             crate::library::graphics::install_call_symbols(package_env);
