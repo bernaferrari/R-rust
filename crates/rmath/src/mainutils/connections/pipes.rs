@@ -205,7 +205,7 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEX
                 "r".to_string()
             } else {
                 let open = check_string_arg(arg2, "open");
-                if open.is_empty() {
+                if open.is_empty() || !matches!(open.as_bytes().first(), Some(b'r' | b'w' | b'a')) {
                     "r".to_string()
                 } else {
                     open
