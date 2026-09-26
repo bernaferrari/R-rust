@@ -5940,6 +5940,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_filemtime,
     },
     EvaluatedBuiltin {
+        name: "setFileTime",
+        handler: crate::mainutils::platform::do_setfiletime,
+    },
+    EvaluatedBuiltin {
         name: "list.files",
         handler: crate::mainutils::platform::do_listfiles,
     },

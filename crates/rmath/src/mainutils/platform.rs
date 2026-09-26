@@ -949,6 +949,46 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, REAL, SET_STRING_ELT, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
+        use crate::sexp::ffi::SEXPTYPE;
+        use std::fs::OpenOptions;
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+        let paths = CAR(args);
+        let times = CAR(CDR(args));
+        let n = LENGTH(paths);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _g = protect(ans);
+        let nt = if times.is_null() { 0 } else { LENGTH(times) };
+        for i in 0..n as usize {
+            let elt = STRING_ELT(paths, i as crate::sexp::ffi::R_xlen_t);
+            let secs = if nt == 0 {
+                f64::NAN
+            } else {
+                *REAL(times).add(i.min(nt as usize - 1))
+            };
+            let ok = if elt.is_null() || !secs.is_finite() {
+                false
+            } else {
+                let path = crate::sexp::accessors::CHAR(elt);
+                let text = std::ffi::CStr::from_ptr(path).to_string_lossy();
+                let when = UNIX_EPOCH + Duration::from_secs_f64(secs);
+                OpenOptions::new()
+                    .write(true)
+                    .open(text.as_ref())
+                    .and_then(|f| f.set_modified(when))
+                    .is_ok()
+            };
+            *LOGICAL(ans).add(i) = if ok { 1 } else { 0 };
+        }
+        let _ = SET_STRING_ELT;
+        ans
+    }
+}
+
 /// R's `file.size(...)` — return file sizes in bytes.
 pub unsafe fn do_filesize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
