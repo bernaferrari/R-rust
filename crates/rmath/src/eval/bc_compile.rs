@@ -601,6 +601,10 @@ fn is_eager_builtin_call(name: &str) -> bool {
             | "[<-"
             | "[["
             | "[[<-"
+            | "numeric"
+            | "rm"
+            | "makeActiveBinding"
+            | "environment"
     )
 }
 
