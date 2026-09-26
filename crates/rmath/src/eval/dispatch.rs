@@ -220,7 +220,6 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
                 }
             } else {
                 let val = Rf_eval(expr, rho);
-                if !val.is_null() { let n = crate::sexp::accessors::NAMED(val); if n < 2 { crate::sexp::accessors::SET_NAMED(val, n + 1); } }
                 push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(current));
             }
 
