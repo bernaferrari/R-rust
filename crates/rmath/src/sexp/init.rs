@@ -1638,6 +1638,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "seq.Date", include_str!("gnu_seq_Date.R"));
         eval_base_binding(base_env, "pretty.POSIXt", include_str!("gnu_pretty_date.R"));
         eval_base_binding(base_env, "path.package", include_str!("gnu_path_package.R"));
+        eval_base_binding(base_env, "Negate", include_str!("gnu_negate.R"));
         eval_base_binding(base_env, "format.summaryDefault", include_str!("gnu_format_summary.R"));
         eval_base_binding(base_env, "print.summaryDefault", include_str!("gnu_print_summary.R"));
         eval_base_binding(base_env, "summary.difftime", include_str!("gnu_summary_difftime.R"));
@@ -2428,6 +2429,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             base_env,
             ".register_print_data_frame",
             "{ registerS3method(\"print\", \"data.frame\", function(x, ...) print.data.frame(x, ...)); TRUE }",
+        );
+        eval_base_binding(
+            base_env,
+            ".register_round_posix",
+            "{ registerS3method(\"round\", \"Date\", round.Date); registerS3method(\"round\", \"POSIXt\", round.POSIXt); TRUE }",
         );
         eval_base_binding(
             base_env,
