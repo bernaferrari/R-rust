@@ -391,7 +391,7 @@ impl BytecodeCompiler {
                 scan = CDR(scan);
             }
             if !constant_indexes {
-                self.emit(opcodes::OP_MARK_SHARED);
+                self.emit(opcodes::OP_BUMP_LINK);
             }
             let mut index = CDR(CDR(lhs));
             let mut n_index = 0;
@@ -401,6 +401,9 @@ impl BytecodeCompiler {
                     return false;
                 }
                 index = CDR(index);
+            }
+            if !constant_indexes {
+                self.emit_operand(opcodes::OP_DROP_LINK, n_index);
             }
             if n_index == 0 {
                 let missing = crate::sexp::globals::R_MissingArg();

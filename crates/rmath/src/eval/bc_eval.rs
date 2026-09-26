@@ -217,6 +217,9 @@ pub mod opcodes {
     pub const OP_SETTAG: i32 = 57;
     /// Mark the stack top shared (NAMED = 2) because it stays live across a later call.
     pub const OP_MARK_SHARED: i32 = 60;
+    /// Temporary link while a later index still runs. 3 is sticky.
+    pub const OP_BUMP_LINK: i32 = 61;
+    pub const OP_DROP_LINK: i32 = 62;
     pub const OP_LAST: i32 = 58;
 }
 
@@ -3369,6 +3372,24 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 opcodes::OP_MARK_SHARED => {
                     let val = stack_top_checked(&stack, "MARK_SHARED");
                     crate::sexp::accessors::SET_NAMED(val, 2);
+                }
+
+                opcodes::OP_BUMP_LINK => {
+                    let val = stack_top_checked(&stack, "BUMP_LINK");
+                    let n = crate::sexp::accessors::NAMED(val);
+                    if n < 3 {
+                        crate::sexp::accessors::SET_NAMED(val, n + 1);
+                    }
+                }
+
+                opcodes::OP_DROP_LINK => {
+                    let depth = read_operand(code_ptr, &mut pc, code_len, "DROP_LINK");
+                    let slot = stack.depth() - 1 - depth as usize;
+                    let val = stack_at_checked(&stack, slot, "DROP_LINK");
+                    let n = crate::sexp::accessors::NAMED(val);
+                    if n > 0 && n < 3 {
+                        crate::sexp::accessors::SET_NAMED(val, n - 1);
+                    }
                 }
 
                 opcodes::OP_SETVAR => {
