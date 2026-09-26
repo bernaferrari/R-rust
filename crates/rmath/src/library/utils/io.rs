@@ -585,8 +585,11 @@ unsafe fn Strtod(
             /* exact clause for hex */
             if exact && ans > ((1u64 << 53) - 1) as c_double {
                 if i_exact == NA_LOGICAL() {
-                    // warning mode — just warn, still return
-                    // Rf_warning not easily callable with format args here; skip
+                    let msg = std::ffi::CString::new(
+                        "accuracy loss in conversion to numeric",
+                    )
+                    .unwrap_or_default();
+                    crate::mainutils::errors::Rf_warning(msg.as_ptr());
                 } else {
                     ans = NA_REAL();
                     p = nptr;
@@ -712,7 +715,11 @@ unsafe fn Strtod(
         /* exact clause */
         if exact && ans > ((1u64 << 53) - 1) as c_double {
             if i_exact == NA_LOGICAL() {
-                // warning mode — skip
+                let msg = std::ffi::CString::new(
+                    "accuracy loss in conversion to numeric",
+                )
+                .unwrap_or_default();
+                crate::mainutils::errors::Rf_warning(msg.as_ptr());
             } else {
                 ans = NA_REAL();
                 p = nptr;
