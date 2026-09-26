@@ -5263,32 +5263,40 @@ unsafe fn record_window_limits(args: SEXP) {
         let mut x_hi = xv[1];
         let mut y_lo = yv[0];
         let mut y_hi = yv[1];
-        if xlog {
-            if x_lo < -1074.0 * std::f64::consts::LOG10_2 { x_lo = (1.01 * f64::MIN_POSITIVE).log10(); }
-            if x_hi >= 308.25035 { x_hi = (0.99 * f64::MAX).log10(); }
+        if xlog && x_lo > 0.0 && x_hi > 0.0 {
+            x_lo = x_lo.log10();
+            x_hi = x_hi.log10();
         }
-        if ylog {
-            if y_lo < -1074.0 * std::f64::consts::LOG10_2 { y_lo = (1.01 * f64::MIN_POSITIVE).log10(); }
-            if y_hi >= 308.25035 { y_hi = (0.99 * f64::MAX).log10(); }
+        if ylog && y_lo > 0.0 && y_hi > 0.0 {
+            y_lo = y_lo.log10();
+            y_hi = y_hi.log10();
         }
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
         set_plot_parameter("usr", ParValue::Real(vec![x_lo, x_hi, y_lo, y_hi]));
         set_plot_parameter("xlog", ParValue::Logical(vec![if xlog { 1 } else { 0 }]));
         set_plot_parameter("ylog", ParValue::Logical(vec![if ylog { 1 } else { 0 }]));
-        if xlog {
-            let lo = x_lo.ceil().clamp(-307.0, 308.0);
-            let hi = x_hi.floor().clamp(lo, 308.0);
+        let log_axp = |lo0: f64, hi0: f64| {
+            let (a, b) = if lo0 <= hi0 { (lo0, hi0) } else { (hi0, lo0) };
+            let lo = a.ceil().clamp(-307.0, 308.0);
+            let hi = b.floor().clamp(lo, 308.0);
             let n = if hi - lo <= 2.0 { 3.0 } else if hi - lo <= 3.0 { 2.0 } else { 1.0 };
-            set_plot_parameter("xaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
+            let (p0, p1) = if lo0 <= hi0 {
+                (10f64.powf(lo), 10f64.powf(hi))
+            } else {
+                (10f64.powf(hi), 10f64.powf(lo))
+            };
+            (p0, p1, n)
+        };
+        if xlog {
+            let (p0, p1, n) = log_axp(x_lo, x_hi);
+            set_plot_parameter("xaxp", ParValue::Real(vec![p0, p1, n]));
         } else {
             let (xa0, xa1, xn) = pretty_axp(xv[0], xv[1]);
             set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
         }
         if ylog {
-            let lo = yv[0].ceil().clamp(-307.0, 308.0);
-            let hi = yv[1].floor().clamp(lo, 308.0);
-            let n = if hi - lo <= 2.0 { 3.0 } else if hi - lo <= 3.0 { 2.0 } else { 1.0 };
-            set_plot_parameter("yaxp", ParValue::Real(vec![10f64.powf(lo), 10f64.powf(hi), n]));
+            let (p0, p1, n) = log_axp(y_lo, y_hi);
+            set_plot_parameter("yaxp", ParValue::Real(vec![p0, p1, n]));
         } else {
             let (ya0, ya1, yn) = pretty_axp(yv[0], yv[1]);
             set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));

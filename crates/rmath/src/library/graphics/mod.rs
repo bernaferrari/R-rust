@@ -19,8 +19,15 @@ unsafe extern "C-unwind" fn c_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { plot::C_plot_new(call, op, args, rho) }
 }
-unsafe extern "C-unwind" fn c_plot_window(_args: SEXP) -> SEXP {
-    crate::sexp::globals::R_NilValue()
+unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::essentials::do_plot_window(
+            crate::sexp::globals::R_NilValue(),
+            crate::sexp::globals::R_NilValue(),
+            crate::sexp::accessors::CDR(args),
+            crate::sexp::globals::R_GlobalEnv(),
+        )
+    }
 }
 
 unsafe extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
