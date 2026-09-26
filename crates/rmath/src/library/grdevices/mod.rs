@@ -104,6 +104,18 @@ pub fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
     }
 }
 
+/// One-argument `.External` device routines. Not `R_CreateAtVector` or `R_GAxisPars`.
+pub fn lookup_external(name: &str) -> crate::unix::dynload::DL_FUNC {
+    let bare = name.strip_prefix("C_").unwrap_or(name);
+    match bare {
+        "PDF" | "devholdflush" | "devcur" | "devoff" | "devset"
+        | "devcontrol" | "devdisplaylist" | "devcap" | "devsize" | "devnext" | "devprev" => {
+            lookup(name)
+        }
+        _ => None,
+    }
+}
+
 pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
     unsafe {
         for name in [

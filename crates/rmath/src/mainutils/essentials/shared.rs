@@ -1832,7 +1832,7 @@ unsafe fn retarget_envref_object_parent(ns: SEXP) {
 unsafe fn install_utils_str_option(env: SEXP) {
     unsafe {
         let src = crate::sexp::constructors::Rf_mkString(
-            b"options(str = strOptions())\0".as_ptr() as *const std::os::raw::c_char,
+            b"if (is.null(getOption(\"str\"))) options(str = strOptions())\0".as_ptr() as *const std::os::raw::c_char,
         );
         let _src = crate::sexp::protect::protect(src);
         let mut status = 0i32;
