@@ -19,7 +19,7 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 /// Public names implemented by the portable compiler namespace.
-pub(crate) const EXPORTS: &[&str] = &["cmpfun", "enableJIT", "disassemble"];
+pub(crate) const EXPORTS: &[&str] = &["cmpfun", "compile", "enableJIT", "disassemble"];
 
 pub(super) fn compiler_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(RError {
@@ -102,7 +102,26 @@ pub unsafe fn do_cmpfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-/// `compiler::enableJIT(level)`, backed by the session-local JIT state used
+/// `compiler::compile(e)` — byte-compile one expression. Failure stays an
+/// error; falling back to the original AST would hide evaluation order.
+pub unsafe fn do_compile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            compiler_error("argument is missing, with no default");
+        }
+        let expr = CAR(args);
+        let env = if rho.is_null() || rho == R_NilValue() {
+            R_BaseEnv()
+        } else {
+            rho
+        };
+        match crate::eval::bc_compile::compile_expr(expr, env) {
+            Some(code) => code,
+            None => compiler_error("expression uses unsupported compiler syntax"),
+        }
+    }
+}
+
 /// on every closure invocation.
 pub unsafe fn do_enable_jit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -172,7 +191,7 @@ mod tests {
         let _session = RSession::new();
         let namespace = unsafe { namespace() };
         assert_ne!(namespace, unsafe { R_NilValue() });
-        assert_eq!(EXPORTS, &["cmpfun", "enableJIT", "disassemble"]);
+        assert_eq!(EXPORTS, &["cmpfun", "compile", "enableJIT", "disassemble"]);
     }
 
     #[test]

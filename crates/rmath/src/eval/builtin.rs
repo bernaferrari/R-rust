@@ -918,6 +918,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "cmpfun",
         handler: crate::eval::compiler::do_cmpfun,
     },
+    EvaluatedBuiltin {
+        name: "compile",
+        handler: crate::eval::compiler::do_compile,
+    },
     #[cfg(feature = "renderplot-device")]
     EvaluatedBuiltin {
         name: ".rport_grid",
@@ -1015,6 +1019,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "xtfrm.POSIXt",
+        handler: crate::mainutils::essentials::do_xtfrm_Date,
+    },
+    EvaluatedBuiltin {
+        name: "xtfrm.POSIXlt",
+        handler: crate::mainutils::essentials::do_xtfrm_Date,
+    },
+    EvaluatedBuiltin {
+        name: "xtfrm.difftime",
         handler: crate::mainutils::essentials::do_xtfrm_Date,
     },
     EvaluatedBuiltin {
@@ -2251,14 +2263,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_hat,
     },
     EvaluatedBuiltin {
-        name: "hatvalues",
-        handler: crate::mainutils::essentials::do_hatvalues,
-    },
-    EvaluatedBuiltin {
-        name: "influence.measures",
-        handler: crate::mainutils::essentials::do_influence_measures,
-    },
-    EvaluatedBuiltin {
         name: "effects",
         handler: crate::mainutils::essentials::do_effects,
     },
@@ -2267,28 +2271,12 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_numeric_deriv,
     },
     EvaluatedBuiltin {
-        name: "rstandard",
-        handler: crate::mainutils::essentials::do_rstandard,
-    },
-    EvaluatedBuiltin {
-        name: "cooks.distance",
-        handler: crate::mainutils::essentials::do_cooks_distance,
-    },
-    EvaluatedBuiltin {
         name: "dfbeta",
         handler: crate::mainutils::essentials::do_dfbeta,
     },
     EvaluatedBuiltin {
         name: "dfbetas",
         handler: crate::mainutils::essentials::do_dfbetas,
-    },
-    EvaluatedBuiltin {
-        name: "dffits",
-        handler: crate::mainutils::essentials::do_dffits,
-    },
-    EvaluatedBuiltin {
-        name: "rstudent",
-        handler: crate::mainutils::essentials::do_rstudent,
     },
     EvaluatedBuiltin {
         name: "manova",
@@ -2409,10 +2397,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "symnum",
         handler: crate::mainutils::essentials::do_symnum,
-    },
-    EvaluatedBuiltin {
-        name: "covratio",
-        handler: crate::mainutils::essentials::do_covratio,
     },
     EvaluatedBuiltin {
         name: "aov",
@@ -4267,6 +4251,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "list2env",
         handler: crate::mainutils::essentials::do_list2env,
+    },
+    EvaluatedBuiltin {
+        name: "env.profile",
+        handler: crate::mainutils::essentials::do_envprofile,
     },
     EvaluatedBuiltin {
         name: "get0",

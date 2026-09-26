@@ -494,10 +494,9 @@ impl BytecodeCompiler {
                         arena.alloc_vector(SEXPTYPE::VECSXP, (self.consts.len() + 1) as i64);
                     let consts_data = (*consts).gengc_next_node as *mut SEXP;
                     *consts_data = source_expr;
-                    for (index, value) in self.consts.iter().enumerate() {
-                        *consts_data.add(index + 1) = *value;
+                    for (index, constant) in self.consts.iter().enumerate() {
+                        *consts_data.add(index + 1) = *constant;
                     }
-
                     let code = arena.alloc_vector(SEXPTYPE::INTSXP, self.code.len() as i64);
                     let code_data = (*code).gengc_next_node as *mut c_int;
                     for (index, instruction) in self.code.iter().enumerate() {
@@ -565,6 +564,8 @@ fn is_eager_builtin_call(name: &str) -> bool {
             | "seq"
             | "seq_len"
             | "seq_along"
+            | "rep"
+            | "round"
             | ":"
             | "["
             | "[<-"
