@@ -90,6 +90,17 @@ unsafe extern "C-unwind" fn c_rhyper(n: SEXP, a: SEXP, b: SEXP, c: SEXP) -> SEXP
 unsafe extern "C-unwind" fn c_rmultinom(n: SEXP, size: SEXP, prob: SEXP) -> SEXP {
     unsafe { do_rmultinom(n, size, prob) }
 }
+unsafe extern "C-unwind" fn c_r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
+    unsafe {
+        let n_i = coerceVector(n, SEXPTYPE::INTSXP.as_c_int());
+        let _n = protect(n_i);
+        let r_i = coerceVector(r, SEXPTYPE::INTSXP.as_c_int());
+        let _r = protect(r_i);
+        let c_i = coerceVector(c, SEXPTYPE::INTSXP.as_c_int());
+        let _c = protect(c_i);
+        r2dtable(n_i, r_i, c_i)
+    }
+}
 unsafe extern "C-unwind" fn c_termsform(args: SEXP) -> SEXP {
     unsafe { super::filter::termsform(args) }
 }
@@ -515,7 +526,7 @@ unsafe fn cov_complete_pair(
 const RAND_CALL_NAMES: &[&str] = &[
     "C_rchisq", "C_rexp", "C_rgeom", "C_rpois", "C_rt", "C_rsignrank", "C_rbeta", "C_rbinom",
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
-    "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom",
+    "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom", "C_r2dtable",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_updateform", "C_Cdqrls", "C_compcases", "C_influence",
     "C_cov", "C_cor", "C_Cdist", "C_hclust", "C_hcass2", "C_rbart", "C_bvalus", "C_numeric_deriv", "C_optim", "C_optimhess",
     "C_ARIMA_transPars", "C_ARIMA_CSS", "C_ARIMA_Like", "C_ARIMA_Invtrans", "C_ARIMA_undoPars", "C_ARIMA_Gradtrans", "C_TSconv", "C_getQ0",
@@ -551,6 +562,48 @@ unsafe extern "C-unwind" fn c_swilk(x: SEXP) -> SEXP {
     super::swilk::SWilk(x)
 }
 
+/// Routines whose real signature is `.External2` `(call, op, args, env)`.
+/// `.External` must not transmute a `.Call` pointer from `lookup_call`.
+pub fn lookup_external(name: &str) -> DL_FUNC {
+    let bare = name.strip_prefix("C_").unwrap_or(name);
+    match bare {
+        "zeroin2" => as_dl(
+            c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "do_fmin" => as_dl(
+            c_do_fmin as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        _ => None,
+    }
+}
+
+/// Recorded `.Call` arity. `None` means this name is not a stats `.Call` routine.
+pub fn call_arity(name: &str) -> Option<usize> {
+    let bare = name.strip_prefix("C_").unwrap_or(name);
+    Some(match bare {
+        "termsform" | "call_dqags" | "call_dqagi" | "compcases" | "doD" | "SWilk"
+        | "bw_den_binned" | "dpermdist1" | "deriv" | "logit_link" | "logit_linkinv"
+        | "logit_mu_eta" | "DoubleCentre" | "free_starma" | "get_s2" | "get_resid" => 1,
+        "rchisq" | "rexp" | "rgeom" | "rpois" | "rt" | "rsignrank" | "updateform" | "pacf1"
+        | "pKendall" | "ar2ma" | "dpermdist2" | "fft" | "mvfft" | "ARIMA_Invtrans"
+        | "ARIMA_undoPars" | "ARIMA_Gradtrans" | "TSconv" | "getQ0" | "nextn" | "bw_den"
+        | "Starma_method" | "arma0fa" | "set_trans" | "Invtrans" | "Dotrans" | "Gradtrans"
+        | "SplineEval" | "cutree" | "monoFC_m" => 2,
+        "rbeta" | "rbinom" | "rcauchy" | "rf" | "rgamma" | "rlnorm" | "rlogis" | "rnbinom"
+        | "rnorm" | "runif" | "rweibull" | "rwilcox" | "rnchisq" | "rnbinom_mu" | "rmultinom"
+        | "r2dtable" | "rWishart" | "influence" | "Rsm" | "KalmanFore" | "KalmanSmooth"
+        | "acf" | "nls_iter" | "ARIMA_transPars" | "Fisher_sim" | "SplineCoef"
+        | "binomial_dev_resids" | "pRho" | "rfilter" => 3,
+        "rhyper" | "modelframe" | "modelmatrix" | "Cdqrls" | "cov" | "cor" | "Cdist"
+        | "optim" | "optimhess" | "ARIMA_Like" | "tukeyline" | "chisq_sim" | "cfilter"
+        | "arma0_kfore" | "Fexact" | "bw_ucv" | "bw_bcv" | "bw_phi4" | "bw_phi6" => 4,
+        "KalmanLike" | "ApproxTest" | "ksmooth" | "BinDist" => 5,
+        "numeric_deriv" | "runmed" | "psmirnov_exact" | "ARIMA_CSS" => 6,
+        "Approx" | "setup_starma" => 8,
+        _ => return super::distn::call_arity(bare),
+    })
+}
+
 pub fn lookup_call(name: &str) -> DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
@@ -576,6 +629,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "rnbinom_mu" => as_dl(c_rnbinom_mu as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "rhyper" => as_dl(c_rhyper as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "rmultinom" => as_dl(c_rmultinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "r2dtable" => as_dl(c_r2dtable as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "rWishart" => as_dl(crate::library::stats::rwishart::c_rWishart as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "termsform" => as_dl(c_termsform as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "call_dqags" => as_dl(c_call_dqags as unsafe extern "C-unwind" fn(SEXP) -> SEXP),

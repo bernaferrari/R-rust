@@ -961,14 +961,8 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let mut ofun: DL_FUNC = None;
         if let Some(name) = ported_call_name(CAR(args)) {
-            ofun = crate::library::methods::native_calls::lookup(&name)
-                .or_else(|| crate::library::tools::native_calls::lookup(&name))
-                .or_else(|| crate::library::stats::random::lookup_call(&name))
-                .or_else(|| crate::library::splines::splines::lookup(&name))
-                .or_else(|| crate::library::utils::lookup(&name))
-                .or_else(|| crate::library::grdevices::lookup(&name))
-                .or_else(|| crate::library::grid::lookup(&name))
-                .or_else(|| crate::library::graphics::lookup(&name));
+            ofun = crate::library::stats::random::lookup_external(&name)
+                .or_else(|| crate::library::grdevices::lookup_external(&name));
         }
         if ofun.is_none() && native_extension_policy_enabled() {
             native_extension_policy_error(call, ".External");
@@ -993,14 +987,8 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         if ofun.is_none() {
             if let Some(name) = ported_call_name(CAR(args)) {
-                ofun = crate::library::methods::native_calls::lookup(&name)
-                    .or_else(|| crate::library::tools::native_calls::lookup(&name))
-                    .or_else(|| crate::library::stats::random::lookup_call(&name))
-                    .or_else(|| crate::library::splines::splines::lookup(&name))
-                    .or_else(|| crate::library::utils::lookup(&name))
-                    .or_else(|| crate::library::grdevices::lookup(&name))
-                    .or_else(|| crate::library::grid::lookup(&name))
-                    .or_else(|| crate::library::graphics::lookup(&name));
+                ofun = crate::library::stats::random::lookup_external(&name)
+                    .or_else(|| crate::library::grdevices::lookup_external(&name));
             }
         }
         if ofun.is_none() {
@@ -1009,14 +997,8 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 .and_then(|c| c.to_str().ok())
                 .unwrap_or("");
             if !name.is_empty() {
-                ofun = crate::library::methods::native_calls::lookup(name)
-                    .or_else(|| crate::library::tools::native_calls::lookup(name))
-                    .or_else(|| crate::library::stats::random::lookup_call(name))
-                    .or_else(|| crate::library::splines::splines::lookup(name))
-                    .or_else(|| crate::library::utils::lookup(name))
-                    .or_else(|| crate::library::grdevices::lookup(name))
-                    .or_else(|| crate::library::grid::lookup(name))
-                    .or_else(|| crate::library::graphics::lookup(name));
+                ofun = crate::library::stats::random::lookup_external(name)
+                    .or_else(|| crate::library::grdevices::lookup_external(name));
             }
         }
 
@@ -1031,6 +1013,23 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         let primval = PRIMVAL(op);
+        let resolved = ported_call_name(CAR(args)).unwrap_or_else(|| {
+            std::ffi::CStr::from_bytes_until_nul(&buf)
+                .ok()
+                .and_then(|c| c.to_str().ok())
+                .unwrap_or("")
+                .to_string()
+        });
+        if !resolved.is_empty() {
+            let ext2 = crate::library::stats::random::lookup_external(&resolved).is_some();
+            let ext1 = crate::library::grdevices::lookup_external(&resolved).is_some();
+            if ext2 && primval != 1 {
+                errorcall(call, ".External2 routine called through .External");
+            }
+            if ext1 && !ext2 && primval == 1 {
+                errorcall(call, ".External routine called through .External2");
+            }
+        }
         let retval = if primval == 1 {
             type ExtRoutine2 = unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
             let f: ExtRoutine2 = std::mem::transmute_copy(&ofun);
@@ -1134,7 +1133,37 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-
+        let call_name = ported_call_name(CAR(args)).unwrap_or_else(|| {
+            std::ffi::CStr::from_bytes_until_nul(&buf)
+                .ok()
+                .and_then(|c| c.to_str().ok())
+                .unwrap_or("")
+                .to_string()
+        });
+        if !call_name.is_empty() {
+            if crate::library::grdevices::lookup_external(&call_name).is_some()
+                || crate::library::stats::random::lookup_external(&call_name).is_some()
+            {
+                errorcall(call, ".Call used for an .External routine");
+            }
+            let bare = call_name.strip_prefix("C_").unwrap_or(&call_name);
+            if crate::library::stats::random::lookup_call(bare).is_some() {
+                match crate::library::stats::random::call_arity(bare) {
+                    Some(n) if n == nargs => {}
+                    _ => errorcall(call, "incorrect number of arguments"),
+                }
+            }
+            let expect = match bare {
+                "R_GAxisPars" => Some(3usize),
+                "R_CreateAtVector" => Some(4usize),
+                _ => None,
+            };
+            if let Some(n) = expect {
+                if nargs != n {
+                    errorcall(call, "incorrect number of arguments");
+                }
+            }
+        }
         let retval = R_doDotCall(ofun, nargs as c_int, &cargs, call);
         vmaxset(ptr::null_mut()); // simplified
         retval
@@ -1185,9 +1214,6 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if fun.is_none() {
             if let Some(name) = ported_call_name(CAR(args)) {
                 fun = crate::library::tools::native_calls::lookup_c(&name);
-                if fun.is_none() {
-                    fun = crate::library::stats::random::lookup_call(&name);
-                }
             }
         }
         if fun.is_none() {

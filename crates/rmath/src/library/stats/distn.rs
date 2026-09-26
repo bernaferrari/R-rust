@@ -1553,6 +1553,25 @@ wrap6!(c_qnf, do_qnf);
 wrap6!(c_ptukey, do_ptukey);
 wrap6!(c_qtukey, do_qtukey);
 
+pub fn call_arity(name: &str) -> Option<usize> {
+    let bare = name.strip_prefix("C_").unwrap_or(name);
+    Some(match bare {
+        "signrank_free" | "wilcox_free" => 1,
+        "dchisq" | "dexp" | "dgeom" | "dpois" | "dt" | "dsignrank" => 3,
+        "pchisq" | "qchisq" | "pexp" | "qexp" | "pgeom" | "qgeom" | "ppois" | "qpois" | "pt"
+        | "qt" | "psignrank" | "qsignrank" | "dbeta" | "dbinom" | "dcauchy" | "df" | "dgamma"
+        | "dlnorm" | "dlogis" | "dnbinom" | "dnbinom_mu" | "dnorm" | "dweibull" | "dunif"
+        | "dnt" | "dnchisq" | "dwilcox" => 4,
+        "pbeta" | "qbeta" | "pbinom" | "qbinom" | "pcauchy" | "qcauchy" | "pf" | "qf"
+        | "pgamma" | "qgamma" | "plnorm" | "qlnorm" | "plogis" | "qlogis" | "pnbinom"
+        | "qnbinom" | "pnbinom_mu" | "qnbinom_mu" | "pnorm" | "qnorm" | "pnt" | "qnt"
+        | "pnchisq" | "qnchisq" | "pweibull" | "qweibull" | "punif" | "qunif" | "pwilcox"
+        | "qwilcox" | "dnbeta" | "dnf" | "dhyper" => 5,
+        "phyper" | "qhyper" | "pnbeta" | "qnbeta" | "pnf" | "qnf" | "ptukey" | "qtukey" => 6,
+        _ => return None,
+    })
+}
+
 pub fn lookup_call(name: &str) -> DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
