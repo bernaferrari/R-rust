@@ -576,6 +576,9 @@ pub fn lookup_external(name: &str) -> DL_FUNC {
         "termsform" => as_dl(c_termsform as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "call_dqags" => as_dl(c_call_dqags as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "call_dqagi" => as_dl(c_call_dqagi as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "compcases" => as_dl(c_compcases as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "deriv" => as_dl(c_deriv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "modelframe" => {
             as_dl(c_modelframe as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
         }
@@ -590,8 +593,8 @@ pub fn lookup_external(name: &str) -> DL_FUNC {
 pub fn call_arity(name: &str) -> Option<usize> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     Some(match bare {
-        "compcases" | "doD" | "SWilk"
-        | "bw_den_binned" | "dpermdist1" | "deriv" | "logit_link" | "logit_linkinv"
+        "SWilk"
+        | "bw_den_binned" | "dpermdist1" | "logit_link" | "logit_linkinv"
         | "logit_mu_eta" | "DoubleCentre" | "free_starma" | "get_s2" | "get_resid" => 1,
         "rchisq" | "rexp" | "rgeom" | "rpois" | "rt" | "rsignrank" | "updateform" | "pacf1"
         | "pKendall" | "ar2ma" | "dpermdist2" | "fft" | "mvfft" | "ARIMA_Invtrans"
@@ -641,12 +644,10 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "r2dtable" => as_dl(c_r2dtable as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "rWishart" => as_dl(crate::library::stats::rwishart::c_rWishart as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "Cdqrls" => as_dl(c_cdqrls as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "compcases" => as_dl(c_compcases as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "influence" => as_dl(c_influence as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "cov" => as_dl(c_cov as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "cor" => as_dl(c_cor as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "Cdist" => as_dl(c_cdist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "Rsm" => as_dl(super::smooth::c_rsm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "KalmanFore" => as_dl(super::filter::c_kalman_fore as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
@@ -688,7 +689,6 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "ARIMA_Gradtrans" => as_dl(super::arima_native::c_arima_gradtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "TSconv" => as_dl(super::arima_native::c_tsconv as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "getQ0" => as_dl(super::arima_native::c_get_q0 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "deriv" => as_dl(c_deriv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "fft" => as_dl(c_fft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "mvfft" => as_dl(c_mvfft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "ApproxTest" => as_dl(
