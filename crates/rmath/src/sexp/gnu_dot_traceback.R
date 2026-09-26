@@ -11,6 +11,7 @@ function(x = NULL,
     if(int.x || (is.null(x) && !is.null(x <- get0(".Traceback", envir = baseenv()))) ||
        is.pairlist(x) || is.list(x))
     {
+        x <- as.pairlist(lapply(x, function(el) el))
         valid.max.lines <- .is.positive.intlike(max.lines)
         nlines <- if(valid.max.lines) max.lines + 1L else max.lines
         for(i in seq_along(x)) {
