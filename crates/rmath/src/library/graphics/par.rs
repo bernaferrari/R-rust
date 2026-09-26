@@ -1183,8 +1183,10 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut set_names = Vec::new();
         let mut set_values = Vec::new();
         let mut no_readonly = false;
+        let mut arg_n = 0_i32;
 
         while !current.is_null() && current != R_NilValue() {
+            arg_n += 1;
             let value = CAR(current);
             match tag_name(TAG(current)).as_deref() {
                 Some("no.readonly") => {
@@ -1203,46 +1205,7 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     set_values.push(sexp_to_par_value(value));
                 }
                 None => {
-                    if TYPEOF(value) == SEXPTYPE::VECSXP {
-                        let names = crate::sexp::attrib_core::getAttrib(
-                            value,
-                            crate::sexp::attrib_core::R_NamesSymbol(),
-                        );
-                        let n = XLENGTH(value);
-                        if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) != n {
-                            for i in 0..n {
-                                let elt = VECTOR_ELT(value, i);
-                                if TYPEOF(elt) != SEXPTYPE::STRSXP {
-                                    par_error("invalid argument passed to par()");
-                                }
-                                for name in string_vector_values(elt) {
-                                    if !is_known_par(&name) {
-                                        par_error(format!(
-                                            "invalid value specified for graphical parameter \"{name}\""
-                                        ));
-                                    }
-                                    query_names.push(name);
-                                }
-                            }
-                        } else {
-                        for i in 0..n {
-                            let elt = STRING_ELT(names, i);
-                            let name = std::ffi::CStr::from_ptr(CHAR(elt))
-                                .to_string_lossy()
-                                .into_owned();
-                            if name.is_empty() || !is_known_par(&name) {
-                                par_error(format!(
-                                    "invalid value specified for graphical parameter \"{name}\""
-                                ));
-                            }
-                            if is_readonly_par(&name) {
-                                continue;
-                            }
-                            set_names.push(name);
-                            set_values.push(sexp_to_par_value(VECTOR_ELT(value, i)));
-                        }
-                        }
-                    } else {
+                    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
                         for name in string_vector_values(value) {
                             if !is_known_par(&name) {
                                 par_error(format!(
@@ -1251,6 +1214,70 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                             }
                             query_names.push(name);
                         }
+                    } else if arg_n == 1
+                        && CDR(current) == R_NilValue()
+                        && TYPEOF(value) == SEXPTYPE::VECSXP
+                    {
+                        let mut value = value;
+                        let n0 = XLENGTH(value);
+                        if n0 == 1 {
+                            let inner = VECTOR_ELT(value, 0);
+                            if TYPEOF(inner) == SEXPTYPE::VECSXP || inner == R_NilValue() {
+                                value = inner;
+                            }
+                        }
+                        let names = crate::sexp::attrib_core::getAttrib(
+                            value,
+                            crate::sexp::attrib_core::R_NamesSymbol(),
+                        );
+                        let n = XLENGTH(value);
+                        let names_ok = TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) == n;
+                        if names_ok {
+                            for i in 0..n {
+                                let elt = STRING_ELT(names, i);
+                                let name = std::ffi::CStr::from_ptr(CHAR(elt))
+                                    .to_string_lossy()
+                                    .into_owned();
+                                if name.is_empty() || !is_known_par(&name) || is_readonly_par(&name) {
+                                    continue;
+                                }
+                                set_names.push(name);
+                                set_values.push(sexp_to_par_value(VECTOR_ELT(value, i)));
+                            }
+                        } else if n > 0
+                            && (0..n).all(|i| TYPEOF(VECTOR_ELT(value, i)) == SEXPTYPE::STRSXP)
+                        {
+                            for i in 0..n {
+                                let elt = VECTOR_ELT(value, i);
+                                for j in 0..XLENGTH(elt) {
+                                    let ch = STRING_ELT(elt, j);
+                                    let name = std::ffi::CStr::from_ptr(CHAR(ch))
+                                        .to_string_lossy()
+                                        .into_owned();
+                                    if is_known_par(&name) {
+                                        query_names.push(name);
+                                    }
+                                }
+                            }
+                        } else if value != crate::sexp::globals::R_NilValue() {
+                            let msg = std::ffi::CString::new(
+                                "argument 1 does not name a graphical parameter",
+                            )
+                            .unwrap_or_default();
+                            crate::mainutils::errors::warningcall(
+                                crate::sexp::globals::R_NilValue(),
+                                msg.as_ptr(),
+                            );
+                        }
+                    } else {
+                        let msg = std::ffi::CString::new(format!(
+                            "argument {arg_n} does not name a graphical parameter"
+                        ))
+                        .unwrap_or_default();
+                        crate::mainutils::errors::warningcall(
+                            crate::sexp::globals::R_NilValue(),
+                            msg.as_ptr(),
+                        );
                     }
                 }
             }
@@ -1271,9 +1298,10 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             });
             old
-        } else if query_names.len() == 1 {
-            par_value_to_sexp(&parameter(&query_names[0]))
         } else {
+            // GNU C_par always returns a named list. graphics::par() then
+            // does value[[1L]] for a single unnamed query, which must be
+            // the whole parameter (lab is c(5,5,7)), not its first element.
             named_par_list(&query_names)
         };
 
