@@ -733,10 +733,13 @@ unsafe fn tailcall_promise_args(call: SEXP, rho: SEXP) -> SEXP {
             }
             if TYPEOF(expr) == SEXPTYPE::SYMSXP {
                 let found = crate::sexp::envir::R_findVarInFrame(rho, expr);
-                if TYPEOF(found) == SEXPTYPE::PROMSXP {
-                    crate::sexp::accessors::SETCAR(dst, crate::sexp::accessors::PRCODE(found));
-                } else if found == R_MissingArg() {
+                if found == R_MissingArg()
+                    || (TYPEOF(found) == SEXPTYPE::PROMSXP
+                        && crate::sexp::accessors::PRCODE(found) == R_MissingArg())
+                {
                     crate::sexp::accessors::SETCAR(dst, R_MissingArg());
+                } else if TYPEOF(found) == SEXPTYPE::PROMSXP {
+                    crate::sexp::accessors::SETCAR(dst, found);
                 }
             }
             src = CDR(src);
