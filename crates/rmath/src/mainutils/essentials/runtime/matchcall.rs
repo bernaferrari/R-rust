@@ -158,7 +158,15 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         while cursor != R_NilValue() && !cursor.is_null() {
             if CAR(cursor) == dots_symbol && !substituted_dots {
                 substituted_dots = true;
-                let mut dots = crate::sexp::envir::R_findVar(dots_symbol, envir);
+                let mut dots = crate::sexp::envir::R_findVar(dots_symbol, rho);
+                if dots == crate::sexp::globals::R_UnboundValue() || dots == R_MissingArg() {
+                    dots = crate::sexp::envir::R_findVar(dots_symbol, envir);
+                }
+                while TYPEOF(dots) == SEXPTYPE::PROMSXP {
+                    let penv = crate::sexp::accessors::PRENV(dots);
+                    let env = if TYPEOF(penv) == SEXPTYPE::ENVSXP { penv } else { rho };
+                    dots = crate::eval::eval::Rf_eval(dots, env);
+                }
                 if dots != R_MissingArg() && dots != R_NilValue() {
                     if TYPEOF(dots) != SEXPTYPE::DOTSXP {
                         base_error("'...' used in an incorrect context");
@@ -168,11 +176,6 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                         let mut expr = CAR(dots);
                         while TYPEOF(expr) == SEXPTYPE::PROMSXP {
                             expr = crate::sexp::accessors::PRCODE(expr);
-                        }
-                        if TYPEOF(expr) == SEXPTYPE::SYMSXP || TYPEOF(expr) == SEXPTYPE::LANGSXP {
-                            let name =
-                                CString::new(format!("..{dot_index}")).expect("numeric dots name");
-                            expr = Rf_install(name.as_ptr());
                         }
                         append(&mut actuals, &mut tail, expr, TAG(dots));
                         dot_index += 1;
