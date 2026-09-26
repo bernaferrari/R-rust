@@ -261,10 +261,26 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let evaluated_subs = if raw_subscript {
                 call_args
             } else {
-                // `[<-` / `[[<-` subscript slots may be empty (`m[1,] <- v`),
-                // which must pass through as R_MissingArg the way upstream's
-                // subset/assign handlers expect (evalListKeepMissing).
+                // The fetched value is an argument of the replacement call.
+                // GNU evalList holds a temporary link on it while later
+                // arguments (the subscripts) run, so `x[{x[2] <<- 3; 1}] <<- 2`
+                // duplicates instead of mutating the value that will be
+                // written back.
+                let named = if target_expr.is_null() {
+                    3
+                } else {
+                    NAMED(target_expr)
+                };
+                if named < 3 {
+                    crate::sexp::accessors::SET_NAMED(target_expr, named + 1);
+                }
                 slot_subs = super::dispatch::evalListKeepMissing(call_args, rho);
+                if named < 3 {
+                    let now = NAMED(target_expr);
+                    if now > 0 && now < 3 {
+                        crate::sexp::accessors::SET_NAMED(target_expr, now - 1);
+                    }
+                }
                 let _subs_guard = protect(slot_subs);
                 let mut cell = slot_subs;
                 while !cell.is_null() && cell != R_NilValue() {
