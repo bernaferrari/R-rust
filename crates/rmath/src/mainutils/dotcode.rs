@@ -1028,7 +1028,7 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         });
         if !resolved.is_empty() {
             let bare = resolved.strip_prefix("C_").unwrap_or(&resolved);
-            let ext2 = matches!(bare, "zeroin2" | "do_fmin" | "modelframe" | "modelmatrix" | "parseRd" | "parseRdText");
+            let ext2 = matches!(bare, "zeroin2" | "do_fmin" | "modelframe" | "modelmatrix" | "parseRd" | "parseRdText" | "optim" | "optimhess");
             let ext1 = crate::library::grdevices::lookup_external(&resolved).is_some();
             if ext2 && primval != 1 {
                 errorcall(call, ".External2 routine called through .External");

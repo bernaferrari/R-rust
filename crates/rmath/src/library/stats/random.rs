@@ -579,6 +579,8 @@ pub fn lookup_external(name: &str) -> DL_FUNC {
         "compcases" => as_dl(c_compcases as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "deriv" => as_dl(c_deriv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "optim" => as_dl(super::optim::c_optim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "optimhess" => as_dl(super::optim::c_optimhess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "modelframe" => {
             as_dl(c_modelframe as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
         }
@@ -679,8 +681,6 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "dpermdist1" => as_dl(super::permdist::c_dpermdist1 as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "dpermdist2" => as_dl(super::permdist::c_dpermdist2 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "numeric_deriv" => as_dl(super::numeric_deriv::c_numeric_deriv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "optim" => as_dl(super::optim::c_optim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "optimhess" => as_dl(super::optim::c_optimhess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "ARIMA_transPars" => as_dl(super::arima_native::c_arima_trans_pars as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "ARIMA_CSS" => as_dl(super::arima_native::c_arima_css as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "ARIMA_Like" => as_dl(super::arima_native::c_arima_like as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
