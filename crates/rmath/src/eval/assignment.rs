@@ -52,8 +52,26 @@ pub unsafe fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 rhs
             }
             t if t == SEXPTYPE::SYMSXP => {
-                let rhs = Rf_eval(CADR(args), rho);
+                let rhs_expr = CADR(args);
+                let rhs = Rf_eval(rhs_expr, rho);
                 let _rhs_guard = protect(rhs);
+                // `b <- a` and `c <- b <- a` share one value, so the object
+                // must be NAMED 2 and `[[<-` duplicates. `a <- f()` is a fresh
+                // call and stays at 1 (`named(m)` after `m <- matrix()` is 1).
+                let rhs_head = if TYPEOF(rhs_expr) == SEXPTYPE::LANGSXP {
+                    CAR(rhs_expr)
+                } else {
+                    R_NilValue()
+                };
+                let already_bound = TYPEOF(rhs_expr) == SEXPTYPE::SYMSXP
+                    || (TYPEOF(rhs_head) == SEXPTYPE::SYMSXP
+                        && matches!(
+                            symbol_name(rhs_head).as_deref(),
+                            Some("<-") | Some("=") | Some("<<-")
+                        ));
+                if already_bound && NAMED(rhs) == 1 {
+                    crate::sexp::accessors::SET_NAMED(rhs, 2);
+                }
                 assign_to_symbol(lhs, rhs, primval, rho);
                 rhs
             }
