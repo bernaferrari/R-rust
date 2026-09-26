@@ -1365,9 +1365,7 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
             data.ttyflag = 1;
         } else {
             data.ttyflag = 0;
-            // Note: wasopen tracking and connection open/close would require
-            // full Rconnection struct access which is opaque. We proceed assuming
-            // the connection is already open (as called from R level).
+            crate::mainutils::connections::ensure_connection_readable(i);
             // Skip nskip lines
             for _ in 0..nskip {
                 loop {

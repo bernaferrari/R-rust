@@ -197,6 +197,40 @@ pub fn open_file_conn(path: &str, mode: &str) -> io::Result<OpenFileHandles> {
     Ok((file, reader, writer))
 }
 
+/// GNU `countfields` opens a connection that R left closed, then reads it.
+pub fn ensure_connection_readable(n: core::ffi::c_int) {
+    let index = checked_connection_index(n);
+    let mut table = connection_table();
+    let Some(conn) = table[index].as_mut() else {
+        r_error("invalid connection");
+    };
+    if conn.isopen {
+        return;
+    }
+    let mode = if conn.mode.is_empty() {
+        "r".to_string()
+    } else {
+        conn.mode.clone()
+    };
+    let description = conn.description.clone();
+    match &conn.kind {
+        ConnKind::File => match open_file_conn(&description, &mode) {
+            Ok((file, reader, writer)) => {
+                conn.file = Some(file);
+                conn.reader = reader;
+                conn.writer = writer;
+                conn.isopen = true;
+                conn.canread = mode.starts_with('r') || mode.contains('+');
+            }
+            Err(_) => r_error("cannot open the connection"),
+        },
+        ConnKind::TextConnection | ConnKind::RawConnection => {
+            conn.isopen = true;
+        }
+        _ => r_error("connection is not open"),
+    }
+}
+
 fn description_is_anonymous(description: &str) -> bool {
     let prefix = std::env::temp_dir().join("Rf");
     Path::new(description).starts_with(std::env::temp_dir())
