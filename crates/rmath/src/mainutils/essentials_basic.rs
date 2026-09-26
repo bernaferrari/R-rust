@@ -537,6 +537,7 @@ fn mode_name(x: SEXP) -> &'static str {
             t if t == SEXPTYPE::RAWSXP => "raw",
             t if t == SEXPTYPE::VECSXP => "list",
             t if t == SEXPTYPE::LISTSXP => "pairlist",
+            t if t == SEXPTYPE::DOTSXP => "...",
 
             t if t == SEXPTYPE::EXPRSXP => "expression",
             t if t == SEXPTYPE::SYMSXP => "name",
