@@ -2734,7 +2734,29 @@ unsafe fn logical_arg_value(x: SEXP, index: R_xlen_t) -> Option<c_int> {
                     Some((value != 0.0) as c_int)
                 }
             }
-            _ => None,
+            t if t == SEXPTYPE::STRSXP.as_c_int() => {
+                let elt = STRING_ELT(x, index);
+                if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                    Some(NA_INTEGER)
+                } else {
+                    let text = std::ffi::CStr::from_ptr(CHAR(elt)).to_string_lossy();
+                    match text.as_ref() {
+                        "T" | "TRUE" => Some(TRUE),
+                        "F" | "FALSE" => Some(FALSE),
+                        _ => Some(NA_INTEGER),
+                    }
+                }
+            }
+            _ => {
+                let kind = match TYPEOF(x) {
+                    t if t == SEXPTYPE::SYMSXP.as_c_int() => "symbol",
+                    t if t == SEXPTYPE::LANGSXP.as_c_int() => "language",
+                    t if t == SEXPTYPE::CLOSXP.as_c_int() => "closure",
+                    t if t == SEXPTYPE::ENVSXP.as_c_int() => "environment",
+                    _ => "unknown",
+                };
+                base_error(format!("'{kind}' object cannot be coerced to type 'logical'"));
+            }
         }
     }
 }
