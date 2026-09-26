@@ -205,12 +205,9 @@ impl BytecodeCompiler {
                     } else if !self.compile_expr(argument) {
                         return false;
                     }
-                    let later_call = arg_cells.iter().skip(arg_index + 1).any(|later| {
-                        let value = unsafe { CAR(*later) };
-                        !value.is_null() && TYPEOF(value) == SEXPTYPE::LANGSXP
-                    });
+                    let later = arg_index + 1 < arg_cells.len();
                     let is_object = subset && arg_index == 0;
-                    if later_call && !is_object && TYPEOF(argument) == SEXPTYPE::SYMSXP {
+                    if later && !is_object && TYPEOF(argument) == SEXPTYPE::SYMSXP {
                         self.emit(opcodes::OP_MARK_SHARED);
                     }
                     let tag = TAG(*cell);
