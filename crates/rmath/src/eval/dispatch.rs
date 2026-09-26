@@ -166,6 +166,7 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
         // Cells of the in-progress list stay protected across later argument
         // evaluations; released once the finished list is returned.
         let mut cell_guards: Vec<ProtectGuard> = Vec::new();
+        let mut bumped: Vec<SEXP> = Vec::new();
 
         let mut current = el;
         let mut count: c_int = 0;
@@ -189,6 +190,8 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
                             break;
                         }
                         let val = Rf_eval(CAR(dh), rho);
+                        bump_named_link(val);
+                        bumped.push(val);
                         push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(dh));
                         dh = CDR(dh);
                         count += 1;
@@ -220,6 +223,8 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
                 }
             } else {
                 let val = Rf_eval(expr, rho);
+                bump_named_link(val);
+                bumped.push(val);
                 push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(current));
             }
 
@@ -227,7 +232,36 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
             count += 1;
         }
 
+        for val in bumped {
+            drop_named_link(val);
+        }
         finish_pairlist(result)
+    }
+}
+
+/// GNU `INCREMENT_LINKS`: a later argument can still see this value as shared.
+/// 3 is sticky so a value that was already `NAMEDMAX` is not unshared later.
+unsafe fn bump_named_link(val: SEXP) {
+    unsafe {
+        if val.is_null() {
+            return;
+        }
+        let n = crate::sexp::accessors::NAMED(val);
+        if n < 3 {
+            crate::sexp::accessors::SET_NAMED(val, n + 1);
+        }
+    }
+}
+
+unsafe fn drop_named_link(val: SEXP) {
+    unsafe {
+        if val.is_null() {
+            return;
+        }
+        let n = crate::sexp::accessors::NAMED(val);
+        if n > 0 && n < 3 {
+            crate::sexp::accessors::SET_NAMED(val, n - 1);
+        }
     }
 }
 

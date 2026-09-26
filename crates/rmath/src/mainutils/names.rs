@@ -5289,6 +5289,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
         "refcnt" => Some(do_refcnt),
+        "address" => Some(do_address),
         "named" => Some(do_named),
         "addTaskCallback" => Some(do_add_task_callback),
         "removeTaskCallback" => Some(do_remove_task_callback),
@@ -5377,6 +5378,22 @@ pub unsafe fn do_refcnt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             CAR(args)
         };
         crate::sexp::constructors::Rf_ScalarInteger(crate::sexp::accessors::NAMED(x))
+    }
+}
+
+/// `.Internal(address(x))` — external pointer whose address is `x`.
+pub unsafe fn do_address(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = if args.is_null() || args == crate::sexp::globals::R_NilValue() {
+            crate::sexp::globals::R_NilValue()
+        } else {
+            CAR(args)
+        };
+        crate::mainutils::memory_main::R_MakeExternalPtr(
+            x as *mut std::ffi::c_void,
+            crate::sexp::globals::R_NilValue(),
+            crate::sexp::globals::R_NilValue(),
+        )
     }
 }
 
