@@ -498,7 +498,7 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
         }
 
         // Duplicate if shared
-        if MAYBE_REFERENCED(CAR(args)) {
+        if MAYBE_SHARED(CAR(args)) {
             let dup = shallow_duplicate(CAR(args));
             SETCAR(args, dup);
             x = CAR(args);
@@ -667,7 +667,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         }
 
         // Ensure LHS is local
-        if MAYBE_REFERENCED(x) {
+        if MAYBE_SHARED(x) {
             let dup = shallow_duplicate(x);
             SETCAR(args, dup);
             x = dup;

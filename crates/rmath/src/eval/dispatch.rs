@@ -709,8 +709,9 @@ pub unsafe fn DispatchOrEval(
             if dots != FALSE {
                 *ans = evalArgs(args, rho, dropmissing, call, 0);
             } else {
-                // Put evaluated x back with rest of evaluated args
+                bump_named_link(x);
                 let rest = evalArgs(CDR(args), rho, dropmissing, call, 1);
+                drop_named_link(x);
                 let _rest_guard = protect(rest);
                 let arglist = CONS_NR(x, rest);
                 SETTAG(arglist, TAG(args));
