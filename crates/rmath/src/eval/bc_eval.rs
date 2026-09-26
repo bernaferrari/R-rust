@@ -2009,6 +2009,14 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         ));
                     }
                     let value = stack_top_checked(&stack, "GNU SETVAR");
+                    // GNU SETVAR does INCREMENT_NAMED before the bind.
+                    // Chained `varE <- seA <- A <- vector()` is three stores
+                    // of one value: 0→1, then 1→2. The second name must look
+                    // shared so `[[<-` duplicates the list.
+                    let named = crate::sexp::accessors::NAMED(value);
+                    if named < 2 {
+                        crate::sexp::accessors::SET_NAMED(value, named + 1);
+                    }
                     with_stack_rooted(&stack, value, || {
                         if opcode == super::bytecode::GNU_OP_SETVAR2 {
                             setVar(symbol, value, ENCLOS(rho));
