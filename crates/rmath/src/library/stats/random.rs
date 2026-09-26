@@ -573,6 +573,15 @@ pub fn lookup_external(name: &str) -> DL_FUNC {
         "do_fmin" => as_dl(
             c_do_fmin as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
         ),
+        "termsform" => as_dl(c_termsform as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "call_dqags" => as_dl(c_call_dqags as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "call_dqagi" => as_dl(c_call_dqagi as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
+        "modelframe" => {
+            as_dl(c_modelframe as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "modelmatrix" => {
+            as_dl(c_modelmatrix as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
         _ => None,
     }
 }
@@ -581,7 +590,7 @@ pub fn lookup_external(name: &str) -> DL_FUNC {
 pub fn call_arity(name: &str) -> Option<usize> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     Some(match bare {
-        "termsform" | "call_dqags" | "call_dqagi" | "compcases" | "doD" | "SWilk"
+        "compcases" | "doD" | "SWilk"
         | "bw_den_binned" | "dpermdist1" | "deriv" | "logit_link" | "logit_linkinv"
         | "logit_mu_eta" | "DoubleCentre" | "free_starma" | "get_s2" | "get_resid" => 1,
         "rchisq" | "rexp" | "rgeom" | "rpois" | "rt" | "rsignrank" | "updateform" | "pacf1"
@@ -594,7 +603,7 @@ pub fn call_arity(name: &str) -> Option<usize> {
         | "r2dtable" | "rWishart" | "influence" | "Rsm" | "KalmanFore" | "KalmanSmooth"
         | "acf" | "nls_iter" | "ARIMA_transPars" | "Fisher_sim" | "SplineCoef"
         | "binomial_dev_resids" | "pRho" | "rfilter" => 3,
-        "rhyper" | "modelframe" | "modelmatrix" | "Cdqrls" | "cov" | "cor" | "Cdist"
+        "rhyper" | "Cdqrls" | "cov" | "cor" | "Cdist"
         | "optim" | "optimhess" | "ARIMA_Like" | "tukeyline" | "chisq_sim" | "cfilter"
         | "arma0_kfore" | "Fexact" | "bw_ucv" | "bw_bcv" | "bw_phi4" | "bw_phi6" => 4,
         "KalmanLike" | "ApproxTest" | "ksmooth" | "BinDist" => 5,
@@ -631,15 +640,6 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "rmultinom" => as_dl(c_rmultinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "r2dtable" => as_dl(c_r2dtable as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "rWishart" => as_dl(crate::library::stats::rwishart::c_rWishart as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "termsform" => as_dl(c_termsform as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "call_dqags" => as_dl(c_call_dqags as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "call_dqagi" => as_dl(c_call_dqagi as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "modelframe" => {
-            as_dl(c_modelframe as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "modelmatrix" => {
-            as_dl(c_modelmatrix as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
         "Cdqrls" => as_dl(c_cdqrls as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "compcases" => as_dl(c_compcases as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "influence" => as_dl(c_influence as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
