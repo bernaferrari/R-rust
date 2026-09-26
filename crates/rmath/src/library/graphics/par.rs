@@ -1298,10 +1298,12 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             });
             old
+        } else if query_names.len() == 1 && arg_n == 1 {
+            // GNU graphics::par() does value[[1L]] for one unnamed query.
+            let list = named_par_list(&query_names);
+            let _g = protect(list);
+            VECTOR_ELT(list, 0)
         } else {
-            // GNU C_par always returns a named list. graphics::par() then
-            // does value[[1L]] for a single unnamed query, which must be
-            // the whole parameter (lab is c(5,5,7)), not its first element.
             named_par_list(&query_names)
         };
 
