@@ -4261,7 +4261,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let use_bytes = logical_arg_by_name_or_position(args, "useBytes", 6).unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let replacement = elt_to_string(replacement_arg, 0);
-        if use_bytes && TYPEOF(x_arg) == SEXPTYPE::STRSXP && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP {
+        if use_bytes && fixed && TYPEOF(x_arg) == SEXPTYPE::STRSXP && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP {
             let n = XLENGTH(x_arg);
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _result_guard = protect(result);
@@ -4990,7 +4990,13 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             }
         }
         {
-            use crate::sexp::attrib_core::{getAttrib, setAttrib, R_DimNamesSymbol, R_DimSymbol};
+            use crate::sexp::attrib_core::{
+                getAttrib, setAttrib, R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol,
+            };
+            let names = getAttrib(x, R_NamesSymbol());
+            if !names.is_null() && names != R_NilValue() {
+                setAttrib(result, R_NamesSymbol(), names);
+            }
             let dim = getAttrib(x, R_DimSymbol());
             if !dim.is_null() && dim != R_NilValue() {
                 setAttrib(result, R_DimSymbol(), dim);
