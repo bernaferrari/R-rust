@@ -753,6 +753,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "unique.POSIXlt",
+            "function(x, incomparables = FALSE, ...) x[!duplicated(x, incomparables, ...)]",
+        );
+        eval_base_binding(
+            base_env,
+            "duplicated.POSIXlt",
+            "function(x, incomparables = FALSE, ...) {\n\
+             x <- as.POSIXct(x)\n\
+             NextMethod(\"duplicated\", x)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "duplicated",
             "function(x, incomparables = FALSE, ...) UseMethod(\"duplicated\")",
         );
@@ -878,9 +891,30 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(x) is.logical(x) && length(x) == 1L && !is.na(x) && !x",
         );
         eval_base_binding(base_env, "force", "function(x) x");
+        eval_base_binding(
+            base_env,
+            "replace",
+            "function(x, list, values) { x[list] <- values; x }",
+        );
+        eval_base_binding(base_env, "asS4", "function(object, flag = TRUE, complete = TRUE) .Internal(setS4Object(object, flag, complete))");
+        eval_base_binding(base_env, "asS3", "function(object, flag = TRUE, complete = TRUE) .Internal(setS4Object(object, !as.logical(flag), complete))");
         eval_base_binding(base_env, "enquote", "function(cl) as.call(list(quote(base::quote), cl))");
         eval_base_binding(base_env, "exists", "function (x, where = -1, envir = if (missing(frame)) as.environment(where) else sys.frame(frame), frame, mode = \"any\", inherits = TRUE) .Internal(exists(x, envir, mode, inherits))");
-        eval_base_binding(base_env, ".S3methods", "function(generic.function, class, ...) methods(generic.function)");
+        eval_base_binding(
+            base_env,
+            ".knownS3Generics",
+            "local({ baseGenerics <- c(\"Math\", \"Ops\", \"Summary\", \"Complex\", \"matrixOps\", \"as.character\", \"as.data.frame\", \"as.environment\", \"as.matrix\", \"as.vector\", \"cbind\", \"labels\", \"print\", \"rbind\", \"rep\", \"seq\", \"seq.int\", \"plot\", \"sequence\", \"solve\", \"summary\", \"t\"); utilsGenerics <- c(\"edit\", \"str\"); graphicsGenerics <- c(\"contour\", \"hist\", \"identify\", \"image\", \"lines\", \"pairs\", \"points\", \"text\"); statsGenerics <- c(\"add1\", \"AIC\", \"anova\", \"biplot\", \"coef\", \"confint\", \"deviance\", \"df.residual\", \"drop1\", \"extractAIC\", \"fitted\", \"formula\", \"logLik\", \"model.frame\", \"model.matrix\", \"predict\", \"profile\", \"qqnorm\", \"residuals\", \"se.contrast\", \"terms\", \"update\", \"vcov\"); tmp <- rep.int(c(\"base\", \"utils\", \"graphics\", \"stats\"), c(length(baseGenerics), length(utilsGenerics), length(graphicsGenerics), length(statsGenerics))); names(tmp) <- c(baseGenerics, utilsGenerics, graphicsGenerics, statsGenerics); tmp })",
+        );
+        eval_base_binding(
+            base_env,
+            ".internalGenerics",
+            "c(\"as.vector\", \"cbind\", \"rbind\", \"unlist\", \"is.unsorted\", \"lengths\", \"nchar\", \"rep.int\", \"rep_len\")",
+        );
+        eval_base_binding(
+            base_env,
+            ".S3PrimitiveGenerics",
+            "c(\"anyNA\", \"as.character\", \"as.complex\", \"as.double\", \"as.environment\", \"as.integer\", \"as.logical\", \"as.call\", \"as.numeric\", \"as.raw\", \"c\", \"dim\", \"dim<-\", \"dimnames\", \"dimnames<-\", \"is.array\", \"is.finite\", \"is.infinite\", \"is.matrix\", \"is.na\", \"is.nan\", \"is.numeric\", \"length\", \"length<-\", \"levels<-\", \"log2\", \"log10\", \"names\", \"names<-\", \"rep\", \"seq.int\", \"xtfrm\")",
+        );
         // GNU eval.R / which.R / stop.R: these are closures over .Internal,
         // not FunTab primitives. Binding them into the base frame makes
         // exists()/as.list(baseenv()) match GNU; .Internal still dispatches
@@ -1291,9 +1325,10 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "count.fields",
-            "function(file, sep = \"\", quote = \"\\\"'\", skip = 0,\n         blank.lines.skip = TRUE, comment.char = \"#\")\n{\n    if(is.character(file)) {\n        file <- file(file)\n        on.exit(close(file))\n    }\n    if(!inherits(file, \"connection\"))\n        stop(\"'file' must be a character string or connection\")\n    if (!isOpen(file)) open(file, \"rt\")\n    .External(C_countfields, file, sep, quote, skip, blank.lines.skip,\n              comment.char)\n}\n",
+            "function(file, sep = \"\", quote = \"\\\"'\", skip = 0,\n         blank.lines.skip = TRUE, comment.char = \"#\")\n{\n    if(is.character(file)) {\n        file <- file(file)\n        on.exit(close(file))\n    }\n    if(!inherits(file, \"connection\"))\n        stop(\"'file' must be a character string or connection\")\n    if (isOpen(file) == FALSE) open(file, \"rt\")\n    .External(C_countfields, file, sep, quote, skip, blank.lines.skip,\n              comment.char)\n}\n",
         );
         eval_base_binding(base_env, "C_countfields", "\"C_countfields\"");
+        eval_base_binding(base_env, "C_readtablehead", "\"C_readtablehead\"");
         eval_base_binding(base_env, "C_runmed", "\"C_runmed\"");
         eval_base_binding(
             base_env,
@@ -1362,6 +1397,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             base_env,
             "all.equal.list",
             include_str!("gnu_all_equal_list.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "all.equal.condition",
+            "function(target, current, ...) {\n  if (!inherits(target, \"condition\") || !inherits(current, \"condition\"))\n    return(\"target and current are not both conditions\")\n  msg <- all.equal(class(target), class(current))\n  if (!isTRUE(msg)) return(c(\"Classes differ:\", msg))\n  msg <- all.equal(conditionMessage(target), conditionMessage(current))\n  if (!isTRUE(msg)) return(c(\"Messages differ:\", msg))\n  TRUE\n}",
         );
         eval_base_binding(
             base_env,
@@ -1597,6 +1637,14 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "seq.POSIXt", include_str!("gnu_seq_POSIXt.R"));
         eval_base_binding(base_env, "seq.Date", include_str!("gnu_seq_Date.R"));
         eval_base_binding(base_env, "pretty.POSIXt", include_str!("gnu_pretty_date.R"));
+        eval_base_binding(base_env, "path.package", include_str!("gnu_path_package.R"));
+        eval_base_binding(base_env, "format.summaryDefault", include_str!("gnu_format_summary.R"));
+        eval_base_binding(base_env, "print.summaryDefault", include_str!("gnu_print_summary.R"));
+        eval_base_binding(base_env, "summary.difftime", include_str!("gnu_summary_difftime.R"));
+        eval_base_binding(base_env, "duplicated.warnings", include_str!("gnu_duplicated_warnings.R"));
+        eval_base_binding(base_env, "unique.warnings", include_str!("gnu_unique_warnings.R"));
+        eval_base_binding(base_env, "isS3stdGeneric", include_str!("gnu_isS3stdGeneric.R"));
+        eval_base_binding(base_env, "isS3method", include_str!("gnu_isS3method.R"));
         eval_base_binding(base_env, "Reduce", include_str!("gnu_reduce.R"));
         eval_base_binding(base_env, "axTicks", include_str!("gnu_axTicks.R"));
         eval_base_binding(base_env, "axisTicks", include_str!("gnu_axis_ticks.R"));
@@ -1674,13 +1722,13 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
-            "bibentry",
-            "function(bibtype = NULL, textVersion = NULL, header = NULL, footer = NULL, key = NULL, ..., other = list(), mheader = NULL, mfooter = NULL) { if (length(c(list(...), other))) stop(\"non-empty bibentry is not implemented\"); structure(list(), class = \"bibentry\") }",
+            "format.bibentry",
+            include_str!("gnu_bibentry.R"),
         );
         eval_base_binding(
             base_env,
             "print.bibentry",
-            "function(x, ...) { n <- length(x); if (!n) { cl <- class(x)[[1L]]; cat(if (cl == \"bibentry\") \"bibentry()\" else sprintf(\"<0-length %s>\", cl), \"\\n\", sep = \"\") } else print(unclass(x), ...); invisible(x) }",
+            "function(x, ...) { n <- length(x); if (!n) { cl <- class(x)[[1L]]; cat(if (cl == \"bibentry\") \"bibentry()\" else sprintf(\"<0-length %s>\", cl), \"\\n\", sep = \"\") } else { print(format(x, ...)); invisible(x) } }",
         );
         eval_base_binding(
             base_env,
@@ -1739,6 +1787,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  if (matchAsChar) y <- as.character(y)\n\
                  levels <- unique(y[ind])\n\
              }\n\
+             if (d <- anyDuplicated(levels)) stop(sprintf(\"duplicated level [%d] in factor\", d))\n\
              force(ordered)\n\
              if (matchAsChar) x <- as.character(x)\n\
              levels <- levels[is.na(match(levels, exclude))]\n\
@@ -2793,6 +2842,26 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
 
 
 
+        retarget_base_closure_envs(base_env);
+    }
+}
+unsafe fn retarget_base_closure_envs(base_env: SEXP) {
+    unsafe {
+        let global = super::globals::R_GlobalEnv();
+        let namespace = crate::sexp::memory_ext::NewEnvironment(
+            super::accessors::FRAME(base_env),
+            global,
+            super::globals::R_NilValue(),
+        );
+        let _guard = super::protect::protect(namespace);
+        let mut cell = super::accessors::FRAME(base_env);
+        while !cell.is_null() && cell != super::globals::R_NilValue() {
+            let value = super::accessors::CAR(cell);
+            if super::accessors::TYPEOF(value) == super::ffi::SEXPTYPE::CLOSXP {
+                super::accessors::SET_CLOENV(value, namespace);
+            }
+            cell = super::accessors::CDR(cell);
+        }
     }
 }
 
