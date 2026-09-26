@@ -1230,8 +1230,9 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             );
         };
 
-        if paths.is_null() || paths == R_NilValue() || LENGTH(paths) == 0 {
+        if paths.is_null() || paths == R_NilValue() {
             visit_path(".".to_string());
+        } else if LENGTH(paths) == 0 {
         } else {
             for i in 0..LENGTH(paths) as usize {
                 if let Some(path) = path_at(paths, i) {

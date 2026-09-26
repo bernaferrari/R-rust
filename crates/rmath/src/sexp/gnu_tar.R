@@ -44,7 +44,9 @@ untar <- function(tarfile, files = NULL, list = FALSE, exdir = ".",
         bin <- tar
     if (isTRUE(list)) {
         cmd <- paste("COPYFILE_DISABLE=1", bin, "-tf", sq(tarfile))
-        return(system(cmd, intern = TRUE))
+        out <- system(cmd, intern = TRUE)
+        out <- sub("^\\./", "", out)
+        return(unique(out))
     }
     cmd <- paste("COPYFILE_DISABLE=1", bin, "-xf", sq(tarfile),
                  "-C", sq(exdir))
