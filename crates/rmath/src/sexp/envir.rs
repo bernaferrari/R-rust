@@ -1303,9 +1303,10 @@ pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
 
 fn increment_named_on_assign(value: SEXP) {
     unsafe {
-        let named = super::accessors::NAMED(value);
-        if named < 2 {
-            super::accessors::SET_NAMED(value, named + 1);
+        // A binding is one reference. Raising 1 to 2 here makes every
+        // assigned object look shared, so `named(m)` is 2 before any read.
+        if super::accessors::NAMED(value) == 0 {
+            super::accessors::SET_NAMED(value, 1);
         }
     }
 }

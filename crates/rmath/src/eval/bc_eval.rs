@@ -215,6 +215,8 @@ pub mod opcodes {
     /// Attach the formal-name tag to the argument on top of the stack
     /// (eval.c SETTAG), so lazy call arguments bind by name.
     pub const OP_SETTAG: i32 = 57;
+    /// Mark the stack top shared (NAMED = 2) because it stays live across a later call.
+    pub const OP_MARK_SHARED: i32 = 60;
     pub const OP_LAST: i32 = 58;
 }
 
@@ -3358,20 +3360,15 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
                         let forced =
                             with_stack_rooted(&stack, val, || unsafe { forcePromise(val) });
-                        let named = crate::sexp::accessors::NAMED(forced);
-                        if named < 2 {
-                            crate::sexp::accessors::SET_NAMED(forced, named + 1);
-                        }
                         stack.push(forced);
                     } else {
-                        // GNU DO_GETVAR increments NAMED, capped at 2, so a
-                        // later `[<-` sees a shared value and duplicates.
-                        let named = crate::sexp::accessors::NAMED(val);
-                        if named < 2 {
-                            crate::sexp::accessors::SET_NAMED(val, named + 1);
-                        }
                         stack.push(val);
                     }
+                }
+
+                opcodes::OP_MARK_SHARED => {
+                    let val = stack_top_checked(&stack, "MARK_SHARED");
+                    crate::sexp::accessors::SET_NAMED(val, 2);
                 }
 
                 opcodes::OP_SETVAR => {

@@ -194,7 +194,8 @@ impl BytecodeCompiler {
                 // `g <- function(y) 5; g(stop("boom"))` must not evaluate
                 // its arguments.  Constants stay eager values
                 // (PUSHCONSTARG semantics).
-                for cell in &arg_cells {
+                let subset = matches!(name.as_deref(), Some("[") | Some("[<-") | Some("[[") | Some("[[<-"));
+                for (arg_index, cell) in arg_cells.iter().enumerate() {
                     let argument = CAR(*cell);
                     let lazy_ok = local_fun
                         && !matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
@@ -203,6 +204,14 @@ impl BytecodeCompiler {
                         self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
                     } else if !self.compile_expr(argument) {
                         return false;
+                    }
+                    let later_call = arg_cells.iter().skip(arg_index + 1).any(|later| {
+                        let value = unsafe { CAR(*later) };
+                        !value.is_null() && TYPEOF(value) == SEXPTYPE::LANGSXP
+                    });
+                    let is_object = subset && arg_index == 0;
+                    if later_call && !is_object && TYPEOF(argument) == SEXPTYPE::SYMSXP {
+                        self.emit(opcodes::OP_MARK_SHARED);
                     }
                     let tag = TAG(*cell);
                     if !tag.is_null() && tag != R_NilValue() {
