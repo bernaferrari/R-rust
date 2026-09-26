@@ -372,9 +372,29 @@ impl BytecodeCompiler {
                 _ => return false,
             };
             let object = CAR(CDR(lhs));
-            if TYPEOF(object) != SEXPTYPE::SYMSXP || !self.compile_expr(object) {
+            let dollar = if TYPEOF(object) == SEXPTYPE::LANGSXP
+                && symbol_name_from_sexp(CAR(object)).as_deref() == Some("$")
+            {
+                let base = CAR(CDR(object));
+                let tag = CAR(CDR(CDR(object)));
+                if TYPEOF(base) != SEXPTYPE::SYMSXP || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+                    return false;
+                }
+                if !self.compile_expr(base) {
+                    return false;
+                }
+                let tag_idx = self.add_const(tag);
+                self.emit_operand(opcodes::OP_PUSHCONST, tag_idx);
+                let dollar_sym = crate::sexp::symbol::Rf_install(c"$".as_ptr());
+                let dollar_idx = self.add_const(dollar_sym);
+                self.emit_operand(opcodes::OP_PUSHFUN, dollar_idx);
+                self.emit_operand(opcodes::OP_CALL, 2);
+                Some((base, tag))
+            } else if TYPEOF(object) == SEXPTYPE::SYMSXP && self.compile_expr(object) {
+                None
+            } else {
                 return false;
-            }
+            };
             // A subscript that runs code (`x[{x[2] <<- 3; 1}] <<- 2`) must
             // see the fetched object as shared, or the inner assign mutates
             // the value the outer update writes back. Constant indexes do not.
@@ -425,11 +445,30 @@ impl BytecodeCompiler {
             let fun_idx = self.add_const(op_sym);
             self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
             self.emit_operand(opcodes::OP_CALL, n_index + 2);
-            let symbol_idx = self.add_const(object);
-            if superassign {
-                self.emit_operand(opcodes::OP_SETVAR2, symbol_idx);
+            if let Some((base, tag)) = dollar {
+                let tmp = crate::sexp::symbol::Rf_install(c".Compiler.sub".as_ptr());
+                let tmp_idx = self.add_const(tmp);
+                self.emit_operand(opcodes::OP_SETVAR, tmp_idx);
+                self.emit(opcodes::OP_POP);
+                if !self.compile_expr(base) {
+                    return false;
+                }
+                let tag_idx = self.add_const(tag);
+                self.emit_operand(opcodes::OP_PUSHCONST, tag_idx);
+                self.emit_operand(opcodes::OP_GETVAR, tmp_idx);
+                let set_sym = crate::sexp::symbol::Rf_install(c"$<-".as_ptr());
+                let set_idx = self.add_const(set_sym);
+                self.emit_operand(opcodes::OP_PUSHFUN, set_idx);
+                self.emit_operand(opcodes::OP_CALL, 3);
+                let base_idx = self.add_const(base);
+                self.emit_operand(opcodes::OP_SETVAR, base_idx);
             } else {
-                self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
+                let symbol_idx = self.add_const(object);
+                if superassign {
+                    self.emit_operand(opcodes::OP_SETVAR2, symbol_idx);
+                } else {
+                    self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
+                }
             }
             true
         }
