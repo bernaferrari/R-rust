@@ -880,8 +880,17 @@ pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             call_args = cell;
         }
         let call_sexp = Rf_cons(fun, call_args);
-        let _call = protect(call_sexp);
+        let _call_sexp = protect(call_sexp);
         (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        let _ctx = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
+            _call,
+            env,
+            rho,
+            None,
+            what,
+            call_args,
+        );
         crate::eval::eval::Rf_eval(call_sexp, env)
     }
 }
@@ -1016,7 +1025,14 @@ fn apply_fun_to_element(fun: SEXP, elem: SEXP, extra_args: SEXP, rho: SEXP) -> S
             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
         }
         let _call_guard = protect(call);
-        crate::eval::eval::Rf_eval(call, rho)
+        crate::eval::closure::applyClosure(
+            call,
+            fun,
+            call_args,
+            rho,
+            R_NilValue(),
+            crate::sexp::ffi::FALSE,
+        )
     }
 }
 
@@ -2787,12 +2803,6 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                 }
             }
-        }
-        if by.is_empty() {
-            crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
-                "'by' must specify one or more columns as numbers, names or logical",
-            );
         }
         let nx = if XLENGTH(x) > 0 { XLENGTH(VECTOR_ELT(x, 0)) } else { 0 };
         let ny = if XLENGTH(y) > 0 { XLENGTH(VECTOR_ELT(y, 0)) } else { 0 };
@@ -5101,11 +5111,22 @@ unsafe fn record_plot_window(args: SEXP) {
             }
             let (mut a, mut b) = (v[0], v[1]);
             if logged {
-                if a <= 0.0 || b <= 0.0 {
-                    return current;
-                }
                 a = a.log10();
                 b = b.log10();
+                if !a.is_finite() || !b.is_finite() {
+                    let fmt = std::ffi::CString::new(format!(
+                        "nonfinite axis={} limits [GScale({a},{b},..); log=TRUE] -- corrected now",
+                        if name == "xlim" { 1 } else { 2 }
+                    ))
+                    .unwrap_or_default();
+                    crate::mainutils::errors::warningcall(
+                        crate::sexp::globals::R_NilValue(),
+                        fmt.as_ptr(),
+                    );
+                    let fix = |z: f64| if z.is_finite() { z } else if z < 0. { -320. } else { 308.254715559 };
+                    a = fix(a);
+                    b = fix(b);
+                }
             }
             let extra = (b - a).abs() * 0.04;
             if a <= b {

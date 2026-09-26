@@ -58,10 +58,16 @@ pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
                 if skip2 > 0 {
                     skip2 -= 1;
                 } else {
-                    // SETCAR(t, duplicate(ctx_ref.call));
-                    //  set to the call (no deep copy)
+                    let dup = crate::mainutils::duplicate::Rf_duplicate(ctx_ref.call);
+                    if !ctx_ref.srcref.is_null() && ctx_ref.srcref != globals::R_NilValue() {
+                        crate::sexp::attrib_core::setAttrib(
+                            dup,
+                            crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+                            crate::mainutils::duplicate::Rf_duplicate(ctx_ref.srcref),
+                        );
+                    }
                     if !t.is_null() {
-                        SETCAR(t, ctx_ref.call);
+                        SETCAR(t, dup);
                     }
                     t = CDR(t);
                 }
@@ -74,7 +80,7 @@ pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
 }
 pub unsafe fn save_error_traceback() {
     unsafe {
-        let trace = R_GetTracebackOnly(1);
+        let trace = R_GetTracebackOnly(0);
         if trace.is_null() || trace == globals::R_NilValue() || crate::sexp::accessors::LENGTH(trace) == 0 {
             return;
         }

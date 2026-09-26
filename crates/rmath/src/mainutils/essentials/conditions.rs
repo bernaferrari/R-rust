@@ -1248,6 +1248,15 @@ unsafe fn named_call_dot(args: SEXP) -> bool {
 
 pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let _ctx = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
+            _call,
+            _rho,
+            _rho,
+            None,
+            R_NilValue(),
+            R_NilValue(),
+        );
         // stop(<condition>): upstream signals the condition's own object
         // (class c(class, "error", "condition") from errorCondition()) and
         // packages like zeallot build classed conditions and pass them
@@ -1409,6 +1418,12 @@ pub unsafe fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let sym = Rf_install(c"last.warning".as_ptr());
         let mut last = crate::sexp::accessors::SYMVALUE(sym);
+        if last.is_null()
+            || last == R_NilValue()
+            || last == crate::sexp::globals::R_UnboundValue()
+        {
+            last = crate::sexp::envir::R_findVar(sym, crate::sexp::globals::R_BaseEnv());
+        }
         if last.is_null()
             || last == R_NilValue()
             || last == crate::sexp::globals::R_UnboundValue()
@@ -1885,6 +1900,7 @@ unsafe fn coerce_search_envir(arg: SEXP, default: SEXP) -> SEXP {
 }
 
 
+
 /// R's `exists(x, envir)` — check name exists.
 pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -1912,11 +1928,14 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let found = if crate::eval::builtin::is_hidden_builtin_name(&name) {
             false
         } else if mode == "function" {
-            let value = if inherits {
+            let mut value = if inherits {
                 crate::sexp::envir::R_findVar(sym, env)
             } else {
                 crate::sexp::envir::R_findVarInFrame(env, sym)
             };
+            if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                value = crate::eval::eval::Rf_eval(value, env);
+            }
             is_function_value(value)
         } else {
             crate::sexp::envir::binding_exists_raw(env, sym, inherits)
@@ -2012,6 +2031,30 @@ unsafe fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: 
     }
 }
 
+fn value_matches_mode(value: SEXP, mode: &str) -> bool {
+    unsafe {
+        if value.is_null() || value == R_UnboundValue() {
+            return false;
+        }
+        let ty = TYPEOF(value);
+        let s4 = crate::mainutils::coerce::IS_S4_OBJECT(value) != 0;
+        match mode {
+            "S4" => s4,
+            "object" => ty == SEXPTYPE::OBJSXP && !s4,
+            "integer" => ty == SEXPTYPE::INTSXP,
+            "numeric" | "double" => ty == SEXPTYPE::REALSXP,
+            "logical" => ty == SEXPTYPE::LGLSXP,
+            "character" => ty == SEXPTYPE::STRSXP,
+            "list" => ty == SEXPTYPE::VECSXP,
+            "environment" => ty == SEXPTYPE::ENVSXP,
+            "function" => ty == SEXPTYPE::CLOSXP
+                || ty == SEXPTYPE::BUILTINSXP
+                || ty == SEXPTYPE::SPECIALSXP,
+            _ => true,
+        }
+    }
+}
+
 /// R's `get(x, envir)` — get value.
 pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -2026,16 +2069,20 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             "any".to_string()
         };
-        let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
         if mode == "function" {
             return crate::sexp::envir::findFun(sym, env);
         }
         let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
-        if inherits {
+        let value = if inherits {
             crate::sexp::envir::R_findVar(sym, env)
         } else {
             crate::sexp::envir::R_findVarInFrame(env, sym)
+        };
+        if mode != "any" && !value_matches_mode(value, &mode) {
+            base_error(format!("object '{name}' of mode '{mode}' was not found"));
         }
+        value
     }
 }
 
