@@ -1948,21 +1948,27 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                 )
                             }
                             kind if kind == SEXPTYPE::BUILTINSXP => {
-                                let raw_args = if !builtin_only
+                                if !builtin_only
                                     && super::apply::builtin_requires_raw_args(
                                         Sexp::from_raw_unchecked(fun),
                                         call.clone(),
-                                    ) {
-                                    CDR(call_expr)
+                                    )
+                                {
+                                    super::apply::apply_builtin_safe(
+                                        function,
+                                        call,
+                                        Sexp::from_raw_unchecked(CDR(call_expr)),
+                                        env,
+                                    )
                                 } else {
-                                    args
-                                };
-                                super::apply::apply_builtin_safe(
-                                    function,
-                                    call,
-                                    Sexp::from_raw_unchecked(raw_args),
-                                    env,
-                                )
+                                    force_gnu_builtin_arglist(args);
+                                    super::apply::apply_builtin_values_safe(
+                                        function,
+                                        call,
+                                        Sexp::from_raw_unchecked(args),
+                                        env,
+                                    )
+                                }
                             }
                             _ => unreachable!(),
                         };
