@@ -57,7 +57,7 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
                             let tag_bytes = std::ffi::CStr::from_ptr(tag_name_c).to_bytes();
                             if !tag_bytes.is_empty() {
                                 let b_bytes = std::ffi::CStr::from_ptr(b_tag_name_c).to_bytes();
-                                if b_bytes.starts_with(tag_bytes) {
+                                if tag_bytes.starts_with(b_bytes) && tag_bytes.len() > b_bytes.len() {
                                     if !s.is_null() {
                                         s = CAR(b_iter); // ambiguous match
                                         break;
