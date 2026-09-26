@@ -699,8 +699,20 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 0
             };
         } else if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP {
-            // SPECIALSXP / BUILTINSXP: compare PRIMOFFSET
             return if PRIMOFFSET(x) == PRIMOFFSET(y) { 1 } else { 0 };
+        } else if t == SEXPTYPE::EXTPTRSXP {
+            // GNU identical.c: default compares EXTPTR_PTR. extptr.as.ref
+            // compares the external-pointer objects themselves.
+            if flags & IDENT_EXTPTR_AS_REF != 0 {
+                return 0;
+            }
+            return if crate::mainutils::memory_main::R_ExternalPtrAddr(x)
+                == crate::mainutils::memory_main::R_ExternalPtrAddr(y)
+            {
+                1
+            } else {
+                0
+            };
         }
 
         // Default: pointer equality (already checked x != y)
