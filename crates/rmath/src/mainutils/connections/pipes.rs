@@ -174,7 +174,8 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEX
     unsafe {
         let arg1 = CAR(args);
         args = CDR(args);
-        let arg2 = CAR(args);
+        let arg2_cell = args;
+        let arg2 = CAR(arg2_cell);
         args = CDR(args);
         let arg3 = CAR(args);
         args = CDR(args);
@@ -201,11 +202,16 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEX
                 arg4,
             )
         } else {
-            let open = if is_missing_conn_arg(arg2) {
+            let encoding_tag = {
+                let tag = crate::sexp::accessors::TAG(arg2_cell);
+                !tag.is_null()
+                    && crate::sexp::symbol::symbol_name_from_ptr(tag).as_deref() == Some("encoding")
+            };
+            let open = if is_missing_conn_arg(arg2) || encoding_tag {
                 "r".to_string()
             } else {
                 let open = check_string_arg(arg2, "open");
-                if open.is_empty() || !matches!(open.as_bytes().first(), Some(b'r' | b'w' | b'a')) {
+                if open.is_empty() {
                     "r".to_string()
                 } else {
                     open

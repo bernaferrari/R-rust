@@ -700,7 +700,7 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                     break;
                                 }
                             }
-                        } else if at_token_start && quote_chars.as_bytes().contains(&byte) {
+                        } else if quote_chars.as_bytes().contains(&byte) {
                             in_quote = byte;
                             at_token_start = false;
                         } else {
@@ -1933,7 +1933,7 @@ fn parse_table_records(content: &str, spec: &TableParseSpec) -> Vec<Vec<TableFie
             }
             continue;
         }
-        if spec.quotes.contains(&c) && !field_started {
+        if spec.quotes.contains(&c) && (spec.sep.is_some() || !field_started) {
             quote = Some(c);
             field_quoted = true;
             field_started = true;
