@@ -672,19 +672,42 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let (filename, from_conn) = if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) == 1 {
                 let idx = *INTEGER(file_arg);
+                let quote_chars = {
+                    let quote_arg = by_slot(&["quote"], 5);
+                    if quote_arg.is_null() || quote_arg == R_NilValue() {
+                        "\"'".to_string()
+                    } else {
+                        elt_to_string(quote_arg, 0)
+                    }
+                };
                 let mut bytes = Vec::new();
                 let mut lines_read = 0i64;
+                let mut in_quote: u8 = 0;
+                let mut at_token_start = true;
                 loop {
                     let b = crate::mainutils::connections::connection_fgetc(idx);
                     if b < 0 {
                         break;
                     }
-                    bytes.push(b as u8);
-                    if nlines >= 0 && b == b'\n' as i32 {
-                        lines_read += 1;
-                        if lines_read >= nlines {
-                            break;
+                    let byte = b as u8;
+                    bytes.push(byte);
+                    if in_quote == 0 {
+                        if byte == b' ' || byte == b'\t' || byte == b'\n' || byte == b'\r' {
+                            at_token_start = true;
+                            if nlines >= 0 && byte == b'\n' {
+                                lines_read += 1;
+                                if lines_read >= nlines {
+                                    break;
+                                }
+                            }
+                        } else if at_token_start && quote_chars.as_bytes().contains(&byte) {
+                            in_quote = byte;
+                            at_token_start = false;
+                        } else {
+                            at_token_start = false;
                         }
+                    } else if byte == in_quote {
+                        in_quote = 0;
                     }
                 }
                 (String::from_utf8_lossy(&bytes).into_owned(), Some((idx, bytes)))
@@ -937,6 +960,17 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                             parse_scan_logical(text).unwrap_or(NA_INTEGER);
                     }
                 }
+            }
+            let names = crate::sexp::attrib_core::getAttrib(
+                what_arg,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
             }
             result
         } else {
