@@ -680,6 +680,14 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         elt_to_string(quote_arg, 0)
                     }
                 };
+                let sep_for_lines = {
+                    let sep_arg = by_slot(&["sep"], 3);
+                    if sep_arg.is_null() || sep_arg == R_NilValue() {
+                        String::new()
+                    } else {
+                        elt_to_string(sep_arg, 0)
+                    }
+                };
                 let mut bytes = Vec::new();
                 let mut lines_read = 0i64;
                 let mut in_quote: u8 = 0;
@@ -700,7 +708,9 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                     break;
                                 }
                             }
-                        } else if quote_chars.as_bytes().contains(&byte) {
+                        } else if quote_chars.as_bytes().contains(&byte)
+                            && (at_token_start || !sep_for_lines.is_empty())
+                        {
                             in_quote = byte;
                             at_token_start = false;
                         } else {
