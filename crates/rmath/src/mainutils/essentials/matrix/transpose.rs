@@ -198,6 +198,7 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return R_NilValue();
         }
         let _result_guard = protect(result);
+        crate::mainutils::array::copyMostAttrib(x, result);
 
         // Source and destination are both column-major:
         // src(row, col) = row + col * nrow

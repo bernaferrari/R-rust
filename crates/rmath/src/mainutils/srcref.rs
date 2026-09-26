@@ -180,6 +180,7 @@ pub(crate) unsafe fn attach_srcrefs_with_spans(
             return;
         }
         let srcfile = make_srcfile(filename, true, src);
+        attach_whole_source_parse_data(srcfile, src);
         let _sf_guard = crate::sexp::protect::protect(srcfile);
 
         let srcref_list =
@@ -269,6 +270,61 @@ unsafe fn attach_srcfile_to_function_srcrefs(expr: SEXP, srcfile: SEXP) {
                 attach_srcfile_to_function_srcrefs(VECTOR_ELT(expr, i), srcfile);
             }
         }
+    }
+}
+/// One parseData record covering the whole source, line 1 when the text
+/// starts on the first line. `getParseData` reads `srcfile$parseData`.
+unsafe fn attach_whole_source_parse_data(srcfile: SEXP, src: &str) {
+    unsafe {
+        let mat = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 8);
+        if mat.is_null() {
+            return;
+        }
+        let dim = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dim) = 8;
+        *INTEGER(dim).add(1) = 1;
+        crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        let _g = crate::sexp::protect::protect(mat);
+        let p = INTEGER(mat);
+        let end_col = src.chars().count().max(1) as i32;
+        *p.add(0) = 1;
+        *p.add(1) = 1;
+        *p.add(2) = 1;
+        *p.add(3) = end_col;
+        *p.add(4) = 0;
+        *p.add(5) = 0;
+        *p.add(6) = 1;
+        *p.add(7) = 0;
+        let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        SET_STRING_ELT(
+            class,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"parseData".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        let tokens = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        SET_STRING_ELT(
+            tokens,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"exprlist".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::symbol::Rf_install(c"tokens".as_ptr()),
+            tokens,
+        );
+        let text = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        SET_STRING_ELT(text, 0, crate::sexp::constructors::Rf_mkChar(c"".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            crate::sexp::symbol::Rf_install(c"text".as_ptr()),
+            text,
+        );
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c"parseData".as_ptr()),
+            mat,
+            srcfile,
+        );
     }
 }
 
