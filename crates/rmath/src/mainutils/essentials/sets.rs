@@ -342,6 +342,7 @@ fn order_key_is_na(key: SEXP, i: usize) -> bool {
             }
             t if t == SEXPTYPE::REALSXP => ISNAN(*REAL(key).add(i)),
             t if t == SEXPTYPE::STRSXP => charsxp_is_na(STRING_ELT(key, i as R_xlen_t)),
+            t if t == SEXPTYPE::RAWSXP => false,
             _ => ISNAN(elt_real_safe(key, i as R_xlen_t)),
         }
     }
@@ -359,6 +360,7 @@ fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
             t if t == SEXPTYPE::STRSXP => {
                 compare_charsxp_for_sort(STRING_ELT(key, i as R_xlen_t), STRING_ELT(key, j as R_xlen_t))
             }
+            t if t == SEXPTYPE::RAWSXP => (*RAW(key).add(i)).cmp(&*RAW(key).add(j)),
             _ => elt_real_safe(key, i as R_xlen_t)
                 .partial_cmp(&elt_real_safe(key, j as R_xlen_t))
                 .unwrap_or(std::cmp::Ordering::Equal),
@@ -368,7 +370,7 @@ fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
 
 fn reject_unorderable(x: SEXP) {
     let t = unsafe { TYPEOF(x) };
-    if t == SEXPTYPE::VECSXP || t == SEXPTYPE::RAWSXP || t == SEXPTYPE::LISTSXP {
+    if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
         std::panic::panic_any(crate::sexp::context::RError {
             message: "unimplemented type in 'order'".to_string(),
         });
@@ -437,6 +439,21 @@ pub(crate) fn ordered_atomic_indices(
                 }
                 values.sort_by(|a, b| {
                     let ordering = a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal);
+                    if decreasing {
+                        ordering.reverse()
+                    } else {
+                        ordering
+                    }
+                });
+                values.into_iter().map(|(_, index)| index).collect()
+            }
+            t if t == SEXPTYPE::RAWSXP => {
+                let mut values: Vec<(u8, R_xlen_t)> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    values.push((*RAW(x).add(i as usize), i));
+                }
+                values.sort_by(|a, b| {
+                    let ordering = a.0.cmp(&b.0);
                     if decreasing {
                         ordering.reverse()
                     } else {
@@ -929,7 +946,7 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
 
-        // Parse MARGIN (default = 1, i.e. rows)
+        // Primitive call supplies (x, MARGIN) or (x, MARGIN, fromLast).
         let margin = {
             let rest = CDR(args);
             if rest.is_null() || rest == R_NilValue() {
@@ -938,20 +955,12 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
                 real_or_default(CAR(rest), 1.0) as i32
             }
         };
-
-        // Parse fromLast (default = FALSE)
         let from_last = {
-            let rest = CDR(args);
+            let rest = CDR(CDR(args));
             if rest.is_null() || rest == R_NilValue() {
                 false
             } else {
-                let rest2 = CDR(rest);
-                if rest2.is_null() || rest2 == R_NilValue() {
-                    false
-                } else {
-                    let v = real_or_default(CAR(rest2), 0.0);
-                    v != 0.0
-                }
+                real_or_default(CAR(rest), 0.0) != 0.0
             }
         };
 
@@ -1121,17 +1130,56 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 
             result
         } else {
-            // Generic: flatten along margin — fallback to duplicated on flattened vector
-            // For higher-dimensional arrays, treat as 1D
-            let mut new_args = R_NilValue();
-            new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
-            new_args = Rf_cons(
-                Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
-                new_args,
-            );
-            new_args = Rf_cons(R_NilValue(), new_args);
-            new_args = Rf_cons(x, new_args);
-            do_duplicated(_call, _op, new_args, _rho)
+            let m = (margin as usize).saturating_sub(1);
+            if m >= dims_len as usize {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "MARGIN out of range".to_string(),
+                });
+            }
+            let mut before: usize = 1;
+            for i in 0..m {
+                before *= *dim_vals.add(i) as usize;
+            }
+            let n_slices = *dim_vals.add(m) as usize;
+            let mut after: usize = 1;
+            for i in (m + 1)..dims_len as usize {
+                after *= *dim_vals.add(i) as usize;
+            }
+            let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n_slices as R_xlen_t);
+            let dst = LOGICAL(result);
+            let mut keys: Vec<String> = Vec::with_capacity(n_slices);
+            let stride = before * n_slices;
+            for s in 0..n_slices {
+                let mut parts = Vec::with_capacity(before * after);
+                for b in 0..after {
+                    for a in 0..before {
+                        let idx = a + s * before + b * stride;
+                        parts.push(elt_to_string(x, idx as R_xlen_t));
+                    }
+                }
+                keys.push(parts.join("\x01"));
+            }
+            let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            if from_last {
+                for s in (0..n_slices).rev() {
+                    if seen.contains(&keys[s]) {
+                        *dst.add(s) = TRUE;
+                    } else {
+                        seen.insert(keys[s].clone());
+                        *dst.add(s) = FALSE;
+                    }
+                }
+            } else {
+                for s in 0..n_slices {
+                    if seen.contains(&keys[s]) {
+                        *dst.add(s) = TRUE;
+                    } else {
+                        seen.insert(keys[s].clone());
+                        *dst.add(s) = FALSE;
+                    }
+                }
+            }
+            result
         }
     }
 }
@@ -1729,10 +1777,18 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         break_pts.push(elt_real_safe(breaks_arg, i));
                     }
                 }
+            } else {
+                base_error("invalid 'breaks' argument".to_string());
             }
         }
+        let breaks_missing = breaks_arg.is_null()
+            || breaks_arg == crate::sexp::globals::R_MissingArg();
         if break_pts.len() < 2 {
-            break_pts = vec![0.0, 1.0];
+            if breaks_arg == R_NilValue() || !breaks_missing {
+                base_error("invalid 'breaks' argument".to_string());
+            } else {
+                break_pts = vec![0.0, 1.0];
+            }
         }
         let right = logical_arg_by_name_or_position(args, "right", 3).unwrap_or(true);
         let include_lowest =

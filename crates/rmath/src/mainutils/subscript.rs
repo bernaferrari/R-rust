@@ -1277,7 +1277,7 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
         let nd = INTEGER_ELT(dims, dim);
         crate::mainutils::subset::note_oob_subscript(dim + 1);
         let stype = TYPEOF(s);
-        if stype == SEXPTYPE::NILSXP {
+        let ans = if stype == SEXPTYPE::NILSXP {
             Rf_allocVector3(SEXPTYPE::INTSXP, 0)
         } else if stype == SEXPTYPE::LGLSXP {
             logicalSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call)
@@ -1312,7 +1312,9 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
             nullSubscript(nd as R_xlen_t)
         } else {
             error("invalid subscript type 'unknown'");
-        }
+        };
+        crate::mainutils::subset::note_oob_subscript(0);
+        ans
     }
 }
 
