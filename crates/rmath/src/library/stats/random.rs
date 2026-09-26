@@ -587,6 +587,12 @@ pub fn lookup_external(name: &str) -> DL_FUNC {
         "modelmatrix" => {
             as_dl(c_modelmatrix as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
         }
+        "signrank_free" => {
+            as_dl(super::distn::c_signrank_free as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
+        "wilcox_free" => {
+            as_dl(super::distn::c_wilcox_free as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
         _ => None,
     }
 }

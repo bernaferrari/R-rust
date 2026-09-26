@@ -1184,6 +1184,9 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
 
             }
             attach_package_env(attach_env);
+            if package == "utils" {
+                install_utils_str_option(package_env);
+            }
             if package == "methods" {
                 run_methods_onload_cache_metadata(package_env);
                 export_s4_metadata_to_package_env(package_env, attach_env);
@@ -1825,6 +1828,27 @@ unsafe fn retarget_envref_object_parent(ns: SEXP) {
 
 
 
+/// GNU `utils:::.onLoad` sets `options(str = strOptions())`.
+unsafe fn install_utils_str_option(env: SEXP) {
+    unsafe {
+        let src = crate::sexp::constructors::Rf_mkString(
+            b"options(str = strOptions())\0".as_ptr() as *const std::os::raw::c_char,
+        );
+        let _src = crate::sexp::protect::protect(src);
+        let mut status = 0i32;
+        let parsed = crate::mainutils::gram_main::R_ParseVector(
+            src,
+            -1,
+            &mut status,
+            crate::sexp::globals::R_NilValue(),
+        );
+        if status == 1 && !parsed.is_null() {
+            let _parsed = crate::sexp::protect::protect(parsed);
+            let expr = crate::sexp::accessors::VECTOR_ELT(parsed, 0);
+            let _ = crate::eval::eval::Rf_eval(expr, env);
+        }
+    }
+}
 
 pub(crate) unsafe fn load_package_namespace(
     package: &str,
@@ -1852,6 +1876,7 @@ pub(crate) unsafe fn load_package_namespace(
             }
             if package == "utils" {
                 crate::library::utils::install_utils_call_symbols(env);
+
             }
             if package == "grDevices" {
                 crate::library::grdevices::install_call_symbols(env);
@@ -1938,6 +1963,7 @@ pub(crate) unsafe fn load_package_namespace(
         }
         if package == "utils" {
             crate::library::utils::install_utils_call_symbols(package_env);
+
         }
         if package == "grDevices" {
             crate::library::grdevices::install_call_symbols(package_env);

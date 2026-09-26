@@ -963,6 +963,7 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if let Some(name) = ported_call_name(CAR(args)) {
             ofun = crate::library::stats::random::lookup_external(&name)
                 .or_else(|| crate::library::grdevices::lookup_external(&name))
+                .or_else(|| crate::library::graphics::lookup(&name))
                 .or_else(|| crate::library::utils::lookup(&name))
                 .or_else(|| crate::library::tools::native_calls::lookup(&name));
         }
@@ -991,6 +992,7 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if let Some(name) = ported_call_name(CAR(args)) {
                 ofun = crate::library::stats::random::lookup_external(&name)
                     .or_else(|| crate::library::grdevices::lookup_external(&name))
+                    .or_else(|| crate::library::graphics::lookup(&name))
                     .or_else(|| crate::library::utils::lookup(&name))
                     .or_else(|| crate::library::tools::native_calls::lookup(&name));
             }
@@ -1003,6 +1005,7 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if !name.is_empty() {
                 ofun = crate::library::stats::random::lookup_external(name)
                     .or_else(|| crate::library::grdevices::lookup_external(name))
+                    .or_else(|| crate::library::graphics::lookup(name))
                     .or_else(|| crate::library::utils::lookup(name))
                     .or_else(|| crate::library::tools::native_calls::lookup(name));
             }

@@ -4667,6 +4667,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         0,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
+    FunTabEntry::new(
+        b"setS4Object\0",
+        None,
+        0,
+        11,
+        3,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
     // GNU names.c lapack internals used by kappa.R / rcond() / norm().
     FunTabEntry::new(
         b"La_dlange\0",
@@ -5309,6 +5317,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "interruptsSuspended" => Some(crate::mainutils::errors::do_interruptsSuspended),
         "debug" | "undebug" | "isdebugged" | "debugonce" => Some(crate::mainutils::debug::do_debug),
         "delayedAssign" => Some(crate::mainutils::builtin::do_delayed),
+        "makeLazy" => Some(crate::mainutils::builtin::do_makelazy),
         "radixsort" => Some(crate::mainutils::radixsort::do_radixsort),
         "order" => Some(crate::mainutils::essentials::do_order),
         "sort" => Some(crate::mainutils::essentials::do_sort),

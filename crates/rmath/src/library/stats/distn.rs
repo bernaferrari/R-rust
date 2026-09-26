@@ -1426,10 +1426,10 @@ pub unsafe fn stats_wilcox_free(_args: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-unsafe extern "C-unwind" fn c_signrank_free(_args: SEXP) -> SEXP {
+pub(crate) unsafe extern "C-unwind" fn c_signrank_free(_args: SEXP) -> SEXP {
     unsafe { stats_signrank_free(R_NilValue()) }
 }
-unsafe extern "C-unwind" fn c_wilcox_free(_args: SEXP) -> SEXP {
+pub(crate) unsafe extern "C-unwind" fn c_wilcox_free(_args: SEXP) -> SEXP {
     unsafe { stats_wilcox_free(R_NilValue()) }
 }
 
