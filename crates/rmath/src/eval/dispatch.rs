@@ -1089,7 +1089,7 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
         let mut head: SEXP = R_NilValue();
         let mut tail: SEXP = ptr::null_mut();
         let mut head_guard = None;
-
+        let mut bumped: Vec<SEXP> = Vec::new();
         let mut remaining = el;
         while !remaining.is_null() && remaining != R_NilValue() {
             let mut val: SEXP;
@@ -1105,6 +1105,8 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                             val = R_MissingArg();
                         } else {
                             val = Rf_eval(CAR(dh), rho);
+                            bump_named_link(val);
+                            bumped.push(val);
                         }
                         // The value is reachable only from this local until
                         // its cell is linked into the protected head chain.
@@ -1134,6 +1136,8 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                     val = R_MissingArg();
                 } else {
                     val = Rf_eval(CAR(remaining), rho);
+                    bump_named_link(val);
+                    bumped.push(val);
                 }
                 // The value is reachable only from this local until its cell
                 // is linked into the protected head chain.
@@ -1153,7 +1157,9 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
             }
             remaining = CDR(remaining);
         }
-
+        for val in bumped {
+            drop_named_link(val);
+        }
         head
     }
 }
