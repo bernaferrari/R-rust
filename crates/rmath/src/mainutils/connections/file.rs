@@ -839,6 +839,7 @@ pub fn close_connection_inner(conn: &mut RConn) {
 
     conn.status = 0; // success
     if matches!(conn.kind, ConnKind::TextConnection) && conn.canwrite {
+        conn.text_incomplete = false;
         unsafe {
             conn.assign_text_output();
             if !conn.text_env.is_null() {

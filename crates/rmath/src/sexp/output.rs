@@ -413,8 +413,12 @@ pub fn capture_stderr(msg: &str) {
 }
 
 pub(crate) fn capture_stderr_in(inst: *mut RInstance, msg: &str) {
-    // P2: strictly-local RefCell write; no ambient write intervenes.
     unsafe {
+        let error_con = crate::mainutils::connections::sink_state().error_con;
+        if error_con != 2 {
+            crate::mainutils::connections::connection_write_bytes(error_con, msg.as_bytes());
+            return;
+        }
         let mut capture = (*inst).output_capture.borrow_mut();
         if !capture.capture_stderr(msg) {
             drop(capture);
@@ -486,8 +490,15 @@ pub(crate) fn format_real_value(v: f64) -> String {
         } else {
             "Inf".to_string()
         }
-    } else if v.fract() == 0.0 && !needs_scientific(v) {
-        format!("{v:.0}")
+    } else if !needs_scientific(v) {
+        let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
+        let exponent = v.abs().log10().floor() as i32;
+        let decimals = if exponent >= 0 {
+            (digits - exponent - 1).max(0) as usize
+        } else {
+            (digits - exponent - 1) as usize
+        };
+        format!("{v:.decimals$}")
     } else {
         format_r_default_real(v)
     }
@@ -2025,6 +2036,30 @@ fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
 
 
 
+fn format_summary_via_format(x: Sexp<'_>) -> Option<Vec<String>> {
+    unsafe {
+        let sym = crate::sexp::symbol::Rf_install(c"format".as_ptr());
+        let fun = crate::sexp::envir::findFun(sym, crate::sexp::globals::R_GlobalEnv());
+        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+            return None;
+        }
+        let call = crate::sexp::constructors::Rf_lang2(fun, x.as_raw());
+        let _call = crate::sexp::protect::protect(call);
+        let res = crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv());
+        if res.is_null() || crate::sexp::accessors::TYPEOF(res) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let n = crate::sexp::accessors::XLENGTH(res);
+        let mut values = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let charsxp = crate::sexp::accessors::STRING_ELT(res, i);
+            let bytes = crate::sexp::accessors::charsxp_as_utf8(charsxp);
+            values.push(String::from_utf8_lossy(&bytes).trim().to_string());
+        }
+        Some(values)
+    }
+}
+
 fn format_summary_default(x: Sexp<'_>) -> Option<String> {
     if !has_class(x.clone(), "summaryDefault") || !has_class(x.clone(), "table") {
         return None;
@@ -2036,8 +2071,7 @@ fn format_summary_default(x: Sexp<'_>) -> Option<String> {
         return Some(format_summary_default_unnamed_numeric(x));
     };
     let values: Vec<String> = match x.clone().typeof_() {
-        SEXPTYPE::REALSXP => format_named_summary_reals(x.clone(), &names)?,
-
+        SEXPTYPE::REALSXP => format_summary_via_format(x.clone()).or_else(|| format_named_summary_reals(x.clone(), &names))?,
 
         SEXPTYPE::INTSXP => (0..x.clone().len())
             .map(|i| {
