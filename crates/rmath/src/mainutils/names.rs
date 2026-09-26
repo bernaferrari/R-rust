@@ -5289,6 +5289,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
         "refcnt" => Some(do_refcnt),
+        "named" => Some(do_named),
         "addTaskCallback" => Some(do_add_task_callback),
         "removeTaskCallback" => Some(do_remove_task_callback),
         "Recall" => Some(crate::eval::eval::do_recall),
@@ -5377,6 +5378,11 @@ pub unsafe fn do_refcnt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         };
         crate::sexp::constructors::Rf_ScalarInteger(crate::sexp::accessors::NAMED(x))
     }
+}
+
+/// `.Internal(named(x))` reports the same NAMED level as `refcnt`.
+pub unsafe fn do_named(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_refcnt(call, op, args, rho) }
 }
 
 pub unsafe fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
