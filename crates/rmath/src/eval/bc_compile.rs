@@ -202,10 +202,10 @@ impl BytecodeCompiler {
                     let argument = CAR(*cell);
                     let constant = matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
                     let missing_arg = argument == crate::sexp::globals::R_MissingArg();
-                    if missing_arg || is_internal {
+                    if missing_arg || is_internal || is_missing {
                         let idx = self.add_const(argument);
                         self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                    } else if is_missing || ((!eager || local_fun) && !constant) {
+                    } else if (!eager || local_fun) && !constant {
                         let idx = self.add_const(argument);
                         self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
                     } else if !self.compile_expr(argument) {
