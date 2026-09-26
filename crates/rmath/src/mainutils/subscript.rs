@@ -702,6 +702,12 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
         }
         let nr = INTEGER_ELT(s_dim, 0) as R_xlen_t;
         let nc = INTEGER_ELT(s_dim, 1) as c_int;
+        if dnamelist.is_null() || dnamelist == R_NilValue() {
+            if !_call.is_null() {
+                crate::mainutils::errors::record_error_call(_call, true);
+            }
+            error("no 'dimnames' attribute for array");
+        }
 
         // Allocate integer result matrix
         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nr * nc as R_xlen_t);
@@ -1269,6 +1275,7 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
             LENGTH(s)
         };
         let nd = INTEGER_ELT(dims, dim);
+        crate::mainutils::subset::note_oob_subscript(dim + 1);
         let stype = TYPEOF(s);
         if stype == SEXPTYPE::NILSXP {
             Rf_allocVector3(SEXPTYPE::INTSXP, 0)

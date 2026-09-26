@@ -385,9 +385,21 @@ unsafe fn errorcallMissingSubs(_x: SEXP, _call: SEXP) {
     });
 }
 
-/// Report out-of-bounds error (integer index).
-unsafe fn errorcallOutOfBounds(_x: SEXP, _subscript: c_int, _index: R_xlen_t, _call: SEXP) {
-    let _ = (_x, _subscript, _index, _call);
+thread_local! {
+    static OOB_SUBSCRIPT: std::cell::Cell<i32> = const { std::cell::Cell::new(0) };
+}
+
+pub(crate) fn take_oob_subscript() -> i32 {
+    OOB_SUBSCRIPT.with(|cell| cell.replace(0))
+}
+
+pub(crate) fn note_oob_subscript(one_based: i32) {
+    OOB_SUBSCRIPT.with(|cell| cell.set(one_based));
+}
+/// Report out-of-bounds error (integer index). `subscript` is 0-based.
+unsafe fn errorcallOutOfBounds(_x: SEXP, subscript: c_int, _index: R_xlen_t, _call: SEXP) {
+    let _ = (_x, _index, _call);
+    OOB_SUBSCRIPT.with(|cell| cell.set(subscript + 1));
     std::panic::panic_any(RError {
         message: "subscript out of bounds".to_string(),
     });

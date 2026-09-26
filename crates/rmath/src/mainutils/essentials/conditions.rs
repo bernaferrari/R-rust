@@ -1579,14 +1579,30 @@ unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
                 call
             }
         };
+        let which = if message.starts_with("subscript out of bounds") {
+            crate::mainutils::subset::take_oob_subscript()
+        } else {
+            0
+        };
         let c_msg = CString::new(message).unwrap_or_default();
-        crate::mainutils::errors::R_makeErrorCondition(
+        let cond = crate::mainutils::errors::R_makeErrorCondition(
             call,
             c"simpleError".as_ptr() as *const core::ffi::c_char,
             std::ptr::null(),
-            0,
+            if which > 0 { 1 } else { 0 },
             c_msg.as_ptr(),
-        )
+        );
+        if which > 0 {
+            let scalar = Rf_ScalarInteger(which);
+            let _g = protect(scalar);
+            crate::mainutils::errors::R_setConditionField(
+                cond,
+                2,
+                c"subscript".as_ptr(),
+                scalar,
+            );
+        }
+        cond
     }
 }
 
