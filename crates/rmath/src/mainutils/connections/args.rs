@@ -69,6 +69,10 @@ pub unsafe fn check_string_arg(arg: SEXP, name: &str) -> String {
         if len < 1 {
             r_error(&format!("invalid '{}' argument", name));
         }
+        let elt = STRING_ELT(arg, 0);
+        if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+            r_error(&format!("invalid '{}' argument", name));
+        }
         string_elt(arg, 0)
     }
 }
