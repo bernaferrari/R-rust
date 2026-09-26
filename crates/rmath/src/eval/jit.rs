@@ -792,11 +792,26 @@ unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
         }
         (*expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
 
-        if is_in_tail_position() {
-            return make_exec_continuation(expr, rho, CAR(args));
+        let value = Rf_eval(expr, rho);
+        let _guard = protect(value);
+        let mut c = crate::eval::runtime::global_context();
+        let mut target: *mut crate::sexp::context::RCNTXT = std::ptr::null_mut();
+        let mask = crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+            | crate::sexp::context::ctxt_flags::CTXT_BROWSER;
+        while !c.is_null() {
+            let flag = unsafe { (*c).callflag };
+            if flag == crate::sexp::context::ctxt_flags::CTXT_TOPLEVEL {
+                break;
+            }
+            if unsafe { (*c).cloenv } == rho && (flag & mask) != 0 {
+                target = c;
+            }
+            c = unsafe { (*c).nextcontext };
         }
-
-        Rf_eval(expr, rho)
+        if target.is_null() {
+            tailcall_error("no function to return from, jumping to top level");
+        }
+        crate::eval::context::R_jumpctxt(target, mask, value);
     }
 }
 
