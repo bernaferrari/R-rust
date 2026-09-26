@@ -2075,6 +2075,17 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         let _args_guard = protect(args);
 
         let mut drop: c_int = 1;
+        let mut drop_given = false;
+        {
+            let mut cell = args;
+            while !isNull(cell) {
+                if TAG(cell) == sym_Drop() {
+                    drop_given = true;
+                    break;
+                }
+                cell = CDR(cell);
+            }
+        }
         ExtractDropArg(args, &mut drop);
 
         let x = CAR(args);
@@ -2358,7 +2369,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             let sc = int_arraySubscript(1, CADR(subs), dims, subscript_source, call);
             let _sc_guard = protect(sc);
 
-            if LENGTH(sc) == 1 && drop != 0 {
+            if LENGTH(sc) == 1 && drop != 0 && drop_given {
                 let col = VECTOR_ELT(ax, (*INTEGER(sc) as R_xlen_t) - 1);
                 let _col_guard = protect(col);
                 return subset_frame_column(col, sr, call);
