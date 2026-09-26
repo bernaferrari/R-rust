@@ -3216,6 +3216,20 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                         define_s3_method(defenv, local_generic, &method.class, method_value)?;
                     }
                 }
+                let base_fdef = crate::sexp::envir::findFun(
+                    generic_sym,
+                    crate::sexp::globals::R_BaseEnv(),
+                );
+                if TYPEOF(base_fdef) == SEXPTYPE::BUILTINSXP
+                    || TYPEOF(base_fdef) == SEXPTYPE::SPECIALSXP
+                {
+                    define_s3_method(
+                        crate::sexp::globals::R_BaseEnv(),
+                        local_generic,
+                        &method.class,
+                        method_value,
+                    )?;
+                }
             }
 
 
