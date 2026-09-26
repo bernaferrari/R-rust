@@ -1230,7 +1230,7 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Short-circuit identity permutation (PR#19069): when resizing and the
         // permutation is the identity, return the original array unchanged.
         let is_identity = perm.iter().enumerate().all(|(i, &axis)| axis == i);
-        if resize && is_identity {
+        if is_identity {
             return x;
         }
 

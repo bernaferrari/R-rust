@@ -603,6 +603,37 @@ pub unsafe fn retained_dimnames(dimnames: SEXP, axes: &[R_xlen_t]) -> SEXP {
             }
             SET_VECTOR_ELT(result, out_i as R_xlen_t, names);
         }
+        let src_names = crate::sexp::attrib_core::getAttrib(
+            dimnames,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if !src_names.is_null()
+            && src_names != R_NilValue()
+            && TYPEOF(src_names) == SEXPTYPE::STRSXP
+        {
+            let kept = Rf_allocVector3(SEXPTYPE::STRSXP, axes.len() as R_xlen_t);
+            if !kept.is_null() {
+                let _kept_guard = protect(kept);
+                for (out_i, axis) in axes.iter().enumerate() {
+                    let raw = if *axis < XLENGTH(src_names) {
+                        STRING_ELT(src_names, *axis)
+                    } else {
+                        R_NilValue()
+                    };
+                    let elt = if raw.is_null() || raw == R_NilValue() {
+                        crate::sexp::constructors::Rf_mkChar(c"".as_ptr())
+                    } else {
+                        raw
+                    };
+                    SET_STRING_ELT(kept, out_i as R_xlen_t, elt);
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    kept,
+                );
+            }
+        }
         if has_names { result } else { R_NilValue() }
     }
 }
