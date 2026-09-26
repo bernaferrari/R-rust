@@ -1170,7 +1170,11 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
             let (package_env, namespace) =
                 load_package_namespace(package, package_dir, &mut loading)?;
             let _package_env_guard = crate::sexp::protect::protect(package_env);
-            let attach_env = make_package_attach_env(package, namespace.as_ref(), package_env)?;
+            let attach_env = if package == "utils" {
+                make_package_attach_env_lenient(package, namespace.as_ref(), package_env)?
+            } else {
+                make_package_attach_env(package, namespace.as_ref(), package_env)?
+            };
             if package == "methods" {
                 bind_methods_base_primitives(package_env);
                 purge_missing_arg_placeholders(package_env);
@@ -2130,6 +2134,17 @@ pub(crate) unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
         let search_string = Rf_mkString(CString::new(search_name).unwrap_or_default().as_ptr());
         if !search_string.is_null() {
             crate::sexp::attrib_core::setAttrib(package_env, name_symbol(), search_string);
+        }
+        let package_path = find_package_path(package);
+        if !package_path.is_empty() {
+            let path_string = Rf_mkString(CString::new(package_path).unwrap_or_default().as_ptr());
+            if !path_string.is_null() {
+                crate::sexp::attrib_core::setAttrib(
+                    package_env,
+                    Rf_install(c"path".as_ptr()),
+                    path_string,
+                );
+            }
         }
     }
 }
@@ -4237,6 +4252,14 @@ pub(crate) fn sexp_key(x: SEXP) -> String {
             return "NULL".to_string();
         }
         let t = TYPEOF(x);
+        if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::CLOSXP {
+            let text = crate::mainutils::deparse::deparse1line(x, false);
+            if !text.is_null() && text != crate::sexp::globals::R_NilValue() && XLENGTH(text) > 0 {
+                let charsxp = crate::sexp::accessors::STRING_ELT(text, 0);
+                let bytes = crate::sexp::accessors::charsxp_as_utf8(charsxp);
+                return String::from_utf8_lossy(&bytes).into_owned();
+            }
+        }
         if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
             let n = XLENGTH(x);
             let mut parts = Vec::with_capacity(n as usize);
