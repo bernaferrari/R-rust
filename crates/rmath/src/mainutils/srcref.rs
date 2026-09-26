@@ -276,25 +276,34 @@ unsafe fn attach_srcfile_to_function_srcrefs(expr: SEXP, srcfile: SEXP) {
 /// starts on the first line. `getParseData` reads `srcfile$parseData`.
 unsafe fn attach_whole_source_parse_data(srcfile: SEXP, src: &str) {
     unsafe {
-        let mat = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 8);
+        let mat = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 16);
         if mat.is_null() {
             return;
         }
         let dim = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         *INTEGER(dim) = 8;
-        *INTEGER(dim).add(1) = 1;
+        *INTEGER(dim).add(1) = 2;
         crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimSymbol(), dim);
         let _g = crate::sexp::protect::protect(mat);
         let p = INTEGER(mat);
         let end_col = src.chars().count().max(1) as i32;
+        // terminal token, then the exprlist parent
         *p.add(0) = 1;
         *p.add(1) = 1;
         *p.add(2) = 1;
         *p.add(3) = end_col;
-        *p.add(4) = 0;
+        *p.add(4) = 1;
         *p.add(5) = 0;
         *p.add(6) = 1;
-        *p.add(7) = 0;
+        *p.add(7) = 2;
+        *p.add(8) = 1;
+        *p.add(9) = 1;
+        *p.add(10) = 1;
+        *p.add(11) = end_col;
+        *p.add(12) = 0;
+        *p.add(13) = 0;
+        *p.add(14) = 2;
+        *p.add(15) = 0;
         let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         SET_STRING_ELT(
             class,
@@ -302,10 +311,15 @@ unsafe fn attach_whole_source_parse_data(srcfile: SEXP, src: &str) {
             crate::sexp::constructors::Rf_mkChar(c"parseData".as_ptr()),
         );
         crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_ClassSymbol(), class);
-        let tokens = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let tokens = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         SET_STRING_ELT(
             tokens,
             0,
+            crate::sexp::constructors::Rf_mkChar(c"STR_CONST".as_ptr()),
+        );
+        SET_STRING_ELT(
+            tokens,
+            1,
             crate::sexp::constructors::Rf_mkChar(c"exprlist".as_ptr()),
         );
         crate::sexp::attrib_core::setAttrib(
@@ -313,8 +327,10 @@ unsafe fn attach_whole_source_parse_data(srcfile: SEXP, src: &str) {
             crate::sexp::symbol::Rf_install(c"tokens".as_ptr()),
             tokens,
         );
-        let text = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        SET_STRING_ELT(text, 0, crate::sexp::constructors::Rf_mkChar(c"".as_ptr()));
+        let text = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let src_c = std::ffi::CString::new(src).unwrap_or_default();
+        SET_STRING_ELT(text, 0, crate::sexp::constructors::Rf_mkChar(src_c.as_ptr()));
+        SET_STRING_ELT(text, 1, crate::sexp::constructors::Rf_mkChar(c"".as_ptr()));
         crate::sexp::attrib_core::setAttrib(
             mat,
             crate::sexp::symbol::Rf_install(c"text".as_ptr()),
