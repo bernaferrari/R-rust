@@ -1329,6 +1329,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "C_countfields", "\"C_countfields\"");
         eval_base_binding(base_env, "C_readtablehead", "\"C_readtablehead\"");
+        eval_base_binding(base_env, "C_octsize", "\"C_octsize\"");
         eval_base_binding(base_env, "C_runmed", "\"C_runmed\"");
         eval_base_binding(
             base_env,

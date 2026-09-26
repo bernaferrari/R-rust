@@ -1109,7 +1109,8 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         .or_else(|| crate::library::splines::splines::lookup(name))
                         .or_else(|| crate::library::grdevices::lookup(name))
                         .or_else(|| crate::library::grid::lookup(name))
-                        .or_else(|| crate::library::graphics::lookup(name));
+                        .or_else(|| crate::library::graphics::lookup(name))
+                        .or_else(|| crate::library::utils::lookup(name));
                 }
             }
         }

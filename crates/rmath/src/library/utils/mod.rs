@@ -21,6 +21,12 @@ pub(crate) unsafe fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
                 _,
             >(c_readtablehead)
         }),
+        "octsize" | "C_octsize" => Some(unsafe {
+            std::mem::transmute::<
+                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
+                _,
+            >(c_octsize)
+        }),
         "typeconvert" | "C_typeconvert" => Some(unsafe {
             std::mem::transmute::<
                 unsafe extern "C-unwind" fn(
@@ -42,6 +48,9 @@ unsafe extern "C-unwind" fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate
 
 unsafe extern "C-unwind" fn c_readtablehead(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { io::readtablehead(args) }
+}
+unsafe extern "C-unwind" fn c_octsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe { stubs::octsize(args) }
 }
 
 unsafe extern "C-unwind" fn c_typeconvert(
