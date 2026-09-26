@@ -365,12 +365,33 @@ pub unsafe fn do_package_description(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 }
 
 /// R's `loadNamespace(package)` — load a package namespace without attaching it.
+unsafe fn ensure_s3_methods_table(env: SEXP) {
+    unsafe {
+        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+            return;
+        }
+        let sym = Rf_install(c".__S3MethodsTable__.".as_ptr());
+        let existing = crate::sexp::envir::R_findVarInFrame(env, sym);
+        if !existing.is_null()
+            && existing != crate::sexp::globals::R_UnboundValue()
+            && existing != R_NilValue()
+        {
+            return;
+        }
+        let table = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 0);
+        crate::sexp::envir::defineVar(sym, table, env);
+    }
+}
+
 pub unsafe fn do_load_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package_arg = arg_by_name_or_position(args, &["package", "name"], 0);
         let package = elt_to_string(package_arg, 0);
         match load_package_namespace_by_name(&package) {
-            Ok(env) => env,
+            Ok(env) => {
+                ensure_s3_methods_table(env);
+                env
+            }
             Err(message) => package_error(message),
         }
     }
