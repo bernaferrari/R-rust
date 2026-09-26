@@ -1638,6 +1638,26 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "seq.POSIXt", include_str!("gnu_seq_POSIXt.R"));
         eval_base_binding(base_env, "seq.Date", include_str!("gnu_seq_Date.R"));
         eval_base_binding(base_env, "pretty.POSIXt", include_str!("gnu_pretty_date.R"));
+        eval_base_binding(
+            base_env,
+            ".amatch_costs",
+            r#"function(x = NULL) {
+    costs <- c(insertions = 1, deletions = 1, substitutions = 1)
+    if (!is.null(x)) {
+        x <- as.list(x)
+        pos <- pmatch(names(x), names(costs))
+        if (anyNA(pos)) {
+            warning("unknown cost components ignored")
+            x <- x[!is.na(pos)]
+        }
+        x <- unlist(x)
+        if (!all(is.numeric(x)) || any(x < 0))
+            stop("cost components must be non-negative")
+        costs[pos] <- x
+    }
+    costs
+}"#,
+        );
         eval_base_binding(base_env, "path.package", include_str!("gnu_path_package.R"));
         eval_base_binding(base_env, "Negate", include_str!("gnu_negate.R"));
         eval_base_binding(base_env, "format.summaryDefault", include_str!("gnu_format_summary.R"));

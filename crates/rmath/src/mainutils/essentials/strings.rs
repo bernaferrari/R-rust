@@ -1168,10 +1168,42 @@ fn adist_path(a: &str, b: &str) -> (i32, String, i32, i32, i32) {
 }
 
 
+unsafe fn ints_to_char_vector(list: SEXP) -> SEXP {
+    unsafe {
+        let n = XLENGTH(list);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if out.is_null() {
+            return out;
+        }
+        for i in 0..n {
+            let elt = VECTOR_ELT(list, i);
+            let text = if TYPEOF(elt) == SEXPTYPE::INTSXP {
+                let mut s = String::new();
+                for k in 0..XLENGTH(elt) {
+                    let cp = *INTEGER(elt).add(k as usize);
+                    if let Some(ch) = char::from_u32(cp as u32) {
+                        s.push(ch);
+                    }
+                }
+                s
+            } else {
+                String::new()
+            };
+            if let Ok(cs) = std::ffi::CString::new(text) {
+                SET_STRING_ELT(out, i, Rf_mkChar(cs.as_ptr()));
+            }
+        }
+        out
+    }
+}
+
 /// GNU `adist(x, y)` Levenshtein distances as an integer matrix.
 pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
+        if TYPEOF(x) == SEXPTYPE::VECSXP {
+            x = ints_to_char_vector(x);
+        }
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
             return crate::mainutils::array::allocMatrix(SEXPTYPE::INTSXP.as_c_int(), 0, 0);
         }
@@ -1195,7 +1227,7 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
                     ignore_case = *LOGICAL(value) == TRUE;
                 }
-            } else if named == "counts" {
+            } else if named == "counts" || (named.is_empty() && positional == 2) {
                 if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
                     counts = *LOGICAL(value) == TRUE;
                 }
@@ -1210,6 +1242,9 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 positional += 1;
             }
             cell = CDR(cell);
+        }
+        if TYPEOF(y) == SEXPTYPE::VECSXP {
+            y = ints_to_char_vector(y);
         }
         if y.is_null() || y == R_NilValue() || TYPEOF(y) != SEXPTYPE::STRSXP {
             y = x;
