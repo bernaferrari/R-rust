@@ -115,6 +115,8 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             crate::sexp::globals::R_GlobalEnv()
         };
         let mut saw_x = false;
+        let mut hash_flag: Option<bool> = None;
+        let mut size_flag: Option<i32> = None;
         let envir_tag = Rf_install(c"envir".as_ptr());
         let parent_tag = Rf_install(c"parent".as_ptr());
         let x_tag = Rf_install(c"x".as_ptr());
@@ -130,7 +132,14 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 if TYPEOF(val) == SEXPTYPE::ENVSXP {
                     parent_arg = val;
                 }
-            } else if tag == hash_tag || tag == size_tag {
+            } else if tag == hash_tag {
+                hash_flag = Some(crate::sexp::accessors::LOGICAL_ELT(val, 0) == 1);
+            } else if tag == size_tag {
+                size_flag = Some(if TYPEOF(val) == SEXPTYPE::REALSXP {
+                    crate::sexp::accessors::REAL_ELT(val, 0) as i32
+                } else {
+                    crate::sexp::accessors::INTEGER_ELT(val, 0)
+                });
             } else if tag == x_tag || tag.is_null() || tag == R_NilValue() {
                 if tag == x_tag {
                     x = val;
@@ -172,7 +181,7 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 if tag.is_null() || tag == R_NilValue() {
                     base_error("'x' must be a named list or pairlist");
                 }
-                crate::sexp::envir::defineVar(tag, CAR(cell), envir);
+                crate::sexp::envir::defineVar(tag, crate::mainutils::duplicate::duplicate(CAR(cell)), envir);
                 cell = CDR(cell);
             }
         } else {
@@ -192,8 +201,24 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     base_error("'x' must be a named list or pairlist");
                 };
                 let sym = Rf_install(name_cstr.as_ptr());
-                crate::sexp::envir::defineVar(sym, VECTOR_ELT(x, i), envir);
+                crate::sexp::envir::defineVar(sym, crate::mainutils::duplicate::duplicate(VECTOR_ELT(x, i)), envir);
             }
+        }
+        let nbind = if is_pairlist {
+            let mut c = 0i32;
+            let mut cell = x;
+            while !cell.is_null() && cell != R_NilValue() {
+                c += 1;
+                cell = CDR(cell);
+            }
+            c
+        } else {
+            XLENGTH(x) as i32
+        };
+        let hashed = hash_flag.unwrap_or(nbind > 100);
+        if hashed {
+            let size = size_flag.unwrap_or(nbind.max(29));
+            crate::sexp::env_hash::mark_hashed(envir, size);
         }
 
         envir
