@@ -1970,8 +1970,9 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
         let i = crate::main::coerce::asInteger(file);
         data.con = i;
         data.ttyflag = if i == 0 { 1 } else { 0 };
-        // Note: wasopen tracking requires full Rconnection struct access.
-        // We assume the connection is properly set up from R level.
+        if i != 0 {
+            crate::mainutils::connections::ensure_connection_readable(i);
+        }
 
         let mut buf_size: usize = BUF_SIZE;
         let mut buf: Vec<c_char> = vec![0; buf_size];

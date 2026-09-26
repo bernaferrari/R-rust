@@ -745,11 +745,7 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_filter,
         restore_visibility_always: false,
     },
-    UnevaluatedBuiltin {
-        name: "do.call",
-        handler: crate::mainutils::essentials::do_do_call,
-        restore_visibility_always: false,
-    },
+
     UnevaluatedBuiltin {
         // `local(expr, envir)` must receive `expr` UNEVALUATED (like
         // `with`): the evaluated table would eval the block in the caller
@@ -4406,6 +4402,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::objects::do_objsxp,
     },
     EvaluatedBuiltin {
+        name: "setS4Object",
+        handler: crate::mainutils::objects::do_setS4Object,
+    },
+    EvaluatedBuiltin {
         name: ".OBJSXP",
         handler: crate::mainutils::objects::do_objsxp,
     },
@@ -4652,10 +4652,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_setOldClass,
     },
     EvaluatedBuiltin {
-        name: "methods",
-        handler: crate::mainutils::essentials::do_methods,
-    },
-    EvaluatedBuiltin {
         name: "lower.tri",
         handler: crate::mainutils::essentials::do_lower_tri,
     },
@@ -4893,10 +4889,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "as",
         handler: crate::mainutils::essentials::do_as,
-    },
-    EvaluatedBuiltin {
-        name: "capture.output",
-        handler: crate::mainutils::essentials::do_capture_output,
     },
     EvaluatedBuiltin {
         name: "withVisible",
@@ -6260,7 +6252,7 @@ mod tests {
         let missing = unevaluated_builtin_handler("missing").expect("missing handler");
         assert!(missing.restore_visibility_always);
 
-        for name in ["capture.output", "tryCatch", "with", "lapply", "do.call"] {
+        for name in ["capture.output", "tryCatch", "with", "lapply"] {
             assert!(
                 unevaluated_builtin_handler(name).is_some(),
                 "missing unevaluated builtin handler for {name}"

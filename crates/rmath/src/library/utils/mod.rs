@@ -21,6 +21,17 @@ pub(crate) unsafe fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
                 _,
             >(c_readtablehead)
         }),
+        "typeconvert" | "C_typeconvert" => Some(unsafe {
+            std::mem::transmute::<
+                unsafe extern "C-unwind" fn(
+                    crate::sexp::ffi::SEXP,
+                    crate::sexp::ffi::SEXP,
+                    crate::sexp::ffi::SEXP,
+                    crate::sexp::ffi::SEXP,
+                ) -> crate::sexp::ffi::SEXP,
+                _,
+            >(c_typeconvert)
+        }),
         _ => None,
     }
 }
@@ -31,6 +42,15 @@ unsafe extern "C-unwind" fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate
 
 unsafe extern "C-unwind" fn c_readtablehead(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { io::readtablehead(args) }
+}
+
+unsafe extern "C-unwind" fn c_typeconvert(
+    call: crate::sexp::ffi::SEXP,
+    op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    env: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { io::typeconvert(call, op, args, env) }
 }
 
 pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
@@ -45,6 +65,12 @@ pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
         crate::sexp::envir::defineVar(
             crate::sexp::symbol::Rf_install(head.as_ptr()),
             crate::sexp::constructors::Rf_mkString(head.as_ptr()),
+            env,
+        );
+        let convert = std::ffi::CString::new("C_typeconvert").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(convert.as_ptr()),
+            crate::sexp::constructors::Rf_mkString(convert.as_ptr()),
             env,
         );
         let parsed = crate::sexp::memory::with_arena(|arena| {

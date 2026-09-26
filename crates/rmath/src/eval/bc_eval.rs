@@ -637,11 +637,18 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
             }
             value
         } else {
-            find_var_unforced(symbol, rho)
+            let mut value = find_var_unforced(symbol, rho);
+            if value == R_UnboundValue() {
+                if let Some(primitive) = super::eval::primitive_for_symbol(
+                    crate::sexp::object::Sexp::from_raw_unchecked(symbol),
+                ) {
+                    value = primitive.as_raw();
+                } else {
+                    bc_unbound_object_error(symbol);
+                }
+            }
+            value
         };
-        if value == R_UnboundValue() {
-            bc_unbound_object_error(symbol);
-        }
 
         if value == R_MissingArg() {
             if keep_missing {
@@ -3356,10 +3363,17 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     super::runtime::set_visible(TRUE);
                     // Lookup can force a promise or invoke an active binding before
                     // returning; root the operand stack for the lookup itself.
-                    let val = with_stack_rooted(&stack, sym, || find_var_unforced(sym, rho));
+                    let mut val = with_stack_rooted(&stack, sym, || find_var_unforced(sym, rho));
                     if val == R_UnboundValue() {
-                        bc_error("object not found");
-                    } else if val == R_MissingArg() {
+                        if let Some(primitive) = super::eval::primitive_for_symbol(
+                            crate::sexp::object::Sexp::from_raw_unchecked(sym),
+                        ) {
+                            val = primitive.as_raw();
+                        } else {
+                            bc_unbound_object_error(sym);
+                        }
+                    }
+                    if val == R_MissingArg() {
                         bc_missing_arg_error(sym);
                     } else if TYPEOF(val) == SEXPTYPE::DOTSXP {
                         // A `...` binding is a DOTSXP, never an ordinary
