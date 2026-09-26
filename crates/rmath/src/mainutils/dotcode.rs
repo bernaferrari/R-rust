@@ -962,7 +962,8 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let mut ofun: DL_FUNC = None;
         if let Some(name) = ported_call_name(CAR(args)) {
             ofun = crate::library::stats::random::lookup_external(&name)
-                .or_else(|| crate::library::grdevices::lookup_external(&name));
+                .or_else(|| crate::library::grdevices::lookup_external(&name))
+                .or_else(|| crate::library::utils::lookup(&name));
         }
         if ofun.is_none() && native_extension_policy_enabled() {
             native_extension_policy_error(call, ".External");
@@ -988,7 +989,8 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if ofun.is_none() {
             if let Some(name) = ported_call_name(CAR(args)) {
                 ofun = crate::library::stats::random::lookup_external(&name)
-                    .or_else(|| crate::library::grdevices::lookup_external(&name));
+                    .or_else(|| crate::library::grdevices::lookup_external(&name))
+                    .or_else(|| crate::library::utils::lookup(&name));
             }
         }
         if ofun.is_none() {
@@ -998,7 +1000,8 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 .unwrap_or("");
             if !name.is_empty() {
                 ofun = crate::library::stats::random::lookup_external(name)
-                    .or_else(|| crate::library::grdevices::lookup_external(name));
+                    .or_else(|| crate::library::grdevices::lookup_external(name))
+                    .or_else(|| crate::library::utils::lookup(name));
             }
         }
 
