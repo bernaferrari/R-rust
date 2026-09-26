@@ -4309,6 +4309,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_body,
     },
     EvaluatedBuiltin {
+        name: "bodyCode",
+        handler: crate::mainutils::builtin::do_bodyCode,
+    },
+    EvaluatedBuiltin {
         name: "removeSource",
         handler: crate::mainutils::srcref::do_remove_source,
     },

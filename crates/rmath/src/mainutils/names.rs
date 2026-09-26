@@ -4538,6 +4538,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"bodyCode\0",
+        None,
+        0,
+        11,
+        1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"environment\0",
         None,
         0,
@@ -5296,6 +5304,7 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
+        "bodyCode" => Some(crate::mainutils::builtin::do_bodyCode),
         "refcnt" => Some(do_refcnt),
         "address" => Some(do_address),
         "named" => Some(do_named),

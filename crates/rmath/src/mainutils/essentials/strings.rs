@@ -4641,6 +4641,12 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         {
             return crate::mainutils::deparse::deparse_symbolic(x, x_type != SEXPTYPE::SYMSXP);
         }
+        if x_type == SEXPTYPE::BCODESXP {
+            crate::mainutils::errors::errorcall_str(
+                _call,
+                "Found no format() method for class \"bytecode\"",
+            );
+        }
         let nsmall = if nsmall_arg.is_null() || nsmall_arg == R_NilValue() {
             0usize
         } else {

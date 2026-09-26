@@ -181,7 +181,10 @@ impl BytecodeCompiler {
                     return self.compile_function_expr(expr);
                 }
                 let local_fun = self.is_compiled_local_fun(fun);
-                if !name.as_deref().is_some_and(is_eager_builtin_call) && !local_fun {
+                let eager = name.as_deref().is_some_and(is_eager_builtin_call);
+                let is_missing = name.as_deref() == Some("missing");
+                let is_internal = name.as_deref() == Some(".Internal");
+                if !eager && !local_fun {
                     return false;
                 }
                 let mut arg_cells = Vec::new();
@@ -190,16 +193,19 @@ impl BytecodeCompiler {
                     arg_cells.push(cur);
                     cur = CDR(cur);
                 }
-                // Closure calls receive lazy promises like GNU MAKEPROM:
-                // `g <- function(y) 5; g(stop("boom"))` must not evaluate
-                // its arguments.  Constants stay eager values
-                // (PUSHCONSTARG semantics).
+                // Closure calls receive lazy promises like GNU MAKEPROM.
+                // An unsupplied argument is the R_MissingArg sentinel, not a
+                // promise (a promise makes missing() false). .Internal must
+                // see the call, not a promise of it.
                 let subset = matches!(name.as_deref(), Some("[") | Some("[<-") | Some("[[") | Some("[[<-"));
                 for (arg_index, cell) in arg_cells.iter().enumerate() {
                     let argument = CAR(*cell);
-                    let lazy_ok = local_fun
-                        && !matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
-                    if lazy_ok {
+                    let constant = matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
+                    let missing_arg = argument == crate::sexp::globals::R_MissingArg();
+                    if missing_arg || is_internal {
+                        let idx = self.add_const(argument);
+                        self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                    } else if is_missing || ((!eager || local_fun) && !constant) {
                         let idx = self.add_const(argument);
                         self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
                     } else if !self.compile_expr(argument) {
