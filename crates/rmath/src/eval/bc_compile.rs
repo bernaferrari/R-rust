@@ -372,6 +372,27 @@ impl BytecodeCompiler {
             if TYPEOF(object) != SEXPTYPE::SYMSXP || !self.compile_expr(object) {
                 return false;
             }
+            // A subscript that runs code (`x[{x[2] <<- 3; 1}] <<- 2`) must
+            // see the fetched object as shared, or the inner assign mutates
+            // the value the outer update writes back. Constant indexes do not.
+            let mut scan = CDR(CDR(lhs));
+            let mut constant_indexes = true;
+            while !scan.is_null() && scan != R_NilValue() {
+                let sub = CAR(scan);
+                let ty = TYPEOF(sub);
+                let constant = ty == SEXPTYPE::INTSXP
+                    || ty == SEXPTYPE::REALSXP
+                    || ty == SEXPTYPE::LGLSXP
+                    || ty == SEXPTYPE::NILSXP;
+                if !constant {
+                    constant_indexes = false;
+                    break;
+                }
+                scan = CDR(scan);
+            }
+            if !constant_indexes {
+                self.emit(opcodes::OP_MARK_SHARED);
+            }
             let mut index = CDR(CDR(lhs));
             let mut n_index = 0;
             while !index.is_null() && index != R_NilValue() {
