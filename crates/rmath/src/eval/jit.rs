@@ -691,10 +691,21 @@ pub unsafe fn handle_exec_continuation(mut val: SEXP) -> SEXP {
             let op = crate::sexp::accessors::VECTOR_ELT(val, 3);
 
             if TYPEOF(op) == SEXPTYPE::CLOSXP {
-                let arglist = super::dispatch::promiseArgs(CDR(call), rho);
+                let arglist = tailcall_promise_args(CDR(call), rho);
                 let _arglist_guard = protect(arglist);
-                let result =
-                    super::closure::applyClosure(call, op, arglist, rho, R_NilValue(), TRUE);
+                let ctx = crate::eval::runtime::global_context();
+                let supplied = if !ctx.is_null()
+                    && unsafe { (*ctx).sysparent } != std::ptr::null_mut()
+                    && unsafe { (*ctx).sysparent } != R_NilValue()
+                    && unsafe { TYPEOF((*ctx).sysparent) } == SEXPTYPE::ENVSXP
+                {
+                    unsafe { (*ctx).sysparent }
+                } else {
+                    rho
+                };
+                let result = super::closure::applyClosure(
+                    call, op, arglist, rho, supplied, TRUE,
+                );
                 val = result;
             } else {
                 // For non-closures, build a call and eval
@@ -707,6 +718,31 @@ pub unsafe fn handle_exec_continuation(mut val: SEXP) -> SEXP {
             }
         }
         val
+    }
+}
+
+unsafe fn tailcall_promise_args(call: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let args = super::dispatch::promiseArgs(call, rho);
+        let mut src = call;
+        let mut dst = args;
+        while !src.is_null() && src != R_NilValue() && !dst.is_null() && dst != R_NilValue() {
+            let mut expr = CAR(src);
+            if TYPEOF(expr) == SEXPTYPE::PROMSXP {
+                expr = crate::sexp::accessors::PRCODE(expr);
+            }
+            if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+                let found = crate::sexp::envir::R_findVarInFrame(rho, expr);
+                if TYPEOF(found) == SEXPTYPE::PROMSXP {
+                    crate::sexp::accessors::SETCAR(dst, crate::sexp::accessors::PRCODE(found));
+                } else if found == R_MissingArg() {
+                    crate::sexp::accessors::SETCAR(dst, R_MissingArg());
+                }
+            }
+            src = CDR(src);
+            dst = CDR(dst);
+        }
+        args
     }
 }
 
@@ -792,7 +828,8 @@ unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
         }
         (*expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
 
-        let value = Rf_eval(expr, rho);
+        let fun = Rf_eval(CAR(args), rho);
+        let value = make_exec_continuation(expr, rho, fun);
         let _guard = protect(value);
         let mut c = crate::eval::runtime::global_context();
         let mut target: *mut crate::sexp::context::RCNTXT = std::ptr::null_mut();

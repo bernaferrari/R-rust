@@ -304,7 +304,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             BodyOutcome::Value(_) => unsafe {
                 super::jit::handle_exec_continuation((*ctx).returnValue)
             },
-            BodyOutcome::Returned(_) => unsafe { (*ctx).returnValue },
+            BodyOutcome::Returned(_) => unsafe { super::jit::handle_exec_continuation((*ctx).returnValue) },
             BodyOutcome::Signal(payload) => crate::sexp::context::handle_closure_signal(payload),
         }
     }
