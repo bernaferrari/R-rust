@@ -56,11 +56,11 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     break;
                 }
                 n += 1;
-                if n == 1
-                    && crate::sexp::accessors::TYPEOF(crate::sexp::accessors::CAR(current))
+                if n == 1 {
+                    let car = crate::sexp::accessors::CAR(current);
+                    character_query = crate::sexp::accessors::TYPEOF(car)
                         == crate::sexp::ffi::SEXPTYPE::STRSXP
-                {
-                    character_query = true;
+                        && crate::sexp::accessors::XLENGTH(car) == 1;
                 } else {
                     character_query = false;
                 }
