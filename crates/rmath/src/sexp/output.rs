@@ -2844,6 +2844,9 @@ pub(crate) unsafe fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) ->
     // SAFETY: `x` is a rooted live SEXP and `n_pr` is bounded by its length;
     // all raw access remains read-only for the duration of this call.
     unsafe {
+        if x.typeof_() == SEXPTYPE::REALSXP {
+            crate::mainutils::printvector::warn_illegal_outdec();
+        }
         let raw = x.clone().as_raw();
         let tp = x.typeof_();
         let (print_width, gap, _max) = vector_print_settings();

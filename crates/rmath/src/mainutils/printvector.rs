@@ -267,12 +267,45 @@ pub unsafe fn printIntegerVector(x: *const c_int, n: R_xlen_t, indx: c_int) {
     }
 }
 
+pub(crate) unsafe fn warn_illegal_outdec() {
+    unsafe {
+        let opt = crate::mainutils::options::GetOption(c"OutDec".as_ptr());
+        if opt.is_null()
+            || opt == crate::sexp::globals::R_NilValue()
+            || crate::sexp::accessors::TYPEOF(opt) != crate::sexp::ffi::SEXPTYPE::STRSXP
+            || crate::sexp::accessors::LENGTH(opt) < 1
+        {
+            return;
+        }
+        let ch = crate::sexp::accessors::STRING_ELT(opt, 0);
+        if ch.is_null() {
+            return;
+        }
+        let p = crate::sexp::accessors::CHAR(ch);
+        if p.is_null() {
+            return;
+        }
+        let nbytes = std::ffi::CStr::from_ptr(p).to_bytes().len();
+        if nbytes == 1 {
+            return;
+        }
+        let msg = if nbytes > 1 {
+            "the decimal mark is more than one character wide; this will become an error"
+        } else {
+            "the decimal mark is less than one character wide; this will become an error"
+        };
+        if let Ok(c) = std::ffi::CString::new(msg) {
+            crate::mainutils::errors::Rf_warning(c.as_ptr());
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // printRealVector -- exported
 // ---------------------------------------------------------------------------
-
 pub unsafe fn printRealVector(x: *const f64, n: R_xlen_t, indx: c_int) {
     unsafe {
+        warn_illegal_outdec();
         let rp = get_R_PrintData();
         let mut w: c_int = 0;
         let mut d: c_int = 0;
