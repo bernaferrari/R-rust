@@ -42,22 +42,31 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let result = crate::library::graphics::par::do_par(_call, _op, args, _rho);
         // Base `par` is a builtin, so it does not run graphics' R wrapper.
-        // One unnamed query still returns the parameter value itself.
+        // One untagged character query (`par("lab")`) returns the value.
+        // `par(list(...))` and a saved list stay the named list.
         if crate::sexp::accessors::TYPEOF(result) == crate::sexp::ffi::SEXPTYPE::VECSXP
             && crate::sexp::accessors::XLENGTH(result) == 1
         {
-            let mut only_query = true;
             let mut current = args;
-            let mut seen = false;
+            let mut n = 0_i32;
+            let mut character_query = false;
             while !current.is_null() && current != crate::sexp::globals::R_NilValue() {
                 if !crate::sexp::accessors::TAG(current).is_null() {
-                    only_query = false;
+                    character_query = false;
                     break;
                 }
-                seen = true;
+                n += 1;
+                if n == 1
+                    && crate::sexp::accessors::TYPEOF(crate::sexp::accessors::CAR(current))
+                        == crate::sexp::ffi::SEXPTYPE::STRSXP
+                {
+                    character_query = true;
+                } else {
+                    character_query = false;
+                }
                 current = crate::sexp::accessors::CDR(current);
             }
-            if seen && only_query {
+            if character_query && n == 1 {
                 return crate::sexp::accessors::VECTOR_ELT(result, 0);
             }
         }
