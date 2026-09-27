@@ -92,29 +92,10 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // Open immediately if open mode is non-empty
         if !deferred {
-            let file_result = if matches!(&conn.kind, ConnKind::BrowserFile) {
+            if matches!(&conn.kind, ConnKind::BrowserFile) {
                 open_browser_file(&mut conn, &open_mode);
-                Ok(None)
-            } else {
-                open_file_conn(&description, &open_mode).map(Some)
-            };
-            match file_result {
-                Ok(None) => {}
-                Ok(Some((file, reader, writer))) => {
-                    conn.file = Some(file);
-                    conn.reader = reader;
-                    conn.writer = writer;
-                    conn.isopen = true;
-                    conn.canread = open_mode.starts_with('r');
-                    conn.canwrite = open_mode.starts_with('w') || open_mode.starts_with('a');
-                    if open_mode.contains('+') {
-                        conn.canread = true;
-                        conn.canwrite = true;
-                    }
-                }
-                Err(e) => {
-                    r_error(&format!("cannot open file '{}': {}", description, e));
-                }
+            } else if let Err(e) = open_maybe_compressed(&mut conn, &open_mode) {
+                r_error(&format!("cannot open file '{}': {}", description, e));
             }
         }
 
@@ -214,16 +195,11 @@ pub fn ensure_connection_readable(n: core::ffi::c_int) {
     };
     let description = conn.description.clone();
     match &conn.kind {
-        ConnKind::File => match open_file_conn(&description, &mode) {
-            Ok((file, reader, writer)) => {
-                conn.file = Some(file);
-                conn.reader = reader;
-                conn.writer = writer;
-                conn.isopen = true;
-                conn.canread = mode.starts_with('r') || mode.contains('+');
+        ConnKind::File => {
+            if let Err(_) = open_maybe_compressed(conn, &mode) {
+                r_error("cannot open the connection");
             }
-            Err(_) => r_error("cannot open the connection"),
-        },
+        }
         ConnKind::TextConnection | ConnKind::RawConnection => {
             conn.isopen = true;
         }
@@ -250,6 +226,52 @@ fn anonymous_temp_path() -> String {
     let path = std::env::temp_dir().join(format!("Rf{}{:x}", std::process::id(), n));
     let _ = std::fs::File::create(&path);
     path.to_string_lossy().into_owned()
+}
+fn compressed_text_kind(path: &str, mode: &str) -> Option<ConnKind> {
+    if mode != "r" && mode != "rt" {
+        return None;
+    }
+    let mut file = File::open(path).ok()?;
+    let mut magic = [0u8; 6];
+    let n = file.read(&mut magic).unwrap_or(0);
+    if n >= 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+        Some(ConnKind::GzFile)
+    } else if n >= 3 && &magic[..3] == b"BZh" {
+        Some(ConnKind::BzFile)
+    } else if n >= 6 && magic[..6] == [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00] {
+        Some(ConnKind::XzFile)
+    } else {
+        None
+    }
+}
+
+fn open_maybe_compressed(conn: &mut RConn, mode: &str) -> io::Result<()> {
+    if let Some(kind) = compressed_text_kind(&conn.description, mode) {
+        conn.kind = match kind {
+            ConnKind::GzFile => {
+                open_gz_conn(conn, mode)?;
+                ConnKind::GzFile
+            }
+            ConnKind::BzFile => {
+                open_bz_conn(conn, mode)?;
+                ConnKind::BzFile
+            }
+            ConnKind::XzFile => {
+                open_xz_conn(conn, mode)?;
+                ConnKind::XzFile
+            }
+            other => other,
+        };
+        return Ok(());
+    }
+    let (file, reader, writer) = open_file_conn(&conn.description, mode)?;
+    conn.file = Some(file);
+    conn.reader = reader;
+    conn.writer = writer;
+    conn.isopen = true;
+    conn.canread = mode.starts_with('r') || mode.contains('+');
+    conn.canwrite = mode.starts_with('w') || mode.starts_with('a') || mode.contains('+');
+    Ok(())
 }
 
 pub fn open_gz_conn(conn: &mut RConn, mode: &str) -> io::Result<()> {
@@ -690,23 +712,8 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         match &conn.kind {
             ConnKind::BrowserFile => open_browser_file(conn, &open_mode),
             ConnKind::File => {
-                let file_result = open_file_conn(&conn.description, &open_mode);
-                match file_result {
-                    Ok((file, reader, writer)) => {
-                        conn.file = Some(file);
-                        conn.reader = reader;
-                        conn.writer = writer;
-                        conn.isopen = true;
-                        conn.canread = open_mode.starts_with('r');
-                        conn.canwrite = open_mode.starts_with('w') || open_mode.starts_with('a');
-                        if open_mode.contains('+') {
-                            conn.canread = true;
-                            conn.canwrite = true;
-                        }
-                    }
-                    Err(e) => {
-                        r_error("cannot open the connection");
-                    }
+                if let Err(_) = open_maybe_compressed(conn, &open_mode) {
+                    r_error("cannot open the connection");
                 }
             }
             ConnKind::GzFile => {
