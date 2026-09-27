@@ -370,7 +370,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             base_env,
             "read.dcf",
             "function(file, fields = NULL, all = FALSE, keep.white = NULL) {\n\
-             if (!all || is.character(file)) return(.Internal(readDCF(file, fields, keep.white)))\n\
+             if (is.character(file) && !isTRUE(all)) return(.Internal(readDCF(file, fields, keep.white)))\n\
+
              stop(\"read.dcf(all = TRUE) is not implemented\")\n\
              }",
 
@@ -548,6 +549,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(x, strict = TRUE) { if (inherits(x, \"numeric_version\")) return(x); y <- rep.int(list(integer()), length(x)); ok <- !is.na(x); y[ok] <- lapply(strsplit(as.character(x)[ok], \"[.]\"), as.integer); class(y) <- \"numeric_version\"; y }",
         );
         eval_base_binding(base_env, "as.numeric_version", "numeric_version");
+        eval_base_binding(
+            base_env,
+            "package_version",
+            "function(x, strict = TRUE) { y <- numeric_version(x); class(y) <- c(\"package_version\", \"numeric_version\"); y }",
+        );
+
         eval_base_binding(
             base_env,
             "[.numeric_version",
