@@ -158,9 +158,9 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         while cursor != R_NilValue() && !cursor.is_null() {
             if CAR(cursor) == dots_symbol && !substituted_dots {
                 substituted_dots = true;
-                let mut dots = crate::sexp::envir::R_findVar(dots_symbol, rho);
+                let mut dots = crate::sexp::envir::R_findVar(dots_symbol, envir);
                 if dots == crate::sexp::globals::R_UnboundValue() || dots == R_MissingArg() {
-                    dots = crate::sexp::envir::R_findVar(dots_symbol, envir);
+                    dots = crate::sexp::envir::R_findVar(dots_symbol, rho);
                 }
                 while TYPEOF(dots) == SEXPTYPE::PROMSXP {
                     let penv = crate::sexp::accessors::PRENV(dots);
