@@ -125,7 +125,10 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             envir = rho;
             let mut context = top;
             while !context.is_null() {
-                if (*context).cloenv == rho && !(*context).sysparent.is_null() {
+                if ((*context).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0
+                    && (*context).cloenv == rho
+                    && !(*context).sysparent.is_null()
+                {
                     envir = (*context).sysparent;
                     break;
                 }
