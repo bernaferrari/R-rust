@@ -60,6 +60,12 @@ unsafe extern "C-unwind" fn c_str_metric(args: SEXP) -> SEXP {
         out
     }
 }
+unsafe extern "C-unwind" fn c_contour_def(_args: SEXP) -> SEXP {
+    unsafe { plot3d::C_contourDef() }
+}
+unsafe extern "C-unwind" fn c_contour(args: SEXP) -> SEXP {
+    unsafe { plot3d::C_contour(args) }
+}
 
 
 pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
@@ -79,6 +85,12 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
                 c_bin_count as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
             )
         }),
+        "contourDef" => Some(unsafe {
+            std::mem::transmute(c_contour_def as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }),
+        "contour" => Some(unsafe {
+            std::mem::transmute(c_contour as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }),
 
         _ => None,
     }
@@ -86,7 +98,7 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
 
 pub unsafe fn install_call_symbols(env: SEXP) {
     unsafe {
-        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_strWidth", "C_strHeight", "C_BinCount"] {
+        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_strWidth", "C_strHeight", "C_BinCount", "C_contourDef", "C_contour"] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(
                 crate::sexp::symbol::Rf_install(cname.as_ptr()),

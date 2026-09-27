@@ -1338,12 +1338,13 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
 
         for i in 0..nc {
             if !(*cr.add(i as usize)).is_finite() {
-                valid = false;
-                break;
+                // GNU plot3d.c: "non-finite level values: levels[%d] = %g"
+                plot3d_error(&format!(
+                    "non-finite level values: levels[{}] = {}",
+                    i + 1,
+                    *cr.add(i as usize)
+                ));
             }
-        }
-        if !valid {
-            plot3d_error("contour levels must be finite");
         }
 
         /* Find z range */
