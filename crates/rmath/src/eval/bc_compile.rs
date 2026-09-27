@@ -191,6 +191,11 @@ impl BytecodeCompiler {
                     arg_cells.push(cur);
                     cur = CDR(cur);
                 }
+                for cell in &arg_cells {
+                    if CAR(*cell) == R_DotsSymbol() {
+                        return false;
+                    }
+                }
                 // Closure calls receive lazy promises like GNU MAKEPROM.
                 // An unsupplied argument is the R_MissingArg sentinel, not a
                 // promise (a promise makes missing() false). .Internal must
