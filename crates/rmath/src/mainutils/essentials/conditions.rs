@@ -1600,19 +1600,10 @@ unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
             0
         };
         let c_msg = CString::new(message).unwrap_or_default();
-        let missing = message.contains("is missing, with no default");
         let cond = crate::mainutils::errors::R_makeErrorCondition(
             call,
-            if missing {
-                c"missingArgError".as_ptr() as *const core::ffi::c_char
-            } else {
-                c"simpleError".as_ptr() as *const core::ffi::c_char
-            },
-            if missing {
-                c"evalError".as_ptr() as *const core::ffi::c_char
-            } else {
-                std::ptr::null()
-            },
+            c"simpleError".as_ptr() as *const core::ffi::c_char,
+            std::ptr::null(),
             if which > 0 { 1 } else { 0 },
             c_msg.as_ptr(),
         );
@@ -2094,6 +2085,14 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             crate::sexp::envir::R_findVarInFrame(env, sym)
         };
+        if value == crate::sexp::globals::R_MissingArg() {
+            let c_name = CString::new(name.as_str()).unwrap_or_default();
+            crate::mainutils::errors::R_MissingArgError_c(
+                c_name.as_ptr(),
+                _call,
+                c"getMissingError".as_ptr(),
+            );
+        }
         if mode != "any" && !value_matches_mode(value, &mode) {
             base_error(format!("object '{name}' of mode '{mode}' was not found"));
         }

@@ -345,9 +345,8 @@ pub(crate) fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
     {
         return Some(primitive);
     }
-    if crate::eval::builtin::unevaluated_builtin_handler(&name).is_some() {
-        let primitive =
-            unsafe { crate::eval::primitive::make_primitive_binding(&name, SEXPTYPE::BUILTINSXP) };
+    if let Some(kind) = crate::eval::builtin::builtin_primitive_kind(&name) {
+        let primitive = unsafe { crate::eval::primitive::make_primitive_binding(&name, kind) };
         if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
             return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
         }
@@ -369,10 +368,15 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
 /// top-level render shows `Error in f() : argument "x" is missing, with no
 /// default`. `R_getCurrentCall()` returns that innermost context call here.
 fn missing_arg_error(name: &str) -> ! {
-    crate::mainutils::errors::errorcall_str(
-        unsafe { crate::mainutils::errors::R_getCurrentCall() },
-        &format!("argument \"{name}\" is missing, with no default"),
-    )
+    unsafe {
+        let c_name = std::ffi::CString::new(name).unwrap_or_default();
+        crate::mainutils::errors::R_MissingArgError_c(
+            c_name.as_ptr(),
+            crate::mainutils::errors::R_getCurrentCall(),
+            c"evalError".as_ptr(),
+        );
+    }
+    unreachable!("R_MissingArgError_c signals");
 }
 
 /// Checked variable lookup using typed SEXP field access.
@@ -399,6 +403,7 @@ pub(crate) fn find_var_result<'a>(
         }
         return Ok(Some(value));
     }
+
 
     // GNU Rf_eval SYMSXP: findVar is unforced. A MissingArg *binding* is
     // a missing formal. A promise whose forced value is the empty symbol
