@@ -3552,6 +3552,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
+                        let src = BCODE_EXPR(body);
+                        if !src.is_null() && TYPEOF(src) == SEXPTYPE::LANGSXP {
+                            let srcref_symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
+                            let srcref = crate::attrib_core::getAttrib(src, srcref_symbol);
+                            if !srcref.is_null() && srcref != R_NilValue() {
+                                crate::attrib_core::setAttrib(call, srcref_symbol, srcref);
+                            }
+                        }
                         let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
                             Ok(value) => value,
                             Err(jump) => {

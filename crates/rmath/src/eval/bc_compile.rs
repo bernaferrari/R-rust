@@ -184,7 +184,7 @@ impl BytecodeCompiler {
                 let eager = name.as_deref().is_some_and(is_eager_builtin_call);
                 let is_missing = name.as_deref() == Some("missing");
                 let is_internal = name.as_deref() == Some(".Internal");
-                let is_at = name.as_deref() == Some("@");
+                let is_at = name.as_deref() == Some("@") || name.as_deref() == Some("$");
                 let mut arg_cells = Vec::new();
                 let mut cur = CDR(expr);
                 while !cur.is_null() && cur != R_NilValue() {
