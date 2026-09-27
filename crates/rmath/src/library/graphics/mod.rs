@@ -33,6 +33,45 @@ unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
     crate::sexp::globals::R_NilValue()
 }
+unsafe extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
+    unsafe {
+        let side_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["side"], 0);
+        let at_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["at"], 1);
+        if !at_arg.is_null()
+            && at_arg != crate::sexp::globals::R_NilValue()
+            && crate::sexp::accessors::TYPEOF(at_arg) == crate::sexp::ffi::SEXPTYPE::REALSXP
+            && crate::sexp::accessors::XLENGTH(at_arg) > 0
+        {
+            return at_arg;
+        }
+        let side = if side_arg.is_null() || side_arg == crate::sexp::globals::R_NilValue() {
+            1
+        } else if crate::sexp::accessors::TYPEOF(side_arg) == crate::sexp::ffi::SEXPTYPE::INTSXP {
+            *crate::sexp::accessors::INTEGER(side_arg)
+        } else if crate::sexp::accessors::TYPEOF(side_arg) == crate::sexp::ffi::SEXPTYPE::REALSXP {
+            *crate::sexp::accessors::REAL(side_arg) as i32
+        } else {
+            1
+        };
+        let name = if side == 2 || side == 4 { "yaxp" } else { "xaxp" };
+        let axp = match par::parameter(name) {
+            par::ParValue::Real(v) if v.len() >= 3 => v,
+            _ => return crate::sexp::globals::R_NilValue(),
+        };
+        let lo = axp[0];
+        let hi = axp[1];
+        let n = axp[2].round().max(1.0) as i32;
+        let step = (hi - lo) / f64::from(n);
+        let out = crate::sexp::constructors::Rf_allocVector(
+            crate::sexp::ffi::SEXPTYPE::REALSXP,
+            n + 1,
+        );
+        for i in 0..=n {
+            *crate::sexp::accessors::REAL(out).add(i as usize) = lo + step * f64::from(i);
+        }
+        out
+    }
+}
 unsafe extern "C-unwind" fn c_bin_count(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
     unsafe { stem::C_BinCount(x, breaks, right, lowest) }
 }
@@ -74,7 +113,8 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
         "par" => Some(unsafe { std::mem::transmute(c_par as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP) }),
         "plot_new" => Some(unsafe { std::mem::transmute(c_plot_new as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP) }),
         "plot_window" => Some(unsafe { std::mem::transmute(c_plot_window as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
-        "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "axis" | "box" | "segments" | "rect" | "polygon" => {
+        "axis" => Some(unsafe { std::mem::transmute(c_axis as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
+        "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "box" | "segments" | "rect" | "polygon" => {
             Some(unsafe { std::mem::transmute(c_plot_xy as unsafe extern "C-unwind" fn(SEXP) -> SEXP) })
         }
         "strWidth" | "strHeight" => {
