@@ -15313,11 +15313,13 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
 unsafe fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let arg_expr = if TYPEOF(arg_expr) == SEXPTYPE::PROMSXP {
-            crate::sexp::accessors::PRCODE(arg_expr)
-        } else {
-            arg_expr
-        };
+        let mut arg_expr = arg_expr;
+        if TYPEOF(arg_expr) == SEXPTYPE::PROMSXP {
+            arg_expr = crate::sexp::accessors::PRCODE(arg_expr);
+        }
+        if TYPEOF(arg_expr) == SEXPTYPE::BCODESXP {
+            arg_expr = crate::eval::bc_eval::BCODE_EXPR(arg_expr);
+        }
         let name = if TYPEOF(arg_expr) == SEXPTYPE::SYMSXP {
             let pname = PRINTNAME(arg_expr);
             if pname.is_null() {
