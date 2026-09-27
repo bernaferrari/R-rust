@@ -177,26 +177,7 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     }
                     dots
                 };
-                let mut dots = resolve(crate::sexp::envir::R_findVarInFrame(envir, dots_symbol));
-                if dots == crate::sexp::globals::R_UnboundValue() || dots == R_MissingArg() {
-                    dots = resolve(crate::sexp::envir::R_findVarInFrame(rho, dots_symbol));
-                }
-                if dots == crate::sexp::globals::R_UnboundValue() || TYPEOF(dots) == SEXPTYPE::SYMSXP {
-                    let mut context = top;
-                    let mut seen = 0;
-                    while !context.is_null() && seen < 8 {
-                        seen += 1;
-                        let candidate = (*context).cloenv;
-                        if TYPEOF(candidate) == SEXPTYPE::ENVSXP {
-                            let found = resolve(crate::sexp::envir::R_findVarInFrame(candidate, dots_symbol));
-                            if TYPEOF(found) == SEXPTYPE::DOTSXP {
-                                dots = found;
-                                break;
-                            }
-                        }
-                        context = (*context).nextcontext;
-                    }
-                }
+                let mut dots = resolve(crate::sexp::envir::R_findVar(dots_symbol, envir));
                 if dots == crate::sexp::globals::R_UnboundValue() {
                     base_error("... used in a situation where it does not exist");
                 }
