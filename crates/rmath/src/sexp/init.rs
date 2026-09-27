@@ -1995,6 +1995,42 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // GNU funprog.R: identity <- function(x) x. setMethod(..., identity)
         // needs a closure, not a primitive (reg-S4.R PR#15691).
         eval_base_binding(base_env, "identity", "function(x) x");
+        eval_base_binding(
+            base_env,
+            "debug",
+            "function(fun, text = \"\", condition = NULL, signature = NULL) {\n\
+             if(is.null(signature)) .Internal(debug(fun, text, condition))\n\
+             else if(requireNamespace(\"methods\")) methods:::.debugMethod(fun, text, condition, signature, once = FALSE)\n\
+             else stop(\"failed to load the methods package for debugging by signature\")\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "debugonce",
+            "function(fun, text = \"\", condition = NULL, signature = NULL) {\n\
+             if(is.null(signature)) .Internal(debugonce(fun, text, condition))\n\
+             else if(requireNamespace(\"methods\")) methods:::.debugMethod(fun, text, condition, signature, once = TRUE)\n\
+             else stop(\"failed to load the methods package for debugging by signature\")\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "undebug",
+            "function(fun, signature = NULL) {\n\
+             if(is.null(signature)) .Internal(undebug(fun))\n\
+             else if(requireNamespace(\"methods\")) methods:::.undebugMethod(fun, signature = signature)\n\
+             else stop(\"failed to load methods package for undebugging by signature\")\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "isdebugged",
+            "function(fun, signature = NULL) {\n\
+             if(is.null(signature)) .Internal(isdebugged(fun))\n\
+             else if(requireNamespace(\"methods\")) methods:::.isMethodDebugged(fun, signature)\n\
+             else stop(\"failed to load methods package for handling signature\")\n\
+             }",
+        );
         unsafe {
             let sym = crate::sexp::symbol::Rf_install(c"identity".as_ptr());
             let fun = crate::sexp::envir::R_findVarInFrame(base_env, sym);
