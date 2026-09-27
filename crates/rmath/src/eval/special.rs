@@ -539,13 +539,14 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
         let _body_guard = protect(body);
 
         let mut seq_val = Rf_eval(seq_expr, rho);
-        // The loop walks a snapshot. `for (i in x) x[i] <- ...` must not
-        // change the values still to be visited.
-        seq_val = crate::mainutils::duplicate::Rf_duplicate(seq_val);
         let _original_seq_guard = protect(seq_val);
         if crate::mainutils::essentials::sexp_has_class(seq_val, "factor") {
             seq_val = crate::mainutils::coerce::asCharacterFactor(seq_val);
         }
+        let _seq_guard = protect(seq_val);
+        // GNU do_for marks the sequence shared so a later `[<-` copies
+        // instead of mutating the values still to be visited.
+        crate::sexp::accessors::SET_NAMED(seq_val, 2);
 
         if TYPEOF(seq_val) != SEXPTYPE::VECSXP
             && TYPEOF(seq_val) != SEXPTYPE::LISTSXP
