@@ -15324,11 +15324,11 @@ unsafe fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
         } else {
             return R_NilValue();
         };
-        let top = crate::sexp::context::R_GlobalContext();
-        if top.is_null() || crate::eval::context::framedepth(top) <= 0 {
+        let ctx = crate::eval::context::getLexicalContext(rho);
+        if ctx.is_null() {
             return R_NilValue();
         }
-        let fun = crate::eval::context::R_sysfunction(0, top);
+        let fun = (*ctx).callfun;
         let _fun_guard = protect(fun);
         let mut cell = FORMALS(fun);
 
