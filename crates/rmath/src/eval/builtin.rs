@@ -907,6 +907,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::eval::compiler_disassemble::do_disassemble,
     },
     EvaluatedBuiltin {
+        name: "bcVersion",
+        handler: crate::eval::compiler::do_bcversion,
+    },
+    EvaluatedBuiltin {
         name: "enableJIT",
         handler: crate::eval::compiler::do_enable_jit,
     },
