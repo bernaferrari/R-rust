@@ -218,7 +218,7 @@ fn finish_application<'a>(
                 && !internal_result_invisible(op_name)
         }
     };
-    if should_restore {
+    if should_restore && unsafe { crate::sexp::globals::R_Visible() } != crate::sexp::ffi::FALSE {
         set_visibility_for_print_flag(flag);
     }
     Ok(unsafe { Sexp::from_raw_unchecked(result) })

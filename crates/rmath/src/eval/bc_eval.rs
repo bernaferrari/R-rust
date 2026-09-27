@@ -3635,7 +3635,6 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         };
                         stack.push(result);
                     }
-                    super::runtime::set_visible(TRUE);
                 }
 
                 opcodes::OP_CALLSPECIAL => {
