@@ -363,9 +363,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function (X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE) {\n\
              FUN <- match.fun(FUN)\n\
              if (!is.vector(X) || is.object(X)) X <- as.list(X)\n\
-             .Internal(vapply(X, FUN, FUN.VALUE, USE.NAMES))\n\
+             .Internal(vapply(X, FUN, FUN.VALUE, USE.NAMES = USE.NAMES))\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "read.dcf",
+            "function(file, fields = NULL, all = FALSE, keep.white = NULL) {\n\
+             if (!all || is.character(file)) return(.Internal(readDCF(file, fields, keep.white)))\n\
+             stop(\"read.dcf(all = TRUE) is not implemented\")\n\
+             }",
+
+        );
+
         eval_base_binding(
             base_env,
             "sapply",

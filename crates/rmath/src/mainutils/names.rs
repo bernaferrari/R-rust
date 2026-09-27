@@ -5304,6 +5304,8 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
+        "readDCF" => Some(crate::mainutils::dcf::do_readDCF),
+
         "bodyCode" => Some(crate::mainutils::builtin::do_bodyCode),
         "refcnt" => Some(do_refcnt),
         "address" => Some(do_address),
