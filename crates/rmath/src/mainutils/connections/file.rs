@@ -553,7 +553,7 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             check_string_arg(sopen, "open")
         };
         let open_now = !open.is_empty();
-        let open_mode = if !open_now { "rb".to_string() } else { open };
+        let open_mode = open;
 
         let mut conn = RConn::new("gzfile", &description, &open_mode, ConnKind::GzFile);
         conn.canseek = false;
@@ -593,7 +593,7 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             check_string_arg(sopen, "open")
         };
         let open_now = !open.is_empty();
-        let open_mode = if !open_now { "rb".to_string() } else { open };
+        let open_mode = open;
 
         let mut conn = RConn::new("bzfile", &description, &open_mode, ConnKind::BzFile);
         conn.canseek = false;
@@ -633,7 +633,7 @@ pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             check_string_arg(sopen, "open")
         };
         let open_now = !open.is_empty();
-        let open_mode = if !open_now { "rb".to_string() } else { open };
+        let open_mode = open;
         let mut conn = RConn::new("xzfile", &description, &open_mode, ConnKind::XzFile);
         conn.canseek = false;
         conn.text = !open_mode.contains('b');
