@@ -4,7 +4,7 @@
 use core::ffi::{c_double, c_int, c_void};
 
 /// Function pointer type for the objective function passed to R_zeroin2.
-pub type R_zeroin2_fn = unsafe extern "C" fn(f64, *mut c_void) -> f64;
+pub type R_zeroin2_fn = unsafe extern "C-unwind" fn(f64, *mut c_void) -> f64;
 
 /// Brent's method for finding a root of a function in a given interval.
 ///
@@ -152,7 +152,7 @@ struct ZeroinCtx {
     rho: crate::sexp::ffi::SEXP,
 }
 
-unsafe extern "C" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
+unsafe extern "C-unwind" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
     unsafe {
         use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
         use crate::sexp::constructors::{Rf_ScalarReal, Rf_lang2};
@@ -197,15 +197,17 @@ fn flush_uniroot_warnings() {
     let neg = UNIROOT_NEG.swap(0, std::sync::atomic::Ordering::Relaxed);
     let pos = UNIROOT_POS.swap(0, std::sync::atomic::Ordering::Relaxed);
     unsafe {
-        for _ in 0..na {
-            crate::mainutils::errors::Rf_warning1(c"NA replaced by maximum positive value".as_ptr());
+        if na > 0 {
+            crate::mainutils::errors::Rf_warning1(
+                c"NA/NaN replaced by maximum positive value".as_ptr(),
+            );
         }
-        for _ in 0..neg {
+        if neg > 0 {
             crate::mainutils::errors::Rf_warning1(
                 c"-Inf replaced by maximally negative value".as_ptr(),
             );
         }
-        for _ in 0..pos {
+        if pos > 0 {
             crate::mainutils::errors::Rf_warning1(c"Inf replaced by maximum positive value".as_ptr());
         }
     }
@@ -306,6 +308,7 @@ pub unsafe fn do_optimize(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::
         }
         let xmin = 0.5 * (lo + hi);
         let fmin = zeroin_call(xmin, info);
+        flush_uniroot_warnings();
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, Rf_ScalarReal(xmin));
@@ -414,7 +417,7 @@ struct ZeroinCall {
     env: crate::sexp::ffi::SEXP,
 }
 
-unsafe extern "C" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
+unsafe extern "C-unwind" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
     unsafe {
         let call = &*(info as *const ZeroinCall);
         let arg = crate::sexp::constructors::Rf_ScalarReal(x);
@@ -425,6 +428,7 @@ unsafe extern "C" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
         finite_uniroot(crate::mainutils::coerce::asReal(result))
     }
 }
+
 
 /// `.External2(C_zeroin2, f, lower, upper, f.lower, f.upper, tol, maxiter)`.
 pub unsafe fn zeroin2(
@@ -561,6 +565,7 @@ pub unsafe fn do_fmin(
         let mut ctx = ZeroinCtx { fun, rho };
         let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
         let x = brent_fmin(xmin, xmax, info, tol);
+        flush_uniroot_warnings();
         let out = Rf_allocVector(SEXPTYPE::REALSXP, 1);
         *REAL(out) = x;
         out
