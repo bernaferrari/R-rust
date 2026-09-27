@@ -4286,11 +4286,10 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 3).unwrap_or(false);
         let perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
         let fixed = logical_arg_by_name_or_position(args, "fixed", 5).unwrap_or(false);
-        if pattern_arg.is_null()
-            || replacement_arg.is_null()
-            || x_arg.is_null()
-            || x_arg == R_NilValue()
-        {
+        if x_arg.is_null() || x_arg == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        if pattern_arg.is_null() || replacement_arg.is_null() {
             return R_NilValue();
         }
         let use_bytes = logical_arg_by_name_or_position(args, "useBytes", 6).unwrap_or(false);
