@@ -121,6 +121,11 @@ pub unsafe fn do_compile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
     }
 }
+/// GNU `.Internal(bcVersion())` — current bytecode format, `R_bcVersion`.
+pub unsafe fn do_bcversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { crate::sexp::constructors::Rf_ScalarInteger(12) }
+}
+
 
 /// on every closure invocation.
 pub unsafe fn do_enable_jit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

@@ -4748,6 +4748,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         3,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
+    FunTabEntry::new(
+        b"bcVersion\0",
+        None,
+        0,
+        11,
+        0,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
     // Sentinel
     FunTabEntry::new(
         NULL_NAME,
@@ -5304,6 +5312,7 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
+        "bcVersion" => Some(crate::eval::compiler::do_bcversion),
         "format" => Some(crate::mainutils::essentials::do_format),
         "readDCF" => Some(crate::mainutils::dcf::do_readDCF),
         "compareNumericVersion" => Some(crate::mainutils::dcf::do_compareNumericVersion),
