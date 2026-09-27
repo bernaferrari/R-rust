@@ -2495,14 +2495,17 @@ pub unsafe fn do_conditionCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let message_arg = CAR(args);
-        let call_arg = CAR(CDR(args));
+        let call_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(CDR(args))
+        };
         let message = if message_arg.is_null() || message_arg == R_NilValue() {
             String::new()
         } else {
             elt_to_string(message_arg, 0)
         };
-        // Create a simple list with class "simpleError" and "error" and "condition"
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         if result.is_null() {
             return R_NilValue();
         }
@@ -2517,18 +2520,19 @@ pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
         }
         SET_VECTOR_ELT(result, 0, msg_vec);
-        // Set names
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let stored_call = if call_arg.is_null() { R_NilValue() } else { call_arg };
+        SET_VECTOR_ELT(result, 1, stored_call);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !names.is_null() {
-            let cstr = c"message";
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                let data = (*names).gengc_next_node as *mut SEXP;
-                *data = charsxp;
+            for (i, cstr) in [c"message", c"call"].into_iter().enumerate() {
+                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                if !charsxp.is_null() {
+                    let data = (*names).gengc_next_node as *mut SEXP;
+                    *data.add(i) = charsxp;
+                }
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         }
-        // Set class
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         if !class.is_null() {
             let classes = ["simpleError", "error", "condition"];
