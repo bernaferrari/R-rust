@@ -4806,7 +4806,10 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     _ => None,
                 })
                 .unwrap_or_else(|| {
-                    let slot = positional;
+                    // GNU .Internal(format): trim, digits, nsmall, width, justify,
+                    // na.encode, scientific, decimal.mark.
+                    let order = [0, 1, 2, 4, 3, 5, 6, 10];
+                    let slot = order.get(positional).copied().unwrap_or(99);
                     positional += 1;
                     slot
                 });
