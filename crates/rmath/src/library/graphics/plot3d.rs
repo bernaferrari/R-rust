@@ -1250,6 +1250,18 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
         let c = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
         let _c_guard = protect(c);
         let nc = LENGTH(c);
+        {
+            let cr = REAL(c);
+            for i in 0..nc {
+                if !(*cr.add(i as usize)).is_finite() {
+                    plot3d_error(&format!(
+                        "non-finite level values: levels[{}] = {}",
+                        i + 1,
+                        *cr.add(i as usize)
+                    ));
+                }
+            }
+        }
         _args = CDR(_args);
 
         let _labels = CAR(_args);
