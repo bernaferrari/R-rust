@@ -5262,10 +5262,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_read_delim,
     },
     EvaluatedBuiltin {
-        name: "read.fwf",
-        handler: crate::mainutils::essentials::do_read_fwf,
-    },
-    EvaluatedBuiltin {
         name: "readChar",
         handler: crate::mainutils::essentials::do_readChar,
     },

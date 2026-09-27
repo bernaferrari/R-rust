@@ -576,14 +576,14 @@ fn scan_error(message: impl Into<String>) -> ! {
     });
 }
 
-fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64) -> Vec<String> {
+fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64, strip_white: bool) -> Vec<String> {
     let limit = if nmax > 0 { nmax as usize } else { usize::MAX };
     let spec = TableParseSpec {
         sep: sep.chars().next(),
         quotes: quote.chars().collect(),
         comment: None,
         allow_escape: false,
-        strip_white: sep.is_empty(),
+        strip_white: strip_white || sep.is_empty(),
         blank_lines_skip: true,
     };
     let mut fields: Vec<String> = parse_table_records(contents, &spec)
@@ -799,8 +799,13 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             _ => -1_i64,
         };
         let item_cap = if n_limit >= 0 { n_limit } else { nmax };
+        let strip_arg = named_arg(args, "strip.white");
+        let strip_white = match strip_arg {
+            Some(v) if !v.is_null() && v != R_NilValue() => real_or_default(v, 0.0) != 0.0,
+            _ => false,
+        };
         let field_cap = if what_type == SEXPTYPE::VECSXP { -1 } else { item_cap };
-        let values = split_scan_fields(&contents, &sep, &quote, field_cap);
+        let values = split_scan_fields(&contents, &sep, &quote, field_cap, strip_white);
         if let Some(idx) = scan_conn_idx {
             if field_cap >= 0 {
                 let bytes = &scan_conn_bytes;

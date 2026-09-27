@@ -1380,6 +1380,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "regexpr", include_str!("gnu_regexpr.R"));
         eval_base_binding(base_env, "gregexpr", include_str!("gnu_gregexpr.R"));
         eval_base_binding(base_env, "regmatches", include_str!("gnu_regmatches.R"));
+        eval_base_binding(base_env, "read.fwf", include_str!("gnu_read_fwf.R"));
         eval_base_binding(
             base_env,
             "regmatches<-",
