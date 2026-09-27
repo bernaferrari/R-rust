@@ -209,10 +209,18 @@ pub fn qt_inner(p: f64, ndf: f64, lower_tail: bool, log_p: bool) -> f64 {
         while ux < DBL_MAX && pt_inner(ux, ndf, true, false) < pp {
             ux *= 2.0;
         }
+        // GNU's bound loop stops once ux overflows. The quantile is then
+        // outside the finite range (qt(0.025, 0.001) is Inf, no warning).
+        if !ux.is_finite() || pt_inner(ux, ndf, true, false) < pp {
+            return ML_POSINF;
+        }
         let pp = p * (1.0 - q_eps);
         lx = -1.0;
         while lx > -DBL_MAX && pt_inner(lx, ndf, true, false) > pp {
             lx *= 2.0;
+        }
+        if !lx.is_finite() || pt_inner(lx, ndf, true, false) > pp {
+            return ML_NEGINF;
         }
 
         /* 2. interval (lx,ux) halving
