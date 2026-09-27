@@ -628,13 +628,6 @@ unsafe fn f2xact(
                             tol,
                         );
                         if *sp.add(itp as usize) > 0. {
-                            REprintf(
-                                std::ffi::CStr::from_bytes_with_nul(b"___ SP[itp=%d] = %g > 0\n\0")
-                                    .unwrap_or_else(|_| {
-                                        std::ffi::CStr::from_ptr(b"\0".as_ptr() as *const _)
-                                    })
-                                    .as_ptr(),
-                            );
                             *sp.add(itp as usize) = 0.;
                         }
 
