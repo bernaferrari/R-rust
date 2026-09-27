@@ -1338,7 +1338,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "dev.interactive",
-            "function(orNone = FALSE) FALSE",
+            "function(orNone = FALSE) { if (isTRUE(orNone) && identical(.Device, \"null device\")) TRUE else isTRUE(interactive()) }",
         );
         eval_base_binding(
             base_env,
