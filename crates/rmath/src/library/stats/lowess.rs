@@ -327,6 +327,15 @@ pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> S
         ans
     }
 }
+pub unsafe extern "C-unwind" fn c_lowess(
+    x: SEXP,
+    y: SEXP,
+    f: SEXP,
+    iter: SEXP,
+    delta: SEXP,
+) -> SEXP {
+    unsafe { lowess(x, y, f, iter, delta) }
+}
 
 
 /// GNU `lowess(x, y=NULL, f=2/3, iter=3, delta=0.01*diff(range(x)))`.

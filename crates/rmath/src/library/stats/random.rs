@@ -532,7 +532,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_ARIMA_transPars", "C_ARIMA_CSS", "C_ARIMA_Like", "C_ARIMA_Invtrans", "C_ARIMA_undoPars", "C_ARIMA_Gradtrans", "C_TSconv", "C_getQ0",
     "C_doD", "C_deriv", "C_fft", "C_mvfft",
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_do_fmin", "C_Fisher_sim", "C_kmns", "C_eureka", "C_multi_yw", "C_call_dqags", "C_call_dqagi",
-    "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_loess_ise", "C_loess_dfitse", "C_lowesw", "C_lowesp",
+    "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_loess_ise", "C_loess_dfitse", "C_lowesw", "C_lowesp", "C_lowess",
     "C_kmeans_Lloyd", "C_kmeans_MacQueen", "C_Rsm", "C_acf", "C_pacf1", "C_SWilk", "C_nls_iter", "C_tukeyline", "C_pRho", "C_pKendall", "C_ksmooth", "C_rfilter", "C_cfilter", "C_arma0_kfore", "C_KalmanFore", "C_KalmanLike", "C_KalmanSmooth", "C_psmirnov_exact", "C_rWishart", "C_ar2ma",
     "C_dpermdist1", "C_dpermdist2",
     "C_setup_starma", "C_free_starma", "C_Starma_method", "C_arma0fa",
@@ -617,7 +617,7 @@ pub fn call_arity(name: &str) -> Option<usize> {
         "rhyper" | "Cdqrls" | "cov" | "cor" | "Cdist"
         | "optim" | "optimhess" | "ARIMA_Like" | "tukeyline" | "chisq_sim" | "cfilter"
         | "arma0_kfore" | "Fexact" | "bw_ucv" | "bw_bcv" | "bw_phi4" | "bw_phi6" => 4,
-        "KalmanLike" | "ApproxTest" | "ksmooth" | "BinDist" => 5,
+        "KalmanLike" | "ApproxTest" | "ksmooth" | "BinDist" | "lowess" => 5,
         "numeric_deriv" | "runmed" | "psmirnov_exact" | "ARIMA_CSS" => 6,
         "Approx" | "setup_starma" => 8,
         _ => return super::distn::call_arity(bare),
@@ -658,6 +658,7 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "Cdist" => as_dl(c_cdist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "Rsm" => as_dl(super::smooth::c_rsm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "lowess" => as_dl(super::lowess::c_lowess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "KalmanFore" => as_dl(super::filter::c_kalman_fore as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "KalmanLike" => as_dl(super::filter::c_kalman_like as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "KalmanSmooth" => as_dl(super::filter::c_kalman_smooth as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
