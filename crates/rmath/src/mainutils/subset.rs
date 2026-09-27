@@ -2365,7 +2365,19 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 ax
             };
             let _subscript_source_guard = protect(subscript_source);
-            let sr = int_arraySubscript(0, CAR(subs), dims, subscript_source, call);
+            let row_arg = CAR(subs);
+            let sr = if TYPEOF(row_arg) == SEXPTYPE::LGLSXP {
+                // Vector `[` starts stretch at 1, so a length-1 FALSE on a
+                // zero-row frame selects nothing. Array subscripting starts
+                // stretch at 0 and rejects that as too long.
+                let nrow = INTEGER_ELT(dims, 0) as R_xlen_t;
+                let proxy = Rf_allocVector3(SEXPTYPE::REALSXP, nrow);
+                let _proxy_guard = protect(proxy);
+                let mut stretch: R_xlen_t = 1;
+                makeSubscript(proxy, row_arg, &mut stretch, call)
+            } else {
+                int_arraySubscript(0, row_arg, dims, subscript_source, call)
+            };
             let _sr_guard = protect(sr);
             let sc = int_arraySubscript(1, CADR(subs), dims, subscript_source, call);
             let _sc_guard = protect(sc);
