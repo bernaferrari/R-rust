@@ -498,12 +498,25 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     .into_owned()
             };
             let coerced = match name.as_str() {
-                "integer" => Some(crate::mainutils::essentials::do_as_integer(
-                    _call,
-                    _op,
-                    Rf_cons(x, R_NilValue()),
-                    _rho,
-                )),
+                "integer" => {
+                    if TYPEOF(x) == SEXPTYPE::INTSXP {
+                        let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+                        let _x = protect(x);
+                        crate::sexp::attrib_core::setAttrib(
+                            x,
+                            crate::sexp::attrib_core::R_ClassSymbol(),
+                            R_NilValue(),
+                        );
+                        Some(x)
+                    } else {
+                        Some(crate::mainutils::essentials::do_as_integer(
+                            _call,
+                            _op,
+                            Rf_cons(x, R_NilValue()),
+                            _rho,
+                        ))
+                    }
+                },
                 "double" => Some(crate::mainutils::essentials::do_as_double(
                     _call,
                     _op,
