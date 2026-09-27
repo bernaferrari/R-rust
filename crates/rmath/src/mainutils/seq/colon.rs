@@ -233,31 +233,23 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let miss_from = from == R_MissingArg();
         let miss_to = to == R_MissingArg();
 
-        // Single-argument form: seq(n) or seq(scalar).  R evaluates this as
-        // `1:n` (do_colon on the evaluated first argument), so non-numeric
-        // scalars coerce via asReal (NA/NaN -> error), length > 1 warns and
-        // uses the length, and the result keeps integer type for integral n.
+        // GNU seq.default, one argument: a length-1 numeric uses 1:from.
+        // Anything else with length uses 1:length. No length>1 warning.
         if one_arg && !miss_from {
             if from == R_NilValue() {
                 ans = Rf_allocVector(INTSXP_VAL, 0);
             } else if LENGTH(from) == 0 {
                 errorcall(call, b"argument of length 0\0".as_ptr() as *const c_char);
-            } else if LENGTH(from) > 1 {
-                warningcall(
-                    call,
-                    b"numerical expression has length > 1\0".as_ptr() as *const c_char,
-                );
-                let n = asReal(from);
-                if ISNAN(n) {
-                    errorcall(call, b"NA/NaN argument\0".as_ptr() as *const c_char);
-                }
-                ans = seq_colon(1.0, n, call);
-            } else {
+            } else if LENGTH(from) == 1
+                && (TYPEOF(from) == INTSXP_VAL || TYPEOF(from) == REALSXP_VAL)
+            {
                 let rfrom = asReal(from);
                 if ISNAN(rfrom) {
                     errorcall(call, b"NA/NaN argument\0".as_ptr() as *const c_char);
                 }
                 ans = seq_colon(1.0, rfrom, call);
+            } else {
+                ans = seq_colon(1.0, LENGTH(from) as c_double, call);
             }
             return ans;
         }
