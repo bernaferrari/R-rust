@@ -1267,24 +1267,14 @@ unsafe fn EncodeElement2(
             *q = 0;
             buf.as_ptr()
         } else {
-            // GNU writetable sets R_print.digits = DBL_DIG (15) before every
-            // EncodeElement0 call; that helper clobbers the saved digits.
-            // digits == 0 means "use options"; restore that sentinel, not the
-            // resolved option value.
-            let old = crate::sexp::instance::with_current_instance(|inst| unsafe {
-                (*inst).eval_state.format_print
-            });
-            let mut pinned = old.unwrap_or_else(|| crate::mainutils::format::format_get_R_print());
+            // GNU writetable sets R_print.digits = DBL_DIG (15) around
+            // EncodeElement0. format_set returns the stored pin (digits 0
+            // means "use options"); restore that, not the resolved 7.
+            let mut pinned = crate::mainutils::format::format_get_R_print();
             pinned.digits = 15;
-            crate::mainutils::format::format_set_R_print(pinned);
+            let old = crate::mainutils::format::format_set_R_print(pinned);
             let encoded = EncodeElement0(x, indx, if quote { '"' as c_int } else { 0 }, dec);
-            if let Some(prev) = old {
-                crate::mainutils::format::format_set_R_print(prev);
-            } else {
-                let mut cleared = pinned;
-                cleared.digits = 0;
-                crate::mainutils::format::format_set_R_print(cleared);
-            }
+            crate::mainutils::format::format_set_R_print(old);
             encoded
         }
     }
