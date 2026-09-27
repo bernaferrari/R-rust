@@ -1528,31 +1528,32 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
                 let p = Path::new(path);
-                let allowed = match mode {
-                    0 => p.exists(),
-                    1 => {
-                        #[cfg(unix)]
-                        {
-                            p.metadata()
-                                .map(|m| {
-                                    std::os::unix::fs::PermissionsExt::mode(&m.permissions())
+                let allowed = if mode == 0 {
+                    p.exists()
+                } else {
+                    std::fs::metadata(path)
+                        .map(|m| {
+                            let mut ok = true;
+                            if mode & 2 != 0 {
+                                ok &= !m.permissions().readonly();
+                            }
+                            if mode & 1 != 0 {
+                                #[cfg(unix)]
+                                {
+                                    ok &= std::os::unix::fs::PermissionsExt::mode(&m.permissions())
                                         & 0o111
-                                        != 0
-                                })
-                                .unwrap_or(false)
-                        }
-                        #[cfg(not(unix))]
-                        {
-                            false
-                        }
-                    }
-                    2 => p
-                        .metadata()
-                        .map(|m| !m.permissions().readonly())
-                        .unwrap_or(false),
-                    4 => std::fs::metadata(path).is_ok(),
-                    _ => false,
+                                        != 0;
+                                }
+                                #[cfg(not(unix))]
+                                {
+                                    ok = false;
+                                }
+                            }
+                            ok
+                        })
+                        .unwrap_or(false)
                 };
+
                 *pa.add(i) = if allowed { 0 } else { -1 };
             }
         }
