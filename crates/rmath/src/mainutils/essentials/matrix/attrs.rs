@@ -497,42 +497,39 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     .to_string_lossy()
                     .into_owned()
             };
+            let clear_if_same = |matches: bool| -> Option<SEXP> {
+                if !matches {
+                    return None;
+                }
+                let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+                let _x = protect(x);
+                crate::sexp::attrib_core::setAttrib(
+                    x,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    R_NilValue(),
+                );
+                Some(x)
+            };
             let coerced = match name.as_str() {
-                "integer" => {
-                    if TYPEOF(x) == SEXPTYPE::INTSXP {
-                        let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-                        let _x = protect(x);
-                        crate::sexp::attrib_core::setAttrib(
-                            x,
-                            crate::sexp::attrib_core::R_ClassSymbol(),
-                            R_NilValue(),
-                        );
-                        Some(x)
-                    } else {
-                        Some(crate::mainutils::essentials::do_as_integer(
-                            _call,
-                            _op,
-                            Rf_cons(x, R_NilValue()),
-                            _rho,
-                        ))
-                    }
-                },
-                "double" => Some(crate::mainutils::essentials::do_as_double(
-                    _call,
-                    _op,
-                    Rf_cons(x, R_NilValue()),
-                    _rho,
-                )),
+                "integer" => clear_if_same(TYPEOF(x) == SEXPTYPE::INTSXP).or_else(|| {
+                    Some(crate::mainutils::essentials::do_as_integer(
+                        _call,
+                        _op,
+                        Rf_cons(x, R_NilValue()),
+                        _rho,
+                    ))
+                }),
+                "double" => clear_if_same(TYPEOF(x) == SEXPTYPE::REALSXP).or_else(|| {
+                    Some(crate::mainutils::essentials::do_as_double(
+                        _call,
+                        _op,
+                        Rf_cons(x, R_NilValue()),
+                        _rho,
+                    ))
+                }),
                 "numeric" => {
                     if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::REALSXP {
-                        let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-                        let _x = protect(x);
-                        crate::sexp::attrib_core::setAttrib(
-                            x,
-                            crate::sexp::attrib_core::R_ClassSymbol(),
-                            R_NilValue(),
-                        );
-                        Some(x)
+                        clear_if_same(true)
                     } else {
                         Some(crate::mainutils::essentials::do_as_double(
                             _call,
@@ -542,30 +539,38 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                         ))
                     }
                 }
-                "logical" => Some(crate::mainutils::essentials::do_as_logical(
-                    _call,
-                    _op,
-                    Rf_cons(x, R_NilValue()),
-                    _rho,
-                )),
-                "character" => Some(crate::mainutils::essentials::do_as_character(
-                    _call,
-                    _op,
-                    Rf_cons(x, R_NilValue()),
-                    _rho,
-                )),
-                "complex" => Some(crate::mainutils::essentials::do_as_complex(
-                    _call,
-                    _op,
-                    Rf_cons(x, R_NilValue()),
-                    _rho,
-                )),
-                "raw" => Some(crate::mainutils::essentials::do_as_raw(
-                    _call,
-                    _op,
-                    Rf_cons(x, R_NilValue()),
-                    _rho,
-                )),
+                "logical" => clear_if_same(TYPEOF(x) == SEXPTYPE::LGLSXP).or_else(|| {
+                    Some(crate::mainutils::essentials::do_as_logical(
+                        _call,
+                        _op,
+                        Rf_cons(x, R_NilValue()),
+                        _rho,
+                    ))
+                }),
+                "character" => clear_if_same(TYPEOF(x) == SEXPTYPE::STRSXP).or_else(|| {
+                    Some(crate::mainutils::essentials::do_as_character(
+                        _call,
+                        _op,
+                        Rf_cons(x, R_NilValue()),
+                        _rho,
+                    ))
+                }),
+                "complex" => clear_if_same(TYPEOF(x) == SEXPTYPE::CPLXSXP).or_else(|| {
+                    Some(crate::mainutils::essentials::do_as_complex(
+                        _call,
+                        _op,
+                        Rf_cons(x, R_NilValue()),
+                        _rho,
+                    ))
+                }),
+                "raw" => clear_if_same(TYPEOF(x) == SEXPTYPE::RAWSXP).or_else(|| {
+                    Some(crate::mainutils::essentials::do_as_raw(
+                        _call,
+                        _op,
+                        Rf_cons(x, R_NilValue()),
+                        _rho,
+                    ))
+                }),
                 _ => None,
             };
             if let Some(coerced) = coerced {
