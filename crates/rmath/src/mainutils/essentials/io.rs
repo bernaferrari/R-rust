@@ -3113,20 +3113,18 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
         if conn.isopen {
             false
         } else {
-            let mode = if conn.mode.is_empty() {
-                "rb".to_string()
-            } else {
-                conn.mode.clone()
-            };
             let result = match conn.kind {
                 crate::mainutils::connections::ConnKind::GzFile => {
-                    crate::mainutils::connections::open_gz_conn(conn, &mode)
+                    crate::mainutils::connections::open_gz_conn(conn, "rb")
                 }
                 crate::mainutils::connections::ConnKind::BzFile => {
-                    crate::mainutils::connections::open_bz_conn(conn, &mode)
+                    crate::mainutils::connections::open_bz_conn(conn, "rb")
                 }
                 crate::mainutils::connections::ConnKind::XzFile => {
-                    crate::mainutils::connections::open_xz_conn(conn, &mode)
+                    crate::mainutils::connections::open_xz_conn(conn, "rb")
+                }
+                crate::mainutils::connections::ConnKind::File => {
+                    crate::mainutils::connections::open_maybe_compressed(conn, "rb")
                 }
                 _ => Err(std::io::Error::new(
                     std::io::ErrorKind::Other,

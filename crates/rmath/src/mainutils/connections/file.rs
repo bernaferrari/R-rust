@@ -245,7 +245,7 @@ fn compressed_text_kind(path: &str, mode: &str) -> Option<ConnKind> {
     }
 }
 
-fn open_maybe_compressed(conn: &mut RConn, mode: &str) -> io::Result<()> {
+pub(crate) fn open_maybe_compressed(conn: &mut RConn, mode: &str) -> io::Result<()> {
     if let Some(kind) = compressed_text_kind(&conn.description, mode) {
         conn.kind = match kind {
             ConnKind::GzFile => {
