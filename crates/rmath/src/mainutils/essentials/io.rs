@@ -904,8 +904,12 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let _p = protect(result);
             for (i, value) in values.iter().enumerate() {
-                let cstr = CString::new(value.as_str()).unwrap_or_default();
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                let charsxp = if na_strings.iter().any(|s| s == value) {
+                    crate::mainutils::relop::NA_STRING()
+                } else {
+                    let cstr = CString::new(value.as_str()).unwrap_or_default();
+                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                };
                 SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
             result
@@ -947,12 +951,13 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         ""
                     };
                     if ty == SEXPTYPE::STRSXP {
-                        let cstr = CString::new(text).unwrap_or_default();
-                        SET_STRING_ELT(
-                            col,
-                            r,
-                            crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
-                        );
+                        let charsxp = if na_strings.iter().any(|s| s == text) {
+                            crate::mainutils::relop::NA_STRING()
+                        } else {
+                            let cstr = CString::new(text).unwrap_or_default();
+                            crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                        };
+                        SET_STRING_ELT(col, r, charsxp);
                     } else if ty == SEXPTYPE::REALSXP {
                         *REAL(col).add(r as usize) = if text == "NA" || text.is_empty() {
                             NA_REAL
