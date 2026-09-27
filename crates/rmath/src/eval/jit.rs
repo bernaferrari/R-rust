@@ -1122,10 +1122,8 @@ mod tests {
                 unsupported_body,
                 crate::sexp::globals::R_GlobalEnv(),
             );
-            assert_eq!(
-                compiler_cmpfun(unsupported),
-                Err("function body uses unsupported compiler syntax")
-            );
+            let compiled_user = compiler_cmpfun(unsupported).expect("symbol calls compile");
+            assert_eq!(TYPEOF(BODY(compiled_user)), SEXPTYPE::BCODESXP);
             assert_eq!(TYPEOF(BODY(unsupported)), SEXPTYPE::LANGSXP);
         });
     }
