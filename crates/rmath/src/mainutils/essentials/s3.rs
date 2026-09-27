@@ -2047,6 +2047,31 @@ pub unsafe fn do_subset_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 // Complete S3 — method dispatch
 // ---------------------------------------------------------------------------
 
+/// Names in `tools::nonS3methods` that exist in base R and are not methods.
+fn is_known_non_s3_method(generic: &str, class: &str) -> bool {
+    matches!(
+        (generic, class),
+        ("t", "test")
+            | ("all", "equal")
+            | ("all", "names")
+            | ("all", "vars")
+            | ("max", "col")
+            | ("rep", "int")
+            | ("seq", "int")
+            | ("sort", "int")
+            | ("sort", "list")
+            | ("format", "info")
+            | ("format", "pval")
+            | ("plot", "new")
+            | ("plot", "window")
+            | ("plot", "xy")
+            | ("close", "screen")
+            | ("split", "screen")
+            | ("anova", "lmlist")
+            | ("lag", "plot")
+    )
+}
+
 /// R's `getS3method(generic, class)` — get S3 method function.
 pub unsafe fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -2061,10 +2086,24 @@ pub unsafe fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
             rho,
             effective_s3_defrho(rho),
         );
-        if is_function_value(method) {
-            method
-        } else {
+        if is_function_value(method) && !is_known_non_s3_method(&generic, &class) {
+            return method;
+        }
+        let optional = {
+            let rest = CDR(CDR(args));
+            if rest.is_null() || rest == R_NilValue() {
+                false
+            } else {
+                let value = CAR(rest);
+                TYPEOF(value) == SEXPTYPE::LGLSXP
+                    && LENGTH(value) > 0
+                    && *LOGICAL(value).add(0) == TRUE
+            }
+        };
+        if optional {
             R_NilValue()
+        } else {
+            package_error(format!("S3 method '{generic}.{class}' not found"));
         }
     }
 }
@@ -2132,8 +2171,17 @@ pub unsafe fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP)
                 }
             }
         }
-
-        if let Err(message) = define_s3_method(target_env, &generic, &class, method) {
+        let gen_sym = {
+            let cname = CString::new(generic.clone()).unwrap_or_default();
+            Rf_install(cname.as_ptr())
+        };
+        let genfun = crate::sexp::envir::findFun(gen_sym, target_env);
+        let defenv = if TYPEOF(genfun) == SEXPTYPE::CLOSXP {
+            crate::sexp::accessors::CLOENV(genfun)
+        } else {
+            crate::eval::runtime::base_env()
+        };
+        if let Err(message) = define_s3_method(defenv, &generic, &class, method) {
             package_error(message);
         }
         crate::sexp::globals::set_R_Visible(FALSE);
