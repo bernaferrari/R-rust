@@ -527,8 +527,8 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
             }
         }
 
-        let stretch: R_xlen_t = 1;
-        let indx = makeSubscript(x, s, &stretch as *const _ as *mut R_xlen_t, R_NilValue());
+        let mut stretch: R_xlen_t = 1;
+        let indx = makeSubscript(x, s, &mut stretch, R_NilValue());
         let _indx_guard = protect(indx);
         let n = XLENGTH(indx);
 

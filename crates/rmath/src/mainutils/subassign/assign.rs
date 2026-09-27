@@ -504,18 +504,6 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             x = CAR(args);
         }
 
-        // `x[logical(0)] <- v` selects nothing. Stretching a length-0
-        // vector here turned integer(0) into NA and broke as.roman(integer(0)).
-        if nsubs == 1 {
-            let idx = CAR(subs);
-            if !idx.is_null()
-                && idx != R_NilValue()
-                && TYPEOF(idx) == SEXPTYPE::LGLSXP
-                && XLENGTH(idx) == 0
-            {
-                return x;
-            }
-        }
 
         let s4 = IS_S4_OBJECT(x);
         let mut oldtype = 0;
