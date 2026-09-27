@@ -1990,6 +1990,7 @@ pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
 
+
         if numeric {
             return find_numeric_result(&matches);
         }
@@ -2273,6 +2274,7 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut all_names = false;
         let mut sorted = true;
 
+        let mut positional = 0;
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             let arg = CAR(cell);
@@ -2283,14 +2285,15 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
                 Some("all.names") => all_names = logical_arg(arg, all_names),
                 Some("sorted") => sorted = logical_arg(arg, sorted),
-                _ if TYPEOF(arg) == SEXPTYPE::ENVSXP
-                    || TYPEOF(arg) == SEXPTYPE::INTSXP
-                    || TYPEOF(arg) == SEXPTYPE::REALSXP
-                    || TYPEOF(arg) == SEXPTYPE::STRSXP =>
-                {
-                    env = coerce_search_envir(arg, env);
+                _ => {
+                    match positional {
+                        0 => env = coerce_search_envir(arg, env),
+                        1 => all_names = logical_arg(arg, all_names),
+                        2 => sorted = logical_arg(arg, sorted),
+                        _ => {}
+                    }
+                    positional += 1;
                 }
-                _ => {}
             }
             cell = CDR(cell);
         }

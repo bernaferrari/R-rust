@@ -825,11 +825,13 @@ pub unsafe fn GetRNGstate() {
         let seeds = R_findVarInFrame(R_GlobalEnv(), seeds_sym);
 
         if seeds == R_UnboundValue() {
-            // No .Random.seed -- randomize with the current kind
+            // No .Random.seed -- randomize, then bind it. GNU PutRNGstate
+            // runs before the first draw so find() sees .GlobalEnv.
             with_rng_state(|rng| {
                 let kind = rng.rng_kind.get();
                 RNG_Init(rng, kind, TimeToSeed() as i64);
             });
+            PutRNGstate();
             return;
         }
 
