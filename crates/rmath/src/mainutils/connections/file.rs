@@ -681,15 +681,10 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             r_error("cannot open standard connections");
         }
 
-        let open_str = if sopen.is_null() || sopen == R_NilValue() {
+        let requested = if sopen.is_null() || sopen == R_NilValue() {
             String::new()
         } else {
             check_string_arg(sopen, "open")
-        };
-        let open_mode = if open_str.is_empty() {
-            "r".to_string()
-        } else {
-            open_str
         };
 
         let mut table = connection_table();
@@ -700,9 +695,17 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             return R_NilValue();
         }
 
+        let open_mode = if requested.is_empty() {
+            if conn.mode.is_empty() {
+                "r".to_string()
+            } else {
+                conn.mode.clone()
+            }
+        } else {
+            requested
+        };
         conn.mode = open_mode.clone();
         conn.text = !open_mode.contains('b');
-
         match &conn.kind {
             ConnKind::BrowserFile => open_browser_file(conn, &open_mode),
             ConnKind::File => {
