@@ -158,17 +158,47 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         while cursor != R_NilValue() && !cursor.is_null() {
             if CAR(cursor) == dots_symbol && !substituted_dots {
                 substituted_dots = true;
-                let mut dots = crate::sexp::envir::R_findVarInFrame(envir, dots_symbol);
+                let resolve = |mut dots: SEXP| -> SEXP {
+                    let mut hops = 0;
+                    while TYPEOF(dots) == SEXPTYPE::PROMSXP && hops < 8 {
+                        hops += 1;
+                        let code = crate::sexp::accessors::PRCODE(dots);
+                        let penv = crate::sexp::accessors::PRENV(dots);
+                        if code == dots_symbol && TYPEOF(penv) == SEXPTYPE::ENVSXP {
+                            dots = crate::sexp::envir::R_findVarInFrame(penv, dots_symbol);
+                            continue;
+                        }
+                        let value = crate::sexp::accessors::PRVALUE(dots);
+                        if value != crate::sexp::globals::R_UnboundValue() {
+                            dots = value;
+                            break;
+                        }
+                        break;
+                    }
+                    dots
+                };
+                let mut dots = resolve(crate::sexp::envir::R_findVarInFrame(envir, dots_symbol));
                 if dots == crate::sexp::globals::R_UnboundValue() || dots == R_MissingArg() {
-                    dots = crate::sexp::envir::R_findVarInFrame(rho, dots_symbol);
+                    dots = resolve(crate::sexp::envir::R_findVarInFrame(rho, dots_symbol));
                 }
-                while TYPEOF(dots) == SEXPTYPE::PROMSXP {
-                    let penv = crate::sexp::accessors::PRENV(dots);
-                    let env = if TYPEOF(penv) == SEXPTYPE::ENVSXP { penv } else { rho };
-                    dots = crate::eval::eval::Rf_eval(dots, env);
+                if dots == crate::sexp::globals::R_UnboundValue() || TYPEOF(dots) == SEXPTYPE::SYMSXP {
+                    let mut context = top;
+                    let mut seen = 0;
+                    while !context.is_null() && seen < 8 {
+                        seen += 1;
+                        let candidate = (*context).cloenv;
+                        if TYPEOF(candidate) == SEXPTYPE::ENVSXP {
+                            let found = resolve(crate::sexp::envir::R_findVarInFrame(candidate, dots_symbol));
+                            if TYPEOF(found) == SEXPTYPE::DOTSXP {
+                                dots = found;
+                                break;
+                            }
+                        }
+                        context = (*context).nextcontext;
+                    }
                 }
                 if dots == crate::sexp::globals::R_UnboundValue() {
-                    dots = R_NilValue();
+                    base_error("... used in a situation where it does not exist");
                 }
                 if dots != R_MissingArg() && dots != R_NilValue() {
                     if TYPEOF(dots) != SEXPTYPE::DOTSXP {
