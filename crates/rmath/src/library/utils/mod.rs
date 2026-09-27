@@ -44,6 +44,17 @@ pub(crate) unsafe fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
                 _,
             >(c_typeconvert)
         }),
+        "writetable" | "C_writetable" => Some(unsafe {
+            std::mem::transmute::<
+                unsafe extern "C-unwind" fn(
+                    crate::sexp::ffi::SEXP,
+                    crate::sexp::ffi::SEXP,
+                    crate::sexp::ffi::SEXP,
+                    crate::sexp::ffi::SEXP,
+                ) -> crate::sexp::ffi::SEXP,
+                _,
+            >(c_writetable)
+        }),
         "edit" | "C_edit" => Some(unsafe {
             std::mem::transmute::<
                 unsafe extern "C-unwind" fn(
@@ -93,6 +104,14 @@ unsafe extern "C-unwind" fn c_typeconvert(
 ) -> crate::sexp::ffi::SEXP {
     unsafe { io::typeconvert(call, op, args, env) }
 }
+unsafe extern "C-unwind" fn c_writetable(
+    call: crate::sexp::ffi::SEXP,
+    op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    env: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { io::writetable(call, op, args, env) }
+}
 unsafe extern "C-unwind" fn c_edit(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
@@ -120,6 +139,12 @@ pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
         crate::sexp::envir::defineVar(
             crate::sexp::symbol::Rf_install(convert.as_ptr()),
             crate::sexp::constructors::Rf_mkString(convert.as_ptr()),
+            env,
+        );
+        let write = std::ffi::CString::new("C_writetable").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(write.as_ptr()),
+            crate::sexp::constructors::Rf_mkString(write.as_ptr()),
             env,
         );
         let size = std::ffi::CString::new("C_objectSize").unwrap_or_default();

@@ -493,11 +493,7 @@ pub(crate) fn format_real_value(v: f64) -> String {
     } else if !needs_scientific(v) {
         let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
         let exponent = v.abs().log10().floor() as i32;
-        let decimals = if exponent >= 0 {
-            (digits - exponent - 1).max(0) as usize
-        } else {
-            (digits - exponent - 1) as usize
-        };
+        let decimals = (digits - exponent - 1).clamp(0, 64) as usize;
         format!("{v:.decimals$}")
     } else {
         format_r_default_real(v)
