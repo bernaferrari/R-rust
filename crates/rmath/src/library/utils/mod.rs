@@ -44,6 +44,17 @@ pub(crate) unsafe fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
                 _,
             >(c_typeconvert)
         }),
+        "edit" | "C_edit" => Some(unsafe {
+            std::mem::transmute::<
+                unsafe extern "C-unwind" fn(
+                    crate::sexp::ffi::SEXP,
+                    crate::sexp::ffi::SEXP,
+                    crate::sexp::ffi::SEXP,
+                    crate::sexp::ffi::SEXP,
+                ) -> crate::sexp::ffi::SEXP,
+                _,
+            >(c_edit)
+        }),
         "tzcode_type" | "C_tzcode_type" => Some(unsafe {
             std::mem::transmute::<
                 unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
@@ -82,6 +93,14 @@ unsafe extern "C-unwind" fn c_typeconvert(
 ) -> crate::sexp::ffi::SEXP {
     unsafe { io::typeconvert(call, op, args, env) }
 }
+unsafe extern "C-unwind" fn c_edit(
+    call: crate::sexp::ffi::SEXP,
+    op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    env: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { crate::mainutils::edit::do_edit(call, op, args, env) }
+}
 
 pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
     unsafe {
@@ -107,6 +126,12 @@ pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
         crate::sexp::envir::defineVar(
             crate::sexp::symbol::Rf_install(size.as_ptr()),
             crate::sexp::constructors::Rf_mkString(size.as_ptr()),
+            env,
+        );
+        let edit = std::ffi::CString::new("C_edit").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(edit.as_ptr()),
+            crate::sexp::constructors::Rf_mkString(edit.as_ptr()),
             env,
         );
         let parsed = crate::sexp::memory::with_arena(|arena| {

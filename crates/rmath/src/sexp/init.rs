@@ -1362,6 +1362,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(file, sep = \"\", quote = \"\\\"'\", skip = 0,\n         blank.lines.skip = TRUE, comment.char = \"#\")\n{\n    if(is.character(file)) {\n        file <- file(file)\n        on.exit(close(file))\n    }\n    if(!inherits(file, \"connection\"))\n        stop(\"'file' must be a character string or connection\")\n    if (isOpen(file) == FALSE) open(file, \"rt\")\n    .External(C_countfields, file, sep, quote, skip, blank.lines.skip,\n              comment.char)\n}\n",
         );
         eval_base_binding(base_env, "C_countfields", "\"C_countfields\"");
+        eval_base_binding(base_env, "C_edit", "\"C_edit\"");
         eval_base_binding(base_env, "C_tzcode_type", "\"C_tzcode_type\"");
         eval_base_binding(base_env, "osVersion", "\"macOS\"");
         eval_base_binding(base_env, "C_readtablehead", "\"C_readtablehead\"");
