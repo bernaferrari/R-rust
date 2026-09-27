@@ -378,6 +378,7 @@ pub unsafe fn get1index(
                     if len == 2 && dblind > -3.0 {
                         indx = (2.0 + dblind.trunc()) as R_xlen_t;
                     } else {
+                        crate::mainutils::errors::record_error_call(call, true);
                         error("invalid negative subscript in get1index <real>");
                     }
                 } else {
