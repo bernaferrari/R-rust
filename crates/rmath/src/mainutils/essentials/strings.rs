@@ -4296,7 +4296,8 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let use_bytes = logical_arg_by_name_or_position(args, "useBytes", 6).unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let replacement = elt_to_string(replacement_arg, 0);
-        if use_bytes && fixed && TYPEOF(x_arg) == SEXPTYPE::STRSXP && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP {
+        let pattern_is_literal = pattern.bytes().all(|b| !matches!(b, b'.' | b'*' | b'+' | b'?' | b'|' | b'(' | b')' | b'[' | b']' | b'{' | b'}' | b'\\' | b'^' | b'$'));
+        if use_bytes && (fixed || pattern_is_literal) && TYPEOF(x_arg) == SEXPTYPE::STRSXP && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP {
             let n = XLENGTH(x_arg);
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _result_guard = protect(result);
