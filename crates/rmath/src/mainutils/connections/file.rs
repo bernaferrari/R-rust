@@ -1090,7 +1090,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                 }
                 return Rf_ScalarReal(old_pos);
             }
-            ConnKind::RawConnection => {
+            ConnKind::RawConnection | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
                 let old_pos = conn.raw_pos as c_double;
                 if !where_val.is_nan() {
                     let new_pos = match origin {
