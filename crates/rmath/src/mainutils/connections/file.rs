@@ -552,11 +552,8 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         } else {
             check_string_arg(sopen, "open")
         };
-        let open_mode = if open.is_empty() {
-            String::new()
-        } else {
-            open
-        };
+        // GNU: open = "" opens gzfile/bzfile/xzfile for reading in text mode.
+        let open_mode = if open.is_empty() { "r".to_string() } else { open };
 
         let mut conn = RConn::new("gzfile", &description, &open_mode, ConnKind::GzFile);
         conn.canseek = false;
@@ -595,11 +592,7 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         } else {
             check_string_arg(sopen, "open")
         };
-        let open_mode = if open.is_empty() {
-            String::new()
-        } else {
-            open
-        };
+        let open_mode = if open.is_empty() { "r".to_string() } else { open };
 
         let mut conn = RConn::new("bzfile", &description, &open_mode, ConnKind::BzFile);
         conn.canseek = false;
@@ -638,7 +631,7 @@ pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         } else {
             check_string_arg(sopen, "open")
         };
-        let open_mode = if open.is_empty() { String::new() } else { open };
+        let open_mode = if open.is_empty() { "r".to_string() } else { open };
         let mut conn = RConn::new("xzfile", &description, &open_mode, ConnKind::XzFile);
 
         conn.canseek = false;
