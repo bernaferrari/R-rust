@@ -1874,8 +1874,10 @@ unsafe fn f10act(
             }
         }
 
-        for idx in (0..=(nrow - 3) as usize).rev() {
-            *nd.add(idx) += *nd.add(idx + 1);
+        if nrow >= 3 {
+            for idx in (0..=(nrow - 3) as usize).rev() {
+                *nd.add(idx) += *nd.add(idx + 1);
+            }
         }
 
         ix = 0;
