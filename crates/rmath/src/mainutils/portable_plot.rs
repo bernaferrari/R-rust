@@ -474,6 +474,33 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
                 hi = hi.log10();
             }
             if !lo.is_finite() || !hi.is_finite() {
+                let fmt = std::ffi::CString::new(format!(
+                    "nonfinite axis={} limits [GScale({},{},..); log={}] -- corrected now",
+                    axis + 1,
+                    lo,
+                    hi,
+                    if logs[axis] { "TRUE" } else { "F" }
+                ))
+                .unwrap_or_default();
+                unsafe {
+                    crate::mainutils::errors::warningcall(
+                        crate::sexp::globals::R_NilValue(),
+                        fmt.as_ptr(),
+                    );
+                }
+                let fix = |v: f64| {
+                    if v.is_finite() {
+                        v
+                    } else if logs[axis] {
+                        if v < 0. { -320. } else { 308.254715559 }
+                    } else {
+                        0.45 * if v < 0. { f64::MIN } else { f64::MAX }
+                    }
+                };
+                lo = fix(lo);
+                hi = fix(hi);
+            }
+            if !lo.is_finite() || !hi.is_finite() {
                 base_error(format!("need finite '{name}' values"));
             }
             if lo == hi {
@@ -1618,6 +1645,10 @@ pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
 pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
     unsafe {
         if name == "plot.new" {
+            // GNU plot.new calls GEcurrentDevice first. With no device open
+            // that evaluates options("device"); a closure that opens nothing
+            // is "no active device and default getOption(\"device\") is invalid".
+            let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
             let (c, clear) = coordinates(args, &[0., 1.], &[0., 1.], true);
             install(c);
             let target = &mut *renderer();

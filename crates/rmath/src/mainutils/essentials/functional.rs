@@ -398,6 +398,7 @@ pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             current = CDR(current);
         }
 
+
         let mut offset: R_xlen_t = 0;
         for i in 0..n {
             let elem = extract_element(xx, i);
@@ -5399,9 +5400,8 @@ static NO_DEVICE_PLOT_NEW: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 pub unsafe fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    // An open device (the file starts with pdf()) is enough. GNU plot.new
-    // calls options("device") only when no device is active; a closure there
-    // is the default opener, not an error.
+    // No active device: GEcurrentDevice evaluates options("device").
+    // A closure that opens nothing is an error (PR#15883).
     #[cfg(feature = "renderplot-device")]
     unsafe {
         crate::mainutils::portable_plot::draw_builtin("plot.new", args)
@@ -5409,6 +5409,11 @@ pub unsafe fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = args;
+        // GNU plot.new opens options("device") when nothing is active.
+        // PR#15883: a closure that opens no device is an error, not success.
+        unsafe {
+            let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
+        }
         NO_DEVICE_PLOT_NEW.store(true, std::sync::atomic::Ordering::Relaxed);
         crate::sexp::globals::R_NilValue()
     }
