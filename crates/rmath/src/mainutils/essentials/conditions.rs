@@ -73,6 +73,7 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         crate::mainutils::errors::error_was_last_rendered(&message)
                             && buf.starts_with("Error: ")
                     };
+                let slot_cond = signalled_condition();
                 set_signalled_condition(std::ptr::null_mut());
 
                 let silent = as_bool_arg(silent_arg, rho);
@@ -124,7 +125,15 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     if width > 75 {
                         prefix.push_str("\n  ");
                     }
-                    (prefix, simple_error_condition_at(&message, caught_error_call()))
+                    let built = simple_error_condition_at(&message, caught_error_call());
+                    let condition = if !slot_cond.is_null()
+                        && condition_message_of(slot_cond).as_deref() == Some(message.as_str())
+                    {
+                        slot_cond
+                    } else {
+                        built
+                    };
+                    (prefix, condition)
                 };
                 let out_text = format!("{prefix}{message}\n");
 
