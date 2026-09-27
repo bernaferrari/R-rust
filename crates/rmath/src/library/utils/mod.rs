@@ -44,12 +44,24 @@ pub(crate) unsafe fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
                 _,
             >(c_typeconvert)
         }),
+        "tzcode_type" | "C_tzcode_type" => Some(unsafe {
+            std::mem::transmute::<
+                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
+                _,
+            >(c_tzcode_type)
+        }),
         _ => None,
     }
 }
 
 unsafe extern "C-unwind" fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { io::countfields(args) }
+}
+
+unsafe extern "C-unwind" fn c_tzcode_type(
+    _args: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { stubs::tzcode_type() }
 }
 
 unsafe extern "C-unwind" fn c_readtablehead(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
