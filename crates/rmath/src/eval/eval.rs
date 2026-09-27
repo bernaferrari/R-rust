@@ -390,6 +390,18 @@ pub(crate) fn find_var_result<'a>(
     if symbol == unsafe { Sexp::from_raw_unchecked(R_DotsSymbol()) } {
         return Ok(None);
     }
+    let missing_symbol = unsafe {
+        let raw = symbol.clone().as_raw();
+        let pname = crate::sexp::accessors::PRINTNAME(raw);
+        pname.is_null()
+            || crate::sexp::accessors::CHAR(pname).is_null()
+            || std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname))
+                .to_bytes()
+                .is_empty()
+    };
+    if missing_symbol {
+        missing_arg_error("");
+    }
 
     // GNU Rf_eval SYMSXP: DDVAL names (`..1`, `..2`, ...) go through
     // ddfindVar, not ordinary findVar.
