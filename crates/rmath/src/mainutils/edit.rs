@@ -60,10 +60,13 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     .to_bytes()
                     .is_empty()));
         if file_empty {
-            let path = std::env::temp_dir().join(format!("redit-{}", std::process::id()));
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!("redit-{}-{}", std::process::id(), n));
             let cpath = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap_or_default();
             file = crate::sexp::constructors::Rf_mkString(cpath.as_ptr());
         }
+        let _file = crate::sexp::protect::protect(file);
         cell = CDR(CDR(cell));
         let editor = CAR(cell);
         let env = if rho.is_null() || rho == R_NilValue() {
@@ -74,6 +77,7 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if !x.is_null() && x != R_NilValue() {
             let deparse = Rf_lang2(Rf_install(c"deparse".as_ptr()), x);
             let src = crate::eval::eval::Rf_eval(deparse, env);
+            let _src = crate::sexp::protect::protect(src);
             let write = Rf_lang3(
                 Rf_install(c"writeLines".as_ptr()),
                 src,
