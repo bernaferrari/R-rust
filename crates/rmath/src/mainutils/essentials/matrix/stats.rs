@@ -144,15 +144,23 @@ unsafe fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Optio
             if TYPEOF(class) == SEXPTYPE::STRSXP && XLENGTH(class) > 0 {
                 let name = super::super::shared::elt_to_string(class, 0);
                 if let Some(sym) = crate::mainutils::objects::s3_method_symbol(generic, &name) {
-                    let table = crate::sexp::envir::R_findVarInFrame(
+                    let mut method = crate::sexp::globals::R_UnboundValue();
+                    for env in [
+                        crate::eval::runtime::base_env(),
                         crate::sexp::globals::R_GlobalEnv(),
-                        crate::mainutils::objects::S3MethodsTable_symbol(),
-                    );
-                    let method = if TYPEOF(table) == SEXPTYPE::ENVSXP {
-                        crate::sexp::envir::R_findVarInFrame(table, sym)
-                    } else {
-                        crate::sexp::globals::R_UnboundValue()
-                    };
+                    ] {
+                        let table = crate::sexp::envir::R_findVarInFrame(
+                            env,
+                            crate::mainutils::objects::S3MethodsTable_symbol(),
+                        );
+                        if TYPEOF(table) == SEXPTYPE::ENVSXP {
+                            let found = crate::sexp::envir::R_findVarInFrame(table, sym);
+                            if crate::mainutils::essentials::s3::is_function_value(found) {
+                                method = found;
+                                break;
+                            }
+                        }
+                    }
                     if crate::mainutils::essentials::s3::is_function_value(method) {
                         let _m = protect(method);
                         return Some(crate::eval::closure::applyClosure(
@@ -423,17 +431,29 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-
+        let matrix_ncol = entries
+            .iter()
+            .find(|&&(arg, _, _, _)| is_bind_matrix(arg))
+            .map(|&(_, _, ncol, _)| ncol);
+        if let Some(nc) = matrix_ncol {
+            for entry in &mut entries {
+                if !is_bind_matrix(entry.0) && XLENGTH(entry.0) > 0 {
+                    entry.2 = nc;
+                }
+            }
+        }
         let has_nonzero_extent = entries
             .iter()
             .any(|&(_, nrow, ncol, _)| nrow > 0 && ncol > 0);
-        let mut ncols: R_xlen_t = 0;
+        let mut ncols: R_xlen_t = matrix_ncol.unwrap_or(0);
         let mut nrows: R_xlen_t = 0;
         for &(arg, arg_nrow, arg_ncol, ref name) in &entries {
             if has_nonzero_extent && (arg_nrow == 0 || arg_ncol == 0) {
                 continue;
             }
-            ncols = ncols.max(arg_ncol);
+            if matrix_ncol.is_none() {
+                ncols = ncols.max(arg_ncol);
+            }
             nrows += arg_nrow;
             if is_bind_matrix(arg) {
                 if let Some(labels) = matrix_axis_labels(arg, 0, arg_nrow) {
@@ -497,6 +517,17 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 continue;
             }
 
+            let filled = arg_nrow * ncols;
+            if arg_len > 0 && filled % arg_len != 0 && arg_len % filled.max(1) != 0 {
+                let msg = std::ffi::CString::new(format!(
+                    "number of columns of result, {ncols}, is not a multiple of vector length {arg_len} of arg"
+                ))
+                .unwrap_or_default();
+                crate::mainutils::errors::warningcall(
+                    crate::sexp::globals::R_NilValue(),
+                    msg.as_ptr(),
+                );
+            }
             for j in 0..ncols {
                 for i in 0..arg_nrow {
                     let src_idx = ((j * arg_nrow + i) % arg_len) as R_xlen_t;
@@ -603,11 +634,16 @@ unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
                     next_automatic_row += 1;
                 }
             } else {
-                if XLENGTH(value) != ncols {
-                    base_error(format!(
-                        "number of columns of result, {ncols}, is not a multiple of vector length {} of arg",
-                        XLENGTH(value)
-                    ));
+                let ni = XLENGTH(value);
+                if ni > 0 && ncols % ni != 0 {
+                    let msg = std::ffi::CString::new(format!(
+                        "number of columns of result, {ncols}, is not a multiple of vector length {ni} of arg"
+                    ))
+                    .unwrap_or_default();
+                    crate::mainutils::errors::warningcall(
+                        crate::sexp::globals::R_NilValue(),
+                        msg.as_ptr(),
+                    );
                 }
                 let value_names = crate::sexp::attrib_core::getAttrib(
                     value,
@@ -622,7 +658,7 @@ unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
                             .find(|&j| string_at_or_empty(value_names, j) == *wanted)
                             .unwrap_or(out_col as R_xlen_t)
                     } else {
-                        out_col as R_xlen_t
+                        if ni == 0 { 0 } else { (out_col as R_xlen_t) % ni }
                     };
                     cells[out_col].push((value, source_col));
                 }
@@ -1139,6 +1175,10 @@ pub unsafe fn copy_bind_value(
                             }
                         }
                     }
+                    SEXPTYPE::RAWSXP => {
+                        let b = *RAW(src).add(src_i as usize) as f64;
+                        Rcomplex { r: b, i: 0.0 }
+                    }
                     _ => Rcomplex {
                         r: NA_REAL,
                         i: NA_REAL,
@@ -1165,6 +1205,7 @@ pub unsafe fn copy_bind_value(
                             value as f64
                         }
                     }
+                    SEXPTYPE::RAWSXP => *RAW(src).add(src_i as usize) as f64,
                     _ => NA_REAL,
                 };
                 *REAL(dst).add(dst_i as usize) = value;
@@ -1174,6 +1215,14 @@ pub unsafe fn copy_bind_value(
                 let value = match SEXPTYPE(TYPEOF(src)) {
                     SEXPTYPE::INTSXP => INTEGER_ELT(src, src_i as c_int),
                     SEXPTYPE::LGLSXP => LOGICAL_ELT(src, src_i as c_int),
+                    SEXPTYPE::RAWSXP => {
+                        let b = *RAW(src).add(src_i as usize);
+                        if dst_type == SEXPTYPE::LGLSXP {
+                            if b == 0 { 0 } else { 1 }
+                        } else {
+                            b as i32
+                        }
+                    }
                     _ => NA_INTEGER,
                 };
                 *INTEGER(dst).add(dst_i as usize) = value;
