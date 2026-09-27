@@ -2408,6 +2408,11 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     subset_frame_rownames(rownames, sr, nrows),
                 );
             }
+            let terms_sym = Rf_install(c"terms".as_ptr());
+            let terms = getAttrib(x, terms_sym);
+            if !isNull(terms) {
+                setAttrib(ans, terms_sym, terms);
+            }
             let class_attr = getAttrib(x, sym_Class());
             let _class_guard = protect(class_attr);
             setAttrib(ans, sym_Class(), class_attr);
