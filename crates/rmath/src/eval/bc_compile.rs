@@ -184,6 +184,7 @@ impl BytecodeCompiler {
                 let eager = name.as_deref().is_some_and(is_eager_builtin_call);
                 let is_missing = name.as_deref() == Some("missing");
                 let is_internal = name.as_deref() == Some(".Internal");
+                let is_at = name.as_deref() == Some("@");
                 let mut arg_cells = Vec::new();
                 let mut cur = CDR(expr);
                 while !cur.is_null() && cur != R_NilValue() {
@@ -199,7 +200,7 @@ impl BytecodeCompiler {
                     let argument = CAR(*cell);
                     let constant = matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
                     let missing_arg = argument == crate::sexp::globals::R_MissingArg();
-                    if missing_arg || is_internal || is_missing {
+                    if missing_arg || is_internal || is_missing || is_at {
                         let idx = self.add_const(argument);
                         self.emit_operand(opcodes::OP_PUSHCONST, idx);
                     } else if (!eager || local_fun) && !constant {
