@@ -37,5 +37,7 @@ function(x, y = NULL, xlab = NULL, ylab = NULL, log = NULL, recycle = FALSE,
             else y <- rep_len(y, nx)
         } else stop("'x' and 'y' lengths differ")
     }
-    list(x = as.double(x), y = as.double(y), xlab = xlab, ylab = ylab)
+    ans <- list(as.double(x), as.double(y), xlab, ylab)
+    names(ans) <- c("x", "y", "xlab", "ylab")
+    ans
 }
