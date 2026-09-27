@@ -340,7 +340,7 @@ unsafe fn f2xact(
                     ntot += *table.add((jdx - 1) + (idx - 1) * ldtabl as usize);
                 }
             } else {
-                let mut ii_us: usize = (jdx - 1) * ldtabl as usize + 1;
+                let mut ii_us: usize = (jdx - 1) * ldtabl as usize;
                 for idx in 1..=nro as usize {
                     dd += *fact.add(*table.add(ii_us) as usize);
                     ntot += *table.add(ii_us);
@@ -1572,10 +1572,10 @@ unsafe fn f5xact(
                 return;
             }
         }
-
-        // L40: Find location, if any, of pastp
         let itp_val = with_fexact_state(|state| state.f5xact_itp);
+
         let mut ipn = *ipoin.add(itp_val as usize);
+
 
         let test1 = pastp - tol;
         let test2 = pastp + tol;
@@ -2005,6 +2005,7 @@ pub unsafe fn fexact(
             *prt = amiss;
             return;
         }
+
 
         // nco := max(nrow, ncol), nro := min(nrow, ncol)
         if ncol > nrow {
