@@ -1927,7 +1927,7 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             rho,
         );
 
-        let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
+        let inherits = logical_arg_by_name_or_position(args, "inherits", 3).unwrap_or(true);
         // The base closure is
         // exists(x, where, envir, frame, mode, inherits) and calls
         // .Internal(exists(x, envir, mode, inherits)). mode is argument 2.
@@ -2089,12 +2089,15 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if mode == "function" {
             return crate::sexp::envir::findFun(sym, env);
         }
-        let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
+        let inherits = logical_arg_by_name_or_position(args, "inherits", 3).unwrap_or(true);
         let value = if inherits {
             crate::sexp::envir::R_findVar(sym, env)
         } else {
             crate::sexp::envir::R_findVarInFrame(env, sym)
         };
+        if value.is_null() || value == R_UnboundValue() {
+            base_error(format!("object '{name}' not found"));
+        }
         if value == crate::sexp::globals::R_MissingArg() {
             let c_name = CString::new(name.as_str()).unwrap_or_default();
             crate::mainutils::errors::R_MissingArgError_c(
