@@ -869,10 +869,30 @@ pub unsafe fn unpromiseArgs(pargs: SEXP) {
 /// where one is required.
 pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
     unsafe {
-        crate::mainutils::errors::R_MissingArgError(
-            arg_sym,
+        let msg = if arg_sym.is_null() {
+            "argument is missing, with no default".to_string()
+        } else {
+            let pname = PRINTNAME(arg_sym);
+            let name = if !pname.is_null() {
+                let s = CHAR(pname);
+                if !s.is_null() {
+                    std::ffi::CStr::from_ptr(s)
+                        .to_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|_| "???".to_string())
+                } else {
+                    "???".to_string()
+                }
+            } else {
+                "???".to_string()
+            };
+            format!("argument \"{name}\" is missing, with no default", )
+        };
+        crate::mainutils::errors::errorcall_cpy(
             call,
-            c"getvarError".as_ptr(),
+            std::ffi::CString::new(msg)
+                .unwrap_or_default()
+                .as_ptr(),
         );
     }
 }

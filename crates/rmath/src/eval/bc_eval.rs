@@ -71,56 +71,14 @@ unsafe fn gnu_pending_call(words: &[c_int], mut pc: usize, consts: SEXP) -> SEXP
 }
 
 fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
-    let message = unsafe {
-        if arg_sym.is_null() {
-            "argument is missing, with no default".to_string()
-        } else {
-            let pname = PRINTNAME(arg_sym);
-            let name = if pname.is_null() {
-                "???".to_string()
-            } else {
-                let chars = CHAR(pname);
-                if chars.is_null() {
-                    "???".to_string()
-                } else {
-                    std::ffi::CStr::from_ptr(chars)
-                        .to_str()
-                        .map(str::to_string)
-                        .unwrap_or_else(|_| "???".to_string())
-                }
-            };
-
-            format!("argument \"{name}\" is missing, with no default")
-        }
-    };
-    let message = unsafe {
-        if arg_sym.is_null() {
-            "argument is missing, with no default".to_string()
-        } else {
-            let pname = PRINTNAME(arg_sym);
-            let name = if pname.is_null() {
-                "???".to_string()
-            } else {
-                let chars = CHAR(pname);
-                if chars.is_null() {
-                    "???".to_string()
-                } else {
-                    std::ffi::CStr::from_ptr(chars)
-                        .to_str()
-                        .map(str::to_string)
-                        .unwrap_or_else(|_| "???".to_string())
-                }
-            };
-            format!("argument \"{name}\" is missing, with no default")
-        }
-    };
-    // Attribute to the enclosing call like upstream signalMissingArgError
-    // (which passes the bc interpreter's current expression); the innermost
-    // context call is the closure call being evaluated.
-    crate::mainutils::errors::errorcall_str(
-        unsafe { crate::mainutils::errors::R_getCurrentCall() },
-        &message,
-    )
+    unsafe {
+        crate::mainutils::errors::R_MissingArgError(
+            arg_sym,
+            crate::mainutils::errors::R_getCurrentCall(),
+            c"getvarError".as_ptr(),
+        );
+    }
+    unreachable!("R_MissingArgError signals");
 }
 
 fn bc_unbound_object_error(symbol: SEXP) -> ! {
