@@ -481,6 +481,62 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 fn idx_from_lastm(lastm: i32, _nwhat: c_int, field_names_len: usize) -> usize {
     lastm as usize
 }
+pub unsafe fn do_compareNumericVersion(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe fn cmp_one(x: SEXP, y: SEXP) -> c_int {
+        unsafe {
+            if TYPEOF(x) != SEXPTYPE::INTSXP || TYPEOF(y) != SEXPTYPE::INTSXP {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "invalid 'x' argument",
+                );
+            }
+            let nx = LENGTH(x);
+            let ny = LENGTH(y);
+            let nc = nx.min(ny);
+            if nc == 0 {
+                return crate::sexp::ffi::NA_INTEGER;
+            }
+            for i in 0..nc as usize {
+                let ix = *INTEGER(x).add(i);
+                let iy = *INTEGER(y).add(i);
+                if ix > iy {
+                    return 1;
+                }
+                if ix < iy {
+                    return -1;
+                }
+            }
+            if nc < nx {
+                for i in nc as usize..nx as usize {
+                    if *INTEGER(x).add(i) > 0 {
+                        return 1;
+                    }
+                }
+            } else if nc < ny {
+                for i in nc as usize..ny as usize {
+                    if *INTEGER(y).add(i) > 0 {
+                        return -1;
+                    }
+                }
+            }
+            0
+        }
+    }
+    unsafe {
+        let x = CAR(args);
+        let y = CADR(args);
+        let nx = LENGTH(x);
+        let ny = LENGTH(y);
+        let na = if nx > 0 && ny > 0 { nx.max(ny) } else { 0 };
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, na);
+        let _g = protect(ans);
+        for i in 0..na as usize {
+            *INTEGER(ans).add(i) = cmp_one(VECTOR_ELT(x, (i % nx as usize) as R_xlen_t), VECTOR_ELT(y, (i % ny as usize) as R_xlen_t));
+        }
+        ans
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

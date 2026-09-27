@@ -557,6 +557,20 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
 
         eval_base_binding(
             base_env,
+            "Ops.numeric_version",
+            "function(e1, e2) {\n\
+             if (nargs() == 1L) stop(gettextf(\"unary '%s' not defined for \\\"numeric_version\\\" objects\", .Generic), domain = NA)\n\
+             boolean <- switch(.Generic, \"<\" =, \">\" =, \"==\" =, \"!=\" =, \"<=\" =, \">=\" = TRUE, FALSE)\n\
+             if (!boolean) stop(gettextf(\"'%s' not defined for \\\"numeric_version\\\" objects\", .Generic), domain = NA)\n\
+             if (!inherits(e1, \"numeric_version\")) e1 <- numeric_version(e1)\n\
+             if (!inherits(e2, \"numeric_version\")) e2 <- numeric_version(e2)\n\
+             op <- get(.Generic, mode = \"function\")\n\
+             op(.Internal(compareNumericVersion(e1, e2)), 0L)\n\
+             }",
+        );
+
+        eval_base_binding(
+            base_env,
             "[.numeric_version",
             "function(x, i, j) { xx <- unclass(x); if (missing(i)) i <- seq_along(xx); y <- if (missing(j)) xx[i] else lapply(xx[i], `[`, j); bad <- vapply(y, function(t) is.null(t) || anyNA(t), NA); if (any(bad)) y[bad] <- rep.int(list(integer()), sum(bad)); class(y) <- class(x); y }",
         );
