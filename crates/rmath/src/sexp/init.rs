@@ -1995,6 +1995,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // GNU funprog.R: identity <- function(x) x. setMethod(..., identity)
         // needs a closure, not a primitive (reg-S4.R PR#15691).
         eval_base_binding(base_env, "identity", "function(x) x");
+        unsafe {
+            let sym = crate::sexp::symbol::Rf_install(c"identity".as_ptr());
+            let fun = crate::sexp::envir::R_findVarInFrame(base_env, sym);
+            let _ = crate::eval::bc_compile::compile_closure(fun);
+        }
         eval_base_binding(base_env, "is.na<-", "function(x, value) UseMethod(\"is.na<-\")");
         eval_base_binding(
             base_env,

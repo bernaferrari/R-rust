@@ -203,7 +203,14 @@ impl BytecodeCompiler {
                         let idx = self.add_const(argument);
                         self.emit_operand(opcodes::OP_PUSHCONST, idx);
                     } else if (!eager || local_fun) && !constant {
-                        let idx = self.add_const(argument);
+                        let code = if TYPEOF(argument) == SEXPTYPE::SYMSXP
+                            && argument != R_DotsSymbol()
+                        {
+                            symbol_getvar_bcode(argument)
+                        } else {
+                            argument
+                        };
+                        let idx = self.add_const(code);
                         self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
                     } else if !self.compile_expr(argument) {
                         return false;
@@ -588,6 +595,32 @@ impl BytecodeCompiler {
                 })
             })
         }
+    }
+}
+fn symbol_getvar_bcode(sym: SEXP) -> SEXP {
+    unsafe {
+        with_required_current_instance(|inst| {
+            with_arena_in(inst, |arena| {
+                let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+                let consts_data = (*consts).gengc_next_node as *mut SEXP;
+                *consts_data = sym;
+                *consts_data.add(1) = sym;
+                let code = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+                let code_data = (*code).gengc_next_node as *mut c_int;
+                *code_data = opcodes::OP_GETVAR;
+                *code_data.add(1) = 1;
+                *code_data.add(2) = opcodes::OP_RETURN;
+                let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                let stack_data = (*stack_hint).gengc_next_node as *mut c_int;
+                *stack_data = 4;
+                let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
+                let bcode_data = (*bcode).gengc_next_node as *mut SEXP;
+                *bcode_data = code;
+                *bcode_data.add(1) = consts;
+                *bcode_data.add(2) = stack_hint;
+                bcode
+            })
+        })
     }
 }
 
