@@ -52,10 +52,10 @@ const R_MIN_DIGITS_OPT: c_int = 1;
 const R_MAX_DIGITS_OPT: c_int = 22;
 
 /// Justification constants (from R_ext/Print.h).
-const Rprt_adj_none: c_int = 0;
-const Rprt_adj_left: c_int = 1;
+const Rprt_adj_left: c_int = 0;
+const Rprt_adj_right: c_int = 1;
 const Rprt_adj_centre: c_int = 2;
-const Rprt_adj_right: c_int = 3;
+const Rprt_adj_none: c_int = 3;
 
 /// SEXPTYPE integer values for match patterns.
 const LGLSXP: c_int = 10;
@@ -1638,9 +1638,9 @@ mod tests {
 
     #[test]
     fn test_justification_constants() {
-        assert_eq!(Rprt_adj_none, 0);
-        assert_eq!(Rprt_adj_left, 1);
+        assert_eq!(Rprt_adj_left, 0);
+        assert_eq!(Rprt_adj_right, 1);
         assert_eq!(Rprt_adj_centre, 2);
-        assert_eq!(Rprt_adj_right, 3);
+        assert_eq!(Rprt_adj_none, 3);
     }
 }
