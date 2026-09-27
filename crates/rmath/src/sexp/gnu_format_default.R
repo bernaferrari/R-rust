@@ -8,7 +8,7 @@ format.default <-
 	     decimal.mark = getOption("OutDec"),
 	     zero.print = NULL, drop0trailing = FALSE, ...)
 {
-    justify <- if (missing(justify)) "left" else match.arg(justify)
+    justify <- if (missing(justify)) "left" else if (is.character(justify)) justify[1L] else match.arg(justify)
     if(is.list(x)) {
 	if(missing(trim)) trim <- TRUE
 	if(missing(justify)) justify <- "none"
