@@ -3104,6 +3104,43 @@ pub unsafe fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
+    let opened_here = unsafe {
+        let index = crate::mainutils::connections::checked_connection_index(connection);
+        let mut table = crate::mainutils::connections::connection_table();
+        let Some(conn) = table[index].as_mut() else {
+            crate::mainutils::connections::r_error("invalid connection");
+        };
+        if conn.isopen {
+            false
+        } else {
+            let mode = if conn.mode.is_empty() {
+                "rb".to_string()
+            } else {
+                conn.mode.clone()
+            };
+            let result = match conn.kind {
+                crate::mainutils::connections::ConnKind::GzFile => {
+                    crate::mainutils::connections::open_gz_conn(conn, &mode)
+                }
+                crate::mainutils::connections::ConnKind::BzFile => {
+                    crate::mainutils::connections::open_bz_conn(conn, &mode)
+                }
+                crate::mainutils::connections::ConnKind::XzFile => {
+                    crate::mainutils::connections::open_xz_conn(conn, &mode)
+                }
+                _ => Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "connection is not open",
+                )),
+            };
+            if let Err(e) = result {
+                crate::mainutils::connections::r_error(&format!(
+                    "cannot open the connection: {e}"
+                ));
+            }
+            true
+        }
+    };
     let mut bytes = Vec::new();
     if nchars >= 0 {
         for _ in 0..nchars {
@@ -3120,6 +3157,13 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
                 break;
             }
             bytes.push(byte as u8);
+        }
+    }
+    if opened_here {
+        let index = crate::mainutils::connections::checked_connection_index(connection);
+        let mut table = crate::mainutils::connections::connection_table();
+        if let Some(conn) = table[index].as_mut() {
+            crate::mainutils::connections::close_connection_inner(conn);
         }
     }
     String::from_utf8_lossy(&bytes).into_owned()
