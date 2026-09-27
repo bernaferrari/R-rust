@@ -308,17 +308,16 @@ unsafe fn dimnames_gets_data_frame(x: SEXP, value: SEXP) {
 /// the vector type supplied by the caller.
 pub(super) unsafe fn set_array_dimnames(x: SEXP, value: SEXP) {
     unsafe {
+        let dimnames_sym = R_DimNamesSymbol();
+        if value.is_null() || value == R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(x, dimnames_sym, R_NilValue());
+            return;
+        }
         let dim = crate::sexp::attrib_core::getAttrib(x, R_DimSymbol());
         if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
             std::panic::panic_any(RError {
                 message: "'dimnames' applied to non-array".to_string(),
             });
-        }
-
-        let dimnames_sym = R_DimNamesSymbol();
-        if value.is_null() || value == R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(x, dimnames_sym, R_NilValue());
-            return;
         }
         if TYPEOF(value) != SEXPTYPE::VECSXP && TYPEOF(value) != SEXPTYPE::LISTSXP {
             std::panic::panic_any(RError {
