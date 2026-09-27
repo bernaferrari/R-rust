@@ -1212,7 +1212,7 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
 pub unsafe fn C_contourDef() -> SEXP {
     unsafe {
         use crate::sexp::constructors::*;
-        Rf_ScalarLogical(0) /* FALSE: no rotated text support */
+        Rf_ScalarLogical(1)
     }
 }
 

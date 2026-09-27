@@ -60,7 +60,7 @@ unsafe extern "C-unwind" fn c_str_metric(args: SEXP) -> SEXP {
         out
     }
 }
-unsafe extern "C-unwind" fn c_contour_def(_args: SEXP) -> SEXP {
+unsafe extern "C-unwind" fn c_contour_def() -> SEXP {
     unsafe { plot3d::C_contourDef() }
 }
 unsafe extern "C-unwind" fn c_contour(args: SEXP) -> SEXP {
@@ -86,7 +86,7 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
             )
         }),
         "contourDef" => Some(unsafe {
-            std::mem::transmute(c_contour_def as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+            std::mem::transmute(c_contour_def as unsafe extern "C-unwind" fn() -> SEXP)
         }),
         "contour" => Some(unsafe {
             std::mem::transmute(c_contour as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
