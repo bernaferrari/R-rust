@@ -412,6 +412,10 @@ unsafe fn FixupScipen(scipen: SEXP, warn: warn_type) -> c_int {
         }
         let d;
         if TYPEOF(scipen) == SEXPTYPE::REALSXP {
+            let x = *REAL(scipen);
+            if !x.is_finite() || x.abs() > i32::MAX as f64 {
+                r_error("invalid 'scipen'");
+            }
             d = asInteger(scipen);
         } else {
             d = asInteger(scipen);
@@ -425,7 +429,15 @@ unsafe fn FixupScipen(scipen: SEXP, warn: warn_type) -> c_int {
                 R_MAX_SCIPEN_OPT
             };
             match warn {
-                iWARN | iSILENT => return dnew,
+                iWARN => {
+                    let msg = std::ffi::CString::new(format!(
+                        "invalid 'scipen' {d}, used {dnew}"
+                    ))
+                    .unwrap_or_default();
+                    crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                    return dnew;
+                }
+                iSILENT => return dnew,
                 iERROR => r_error("invalid 'scipen'"),
                 _ => return dnew,
             }
@@ -835,6 +847,7 @@ unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
         SET_STRING_ELT(cnames, 1, Rf_mkChar(c"ordered".as_ptr()));
         setAttrib(contrasts, R_NamesSymbol(), cnames);
         options.insert("contrasts".to_string(), contrasts);
+        options.insert("pkgType".to_string(), pm(c"source".as_ptr()));
 
 
     }
@@ -863,7 +876,7 @@ pub unsafe fn InitOptions() {
 /// detection packages (crayon & friends) read $GUI/$OS.type at load.
 unsafe fn define_platform_binding() {
     unsafe {
-        let fields: [(&str, &str); 8] = [
+        let fields: [(&str, &str); 9] = [
             ("OS.type", "unix"),
             ("file.sep", "/"),
             ("dynlib.ext", ".so"),
@@ -879,6 +892,7 @@ unsafe fn define_platform_binding() {
             ("type", "unix"),
             ("pkgType", "source"),
             ("path.sep", ":"),
+            ("r_arch", ""),
         ];
         let plat = Rf_allocVector3(SEXPTYPE::VECSXP, fields.len() as i64);
         if plat.is_null() {
@@ -1233,7 +1247,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                     let v = Rf_ScalarInteger(k);
                     let _guard = protect(v);
-                    SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
+                    SET_VECTOR_ELT(value, i as R_xlen_t, SetOptionByName("warn", v));
                 } else if streql(name_cstr, c"warning.length".as_ptr()) {
                     let k = asInteger(argi);
                     if k < 100 || k > 8170 {
