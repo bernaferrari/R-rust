@@ -279,21 +279,16 @@ unsafe fn sortVector(x: SEXP, decreasing: c_int) {
             values.push(STRING_ELT(x, i));
         }
         values.sort_by(|&a, &b| {
-            let ak = if a.is_null() || a == NA_STRING() {
-                None
-            } else {
-                Some(CStr::from_ptr(CHAR(a)).to_bytes().to_vec())
+            let text = |s: SEXP| -> String {
+                if s.is_null() || s == NA_STRING() {
+                    return String::new();
+                }
+                CStr::from_ptr(CHAR(s)).to_string_lossy().into_owned()
             };
-            let bk = if b.is_null() || b == NA_STRING() {
-                None
-            } else {
-                Some(CStr::from_ptr(CHAR(b)).to_bytes().to_vec())
-            };
-            ak.cmp(&bk)
+            let ord = crate::mainutils::essentials::collate_str(&text(a), &text(b));
+            if decreasing != 0 { ord.reverse() } else { ord }
         });
-        if decreasing != 0 {
-            values.reverse();
-        }
+
         for (i, value) in values.into_iter().enumerate() {
             SET_STRING_ELT(x, i as R_xlen_t, value);
         }

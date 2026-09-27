@@ -41,6 +41,7 @@ mod tables;
 #[cfg(test)]
 mod tests;
 mod vectors;
+pub(crate) use sets::collate_str;
 pub use self::conditions::*;
 pub use self::functional::*;
 pub use self::io::*;
@@ -93,7 +94,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // not be pre-evaluated, so empty subscript slots (`m[,1]`) reach
             // the subset handlers' keep-missing argument evaluation.
             let kind = match name {
-                "quote" | "substitute" | "[" | "[[" | "system.time" | "missing" | "rep" => {
+                "quote" | "substitute" | "[" | "[[" | "system.time" | "capture.output" | "missing" | "rep" => {
                     SEXPTYPE::SPECIALSXP
                 }
                 _ => SEXPTYPE::BUILTINSXP,
