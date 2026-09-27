@@ -2287,6 +2287,7 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     return complex_log_with_base(x, base);
                 }
                 if !is_numeric_operand(x) || !is_numeric_operand(base) {
+                    crate::mainutils::errors::record_error_call(call, true);
                     arithmetic_error("non-numeric argument to mathematical function");
                 }
                 return log_with_base(call, x, base);
@@ -2356,6 +2357,7 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // stock Math1: non-numeric arguments error (lowercase message from
         // arithmetic.c, unlike the capital-N distn.c variant).
         if !is_numeric_operand(x) {
+            crate::mainutils::errors::record_error_call(call, true);
             arithmetic_error("non-numeric argument to mathematical function");
         }
 
