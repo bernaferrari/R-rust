@@ -1715,10 +1715,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "formatC",
         handler: crate::mainutils::essentials::do_formatC,
     },
-    EvaluatedBuiltin {
-        name: "prettyNum",
-        handler: crate::mainutils::essentials::do_prettyNum,
-    },
+
     EvaluatedBuiltin {
         name: "geterrmessage",
         handler: crate::mainutils::errors::do_geterrmessage,

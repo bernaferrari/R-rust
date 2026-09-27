@@ -1057,6 +1057,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "format.pval", include_str!("gnu_format_pval.R"));
         eval_base_binding(base_env, "format", "function(x, ...) UseMethod(\"format\")");
         eval_base_binding(base_env, "format.default", include_str!("gnu_format_default.R"));
+        eval_base_binding(base_env, "prettyNum", include_str!("gnu_prettyNum.R"));
         eval_base_binding(
             base_env,
             "addTaskCallback",
