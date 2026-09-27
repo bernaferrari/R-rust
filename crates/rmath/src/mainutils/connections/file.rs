@@ -178,7 +178,7 @@ pub fn open_file_conn(path: &str, mode: &str) -> io::Result<OpenFileHandles> {
         opts.write(true).create(true).truncate(true);
     }
     if mode.contains('a') {
-        opts.append(true);
+        opts.append(true).create(true).write(true);
     }
     let file = opts.open(path)?;
 
@@ -232,13 +232,15 @@ pub fn ensure_connection_readable(n: core::ffi::c_int) {
 }
 
 fn description_is_anonymous(description: &str) -> bool {
-    let prefix = std::env::temp_dir().join("Rf");
-    Path::new(description).starts_with(std::env::temp_dir())
-        && Path::new(description)
+    // file("") temps are Rf<pid><n> in the temp dir. A bare "Rf" prefix also
+    // matched tempfile("Rfwf."), and do_file then opened "w+" and truncated it.
+    let marker = format!("Rf{}", std::process::id());
+    let path = Path::new(description);
+    path.starts_with(std::env::temp_dir())
+        && path
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.starts_with("Rf"))
-        && prefix.is_dir() || description.contains("/Rf") || description.contains("\\Rf")
+            .is_some_and(|name| name.starts_with(&marker))
 }
 
 fn anonymous_temp_path() -> String {

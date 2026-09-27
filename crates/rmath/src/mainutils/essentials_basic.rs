@@ -126,9 +126,17 @@ unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
 
 /// GNU `.Internal(cat(list(...), file, sep, fill, labels, append))`,
 /// plus the tagged-primitive form used by `.Primitive("cat")`.
+fn cat_sep_vector(sep_arg: SEXP) -> Vec<String> {
+    unsafe {
+        if sep_arg.is_null() || sep_arg == R_NilValue() || XLENGTH(sep_arg) == 0 {
+            return vec![" ".to_string()];
+        }
+        (0..XLENGTH(sep_arg)).map(|i| elt_to_string(sep_arg, i)).collect()
+    }
+}
 pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut sep = " ".to_string();
+        let mut seps: Vec<String> = vec![" ".to_string()];
         let mut dest = CatDest::Stdout;
         let mut append = false;
         let mut fill = false;
@@ -142,7 +150,7 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let sep_arg = CAR(CDR(CDR(args)));
             let fill_arg = CAR(CDR(CDR(CDR(args))));
             let append_arg = CAR(CDR(CDR(CDR(CDR(CDR(args))))));
-            sep = elt_to_string(sep_arg, 0);
+            seps = cat_sep_vector(sep_arg);
             dest = cat_file_dest(file_arg);
             fill = cat_fill_enabled(fill_arg);
 
@@ -175,7 +183,7 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             while !current.is_null() && current != R_NilValue() {
                 let arg = CAR(current);
                 match arg_tag_name(current).as_deref() {
-                    Some("sep") => sep = elt_to_string(arg, 0),
+                    Some("sep") => seps = cat_sep_vector(arg),
                     Some("file") => dest = cat_file_dest(arg),
                     Some("fill") => fill = cat_fill_enabled(arg),
                     Some("append") => {
@@ -205,7 +213,14 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
 
-        let mut output = parts.join(&sep);
+        let mut output = String::new();
+        for (i, part) in parts.iter().enumerate() {
+            if i > 0 {
+                let sep = &seps[(i - 1) % seps.len().max(1)];
+                output.push_str(sep);
+            }
+            output.push_str(part);
+        }
         if fill && !output.ends_with('\n') {
             output.push('\n');
         }
