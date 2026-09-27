@@ -1298,12 +1298,11 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             });
             old
-        } else if query_names.len() == 1 && arg_n == 1 {
-            // GNU graphics::par() does value[[1L]] for one unnamed query.
-            let list = named_par_list(&query_names);
-            let _g = protect(list);
-            VECTOR_ELT(list, 0)
         } else {
+            // Graphics' R wrapper does `value[[1L]]` for one unnamed query.
+            // Returning the list here keeps that `[[` on the whole parameter
+            // (lab is c(5,5,7), not its first element). The base builtin
+            // unwraps itself.
             named_par_list(&query_names)
         };
 
@@ -1570,9 +1569,11 @@ mod tests {
                 query,
                 std::ptr::null_mut(),
             );
+            assert_eq!(TYPEOF(current), SEXPTYPE::VECSXP);
+            assert_eq!(XLENGTH(current), 1);
+            let current = VECTOR_ELT(current, 0);
             assert_eq!(TYPEOF(current), SEXPTYPE::REALSXP);
             assert_eq!(XLENGTH(current), 4);
-
             let current_values = REAL(current);
             assert_eq!(
                 [

@@ -38,8 +38,31 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `par(...)` — session-owned graphical parameters.
-pub unsafe fn do_par(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::library::graphics::par::do_par(_call, _op, _args, _rho) }
+pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let result = crate::library::graphics::par::do_par(_call, _op, args, _rho);
+        // Base `par` is a builtin, so it does not run graphics' R wrapper.
+        // One unnamed query still returns the parameter value itself.
+        if crate::sexp::accessors::TYPEOF(result) == crate::sexp::ffi::SEXPTYPE::VECSXP
+            && crate::sexp::accessors::XLENGTH(result) == 1
+        {
+            let mut only_query = true;
+            let mut current = args;
+            let mut seen = false;
+            while !current.is_null() && current != crate::sexp::globals::R_NilValue() {
+                if !crate::sexp::accessors::TAG(current).is_null() {
+                    only_query = false;
+                    break;
+                }
+                seen = true;
+                current = crate::sexp::accessors::CDR(current);
+            }
+            if seen && only_query {
+                return crate::sexp::accessors::VECTOR_ELT(result, 0);
+            }
+        }
+        result
+    }
 }
 
 /// R's `layout(...)` — session-owned base graphics layout state.
