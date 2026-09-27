@@ -255,7 +255,6 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && kt != SEXPTYPE::REALSXP
             && kt != SEXPTYPE::CPLXSXP
             && kt != SEXPTYPE::STRSXP
-            && kt != SEXPTYPE::RAWSXP
         {
             base_error("unimplemented type in 'order'".to_string());
         }
@@ -381,7 +380,7 @@ fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
 
 fn reject_unorderable(x: SEXP) {
     let t = unsafe { TYPEOF(x) };
-    if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
+    if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP || t == SEXPTYPE::RAWSXP {
         std::panic::panic_any(crate::sexp::context::RError {
             message: "unimplemented type in 'order'".to_string(),
         });
