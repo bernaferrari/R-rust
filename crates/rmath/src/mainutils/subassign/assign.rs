@@ -673,6 +673,13 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             SETCAR(args, dup);
             x = dup;
         }
+        // `a[[1]] <- a` must keep the original list as the RHS. Mutating
+        // that same object would make the assignment value a cycle.
+        if x == y {
+            let dup = shallow_duplicate(x);
+            SETCAR(args, dup);
+            x = dup;
+        }
 
         let s4 = IS_S4_OBJECT(x);
         let xOrig = if s4 != 0 && TYPEOF(x) == OBJSXP {
