@@ -4904,7 +4904,16 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 "the decimal mark is {which} than one character wide; this will become an error"
             ))
             .unwrap_or_default();
-            crate::mainutils::errors::Rf_warning(msg.as_ptr());
+            let sym_pretty = crate::sexp::symbol::Rf_install(c"prettyNum".as_ptr());
+            let sym_internal = crate::sexp::symbol::Rf_install(c".Internal".as_ptr());
+            let sym_format = crate::sexp::symbol::Rf_install(c"format".as_ptr());
+            let fmt_call = crate::sexp::constructors::Rf_lang2(
+                sym_format,
+                crate::sexp::globals::R_NilValue(),
+            );
+            let internal_call = crate::sexp::constructors::Rf_lang2(sym_internal, fmt_call);
+            let warn_call = crate::sexp::constructors::Rf_lang2(sym_pretty, internal_call);
+            crate::mainutils::errors::warningcall(warn_call, msg.as_ptr());
         }
 
 
