@@ -414,41 +414,29 @@ pub unsafe fn splitString(string: SEXP, delims: SEXP) -> SEXP {
                 CStr::from_ptr(p).to_bytes()
             }
         };
-        let nc = in_bytes.len();
-
-        let out = Rf_allocVector(SEXPTYPE::STRSXP, nc as c_int);
-        let _out_guard = protect(out);
-
-        if nc > 0 {
-            let mut tmp: Vec<u8> = vec![0u8; nc];
-            let mut nthis: usize = 0;
-            let mut used: usize = 0;
-
-            for &c in in_bytes.iter() {
-                if del_bytes.contains(&c) {
-                    if nthis > 0 {
-                        tmp[nthis] = 0;
-                        let char_sxp = Rf_mkChar(tmp.as_ptr() as *const c_char);
-                        SET_STRING_ELT(out, used as R_xlen_t, char_sxp);
-                        used += 1;
-                    }
-                    let delim_buf = [c, 0];
-                    let char_sxp = Rf_mkChar(delim_buf.as_ptr() as *const c_char);
-                    SET_STRING_ELT(out, used as R_xlen_t, char_sxp);
-                    used += 1;
-                    nthis = 0;
-                } else {
-                    tmp[nthis] = c;
-                    nthis += 1;
+        let mut pieces: Vec<Vec<u8>> = Vec::new();
+        let mut tmp: Vec<u8> = Vec::new();
+        for &c in in_bytes.iter() {
+            if del_bytes.contains(&c) {
+                if !tmp.is_empty() {
+                    pieces.push(std::mem::take(&mut tmp));
                 }
-            }
-            if nthis > 0 {
-                tmp[nthis] = 0;
-                let char_sxp = Rf_mkChar(tmp.as_ptr() as *const c_char);
-                SET_STRING_ELT(out, used as R_xlen_t, char_sxp);
+                pieces.push(vec![c]);
+            } else {
+                tmp.push(c);
             }
         }
-
+        if !tmp.is_empty() {
+            pieces.push(tmp);
+        }
+        let out = Rf_allocVector(SEXPTYPE::STRSXP, pieces.len() as c_int);
+        let _out_guard = protect(out);
+        for (i, piece) in pieces.iter().enumerate() {
+            let mut buf = piece.clone();
+            buf.push(0);
+            let char_sxp = Rf_mkChar(buf.as_ptr() as *const c_char);
+            SET_STRING_ELT(out, i as R_xlen_t, char_sxp);
+        }
         out
     }
 }

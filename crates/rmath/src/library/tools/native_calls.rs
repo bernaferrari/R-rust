@@ -11,7 +11,7 @@ use crate::sexp::symbol::Rf_install;
 
 use crate::unix::dynload::DL_FUNC;
 
-use super::text::{delim_match, doTabExpand, nonASCII};
+use super::text::{delim_match, doTabExpand, nonASCII, splitString};
 
 const TOOLS_CALL_NAMES: &[&str] = &[
     "C_doTabExpand",
@@ -25,6 +25,8 @@ const TOOLS_CALL_NAMES: &[&str] = &[
     "parseRd",
     "C_parseRdText",
     "parseRdText",
+    "C_splitString",
+    "splitString",
 ];
 
 unsafe extern "C-unwind" fn c_do_tab_expand(strings: SEXP, starts: SEXP) -> SEXP {
@@ -37,6 +39,9 @@ unsafe extern "C-unwind" fn c_non_ascii(text: SEXP) -> SEXP {
 
 unsafe extern "C-unwind" fn c_delim_match(x: SEXP, delims: SEXP) -> SEXP {
     unsafe { delim_match(x, delims) }
+}
+unsafe extern "C-unwind" fn c_split_string(string: SEXP, delims: SEXP) -> SEXP {
+    unsafe { splitString(string, delims) }
 }
 
 unsafe extern "C" fn c_renctest(x: *mut std::ffi::c_void) {
@@ -70,6 +75,7 @@ pub fn lookup(name: &str) -> DL_FUNC {
         }
         "nonASCII" => as_dl(c_non_ascii as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "delim_match" => as_dl(c_delim_match as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "splitString" => as_dl(c_split_string as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "parseRd" | "parseRdText" => as_dl(
             super::parse_rd::c_parse_rd
                 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
