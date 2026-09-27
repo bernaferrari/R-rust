@@ -281,7 +281,9 @@ pub(crate) fn apply_builtin_values_safe<'a>(
         .clone()
         .map(|primitive| primitive.print_flag)
         .unwrap_or(0);
-    set_visibility_for_print_flag(flag);
+    // Already-forced arguments carry visibility (cat, message, ...elt).
+    // A print-flag reset here makes withVisible report TRUE and
+    // capture.output prints NULL.
 
     let frame = PrimitiveCall {
         fun,
