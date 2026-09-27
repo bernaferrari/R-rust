@@ -750,18 +750,8 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             real_or_default(nmax_arg, -1.0) as i64
         };
-        // nlines already limited the connection read. Trim a path/text source the same way.
-        let contents = if nlines >= 0 {
-            let mut kept: Vec<&str> = contents.split('\n').take(nlines as usize).collect();
-            if let Some(last) = kept.last_mut() {
-                if let Some(stripped) = last.strip_suffix('\r') {
-                    *last = stripped;
-                }
-            }
-            kept.join("\n")
-        } else {
-            contents
-        };
+        // nlines is applied after the quote argument is known, so a newline
+        // inside quotes still belongs to the same record.
         let skip_arg = by_slot(&["skip"], 6);
         let skip_n: usize = if skip_arg.is_null() || skip_arg == R_NilValue() {
             0
@@ -784,6 +774,30 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             "\"'".to_string()
         } else {
             elt_to_string(quote_arg, 0)
+        };
+        let contents = if nlines >= 0 {
+            let quotes: Vec<char> = quote.chars().collect();
+            let mut out = String::new();
+            let mut records = 0i64;
+            let mut in_quote: Option<char> = None;
+            for c in contents.chars() {
+                if records >= nlines {
+                    break;
+                }
+                out.push(c);
+                if let Some(q) = in_quote {
+                    if c == q {
+                        in_quote = None;
+                    }
+                } else if quotes.contains(&c) {
+                    in_quote = Some(c);
+                } else if c == '\n' {
+                    records += 1;
+                }
+            }
+            out
+        } else {
+            contents
         };
         let na_arg = by_slot(&["na.strings"], 8);
         let na_strings: Vec<String> = if na_arg.is_null() || na_arg == R_NilValue() {
