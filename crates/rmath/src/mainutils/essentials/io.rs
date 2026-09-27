@@ -583,7 +583,7 @@ fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64, strip_wh
         quotes: quote.chars().collect(),
         comment: None,
         allow_escape: false,
-        strip_white: strip_white || sep.is_empty(),
+        strip_white,
         blank_lines_skip: true,
     };
     let mut fields: Vec<String> = parse_table_records(contents, &spec)
