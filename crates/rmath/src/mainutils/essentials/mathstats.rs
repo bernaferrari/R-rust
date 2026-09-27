@@ -15313,6 +15313,11 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
 unsafe fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let arg_expr = if TYPEOF(arg_expr) == SEXPTYPE::PROMSXP {
+            crate::sexp::accessors::PRCODE(arg_expr)
+        } else {
+            arg_expr
+        };
         let name = if TYPEOF(arg_expr) == SEXPTYPE::SYMSXP {
             let pname = PRINTNAME(arg_expr);
             if pname.is_null() {
@@ -15324,30 +15329,33 @@ unsafe fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
         } else {
             return R_NilValue();
         };
-        let ctx = crate::eval::context::getLexicalContext(rho);
-        if ctx.is_null() {
-            return R_NilValue();
-        }
-        let fun = (*ctx).callfun;
-        let _fun_guard = protect(fun);
-        let mut cell = FORMALS(fun);
-
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let pname = PRINTNAME(tag);
-                if !pname.is_null() {
-                    let tag_name = CStr::from_ptr(CHAR(pname)).to_string_lossy();
-                    if tag_name == name {
-                        let def = CAR(cell);
-                        if def.is_null() || def == R_NilValue() || def == R_MissingArg() {
-                            return R_NilValue();
+        let _ = rho;
+        let mut ctx = crate::sexp::context::R_GlobalContext();
+        while !ctx.is_null() {
+            if (*ctx).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
+                let fun = (*ctx).callfun;
+                let mut cell = FORMALS(fun);
+                while !cell.is_null() && cell != R_NilValue() {
+                    let tag = TAG(cell);
+                    if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                        let pname = PRINTNAME(tag);
+                        if !pname.is_null() {
+                            let tag_name = CStr::from_ptr(CHAR(pname)).to_string_lossy();
+                            if tag_name == name {
+                                let def = CAR(cell);
+                                if !(def.is_null()
+                                    || def == R_NilValue()
+                                    || def == R_MissingArg())
+                                {
+                                    return crate::eval::eval::Rf_eval(def, (*ctx).cloenv);
+                                }
+                            }
                         }
-                        return crate::eval::eval::Rf_eval(def, rho);
                     }
+                    cell = CDR(cell);
                 }
             }
-            cell = CDR(cell);
+            ctx = (*ctx).nextcontext;
         }
         R_NilValue()
     }
