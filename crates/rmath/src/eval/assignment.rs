@@ -317,8 +317,9 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 slot_subs
             };
 
-            let result = if let Some(result) =
-                try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
+            let result = if symbol_name(func_sym).as_deref() == Some("[")
+                && let Some(result) =
+                    try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
             {
                 result
             } else {
