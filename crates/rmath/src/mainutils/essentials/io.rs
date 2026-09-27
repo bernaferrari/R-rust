@@ -3113,6 +3113,7 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
         if conn.isopen {
             false
         } else {
+            let saved_mode = conn.mode.clone();
             let result = match conn.kind {
                 crate::mainutils::connections::ConnKind::GzFile => {
                     crate::mainutils::connections::open_gz_conn(conn, "rb")
@@ -3131,6 +3132,7 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
                     "connection is not open",
                 )),
             };
+            conn.mode = saved_mode;
             if let Err(e) = result {
                 crate::mainutils::connections::r_error(&format!(
                     "cannot open the connection: {e}"
