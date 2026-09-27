@@ -1379,6 +1379,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "grepl", include_str!("gnu_grepl.R"));
         eval_base_binding(base_env, "regexpr", include_str!("gnu_regexpr.R"));
         eval_base_binding(base_env, "gregexpr", include_str!("gnu_gregexpr.R"));
+        eval_base_binding(base_env, "regmatches", include_str!("gnu_regmatches.R"));
+        eval_base_binding(
+            base_env,
+            "regmatches<-",
+            include_str!("gnu_regmatches_set.R"),
+        );
         eval_base_binding(
             base_env,
             "summary.connection",
