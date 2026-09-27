@@ -1600,10 +1600,19 @@ unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
             0
         };
         let c_msg = CString::new(message).unwrap_or_default();
+        let missing = message.contains("is missing, with no default");
         let cond = crate::mainutils::errors::R_makeErrorCondition(
             call,
-            c"simpleError".as_ptr() as *const core::ffi::c_char,
-            std::ptr::null(),
+            if missing {
+                c"missingArgError".as_ptr() as *const core::ffi::c_char
+            } else {
+                c"simpleError".as_ptr() as *const core::ffi::c_char
+            },
+            if missing {
+                c"evalError".as_ptr() as *const core::ffi::c_char
+            } else {
+                std::ptr::null()
+            },
             if which > 0 { 1 } else { 0 },
             c_msg.as_ptr(),
         );
@@ -1691,19 +1700,22 @@ unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
 /// RSignal/RError payloads (upstream: R_TryCatch / vwarningcall).
 pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let expr = CAR(args);
-        if expr.is_null() {
-            return R_NilValue();
-        }
-
-        // Evaluate every handler up front, like upstream tryCatch's
-        // `handlers <- list(...)`. `finally=` is not a condition handler:
-        // GNU evaluates it after the body (success or error).
+        let mut expr = R_NilValue();
         let mut handlers: Vec<(String, SEXP)> = Vec::new();
         let mut finally_expr = R_NilValue();
-        let mut current = CDR(args);
+        let mut current = args;
+        let mut saw_expr = false;
         while !current.is_null() && current != R_NilValue() {
-            if let Some(tag) = tag_name(current) {
+            let tag = tag_name(current);
+            let is_expr = match tag.as_deref() {
+                None if !saw_expr => true,
+                Some("expr") => true,
+                _ => false,
+            };
+            if is_expr {
+                expr = CAR(current);
+                saw_expr = true;
+            } else if let Some(tag) = tag {
                 if tag == "finally" {
                     finally_expr = CAR(current);
                 } else {
@@ -1714,6 +1726,9 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 }
             }
             current = CDR(current);
+        }
+        if expr.is_null() {
+            return R_NilValue();
         }
         let _handler_guards: Vec<_> = handlers.iter().map(|(_, h)| protect(*h)).collect();
         crate::sexp::instance::with_required_current_instance(|inst| unsafe {

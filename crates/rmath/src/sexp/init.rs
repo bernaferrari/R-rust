@@ -991,6 +991,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "which.min", include_str!("gnu_which_min.R"));
         eval_base_binding(base_env, "which.max", include_str!("gnu_which_max.R"));
         eval_base_binding(base_env, "stopifnot", include_str!("gnu_stopifnot.R"));
+        eval_base_binding(base_env, "Sys.setLanguage", include_str!("gnu_set_language.R"));
         eval_base_binding(
             base_env,
             "getElement",
