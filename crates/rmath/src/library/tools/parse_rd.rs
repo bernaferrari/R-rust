@@ -259,6 +259,41 @@ fn split_rd_sections(text: &str) -> Option<Vec<(String, String)>> {
     }
     if saw { Some(parts) } else { None }
 }
+fn examples_children(body: &str) -> Vec<(String, String)> {
+    let chars: Vec<char> = body.chars().collect();
+    let mut i = 0usize;
+    let mut out = Vec::new();
+    let mut loose = String::new();
+    while i < chars.len() {
+        if chars[i] == '\\' {
+            let mut j = i + 1;
+            let mut name = String::new();
+            while j < chars.len() && chars[j].is_ascii_alphabetic() {
+                name.push(chars[j]);
+                j += 1;
+            }
+            if name == "dontshow" || name == "dontrun" || name == "donttest" {
+                if let Some((inner, next)) = read_braced(&chars, j) {
+                    if !loose.is_empty() {
+                        out.push(("RCODE".to_string(), std::mem::take(&mut loose)));
+                    }
+                    out.push((format!("\\{name}"), inner));
+                    i = next;
+                    continue;
+                }
+            }
+        }
+        loose.push(chars[i]);
+        i += 1;
+    }
+    if !loose.is_empty() {
+        out.push(("RCODE".to_string(), loose));
+    }
+    if out.is_empty() {
+        out.push(("RCODE".to_string(), String::new()));
+    }
+    out
+}
 
 fn substitute_args(body: &str, args: &[String]) -> String {
     let chars: Vec<char> = body.chars().collect();
@@ -370,20 +405,41 @@ fn rd_text(text: &str, macro_env: SEXP) -> SEXP {
             let _rd = protect(rd);
             let tag_sym = crate::sexp::symbol::Rf_install(c"Rd_tag".as_ptr());
             for (i, (tag, body)) in parts.iter().enumerate() {
-                let text_elt = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-                let _text = protect(text_elt);
-                let c = std::ffi::CString::new(body.replace('\0', "")).unwrap_or_default();
-                SET_STRING_ELT(text_elt, 0, crate::sexp::constructors::Rf_mkChar(c.as_ptr()));
-                let child_tag = if tag == "\\examples" { "RCODE" } else { "TEXT" };
-                let child_c = std::ffi::CString::new(child_tag).unwrap_or_default();
-                crate::sexp::attrib_core::setAttrib(
-                    text_elt,
-                    tag_sym,
-                    crate::sexp::constructors::Rf_mkString(child_c.as_ptr()),
-                );
-                let elt = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+                let children: Vec<(String, String)> = if tag == "\\examples" {
+                    examples_children(body)
+                } else {
+                    vec![("TEXT".to_string(), body.clone())]
+                };
+                let elt = Rf_allocVector3(SEXPTYPE::VECSXP, children.len() as i64);
                 let _elt = protect(elt);
-                crate::sexp::accessors::SET_VECTOR_ELT(elt, 0, text_elt);
+                for (k, (child_tag, child_body)) in children.iter().enumerate() {
+                    let text_elt = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                    let _text = protect(text_elt);
+                    let c = std::ffi::CString::new(child_body.replace('\0', "")).unwrap_or_default();
+                    SET_STRING_ELT(text_elt, 0, crate::sexp::constructors::Rf_mkChar(c.as_ptr()));
+                    let inner_tag = if child_tag.starts_with('\\') { "RCODE" } else { child_tag.as_str() };
+                    let inner_c = std::ffi::CString::new(inner_tag).unwrap_or_default();
+                    crate::sexp::attrib_core::setAttrib(
+                        text_elt,
+                        tag_sym,
+                        crate::sexp::constructors::Rf_mkString(inner_c.as_ptr()),
+                    );
+                    let node = if child_tag.starts_with('\\') {
+                        let wrap = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+                        let _wrap = protect(wrap);
+                        crate::sexp::accessors::SET_VECTOR_ELT(wrap, 0, text_elt);
+                        let wrap_c = std::ffi::CString::new(child_tag.as_str()).unwrap_or_default();
+                        crate::sexp::attrib_core::setAttrib(
+                            wrap,
+                            tag_sym,
+                            crate::sexp::constructors::Rf_mkString(wrap_c.as_ptr()),
+                        );
+                        wrap
+                    } else {
+                        text_elt
+                    };
+                    crate::sexp::accessors::SET_VECTOR_ELT(elt, k as i64, node);
+                }
                 let tag_c = std::ffi::CString::new(tag.as_str()).unwrap_or_default();
                 crate::sexp::attrib_core::setAttrib(
                     elt,
