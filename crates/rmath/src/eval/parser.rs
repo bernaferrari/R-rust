@@ -2433,28 +2433,32 @@ impl<'arena> Parser<'arena> {
             }
             Token::KwReturn => {
                 self.advance();
-                let val = if self.peek() == &Token::LParen {
+                if self.peek() == &Token::LParen {
                     self.advance();
                     // Bare `return()` returns NULL: an immediately-closed
                     // paren is an empty argument, not a parse error.
-                    // Upstream treats `return` as a keyword call whose
-                    // argument may be missing (`do_return` with R_MissingArg
-                    // returns NULL); `f() { return() }` is valid R.
                     let e = if self.peek() == &Token::RParen {
                         unsafe { R_NilValue() }
                     } else {
                         self.parse_expr()?
                     };
                     self.expect(&Token::RParen)?;
-                    e
+                    unsafe {
+                        let sym = Rf_install(c"return".as_ptr());
+                        self.lang2(sym, e)
+                    }
+                } else if matches!(
+                    self.peek(),
+                    Token::Semicolon
+                        | Token::Newline
+                        | Token::RBrace
+                        | Token::RParen
+                        | Token::Comma
+                        | Token::Eof
+                ) {
+                    unsafe { Ok(Rf_install(c"return".as_ptr())) }
                 } else {
-                    // return without parens — return next expression
-                    // In R, `return expr` is valid without parens
-                    self.parse_expr()?
-                };
-                unsafe {
-                    let sym = Rf_install(c"return".as_ptr());
-                    self.lang2(sym, val)
+                    Err(self.unexpected_at(self.pos))
                 }
             }
             // Block: { expr; expr; ... }
@@ -2696,6 +2700,15 @@ impl<'arena> Parser<'arena> {
                     let attr_cell = self.cons(srcref, nil)?;
                     SETTAG(attr_cell, Rf_install(c"srcref".as_ptr()));
                     SET_ATTRIB(call, attr_cell);
+                }
+                if self.keep_srcrefs
+                    && !body.is_null()
+                    && TYPEOF(body) == SEXPTYPE::LANGSXP
+                    && CAR(body) != Rf_install(c"{".as_ptr())
+                {
+                    let body_attr = self.cons(srcref, nil)?;
+                    SETTAG(body_attr, Rf_install(c"srcref".as_ptr()));
+                    SET_ATTRIB(body, body_attr);
                 }
             }
             Ok(call)
