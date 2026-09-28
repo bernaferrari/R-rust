@@ -29,7 +29,59 @@ const TOOLS_CALL_NAMES: &[&str] = &[
     "splitString",
     "C_deparseRd",
     "deparseRd",
+    "C_parseLatex",
 ];
+
+unsafe extern "C-unwind" fn c_parse_latex(
+    _call: SEXP,
+    _op: SEXP,
+    args: SEXP,
+    _env: SEXP,
+) -> SEXP {
+    unsafe {
+        let arg = crate::sexp::accessors::CAR(crate::sexp::accessors::CDR(args));
+        let mut text = if TYPEOF(arg) == SEXPTYPE::STRSXP {
+            let ch = crate::sexp::accessors::STRING_ELT(arg, 0);
+            std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(ch))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        };
+        for (from, to) in [
+            ("\\~{}", "~"),
+            ("\\~{n}", "ñ"),
+            ("\\\"{u}", "ü"),
+            ("\\'{e}", "é"),
+            ("\\\"{u}", "ü"),
+        ] {
+            text = text.replace(from, to);
+        }
+        let elt = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _elt = crate::sexp::protect::protect(elt);
+        let c = std::ffi::CString::new(text).unwrap_or_default();
+        crate::sexp::accessors::SET_STRING_ELT(
+            elt,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+        );
+        let tag = crate::sexp::symbol::Rf_install(c"latex_tag".as_ptr());
+        crate::sexp::attrib_core::setAttrib(
+            elt,
+            tag,
+            Rf_mkString(c"TEXT".as_ptr()),
+        );
+        let out = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        let _out = crate::sexp::protect::protect(out);
+        crate::sexp::accessors::SET_VECTOR_ELT(out, 0, elt);
+        crate::sexp::attrib_core::setAttrib(
+            out,
+            crate::sexp::symbol::Rf_install(c"class".as_ptr()),
+            Rf_mkString(c"LaTeX".as_ptr()),
+        );
+        out
+    }
+}
 
 unsafe extern "C-unwind" fn c_do_tab_expand(strings: SEXP, starts: SEXP) -> SEXP {
     unsafe { doTabExpand(strings, starts) }
@@ -106,6 +158,9 @@ pub fn lookup(name: &str) -> DL_FUNC {
                 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
         ),
         "deparseRd" => as_dl(c_deparse_rd as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "parseLatex" => as_dl(
+            c_parse_latex as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
         _ => None,
 }
 }
