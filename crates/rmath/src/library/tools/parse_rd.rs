@@ -32,8 +32,9 @@ pub unsafe extern "C-unwind" fn c_parse_rd(
             String::from_utf8_lossy(&bytes).into_owned()
         };
         let passed = nth_arg(args, 8);
-        let mut extra = vec![("R".to_string(), "R".to_string())];
-        extra.extend(macros_from_env(passed));
+        let mut extra = macros_from_env(passed);
+        extra.push(("R".to_string(), "R".to_string()));
+        extra.push(("LaTeX".to_string(), "LaTeX".to_string()));
         let (expanded, defined) = expand_user_macros(&text, &extra);
         let macro_env = if defined.is_empty() {
             crate::sexp::globals::R_NilValue()
@@ -89,6 +90,17 @@ fn strip_rd_comments(input: &str) -> String {
 
 
 fn expand_user_macros(input: &str, extra: &[(String, String)]) -> (String, Vec<(String, String)>) {
+    expand_user_macros_depth(input, extra, 0)
+}
+
+fn expand_user_macros_depth(
+    input: &str,
+    extra: &[(String, String)],
+    depth: u32,
+) -> (String, Vec<(String, String)>) {
+    if depth > 8 {
+        return (input.to_string(), Vec::new());
+    }
     let input = strip_rd_comments(input);
     let chars: Vec<char> = input.chars().collect();
     let mut macros: Vec<(String, String)> = extra.to_vec();
@@ -129,7 +141,7 @@ fn expand_user_macros(input: &str, extra: &[(String, String)]) -> (String, Vec<(
                     i = next;
                 }
                 let body = substitute_args(body, &args);
-                let (expanded, _) = expand_user_macros(&body, extra);
+                let (expanded, _) = expand_user_macros_depth(&body, extra, depth + 1);
                 out.push_str(&expanded);
                 continue;
             }

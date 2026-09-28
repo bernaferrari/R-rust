@@ -27,6 +27,8 @@ const TOOLS_CALL_NAMES: &[&str] = &[
     "parseRdText",
     "C_splitString",
     "splitString",
+    "C_deparseRd",
+    "deparseRd",
 ];
 
 unsafe extern "C-unwind" fn c_do_tab_expand(strings: SEXP, starts: SEXP) -> SEXP {
@@ -42,6 +44,29 @@ unsafe extern "C-unwind" fn c_delim_match(x: SEXP, delims: SEXP) -> SEXP {
 }
 unsafe extern "C-unwind" fn c_split_string(string: SEXP, delims: SEXP) -> SEXP {
     unsafe { splitString(string, delims) }
+}
+
+unsafe extern "C-unwind" fn c_deparse_rd(element: SEXP, state: SEXP) -> SEXP {
+    unsafe {
+        let text = if TYPEOF(element) == SEXPTYPE::STRSXP {
+            element
+        } else {
+            Rf_mkString(c"".as_ptr())
+        };
+        let out = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _out = crate::sexp::protect::protect(out);
+        crate::sexp::accessors::SET_VECTOR_ELT(out, 0, text);
+        let state = if state.is_null() || crate::sexp::accessors::XLENGTH(state) < 2 {
+            let z = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            crate::sexp::accessors::SET_INTEGER_ELT(z, 0, 0);
+            crate::sexp::accessors::SET_INTEGER_ELT(z, 1, 0);
+            z
+        } else {
+            state
+        };
+        crate::sexp::accessors::SET_VECTOR_ELT(out, 1, state);
+        out
+    }
 }
 
 unsafe extern "C" fn c_renctest(x: *mut std::ffi::c_void) {
@@ -80,6 +105,7 @@ pub fn lookup(name: &str) -> DL_FUNC {
             super::parse_rd::c_parse_rd
                 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
         ),
+        "deparseRd" => as_dl(c_deparse_rd as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         _ => None,
 }
 }
