@@ -84,6 +84,33 @@ unsafe extern "C-unwind" fn c_gray(
 ) -> crate::sexp::ffi::SEXP {
     unsafe { colors::do_gray(lev, alpha) }
 }
+unsafe extern "C-unwind" fn c_hsv(
+    h: crate::sexp::ffi::SEXP,
+    s: crate::sexp::ffi::SEXP,
+    v: crate::sexp::ffi::SEXP,
+    a: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { colors::do_hsv(h, s, v, a) }
+}
+unsafe extern "C-unwind" fn c_hcl(
+    h: crate::sexp::ffi::SEXP,
+    c: crate::sexp::ffi::SEXP,
+    l: crate::sexp::ffi::SEXP,
+    a: crate::sexp::ffi::SEXP,
+    fixup: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { colors::do_hcl(h, c, l, a, fixup) }
+}
+unsafe extern "C-unwind" fn c_rgb(
+    r: crate::sexp::ffi::SEXP,
+    g: crate::sexp::ffi::SEXP,
+    b: crate::sexp::ffi::SEXP,
+    a: crate::sexp::ffi::SEXP,
+    mcv: crate::sexp::ffi::SEXP,
+    nam: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { colors::do_rgb(r, g, b, a, mcv, nam) }
+}
 
 fn as_ext(f: unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) -> crate::unix::dynload::DL_FUNC {
     Some(unsafe { std::mem::transmute(f) })
@@ -105,7 +132,11 @@ pub fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
         "devnext" => as_ext(c_devnext),
         "devprev" => as_ext(c_devprev),
         "R_CreateAtVector" => Some(unsafe { std::mem::transmute(c_create_at as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
+        "R_GAxisPars" => Some(unsafe { std::mem::transmute(c_g_axis_pars as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
         "gray" => Some(unsafe { std::mem::transmute(c_gray as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
+        "hsv" => Some(unsafe { std::mem::transmute(c_hsv as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
+        "hcl" => Some(unsafe { std::mem::transmute(c_hcl as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
+        "rgb" => Some(unsafe { std::mem::transmute(c_rgb as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
         _ => None,
     }
 }
@@ -140,6 +171,9 @@ pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
             "C_R_CreateAtVector",
             "C_R_GAxisPars",
             "C_gray",
+            "C_hsv",
+            "C_hcl",
+            "C_rgb",
         ] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(
