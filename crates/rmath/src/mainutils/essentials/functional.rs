@@ -5327,6 +5327,21 @@ unsafe fn record_window_limits(args: SEXP) {
                 if b.is_finite() { y_hi = b; }
             }
         }
+        let clamp_log_end = |v: &mut f64| {
+            if 10f64.powf(*v) == 0.0 {
+                *v = (1.01 * f64::MIN).log10();
+            } else if *v >= 308.25035 {
+                *v = (0.99 * f64::MAX).log10();
+            }
+        };
+        if xlog {
+            clamp_log_end(&mut x_lo);
+            clamp_log_end(&mut x_hi);
+        }
+        if ylog {
+            clamp_log_end(&mut y_lo);
+            clamp_log_end(&mut y_hi);
+        }
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
         set_plot_parameter("usr", ParValue::Real(vec![x_lo, x_hi, y_lo, y_hi]));
         set_plot_parameter("xlog", ParValue::Logical(vec![if xlog { 1 } else { 0 }]));
