@@ -1039,6 +1039,32 @@ unsafe fn par_value_to_sexp(value: &ParValue) -> SEXP {
     }
 }
 
+unsafe fn null_named_list(names: &[String]) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let name_vec = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+        if name_vec.is_null() {
+            return R_NilValue();
+        }
+        let _name_guard = protect(name_vec);
+        for (i, name) in names.iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, R_NilValue());
+            let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(name_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            name_vec,
+        );
+        result
+    }
+}
+
 unsafe fn named_par_list(names: &[String]) -> SEXP {
     let values: Vec<_> =
         with_par_state(|state| names.iter().map(|n| current_par_value(state, n)).collect());
@@ -1182,6 +1208,7 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut query_names = Vec::new();
         let mut set_names = Vec::new();
         let mut set_values = Vec::new();
+        let mut warned_names = Vec::new();
         let mut no_readonly = false;
         let mut arg_n = 0_i32;
 
@@ -1258,7 +1285,22 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                     }
                                     continue;
                                 }
-                                if !is_known_par(&name) || is_readonly_par(&name) {
+                                if !is_known_par(&name) {
+                                    let msg = std::ffi::CString::new(format!(
+                                        "\"{name}\" is not a graphical parameter"
+                                    ))
+                                    .unwrap_or_default();
+                                    crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                                    warned_names.push(name);
+                                    continue;
+                                }
+                                if is_readonly_par(&name) {
+                                    let msg = std::ffi::CString::new(format!(
+                                        "graphical parameter \"{name}\" cannot be set"
+                                    ))
+                                    .unwrap_or_default();
+                                    crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                                    warned_names.push(name);
                                     continue;
                                 }
                                 set_names.push(name);
@@ -1305,6 +1347,9 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         if set_names.is_empty() && query_names.is_empty() {
+            if !warned_names.is_empty() {
+                return null_named_list(&warned_names);
+            }
             let names = all_query_names(no_readonly);
             return named_par_list(&names);
         }
