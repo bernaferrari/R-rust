@@ -5139,10 +5139,10 @@ unsafe fn record_plot_window(args: SEXP) {
         let (mut x0, mut x1) = apply_limit((x0, x1), "xlim", LOG_X.load(std::sync::atomic::Ordering::Relaxed));
         let (mut y0, mut y1) = apply_limit((y0, y1), "ylim", LOG_Y.load(std::sync::atomic::Ordering::Relaxed));
         let clamp_plot_log = |v: &mut f64| {
-            if !v.is_finite() || *v < -1074.0 * std::f64::consts::LOG10_2 {
-                *v = (1.01 * f64::MIN_POSITIVE).log10();
-            } else if *v >= 308.25035 {
+            if *v == f64::INFINITY || *v >= 308.25035 {
                 *v = (0.99 * f64::MAX).log10();
+            } else if !v.is_finite() || *v < -1074.0 * std::f64::consts::LOG10_2 {
+                *v = (1.01 * f64::MIN_POSITIVE).log10();
             }
         };
         if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
@@ -5335,10 +5335,10 @@ unsafe fn record_window_limits(args: SEXP) {
             }
         }
         let clamp_log_end = |v: &mut f64| {
-            if !v.is_finite() || 10f64.powf(*v) == 0.0 {
-                *v = (1.01 * f64::MIN_POSITIVE).log10();
-            } else if *v >= 308.25035 {
+            if *v == f64::INFINITY || *v >= 308.25035 {
                 *v = (0.99 * f64::MAX).log10();
+            } else if !v.is_finite() || 10f64.powf(*v) == 0.0 {
+                *v = (1.01 * f64::MIN_POSITIVE).log10();
             }
         };
         if xlog {
