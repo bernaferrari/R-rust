@@ -44,7 +44,7 @@ pub unsafe fn do_all_equal(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             matched.check_attributes,
             0,
         ) {
-            Ok(()) => Rf_ScalarLogical(TRUE),
+            Ok(()) => crate::sexp::globals::R_True(),
             Err(message) => mismatch(&message),
         }
     }
@@ -131,6 +131,12 @@ unsafe fn compare(
         {
             return compare_formula(target, current);
         }
+        if crate::mainutils::essentials::sexp_has_class(target, "condition")
+            && crate::mainutils::essentials::sexp_has_class(current, "condition")
+        {
+            return compare_condition(target, current);
+        }
+
 
 
         if crate::mainutils::essentials::sexp_has_class(target, "POSIXt")
@@ -232,6 +238,51 @@ unsafe fn compare_language(target: SEXP, current: SEXP) -> Result<(), String> {
             Ok(())
         } else {
             Err("target, current do not match when deparsed".into())
+        }
+    }
+}
+unsafe fn compare_condition(target: SEXP, current: SEXP) -> Result<(), String> {
+    unsafe {
+        let tm = condition_message(target);
+        let cm = condition_message(current);
+        if tm == cm {
+            Ok(())
+        } else {
+            Err(format!("target, current differ in message: {tm} vs {cm}"))
+        }
+    }
+}
+
+unsafe fn condition_message(value: SEXP) -> String {
+    unsafe {
+        if TYPEOF(value) != SEXPTYPE::VECSXP || LENGTH(value) < 1 {
+            return String::new();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            value,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let mut message = VECTOR_ELT(value, 0);
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            for index in 0..LENGTH(value) {
+                let name = STRING_ELT(names, index as i64);
+                if !name.is_null() {
+                    let bytes = std::ffi::CStr::from_ptr(CHAR(name)).to_bytes();
+                    if bytes == b"message" {
+                        message = VECTOR_ELT(value, index as i64);
+                        break;
+                    }
+                }
+            }
+        }
+        if TYPEOF(message) == SEXPTYPE::STRSXP && LENGTH(message) > 0 {
+            let elt = STRING_ELT(message, 0);
+            if elt.is_null() {
+                return String::new();
+            }
+            String::from_utf8_lossy(std::ffi::CStr::from_ptr(CHAR(elt)).to_bytes()).into_owned()
+        } else {
+            String::new()
         }
     }
 }
