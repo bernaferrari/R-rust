@@ -1052,13 +1052,16 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             };
             let private_lookup = symbol_name(CAR(call)).as_deref() == Some(":::")
                 || crate::eval::builtin::PRIMNAME(op) == ":::";
+            let package_path = find_package_path(&package_name);
             if !private_lookup {
-                let package_path = find_package_path(&package_name);
-                let directives = read_namespace_directives(Path::new(&package_path))
-                    .ok()
-                    .flatten();
-                let mut exports = namespace_exports(directives.as_ref(), namespace);
-                if !exports.iter().any(|export| export == &lookup_name) {
+                let exported = unsafe {
+                    crate::mainutils::essentials::shared::namespace_exports_contains(
+                        std::path::Path::new(&package_path),
+                        namespace,
+                        &lookup_name,
+                    )
+                };
+                if !exported {
                     if let Some(value) = lazy_data_value(&package_name, &package_path, &lookup_name)
                     {
                         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
@@ -1211,6 +1214,9 @@ pub fn structure_attr_name(name: &str) -> &str {
 pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
+        if TYPEOF(x) == SEXPTYPE::PROMSXP {
+            x = crate::eval::eval::Rf_eval(x, rho);
+        }
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }

@@ -197,6 +197,68 @@ fn read_braced(chars: &[char], mut i: usize) -> Option<(String, usize)> {
     }
     None
 }
+fn is_rd_section(name: &str) -> bool {
+    matches!(
+        name,
+        "name"
+            | "title"
+            | "alias"
+            | "description"
+            | "usage"
+            | "arguments"
+            | "format"
+            | "details"
+            | "value"
+            | "references"
+            | "source"
+            | "seealso"
+            | "examples"
+            | "author"
+            | "note"
+            | "encoding"
+            | "keyword"
+            | "concept"
+            | "Rdversion"
+            | "docType"
+            | "section"
+            | "subsection"
+    )
+}
+fn split_rd_sections(text: &str) -> Option<Vec<(String, String)>> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0usize;
+    let mut parts = Vec::new();
+    let mut loose = String::new();
+    let mut saw = false;
+    while i < chars.len() {
+        if chars[i] == '\\' {
+            let mut j = i + 1;
+            let mut name = String::new();
+            while j < chars.len() && chars[j].is_ascii_alphabetic() {
+                name.push(chars[j]);
+                j += 1;
+            }
+            if is_rd_section(&name) {
+                if let Some((body, next)) = read_braced(&chars, j) {
+                    if !loose.is_empty() {
+                        parts.push(("TEXT".to_string(), loose.clone()));
+                        loose.clear();
+                    }
+                    parts.push((format!("\\{name}"), body));
+                    saw = true;
+                    i = next;
+                    continue;
+                }
+            }
+        }
+        loose.push(chars[i]);
+        i += 1;
+    }
+    if !loose.is_empty() && loose.chars().any(|c| !c.is_whitespace()) {
+        parts.push(("TEXT".to_string(), loose));
+    }
+    if saw { Some(parts) } else { None }
+}
 
 fn substitute_args(body: &str, args: &[String]) -> String {
     let chars: Vec<char> = body.chars().collect();
@@ -302,6 +364,46 @@ fn macro_environment(defined: &[(String, String)], parent: SEXP) -> SEXP {
 
 fn rd_text(text: &str, macro_env: SEXP) -> SEXP {
     unsafe {
+        if let Some(parts) = split_rd_sections(text) {
+            let n = parts.len();
+            let rd = Rf_allocVector3(SEXPTYPE::VECSXP, n as i64);
+            let _rd = protect(rd);
+            let tag_sym = crate::sexp::symbol::Rf_install(c"Rd_tag".as_ptr());
+            for (i, (tag, body)) in parts.iter().enumerate() {
+                let text_elt = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                let _text = protect(text_elt);
+                let c = std::ffi::CString::new(body.replace('\0', "")).unwrap_or_default();
+                SET_STRING_ELT(text_elt, 0, crate::sexp::constructors::Rf_mkChar(c.as_ptr()));
+                let child_tag = if tag == "\\examples" { "RCODE" } else { "TEXT" };
+                let child_c = std::ffi::CString::new(child_tag).unwrap_or_default();
+                crate::sexp::attrib_core::setAttrib(
+                    text_elt,
+                    tag_sym,
+                    crate::sexp::constructors::Rf_mkString(child_c.as_ptr()),
+                );
+                let elt = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+                let _elt = protect(elt);
+                crate::sexp::accessors::SET_VECTOR_ELT(elt, 0, text_elt);
+                let tag_c = std::ffi::CString::new(tag.as_str()).unwrap_or_default();
+                crate::sexp::attrib_core::setAttrib(
+                    elt,
+                    tag_sym,
+                    crate::sexp::constructors::Rf_mkString(tag_c.as_ptr()),
+                );
+                crate::sexp::accessors::SET_VECTOR_ELT(rd, i as i64, elt);
+            }
+            let class_sym = crate::sexp::symbol::Rf_install(c"class".as_ptr());
+            crate::sexp::attrib_core::setAttrib(
+                rd,
+                class_sym,
+                crate::sexp::constructors::Rf_mkString(c"Rd".as_ptr()),
+            );
+            if !macro_env.is_null() && macro_env != crate::sexp::globals::R_NilValue() {
+                let macros_sym = crate::sexp::symbol::Rf_install(c"macros".as_ptr());
+                crate::sexp::attrib_core::setAttrib(rd, macros_sym, macro_env);
+            }
+            return rd;
+        }
         let mut lines: Vec<String> = Vec::new();
         let mut cur = String::new();
         for ch in text.chars() {
