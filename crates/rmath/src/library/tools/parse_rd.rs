@@ -149,6 +149,13 @@ fn expand_user_macros_depth(
             out.push_str(&name);
             continue;
         }
+        if chars[i] == '%' {
+            i += 1;
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
         out.push(chars[i]);
         i += 1;
     }
@@ -295,25 +302,38 @@ fn macro_environment(defined: &[(String, String)], parent: SEXP) -> SEXP {
 
 fn rd_text(text: &str, macro_env: SEXP) -> SEXP {
     unsafe {
-        let shown = if text.trim().is_empty() { "\n" } else { text };
-        let mut line = shown.to_string();
-        if !line.ends_with('\n') {
-            line.push('\n');
+        let mut lines: Vec<String> = Vec::new();
+        let mut cur = String::new();
+        for ch in text.chars() {
+            cur.push(ch);
+            if ch == '\n' {
+                lines.push(std::mem::take(&mut cur));
+            }
         }
-        let elt = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _elt = protect(elt);
-        let c = std::ffi::CString::new(line).unwrap_or_default();
-        SET_STRING_ELT(elt, 0, crate::sexp::constructors::Rf_mkChar(c.as_ptr()));
+        if !cur.is_empty() {
+            cur.push('\n');
+            lines.push(cur);
+        }
+        if lines.is_empty() {
+            lines.push("\n".to_string());
+        }
+        let n = lines.len();
+        let rd = Rf_allocVector3(SEXPTYPE::VECSXP, n as i64);
+        let _rd = protect(rd);
         let tag = std::ffi::CString::new("TEXT").unwrap_or_default();
         let tag_sym = crate::sexp::symbol::Rf_install(c"Rd_tag".as_ptr());
-        crate::sexp::attrib_core::setAttrib(
-            elt,
-            tag_sym,
-            crate::sexp::constructors::Rf_mkString(tag.as_ptr()),
-        );
-        let rd = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        let _rd = protect(rd);
-        crate::sexp::accessors::SET_VECTOR_ELT(rd, 0, elt);
+        for (i, line) in lines.iter().enumerate() {
+            let elt = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            let _elt = protect(elt);
+            let c = std::ffi::CString::new(line.as_str()).unwrap_or_default();
+            SET_STRING_ELT(elt, 0, crate::sexp::constructors::Rf_mkChar(c.as_ptr()));
+            crate::sexp::attrib_core::setAttrib(
+                elt,
+                tag_sym,
+                crate::sexp::constructors::Rf_mkString(tag.as_ptr()),
+            );
+            crate::sexp::accessors::SET_VECTOR_ELT(rd, i as i64, elt);
+        }
         let class_sym = crate::sexp::symbol::Rf_install(c"class".as_ptr());
         let class_name = std::ffi::CString::new("Rd").unwrap_or_default();
         crate::sexp::attrib_core::setAttrib(
