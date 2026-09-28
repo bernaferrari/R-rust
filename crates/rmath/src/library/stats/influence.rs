@@ -173,32 +173,31 @@ pub(crate) fn lminfl_compute(
         *h = 0.0;
     }
 
-    // hat_ii = sum_j Q_{ij}^2. Stored QR is LINPACK (`dqrdc2`), so each
-    // column of Q comes from `dqrsl(..., e_j, job=10000)`, as in `lminfl.f`.
+    // hat_ii = sum_j Q_{ij}^2. Same LINPACK reflector as `qr.Q`:
+    // u[0] = qraux, H = I - u u' / qraux. `dqrsl` on this no-intercept
+    // factor returned |qy_i| = 1 and saturated every hat.
     if n > 0 && k > 0 {
         let k_eff = k.min(n);
-        let mut y = vec![0.0f64; n];
+        let transforms = k_eff.min(n.saturating_sub(1));
         let mut qy = vec![0.0f64; n];
-        let mut info = 0i32;
         for j in 0..k_eff {
-            y.fill(0.0);
-            y[j] = 1.0;
-            unsafe {
-                crate::appl::linpack_qr::dqrsl(
-                    qr.as_ptr() as *mut f64,
-                    ldx as i32,
-                    n as i32,
-                    k_eff as i32,
-                    qraux.as_ptr(),
-                    y.as_ptr(),
-                    qy.as_mut_ptr(),
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    10000,
-                    &mut info,
-                );
+            qy.fill(0.0);
+            qy[j] = 1.0;
+            for t in (0..transforms).rev() {
+                let tau = qraux[t];
+                if !tau.is_finite() || tau == 0.0 {
+                    continue;
+                }
+                let tail_scale = 1.0 / tau;
+                let mut dot = qy[t];
+                for i in t + 1..n {
+                    dot += qr[i + t * ldx] * tail_scale * qy[i];
+                }
+                let scale = tau * dot;
+                qy[t] -= scale;
+                for i in t + 1..n {
+                    qy[i] -= scale * qr[i + t * ldx] * tail_scale;
+                }
             }
             for i in 0..n {
                 hat[i] += qy[i] * qy[i];
