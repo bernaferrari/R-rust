@@ -1176,7 +1176,7 @@ unsafe fn all_query_names(no_readonly: bool) -> Vec<String> {
 /// Rust-shaped `par()` implementation backed by per-session defaults and
 /// overrides. It intentionally covers the query/update surface used by base
 /// plotting and Android embedding without relying on process-global GE state.
-pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut current = args;
         let mut query_names = Vec::new();
@@ -1265,7 +1265,7 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                             )
                             .unwrap_or_default();
                             crate::mainutils::errors::warningcall(
-                                crate::sexp::globals::R_NilValue(),
+                                call,
                                 msg.as_ptr(),
                             );
                         }
@@ -1275,7 +1275,7 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         ))
                         .unwrap_or_default();
                         crate::mainutils::errors::warningcall(
-                            crate::sexp::globals::R_NilValue(),
+                            call,
                             msg.as_ptr(),
                         );
                     }

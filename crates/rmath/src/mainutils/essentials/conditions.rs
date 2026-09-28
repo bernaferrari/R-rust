@@ -1630,22 +1630,13 @@ unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn simple_warning_condition(message: &str) -> SEXP {
+pub(crate) unsafe fn simple_warning_condition(message: &str, call: SEXP) -> SEXP {
     unsafe {
-        // stock: warnings caught by tryCatch's warning handler carry the
-        // internal doTryCatch(return(expr), name, parentenv, handler) frame
-        // as their call (print.condition renders it: `<simpleWarning in
-        // doTryCatch(...): msg>`).
-        let s = |name: &str| Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-        let inner = crate::sexp::constructors::Rf_lang2(s("return"), s("expr"));
-        let call = crate::sexp::constructors::Rf_lang5(
-            s("doTryCatch"),
-            inner,
-            s("name"),
-            s("parentenv"),
-            s("handler"),
-        );
-
+        let call = if call.is_null() {
+            crate::sexp::globals::R_NilValue()
+        } else {
+            call
+        };
         let _call_guard = protect(call);
         let c_msg = CString::new(message).unwrap_or_default();
         crate::mainutils::errors::R_makeWarningCondition(
@@ -1801,7 +1792,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                                 set_signalled_condition(std::ptr::null_mut());
                                 stashed
                             } else {
-                                simple_warning_condition(&message)
+                                simple_warning_condition(&message, crate::sexp::globals::R_NilValue())
                             };
                             let classes = condition_classes(condition);
                             let matching = handlers

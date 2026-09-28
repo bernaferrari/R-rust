@@ -863,10 +863,12 @@ pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
         // override (upstream: the closure context above its .Internal)
         // claims attribution for the whole handler body.
         let override_call = super::warning_call_override();
-        let call = if override_call.is_null() {
+        let call = if !call.is_null() && call != crate::sexp::globals::R_NilValue() {
             call
-        } else {
+        } else if !override_call.is_null() {
             override_call
+        } else {
+            call
         };
         vsignalWarning(call, format);
     }
@@ -913,7 +915,7 @@ pub(super) unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
                     .to_string_lossy()
                     .into_owned()
             };
-            let cond = crate::mainutils::essentials::simple_warning_condition(&msg);
+            let cond = crate::mainutils::essentials::simple_warning_condition(&msg, call);
             let _cond_guard = protect(cond);
             let muffled = crate::mainutils::essentials::signal_calling_warning_condition(
                 cond,
