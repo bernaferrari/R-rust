@@ -624,11 +624,10 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// Initialize the language comparison option from environment.
 unsafe fn init_relop_lang_option() {
-    // Option 1 = EQONLY (default)
+    // GNU default since PR#18676: == and != use identical(), ignoring srcref.
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.relop_lang_option = 1;
+        (*inst).eval_state.relop_lang_option = 2;
     });
-    // Note: getenv not available in no_std context, keep EQONLY default
 }
 
 /// Compute language equality for `==` and `!=` operators.
@@ -834,6 +833,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
             }
         }
 
+        let mut held = Vec::new();
         // Convert symbols/calls to strings
         let mut iS;
         if {
@@ -842,6 +842,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
         } || TYPEOF(x) == SEXPTYPE::LANGSXP
         {
             let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            held.push(crate::sexp::protect::protect(tmp));
             if !tmp.is_null() {
                 if iS {
                     SET_STRING_ELT(tmp, 0, PRINTNAME(x));
@@ -860,6 +861,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
         } || TYPEOF(y) == SEXPTYPE::LANGSXP
         {
             let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            held.push(crate::sexp::protect::protect(tmp));
             if !tmp.is_null() {
                 if iS {
                     SET_STRING_ELT(tmp, 0, PRINTNAME(y));
