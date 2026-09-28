@@ -112,7 +112,6 @@ enum Token {
     KwLambda,
     KwBreak,
     KwNext,
-    KwReturn,
     // Eof
     Eof,
     // Malformed numeric lexeme ("0x", "0x1p", "1e") — upstream's
@@ -785,7 +784,6 @@ impl Lexer {
             "function" => Token::KwFunction,
             "break" => Token::KwBreak,
             "next" => Token::KwNext,
-            "return" => Token::KwReturn,
             _ => Token::Ident(s),
         }
     }
@@ -924,7 +922,6 @@ fn token_display(tok: &Token) -> String {
         Token::KwLambda => "'\\('".to_string(),
         Token::KwBreak => "'break'".to_string(),
         Token::KwNext => "'next'".to_string(),
-        Token::KwReturn => "'return'".to_string(),
     }
 }
 
@@ -2429,36 +2426,6 @@ impl<'arena> Parser<'arena> {
                 unsafe {
                     let sym = Rf_install(c"next".as_ptr());
                     self.lang2(sym, R_NilValue())
-                }
-            }
-            Token::KwReturn => {
-                self.advance();
-                if self.peek() == &Token::LParen {
-                    self.advance();
-                    // Bare `return()` returns NULL: an immediately-closed
-                    // paren is an empty argument, not a parse error.
-                    let e = if self.peek() == &Token::RParen {
-                        unsafe { R_NilValue() }
-                    } else {
-                        self.parse_expr()?
-                    };
-                    self.expect(&Token::RParen)?;
-                    unsafe {
-                        let sym = Rf_install(c"return".as_ptr());
-                        self.lang2(sym, e)
-                    }
-                } else if matches!(
-                    self.peek(),
-                    Token::Semicolon
-                        | Token::Newline
-                        | Token::RBrace
-                        | Token::RParen
-                        | Token::Comma
-                        | Token::Eof
-                ) {
-                    unsafe { Ok(Rf_install(c"return".as_ptr())) }
-                } else {
-                    Err(self.unexpected_at(self.pos))
                 }
             }
             // Block: { expr; expr; ... }
