@@ -826,7 +826,7 @@ pub unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
 /// type-specific coercion function based on the source and target types.
 pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
     unsafe {
-        if v.is_null() {
+        if v == ptr::null_mut() {
             return ptr::null_mut();
         }
         let target = SEXPTYPE(type_);

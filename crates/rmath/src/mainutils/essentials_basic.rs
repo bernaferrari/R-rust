@@ -2379,7 +2379,7 @@ unsafe fn environment_as_list(env: SEXP) -> SEXP {
 unsafe fn coerce_to_type(args: SEXP, target: c_int) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
+        if x == std::ptr::null_mut() {
             return R_NilValue();
         }
 
