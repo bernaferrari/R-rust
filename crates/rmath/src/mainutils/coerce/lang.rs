@@ -387,13 +387,17 @@ pub fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
             false
         };
 
-        // For objects or non-recursive lists, fall back to is.na + any
         if OBJECT(x) != 0 || (is_list && !recursive) {
-            // Simplified: just check vector elements directly for non-objects
-            if OBJECT(x) != 0 {
-                // For S4/S3 objects, we'd need eval(dispatch) — skip for now
-                return false;
-            }
+            // GNU: any(is.na(x)). A list of length-1 NAs is TRUE.
+            // anyNA's answer is FALSE when that any() is itself NA.
+            let is_na_sym = crate::sexp::symbol::Rf_install(c"is.na".as_ptr());
+            let any_sym = crate::sexp::symbol::Rf_install(c"any".as_ptr());
+            let e0 = crate::sexp::constructors::Rf_lang2(is_na_sym, x);
+            let _e0 = protect(e0);
+            let e = crate::sexp::constructors::Rf_lang2(any_sym, e0);
+            let _e = protect(e);
+            let res = crate::eval::eval::Rf_eval(e, _env);
+            return asRbool(res, _call) == 1;
         }
 
         let n = XLENGTH(x);
