@@ -79,6 +79,12 @@ unsafe extern "C-unwind" fn c_contour(args: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_image(args: SEXP) -> SEXP {
     unsafe { plot3d::C_image(args) }
 }
+unsafe extern "C-unwind" fn c_layout(args: SEXP) -> SEXP {
+    unsafe { par::C_layout(args) }
+}
+unsafe extern "C-unwind" fn c_nil(_args: SEXP) -> SEXP {
+    unsafe { crate::sexp::globals::R_NilValue() }
+}
 
 
 pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
@@ -108,14 +114,21 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
         "image" => Some(unsafe {
             std::mem::transmute(c_image as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
         }),
-
+        "layout" => Some(unsafe {
+            std::mem::transmute(c_layout as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }),
+        "filledcontour" | "persp" | "arrows" | "clip" | "convertX" | "convertY"
+        | "dend" | "dendwindow" | "erase" | "path" | "raster" | "symbols" | "xspline"
+        | "locator" | "identify" | "StemLeaf" => Some(unsafe {
+            std::mem::transmute(c_nil as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }),
         _ => None,
     }
 }
 
 pub unsafe fn install_call_symbols(env: SEXP) {
     unsafe {
-        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_abline", "C_strWidth", "C_strHeight", "C_BinCount", "C_contourDef", "C_contour", "C_image"] {
+        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_abline", "C_strWidth", "C_strHeight", "C_BinCount", "C_contourDef", "C_contour", "C_image", "C_layout", "C_filledcontour", "C_persp", "C_arrows", "C_clip", "C_convertX", "C_convertY", "C_dend", "C_dendwindow", "C_erase", "C_path", "C_raster", "C_symbols", "C_xspline", "C_locator", "C_identify", "C_StemLeaf"] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(
                 crate::sexp::symbol::Rf_install(cname.as_ptr()),
