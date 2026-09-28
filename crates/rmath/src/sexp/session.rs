@@ -491,12 +491,25 @@ impl RSession {
             // GNU defaultPackages: datasets, utils, grDevices, graphics,
             // stats, methods. library() inserts at pos 2, so attach in
             // that order and stats sits just under .GlobalEnv.
-            for package in ["methods", "datasets", "utils", "stats"] {
+            for package in ["methods", "datasets", "utils", "grDevices", "graphics", "stats"] {
                 let path = crate::mainutils::essentials::find_package_path(package);
                 if !path.is_empty() {
                     let _ = crate::mainutils::essentials::load_pure_r_package(
                         package,
                         std::path::Path::new(&path),
+                    );
+                }
+            }
+            if let Ok(exprs) = super::memory::with_arena(|arena| {
+                crate::eval::parser::parse_expressions(
+                    "library(grDevices); library(graphics); detach(\"package:stats\"); library(stats)",
+                    arena,
+                )
+            }) {
+                for expr in exprs {
+                    let _ = crate::eval::eval::Rf_eval(
+                        expr,
+                        crate::sexp::globals::R_GlobalEnv(),
                     );
                 }
             }
