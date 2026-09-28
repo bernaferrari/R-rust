@@ -3491,6 +3491,9 @@ pub unsafe fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 fn iconv_norm_enc(name: &str) -> &str {
+    // GNU treats `ASCII//TRANSLIT` and `UTF-8//IGNORE` as the base
+    // encoding plus a substitution policy. The base is what we can encode.
+    let name = name.split("//").next().unwrap_or(name);
     match name {
         "" | "native.enc" => "native",
         "UTF-8" | "UTF8" | "utf-8" | "utf8" => "UTF-8",
