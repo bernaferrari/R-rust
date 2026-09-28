@@ -3541,7 +3541,22 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let mut cells: Vec<SEXP> = Vec::with_capacity(nargs.max(0) as usize);
                     for _ in 0..nargs {
                         let arg = stack_pop_checked(&mut stack, "CALL argument");
-                        args = Rf_cons(arg, args);
+                        let expr = if TYPEOF(arg) == SEXPTYPE::PROMSXP {
+                            let code = crate::sexp::accessors::PRCODE(arg);
+                            if TYPEOF(code) == SEXPTYPE::BCODESXP {
+                                let source = BCODE_EXPR(code);
+                                if source.is_null() || source == R_NilValue() {
+                                    arg
+                                } else {
+                                    source
+                                }
+                            } else {
+                                code
+                            }
+                        } else {
+                            arg
+                        };
+                        args = Rf_cons(expr, args);
                         cells.push(args);
                     }
                     apply_pending_arg_tags(&mut pending_arg_tags, top, &cells);
