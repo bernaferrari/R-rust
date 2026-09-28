@@ -5292,13 +5292,14 @@ unsafe fn record_window_limits(args: SEXP) {
         let mut x_hi = xv[1];
         let mut y_lo = yv[0];
         let mut y_hi = yv[1];
-        if xlog && x_lo > 0.0 && x_hi > 0.0 {
-            x_lo = x_lo.log10();
-            x_hi = x_hi.log10();
+        let to_log = |v: f64| if v > 0.0 { v.log10() } else { f64::NEG_INFINITY };
+        if xlog {
+            x_lo = to_log(x_lo);
+            x_hi = to_log(x_hi);
         }
-        if ylog && y_lo > 0.0 && y_hi > 0.0 {
-            y_lo = y_lo.log10();
-            y_hi = y_hi.log10();
+        if ylog {
+            y_lo = to_log(y_lo);
+            y_hi = to_log(y_hi);
         }
         let style_i = |name: &str| {
             matches!(
