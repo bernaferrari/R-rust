@@ -915,6 +915,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::eval::compiler::do_enable_jit,
     },
     EvaluatedBuiltin {
+        name: "putconst",
+        handler: crate::eval::compiler::do_putconst,
+    },
+    EvaluatedBuiltin {
+        name: "growconst",
+        handler: crate::eval::compiler::do_growconst,
+    },
+    EvaluatedBuiltin {
+        name: "getconst",
+        handler: crate::eval::compiler::do_getconst,
+    },
+    EvaluatedBuiltin {
         name: "cmpfun",
         handler: crate::eval::compiler::do_cmpfun,
     },
@@ -4049,7 +4061,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_writeBin,
     },
     EvaluatedBuiltin {
-        name: "summary",
+        name: "summary.default",
         handler: crate::mainutils::essentials::do_summary_default,
     },
     EvaluatedBuiltin {

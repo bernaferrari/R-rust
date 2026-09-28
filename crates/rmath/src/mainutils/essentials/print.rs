@@ -418,14 +418,6 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        // GNU summary is UseMethod("summary"). The builtin registration
-        // must dispatch registered summary.<class> closures (summary.glm)
-        // before the hardcoded lm/data.frame shortcuts.
-        if let Some(result) =
-            crate::mainutils::essentials::apply_s3_closure_method("summary", _call, args, _rho)
-        {
-            return result;
-        }
         let class = crate::sexp::attrib_core::getAttrib(
             x,
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -504,6 +496,36 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
                     quantile_type7(&vals, 0.75),
                     vals[vals.len() - 1],
                 ]
+            };
+            let digits = {
+                let mut cell = CDR(args);
+                let mut found = None;
+                while !cell.is_null() && cell != R_NilValue() {
+                    if tag_name(cell).as_deref() == Some("digits") {
+                        let v = crate::main::coerce::asInteger(CAR(cell));
+                        if v != NA_INTEGER && v > 0 {
+                            found = Some(v);
+                        }
+                    }
+                    cell = CDR(cell);
+                }
+                found
+            };
+            let values = if let Some(digits) = digits {
+                values
+                    .into_iter()
+                    .map(|v| {
+                        if !v.is_finite() || v == 0.0 {
+                            v
+                        } else {
+                            let exp = v.abs().log10().floor();
+                            let scale = 10f64.powf(digits as f64 - 1.0 - exp);
+                            (v * scale).round() / scale
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                values
             };
             for (i, value) in values.iter().enumerate() {
                 *REAL(result).add(i) = *value;
@@ -1367,6 +1389,7 @@ unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
 /// R's `str(x)` — compact structure display.
 pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {
             x = crate::sexp::envir::forcePromise(x);
@@ -1650,11 +1673,9 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                 }
             }
-
         } else {
             str_emit_line(&format!(" {}", str_atomic_summary(x)));
             str_emit_nonstandard_attrs(x, &["class", "tsp", "dim", "levels"]);
-
         }
 
 
