@@ -852,6 +852,7 @@ unsafe fn layout_int_scalar(args: &mut SEXP, name: &str) -> c_int {
         match TYPEOF(value) {
             t if t == SEXPTYPE::INTSXP => *INTEGER(value),
             t if t == SEXPTYPE::REALSXP => *REAL(value) as c_int,
+            t if t == SEXPTYPE::LGLSXP => *crate::sexp::accessors::LOGICAL(value),
             _ => graphics_error(format!("invalid '{name}' in graphics layout")),
         }
     }
@@ -860,7 +861,13 @@ unsafe fn layout_int_scalar(args: &mut SEXP, name: &str) -> c_int {
 unsafe fn layout_int_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<c_int> {
     unsafe {
         let value = layout_pop_arg(args);
-        if value.is_null() || value == R_NilValue() || XLENGTH(value) < min_len as R_xlen_t {
+        if value.is_null() || value == R_NilValue() {
+            if min_len == 0 {
+                return Vec::new();
+            }
+            graphics_error(format!("invalid '{name}' in graphics layout"));
+        }
+        if XLENGTH(value) < min_len as R_xlen_t {
             graphics_error(format!("invalid '{name}' in graphics layout"));
         }
         let n = XLENGTH(value) as usize;
@@ -872,6 +879,10 @@ unsafe fn layout_int_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<
             t if t == SEXPTYPE::REALSXP => {
                 let src = REAL(value);
                 (0..n).map(|i| *src.add(i) as c_int).collect()
+            }
+            t if t == SEXPTYPE::LGLSXP => {
+                let src = crate::sexp::accessors::LOGICAL(value);
+                (0..n).map(|i| *src.add(i)).collect()
             }
             _ => graphics_error(format!("invalid '{name}' in graphics layout")),
         }
