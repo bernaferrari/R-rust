@@ -689,7 +689,14 @@ pub unsafe fn findcontext_jump_in(
             c = (*c).nextcontext;
         }
         if loop_jump {
-            error("no loop for break/next, jumping to top level");
+            // No AST CTXT_LOOP. Compiled loops record their exit on the
+            // bytecode loop stack and catch this signal around OP_CALL.
+            // A real top-level next/break still becomes the "no loop" error
+            // once that catcher is absent.
+            if mask == JUMP_BREAK {
+                std::panic::panic_any(crate::sexp::context::RSignal::Break);
+            }
+            std::panic::panic_any(crate::sexp::context::RSignal::Next);
         } else {
             error("no function to return from, jumping to top level");
         }

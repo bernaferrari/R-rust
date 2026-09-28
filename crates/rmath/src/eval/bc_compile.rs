@@ -295,23 +295,29 @@ impl BytecodeCompiler {
             // while (test) body
             let test = CAR(CDR(expr));
             let body = CAR(CDR(CDR(expr)));
+            let begin_idx = self.code.len();
+            self.emit(opcodes::OP_BEGINLOOP);
+            self.code.push(0); // break -> ENDLOOP
+            self.code.push(0); // next -> test
             let test_label = self.code.len() as c_int;
             if !self.compile_expr(test) {
                 return false;
             }
             let brif_idx = self.code.len() as c_int;
-            self.emit_operand(opcodes::OP_BRIFNOT, 0); // placeholder
+            self.emit_operand(opcodes::OP_BRIFNOT, 0);
             if !self.compile_expr(body) {
                 return false;
             }
             self.emit(opcodes::OP_POP);
             self.emit_operand(opcodes::OP_GOTO, test_label);
-            let end_label = self.code.len() as c_int;
-            self.code[brif_idx as usize + 1] = end_label;
+            let endloop_pc = self.code.len() as c_int;
+            self.emit(opcodes::OP_ENDLOOP);
+            let after = self.code.len() as c_int;
+            self.code[begin_idx + 1] = endloop_pc;
+            self.code[begin_idx + 2] = test_label;
+            self.code[brif_idx as usize + 1] = endloop_pc;
             let nil_idx = self.add_const(R_NilValue());
             self.emit_operand(opcodes::OP_PUSHCONST, nil_idx);
-            // Upstream's compiler wraps while-loop results in INVISIBLE
-            // (the loop's NULL result never auto-prints at top level).
             self.emit(opcodes::OPinvisible);
             true
         }
@@ -331,16 +337,27 @@ impl BytecodeCompiler {
             let start_idx = self.code.len();
             self.emit(opcodes::OP_STARTFOR);
             self.code.push(symbol_idx);
-            self.code.push(0); // end label, patched below
+            self.code.push(0); // empty-sequence target, patched below
+
+            let begin_idx = self.code.len();
+            self.emit(opcodes::OP_BEGINLOOP);
+            self.code.push(0); // break -> ENDLOOP
+            self.code.push(0); // next -> NEXTFOR
 
             let body_start = self.code.len() as c_int;
             if !self.compile_expr(body) {
                 return false;
             }
             self.emit(opcodes::OP_POP);
+            let next_pc = self.code.len() as c_int;
             self.emit_operand(opcodes::OP_NEXTFOR, body_start);
+            let endloop_pc = self.code.len() as c_int;
+            self.emit(opcodes::OP_ENDLOOP);
+            let after = self.code.len() as c_int;
 
-            self.code[start_idx + 2] = self.code.len() as c_int;
+            self.code[start_idx + 2] = after;
+            self.code[begin_idx + 1] = endloop_pc;
+            self.code[begin_idx + 2] = next_pc;
             self.emit(opcodes::OPinvisible);
             true
         }
