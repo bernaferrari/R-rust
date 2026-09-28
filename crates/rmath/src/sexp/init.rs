@@ -1705,6 +1705,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "path.package", include_str!("gnu_path_package.R"));
         eval_base_binding(base_env, "Negate", include_str!("gnu_negate.R"));
+        eval_base_binding(base_env, "summary.default", include_str!("gnu_summary_default.R"));
         eval_base_binding(base_env, "format.summaryDefault", include_str!("gnu_format_summary.R"));
         eval_base_binding(base_env, "print.summaryDefault", include_str!("gnu_print_summary.R"));
         eval_base_binding(base_env, "summary.difftime", include_str!("gnu_summary_difftime.R"));
