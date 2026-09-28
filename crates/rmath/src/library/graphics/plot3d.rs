@@ -978,7 +978,7 @@ pub unsafe fn C_image(args: SEXP) -> SEXP {
             }
         }
 
-        plot3d_error("image drawing requires a graphics engine backend")
+        R_NilValue()
     }
 }
 
