@@ -5348,12 +5348,25 @@ pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     #[cfg(not(feature = "renderplot-device"))]
     unsafe {
-        let side_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["side"], 0);
-        let side = if side_arg.is_null() || XLENGTH(side_arg) == 0 {
-            1.0
-        } else {
-            *REAL(crate::mainutils::coerce::coerceVector(side_arg, SEXPTYPE::REALSXP.as_c_int()))
-        };
+        let mut side = 1.0;
+        let mut cell = args;
+        while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+            let value = CAR(cell);
+            if !value.is_null() && XLENGTH(value) == 1 {
+                let v = if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::LGLSXP {
+                    *INTEGER(value) as f64
+                } else if TYPEOF(value) == SEXPTYPE::REALSXP {
+                    *REAL(value)
+                } else {
+                    f64::NAN
+                };
+                if (1.0..=4.0).contains(&v) {
+                    side = v;
+                    break;
+                }
+            }
+            cell = CDR(cell);
+        }
         let name = if side == 1.0 || side == 3.0 { "xaxp" } else { "yaxp" };
         let axp = crate::library::graphics::par::parameter(name);
         let crate::library::graphics::par::ParValue::Real(a) = axp else {
@@ -5362,7 +5375,7 @@ pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if a.len() < 3 || !a[0].is_finite() || !a[1].is_finite() {
             return crate::sexp::globals::R_NilValue();
         }
-        let steps = a[2].max(1.0).min(100.0) as usize;
+        let steps = a[2].round().max(1.0).min(100.0) as usize;
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, (steps + 1) as R_xlen_t);
         if result.is_null() {
             return crate::sexp::globals::R_NilValue();
