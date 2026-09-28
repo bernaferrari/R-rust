@@ -5301,20 +5301,24 @@ unsafe fn record_window_limits(args: SEXP) {
             y_lo = to_log(y_lo);
             y_hi = to_log(y_hi);
         }
-        let clamp_log_end = |v: &mut f64| {
+        let finite_floor = (1.01 * f64::MIN_POSITIVE).log10();
+        let clamp_log_end = |v: &mut f64, pull_subnormal: bool| {
             if *v == f64::INFINITY || *v >= 308.25035 {
                 *v = (0.99 * f64::MAX).log10();
-            } else if !v.is_finite() || *v < (1.01 * f64::MIN_POSITIVE).log10() || 10f64.powf(*v) == 0.0 {
-                *v = (1.01 * f64::MIN_POSITIVE).log10();
+            } else if !v.is_finite()
+                || 10f64.powf(*v) == 0.0
+                || (pull_subnormal && *v < finite_floor)
+            {
+                *v = finite_floor;
             }
         };
         if xlog {
-            clamp_log_end(&mut x_lo);
-            clamp_log_end(&mut x_hi);
+            clamp_log_end(&mut x_lo, false);
+            clamp_log_end(&mut x_hi, false);
         }
         if ylog {
-            clamp_log_end(&mut y_lo);
-            clamp_log_end(&mut y_hi);
+            clamp_log_end(&mut y_lo, false);
+            clamp_log_end(&mut y_hi, false);
         }
         let style_i = |name: &str| {
             matches!(
@@ -5351,12 +5355,12 @@ unsafe fn record_window_limits(args: SEXP) {
             }
         }
         if xlog {
-            clamp_log_end(&mut x_lo);
-            clamp_log_end(&mut x_hi);
+            clamp_log_end(&mut x_lo, !x_tight);
+            clamp_log_end(&mut x_hi, !x_tight);
         }
         if ylog {
-            clamp_log_end(&mut y_lo);
-            clamp_log_end(&mut y_hi);
+            clamp_log_end(&mut y_lo, !y_tight);
+            clamp_log_end(&mut y_hi, !y_tight);
         }
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
         set_plot_parameter("usr", ParValue::Real(vec![x_lo, x_hi, y_lo, y_hi]));
