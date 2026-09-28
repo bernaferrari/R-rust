@@ -91,14 +91,10 @@ pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R
             && TYPEOF(was) == SEXPTYPE::LGLSXP
             && XLENGTH(was) > 0
             && *INTEGER(was) == TRUE;
-        if was_true && nv == old_n {
-            crate::sexp::attrib_core::setAttrib(
-                x,
-                bal_sym,
-                crate::sexp::constructors::Rf_ScalarLogical(NA_INTEGER),
-            );
-        } else {
-            crate::sexp::attrib_core::setAttrib(x, bal_sym, R_NilValue());
+        if was_true && nv != old_n {
+            let na = crate::sexp::constructors::Rf_ScalarLogical(NA_INTEGER);
+            let _na = protect(na);
+            crate::sexp::attrib_core::setAttrib(x, bal_sym, na);
         }
     }
 }
@@ -247,13 +243,18 @@ pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> 
                     }
                 }
                 if imatch >= 0 {
-                    // Replace existing element
-                    if MAYBE_REFERENCED(val) && VECTOR_ELT(x, imatch as R_xlen_t) != val {
+                    // A NAMED=0 literal is still the parser constant. Storing
+                    // that node into the list lets the next eval mutate it.
+                    let mut kept = None;
+                    if VECTOR_ELT(x, imatch as R_xlen_t) != val && !MAYBE_REFERENCED(val) {
+                        val = crate::mainutils::duplicate::Rf_duplicate(val);
+                        kept = Some(protect(val));
+                    } else if MAYBE_REFERENCED(val) && VECTOR_ELT(x, imatch as R_xlen_t) != val {
                         val = R_FixupRHS(x, val);
                     }
                     SET_VECTOR_ELT(x, imatch as R_xlen_t, val);
+                    drop(kept);
                 } else {
-                    // Add new element
                     let ans = Rf_allocVector3(VECSXP, nx + 1);
                     let ansnames = Rf_allocVector3(STRSXP, nx + 1);
                     for i in 0..nx {
