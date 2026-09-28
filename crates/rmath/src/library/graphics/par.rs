@@ -1311,9 +1311,14 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                                 .get_or_insert_with(Vec::new)
                                                 .push((qname, true));
                                         } else {
+                                            let msg = std::ffi::CString::new(format!(
+                                                "\"{qname}\" is not a graphical parameter"
+                                            ))
+                                            .unwrap_or_default();
+                                            crate::mainutils::errors::warningcall(call, msg.as_ptr());
                                             list_slots
                                                 .get_or_insert_with(Vec::new)
-                                                .push((String::new(), false));
+                                                .push((qname, false));
                                         }
                                     } else {
                                         let msg = std::ffi::CString::new(format!(
