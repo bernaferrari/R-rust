@@ -1789,11 +1789,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
-            "format.bibentry",
-            include_str!("gnu_bibentry.R"),
-        );
-        eval_base_binding(
-            base_env,
             "print.bibentry",
             "function(x, ...) { n <- length(x); if (!n) { cl <- class(x)[[1L]]; cat(if (cl == \"bibentry\") \"bibentry()\" else sprintf(\"<0-length %s>\", cl), \"\\n\", sep = \"\") } else { print(format(x, ...)); invisible(x) } }",
         );

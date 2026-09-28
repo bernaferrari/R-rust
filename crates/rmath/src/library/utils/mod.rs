@@ -159,32 +159,6 @@ pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
             crate::sexp::constructors::Rf_mkString(edit.as_ptr()),
             env,
         );
-        let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(
-                "format.bibentry <- function(x, macros = NULL, ...) {\n\
-                 if (!length(x)) return(character())\n\
-                 author <- as.character(x)[1L]\n\
-                 if (length(macros)) {\n\
-                   nm <- names(macros)\n\
-                   for (i in seq_along(macros)) {\n\
-                     if (!is.null(nm) && nzchar(nm[i]))\n\
-                       author <- gsub(paste0(\"\\\\\", nm[i]), as.character(macros[[i]]), author, fixed = TRUE)\n\
-                   }\n\
-                 }\n\
-                 author <- gsub(\"\\\\R\", \"R\", author, fixed = TRUE)\n\
-                 paste0(author, \" (\", attr(x, \"year\"), \").\")\n\
-                 }",
-                arena,
-            )
-        });
-        crate::eval::parser::flush_literal_warnings();
-        if let Ok(exprs) = parsed {
-            for expr in exprs {
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                    crate::eval::eval::Rf_eval(expr, env)
-                }));
-            }
-        }
         let maker = crate::sexp::symbol::Rf_install(c"makeRweaveLatexCodeRunner".as_ptr());
         let bound = crate::sexp::envir::R_findVarInFrame(env, maker);
         if bound.is_null()
