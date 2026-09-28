@@ -63,18 +63,18 @@ pub(crate) unsafe fn posixct_tzone_string(source: SEXP) -> String {
     unsafe {
         let tzone = crate::sexp::attrib_core::getAttrib(source, Rf_install(c"tzone".as_ptr()));
         if tzone.is_null() || tzone == R_NilValue() || TYPEOF(tzone) != SEXPTYPE::STRSXP {
-            return "UTC".to_string();
+            return String::new();
         }
         if XLENGTH(tzone) == 0 {
-            return "UTC".to_string();
+            return String::new();
         }
         let value = STRING_ELT(tzone, 0);
         if value.is_null() || value == crate::sexp::globals::R_NaString() {
-            return "UTC".to_string();
+            return String::new();
         }
         CStr::from_ptr(CHAR(value))
             .to_str()
-            .unwrap_or("UTC")
+            .unwrap_or("")
             .to_string()
     }
 }
@@ -1856,6 +1856,10 @@ pub(crate) unsafe fn load_package_namespace(
     loading: &mut Vec<String>,
 ) -> Result<(SEXP, Option<NamespaceDirectives>), String> {
     unsafe {
+        if package == "compiler" {
+            let env = crate::eval::compiler::namespace();
+            return Ok((env, None));
+        }
         if let Some(env) = cached_package_namespace(package, package_dir) {
             if package == "methods" {
                 crate::library::methods::native_calls::install_methods_call_symbols(env);
@@ -1880,6 +1884,7 @@ pub(crate) unsafe fn load_package_namespace(
             }
             if package == "grDevices" {
                 crate::library::grdevices::install_call_symbols(env);
+                crate::library::grdevices::colors::initPalette();
             }
             if package == "grid" {
                 crate::library::grid::install_call_symbols(env);
@@ -1967,6 +1972,7 @@ pub(crate) unsafe fn load_package_namespace(
         }
         if package == "grDevices" {
             crate::library::grdevices::install_call_symbols(package_env);
+            crate::library::grdevices::colors::initPalette();
         }
         if package == "grid" {
             crate::library::grid::install_call_symbols(package_env);
@@ -1999,6 +2005,11 @@ pub(crate) fn cached_package_namespace(package: &str, package_dir: &Path) -> Opt
 pub(crate) fn cache_package_namespace(package: &str, package_dir: &Path, package_env: SEXP) {
     let package_dir = normalized_package_dir(package_dir);
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        if let Some((cached_dir, _)) = (*inst).package_namespace_cache.get(package) {
+            if cached_dir.to_string_lossy().starts_with("<builtin:") {
+                return;
+            }
+        }
         (*inst)
             .package_namespace_cache
             .insert(package.to_string(), (package_dir, package_env));
@@ -3102,6 +3113,49 @@ pub(crate) fn read_namespace_directives(
     let content = std::fs::read_to_string(&namespace)
         .map_err(|err| format!("could not read {}: {err}", namespace.display()))?;
     Ok(Some(parse_namespace_directives(&content)))
+}
+
+/// `::` checks exports on every lookup. Parsing `NAMESPACE` again each time
+/// dominates `UseMethod` on bytecode. The file is immutable for a session.
+pub(crate) fn cached_namespace_directives(package_dir: &Path) -> Option<NamespaceDirectives> {
+    use std::sync::Mutex;
+    static CACHE: Mutex<Option<BTreeMap<PathBuf, Option<NamespaceDirectives>>>> = Mutex::new(None);
+    let mut guard = CACHE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let cache = guard.get_or_insert_with(BTreeMap::new);
+    if let Some(hit) = cache.get(package_dir) {
+        return hit.clone();
+    }
+    let parsed = read_namespace_directives(package_dir).ok().flatten();
+    cache.insert(package_dir.to_path_buf(), parsed.clone());
+    parsed
+}
+
+/// Public `::` export check. Directive strings are cached; `exportPattern`
+/// is tested against this name and the live frame, because the first lookup
+/// often happens before the namespace frame is full.
+pub(crate) unsafe fn namespace_exports_contains(
+    package_dir: &Path,
+    package_env: SEXP,
+    name: &str,
+) -> bool {
+    unsafe {
+        let Some(directives) = cached_namespace_directives(package_dir) else {
+            return frame_binding_names(package_env, false).iter().any(|n| n == name);
+        };
+        if directives.exports.iter().any(|export| export == name) {
+            return true;
+        }
+        if !directives
+            .export_patterns
+            .iter()
+            .any(|pattern| simple_namespace_pattern_matches(pattern, name))
+        {
+            return false;
+        }
+        let c_name = CString::new(name).unwrap_or_else(|_| CString::new("").unwrap());
+        let value = crate::sexp::envir::R_findVarInFrame(package_env, Rf_install(c_name.as_ptr()));
+        !value.is_null() && value != crate::sexp::globals::R_UnboundValue()
+    }
 }
 
 pub(crate) fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
