@@ -341,9 +341,33 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             klass = getAttrib(obj, R_ClassSymbol());
         }
 
-        // Validate generic
         if generic == R_UnboundValue() {
-            generic = Rf_eval(CAR(args), env);
+            generic = crate::sexp::envir::R_findVarInFrame(
+                (*found_cptr).cloenv,
+                sym(".Generic"),
+            );
+        }
+        if TYPEOF(generic) == SEXPTYPE::PROMSXP {
+            generic = Rf_eval(generic, (*found_cptr).cloenv);
+        }
+        if generic == R_UnboundValue() {
+            if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+                generic = R_NilValue();
+            } else {
+                generic = Rf_eval(CAR(args), env);
+            }
+        }
+        if generic == R_NilValue() || generic.is_null() || generic == R_UnboundValue() {
+            let called = CAR((*found_cptr).call);
+            if TYPEOF(called) == SEXPTYPE::SYMSXP {
+                let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    crate::sexp::accessors::PRINTNAME(called),
+                ))
+                .to_string_lossy();
+                let bare = name.rsplit_once('.').map(|(head, _)| head).unwrap_or(name.as_ref());
+                let c_name = std::ffi::CString::new(bare).unwrap_or_default();
+                generic = crate::sexp::constructors::Rf_mkString(c_name.as_ptr());
+            }
         }
         if generic == R_NilValue() || generic.is_null() {
             std::panic::panic_any(crate::sexp::context::RError {
@@ -405,6 +429,12 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         let mut b: *const c_char = ptr::null();
         let mut method_idx: c_int = 0;
+        if TYPEOF(method) == SEXPTYPE::PROMSXP {
+            method = Rf_eval(method, (*found_cptr).cloenv);
+        }
+        if method != R_UnboundValue() && isString(method) == FALSE {
+            method = R_UnboundValue();
+        }
         if method != R_UnboundValue() {
             if isString(method) == FALSE {
                 std::panic::panic_any(crate::sexp::context::RError {
