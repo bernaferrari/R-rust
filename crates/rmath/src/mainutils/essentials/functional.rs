@@ -5293,6 +5293,50 @@ unsafe fn record_window_limits(args: SEXP) {
             y_lo = y_lo.log10();
             y_hi = y_hi.log10();
         }
+        let style_i = |name: &str| {
+            matches!(
+                crate::library::graphics::par::parameter(name),
+                crate::library::graphics::par::ParValue::String(s) if s == "i"
+            )
+        };
+        let x_tight = style_i("xaxs");
+        let y_tight = style_i("yaxs");
+        if !x_tight {
+            let extra = if x_hi.abs() > 100.0 || x_lo.abs() > 100.0 {
+                0.04 * x_hi - 0.04 * x_lo
+            } else {
+                (x_hi - x_lo) * 0.04
+            };
+            if extra.is_finite() && extra != 0.0 {
+                if x_lo <= x_hi {
+                    let (a, b) = (x_lo - extra, x_hi + extra);
+                    if a.is_finite() { x_lo = a; }
+                    if b.is_finite() { x_hi = b; }
+                } else {
+                    let (a, b) = (x_lo + extra, x_hi - extra);
+                    if a.is_finite() { x_lo = a; }
+                    if b.is_finite() { x_hi = b; }
+                }
+            }
+        }
+        if !y_tight {
+            let extra = if y_hi.abs() > 100.0 || y_lo.abs() > 100.0 {
+                0.04 * y_hi - 0.04 * y_lo
+            } else {
+                (y_hi - y_lo) * 0.04
+            };
+            if extra.is_finite() && extra != 0.0 {
+                if y_lo <= y_hi {
+                    let (a, b) = (y_lo - extra, y_hi + extra);
+                    if a.is_finite() { y_lo = a; }
+                    if b.is_finite() { y_hi = b; }
+                } else {
+                    let (a, b) = (y_lo + extra, y_hi - extra);
+                    if a.is_finite() { y_lo = a; }
+                    if b.is_finite() { y_hi = b; }
+                }
+            }
+        }
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
         set_plot_parameter("usr", ParValue::Real(vec![x_lo, x_hi, y_lo, y_hi]));
         set_plot_parameter("xlog", ParValue::Logical(vec![if xlog { 1 } else { 0 }]));
@@ -5313,14 +5357,14 @@ unsafe fn record_window_limits(args: SEXP) {
             let (p0, p1, n) = log_axp(x_lo, x_hi);
             set_plot_parameter("xaxp", ParValue::Real(vec![p0, p1, n]));
         } else {
-            let (xa0, xa1, xn) = pretty_axp(xv[0], xv[1]);
+            let (xa0, xa1, xn) = pretty_axp(x_lo, x_hi);
             set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
         }
         if ylog {
             let (p0, p1, n) = log_axp(y_lo, y_hi);
             set_plot_parameter("yaxp", ParValue::Real(vec![p0, p1, n]));
         } else {
-            let (ya0, ya1, yn) = pretty_axp(yv[0], yv[1]);
+            let (ya0, ya1, yn) = pretty_axp(y_lo, y_hi);
             set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
         }
     }
