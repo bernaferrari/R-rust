@@ -333,6 +333,7 @@ pub unsafe fn do_nlm(
         use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::protect;
+        let args = CDR(args);
         let fun = CAR(args);
         let p = CAR(CDR(args));
         if XLENGTH(p) != 1 {
@@ -379,6 +380,14 @@ pub unsafe fn do_nlm(
         );
         result
     }
+}
+pub unsafe extern "C-unwind" fn c_nlm(
+    call: crate::sexp::ffi::SEXP,
+    op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    rho: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { do_nlm(call, op, args, rho) }
 }
 
 

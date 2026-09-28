@@ -528,7 +528,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
     "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom", "C_r2dtable",
     "C_termsform", "C_modelframe", "C_modelmatrix", "C_updateform", "C_Cdqrls", "C_compcases", "C_influence",
-    "C_cov", "C_cor", "C_Cdist", "C_hclust", "C_hcass2", "C_rbart", "C_bvalus", "C_numeric_deriv", "C_optim", "C_optimhess",
+    "C_cov", "C_cor", "C_Cdist", "C_hclust", "C_hcass2", "C_rbart", "C_bvalus", "C_numeric_deriv", "C_optim", "C_optimhess", "C_nlm",
     "C_ARIMA_transPars", "C_ARIMA_CSS", "C_ARIMA_Like", "C_ARIMA_Invtrans", "C_ARIMA_undoPars", "C_ARIMA_Gradtrans", "C_TSconv", "C_getQ0",
     "C_doD", "C_deriv", "C_fft", "C_mvfft",
     "C_ApproxTest", "C_Approx", "C_zeroin2", "C_do_fmin", "C_Fisher_sim", "C_kmns", "C_eureka", "C_multi_yw", "C_call_dqags", "C_call_dqagi",
@@ -580,6 +580,7 @@ pub fn lookup_external(name: &str) -> DL_FUNC {
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "deriv" => as_dl(c_deriv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "optim" => as_dl(super::optim::c_optim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "nlm" => as_dl(super::zeroin::c_nlm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "optimhess" => as_dl(super::optim::c_optimhess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "modelframe" => {
             as_dl(c_modelframe as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
