@@ -1238,7 +1238,27 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                 let name = std::ffi::CStr::from_ptr(CHAR(elt))
                                     .to_string_lossy()
                                     .into_owned();
-                                if name.is_empty() || !is_known_par(&name) || is_readonly_par(&name) {
+                                if name.is_empty() {
+                                    let inner = VECTOR_ELT(value, i);
+                                    if TYPEOF(inner) == SEXPTYPE::STRSXP && XLENGTH(inner) > 0 {
+                                        let ch = STRING_ELT(inner, 0);
+                                        let qname = std::ffi::CStr::from_ptr(CHAR(ch))
+                                            .to_string_lossy()
+                                            .into_owned();
+                                        if is_known_par(&qname) {
+                                            query_names.push(qname);
+                                        }
+                                    } else {
+                                        let msg = std::ffi::CString::new(format!(
+                                            "argument {} does not name a graphical parameter",
+                                            i + 1
+                                        ))
+                                        .unwrap_or_default();
+                                        crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                                    }
+                                    continue;
+                                }
+                                if !is_known_par(&name) || is_readonly_par(&name) {
                                     continue;
                                 }
                                 set_names.push(name);
