@@ -3483,6 +3483,7 @@ pub unsafe fn do_fisher_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if tab.is_null() || tab == R_NilValue() || XLENGTH(tab) < 4 {
             return R_NilValue();
         }
+
         let a11 = elt_real_safe(tab, 0);
         let a21 = elt_real_safe(tab, 1);
         let a12 = elt_real_safe(tab, 2);
@@ -15207,6 +15208,11 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
         let choices = if choices_missing {
             match_arg_choices_from_formals(arg_expr, rho)
+        } else if choices_expr == crate::sexp::symbol::R_DotsSymbol() {
+            let cell = crate::sexp::constructors::Rf_cons(choices_expr, R_NilValue());
+            let _cell = protect(cell);
+            let spliced = crate::eval::dispatch::evalList(cell, rho, call, -1);
+            CAR(spliced)
         } else {
             crate::eval::eval::Rf_eval(choices_expr, rho)
         };
