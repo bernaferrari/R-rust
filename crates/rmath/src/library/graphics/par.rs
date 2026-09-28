@@ -1307,7 +1307,13 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                             .to_string_lossy()
                                             .into_owned();
                                         if is_known_par(&qname) {
-                                            query_names.push(qname);
+                                            list_slots
+                                                .get_or_insert_with(Vec::new)
+                                                .push((qname, true));
+                                        } else {
+                                            list_slots
+                                                .get_or_insert_with(Vec::new)
+                                                .push((String::new(), false));
                                         }
                                     } else {
                                         let msg = std::ffi::CString::new(format!(
@@ -1316,6 +1322,9 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                         ))
                                         .unwrap_or_default();
                                         crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                                        list_slots
+                                            .get_or_insert_with(Vec::new)
+                                            .push((String::new(), false));
                                     }
                                     continue;
                                 }
