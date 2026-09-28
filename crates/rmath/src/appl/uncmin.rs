@@ -2425,5 +2425,13 @@ pub unsafe fn optif9(
         *msg = msg_val;
         *itrmcd = itrmcd_val;
         *itncnt = itncnt_val;
+        if !_fpls.is_null() {
+            *_fpls = fpls;
+        }
+        if !_gpls.is_null() {
+            for i in 0..n {
+                *_gpls.add(i) = gpls[i];
+            }
+        }
     }
 }

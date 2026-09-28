@@ -413,7 +413,6 @@ pub unsafe fn do_nlm(
         use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::protect;
-        let args = CDR(args);
         let fun = CAR(args);
         let p = CAR(CDR(args));
         let hess_arg = CAR(CDR(CDR(args)));
@@ -591,7 +590,7 @@ pub unsafe extern "C-unwind" fn c_nlm(
     args: crate::sexp::ffi::SEXP,
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { do_nlm(call, op, args, rho) }
+    unsafe { do_nlm(call, op, crate::sexp::accessors::CDR(args), rho) }
 }
 
 
