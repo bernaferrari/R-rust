@@ -2121,6 +2121,24 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // uses the closure as the generic skeleton (rport-2gpp.2.3).
         eval_base_binding(base_env, "print", "function(x, ...) UseMethod(\"print\")");
         eval_base_binding(base_env, "summary", "function(object, ...) UseMethod(\"summary\")");
+        eval_base_binding(
+            base_env,
+            "summary.factor",
+            "function(object, maxsum = 100L, ...) {\n\
+             nas <- is.na(object)\n\
+             ll <- levels(object)\n\
+             if (ana <- any(nas)) maxsum <- maxsum - 1L\n\
+             tbl <- table(object)\n\
+             tt <- c(tbl)\n\
+             names(tt) <- dimnames(tbl)[[1L]]\n\
+             if (length(ll) > maxsum) {\n\
+                 drop <- maxsum:length(ll)\n\
+                 o <- sort.list(tt, decreasing = TRUE)\n\
+                 tt <- c(tt[o[-drop]], `(Other)` = sum(tt[o[drop]]))\n\
+             }\n\
+             if (ana) c(tt, NAs = sum(nas)) else tt\n\
+             }",
+        );
         // GNU stats/R/AIC.R: AIC is UseMethod so AIC.pfit S3 methods run
         // (reg-S4.R 334-343). The former builtin is AIC.default.
         eval_base_binding(
