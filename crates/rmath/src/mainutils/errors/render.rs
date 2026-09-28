@@ -863,9 +863,7 @@ pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
         // override (upstream: the closure context above its .Internal)
         // claims attribution for the whole handler body.
         let override_call = super::warning_call_override();
-        let call = if !call.is_null() && call != crate::sexp::globals::R_NilValue() {
-            call
-        } else if !override_call.is_null() {
+        let call = if !override_call.is_null() {
             override_call
         } else {
             call
