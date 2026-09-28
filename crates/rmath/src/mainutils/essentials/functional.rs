@@ -5328,7 +5328,7 @@ unsafe fn record_window_limits(args: SEXP) {
             }
         }
         let clamp_log_end = |v: &mut f64| {
-            if 10f64.powf(*v) == 0.0 {
+            if !v.is_finite() || 10f64.powf(*v) == 0.0 {
                 *v = (1.01 * f64::MIN).log10();
             } else if *v >= 308.25035 {
                 *v = (0.99 * f64::MAX).log10();
