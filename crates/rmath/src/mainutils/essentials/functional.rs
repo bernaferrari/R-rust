@@ -5301,6 +5301,21 @@ unsafe fn record_window_limits(args: SEXP) {
             y_lo = to_log(y_lo);
             y_hi = to_log(y_hi);
         }
+        let clamp_log_end = |v: &mut f64| {
+            if *v == f64::INFINITY || *v >= 308.25035 {
+                *v = (0.99 * f64::MAX).log10();
+            } else if !v.is_finite() || *v < (1.01 * f64::MIN_POSITIVE).log10() || 10f64.powf(*v) == 0.0 {
+                *v = (1.01 * f64::MIN_POSITIVE).log10();
+            }
+        };
+        if xlog {
+            clamp_log_end(&mut x_lo);
+            clamp_log_end(&mut x_hi);
+        }
+        if ylog {
+            clamp_log_end(&mut y_lo);
+            clamp_log_end(&mut y_hi);
+        }
         let style_i = |name: &str| {
             matches!(
                 crate::library::graphics::par::parameter(name),
@@ -5335,13 +5350,6 @@ unsafe fn record_window_limits(args: SEXP) {
                 if b.is_finite() { y_hi = b; }
             }
         }
-        let clamp_log_end = |v: &mut f64| {
-            if *v == f64::INFINITY || *v >= 308.25035 {
-                *v = (0.99 * f64::MAX).log10();
-            } else if !v.is_finite() || 10f64.powf(*v) == 0.0 {
-                *v = (1.01 * f64::MIN_POSITIVE).log10();
-            }
-        };
         if xlog {
             clamp_log_end(&mut x_lo);
             clamp_log_end(&mut x_hi);
