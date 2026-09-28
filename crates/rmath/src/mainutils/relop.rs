@@ -644,25 +644,7 @@ unsafe fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
             return true;
         }
 
-        let mut x = x;
-        let mut y = y;
-        let mut kept = Vec::new();
-        if TYPEOF(x) == SEXPTYPE::LANGSXP && ATTRIB(x) != R_NilValue() {
-            x = crate::mainutils::duplicate::Rf_duplicate(x);
-            kept.push(crate::sexp::protect::protect(x));
-            let srcref = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
-            crate::sexp::attrib_core::setAttrib(x, srcref, R_NilValue());
-        }
-        if TYPEOF(y) == SEXPTYPE::LANGSXP && ATTRIB(y) != R_NilValue() {
-            y = crate::mainutils::duplicate::Rf_duplicate(y);
-            kept.push(crate::sexp::protect::protect(y));
-            let srcref = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
-            crate::sexp::attrib_core::setAttrib(y, srcref, R_NilValue());
-        }
-
-        let eq = R_compute_identical(x, y, 16) != 0;
-        drop(kept);
-        eq
+        R_compute_identical(x, y, 16) != 0
 
     }
 }
