@@ -435,7 +435,11 @@ pub unsafe fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             typ
         };
-        crate::modules::lapack::lapack_impl::La_dgecon(x, typ)
+        if TYPEOF(x) == SEXPTYPE::CPLXSXP {
+            crate::modules::lapack::lapack_impl::La_zgecon(x, typ)
+        } else {
+            crate::modules::lapack::lapack_impl::La_dgecon(x, typ)
+        }
     }
 }
 pub unsafe fn do_la_dlange(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

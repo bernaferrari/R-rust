@@ -119,17 +119,11 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
             crate::sexp::context::r_error("invalid matrix dimensions or length");
         }
 
-        let Some(iwork_len) = (min_np as usize).checked_mul(8) else {
-            crate::sexp::context::r_error("matrix dimensions are too large");
-        };
-        let Some(scratch_bytes) = len
-            .checked_mul(std::mem::size_of::<f64>())
-            .and_then(|bytes| {
-                bytes.checked_add(iwork_len.checked_mul(std::mem::size_of::<c_int>())?)
-            })
+        let Some(scratch_bytes) = super::workspace_size::svd_scratch_bytes(len, min_np as usize)
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
+        let iwork_len = (min_np as usize).saturating_mul(8);
         let scratch_reservation = with_current_instance(|instance| {
             with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
         });
@@ -1857,14 +1851,8 @@ pub unsafe fn La_qr(ain: SEXP) -> SEXP {
             crate::sexp::context::r_error("invalid matrix dimensions or length");
         }
         let lda = m.max(1);
-        let Some(scratch_bytes) = len
-            .checked_mul(std::mem::size_of::<f64>())
-            .and_then(|bytes| {
-                bytes.checked_add((n as usize).checked_mul(std::mem::size_of::<c_int>())?)
-            })
-            .and_then(|bytes| {
-                bytes.checked_add((min_mn as usize).checked_mul(std::mem::size_of::<f64>())?)
-            })
+        let Some(scratch_bytes) =
+            super::workspace_size::qr_scratch_bytes(m as usize, n as usize)
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
@@ -2241,19 +2229,21 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
 
         let ju = CHAR(STRING_ELT(jobu, 0)) as *const u8;
 
-        let Some(iwork_len) = (min_np as usize).checked_mul(8) else {
+        let mn0 = min_np as usize;
+        let mn1 = (if n > p { n } else { p }) as usize;
+        let rwork_len = if unsafe { *ju } == b'N' {
+            mn0.saturating_mul(7)
+        } else {
+            mn0.saturating_mul((5 * mn1 + 7).max(2 * mn1 + 2 * mn0 + 1))
+        };
+        let Some(scratch_bytes) = super::workspace_size::complex_svd_scratch_bytes(
+            len,
+            min_np as usize,
+            std::mem::size_of::<LapRcomplex>(),
+        ) else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
-        let rwork_len = min_np as usize;
-        let Some(scratch_bytes) = len
-            .checked_mul(std::mem::size_of::<LapRcomplex>())
-            .and_then(|bytes| bytes.checked_add(rwork_len.checked_mul(std::mem::size_of::<f64>())?))
-            .and_then(|bytes| {
-                bytes.checked_add(iwork_len.checked_mul(std::mem::size_of::<c_int>())?)
-            })
-        else {
-            crate::sexp::context::r_error("matrix dimensions are too large");
-        };
+        let iwork_len = rwork_len.saturating_mul(8);
         let scratch_reservation = with_current_instance(|instance| {
             with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
         });
