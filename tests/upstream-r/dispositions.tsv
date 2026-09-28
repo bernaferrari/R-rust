@@ -67,7 +67,7 @@ reg-plot.R	skip	rport-2gpp.3	requires complete graphics, grid, device, and PDF c
 reg-tests-1a.R	pass	-	-
 reg-tests-1b.R	pass	-	-
 reg-tests-1c.R	pass	-	-
-reg-tests-1d.R	skip	rport-2gpp.5	requires broad platform, process, date-time, and connection regression parity
+reg-tests-1d.R	pass	-	-
 reg-tests-1e.R	skip	rport-2gpp.5	requires broad parser, evaluator, ALTREP, and long-vector regression parity
 reg-tests-2.R	skip	rport-2gpp.5	requires broad long-tail base runtime regression parity
 reg-tests-3.R	skip	rport-2gpp.5	requires broad long-tail package, compiler, and runtime regression parity
