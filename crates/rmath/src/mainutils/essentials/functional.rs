@@ -5308,15 +5308,10 @@ unsafe fn record_window_limits(args: SEXP) {
                 (x_hi - x_lo) * 0.04
             };
             if extra.is_finite() && extra != 0.0 {
-                if x_lo <= x_hi {
-                    let (a, b) = (x_lo - extra, x_hi + extra);
-                    if a.is_finite() { x_lo = a; }
-                    if b.is_finite() { x_hi = b; }
-                } else {
-                    let (a, b) = (x_lo + extra, x_hi - extra);
-                    if a.is_finite() { x_lo = a; }
-                    if b.is_finite() { x_hi = b; }
-                }
+                let a = x_lo - extra;
+                let b = x_hi + extra;
+                if a.is_finite() { x_lo = a; }
+                if b.is_finite() { x_hi = b; }
             }
         }
         if !y_tight {
@@ -5326,15 +5321,10 @@ unsafe fn record_window_limits(args: SEXP) {
                 (y_hi - y_lo) * 0.04
             };
             if extra.is_finite() && extra != 0.0 {
-                if y_lo <= y_hi {
-                    let (a, b) = (y_lo - extra, y_hi + extra);
-                    if a.is_finite() { y_lo = a; }
-                    if b.is_finite() { y_hi = b; }
-                } else {
-                    let (a, b) = (y_lo + extra, y_hi - extra);
-                    if a.is_finite() { y_lo = a; }
-                    if b.is_finite() { y_hi = b; }
-                }
+                let a = y_lo - extra;
+                let b = y_hi + extra;
+                if a.is_finite() { y_lo = a; }
+                if b.is_finite() { y_hi = b; }
             }
         }
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
