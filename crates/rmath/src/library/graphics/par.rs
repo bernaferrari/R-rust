@@ -1039,6 +1039,39 @@ unsafe fn par_value_to_sexp(value: &ParValue) -> SEXP {
     }
 }
 
+unsafe fn mixed_par_list(slots: &[(String, bool)]) -> SEXP {
+    unsafe {
+        let n = slots.len() as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let name_vec = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if name_vec.is_null() {
+            return R_NilValue();
+        }
+        let _name_guard = protect(name_vec);
+        for (i, (name, known)) in slots.iter().enumerate() {
+            let value = if *known {
+                let value = with_par_state(|state| current_par_value(state, name));
+                par_value_to_sexp(&value)
+            } else {
+                R_NilValue()
+            };
+            SET_VECTOR_ELT(result, i as R_xlen_t, value);
+            let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(name_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            name_vec,
+        );
+        result
+    }
+}
+
 unsafe fn null_named_list(names: &[String]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as R_xlen_t);
@@ -1209,6 +1242,7 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut set_names = Vec::new();
         let mut set_values = Vec::new();
         let mut warned_names = Vec::new();
+        let mut list_slots: Option<Vec<(String, bool)>> = None;
         let mut no_readonly = false;
         let mut arg_n = 0_i32;
 
@@ -1291,7 +1325,7 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                     ))
                                     .unwrap_or_default();
                                     crate::mainutils::errors::warningcall(call, msg.as_ptr());
-                                    warned_names.push(name);
+                                    list_slots.get_or_insert_with(Vec::new).push((name, false));
                                     continue;
                                 }
                                 if is_readonly_par(&name) {
@@ -1300,11 +1334,18 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                     ))
                                     .unwrap_or_default();
                                     crate::mainutils::errors::warningcall(call, msg.as_ptr());
-                                    warned_names.push(name);
+                                    list_slots.get_or_insert_with(Vec::new).push((name, true));
                                     continue;
                                 }
+                                list_slots.get_or_insert_with(Vec::new).push((name.clone(), true));
+                                let raw = VECTOR_ELT(value, i);
+                                if name == "usr" && XLENGTH(raw) != 4 {
+                                    par_error(
+                                        "graphical parameter \"usr\" has the wrong length".to_string(),
+                                    );
+                                }
                                 set_names.push(name);
-                                set_values.push(sexp_to_par_value(VECTOR_ELT(value, i)));
+                                set_values.push(sexp_to_par_value(raw));
                             }
                         } else if n > 0
                             && (0..n).all(|i| TYPEOF(VECTOR_ELT(value, i)) == SEXPTYPE::STRSXP)
@@ -1346,6 +1387,19 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             current = CDR(current);
         }
 
+        if let Some(slots) = list_slots.as_ref() {
+            let result = mixed_par_list(slots);
+            if !set_names.is_empty() {
+                let _kept = protect(result);
+                with_par_state(|state| {
+                    for (name, value) in set_names.iter().zip(set_values) {
+                        state.overrides.insert(name.clone(), value);
+                    }
+                });
+                crate::sexp::globals::set_R_Visible(FALSE);
+            }
+            return result;
+        }
         if set_names.is_empty() && query_names.is_empty() {
             if !warned_names.is_empty() {
                 return null_named_list(&warned_names);
