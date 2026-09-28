@@ -91,10 +91,12 @@ pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R
             && TYPEOF(was) == SEXPTYPE::LGLSXP
             && XLENGTH(was) > 0
             && *INTEGER(was) == TRUE;
-        if was_true && nv != old_n {
+        if was_true && nv == old_n {
             let na = crate::sexp::constructors::Rf_ScalarLogical(NA_INTEGER);
             let _na = protect(na);
             crate::sexp::attrib_core::setAttrib(x, bal_sym, na);
+        } else {
+            crate::sexp::attrib_core::setAttrib(x, bal_sym, R_NilValue());
         }
     }
 }
