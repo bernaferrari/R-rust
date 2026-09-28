@@ -78,6 +78,12 @@ unsafe extern "C-unwind" fn c_g_axis_pars(
 ) -> crate::sexp::ffi::SEXP {
     unsafe { axis_scales::R_GAxisPars(usr, is_log, nint) }
 }
+unsafe extern "C-unwind" fn c_gray(
+    lev: crate::sexp::ffi::SEXP,
+    alpha: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { colors::do_gray(lev, alpha) }
+}
 
 fn as_ext(f: unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) -> crate::unix::dynload::DL_FUNC {
     Some(unsafe { std::mem::transmute(f) })
@@ -99,7 +105,7 @@ pub fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
         "devnext" => as_ext(c_devnext),
         "devprev" => as_ext(c_devprev),
         "R_CreateAtVector" => Some(unsafe { std::mem::transmute(c_create_at as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
-        "R_GAxisPars" => Some(unsafe { std::mem::transmute(c_g_axis_pars as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
+        "gray" => Some(unsafe { std::mem::transmute(c_gray as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
         _ => None,
     }
 }
@@ -133,6 +139,7 @@ pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
             "C_devprev",
             "C_R_CreateAtVector",
             "C_R_GAxisPars",
+            "C_gray",
         ] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(
