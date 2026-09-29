@@ -6720,12 +6720,8 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
         );
         if TYPEOF(specials) == SEXPTYPE::STRSXP && XLENGTH(specials) > 0 {
             let nspec = XLENGTH(specials) as usize;
-            let spec = Rf_allocVector3(SEXPTYPE::VECSXP, nspec as i64);
-            let _sp = protect(spec);
-            let spec_names = Rf_allocVector3(SEXPTYPE::STRSXP, nspec as i64);
-            let _sn = protect(spec_names);
-            for s in 0..nspec {
-                SET_STRING_ELT(spec_names, s as i64, STRING_ELT(specials, s as i64));
+            let mut spec = R_NilValue();
+            for s in (0..nspec).rev() {
                 let want = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(specials, s as i64)))
                     .to_string_lossy()
                     .into_owned();
@@ -6742,21 +6738,21 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
                         }
                     }
                 }
-                if hits.is_empty() {
-                    SET_VECTOR_ELT(spec, s as i64, R_NilValue());
+                let val = if hits.is_empty() {
+                    R_NilValue()
                 } else {
                     let iv = Rf_allocVector3(SEXPTYPE::INTSXP, hits.len() as i64);
                     for (k, &h) in hits.iter().enumerate() {
                         *INTEGER(iv).add(k) = h;
                     }
-                    SET_VECTOR_ELT(spec, s as i64, iv);
-                }
+                    iv
+                };
+                spec = crate::sexp::constructors::Rf_cons(val, spec);
+                let tag = crate::sexp::symbol::Rf_install(
+                    std::ffi::CString::new(want).unwrap_or_default().as_ptr(),
+                );
+                crate::sexp::accessors::SETTAG(spec, tag);
             }
-            crate::sexp::attrib_core::setAttrib(
-                spec,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                spec_names,
-            );
             crate::sexp::attrib_core::setAttrib(
                 form,
                 crate::sexp::symbol::Rf_install(c"specials".as_ptr()),
