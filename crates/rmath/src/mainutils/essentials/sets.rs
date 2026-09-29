@@ -1738,7 +1738,7 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return do_cut_POSIXt(_call, _op, args, _rho);
         }
         if sexp_has_class(x, "dendrogram") {
-            let sym = Rf_install(b"cut.dendrogram\0".as_ptr() as *const libc::c_char);
+            let sym = Rf_install(c"cut.dendrogram".as_ptr());
             let fun = crate::eval::eval::Rf_eval(sym, crate::sexp::globals::R_BaseEnv());
             if !fun.is_null() && fun != R_NilValue() && TYPEOF(fun) == SEXPTYPE::CLOSXP {
                 return crate::eval::closure::applyClosure(_call, fun, args, _rho, _rho, 0);
