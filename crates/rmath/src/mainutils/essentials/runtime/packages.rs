@@ -486,14 +486,21 @@ pub unsafe fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
             && quietly != R_NilValue()
             && crate::sexp::accessors::LOGICAL_ELT(quietly, 0) == TRUE;
         let check = arg_by_name_or_position(args, &["versionCheck"], 2);
-        if !check.is_null() && check != R_NilValue() && !namespace_version_ok(&package, check) {
-            if !is_quiet {
-                eprintln!(
-                    "Failed with error:  'namespace '{package}' 4.4.1 is already loaded, but > 4.4.1 is required'"
-                );
+        if !check.is_null() && check != R_NilValue() {
+            if TYPEOF(check) != SEXPTYPE::VECSXP {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "invalid 'versionCheck' argument".to_string(),
+                });
             }
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return Rf_ScalarLogical(FALSE);
+            if !namespace_version_ok(&package, check) {
+                if !is_quiet {
+                    eprintln!(
+                        "Failed with error:  'namespace '{package}' 4.4.1 is already loaded, but > 4.4.1 is required'"
+                    );
+                }
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                return Rf_ScalarLogical(FALSE);
+            }
         }
 
         Rf_ScalarLogical(if load_package_namespace_by_name(&package).is_ok() {

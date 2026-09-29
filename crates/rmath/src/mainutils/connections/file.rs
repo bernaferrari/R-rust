@@ -289,12 +289,12 @@ pub fn open_gz_conn(conn: &mut RConn, mode: &str) -> io::Result<()> {
     if mode.starts_with('r') || mode.starts_with('a') || mode.contains('+') {
         let path = Path::new(&conn.description);
         if path.exists() {
-            let mut file = File::open(path)?;
-            let mut decoder = MultiGzDecoder::new(&mut file);
-            if decoder.read_to_end(&mut conn.raw_data).is_err() {
-                conn.raw_data.clear();
-                let mut plain = File::open(path)?;
-                plain.read_to_end(&mut conn.raw_data)?;
+            let mut raw = Vec::new();
+            File::open(path)?.read_to_end(&mut raw)?;
+            if raw.len() >= 2 && raw[0] == 0x1f && raw[1] == 0x8b {
+                MultiGzDecoder::new(&raw[..]).read_to_end(&mut conn.raw_data)?;
+            } else {
+                conn.raw_data = raw;
             }
         } else if mode.starts_with('r') {
             return Err(io::Error::new(io::ErrorKind::NotFound, "file not found"));
