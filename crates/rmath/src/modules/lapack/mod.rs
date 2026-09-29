@@ -53,6 +53,7 @@ mod lapack;
     non_camel_case_types
 )]
 pub(crate) mod lapack_impl;
+mod workspace_size;
 #[allow(
     dead_code,
     unused_imports,
