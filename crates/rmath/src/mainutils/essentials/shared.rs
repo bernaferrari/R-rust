@@ -2232,8 +2232,14 @@ unsafe fn record_s3_method_row(package_env: SEXP, generic: &str, class: &str, me
         *INTEGER(dim).add(1) = 4;
         crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
         if old_n > 0 {
-            for i in 0..(old_n * 4) {
-                SET_STRING_ELT(methods, i, STRING_ELT(old, i));
+            for col in 0..4 {
+                for row in 0..old_n {
+                    SET_STRING_ELT(
+                        methods,
+                        row + col * new_n,
+                        STRING_ELT(old, row + col * old_n),
+                    );
+                }
             }
         }
         let put = |col: i64, text: &str| {
