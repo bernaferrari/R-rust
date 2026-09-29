@@ -2834,8 +2834,9 @@ mod tests {
     #[test]
     fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
         let _session = RSession::new();
+        const NAMESPACE_ROOT: usize = if cfg!(target_arch = "wasm32") { 3 } else { 6 };
         let roots = with_arena(|arena| {
-            (0..7)
+            (0..=NAMESPACE_ROOT)
                 .map(|_| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
                 .collect::<Vec<_>>()
         });
@@ -2844,13 +2845,16 @@ mod tests {
             (*inst).error_state.warning_call = roots[0];
             (*inst).objects_state.deferred_default_object = roots[1];
             unsafe { (*inst).eval_state.bc_stack.push(roots[2]) };
-            let mut http_roots = roots[3..6].iter().copied();
-            (*inst)
-                .httpd_state
-                .visit_roots(|slot| *slot = http_roots.next().expect("HTTP root slot"));
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let mut http_roots = roots[3..6].iter().copied();
+                (*inst)
+                    .httpd_state
+                    .visit_roots(|slot| *slot = http_roots.next().expect("HTTP root slot"));
+            }
             (*inst).package_namespace_cache.insert(
                 "rootProbePkg".to_string(),
-                (std::path::PathBuf::from("/root-probe"), roots[6]),
+                (std::path::PathBuf::from("/root-probe"), roots[NAMESPACE_ROOT]),
             );
         });
 
@@ -2887,16 +2891,19 @@ mod tests {
                 .bc_stack
                 .visit_roots(|root| bytecode_root = Some(*root));
             assert_eq!(bytecode_root, Some(replacements[2]));
-            let mut http_roots = Vec::new();
-            (*inst)
-                .httpd_state
-                .visit_roots(|root| http_roots.push(*root));
-            assert_eq!(http_roots, replacements[3..6]);
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let mut http_roots = Vec::new();
+                (*inst)
+                    .httpd_state
+                    .visit_roots(|root| http_roots.push(*root));
+                assert_eq!(http_roots, replacements[3..6]);
+            }
             let cached_root = {
                 let cache = unsafe { &(*inst).package_namespace_cache };
                 cache["rootProbePkg"].1
             };
-            assert_eq!(cached_root, replacements[6]);
+            assert_eq!(cached_root, replacements[NAMESPACE_ROOT]);
         });
     }
 
