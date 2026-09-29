@@ -622,14 +622,18 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
             // default is still the value: nmx[parametric] with
             // parametric = FALSE must see FALSE, not a missing index.
             let code = crate::sexp::accessors::PRCODE(value);
+            if code == R_MissingArg() || code.is_null() {
+                if keep_missing {
+                    return R_MissingArg();
+                }
+                bc_missing_arg_error(symbol);
+            }
             if keep_missing
-                && (code == R_MissingArg()
-                    || code.is_null()
-                    || (TYPEOF(code) == SEXPTYPE::SYMSXP
-                        && crate::sexp::envir::R_missing(
-                            code,
-                            crate::sexp::accessors::PRENV(value),
-                        ) != 0))
+                && TYPEOF(code) == SEXPTYPE::SYMSXP
+                && crate::sexp::envir::R_missing(
+                    code,
+                    crate::sexp::accessors::PRENV(value),
+                ) != 0
             {
                 return R_MissingArg();
             }
@@ -3243,6 +3247,22 @@ where
         f()
     }
 }
+unsafe fn protect_stack_slots(stack: &R_bcstack_t) -> crate::sexp::protect::ProtectGuard<'static> {
+    unsafe {
+        let depth = stack.depth();
+        let mut rooted = 0usize;
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            for i in 0..depth {
+                let val = stack.at(i);
+                if !val.is_null() {
+                    crate::sexp::protect::push_protect_in(inst, val);
+                    rooted += 1;
+                }
+            }
+        });
+        crate::sexp::protect::protect_n(rooted)
+    }
+}
 
 unsafe fn bind_for_element(
     stack: &R_bcstack_t,
@@ -3292,7 +3312,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
             0
         };
 
-        let mut pc: c_int = 0; // program counter
+        let mut pc: c_int = 0;
         let mut stack = R_bcstack_t::new(stack_depth as usize);
         let mut for_loops: Vec<ForLoopState> = Vec::new();
         let mut loop_stack: Vec<LoopContext> = Vec::new();
@@ -3347,6 +3367,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         // AST evaluator instead of pushing the raw DOTSXP.
                         bc_error("'...' used in an invalid context");
                     } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
+                        let code = crate::sexp::accessors::PRCODE(val);
+                        if code == R_MissingArg() || code.is_null() {
+                            bc_missing_arg_error(sym);
+                        }
                         let forced =
                             with_stack_rooted(&stack, val, || unsafe { forcePromise(val) });
                         stack.push(forced);
@@ -3431,7 +3455,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_RETURN => {
-                    return stack_pop_checked(&mut stack, "RETURN");
+                    let result = stack_pop_checked(&mut stack, "RETURN");
+                    return result;
                 }
 
                 opcodes::OP_visible => {
@@ -3535,6 +3560,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 opcodes::OP_CALL => {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALL");
+                    let _stack_guard = protect_stack_slots(&stack);
+                    let mut arg_roots: Vec<crate::sexp::protect::ProtectGuard<'static>> = Vec::new();
                     let fun = stack_pop_checked(&mut stack, "CALL function");
                     let mut args = R_NilValue();
                     let top = stack.depth();
@@ -3542,21 +3569,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     for _ in 0..nargs {
                         let arg = stack_pop_checked(&mut stack, "CALL argument");
                         let expr = if TYPEOF(arg) == SEXPTYPE::PROMSXP {
-                            let code = crate::sexp::accessors::PRCODE(arg);
-                            if TYPEOF(code) == SEXPTYPE::BCODESXP {
-                                let source = BCODE_EXPR(code);
-                                if source.is_null() || source == R_NilValue() {
-                                    arg
-                                } else {
-                                    source
-                                }
-                            } else {
-                                code
-                            }
+                            crate::sexp::accessors::PRCODE(arg)
                         } else {
                             arg
                         };
                         args = Rf_cons(expr, args);
+                        arg_roots.push(crate::sexp::protect::protect(args));
+
+
                         cells.push(args);
                     }
                     apply_pending_arg_tags(&mut pending_arg_tags, top, &cells);
@@ -3564,6 +3584,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         stack.push(R_NilValue());
                     } else {
                         let call = Rf_cons(fun, args);
+                        arg_roots.push(crate::sexp::protect::protect(call));
+
+
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
