@@ -954,8 +954,6 @@ pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, REAL, SET_STRING_ELT, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::SEXPTYPE;
-        use std::fs::OpenOptions;
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
         let paths = CAR(args);
         let times = CAR(CDR(args));
@@ -973,15 +971,23 @@ pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let ok = if elt.is_null() || !secs.is_finite() {
                 false
             } else {
-                let path = crate::sexp::accessors::CHAR(elt);
-                let whole = secs.trunc() as i64;
-                let nsec = ((secs - whole as f64) * 1e9) as i64;
-                let ts = libc::timespec {
-                    tv_sec: whole,
-                    tv_nsec: nsec,
-                };
-                let times_buf = [ts, ts];
-                libc::utimensat(libc::AT_FDCWD, path, times_buf.as_ptr(), 0) == 0
+                #[cfg(target_arch = "wasm32")]
+                {
+                    // Browser files have no host filesystem timestamp to update.
+                    false
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let path = crate::sexp::accessors::CHAR(elt);
+                    let whole = secs.trunc() as i64;
+                    let nsec = ((secs - whole as f64) * 1e9) as i64;
+                    let ts = libc::timespec {
+                        tv_sec: whole,
+                        tv_nsec: nsec,
+                    };
+                    let times_buf = [ts, ts];
+                    libc::utimensat(libc::AT_FDCWD, path, times_buf.as_ptr(), 0) == 0
+                }
             };
             *LOGICAL(ans).add(i) = if ok { 1 } else { 0 };
         }

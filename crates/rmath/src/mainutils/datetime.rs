@@ -705,6 +705,9 @@ fn mktime0(tm: &mut stm, local: bool) -> c_double {
     ctm.tm_year = tm.tm_year;
     ctm.tm_isdst = tm.tm_isdst;
     let result = unsafe { R_mktime(&mut ctm) };
+    let Ok(gmtoff) = c_long::try_from(ctm.tm_gmtoff) else {
+        return -1.0;
+    };
     tm.tm_sec = ctm.tm_sec;
     tm.tm_min = ctm.tm_min;
     tm.tm_hour = ctm.tm_hour;
@@ -714,7 +717,7 @@ fn mktime0(tm: &mut stm, local: bool) -> c_double {
     tm.tm_isdst = ctm.tm_isdst;
     tm.tm_wday = ctm.tm_wday;
     tm.tm_yday = ctm.tm_yday;
-    tm.tm_gmtoff = ctm.tm_gmtoff;
+    tm.tm_gmtoff = gmtoff;
     tm.tm_zone = ctm.tm_zone;
 
     if result == -1 {
@@ -782,6 +785,9 @@ fn localtime0(tp: *const c_double, local: bool, ltm: &mut stm) -> bool {
     if res.is_null() {
         return false;
     }
+    let Ok(gmtoff) = c_long::try_from(ctm.tm_gmtoff) else {
+        return false;
+    };
 
     ltm.tm_sec = ctm.tm_sec;
     ltm.tm_min = ctm.tm_min;
@@ -792,7 +798,7 @@ fn localtime0(tp: *const c_double, local: bool, ltm: &mut stm) -> bool {
     ltm.tm_wday = ctm.tm_wday;
     ltm.tm_yday = ctm.tm_yday;
     ltm.tm_isdst = ctm.tm_isdst;
-    ltm.tm_gmtoff = ctm.tm_gmtoff;
+    ltm.tm_gmtoff = gmtoff;
     ltm.tm_zone = ctm.tm_zone;
 
     true
