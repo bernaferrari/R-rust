@@ -1544,6 +1544,9 @@ unsafe fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey
                 };
                 if missing {
                     MatchKey::Missing
+                } else if sexp_has_class(x, "Date") && TYPEOF(x) == SEXPTYPE::REALSXP {
+                    let days = REAL_ELT(x, index as c_int);
+                    MatchKey::String(super::shared::date_days_to_iso(days).unwrap_or_else(|| "NA".to_string()))
                 } else {
                     MatchKey::String(elt_to_string(x, index))
                 }
