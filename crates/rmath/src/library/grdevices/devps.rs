@@ -2301,6 +2301,6 @@ mod tests {
     fn pdf_device_opens_without_error() {
         let _session = RSession::new();
         let result = unsafe { PDF(R_NilValue()) };
-        assert!(result.is_null() || result == R_NilValue());
+        assert!(result.is_null() || result == unsafe { R_NilValue() });
     }
 }
