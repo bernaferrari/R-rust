@@ -1329,7 +1329,7 @@ mod tests {
 
         let result = result.expect("attribute enumeration should evaluate");
         let names = (0..result.clone().len())
-            .map(|index| result.clone().string_text_elt(index).flatten().unwrap())
+            .map(|index| result.string_value_elt(index).flatten().unwrap())
             .collect::<Vec<_>>();
         assert_eq!(
             names,
@@ -1352,14 +1352,16 @@ mod tests {
 
         let result = result.expect("valid dimnames should be normalized");
         let values = (0..result.clone().len())
-            .map(|index| result.clone().string_text_elt(index).flatten().unwrap())
+            .map(|index| result.string_value_elt(index).flatten().unwrap())
             .collect::<Vec<_>>();
         assert_eq!(values, ["character", "1,2", "integer", "2", "cols", ""]);
+        drop(result);
 
         let (result, _, _) = session.eval_code_with_output_capture(
             "X <- matrix(1:4, 2, 2); dimnames(X) <- list(letters[1:3])",
         );
         assert!(result.is_err(), "axis labels must match their array extent");
+        drop(result);
 
         let (result, _, _) = session
             .eval_code_with_output_capture("X <- matrix(1:4, 2, 2); dimnames(X) <- c('a', 'b')");
@@ -1376,9 +1378,9 @@ mod tests {
         );
 
         let result = result.expect("legacy factor structure should evaluate");
-        assert_eq!(result.clone().string_text_elt(0), Some(Some("integer")));
-        assert_eq!(result.clone().string_text_elt(1), Some(Some("integer")));
-        assert_eq!(result.string_text_elt(2), Some(Some("TRUE")));
+        assert_eq!(result.string_value_elt(0), Some(Some("integer".into())));
+        assert_eq!(result.string_value_elt(1), Some(Some("integer".into())));
+        assert_eq!(result.string_value_elt(2), Some(Some("TRUE".into())));
     }
 }
 

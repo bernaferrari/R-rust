@@ -351,7 +351,7 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     let n_val = (nr as i64 * (nr as i64 - 1) / 2) as c_int;
 
     let ans = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, n_val) };
-    let _ans_guard = protect_sexp(ans);
+    let _ans_guard = unsafe { protect_sexp(ans) };
     let x = unsafe {
         if TYPEOF(x) != SEXPTYPE::REALSXP {
             crate::main::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
@@ -359,7 +359,7 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
             x
         }
     };
-    let _x_guard = protect_sexp(x);
+    let _x_guard = unsafe { protect_sexp(x) };
     let x_len = unsafe { LENGTH(x) };
     let x_slice = unsafe { slice::from_raw_parts(REAL(x), x_len as usize) };
     let ans_slice = unsafe { slice::from_raw_parts_mut(REAL(ans), n_val as usize) };

@@ -112,7 +112,8 @@ unsafe fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
                 std::panic::resume_unwind(payload);
             };
             let arg_name = unsafe { CStr::from_ptr(CHAR(PRINTNAME(arg_sym))).to_string_lossy() };
-            let fun_name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+            let fun_name =
+                unsafe { sexp_to_string(fname) }.unwrap_or_else(|| "<unknown>".to_string());
             r_error(format!(
                 "error in evaluating the argument '{}' in selecting a method for function '{}': {}",
                 arg_name, fun_name, inner
@@ -826,8 +827,7 @@ unsafe fn try_s3_method_for_generic(
         }
         let class = crate::eval::attrib_core::getAttrib(
             obj,
-            crate::eval::attrib_core::R_ClassSymbol(),
-        );
+            crate::eval::attrib_core::R_ClassSymbol());
         if class.is_null() || class == R_NilValue() {
             return None;
         }
@@ -1958,12 +1958,14 @@ unsafe fn charsxp_same(a: SEXP, b: SEXP) -> bool {
     if a.is_null() || b.is_null() {
         return false;
     }
-    let ca = CHAR(a);
-    let cb = CHAR(b);
+    let ca = unsafe { CHAR(a) };
+    let cb = unsafe { CHAR(b) };
     if ca.is_null() || cb.is_null() {
         return false;
     }
-    std::ffi::CStr::from_ptr(ca) == std::ffi::CStr::from_ptr(cb)
+    let a_name = unsafe { std::ffi::CStr::from_ptr(ca) };
+    let b_name = unsafe { std::ffi::CStr::from_ptr(cb) };
+    a_name == b_name
 }
 
 

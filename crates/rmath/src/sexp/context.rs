@@ -423,14 +423,13 @@ pub struct RestartJump {
 }
 
 impl RestartJump {
-    pub(crate) fn new(target: SEXP, args: SEXP) -> Self {
+    pub(crate) unsafe fn new(target: SEXP, args: SEXP) -> Self {
         Self {
             target,
             args,
-            _roots: [
-                super::protect::protect(target),
-                super::protect::protect(args),
-            ],
+            _roots: [unsafe { super::protect::protect(target) }, unsafe {
+                super::protect::protect(args)
+            }],
         }
     }
 }
@@ -656,7 +655,10 @@ mod tests {
 
     #[test]
     fn test_rcntxt_new() {
-        let ctx = RCNTXT::new();
+        let ctx = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            RCNTXT::new()
+        };
         assert_eq!(ctx.callflag, 0);
         assert!(ctx.call.is_null());
     }

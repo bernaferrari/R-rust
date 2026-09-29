@@ -340,8 +340,7 @@ pub unsafe fn do_globalCallingHandlers(
     _call: SEXP,
     _op: SEXP,
     args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+    rho: SEXP) -> SEXP {
 
     unsafe {
         if args.is_null() || args == R_NilValue() {
@@ -1019,9 +1018,9 @@ unsafe fn invoke_restart(restart: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             std::panic::panic_any(crate::sexp::context::RSignal::Abort);
         }
     }
-    std::panic::panic_any(crate::sexp::context::RSignal::Restart(
-        crate::sexp::context::RestartJump::new(restart, args),
-    ));
+    std::panic::panic_any(crate::sexp::context::RSignal::Restart(unsafe {
+        crate::sexp::context::RestartJump::new(restart, args)
+    }));
 }
 
 unsafe fn call_function_with_args(handler: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -1348,7 +1347,8 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         ];
         let first = CAR(args);
         if !first.is_null() && first != R_NilValue() {
-            let class = crate::eval::attrib_core::getAttrib(first, crate::eval::attrib_core::R_ClassSymbol());
+            let class = crate::eval::attrib_core::getAttrib(first, crate::eval::attrib_core::R_ClassSymbol(),
+            );
             if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
                 cond_classes.clear();
                 for i in 0..XLENGTH(class) {
@@ -1448,12 +1448,12 @@ pub unsafe fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SE
         let _last = protect(last);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _class = protect(class);
-        SET_STRING_ELT(class, 0, crate::sexp::constructors::Rf_mkChar(c"warnings".as_ptr()));
+        SET_STRING_ELT(class, 0, crate::sexp::constructors::Rf_mkChar(c"warnings".as_ptr()),
+        );
         crate::sexp::attrib_core::setAttrib(
             last,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+            class);
         last
     }
 }
@@ -1623,8 +1623,7 @@ unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
                 cond,
                 2,
                 c"subscript".as_ptr(),
-                scalar,
-            );
+                scalar);
         }
         cond
     }
@@ -1783,7 +1782,8 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                                 return handled;
                             }
                             std::panic::resume_unwind(Box::new(
-                                crate::sexp::context::RSignal::Message { message: String::new() },
+                                crate::sexp::context::RSignal::Message { message: String::new(),
+                                },
                             ));
                         }
                         crate::sexp::context::RSignal::Warning { message } => {
@@ -1792,7 +1792,8 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                                 set_signalled_condition(std::ptr::null_mut());
                                 stashed
                             } else {
-                                simple_warning_condition(&message, crate::sexp::globals::R_NilValue())
+                                simple_warning_condition(&message, crate::sexp::globals::R_NilValue(),
+                                )
                             };
                             let classes = condition_classes(condition);
                             let matching = handlers
@@ -2054,9 +2055,11 @@ fn value_matches_mode(value: SEXP, mode: &str) -> bool {
             "character" => ty == SEXPTYPE::STRSXP,
             "list" => ty == SEXPTYPE::VECSXP,
             "environment" => ty == SEXPTYPE::ENVSXP,
-            "function" => ty == SEXPTYPE::CLOSXP
+            "function" => {
+                ty == SEXPTYPE::CLOSXP
                 || ty == SEXPTYPE::BUILTINSXP
-                || ty == SEXPTYPE::SPECIALSXP,
+                || ty == SEXPTYPE::SPECIALSXP
+            }
             _ => true,
         }
     }

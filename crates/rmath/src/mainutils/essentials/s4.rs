@@ -1,8 +1,8 @@
 //! Essentials domain module `s4` — extracted verbatim from essentials.rs.
 
 use super::*;
-use std::ffi::CString;
 use std::collections::HashMap;
+use std::ffi::CString;
 
 
 #[allow(unused_imports)]
@@ -52,8 +52,7 @@ pub unsafe fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         let info = crate::sexp::envir::R_findVarInFrame(
             ns,
-            Rf_install(c".__NAMESPACE__.".as_ptr()),
-        );
+            Rf_install(c".__NAMESPACE__.".as_ptr()));
         Rf_ScalarLogical(
             if !info.is_null()
                 && info != crate::sexp::globals::R_UnboundValue()
@@ -359,8 +358,7 @@ pub unsafe fn do_setClass(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 args,
                 rho,
                 R_NilValue(),
-                TRUE,
-            );
+                TRUE);
         }
         let class_arg = CAR(args);
         if class_arg.is_null() || class_arg == R_NilValue() {
@@ -405,8 +403,7 @@ unsafe fn s4_class_generator(class_name: &str) -> SEXP {
         let body = crate::sexp::constructors::Rf_lang3(
             Rf_install(c"new".as_ptr()),
             class_str,
-            dots,
-        );
+            dots);
         let _body = protect(body);
         crate::mainutils::dstruct::mkCLOSXP(formals, body, crate::sexp::globals::R_BaseEnv())
     }
@@ -476,7 +473,7 @@ unsafe fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
 
 /// Use the GNU `methods::new` closure once that namespace is loaded.
 unsafe fn methods_new_closure() -> Option<SEXP> {
-    methods_exported_closure(c"new")
+    unsafe { methods_exported_closure(c"new") }
 }
 
 
@@ -492,8 +489,7 @@ pub unsafe fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 args,
                 rho,
                 R_NilValue(),
-                TRUE,
-            );
+                TRUE);
         }
         let class_arg = CAR(args);
 
@@ -638,8 +634,7 @@ pub unsafe fn do_validObject(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
         }
         let class_val = crate::sexp::attrib_core::getAttrib(
             object,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+            crate::sexp::attrib_core::R_ClassSymbol());
         if class_val.is_null() || class_val == R_NilValue() || TYPEOF(class_val) != SEXPTYPE::STRSXP
         {
             return Rf_ScalarLogical(TRUE);
@@ -823,8 +818,10 @@ unsafe fn strip_s4_data_part(value: SEXP) -> SEXP {
                 crate::sexp::attrib_core::R_ClassSymbol(),
                 R_NilValue(),
             );
-            crate::sexp::attrib_core::setAttrib(data, Rf_install(c"className".as_ptr()), R_NilValue());
-            crate::sexp::attrib_core::setAttrib(data, Rf_install(c"package".as_ptr()), R_NilValue());
+            crate::sexp::attrib_core::setAttrib(data, Rf_install(c"className".as_ptr()), R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(data, Rf_install(c"package".as_ptr()), R_NilValue(),
+            );
         } else {
             // GNU getDataPart for numeric/integer/...: attributes(object) <- NULL
             crate::sexp::accessors::SET_ATTRIB(data, R_NilValue());
@@ -907,8 +904,7 @@ unsafe fn r_data_part_fallback(obj: SEXP) -> SEXP {
             }
             let class_val = crate::sexp::attrib_core::getAttrib(
                 obj,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-            );
+                crate::sexp::attrib_core::R_ClassSymbol());
             if TYPEOF(class_val) == SEXPTYPE::STRSXP && XLENGTH(class_val) > 0 {
                 let class_name = elt_to_string(class_val, 0);
                 if crate::mainutils::objects::s4_class(&class_name).is_some_and(|class_def| {

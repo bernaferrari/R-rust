@@ -350,7 +350,7 @@ pub unsafe fn textRect(
 /// The SEXP is stored in a VECSXP of length one, then wrapped in an external pointer.
 pub unsafe fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
     let data = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 1) };
-    let _guard = protect(data);
+    let _guard = unsafe { protect(data) };
     unsafe {
         SET_VECTOR_ELT(data, 0, s);
         R_MakeExternalPtr(data as *mut std::ffi::c_void, R_NilValue(), data)

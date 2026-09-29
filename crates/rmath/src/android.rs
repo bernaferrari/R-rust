@@ -1422,7 +1422,7 @@ stop("after-echo")
     fn test_eval_preserves_metadata_in_owned_typed_values() {
         let _session = crate::sexp::session::RSession::new();
         let mut arena = crate::sexp::memory::RArena::new();
-        let vector = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)).expect("vector");
+        let vector = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)) }.expect("vector");
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
             .clone()
             .try_set_integer_elt(0, 1) }
@@ -1432,7 +1432,7 @@ stop("after-echo")
             .try_set_integer_elt(1, 2) }
             .expect("set integer");
 
-        let names = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)).expect("names");
+        let names = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)) }.expect("names");
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
             .clone()
             .try_set_string_elt(0, Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("name")) }
@@ -1442,7 +1442,7 @@ stop("after-echo")
             .try_set_string_elt(1, Sexp::from_raw(arena.alloc_charsxp(b"b")).expect("name")) }
             .expect("set name");
 
-        let class = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)).expect("class");
+        let class = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)) }.expect("class");
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ class
             .clone()
             .try_set_string_elt(
@@ -1452,12 +1452,18 @@ stop("after-echo")
             .expect("set class");
 
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let class_cell = arena.cons(class.as_raw(), nil, unsafe {
+        let class_cell = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.cons(class.as_raw(), nil, unsafe {
             crate::sexp::symbol::Rf_install(c"class".as_ptr())
-        });
-        let names_cell = arena.cons(names.as_raw(), class_cell, unsafe {
+        })
+        };
+        let names_cell = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.cons(names.as_raw(), class_cell, unsafe {
             crate::sexp::symbol::Rf_install(c"names".as_ptr())
-        });
+        })
+        };
         unsafe { crate::sexp::accessors::SET_ATTRIB(vector.clone().as_raw(), names_cell) };
 
         let typed = RValue::from_sexp(vector);
@@ -1487,7 +1493,7 @@ stop("after-echo")
         assert_eq!(raw.typed, RValue::RawVector(vec![0x41, 0x5a]));
 
         let mut arena = crate::sexp::memory::RArena::new();
-        let complex = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)).unwrap();
+        let complex = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)) }.unwrap();
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
             .clone()
             .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 }) }
@@ -1518,7 +1524,7 @@ stop("after-echo")
     #[test]
     fn test_unsupported_typed_values_only_carry_type_name() {
         let mut arena = crate::sexp::memory::RArena::new();
-        let closure = Sexp::from_raw(arena.alloc_node(SEXPTYPE::CLOSXP)).unwrap();
+        let closure = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_node(SEXPTYPE::CLOSXP)) }.unwrap();
 
         assert_eq!(
             RValue::from_sexp(closure),

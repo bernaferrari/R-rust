@@ -458,7 +458,7 @@ fn duplicated_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, 
 /// Safe wrapper for `unique` using `Sexp<'a>`.
 ///
 /// Returns `Ok(SEXP)` with unique elements on success.
-fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
+unsafe fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
     if !x.clone().is_vector() {
         return Err("unique requires a vector");
     }
@@ -471,7 +471,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
     let xtype = unsafe { TYPEOF(raw) };
 
     let dup = unsafe { duplicated_impl(raw, from_last, nmax_arg) };
-    let _dup_guard = protect(dup);
+    let _dup_guard = unsafe { protect(dup) };
 
     let mut k: R_xlen_t = 0;
     for i in 0..n {
@@ -481,7 +481,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
     }
 
     let ans = unsafe { Rf_allocVector3(xtype, k) };
-    let _ans_guard = protect(ans);
+    let _ans_guard = unsafe { protect(ans) };
 
     let mut ki: R_xlen_t = 0;
 
@@ -761,12 +761,13 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
 /// `crate::mainutils::essentials::do_unique`; this raw pairlist wrapper is
 /// exercised by the unit tests below.
 pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s = Sexp::try_from_raw(args)
+    let args_s = unsafe { Sexp::try_from_raw(args) }
         .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     let x = args_s
         .try_pairlist_arg(0)
         .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
-    unique_safe(x, false, NA_INTEGER).unwrap_or_else(|message| -> SEXP { unique_error(message) })
+    unsafe { unique_safe(x, false, NA_INTEGER) }
+        .unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }
 
 /// Implementation of R's `duplicated()` builtin.
@@ -777,7 +778,7 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// `crate::mainutils::essentials::do_duplicated`; this raw pairlist wrapper
 /// is exercised by the unit tests below.
 pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s = Sexp::try_from_raw(args)
+    let args_s = unsafe { Sexp::try_from_raw(args) }
         .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     let x = args_s
         .try_pairlist_arg(0)
@@ -791,7 +792,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 /// `.Internal(any(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 2 in the C source.
 pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s = Sexp::try_from_raw(args)
+    let args_s = unsafe { Sexp::try_from_raw(args) }
         .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     any_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }
@@ -801,7 +802,7 @@ pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// `.Internal(all(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 1 in the C source.
 pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s = Sexp::try_from_raw(args)
+    let args_s = unsafe { Sexp::try_from_raw(args) }
         .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     all_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }

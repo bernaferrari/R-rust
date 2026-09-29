@@ -732,10 +732,36 @@ impl RSession {
         if is_immutable_singleton(ptr) {
             Some(unsafe { Sexp::from_static_raw_unchecked(ptr) })
         } else if self.inst().owns_sexp(ptr) {
-            Sexp::from_session_raw(ptr, self.inst()).ok()
+            // SAFETY: self owns the original pointer and bounds the returned
+            // handle's lifetime. No instance borrow survives root installation.
+            unsafe { Sexp::from_session_raw(ptr, self.instance) }.ok()
         } else {
             None
         }
+    }
+
+    /// Inspect payloads while exclusively borrowing this session.
+    ///
+    /// The callback cannot return borrowed payloads or run another method on
+    /// this session. It may return scalar copies or owned Rust values.
+    ///
+    /// # Safety
+    /// The callback must not reenter R through an ambient internal entrypoint
+    /// or mutate any borrowed payload through a raw alias.
+    pub(crate) unsafe fn with_sexp_view<T>(
+        &mut self,
+        ptr: SEXP,
+        f: impl for<'view> FnOnce(super::object::SexpView<'view>) -> T,
+    ) -> super::object::SexpResult<T> {
+        let value = self
+            .sexp(ptr)
+            .ok_or(super::object::SexpError::UnownedPointer {
+                address: ptr as usize,
+            })?;
+        // SAFETY: value retains its root; caller excludes ambient mutation and
+        // R reentry for the callback, in addition to the exclusive session borrow.
+        let view = unsafe { value.view()? };
+        Ok(f(view))
     }
 
     fn owned_sexp<'session>(
@@ -783,7 +809,7 @@ impl RSession {
             let env = self.global_env().ok_or_else(|| REvalError {
                 message: "session has no global environment".to_string(),
             })?;
-            let result = catch_eval_result(|| crate::eval::eval::EvalContext::new(env).eval(expr))?;
+            let result = catch_eval_result(|| unsafe { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ crate::eval::eval::EvalContext::new(env).eval(expr) })?;
             self.owned_sexp(result.as_raw(), "evaluation result")
         })
     }
@@ -892,10 +918,13 @@ impl RSession {
 
         let expressions = {
             let _guard = self.activate();
-            let spans = super::memory::with_arena_in(self.instance, |arena| {
+            let spans = unsafe {
+                /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */
+                super::memory::with_arena_in(self.instance, |arena| {
                 let mut parser = crate::eval::parser::Parser::new(code, arena);
                 parser.parse_top_level_with_spans()
-            });
+            })
+            };
             let spans = match spans {
                 Ok(spans) => spans,
                 Err(err) => {
@@ -910,12 +939,14 @@ impl RSession {
                 }
             };
             let exprs: Vec<SEXP> = spans.iter().map(|&(e, _, _)| e).collect();
-            let vec_sexp = unsafe { crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::EXPRSXP, exprs.len() as i64) };
+            let vec_sexp = unsafe { crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::EXPRSXP, exprs.len() as i64,
+                ) };
             unsafe {
                 for (i, &e) in exprs.iter().enumerate() {
                     crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
                 }
-                crate::mainutils::srcref::attach_srcrefs_with_spans(&spans, code, "<text>", vec_sexp);
+                crate::mainutils::srcref::attach_srcrefs_with_spans(&spans, code, "<text>", vec_sexp,
+                );
             }
             exprs
         };
@@ -934,7 +965,7 @@ impl RSession {
             let expression_guards: Vec<_> = expressions
                 .iter()
                 .copied()
-                .map(|expr| protect(expr_or_nil(expr)))
+                .map(|expr| unsafe { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ protect(expr_or_nil(expr)) })
                 .collect();
             for expr in &expressions {
                 unsafe {
@@ -1091,9 +1122,12 @@ impl RSession {
 
         let expressions = {
             let _guard = self.activate();
-            super::memory::with_arena_in(self.instance, |arena| {
+            // SAFETY: this active session scopes parsing to its arena; no R callback runs.
+            unsafe {
+                super::memory::with_arena_in(self.instance, |arena| {
                 crate::eval::parser::parse_expressions(code, arena)
             })
+            }
         };
         let expressions = match expressions {
             Ok(exprs) => exprs,
@@ -1133,7 +1167,7 @@ impl RSession {
             let expression_guards: Vec<_> = expressions
                 .iter()
                 .copied()
-                .map(|expr| protect(expr_or_nil(expr)))
+                .map(|expr| unsafe { protect(expr_or_nil(expr)) })
                 .collect();
             for expr in &expressions {
                 unsafe {
@@ -1245,9 +1279,12 @@ impl RSession {
 
         let raw_expr = {
             let _guard = self.activate();
-            super::memory::with_arena_in(self.instance, |arena| {
+            unsafe {
+                /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */
+                super::memory::with_arena_in(self.instance, |arena| {
                 crate::eval::parser::parse(code, arena)
             })
+            }
         };
         let raw_expr = match raw_expr {
             Ok(expr) => expr_or_nil(expr),
@@ -1325,7 +1362,7 @@ impl RSession {
         self.with_active(|| {
             let expr = self.owned_sexp(expr.as_raw(), "expression")?;
             let env = self.owned_sexp(env.as_raw(), "environment")?;
-            let result = catch_eval_result(|| crate::eval::eval::EvalContext::new(env).eval(expr))?;
+            let result = catch_eval_result(|| unsafe { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ crate::eval::eval::EvalContext::new(env).eval(expr) })?;
             self.owned_sexp(result.as_raw(), "evaluation result")
         })
     }
@@ -1340,7 +1377,7 @@ impl RSession {
         self.with_active(|| {
             let symbol = self.sexp(install_symbol(name)?)?;
             let env = Environment::new(self.global_env()?).ok()?;
-            let result = env.find(symbol).ok().flatten()?;
+            let result = unsafe { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ env.find(symbol) }.ok().flatten()?;
             if result.clone().as_raw() == unsafe { R_UnboundValue() }
                 || result.clone().as_raw() == unsafe { R_NilValue() }
             {
@@ -1386,7 +1423,7 @@ impl RSession {
                 return false;
             };
             Environment::new(env)
-                .and_then(|env| env.define(symbol, value))
+                .and_then(|env| unsafe { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ env.define(symbol, value) })
                 .is_ok()
         })
     }
@@ -1401,7 +1438,8 @@ impl RSession {
         }
         let _guard = self.activate();
         // Borrow only the arena, then process deferred GC after that lend ends.
-        Some(super::memory::with_arena_in(self.instance, f))
+        // SAFETY: exclusive session borrow excludes other safe access to this owner.
+        Some(unsafe { super::memory::with_arena_in(self.instance, f) })
     }
 
     /// Return the current arena budget for this session.
@@ -1613,12 +1651,15 @@ impl RSession {
     }
 }
 
-fn is_immutable_singleton(ptr: SEXP) -> bool {
+pub(crate) fn is_immutable_singleton(ptr: SEXP) -> bool {
     unsafe {
         ptr == R_NilValue()
             || ptr == R_UnboundValue()
             || ptr == R_MissingArg()
             || ptr == R_RestartToken()
+            || ptr == super::globals::R_NaString()
+            || ptr == super::globals::R_True()
+            || ptr == super::globals::R_False()
     }
 }
 
@@ -1852,6 +1893,7 @@ mod tests {
             assert!(result.is_err(), "malformed script unexpectedly succeeded");
             assert!(output.stdout.is_empty());
             assert!(!visible);
+            drop(result);
 
             let probe = format!("exists(\"{name}\")");
             let (result, _, _) = session.eval_script_with_output_capture(&probe);
@@ -2140,7 +2182,7 @@ mod tests {
         assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ expr.clone().set_integer_elt(0, 7) });
         let env = session.global_env().expect("session has global env");
 
-        let result = session.with_active(|| {
+        let result = session.with_active(|| unsafe {
             crate::eval::eval::eval_with_limits(
                 expr,
                 env,
@@ -2190,7 +2232,7 @@ mod tests {
         let value = session
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("session should be active");
-        let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
+        let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("integer vector allocation failed");
         assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, 42) });
 
         let value = session.sexp(value).expect("value belongs to session");
@@ -2210,7 +2252,7 @@ mod tests {
         let value = older
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("older session should be active");
-        let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
+        let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("integer vector allocation failed");
         assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, 123) });
 
         let value = older.sexp(value).expect("value belongs to older session");
@@ -2243,7 +2285,7 @@ mod tests {
         let value = session
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("session should be active");
-        let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
+        let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("integer vector allocation failed");
         assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, 99) });
 
         let value = session.sexp(value).expect("value belongs to session");
@@ -2258,8 +2300,8 @@ mod tests {
         let session = RSession::new();
         let depth_before = session.with_active(R_ProtectCount);
         session.with_protected(|| {
-            std::mem::forget(protect(0x1 as SEXP));
-            std::mem::forget(protect(0x2 as SEXP));
+            std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x1 as SEXP) });
+            std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x2 as SEXP) });
             // Leaked guards land in the root table; the count-based legacy
             // view does not see them.
             crate::sexp::protect::with_protected_objects(|legacy, roots| {
@@ -2281,7 +2323,7 @@ mod tests {
         let depth_before = session.with_active(R_ProtectCount);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             session.with_protected(|| {
-                std::mem::forget(protect(0x1 as SEXP));
+                std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x1 as SEXP) });
                 panic!("forced protected-scope unwind");
             });
         }));
@@ -2302,7 +2344,7 @@ mod tests {
         let preserved = 0x2 as SEXP;
 
         left.with_active(|| {
-            std::mem::forget(protect(protected));
+            std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(protected) });
             unsafe {
                 R_PreserveObject(preserved);
             }
@@ -2325,7 +2367,7 @@ mod tests {
             // A nested scope reclaims only ITS OWN leaks; the root leaked
             // outside any scope survives until session teardown.
             left.with_protected(|| {
-                std::mem::forget(protect(0x3 as SEXP));
+                std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x3 as SEXP) });
             });
             crate::sexp::protect::with_protected_objects(|_, roots| {
                 assert_eq!(roots, &[protected]);
@@ -2390,7 +2432,7 @@ mod tests {
                     let value = session
                         .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
                         .expect("session should be active");
-                    let sexp = Sexp::from_raw(value).expect("allocation failed");
+                    let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("allocation failed");
                     assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, (i + 100) as i32) });
 
                     let value = session.sexp(value).expect("value belongs to session");
@@ -2417,6 +2459,7 @@ mod tests {
                         }
                     }
 
+                    drop(found);
                     session.close();
                     assert!(!session.is_active());
                     (i, true)
@@ -2446,6 +2489,7 @@ mod tests {
                         Some((i + 100) as f64),
                         "thread {i} computed wrong result"
                     );
+                    drop(result);
                     session.close();
                 })
             })

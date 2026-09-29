@@ -152,7 +152,8 @@ unsafe extern "C-unwind" fn c_fft(z: SEXP, inverse: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_mvfft(z: SEXP, inverse: SEXP) -> SEXP {
     unsafe { super::fourier::mvfft(z, inverse) }
 }
-unsafe extern "C-unwind" fn c_approx_test(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -> SEXP {
+unsafe extern "C-unwind" fn c_approx_test(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP,
+) -> SEXP {
     unsafe { super::approx::ApproxTest(x, y, method, f, na_rm) }
 }
 unsafe extern "C-unwind" fn c_approx(
@@ -238,7 +239,8 @@ unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
                 let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
                 *INTEGER(dims) = ncx as i32;
                 *INTEGER(dims).add(1) = ncx as i32;
-                crate::sexp::attrib_core::setAttrib(m, crate::sexp::attrib_core::R_DimSymbol(), dims);
+                crate::sexp::attrib_core::setAttrib(m, crate::sexp::attrib_core::R_DimSymbol(), dims,
+                );
                 m
             };
             let _a = protect(ans);
@@ -302,8 +304,7 @@ unsafe fn stats_call_cor(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
             && *LOGICAL(kendall) != 0;
         let x_names = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_DimNamesSymbol());
         let y_names = if y.is_null() || y == R_NilValue() {
             x_names
         } else {
@@ -555,11 +556,12 @@ const RAND_CALL_NAMES: &[&str] = &[
 ];
 
 unsafe extern "C-unwind" fn c_bindist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
-    super::massdist::BinDist(sx, sw, slo, shi, sn)
+    unsafe { super::massdist::BinDist(sx, sw, slo, shi, sn)
+}
 }
 
 unsafe extern "C-unwind" fn c_swilk(x: SEXP) -> SEXP {
-    super::swilk::SWilk(x)
+    unsafe { super::swilk::SWilk(x) }
 }
 
 /// Routines whose real signature is `.External2` `(call, op, args, env)`.
@@ -567,21 +569,26 @@ unsafe extern "C-unwind" fn c_swilk(x: SEXP) -> SEXP {
 pub fn lookup_external(name: &str) -> DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "zeroin2" => as_dl(
-            c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "do_fmin" => as_dl(
-            c_do_fmin as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
+        "zeroin2" => {
+            as_dl(
+            c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "do_fmin" => {
+            as_dl(
+            c_do_fmin as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
         "termsform" => as_dl(c_termsform as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "call_dqags" => as_dl(c_call_dqags as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "call_dqagi" => as_dl(c_call_dqagi as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "compcases" => as_dl(c_compcases as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "deriv" => as_dl(c_deriv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "optim" => as_dl(super::optim::c_optim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "nlm" => as_dl(super::zeroin::c_nlm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "optimhess" => as_dl(super::optim::c_optimhess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "optim" => as_dl(super::optim::c_optim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "nlm" => as_dl(super::zeroin::c_nlm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "optimhess" => as_dl(super::optim::c_optimhess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
         "modelframe" => {
             as_dl(c_modelframe as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
         }
@@ -647,56 +654,108 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         "rweibull" => as_dl(c_rweibull as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "rwilcox" => as_dl(c_rwilcox as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "rnchisq" => as_dl(c_rnchisq as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rnbinom_mu" => as_dl(c_rnbinom_mu as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rnbinom_mu" => {
+            as_dl(c_rnbinom_mu as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
+        }
         "rhyper" => as_dl(c_rhyper as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "rmultinom" => as_dl(c_rmultinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "r2dtable" => as_dl(c_r2dtable as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rWishart" => as_dl(crate::library::stats::rwishart::c_rWishart as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "rWishart" => as_dl(crate::library::stats::rwishart::c_rWishart as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
+        ),
         "Cdqrls" => as_dl(c_cdqrls as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "influence" => as_dl(c_influence as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
         "cov" => as_dl(c_cov as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "cor" => as_dl(c_cor as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
         "Cdist" => as_dl(c_cdist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "Rsm" => as_dl(super::smooth::c_rsm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "lowess" => as_dl(super::lowess::c_lowess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "KalmanFore" => as_dl(super::filter::c_kalman_fore as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "KalmanLike" => as_dl(super::filter::c_kalman_like as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "KalmanSmooth" => as_dl(super::filter::c_kalman_smooth as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "acf" => as_dl(super::filter::c_acf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
+        "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
+        ),
+        "Rsm" => {
+            as_dl(super::smooth::c_rsm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "lowess" => as_dl(super::lowess::c_lowess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "KalmanFore" => as_dl(super::filter::c_kalman_fore as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "KalmanLike" => as_dl(super::filter::c_kalman_like as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "KalmanSmooth" => as_dl(super::filter::c_kalman_smooth as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "acf" => {
+            as_dl(super::filter::c_acf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
+        }
         "pacf1" => as_dl(super::filter::c_pacf1 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "SWilk" => as_dl(c_swilk as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "nls_iter" => as_dl(super::nls_iter::c_nls_iter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "bw_den" => as_dl(super::bandwidths::c_bw_den as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "bw_den_binned" => as_dl(super::bandwidths::c_bw_den_binned as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "bw_ucv" => as_dl(super::bandwidths::c_bw_ucv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "bw_bcv" => as_dl(super::bandwidths::c_bw_bcv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "bw_phi4" => as_dl(super::bandwidths::c_bw_phi4 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "bw_phi6" => as_dl(super::bandwidths::c_bw_phi6 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "BinDist" => as_dl(c_bindist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "runmed" => as_dl(super::srunmed::c_runmed as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "tukeyline" => as_dl(super::line::c_tukeyline as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+        "nls_iter" => as_dl(super::nls_iter::c_nls_iter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "bw_den" => {
+            as_dl(super::bandwidths::c_bw_den as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
+        "bw_den_binned" => {
+            as_dl(super::bandwidths::c_bw_den_binned as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
+        "bw_ucv" => as_dl(super::bandwidths::c_bw_ucv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "bw_bcv" => as_dl(super::bandwidths::c_bw_bcv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "bw_phi4" => as_dl(super::bandwidths::c_bw_phi4 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "bw_phi6" => as_dl(super::bandwidths::c_bw_phi6 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "BinDist" => {
+            as_dl(c_bindist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "runmed" => as_dl(super::srunmed::c_runmed as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "tukeyline" => as_dl(super::line::c_tukeyline as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
         "nextn" => as_dl(c_nextn as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "chisq_sim" => as_dl(c_chisq_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "ksmooth" => as_dl(super::ksmooth::c_ksmooth as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "rfilter" => as_dl(super::filter::c_rfilter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "arma0_kfore" => as_dl(super::starma_api::c_arma0_kfore as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "psmirnov_exact" => as_dl(crate::mainutils::essentials::c_psmirnov_exact as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "cfilter" => as_dl(super::filter::c_cfilter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "pRho" => as_dl(super::prho::c_pRho as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "pKendall" => as_dl(super::kendall::c_pKendall as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "chisq_sim" => {
+            as_dl(c_chisq_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "ksmooth" => as_dl(super::ksmooth::c_ksmooth as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "rfilter" => {
+            as_dl(super::filter::c_rfilter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "arma0_kfore" => as_dl(super::starma_api::c_arma0_kfore as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "psmirnov_exact" => as_dl(crate::mainutils::essentials::c_psmirnov_exact as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "cfilter" => as_dl(super::filter::c_cfilter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "pRho" => {
+            as_dl(super::prho::c_pRho as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "pKendall" => {
+            as_dl(super::kendall::c_pKendall as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
         "ar2ma" => as_dl(super::filter::c_ar2ma as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "dpermdist1" => as_dl(super::permdist::c_dpermdist1 as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "dpermdist2" => as_dl(super::permdist::c_dpermdist2 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "numeric_deriv" => as_dl(super::numeric_deriv::c_numeric_deriv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "ARIMA_transPars" => as_dl(super::arima_native::c_arima_trans_pars as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "ARIMA_CSS" => as_dl(super::arima_native::c_arima_css as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "ARIMA_Like" => as_dl(super::arima_native::c_arima_like as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "ARIMA_Invtrans" => as_dl(super::arima_native::c_arima_invtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "ARIMA_undoPars" => as_dl(super::arima_native::c_arima_undo_pars as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "ARIMA_Gradtrans" => as_dl(super::arima_native::c_arima_gradtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "TSconv" => as_dl(super::arima_native::c_tsconv as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "getQ0" => as_dl(super::arima_native::c_get_q0 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "dpermdist1" => {
+            as_dl(super::permdist::c_dpermdist1 as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
+        "dpermdist2" => {
+            as_dl(super::permdist::c_dpermdist2 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
+        "numeric_deriv" => as_dl(super::numeric_deriv::c_numeric_deriv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "ARIMA_transPars" => as_dl(super::arima_native::c_arima_trans_pars as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "ARIMA_CSS" => as_dl(super::arima_native::c_arima_css as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "ARIMA_Like" => as_dl(super::arima_native::c_arima_like as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "ARIMA_Invtrans" => as_dl(super::arima_native::c_arima_invtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
+        ),
+        "ARIMA_undoPars" => as_dl(super::arima_native::c_arima_undo_pars as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
+        ),
+        "ARIMA_Gradtrans" => as_dl(super::arima_native::c_arima_gradtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
+        ),
+        "TSconv" => {
+            as_dl(super::arima_native::c_tsconv as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
+        "getQ0" => {
+            as_dl(super::arima_native::c_get_q0 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
         "fft" => as_dl(c_fft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "mvfft" => as_dl(c_mvfft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "ApproxTest" => as_dl(
@@ -704,35 +763,73 @@ pub fn lookup_call(name: &str) -> DL_FUNC {
         ),
         "Approx" => as_dl(
             c_approx
-                as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
+                as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
+                ) -> SEXP,
         ),
-        "zeroin2" => as_dl(
-            c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        "zeroin2" => {
+            as_dl(
+            c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "do_fmin" => {
+            as_dl(
+            c_do_fmin as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "Fisher_sim" => {
+            as_dl(c_fisher_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
+        }
+        "setup_starma" => as_dl(super::starma_api::c_setup_starma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
+                ) -> SEXP,
         ),
-        "do_fmin" => as_dl(
-            c_do_fmin as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        "free_starma" => {
+            as_dl(super::starma_api::c_free_starma as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
+        "Starma_method" => as_dl(super::starma_api::c_starma_method as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
         ),
-        "Fisher_sim" => as_dl(c_fisher_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "setup_starma" => as_dl(super::starma_api::c_setup_starma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "free_starma" => as_dl(super::starma_api::c_free_starma as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "Starma_method" => as_dl(super::starma_api::c_starma_method as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "arma0fa" => as_dl(super::starma_api::c_arma0fa as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "arma0fa" => {
+            as_dl(super::starma_api::c_arma0fa as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
         "get_s2" => as_dl(super::starma_api::c_get_s2 as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "get_resid" => as_dl(super::starma_api::c_get_resid as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "set_trans" => as_dl(super::starma_api::c_set_trans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "Invtrans" => as_dl(super::starma_api::c_invtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "Dotrans" => as_dl(super::starma_api::c_dotrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "Gradtrans" => as_dl(super::starma_api::c_gradtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "Fexact" => as_dl(super::starma_api::c_fexact as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "SplineCoef" => as_dl(super::splines::c_spline_coef as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "SplineEval" => as_dl(super::splines::c_spline_eval as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "logit_link" => as_dl(super::family::c_logit_link as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "logit_linkinv" => as_dl(super::family::c_logit_linkinv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "logit_mu_eta" => as_dl(super::family::c_logit_mu_eta as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "binomial_dev_resids" => as_dl(super::family::c_binomial_dev_resids as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "DoubleCentre" => as_dl(super::dblcen::c_double_centre as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "cutree" => as_dl(super::hclust_utils::c_cutree as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "monoFC_m" => as_dl(super::hclust_utils::c_mono_fc_m as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
+        "get_resid" => {
+            as_dl(super::starma_api::c_get_resid as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
+        "set_trans" => {
+            as_dl(super::starma_api::c_set_trans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
+        "Invtrans" => {
+            as_dl(super::starma_api::c_invtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
+        "Dotrans" => {
+            as_dl(super::starma_api::c_dotrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
+        "Gradtrans" => {
+            as_dl(super::starma_api::c_gradtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
+        "Fexact" => as_dl(super::starma_api::c_fexact as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "SplineCoef" => as_dl(super::splines::c_spline_coef as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "SplineEval" => {
+            as_dl(super::splines::c_spline_eval as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
+        "logit_link" => {
+            as_dl(super::family::c_logit_link as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
+        "logit_linkinv" => {
+            as_dl(super::family::c_logit_linkinv as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
+        "logit_mu_eta" => {
+            as_dl(super::family::c_logit_mu_eta as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
+        "binomial_dev_resids" => as_dl(super::family::c_binomial_dev_resids as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
+        ),
+        "DoubleCentre" => {
+            as_dl(super::dblcen::c_double_centre as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
+        }
+        "cutree" => {
+            as_dl(super::hclust_utils::c_cutree as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
+        }
+        "monoFC_m" => as_dl(super::hclust_utils::c_mono_fc_m as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
+        ),
         _ => super::distn::lookup_call(name),
     }
 }
@@ -1680,7 +1777,7 @@ unsafe fn match_formals(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
 }
 
 unsafe fn require_slot(call: SEXP, slot: SEXP, name: &str) -> SEXP {
-    if adapter_absent(slot) {
+    if unsafe { adapter_absent(slot) } {
         missing_required(call, name);
     }
     slot
@@ -1804,7 +1901,8 @@ pub unsafe fn do_rexp_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_rgeom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let m = match_formals(call, args, &["n", "prob"]);
-        do_rgeom(require_slot(call, m[0], "n"), require_slot(call, m[1], "prob"))
+        do_rgeom(require_slot(call, m[0], "n"), require_slot(call, m[1], "prob"),
+        )
     }
 }
 
@@ -1847,7 +1945,8 @@ pub unsafe fn do_rt_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_rsignrank_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let m = match_formals(call, args, &["nn", "n"]);
-        do_rsignrank(require_slot(call, m[0], "nn"), require_slot(call, m[1], "n"))
+        do_rsignrank(require_slot(call, m[0], "nn"), require_slot(call, m[1], "n"),
+        )
     }
 }
 

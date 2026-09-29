@@ -19,14 +19,14 @@ and explicit embedding boundaries.
    `RInstance` owns mutable interpreter state: arena, environments, protect
    stack, preserve stack, RNG state, caches, output capture, path policy,
    graphics state, and evaluator control state. `RArena` owns allocation and
-   `Sexp<'a>` is an owner-scoped handle proving that a raw pointer is either
-   owned by the active session/arena or is an immutable sentinel.
+   Checked `Sexp<'a>` factories validate membership and retain the owner.
+   Legacy raw factories are unsafe and require manual liveness/rooting proofs.
 
 3. **Rust runtime layer**
 
    New runtime code should prefer APIs such as `RSession::sexp`,
-   `RSession::eval_sexp`, `RSession::eval_sexp_in`, `EvalContext`, and
-   `eval_expr`. `Rf_eval` remains for ported internals that still speak raw
+   `RSession::eval_sexp` and `RSession::eval_sexp_in`. `EvalContext` and
+   `eval_expr` are unsafe internal dispatchers with explicit owner/root contracts. `Rf_eval` remains for ported internals that still speak raw
    `SEXP`, but it should delegate inward rather than owning evaluator policy.
 
 4. **Embedding layer**
@@ -88,82 +88,65 @@ The port of R's `PROTECT`/`UNPROTECT` mechanism, owned by the active
   storages. Old-to-young edges go through the remembered-set write
   barriers in `sexp/gengc.rs`.
 
-### `RootedSexp`: RAII rooting with a write barrier
+### Checked handles and managed roots
 
-`RootedSexp::root` clones the (non-`Copy`) handle, protects the clone
-on creation, and unprotects on `Drop`; reads deref to the guarded
-handle. Embedders never juggle protect/unprotect bookkeeping by hand.
+`RSession::sexp` validates pointer membership before dereferencing and installs
+one managed root lease. Clones share that lease; the last clone releases it.
+Child accessors install independent leases against the original owner, so a
+child remains live after its parent handle drops. Vector iterators retain the
+parent and root yielded children. Guard cleanup uses the original owner even
+when another session is active.
 
-A value that may be *replaced* during evaluation (a grown vector, a
-re-promised PROMSXP) must be refreshed through the slot's write
-barrier — `RootedSexp::reprotect` or
-`IndexedProtectGuard::reprotect_sexp` — which retargets the protected
-slot and the guarded handle together. Never refresh a value by mutating
-a raw pointer in place.
+`RArena::sexp` validates membership and ties the handle to an arena borrow.
+Safe builders retain their typed inputs and reject children from other arenas
+or sessions. Raw graph insertion and manual node freeing are unsafe: callers
+must establish graph ownership and exclude surviving handles and payload loans.
 
-### The Miri audit
+`RootedSexp` remains useful for an explicitly replaceable root. `get` checks its
+slot generation; it has no `Deref`. `reprotect` retargets that root and its stored
+handle. `unroot` releases the additional slot; a checked session handle keeps
+its automatic lease.
 
-Nightly CI (`cargo +nightly miri test -p rmath sexp::`) runs a bounded
-subset of the `sexp::` tests under Stacked Borrows checking, in default
-permissive-provenance mode, with `-Zmiri-ignore-leaks`: the runtime
-deliberately allocates immortal persistent objects (base symbols,
-`CHARSXP` payloads, primitive metadata) that live until process exit,
-mirroring upstream R, and the leak check would flag them without
-weakening the aliasing check that is the point of the job.
+### Copies, mutation, and payload loans
 
-**What was tested:** the safe ownership layer — memory, memory_ext,
-object, and protect tests — with **216 tests proven clean** today; the
-subset is re-run nightly and grows as tests are added. ~167 `sexp::`
-tests are not yet Miri-run.
+Safe reads copy elements or return owned Rust values. `SexpMut::try_from_checked`
+accepts checked mutable owners and rejects unknown raw handles and immutable
+singletons. Its setters check type, bounds, and child ownership. Read-handle
+clones may coexist because safe reads never lend Rust payload references.
 
-**What was found:** five structural Stacked-Borrows violations plus ~60
-violations in lending closures, fixed in commit `a6fe04e3`:
+Borrowed slices, strings and `SexpView` require unsafe access. They borrow the
+handle itself, and their caller must exclude payload mutation and R execution
+until the reference dies. `SexpMut::from_owned` remains unsafe for legacy raw
+handles. Moving or cloning a handle does not prove uniqueness.
 
-- instance re-acquisition retagged a stored `Box` root tag instead of
-  re-deriving `&mut RInstance` through `with_exposed_provenance`;
-- `with_arena` lends of `&mut inst.arena` were invalidated by instance
-  re-acquisition — the lend is now exposed for wildcard re-basing in
-  `with_arena_in`, and arena slab pages are raw allocator allocations;
-- `ProtectScope` stored the protect-stack address behind a borrow-like
-  tag (now stored with exposed provenance);
-- `ContextGuard::instance_ptr()` borrowed through a foreign tag (now
-  re-derived from the guard's own tag);
-- ~60 `with_arena` closures ignored the arena lend or held stale
-  borrows across re-acquisition (migrated to `with_active`).
+Unscoped raw wrappers and evaluator entrypoints are unsafe. Functions retaining
+the historical `_safe` suffix may return typed errors while still requiring an
+unsafe owner/rooting contract. Safe runtime entry should go through `RSession`;
+the embedding crates expose owned values and validated `ValueHandle` ids.
 
-**What was fixed:** the owner-bound guard design above — guards
-re-derive their owning instance from exposed provenance instead of
-holding borrow tags — plus the migration of every lend-ignoring closure.
+### Arena lends and collection
 
-**What remains:** the evaluator and library layers have no Miri
-coverage, leak auditing is disabled, and the `r-embed` safe facade as a
-whole is unaudited. ALTREP is disabled pending the external-pointer
-redesign (unsound representation).
+Mutable arena lends reject reentry. Allocation-time GC is deferred until the
+lend ends. Direct collection requests also defer before touching an arena with
+a live mutable lend; quiescent session processing services the pending request.
+No whole-instance Rust borrow may survive R reentry (the P1/P2 rules in
+`sexp/instance.rs`). The collector preserves object addresses.
 
-### Handle discipline
+### Miri evidence
 
-The rules every safe API in the crate follows:
+The nightly object gate runs `--lib sexp::object::` with strict provenance and
+isolation enabled. Local evidence for this refinement is 68 passing object
+tests plus two passing checked-mutation tests under the same flags. These cover
+managed lease cleanup, child and iterator liveness, foreign-owner rejection,
+GC between incremental pairlist appends, and collection deferral during an
+arena lend. A separate strict-provenance collector stress gate exercises 64
+protected vectors through 20 real collections and slab reuse.
 
-1. **Handles are non-`Copy`.** `Sexp` moves on assignment; a `Copy`
-   handle would let a stale alias legally survive an in-place mutation
-   of the same R object — precisely the aliasing-undefined-behavior
-   class this crate forbids. A `compile_fail` doctest pins the
-   use-after-move error. The full `SexpRef`/`SexpMut` borrow split is
-   roadmap; non-`Copy` handles with by-value mutation are the shipped
-   interim.
-2. **Mutation is by value.** Accessors consume the handle (clone first
-   to keep it), so a mutation can never happen behind an outstanding
-   shared alias.
-3. **Cloning is explicit and shallow.** `clone()` produces a second
-   cheap handle over identical R memory, never a deep copy — and the
-   same no-alias-across-mutation rule applies to the clone.
-4. **Write barriers go through `reprotect`.** Values replaced during
-   evaluation are refreshed through protected slots, never by editing
-   raw pointers in place.
-5. **Rooting is explicit.** Holding a handle does not root the object:
-   the generational GC may collect anything only reachable from Rust
-   locals once an R evaluation re-enters. Retain a value across a GC
-   point with `RootedSexp` or a protect guard.
+Leak checking is disabled for these gates because persistent runtime objects
+are deliberately retained. Full base-library and default-package heap stress
+also has native coverage. These runs establish evidence for specific paths;
+they do not prove the whole interpreter, allocator, or collector sound. Broader
+evaluator/module coverage and resource accounting remain separate work.
 
 ### Embedding boundary
 
@@ -218,10 +201,10 @@ Intended boundaries when revisited:
   `context`, `envir`, `env_hash`, `symbol`, `protect`, `gengc`, `init`,
   `globals`, `constructors`, `accessors`, `attrib_core`, `output`).
 - **`r-safe`** — the only API new Rust and embedding code should touch:
-  `sexp/object` (`Sexp`, `SexpMut`, the future `SexpRef`,
+  `sexp/object` (`Sexp`, `SexpMut`, `SexpRef`,
   `RootedSexp`, `builder`) plus the typed entrypoints
-  (`RSession::sexp`, `RSession::eval_sexp*`, `EvalContext`,
-  `eval_expr`).
+  (`RSession::sexp`, `RSession::eval_sexp*`). Unsafe internal dispatchers
+  remain behind this boundary.
 
 Revisit trigger: a second embedding consumer that needs a stable subset
 without the translated core, or the safe API stabilizing — the shipped

@@ -102,17 +102,21 @@ fn compute_accuracy_info() -> AccuracyInfo {
     info
 }
 
-fn define_machine_binding(rho: SEXP, ans: SEXP) {
-    let (Some(rho), Some(ans)) = (Sexp::from_raw(rho), Sexp::from_raw(ans)) else {
+unsafe fn define_machine_binding(rho: SEXP, ans: SEXP) {
+    let (Some(rho), Some(ans)) = (unsafe { Sexp::from_raw(rho) }, unsafe {
+        Sexp::from_raw(ans)
+    }) else {
         return;
     };
     let Ok(env) = Environment::new(rho) else {
         return;
     };
-    let Some(machine_symbol) = Sexp::from_raw(unsafe { install(c".Machine".as_ptr()) }) else {
+    let Some(machine_symbol) =
+        (unsafe { Sexp::from_raw(unsafe { install(c".Machine".as_ptr()) }) })
+    else {
         return;
     };
-    let _ = env.define(machine_symbol, ans);
+    let _ = unsafe { env.define(machine_symbol, ans) };
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +256,7 @@ mod tests {
             assert_eq!(
                 names
                     .string_elt(0)
-                    .and_then(|name| name.as_str())
+                    .and_then(|name| name.as_string())
                     .expect("first name"),
                 "double.eps"
             );

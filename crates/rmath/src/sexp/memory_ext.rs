@@ -101,7 +101,7 @@ pub unsafe fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `allocSExp()`.
 pub unsafe fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
-    memory::with_arena(|arena| arena.alloc_node(sexptype))
+    unsafe { memory::with_arena(|arena| arena.alloc_node(sexptype)) }
 }
 
 /// Create a PROMSXP binding an expression to an environment.
@@ -199,7 +199,8 @@ pub unsafe fn CONS_NR(car: SEXP, cdr: SEXP) -> SEXP {
 
 /// Create a formals list from 2 symbols.
 pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
-    memory::with_arena(|arena| {
+    unsafe {
+        memory::with_arena(|arena| {
         let cdr = if sym2.is_null() {
             unsafe { R_NilValue() }
         } else {
@@ -220,10 +221,12 @@ pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
         car
     })
 }
+}
 
 /// Create a formals list from 3 symbols.
 pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
-    memory::with_arena(|arena| {
+    unsafe {
+        memory::with_arena(|arena| {
         let c3 = if sym3.is_null() {
             unsafe { R_NilValue() }
         } else {
@@ -259,6 +262,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
         };
         c1
     })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -269,7 +273,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `allocList()`.
 pub unsafe fn allocList(n: c_int) -> SEXP {
-    memory::with_arena(|arena| arena.alloc_list_chain(n))
+    unsafe { memory::with_arena(|arena| arena.alloc_list_chain(n)) }
 }
 
 /// Allocate a lang (LANGSXP) pairlist of n elements.

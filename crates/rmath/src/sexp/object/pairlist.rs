@@ -62,86 +62,92 @@ impl<'a> Iterator for PairlistIter<'a> {
 /// R's evaluator has many paths that append tagged cons cells. Keeping that
 /// mutation here avoids repeating head/tail pointer stitching throughout the
 /// safe-ish evaluator boundary while preserving the underlying LISTSXP shape.
-pub(crate) struct PairlistBuilder {
-    head: SEXP,
+pub(crate) struct PairlistBuilder<'a> {
+    head: Option<Sexp<'a>>,
     tail: SEXP,
+    owner: *mut crate::sexp::instance::RInstance,
 }
 
-impl PairlistBuilder {
-    pub(crate) fn new() -> Self {
+impl<'a> PairlistBuilder<'a> {
+    /// Start an incremental list in the active owner.
+    ///
+    /// # Safety
+    /// The active owner must remain live for `'a`. Each append must run with
+    /// that owner active, with no outstanding Rust payload borrow of a cell.
+    pub(crate) unsafe fn new() -> Self {
         Self {
-            head: ptr::null_mut(),
+            head: None,
             tail: ptr::null_mut(),
+            owner: crate::sexp::instance::with_required_current_instance(|owner| owner),
         }
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.head.is_null()
+        self.head.is_none()
     }
 
-    pub(crate) fn push<'a>(&mut self, value: Sexp<'a>, tag: Option<Sexp<'a>>) -> SexpResult<()> {
-        let tag = tag.map(Sexp::as_raw).unwrap_or_else(ptr::null_mut);
-        unsafe { self.append_raw(value.as_raw(), tag) }.map(|_| ())
+    pub(crate) fn push(&mut self, value: Sexp<'a>, tag: Option<Sexp<'a>>) -> SexpResult<()> {
+        self.push_cell(value, tag).map(|_| ())
     }
 
-    /// Append a cell and return the raw cons cell so callers can protect it.
-    ///
-    /// Incremental list builders such as `evalList`/`promiseArgs` evaluate
-    /// (and thus may run a collection) between appends; every cell built so
-    /// far is reachable only from this builder's raw locals, so callers must
-    /// protect each returned cell until the finished list is handed off.
-    pub(crate) fn push_cell<'a>(
+    /// Append a cell. The builder's head lease retains every linked cell.
+    /// Legacy callers may additionally protect the returned raw cell.
+    pub(crate) fn push_cell(
         &mut self,
         value: Sexp<'a>,
-        tag: Option<Sexp<'a>>,
-    ) -> SexpResult<SEXP> {
-        let tag = tag.map(Sexp::as_raw).unwrap_or_else(ptr::null_mut);
-        unsafe { self.append_raw(value.as_raw(), tag) }
-    }
-
-    unsafe fn append_raw(&mut self, value: SEXP, tag: SEXP) -> SexpResult<SEXP> {
-        unsafe {
-            let cell = Rf_cons(value, R_NilValue());
+        tag: Option<Sexp<'a>>) -> SexpResult<SEXP> {
+        let active = crate::sexp::instance::with_current_instance(|owner| owner);
+        if active != Some(self.owner) {
+            return Err(SexpError::RootUnavailable);
+        }
+        // SAFETY: new's owner contract holds. Membership validation precedes
+        // linking, and these independent leases retain inputs during allocation.
+        let value = unsafe { Sexp::from_session_raw(value.clone().as_raw(), self.owner) }?;
+        let tag = tag.map(|tag| unsafe { Sexp::from_session_raw(tag.clone().as_raw(), self.owner) })
+            .transpose()?;
+        let cell = unsafe { Rf_cons(value.clone().as_raw(), R_NilValue()) };
             if cell.is_null() {
                 return Err(SexpError::AllocationFailed {
                     object: "pairlist cell",
                 });
             }
-
-            if !tag.is_null() {
-                SETTAG(cell, tag);
+        let cell_handle = unsafe { Sexp::from_session_raw(cell, self.owner) }?;
+        unsafe {
+            if let Some(tag) = tag {
+                SETTAG(cell, tag.clone().as_raw());
             }
-
-            if self.is_empty() {
-                self.head = cell;
+            if self.head.is_none() {
+                self.head = Some(cell_handle);
             } else {
                 SETCDR(self.tail, cell);
             }
-            self.tail = cell;
-            Ok(cell)
         }
+        self.tail = cell;
+        Ok(cell)
     }
 
-    fn finish_raw(self) -> SEXP {
-        if self.head.is_null() {
-            unsafe { R_NilValue() }
-        } else {
-            self.head
+    pub(crate) fn finish(self) -> SexpResult<Sexp<'a>> {
+        Ok(self.head.unwrap_or_else(|| Sexp::nil()))
+    }
+
+    pub(crate) fn finish_as_type(self, sexptype: SEXPTYPE) -> SexpResult<Sexp<'a>> {
+        if !matches!(
+            sexptype,
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP
+        ) {
+            return Err(SexpError::TypeMismatch {
+                expected: "pairlist type",
+                actual: sexptype,
+            });
         }
-    }
-
-    pub(crate) fn finish<'a>(self) -> SexpResult<Sexp<'a>> {
-        Sexp::try_from_raw(self.finish_raw())
-    }
-
-    pub(crate) fn finish_as_type<'a>(self, sexptype: SEXPTYPE) -> SexpResult<Sexp<'a>> {
-        unsafe {
-            let head = self.finish_raw();
-            if head != R_NilValue() {
-                (*head).sxpinfo.set_type(sexptype);
+        let head = self.finish()?;
+        if !head.is_nil() {
+            // SAFETY: only compatible cons-cell tags are accepted.
+            unsafe {
+                (*head.clone().as_raw()).sxpinfo.set_type(sexptype);
             }
-            Sexp::try_from_raw(head)
         }
+        Ok(head)
     }
 }
 
@@ -165,7 +171,8 @@ mod tests {
             .expect("second value belongs to session");
         let tag_value = session.sexp(tag).expect("tag belongs to session");
 
-        let mut builder = PairlistBuilder::new();
+        // SAFETY: session outlives the builder and no cell payload is borrowed.
+        let mut builder = unsafe { PairlistBuilder::new() };
         builder.push(first_value, Some(tag_value)).unwrap();
         builder.push(second_value, None).unwrap();
         let list = builder.finish().expect("pairlist").as_raw();

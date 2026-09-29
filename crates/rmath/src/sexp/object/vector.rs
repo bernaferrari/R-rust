@@ -107,7 +107,7 @@ impl<'a> Sexp<'a> {
     pub fn try_string_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
         let data = self.try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
         let i = self.try_index(i)?;
-        Self::checked_child(unsafe { *data.add(i) })
+        self.checked_child(unsafe { *data.add(i) })
     }
 
     /// Return the i-th string value as UTF-8 text, preserving R's `NA_STRING`.
@@ -116,12 +116,19 @@ impl<'a> Sexp<'a> {
     /// present CHARSXP value. Type, bounds, missing-data, and UTF-8 failures are
     /// reported as [`SexpError`](super::SexpError).
     #[inline]
-    pub fn try_string_text_elt(self, i: R_xlen_t) -> SexpResult<Option<&'a str>> {
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn try_string_text_elt(&self, i: R_xlen_t) -> SexpResult<Option<&'_ str>> {
         let chars = self.try_string_elt(i)?;
         if chars.clone().as_raw() == unsafe { R_NaString() } {
             Ok(None)
         } else {
-            chars.try_as_str().map(Some)
+            // SAFETY: this borrow is tied to the parent vector. Its root
+            // retains this child even after the temporary child lease drops.
+            // The caller excludes mutation throughout the returned borrow.
+            let text = unsafe { chars.try_as_str()? };
+            Ok(Some(unsafe { &*(text as *const str) }))
         }
     }
 
@@ -130,8 +137,29 @@ impl<'a> Sexp<'a> {
     /// The outer `None` is an access/type error; the inner `None` is R's
     /// `NA_character_`.
     #[inline]
-    pub fn string_text_elt(self, i: R_xlen_t) -> Option<Option<&'a str>> {
-        self.try_string_text_elt(i).ok()
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn string_text_elt(&self, i: R_xlen_t) -> Option<Option<&'_ str>> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_string_text_elt(i)
+        }
+        .ok()
+    }
+
+    /// Copy a string element, preserving `NA_character_` as `None`.
+    pub fn try_string_value_elt(&self, i: R_xlen_t) -> SexpResult<Option<String>> {
+        let chars = self.try_string_elt(i)?;
+        if chars.clone().as_raw() == unsafe { R_NaString() } {
+            Ok(None)
+        } else {
+            chars.try_as_string().map(Some)
+        }
+    }
+
+    pub fn string_value_elt(&self, i: R_xlen_t) -> Option<Option<String>> {
+        self.try_string_value_elt(i).ok()
     }
 
     /// Get the i-th vector element with bounds checking.
@@ -148,7 +176,7 @@ impl<'a> Sexp<'a> {
     pub fn try_vector_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
         let data = self.try_vector_sexp_data()?;
         let i = self.try_index(i)?;
-        Self::checked_child(unsafe { *data.add(i) })
+        self.checked_child(unsafe { *data.add(i) })
     }
 
     // --- Mutation methods ---
@@ -333,6 +361,7 @@ impl<'a> Sexp<'a> {
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
     pub(crate) unsafe fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+        self.check_child_owner(&v)?;
         v.clone()
             .expect_type(SEXPTYPE::CHARSXP, "character scalar")
             .clone()?;
@@ -375,6 +404,7 @@ impl<'a> Sexp<'a> {
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
     pub(crate) unsafe fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+        self.check_child_owner(&v)?;
         let data = self.clone().try_vector_sexp_data_mut().clone()?;
         let i = self.try_index(i)?;
         unsafe {
@@ -388,95 +418,139 @@ impl<'a> Sexp<'a> {
     /// Get a slice view of the logical data.
     ///
     /// Returns `None` if this is not a logical vector or the data pointer is null.
-    /// The slice is valid for the lifetime `'a` of the `Sexp`.
-    // Internal SEXP views deliberately consume the non-Copy handle.
+    /// The slice borrows this handle; it does not outlive the handle.
     #[allow(clippy::wrong_self_convention)]
-    pub fn as_logical_slice(self) -> Option<&'a [c_int]> {
-        self.try_as_logical_slice().ok()
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn as_logical_slice(&self) -> Option<&'_ [c_int]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_as_logical_slice()
+        }
+        .ok()
     }
 
     /// Get a logical slice view with typed error reporting.
-    pub fn try_as_logical_slice(self) -> SexpResult<&'a [c_int]> {
-        self.try_typed_slice::<c_int>(SEXPTYPE::LGLSXP, "logical vector")
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn try_as_logical_slice(&self) -> SexpResult<&'_ [c_int]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_typed_slice::<c_int>(SEXPTYPE::LGLSXP, "logical vector")
+        }
     }
 
     /// Get a slice view of the integer data.
     ///
     /// Returns `None` if this is not an integer vector or the data pointer is null.
-    // Internal SEXP views deliberately consume the non-Copy handle.
     #[allow(clippy::wrong_self_convention)]
-    pub fn as_integer_slice(self) -> Option<&'a [c_int]> {
-        self.try_as_integer_slice().ok()
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn as_integer_slice(&self) -> Option<&'_ [c_int]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_as_integer_slice()
+        }
+        .ok()
     }
 
     /// Get an integer slice view with typed error reporting.
-    pub fn try_as_integer_slice(self) -> SexpResult<&'a [c_int]> {
-        self.try_typed_slice::<c_int>(SEXPTYPE::INTSXP, "integer vector")
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn try_as_integer_slice(&self) -> SexpResult<&'_ [c_int]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_typed_slice::<c_int>(SEXPTYPE::INTSXP, "integer vector")
+        }
     }
 
     /// Get a slice view of the real (double) data.
     ///
     /// Returns `None` if this is not a real vector or the data pointer is null.
-    // Internal SEXP views deliberately consume the non-Copy handle.
     #[allow(clippy::wrong_self_convention)]
-    pub fn as_real_slice(self) -> Option<&'a [c_double]> {
-        self.try_as_real_slice().ok()
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn as_real_slice(&self) -> Option<&'_ [c_double]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_as_real_slice()
+        }
+        .ok()
     }
 
     /// Get a real slice view with typed error reporting.
-    pub fn try_as_real_slice(self) -> SexpResult<&'a [c_double]> {
-        self.try_typed_slice::<c_double>(SEXPTYPE::REALSXP, "real vector")
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn try_as_real_slice(&self) -> SexpResult<&'_ [c_double]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_typed_slice::<c_double>(SEXPTYPE::REALSXP, "real vector")
+        }
     }
 
     /// Get a slice view of the raw byte data.
     ///
     /// Returns `None` if this is not a raw vector or the data pointer is null.
-    // Internal SEXP views deliberately consume the non-Copy handle.
     #[allow(clippy::wrong_self_convention)]
-    pub fn as_raw_slice(self) -> Option<&'a [Rbyte]> {
-        self.try_as_raw_slice().ok()
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn as_raw_slice(&self) -> Option<&'_ [Rbyte]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_as_raw_slice()
+        }
+        .ok()
     }
 
     /// Get a raw byte slice view with typed error reporting.
-    pub fn try_as_raw_slice(self) -> SexpResult<&'a [Rbyte]> {
-        self.try_typed_slice::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn try_as_raw_slice(&self) -> SexpResult<&'_ [Rbyte]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_typed_slice::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")
+        }
     }
 
     // --- Iterators ---
 
     /// Iterate over logical elements.
     pub fn iter_logical(self) -> impl Iterator<Item = c_int> + 'a {
-        self.as_logical_slice().unwrap_or(&[]).iter().copied()
+        (0..self.len()).filter_map(move |i| self.logical_elt(i))
     }
 
     /// Iterate over integer elements.
     pub fn iter_integer(self) -> impl Iterator<Item = c_int> + 'a {
-        self.as_integer_slice().unwrap_or(&[]).iter().copied()
+        (0..self.len()).filter_map(move |i| self.integer_elt(i))
     }
 
     /// Iterate over real (double) elements.
     pub fn iter_real(self) -> impl Iterator<Item = c_double> + 'a {
-        self.as_real_slice().unwrap_or(&[]).iter().copied()
+        (0..self.len()).filter_map(move |i| self.real_elt(i))
     }
 
     /// Iterate over raw byte elements.
     pub fn iter_raw(self) -> impl Iterator<Item = Rbyte> + 'a {
-        self.as_raw_slice().unwrap_or(&[]).iter().copied()
+        (0..self.len()).filter_map(move |i| self.raw_elt(i))
     }
 
     /// Iterate over vector elements (for VECSXP/EXPRSXP).
     ///
     /// Null elements are replaced with `R_NilValue`.
     pub fn iter_vector(self) -> impl Iterator<Item = Sexp<'a>> + 'a {
-        let data = self.clone().vector_sexp_data();
-        let len = if data.is_some() {
-            self.len() as usize
+        let len = if self.vector_sexp_data().is_some() {
+            self.len()
         } else {
             0
         };
-        (0..len).map(move |i| {
-            let ptr = data.map_or(std::ptr::null_mut(), |data| unsafe { *data.add(i) });
-            Sexp::from_raw(ptr).unwrap_or_else(|| unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
-        })
+        (0..len).map(move |i| self.vector_elt(i).unwrap_or_else(|| Sexp::nil()))
     }
 }

@@ -19,8 +19,8 @@ use faer::{Mat, MatRef, Side, c64};
 /// session is active. Standalone low-level LAPACK tests intentionally run
 /// without an ambient session and therefore retain the historical unlimited
 /// behavior.
-fn reserve_native_workspace(bytes: usize) -> Result<Option<TransientReservation>, ()> {
-    match with_current_instance(|instance| {
+unsafe fn reserve_native_workspace(bytes: usize) -> Result<Option<TransientReservation>, ()> {
+    match with_current_instance(|instance| unsafe {
         with_arena_in(instance, |arena| arena.try_reserve_transient(bytes))
     }) {
         None => Ok(None),
@@ -2918,7 +2918,8 @@ pub unsafe fn ztrcon_(
             if m == 0.0 {
                 *z = Rcomplex { r: 1.0, i: 0.0 };
             } else {
-                *z = Rcomplex { r: z.r / m, i: -z.i / m };
+                *z = Rcomplex { r: z.r / m, i: -z.i / m,
+                };
             }
         }
         solve(&mut x, true);

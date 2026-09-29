@@ -613,7 +613,7 @@ impl WriteHashTable {
         let pos = (key >> 2) % (HASHSIZE as usize);
         self.count += 1;
         self.buckets[pos].push((key, self.count));
-        self.roots.push(protect(obj));
+        self.roots.push(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(obj) });
     }
 
     pub fn get(&self, item: SEXP) -> i32 {
@@ -647,7 +647,7 @@ impl ReadRefTable {
     }
 
     pub fn add(&mut self, value: SEXP) {
-        self.roots.push(protect(value));
+        self.roots.push(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(value) });
         self.entries.push(value);
     }
 

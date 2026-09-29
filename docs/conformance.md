@@ -138,30 +138,21 @@ not part of the PR bar.
 
 ### Miri subset
 
-`cargo +nightly miri test -p rmath sexp::` runs the `sexp::` safe-layer. Expansion (2026-09): the instance-aliasing redesign LANDED — ambient
-instance access is raw-pointer based (`*mut RInstance` place access, P1/P2
-discipline documented in `sexp/instance.rs`; Miri is the checker). The
-nightly workflow gates it three ways: `miri-modules` (full `serialize::`,
-`connections::`, `tzone::` sweeps; tzone needs `-Zmiri-disable-isolation`
-for an /etc/localtime readlink — environment, not aliasing), and
-`miri-gc-torture` (`tests/serialize_torture.rs`: save/load round-trip
-under `gctorture(TRUE)`, the standing evidence that collector reentry
-through `with_arena` lends stays inside the P1 discipline). Sweep runs
-remain slow (minutes per session-constructing test) which is why they
-are nightly jobs, not PR gates.
-test subset under Miri with Stacked Borrows checking in the default
-permissive-provenance mode. The leak check is disabled
-(`-Zmiri-ignore-leaks`) because the runtime deliberately allocates
-immortal persistent objects — base symbols, `CHARSXP` payloads,
-primitive metadata — that live until process exit, mirroring upstream
-R; the aliasing check that is the point of the job is unaffected.
+The nightly object gate runs `cargo +nightly miri test -p rmath --lib
+sexp::object::` with `-Zmiri-strict-provenance -Zmiri-ignore-leaks` and isolation
+enabled. The current refinement passed 68 object tests and two additional
+checked-mutation tests locally. A separate collector gate runs the protected
+vector stress fixture through real marking, sweeping and slab reuse.
 
-**216 tests are proven Miri-clean.** This is deliberately a bounded
-claim: ~167 `sexp::` tests are not yet Miri-run, and the evaluator and
-library layers have no Miri coverage at all. The nightly job re-runs
-the subset as it grows. What the audit tested, found, and fixed is
-documented in
-[Object ownership and GC safety](rust-r-port-architecture.md#object-ownership-and-gc-safety).
+These fixtures use real session storage with deterministic paths and omit R
+library bootstrap. Native tests retain full base-runtime and default-package
+coverage. Full bootstrap remains expensive under Miri. Module and serialization
+torture gates provide additional path-specific evidence; their configuration
+alone is not a passing result or a whole-runtime proof.
+
+The leak check is disabled for deliberately persistent runtime objects.
+See [object ownership and GC safety](rust-r-port-architecture.md#object-ownership-and-gc-safety)
+for the checked-handle invariants and the remaining unsafe boundaries.
 
 ### GC-torture stress
 
@@ -177,15 +168,14 @@ collector damage, not just crashes.
 
 ### Compile-fail tests
 
-Compile-fail coverage exists as doctests: `Sexp` carries a
-`compile_fail` doctest pinning the non-`Copy` use-after-move contract
-(a `Copy` handle would let a stale alias survive an in-place mutation
-of the same R object). There is no trybuild/UI-test rig yet; broader
-compile-fail coverage is open work alongside the planned
-`SexpRef`/`SexpMut` borrow split.
+The integration suite in `crates/rmath/tests/compile_fail` checks that external
+Rust callers cannot access private SEXP internals or construct raw handles.
+This is boundary/privacy coverage. It does not prove internal payload borrowing,
+GC liveness, or R behavior. Moving a non-`Copy` handle also does not prove that
+other clones or raw aliases are absent.
 
-By the same policy as parity numbers: the proven Miri subset is a
-floor, not a whole-runtime claim. The release-facing safety stance
+By the same policy as parity numbers: passing Miri results are
+path-specific evidence, not a whole-runtime claim. The release-facing safety stance
 lives in the README's
 [Safety status](../README.md#safety-status).
 

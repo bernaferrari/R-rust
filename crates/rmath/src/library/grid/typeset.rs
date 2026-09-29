@@ -91,7 +91,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     unsafe { gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd) };
 
     let currentgp = unsafe { crate::main::duplicate::Rf_duplicate(currentgp) };
-    let _currentgp_guard = protect(currentgp);
+    let _currentgp_guard = unsafe { protect(currentgp) };
     let fill = unsafe { Rf_mkString(b"black\0".as_ptr() as *const std::os::raw::c_char) };
     unsafe {
         SET_VECTOR_ELT(currentgp, GP_FILL as R_xlen_t, fill);

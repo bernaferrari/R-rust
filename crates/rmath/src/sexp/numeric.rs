@@ -17,8 +17,11 @@ pub(crate) struct NumericVector<'a> {
 }
 
 impl<'a> NumericVector<'a> {
-    pub(crate) fn from_raw(raw: SEXP) -> Option<Self> {
-        let sexp = Sexp::from_raw(raw)?;
+    pub(crate) unsafe fn from_raw(raw: SEXP) -> Option<Self> {
+        let sexp = unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            Sexp::from_raw(raw)
+        }?;
         Self::new(sexp)
     }
 

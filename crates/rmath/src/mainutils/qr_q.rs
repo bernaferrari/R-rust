@@ -145,7 +145,7 @@ pub unsafe fn do_qr_Q(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 coerceVector(x, REALSXP_C)
             }
         });
-        let _dvec_root = dvec.map(protect);
+        let _dvec_root = dvec.map(|value| unsafe { protect(value) });
         if let Some(d) = dvec {
             if cols > 0 && (XLENGTH(d) == 0 || (!complete && XLENGTH(d) < cols as i64)) {
                 qr_q_error("Dvec has insufficient length")
@@ -246,7 +246,7 @@ unsafe fn qr_Q_complex(
         let _d_guard = protect(d);
         let d_complex = TYPEOF(d) == SEXPTYPE::CPLXSXP;
         let dvec = dvec_arg;
-        let _dvec_guard = dvec.map(protect);
+        let _dvec_guard = dvec.map(|value| unsafe { protect(value) });
         if d_complex {
             for i in 0..count {
                 *COMPLEX(d).add(i) = Rcomplex { r: 0.0, i: 0.0 };

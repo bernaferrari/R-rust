@@ -576,7 +576,8 @@ fn scan_error(message: impl Into<String>) -> ! {
     });
 }
 
-fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64, strip_white: bool) -> Vec<String> {
+fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64, strip_white: bool,
+) -> Vec<String> {
     let limit = if nmax > 0 { nmax as usize } else { usize::MAX };
     let spec = TableParseSpec {
         sep: sep.chars().next(),
@@ -721,7 +722,8 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         in_quote = 0;
                     }
                 }
-                (String::from_utf8_lossy(&bytes).into_owned(), Some((idx, bytes)))
+                (String::from_utf8_lossy(&bytes).into_owned(), Some((idx, bytes)),
+                    )
             } else if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
                 scan_error("scan() currently supports character file paths only");
             } else {
@@ -1305,7 +1307,8 @@ pub unsafe fn do_package_startup_message(call: SEXP, op: SEXP, args: SEXP, rho: 
         let message = if output.ends_with('\n') { output } else { format!("{output}\n") };
         let condition = super::conditions::simple_condition(
             &message,
-            &["packageStartupMessage", "simpleMessage", "message", "condition"],
+            &["packageStartupMessage", "simpleMessage", "message", "condition",
+            ],
         );
         let _c = protect(condition);
         let wrapped = Rf_cons(condition, R_NilValue());
@@ -2073,8 +2076,7 @@ unsafe fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableC
             let n = XLENGTH(arg) as usize;
             let names = crate::sexp::attrib_core::getAttrib(
                 arg,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
+                crate::sexp::attrib_core::R_NamesSymbol());
             let named = !names.is_null()
                 && names != R_NilValue()
                 && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -2094,8 +2096,7 @@ unsafe fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableC
                 }
                 if missing {
                     let msg = std::ffi::CString::new(
-                        "not all columns named in 'colClasses' exist",
-                    )
+                        "not all columns named in 'colClasses' exist")
                     .unwrap_or_default();
                     crate::mainutils::errors::Rf_warning(msg.as_ptr());
                 }
@@ -2107,8 +2108,7 @@ unsafe fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableC
                     }
                     declared[j] = Some(table_col_class_name(&elt_to_string(
                         arg,
-                        src as R_xlen_t,
-                    )));
+                        src as R_xlen_t)));
                 }
             }
         }
@@ -2302,7 +2302,8 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 }
                 bytes.push(c as u8);
             }
-            crate::mainutils::browser_files::admit_text(String::from_utf8_lossy(&bytes).into_owned())
+            crate::mainutils::browser_files::admit_text(String::from_utf8_lossy(&bytes).into_owned(),
+            )
                 .unwrap_or_else(|error| scan_error(error.to_string()))
         } else {
             if file_arg.is_null()
@@ -2590,7 +2591,8 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let _labels_guard = protect(labels);
             for (i, name) in names.iter().enumerate() {
                 let cstr = CString::new(name.as_str()).unwrap_or_default();
-                SET_STRING_ELT(labels, i as R_xlen_t, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+                SET_STRING_ELT(labels, i as R_xlen_t, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                );
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.names".as_ptr()), labels);
         } else if explicit_row_names {
@@ -3160,9 +3162,11 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
                 break;
             }
             if byte == 0 {
-                crate::mainutils::errors::Rf_warning(
+                unsafe {
+                    crate::mainutils::errors::Rf_warning(
                     c"truncating string with embedded nuls".as_ptr(),
-                );
+                )
+                };
                 break;
             }
             bytes.push(byte as u8);

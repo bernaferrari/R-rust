@@ -54,7 +54,7 @@ impl<'a> PrimitiveDescriptor<'a> {
     /// Rust evaluator code that already has an owner-scoped `Sexp` should use
     /// [`from_sexp`](Self::from_sexp) instead.
     pub unsafe fn from_raw(op: SEXP) -> Option<Self> {
-        let op = Sexp::try_from_raw(op).ok()?;
+        let op = (unsafe { /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */ Sexp::try_from_raw(op) }).ok()?;
         Self::from_sexp(op)
     }
 }
@@ -400,14 +400,17 @@ mod tests {
     fn portable_identity_is_reused_without_adding_r_attributes() {
         let _session = RSession::new();
         let first = unsafe { make_primitive_binding("__rport_helper__", SEXPTYPE::BUILTINSXP) };
-        let _first = crate::sexp::protect::protect(first);
+        let _first = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            crate::sexp::protect::protect(first)
+        };
         let second = unsafe { make_primitive_binding("__rport_helper__", SEXPTYPE::BUILTINSXP) };
         assert_eq!(
             unsafe { crate::sexp::accessors::PRIMOFFSET(first) },
             unsafe { crate::sexp::accessors::PRIMOFFSET(second) }
         );
         assert_eq!(
-            portable_primitive_name(Sexp::try_from_raw(first).unwrap()).as_deref(),
+            portable_primitive_name(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::try_from_raw(first) }.unwrap()).as_deref(),
             Some("__rport_helper__")
         );
         let attributes = unsafe { crate::sexp::accessors::ATTRIB(first) };
@@ -434,7 +437,7 @@ mod tests {
 
         assert!(unsafe { PrimitiveDescriptor::from_raw(primitive) }.is_none());
         assert_eq!(
-            Sexp::try_from_raw(primitive).unwrap().typeof_(),
+            unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::try_from_raw(primitive) }.unwrap().typeof_(),
             SEXPTYPE::BUILTINSXP
         );
         assert!(unsafe { crate::sexp::accessors::PRIMOFFSET(primitive) } <= -2);

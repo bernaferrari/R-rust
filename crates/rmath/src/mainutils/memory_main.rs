@@ -939,7 +939,7 @@ pub(crate) unsafe fn R_GetMaxNSize_memory() -> u64 {
 
 /// Set the maximum vector heap size.
 pub unsafe fn R_SetMaxVSize(size: u64) -> c_int {
-    let current = current_vector_heap_size();
+    let current = unsafe { current_vector_heap_size() };
     with_memory_state(|state| {
         if size == u64::MAX || size >= current {
             state.max_v_size = size;
@@ -952,7 +952,7 @@ pub unsafe fn R_SetMaxVSize(size: u64) -> c_int {
 
 /// Set the maximum node heap size.
 pub unsafe fn R_SetMaxNSize(size: u64) -> c_int {
-    let current = current_node_heap_size();
+    let current = unsafe { current_node_heap_size() };
     with_memory_state(|state| {
         if size == u64::MAX || size >= current {
             state.max_n_size = size;
@@ -968,12 +968,15 @@ pub unsafe fn R_SetPPSize(_size: u64) {
     // Arena-based allocation doesn't need PP stack sizing
 }
 
-fn current_vector_heap_size() -> u64 {
+unsafe fn current_vector_heap_size() -> u64 {
+    unsafe {
     crate::sexp::memory::with_arena(|arena| arena.total_bytes_allocated() as u64)
 }
+}
 
-fn current_node_heap_size() -> u64 {
-    crate::sexp::memory::with_arena(|arena| arena.node_count() as u64)
+unsafe fn current_node_heap_size() -> u64 {
+    unsafe {
+    crate::sexp::memory::with_arena(|arena| arena.node_count() as u64) }
 }
 
 // ---------------------------------------------------------------------------

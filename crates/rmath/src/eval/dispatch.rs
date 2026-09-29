@@ -124,7 +124,7 @@ unsafe fn method_name_is(method: SEXP, name: &[u8]) -> bool {
 /// promise or loop safe point — must not free the earlier results. `guards`
 /// owns those protect-stack entries; drop it only once the finished list has
 /// been handed to the caller.
-fn push_pairlist_cell(
+unsafe fn push_pairlist_cell(
     builder: &mut PairlistBuilder,
     guards: &mut Vec<ProtectGuard>,
     value: SEXP,
@@ -132,13 +132,13 @@ fn push_pairlist_cell(
 ) {
     // The value is reachable only from this local until it lives in a
     // protected cell, and the cons allocation below may run the collector.
-    guards.push(protect(value));
-    let Some(value) = Sexp::from_raw(value) else {
+    guards.push(unsafe { protect(value) });
+    let Some(value) = (unsafe { Sexp::from_raw(value) }) else {
         return;
     };
-    let tag = Sexp::from_raw(tag);
+    let tag = unsafe { Sexp::from_raw(tag) };
     if let Ok(cell) = builder.push_cell(value, tag) {
-        guards.push(protect(cell));
+        guards.push(unsafe { protect(cell) });
     }
 }
 
@@ -678,8 +678,7 @@ pub unsafe fn DispatchOrEval(
                     && crate::mainutils::objects::R_has_methods(op) != FALSE
                 {
                     let value = crate::mainutils::objects::R_possible_dispatch(
-                        call, op, pargs, rho, TRUE,
-                    );
+                        call, op, pargs, rho, TRUE);
                     if !value.is_null() {
 
                         *ans = value;
@@ -864,8 +863,7 @@ pub unsafe fn DispatchGroup(
         {
             if crate::mainutils::objects::R_has_methods(op) != FALSE {
                 let value = crate::mainutils::objects::R_possible_dispatch(
-                    call, op, args, rho, FALSE,
-                );
+                    call, op, args, rho, FALSE);
                 if !value.is_null() {
 
                     *ans = value;

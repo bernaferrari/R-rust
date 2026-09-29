@@ -283,15 +283,13 @@ pub unsafe fn do_rWishart_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if n.is_null() || n == R_NilValue() || n == crate::sexp::globals::R_MissingArg() {
             crate::main::errors::errorcall_str(
                 call,
-                "argument \"n\" is missing, with no default",
-            );
+                "argument \"n\" is missing, with no default");
         }
         let nu = CADR(args);
         if nu.is_null() || nu == R_NilValue() || nu == crate::sexp::globals::R_MissingArg() {
             crate::main::errors::errorcall_str(
                 call,
-                "argument \"df\" is missing, with no default",
-            );
+                "argument \"df\" is missing, with no default");
         }
         let scal = CADDR(args);
         if scal.is_null() || scal == R_NilValue() || scal == crate::sexp::globals::R_MissingArg() {
@@ -305,6 +303,6 @@ pub unsafe fn do_rWishart_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 pub unsafe extern "C-unwind" fn c_rWishart(n: SEXP, df: SEXP, sigma: SEXP) -> SEXP {
-    rWishart(n, df, sigma)
+    unsafe { rWishart(n, df, sigma)
 }
-
+}

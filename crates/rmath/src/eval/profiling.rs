@@ -1661,10 +1661,10 @@ mod tests {
 
         let left_after = left.with_protected(|| {
             let before = memory_profile_snapshot();
-            with_arena(|arena| {
+            unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ with_arena(|arena| {
                 arena.alloc_vector(SEXPTYPE::REALSXP, 128);
                 arena.alloc_charsxp(b"profile-left");
-            });
+            }) };
             let after = memory_profile_snapshot();
             assert!(after.current_bytes > before.current_bytes);
             assert!(after.peak_bytes >= after.current_bytes);
@@ -1700,9 +1700,12 @@ mod tests {
     #[test]
     fn memory_profile_prefix_writes_real_snapshot_values() {
         let _session = RSession::new();
-        with_arena(|arena| {
+        unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             arena.alloc_vector(SEXPTYPE::INTSXP, 64);
-        });
+        })
+        };
         let snapshot = memory_profile_snapshot();
 
         let mut buf = [0u8; 128];
@@ -1809,9 +1812,9 @@ mod tests {
                 assert!(state.profile_outfile >= 0);
             });
 
-            with_arena(|arena| {
+            unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ with_arena(|arena| {
                 arena.alloc_vector(SEXPTYPE::INTSXP, 128);
-            });
+            }) };
             R_WriteProfile(0);
 
             unsafe {

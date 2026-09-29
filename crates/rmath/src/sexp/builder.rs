@@ -388,71 +388,57 @@ impl StringVector {
 ///     .set_value(0, nil)
 ///     .build_in(&mut arena);
 /// ```
-pub struct GenericVector {
-    elements: Vec<SEXP>,
+pub struct GenericVector<'a> {
+    elements: Vec<Sexp<'a>>,
 }
 
-impl GenericVector {
-    /// Create a new builder with n null elements.
+impl<'a> GenericVector<'a> {
     pub fn with_length(n: usize) -> Self {
-        GenericVector {
-            elements: vec![ptr::null_mut(); n],
+        Self {
+            elements: vec![Sexp::nil(); n],
         }
     }
 
-    /// Create a builder pre-populated from typed SEXP handles.
-    pub fn from_values<'a>(values: impl IntoIterator<Item = Sexp<'a>>) -> Self {
-        GenericVector {
-            elements: values.into_iter().map(Sexp::as_raw).collect(),
+    pub fn from_values(values: impl IntoIterator<Item = Sexp<'a>>) -> Self {
+        Self {
+            elements: values.into_iter().collect(),
         }
     }
 
-    /// Set the raw element at the given index.
-    ///
-    /// Silently ignores indices that are out of bounds. New Rust code should
-    /// prefer [`try_set_value`](Self::try_set_value), which reports mistakes.
-    pub(crate) fn set_raw(mut self, index: usize, value: SEXP) -> Self {
-        if index < self.elements.len() {
-            self.elements[index] = value;
+    pub fn set_value(mut self, index: usize, value: Sexp<'a>) -> Self {
+        if let Some(slot) = self.elements.get_mut(index) {
+            *slot = value;
         }
         self
     }
 
-    /// Set the element at the given index from a typed SEXP handle.
-    ///
-    /// Silently ignores indices that are out of bounds, matching
-    /// [`set_raw`](Self::set_raw). Use [`try_set_value`](Self::try_set_value)
-    /// when the index should be checked.
-    pub fn set_value(self, index: usize, value: Sexp<'_>) -> Self {
-        self.set_raw(index, value.as_raw())
-    }
-
-    /// Set the element at the given index from a typed SEXP handle, returning
-    /// a typed error if the index is out of bounds.
-    pub fn try_set_value(mut self, index: usize, value: Sexp<'_>) -> SexpResult<Self> {
-        if index < self.elements.len() {
-            self.elements[index] = value.as_raw();
-            Ok(self)
-        } else {
-            Err(SexpError::OutOfBounds {
+    pub fn try_set_value(mut self, index: usize, value: Sexp<'a>) -> SexpResult<Self> {
+        let len = self.elements.len() as R_xlen_t;
+        let slot = self.elements.get_mut(index).ok_or(SexpError::OutOfBounds {
                 index: index as R_xlen_t,
-                len: self.elements.len() as R_xlen_t,
-            })
-        }
+                len,
+        })?;
+        *slot = value;
+        Ok(self)
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
-        let len = self.elements.len() as R_xlen_t;
-        let ptr = arena.alloc_vector(SEXPTYPE::VECSXP, len);
+        if self.elements.iter().any(|v| !arena.accepts_child(v)) {
+            return None;
+        }
+        let ptr = arena.alloc_vector(SEXPTYPE::VECSXP, self.elements.len() as R_xlen_t);
         if ptr.is_null() {
             return None;
         }
-        let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
+        // SAFETY: fresh vector, and retained children were checked against this owner.
+        unsafe {
+            let data = (*ptr).gengc_next_node as *mut SEXP;
         if data.is_null() {
             return None;
         }
-        unsafe {
-            std::ptr::copy_nonoverlapping(self.elements.as_ptr(), data, self.elements.len());
+            for (i, value) in self.elements.iter().enumerate() {
+                *data.add(i) = value.clone().as_raw();
+            }
         }
         arena.sexp(ptr)
     }
@@ -480,56 +466,55 @@ impl GenericVector {
 ///     .push_untagged_value(nil)
 ///     .build_in(&mut arena);
 /// ```
-pub struct PairlistBuilder {
-    elements: Vec<(SEXP, SEXP)>, // (car, tag) pairs
+pub struct PairlistBuilder<'a> {
+    elements: Vec<(Sexp<'a>, Option<Sexp<'a>>)>,
 }
 
-impl PairlistBuilder {
-    /// Create a new empty pairlist builder.
+impl<'a> PairlistBuilder<'a> {
     pub fn new() -> Self {
-        PairlistBuilder {
+        Self {
             elements: Vec::new(),
         }
     }
 
-    /// Create a builder from untagged typed values.
-    pub fn from_untagged_values<'a>(values: impl IntoIterator<Item = Sexp<'a>>) -> Self {
+    pub fn from_untagged_values(values: impl IntoIterator<Item = Sexp<'a>>) -> Self {
         values
             .into_iter()
             .fold(Self::new(), Self::push_untagged_value)
     }
 
-    /// Add a raw element with an optional raw tag.
-    pub(crate) fn push_raw(mut self, car: SEXP, tag: SEXP) -> Self {
+    pub fn push_value(mut self, car: Sexp<'a>, tag: Option<Sexp<'a>>) -> Self {
         self.elements.push((car, tag));
         self
     }
 
-    /// Add an element from typed SEXP handles.
-    pub fn push_value(self, car: Sexp<'_>, tag: Option<Sexp<'_>>) -> Self {
-        self.push_raw(car.as_raw(), tag.map_or(ptr::null_mut(), Sexp::as_raw))
-    }
-
-    /// Add an untagged raw element.
-    pub(crate) fn push_untagged_raw(self, car: SEXP) -> Self {
-        self.push_raw(car, ptr::null_mut())
-    }
-
-    /// Add an untagged element from a typed SEXP handle.
-    pub fn push_untagged_value(self, car: Sexp<'_>) -> Self {
-        self.push_untagged_raw(car.as_raw())
+    pub fn push_untagged_value(self, car: Sexp<'a>) -> Self {
+        self.push_value(car, None)
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
-        let mut result: SEXP = ptr::null_mut();
-        for (car, tag) in self.elements.into_iter().rev() {
-            result = arena.cons(car, result, tag);
+        if self.elements.iter().any(|(car, tag)| {
+            !arena.accepts_child(car) || tag.as_ref().is_some_and(|tag| !arena.accepts_child(tag))
+        }) {
+            return None;
+        }
+        let mut result = unsafe { R_NilValue() };
+        for (car, tag) in self.elements.iter().rev() {
+            // SAFETY: every child was checked above; no GC runs during this arena lend.
+            result = unsafe {
+                arena.cons(car.clone().as_raw(), result, tag.as_ref()
+                        .map_or(ptr::null_mut(), |tag| tag.clone().as_raw()),
+                )
+            };
+            if result.is_null() {
+                return None;
+            }
         }
         arena.sexp(result)
     }
 }
 
-impl Default for PairlistBuilder {
+impl Default for PairlistBuilder<'_> {
     fn default() -> Self {
         Self::new()
     }
@@ -544,11 +529,14 @@ pub fn int_vec_in<'arena>(arena: &'arena mut RArena, values: &[c_int]) -> Option
 }
 
 pub(crate) fn int_sequence_current(start: c_int, end: c_int) -> Option<SEXP> {
-    memory::with_arena(|arena| {
+    unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        memory::with_arena(|arena| {
         IntVector::sequence(start, end)
             .and_then(|builder| builder.build_in(arena))
             .map(Sexp::as_raw)
     })
+    }
 }
 
 pub fn real_vec_in<'arena>(arena: &'arena mut RArena, values: &[c_double]) -> Option<Sexp<'arena>> {
@@ -712,9 +700,7 @@ pub fn cons_in<'arena>(
     cdr: Sexp<'_>,
     tag: Option<Sexp<'_>>,
 ) -> Option<Sexp<'arena>> {
-    let tag_raw = tag.map(|t| t.as_raw()).unwrap_or(ptr::null_mut());
-    let ptr = arena.cons(car.as_raw(), cdr.as_raw(), tag_raw);
-    arena.sexp(ptr)
+    arena.cons_sexp(car, cdr, tag)
 }
 
 pub fn lang2_in<'arena>(
@@ -722,12 +708,15 @@ pub fn lang2_in<'arena>(
     car: Sexp<'_>,
     arg: Sexp<'_>,
 ) -> Option<Sexp<'arena>> {
+    if !arena.accepts_child(&car) || !arena.accepts_child(&arg) {
+        return None;
+    }
     let cdr = arena.alloc_node(SEXPTYPE::LANGSXP);
     if cdr.is_null() {
         return None;
     }
     unsafe {
-        (*cdr).data.listsxp.carval = arg.as_raw();
+        (*cdr).data.listsxp.carval = arg.clone().as_raw();
         (*cdr).data.listsxp.cdrval = R_NilValue();
         (*cdr).data.listsxp.tagval = ptr::null_mut();
     }
@@ -749,12 +738,15 @@ pub fn lang3_in<'arena>(
     arg1: Sexp<'_>,
     arg2: Sexp<'_>,
 ) -> Option<Sexp<'arena>> {
+    if !arena.accepts_child(&car) || !arena.accepts_child(&arg1) || !arena.accepts_child(&arg2) {
+        return None;
+    }
     let c2 = arena.alloc_node(SEXPTYPE::LANGSXP);
     if c2.is_null() {
         return None;
     }
     unsafe {
-        (*c2).data.listsxp.carval = arg2.as_raw();
+        (*c2).data.listsxp.carval = arg2.clone().as_raw();
         (*c2).data.listsxp.cdrval = R_NilValue();
         (*c2).data.listsxp.tagval = ptr::null_mut();
     }
@@ -763,7 +755,7 @@ pub fn lang3_in<'arena>(
         return None;
     }
     unsafe {
-        (*c1).data.listsxp.carval = arg1.as_raw();
+        (*c1).data.listsxp.carval = arg1.clone().as_raw();
         (*c1).data.listsxp.cdrval = c2;
         (*c1).data.listsxp.tagval = ptr::null_mut();
     }
@@ -833,6 +825,7 @@ mod tests {
         assert_eq!(asc.clone().integer_elt(0), Some(2));
         assert_eq!(asc.clone().integer_elt(1), Some(3));
         assert_eq!(asc.integer_elt(2), Some(4));
+        drop(asc);
 
         let desc = some(some(IntVector::sequence(1, -1)).build_in(&mut arena));
         assert_eq!(desc.clone().len(), 3);
@@ -893,7 +886,10 @@ mod tests {
     #[test]
     fn test_generic_vector_builder() {
         let mut arena = RArena::new();
-        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let nil = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(unsafe { R_NilValue() })
+        });
         let vec = some(GenericVector::from_values([nil.clone(), nil]).build_in(&mut arena));
         assert_eq!(vec.clone().len(), 2);
         assert!(vec.clone().vector_elt(0).is_some());
@@ -903,7 +899,10 @@ mod tests {
     #[test]
     fn test_generic_vector_typed_set() {
         let mut arena = RArena::new();
-        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let nil = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(unsafe { R_NilValue() })
+        });
         let vec = some(
             GenericVector::with_length(1)
                 .set_value(0, nil)
@@ -915,7 +914,10 @@ mod tests {
 
     #[test]
     fn test_generic_vector_typed_set_reports_bounds() {
-        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let nil = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(unsafe { R_NilValue() })
+        });
         let builder = GenericVector::with_length(1)
             .try_set_value(0, nil.clone())
             .expect("in-bounds typed set should succeed");
@@ -929,7 +931,10 @@ mod tests {
     #[test]
     fn test_pairlist_builder() {
         let mut arena = crate::sexp::memory::RArena::new();
-        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let nil = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(unsafe { R_NilValue() })
+        });
         let list =
             some(PairlistBuilder::from_untagged_values([nil.clone(), nil]).build_in(&mut arena));
         assert!(list.clone().is_pairlist());
@@ -939,7 +944,10 @@ mod tests {
 
     #[test]
     fn test_pairlist_builder_accepts_typed_values() {
-        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let nil = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(unsafe { R_NilValue() })
+        });
         let mut arena = crate::sexp::memory::RArena::new();
         let list = some(
             PairlistBuilder::new()
@@ -1014,8 +1022,16 @@ mod tests {
         let mut arena = RArena::new();
         let c = some(mk_char_in(&mut arena, b"hello"));
         assert!(c.clone().is_charsxp());
-        assert_eq!(c.clone().as_str(), Some("hello"));
-        assert_eq!(c.as_bytes(), Some(&b"hello"[..]));
+        assert_eq!(
+            unsafe {
+                /* SAFETY: read is copied without R reentry while its handle remains live. */
+                c.as_str()
+            }, Some("hello"));
+        assert_eq!(
+            unsafe {
+                /* SAFETY: read is copied without R reentry while its handle remains live. */
+                c.as_bytes()
+            }, Some(&b"hello"[..]));
     }
 
     #[test]
@@ -1031,8 +1047,14 @@ mod tests {
         };
         let cell = some(cons_in(
             &mut arena,
-            some(Sexp::from_raw(car)),
-            some(Sexp::from_raw(cdr)),
+            some(unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                Sexp::from_raw(car)
+            }),
+            some(unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                Sexp::from_raw(cdr)
+            }),
             None,
         ));
         assert!(cell.clone().is_pairlist());
@@ -1043,18 +1065,28 @@ mod tests {
     fn test_lang_constructors() {
         let mut arena = crate::sexp::memory::RArena::new();
         let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
-        let fun = some(Sexp::from_raw(sym));
+        let fun = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(sym)
+        });
         let arg = {
             let arg = some(scalar_integer_in(&mut arena, 1));
-            some(Sexp::from_raw(arg.as_raw()))
+            some(unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                Sexp::from_raw(arg.clone().as_raw())
+            })
         };
 
         let call = some(lang2_in(&mut arena, fun.clone(), arg.clone()));
         assert!(call.is_pairlist());
+        drop(call);
 
         let arg2 = {
             let arg2 = some(scalar_real_in(&mut arena, 2.0));
-            some(Sexp::from_raw(arg2.as_raw()))
+            some(unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                Sexp::from_raw(arg2.clone().as_raw())
+            })
         };
         let call3 = some(lang3_in(&mut arena, fun, arg, arg2));
         assert!(call3.clone().is_pairlist());

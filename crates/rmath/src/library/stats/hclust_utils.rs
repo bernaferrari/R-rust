@@ -13,12 +13,12 @@ use crate::sexp::protect::protect as protect_sexp;
 
 pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     let merge = unsafe { coerceVector(merge, SEXPTYPE::INTSXP.as_c_int()) };
-    let _merge_guard = protect_sexp(merge);
+    let _merge_guard = unsafe { protect_sexp(merge) };
     let i_merge_len = unsafe { LENGTH(merge) };
     let i_merge = unsafe { slice::from_raw_parts(INTEGER(merge), i_merge_len as usize) };
 
     let which = unsafe { coerceVector(which, SEXPTYPE::INTSXP.as_c_int()) };
-    let _which_guard = protect_sexp(which);
+    let _which_guard = unsafe { protect_sexp(which) };
     let which_len = unsafe { LENGTH(which) };
     let i_which = unsafe { slice::from_raw_parts(INTEGER(which), which_len as usize) };
 
@@ -30,7 +30,7 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     let mut z = vec![0i32; (n + 1) as usize];
 
     let ans = unsafe { allocMatrix(SEXPTYPE::INTSXP.into(), n, which_len) };
-    let _ans_guard = protect_sexp(ans);
+    let _ans_guard = unsafe { protect_sexp(ans) };
     let i_ans = unsafe { slice::from_raw_parts_mut(INTEGER(ans), (n * which_len) as usize) };
 
     let mut k: c_int = 1;
@@ -154,8 +154,7 @@ unsafe fn list_elt(list: SEXP, name: &str) -> SEXP {
         }
         let names = crate::sexp::attrib_core::getAttrib(
             list,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_NamesSymbol());
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
@@ -179,14 +178,14 @@ unsafe fn list_elt(list: SEXP, name: &str) -> SEXP {
 /// GNU `cutree(tree, k)` / `cutree(tree, h)`.
 pub unsafe fn do_cutree(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        use crate::sexp::accessors::CHAR;
+        use crate::sexp::accessors::PRINTNAME;
         use crate::sexp::accessors::{
             CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TAG, TYPEOF, XLENGTH,
         };
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_ScalarInteger};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
         use crate::sexp::ffi::NA_REAL;
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::accessors::PRINTNAME;
-        use crate::sexp::accessors::CHAR;
 
         let mut tree = R_NilValue();
         let mut k = NA_REAL;
@@ -334,4 +333,3 @@ pub unsafe extern "C-unwind" fn c_mono_fc_m(m: SEXP, sx: SEXP) -> SEXP {
         val
     }
 }
-

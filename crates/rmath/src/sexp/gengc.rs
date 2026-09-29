@@ -739,11 +739,14 @@ fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<usize, SEXP>) {
 }
 
 fn update_object_references(old_to_new: &HashMap<usize, SEXP>) {
-    with_arena_for_gc(|arena| {
+    (unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        with_arena_for_gc(|arena| {
         let nodes: Vec<SEXP> = arena.active_nodes().collect();
         for &obj in &nodes {
             update_references_in_object(obj, old_to_new);
         }
+        })
     });
 }
 
@@ -979,6 +982,11 @@ where
     F: FnOnce(*mut instance::RInstance) -> (usize, usize),
 {
     unsafe {
+        // Defer direct requests before touching an arena with an active mutable lend.
+        if super::memory::is_arena_lent(instance) {
+            (*instance).gc_state.gc_pending = true;
+            return (0, 0);
+        }
         if (*instance).gc_state.in_progress {
             return (0, 0);
         }
@@ -1597,15 +1605,21 @@ fn normalize_free_list(arena: &mut RArena) {
 
 /// Get the current fragmentation ratio of the arena.
 pub fn get_fragmentation_ratio() -> f64 {
-    with_arena_for_gc(|arena| arena.fragmentation_ratio())
+    unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        with_arena_for_gc(|arena| arena.fragmentation_ratio())
+    }
 }
 
 /// Force non-moving free-list cleanup.
 ///
 /// This does not move live objects. It only normalizes the arena free list.
 pub fn force_compact() {
-    with_arena_for_gc(|arena| {
+    (unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        with_arena_for_gc(|arena| {
         normalize_free_list(arena);
+        })
     });
 }
 
@@ -1665,7 +1679,10 @@ mod tests {
 
         let sym =
             unsafe { crate::sexp::symbol::Rf_install(b"retrace_probe\0".as_ptr() as *const _) };
-        let value = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        let value = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+        };
         unsafe {
             *(crate::sexp::accessors::INTEGER(value)) = 42;
         }
@@ -1680,7 +1697,12 @@ mod tests {
             crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym)
         };
         assert!(found != unsafe { crate::sexp::globals::R_UnboundValue() });
-        assert!(with_arena(|arena| arena.contains(found)));
+        assert!(
+            (unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| arena.contains(found))
+            })
+        );
 
         full_gc();
         let found = unsafe {
@@ -1690,7 +1712,11 @@ mod tests {
             found != unsafe { crate::sexp::globals::R_UnboundValue() },
             "global binding swept after second cycle: persistent env mark went stale"
         );
-        assert!(with_arena(|arena| arena.contains(found)));
+        assert!(
+            (unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| arena.contains(found))
+            }));
         assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(found) }, 42);
 
         // The quiescent path has no force-protect preamble; with the fix the
@@ -1794,10 +1820,13 @@ mod tests {
         let _session = RSession::new_without_default_packages();
         let global = unsafe { crate::sexp::globals::R_GlobalEnv() };
         let base = unsafe { crate::sexp::globals::R_BaseEnv() };
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             assert!(arena.contains(unsafe { (*global).data.envsxp.enclos }));
             reset_gc_test_arena(arena);
             assert_eq!(unsafe { (*global).data.envsxp.enclos }, base);
+            })
         });
         instance::with_required_current_instance(|inst| unsafe {
             assert!((*inst).preserve_stack.borrow().is_empty());
@@ -1829,7 +1858,9 @@ mod tests {
         let _session = RSession::new_without_default_packages();
         let previous = with_gc_state(|state| state.remembered_set.len());
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             let old_obj = arena.alloc_node(SEXPTYPE::LISTSXP);
             let young_obj = arena.alloc_node(SEXPTYPE::INTSXP);
 
@@ -1841,6 +1872,7 @@ mod tests {
             write_barrier(old_obj, young_obj);
 
             assert_eq!(with_gc_state(|state| state.remembered_set.len()), previous + 1);
+            })
         });
     }
 
@@ -1896,8 +1928,11 @@ mod tests {
     fn test_gc_with_empty_arena() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
+            })
         });
         let (promoted, freed) = minor_gc();
         assert_eq!(promoted, 0);
@@ -1908,10 +1943,13 @@ mod tests {
     fn test_gc_with_only_young_objects() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
             arena.alloc_node(SEXPTYPE::REALSXP);
+            })
         });
         let (promoted, freed) = minor_gc();
         assert_eq!(promoted, 0);
@@ -1922,7 +1960,9 @@ mod tests {
     fn test_gc_with_only_old_objects() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             let obj1 = arena.alloc_node(SEXPTYPE::INTSXP);
             let obj2 = arena.alloc_node(SEXPTYPE::REALSXP);
@@ -1930,6 +1970,7 @@ mod tests {
                 (*obj1).sxpinfo.set_gcgen(Generation::Old as u8);
                 (*obj2).sxpinfo.set_gcgen(Generation::Old as u8);
             }
+            })
         });
         let (promoted, freed) = minor_gc();
         assert_eq!(promoted, 0);
@@ -1940,7 +1981,9 @@ mod tests {
     fn test_gc_with_mixed_objects() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             let old_obj = arena.alloc_node(SEXPTYPE::INTSXP);
             let young_obj = arena.alloc_node(SEXPTYPE::REALSXP);
@@ -1948,6 +1991,7 @@ mod tests {
                 (*old_obj).sxpinfo.set_gcgen(Generation::Old as u8);
                 (*young_obj).sxpinfo.set_gcgen(Generation::Young as u8);
             }
+            })
         });
         let (promoted, freed) = minor_gc();
         assert_eq!(promoted, 0);
@@ -1958,26 +2002,35 @@ mod tests {
     fn test_minor_gc_traces_global_environment_bindings() {
         let session = RSession::new_without_default_packages();
 
-        let value_raw = with_arena(|arena| {
+        let value_raw = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             let value = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
             unsafe {
                 *(crate::sexp::accessors::INTEGER(value)) = 123;
             }
             value
-        });
+        })
+        };
         let value = session.sexp(value_raw).expect("value belongs to session");
         assert!(session.define_var("kept_by_global_env", value));
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             let garbage = arena.alloc_node(SEXPTYPE::REALSXP);
             assert!(!garbage.is_null());
+            })
         });
         let (_, freed) = minor_gc();
         assert!(freed >= 1);
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             for _ in 0..256 {
                 assert!(!arena.alloc_node(SEXPTYPE::REALSXP).is_null());
             }
+            })
         });
 
         let found = session.find_var("kept_by_global_env").unwrap();
@@ -2006,9 +2059,12 @@ mod tests {
         let _session = RSession::new_without_default_packages();
 
         reset_gc_stats();
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
+            })
         });
         minor_gc();
         let stats = get_gc_stats();
@@ -2027,9 +2083,12 @@ mod tests {
             let _ = tx.send(());
         }));
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
+            })
         });
         minor_gc();
 
@@ -2054,8 +2113,11 @@ mod tests {
     fn test_full_gc_empty_arena() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
+            })
         });
         let (promoted, freed) = full_gc();
         assert_eq!(promoted, 0);
@@ -2066,20 +2128,26 @@ mod tests {
     fn test_full_gc_collects_unreachable_old_objects() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             let obj = arena.alloc_node(SEXPTYPE::INTSXP);
             unsafe {
                 (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
             }
+        })
         });
 
         let (promoted, freed) = full_gc();
         assert_eq!(promoted, 0);
         assert_eq!(freed, 1);
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             assert_eq!(arena.node_count(), 0);
             assert_eq!(arena.free_count(), 1);
+            })
         });
     }
 
@@ -2090,7 +2158,9 @@ mod tests {
         use super::super::protect::protect;
 
         let mut obj = ptr::null_mut();
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             obj = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
             unsafe {
@@ -2098,6 +2168,7 @@ mod tests {
                 *(crate::sexp::accessors::INTEGER(obj)) = 42;
             }
             std::mem::forget(protect(obj));
+            })
         });
 
         let (promoted, freed) = full_gc();
@@ -2120,7 +2191,9 @@ mod tests {
         use super::super::protect::protect;
 
         let mut obj = ptr::null_mut();
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             obj = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
             unsafe {
@@ -2129,6 +2202,7 @@ mod tests {
             }
             std::mem::forget(protect(obj));
             arena.set_budget(ArenaBudget::new(1, 0));
+            })
         });
 
         let (promoted, freed) = full_gc();
@@ -2140,8 +2214,11 @@ mod tests {
             assert_eq!((*protected_obj).sxpinfo.type_of(), SEXPTYPE::INTSXP);
             assert_eq!(*(crate::sexp::accessors::INTEGER(protected_obj)), 99);
         }
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             assert!(arena.contains(obj));
+            })
         });
     }
 
@@ -2167,7 +2244,9 @@ mod tests {
         const N: usize = 64;
         const LEN: usize = 8;
         let mut keepers: Vec<SEXP> = Vec::with_capacity(N);
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             for i in 0..N {
                 let v = arena.alloc_vector(SEXPTYPE::REALSXP, LEN as i64);
@@ -2180,16 +2259,20 @@ mod tests {
                 }
                 keepers.push(v);
             }
+        })
         });
 
         // Churn unprotected garbage and collect repeatedly; prove real work
         // happens (freed > 0) and no protected vector is touched.
         let mut any_freed = 0usize;
         for _ in 0..20 {
-            with_arena(|arena| {
+            (unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| {
                 for _ in 0..200 {
                     let _ = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
                 }
+                })
             });
             let (_promoted, freed) = full_gc();
             any_freed |= freed;
@@ -2218,7 +2301,9 @@ mod tests {
         let mut tag = ptr::null_mut();
         let mut prot = ptr::null_mut();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             tag = arena.alloc_node(SEXPTYPE::INTSXP);
             prot = arena.alloc_node(SEXPTYPE::REALSXP);
@@ -2228,6 +2313,7 @@ mod tests {
                 (*ext).data.extptr = [payload, prot as *mut _, tag as *mut _];
             }
             std::mem::forget(protect(ext));
+            })
         });
 
         let (_, freed) = full_gc();
@@ -2263,7 +2349,9 @@ mod tests {
         let mut value = ptr::null_mut();
         let mut finalizer = ptr::null_mut();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             key = arena.alloc_node(SEXPTYPE::INTSXP);
             value = arena.alloc_node(SEXPTYPE::REALSXP);
@@ -2278,6 +2366,7 @@ mod tests {
                 (*weak).data.listsxp.tagval = finalizer;
             }
             std::mem::forget(protect(weak));
+            })
         });
 
         let (_, freed) = full_gc();
@@ -2316,7 +2405,9 @@ mod tests {
         let mut key = ptr::null_mut();
         let mut value = ptr::null_mut();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             key = arena.alloc_node(SEXPTYPE::INTSXP);
             value = arena.alloc_node(SEXPTYPE::REALSXP);
@@ -2331,6 +2422,7 @@ mod tests {
             }
             std::mem::forget(protect(weak));
             std::mem::forget(protect(key));
+            })
         });
 
         let (_, freed) = full_gc();
@@ -2362,10 +2454,13 @@ mod tests {
         let _session = RSession::new_without_default_packages();
 
         reset_gc_stats();
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
             arena.alloc_node(SEXPTYPE::REALSXP);
+            })
         });
         minor_gc();
         let stats = get_gc_stats();
@@ -2474,7 +2569,9 @@ mod tests {
         let _session = RSession::new_without_default_packages();
 
         for _ in 0..5 {
-            with_arena(|arena| {
+            (unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| {
                 reset_gc_test_arena(arena);
                 let obj1 = arena.alloc_node(SEXPTYPE::INTSXP);
                 let obj2 = arena.alloc_node(SEXPTYPE::REALSXP);
@@ -2482,6 +2579,7 @@ mod tests {
                     (*obj1).sxpinfo.set_gcgen(Generation::Young as u8);
                     (*obj2).sxpinfo.set_gcgen(Generation::Young as u8);
                 }
+                })
             });
             let (promoted, freed) = minor_gc();
             assert_eq!(promoted, 0);
@@ -2495,13 +2593,16 @@ mod tests {
 
         use super::super::protect::protect;
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             let obj = arena.alloc_node(SEXPTYPE::INTSXP);
             unsafe {
                 (*obj).sxpinfo.set_gcgen(Generation::Young as u8);
             }
             std::mem::forget(protect(obj));
+            })
         });
         let (promoted, freed) = minor_gc();
         assert_eq!(promoted, 1);
@@ -2512,8 +2613,11 @@ mod tests {
     fn test_compact_if_needed_runs_gc_but_never_moves() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
+            })
         });
         let result = compact_if_needed(0.0);
         assert!(!result);
@@ -2523,8 +2627,11 @@ mod tests {
     fn test_get_fragmentation_ratio_empty() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
+            })
         });
         let ratio = get_fragmentation_ratio();
         assert_eq!(ratio, 0.0);
@@ -2534,8 +2641,11 @@ mod tests {
     fn test_force_compact_only_normalizes_free_list() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
+            })
         });
         force_compact();
     }
@@ -2544,17 +2654,26 @@ mod tests {
     fn test_minor_gc_does_not_refree_nodes_on_free_list() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             arena.alloc_vector(SEXPTYPE::REALSXP, 2);
+        })
         });
 
         let (_, freed1) = minor_gc();
         assert_eq!(freed1, 1);
-        let free_after_first = with_arena(|arena| arena.free_count());
+        let free_after_first = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| arena.free_count())
+        };
 
         let (_, freed2) = minor_gc();
-        let free_after_second = with_arena(|arena| arena.free_count());
+        let free_after_second = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| arena.free_count())
+        };
         assert_eq!(freed2, 0);
         assert_eq!(free_after_second, free_after_first);
     }
@@ -2565,10 +2684,13 @@ mod tests {
 
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             marker = arena.alloc_node(SEXPTYPE::LISTSXP);
             vec = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+            })
         });
 
         let original_bits = marker as usize as u64;
@@ -2591,10 +2713,13 @@ mod tests {
 
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
             marker = arena.alloc_node(SEXPTYPE::LISTSXP);
             vec = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+            })
         });
 
         unsafe {
@@ -2613,7 +2738,9 @@ mod tests {
     #[test]
     fn deeply_nested_cyclic_graph_uses_bounded_call_stack() {
         let _session = RSession::new_without_default_packages();
-        let (head, tail) = with_arena(|arena| {
+        let (head, tail) = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             let mut head = unsafe { crate::sexp::globals::R_NilValue() };
             let mut tail = head;
             let depth = if cfg!(miri) { 256 } else { 30_000 };
@@ -2632,11 +2759,18 @@ mod tests {
                 (*tail).data.listsxp.carval = head;
             }
             (head, tail)
-        });
-        let _root = crate::sexp::protect::protect(head);
+        })
+        };
+        let _root = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            crate::sexp::protect::protect(head)
+        };
         full_gc();
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             assert!(arena.active_nodes().any(|node| node == tail));
+            })
         });
         unsafe {
             assert_eq!((*tail).data.listsxp.carval, head);
@@ -2647,7 +2781,9 @@ mod tests {
     fn test_dotsxp_chain_is_traced_from_protected_head() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
 
             let sym_a = arena.alloc_node(SEXPTYPE::SYMSXP);
@@ -2682,6 +2818,7 @@ mod tests {
                 assert_eq!((*head).data.listsxp.cdrval, tail);
                 assert_eq!((*tail).data.listsxp.carval, two);
             }
+            })
         });
     }
 
@@ -2689,7 +2826,9 @@ mod tests {
     fn test_remembered_old_list_keeps_young_car_across_minor_gc() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
 
             let parent = arena.alloc_node(SEXPTYPE::LISTSXP);
@@ -2725,6 +2864,7 @@ mod tests {
             unsafe {
                 assert_eq!((*parent).data.listsxp.carval, child);
             }
+            })
         });
     }
 
@@ -2732,7 +2872,9 @@ mod tests {
     fn test_remembered_vector_element_survives_and_dedupes() {
         let _session = RSession::new_without_default_packages();
 
-        with_arena(|arena| {
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             reset_gc_test_arena(arena);
 
             use crate::sexp::accessors::{SET_VECTOR_ELT, VECTOR_ELT};
@@ -2767,6 +2909,7 @@ mod tests {
             unsafe {
                 assert_eq!(VECTOR_ELT(parent, 0), child);
             }
+            })
         });
     }
 
@@ -2796,7 +2939,9 @@ mod tests {
     }
 
     fn make_detached_env() -> SEXP {
-        with_arena(|arena| {
+        unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             let env = arena.alloc_node(SEXPTYPE::ENVSXP);
             unsafe {
                 (*env).data.envsxp.frame = crate::sexp::globals::R_NilValue();
@@ -2804,6 +2949,7 @@ mod tests {
             }
             env
         })
+        }
     }
 
     /// The package namespace cache is the only root for a pure-R package
@@ -2813,7 +2959,10 @@ mod tests {
     fn test_package_namespace_cache_value_is_traced() {
         let _session = RSession::new_without_default_packages();
 
-        let payload = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        let payload = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+        };
         unsafe {
             *crate::sexp::accessors::INTEGER(payload) = 4242;
         }
@@ -2833,11 +2982,17 @@ mod tests {
         for _ in 0..2 {
             full_gc();
             assert!(
-                with_arena(|arena| arena.contains(namespace)),
+                (unsafe {
+                    /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                    with_arena(|arena| arena.contains(namespace))
+                }),
                 "cached namespace env swept"
             );
             assert!(
-                with_arena(|arena| arena.contains(payload)),
+                (unsafe {
+                    /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                    with_arena(|arena| arena.contains(payload))
+                }),
                 "cached namespace frame swept"
             );
             assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(payload) }, 4242);
@@ -2893,7 +3048,10 @@ mod tests {
         });
         full_gc();
         assert!(
-            with_arena(|arena| arena.contains(cached_namespace)),
+            (unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| arena.contains(cached_namespace))
+            }),
             "cache-only namespace was swept"
         );
 
@@ -2915,11 +3073,14 @@ mod tests {
     fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
         let _session = RSession::new_without_default_packages();
         const NAMESPACE_ROOT: usize = if cfg!(target_arch = "wasm32") { 3 } else { 6 };
-        let roots = with_arena(|arena| {
+        let roots = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             (0..=NAMESPACE_ROOT)
                 .map(|_| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
                 .collect::<Vec<_>>()
-        });
+        })
+        };
 
         instance::with_required_current_instance(|inst| unsafe {
             (*inst).error_state.warning_call = roots[0];
@@ -2934,23 +3095,30 @@ mod tests {
             }
             (*inst).package_namespace_cache.insert(
                 "rootProbePkg".to_string(),
-                (std::path::PathBuf::from("/root-probe"), roots[NAMESPACE_ROOT]),
+                (std::path::PathBuf::from("/root-probe"), roots[NAMESPACE_ROOT],
+                ),
             );
         });
 
         full_gc();
         for &root in &roots {
             assert!(
-                with_arena(|arena| arena.contains(root)),
+                (unsafe {
+                    /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                    with_arena(|arena| arena.contains(root))
+                }),
                 "instance-owned root was swept"
             );
         }
 
-        let replacements = with_arena(|arena| {
+        let replacements = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| {
             (0..roots.len())
                 .map(|_| arena.alloc_vector(SEXPTYPE::REALSXP, 1))
                 .collect::<Vec<_>>()
-        });
+        })
+        };
         let remap = roots
             .iter()
             .copied()
@@ -2998,7 +3166,10 @@ mod tests {
             unsafe { crate::sexp::symbol::Rf_install(b"active_probe\0".as_ptr() as *const _) };
         let env = make_detached_env();
         // The binding function is reachable only through the side table.
-        let fun = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        let fun = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+        };
         unsafe {
             *crate::sexp::accessors::INTEGER(fun) = 7;
         }
@@ -3010,7 +3181,10 @@ mod tests {
 
         full_gc();
         assert!(
-            with_arena(|arena| arena.contains(fun)),
+            (unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| arena.contains(fun))
+            }),
             "active binding value swept while its entry was still live"
         );
         assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(fun) }, 7);
@@ -3019,7 +3193,10 @@ mod tests {
         // this cycle reclaims it and the side-table entry must go with it.
         let env_addr = env as usize;
         full_gc();
-        assert!(!with_arena(|arena| arena.contains(env)));
+        assert!(!(unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| arena.contains(env))
+            }));
         instance::with_required_current_instance(|inst| unsafe {
             assert!(
                 !(*inst)
@@ -3033,7 +3210,10 @@ mod tests {
         // new node (a fresh env reporting an active binding it never had).
         let mut recycled = std::ptr::null_mut();
         for _ in 0..1024 {
-            recycled = with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP));
+            recycled = unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            };
             if recycled as usize == env_addr {
                 break;
             }
@@ -3061,8 +3241,16 @@ mod tests {
 
         full_gc();
 
-        assert!(with_arena(|arena| arena.contains(live_env)));
-        assert!(!with_arena(|arena| arena.contains(dead_env)));
+        assert!(
+            (unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| arena.contains(live_env))
+            })
+        );
+        assert!(!(unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| arena.contains(dead_env))
+            }));
         assert!(crate::sexp::envir::environment_is_locked_raw(live_env));
         assert!(crate::sexp::envir::binding_is_locked_raw(live_env, sym));
         instance::with_required_current_instance(|inst| unsafe {
@@ -3101,7 +3289,10 @@ mod tests {
         let mut transient = Vec::new();
         for i in 0..32usize {
             let env = make_detached_env();
-            let fun = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+            let fun = unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+            };
             unsafe {
                 *crate::sexp::accessors::INTEGER(fun) = i as i32;
             }
@@ -3121,11 +3312,14 @@ mod tests {
 
         for round in 0..8usize {
             for _ in 0..64 {
-                with_arena(|arena| {
+                (unsafe {
+                    /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                    with_arena(|arena| {
                     let scratch = arena.alloc_vector(SEXPTYPE::INTSXP, 8);
                     unsafe {
                         *crate::sexp::accessors::INTEGER(scratch) = round as i32;
                     }
+                    })
                 });
             }
             if round % 2 == 0 {
@@ -3138,12 +3332,19 @@ mod tests {
         // Rooted envs still resolve: entries intact, values readable.
         for (i, &(env, fun)) in rooted.iter().enumerate() {
             assert!(
-                with_arena(|arena| arena.contains(env)),
+                (unsafe {
+                    /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                    with_arena(|arena| arena.contains(env))
+                }),
                 "rooted env {i} swept"
             );
             assert!(crate::sexp::envir::binding_is_active_raw(env, sym_active));
             assert!(crate::sexp::envir::binding_is_locked_raw(env, sym_locked));
-            assert!(with_arena(|arena| arena.contains(fun)));
+            assert!(
+                (unsafe {
+                    /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                    with_arena(|arena| arena.contains(fun))
+                }));
             // rooted holds only even i, so enumerate index i maps to
             // original loop value 2*i.
             assert_eq!(
@@ -3155,7 +3356,10 @@ mod tests {
         // Transient envs were reclaimed without leaving stale entries that a
         // recycled address could alias.
         for &env in &transient {
-            assert!(!with_arena(|arena| arena.contains(env)));
+            assert!(!(unsafe {
+                    /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                    with_arena(|arena| arena.contains(env))
+                }));
             instance::with_required_current_instance(|inst| unsafe {
                 assert!(
                     !(*inst)

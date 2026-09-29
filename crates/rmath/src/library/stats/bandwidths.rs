@@ -207,9 +207,9 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     let dd = rang / nb as c_double;
 
     let ans = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 2) };
-    let _ans_guard = protect_sexp(ans);
+    let _ans_guard = unsafe { protect_sexp(ans) };
     let sc = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, nb as c_int) };
-    let _sc_guard = protect_sexp(sc);
+    let _sc_guard = unsafe { protect_sexp(sc) };
     unsafe {
         SET_VECTOR_ELT(ans, 0, Rf_ScalarReal(dd));
         SET_VECTOR_ELT(ans, 1, sc);
@@ -247,7 +247,7 @@ pub unsafe fn bw_den_binned(sx: SEXP) -> SEXP {
     let x = unsafe { slice::from_raw_parts(INTEGER(sx), nb as usize) };
 
     let ans = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, nb as c_int) };
-    let _ans_guard = protect_sexp(ans);
+    let _ans_guard = unsafe { protect_sexp(ans) };
     let cnt = unsafe { slice::from_raw_parts_mut(REAL(ans), nb as usize) };
     cnt.fill(0.0);
 

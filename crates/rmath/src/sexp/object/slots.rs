@@ -13,7 +13,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn formals(&self) -> Option<Sexp<'a>> {
         if self.is_closure() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.closxp.formals })
+            self.optional_child(unsafe { (*self.ptr).data.closxp.formals })
         } else {
             None
         }
@@ -23,7 +23,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_formals(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::CLOSXP, "closure")?;
-        Self::checked_child(unsafe { (*self.ptr).data.closxp.formals })
+        self.checked_child(unsafe { (*self.ptr).data.closxp.formals })
     }
 
     /// Get the body of a closure.
@@ -32,7 +32,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn body(&self) -> Option<Sexp<'a>> {
         if self.is_closure() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.closxp.body })
+            self.optional_child(unsafe { (*self.ptr).data.closxp.body })
         } else {
             None
         }
@@ -42,7 +42,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_body(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::CLOSXP, "closure")?;
-        Self::checked_child(unsafe { (*self.ptr).data.closxp.body })
+        self.checked_child(unsafe { (*self.ptr).data.closxp.body })
     }
 
     /// Get the environment of a closure.
@@ -51,7 +51,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn cloenv(&self) -> Option<Sexp<'a>> {
         if self.is_closure() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.closxp.env })
+            self.optional_child(unsafe { (*self.ptr).data.closxp.env })
         } else {
             None
         }
@@ -61,7 +61,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_cloenv(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::CLOSXP, "closure")?;
-        Self::checked_child(unsafe { (*self.ptr).data.closxp.env })
+        self.checked_child(unsafe { (*self.ptr).data.closxp.env })
     }
 
     // --- Environment accessors ---
@@ -72,7 +72,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn frame(&self) -> Option<Sexp<'a>> {
         if self.is_environment() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.envsxp.frame })
+            self.optional_child(unsafe { (*self.ptr).data.envsxp.frame })
         } else {
             None
         }
@@ -82,7 +82,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_frame(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::ENVSXP, "environment")?;
-        Self::checked_child(unsafe { (*self.ptr).data.envsxp.frame })
+        self.checked_child(unsafe { (*self.ptr).data.envsxp.frame })
     }
 
     /// Get the enclosing (parent) environment.
@@ -91,7 +91,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn enclos(&self) -> Option<Sexp<'a>> {
         if self.is_environment() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.envsxp.enclos })
+            self.optional_child(unsafe { (*self.ptr).data.envsxp.enclos })
         } else {
             None
         }
@@ -101,7 +101,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_enclos(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::ENVSXP, "environment")?;
-        Self::checked_child(unsafe { (*self.ptr).data.envsxp.enclos })
+        self.checked_child(unsafe { (*self.ptr).data.envsxp.enclos })
     }
 
     /// Get the hash table of an environment.
@@ -110,7 +110,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn hashtab(&self) -> Option<Sexp<'a>> {
         if self.is_environment() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.envsxp.hashtab })
+            self.optional_child(unsafe { (*self.ptr).data.envsxp.hashtab })
         } else {
             None
         }
@@ -120,7 +120,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_hashtab(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::ENVSXP, "environment")?;
-        Self::checked_child(unsafe { (*self.ptr).data.envsxp.hashtab })
+        self.checked_child(unsafe { (*self.ptr).data.envsxp.hashtab })
     }
 
     // --- Promise accessors ---
@@ -131,7 +131,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn prvalue(&self) -> Option<Sexp<'a>> {
         if self.typeof_() == SEXPTYPE::PROMSXP {
-            Sexp::from_raw(unsafe { (*self.ptr).data.promsxp.value })
+            self.optional_child(unsafe { (*self.ptr).data.promsxp.value })
         } else {
             None
         }
@@ -141,7 +141,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_prvalue(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::PROMSXP, "promise")?;
-        Self::checked_child(unsafe { (*self.ptr).data.promsxp.value })
+        self.checked_child(unsafe { (*self.ptr).data.promsxp.value })
     }
 
     /// Get the code/expression of a promise.
@@ -150,7 +150,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn prcode(&self) -> Option<Sexp<'a>> {
         if self.typeof_() == SEXPTYPE::PROMSXP {
-            Sexp::from_raw(unsafe { (*self.ptr).data.promsxp.expr })
+            self.optional_child(unsafe { (*self.ptr).data.promsxp.expr })
         } else {
             None
         }
@@ -160,7 +160,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_prcode(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::PROMSXP, "promise")?;
-        Self::checked_child(unsafe { (*self.ptr).data.promsxp.expr })
+        self.checked_child(unsafe { (*self.ptr).data.promsxp.expr })
     }
 
     /// Get the environment of a promise.
@@ -169,7 +169,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn prenv(&self) -> Option<Sexp<'a>> {
         if self.typeof_() == SEXPTYPE::PROMSXP {
-            Sexp::from_raw(unsafe { (*self.ptr).data.promsxp.env })
+            self.optional_child(unsafe { (*self.ptr).data.promsxp.env })
         } else {
             None
         }
@@ -179,7 +179,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_prenv(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::PROMSXP, "promise")?;
-        Self::checked_child(unsafe { (*self.ptr).data.promsxp.env })
+        self.checked_child(unsafe { (*self.ptr).data.promsxp.env })
     }
 
     // --- Symbol accessors ---
@@ -190,7 +190,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn symvalue(&self) -> Option<Sexp<'a>> {
         if self.typeof_() == SEXPTYPE::SYMSXP {
-            Sexp::from_raw(unsafe { (*self.ptr).data.symsxp.internal })
+            self.optional_child(unsafe { (*self.ptr).data.symsxp.internal })
         } else {
             None
         }
@@ -200,7 +200,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_symvalue(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::SYMSXP, "symbol")?;
-        Self::checked_child(unsafe { (*self.ptr).data.symsxp.internal })
+        self.checked_child(unsafe { (*self.ptr).data.symsxp.internal })
     }
 
     /// Get the print name of a symbol.
@@ -209,7 +209,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn printname(&self) -> Option<Sexp<'a>> {
         if self.typeof_() == SEXPTYPE::SYMSXP {
-            Sexp::from_raw(unsafe { (*self.ptr).data.symsxp.pname })
+            self.optional_child(unsafe { (*self.ptr).data.symsxp.pname })
         } else {
             None
         }
@@ -219,7 +219,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_printname(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::SYMSXP, "symbol")?;
-        Self::checked_child(unsafe { (*self.ptr).data.symsxp.pname })
+        self.checked_child(unsafe { (*self.ptr).data.symsxp.pname })
     }
 
     // --- Attribute access ---
@@ -229,13 +229,13 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if there are no attributes.
     #[inline]
     pub fn attrib(&self) -> Option<Sexp<'a>> {
-        Sexp::from_raw(unsafe { (*self.ptr).attrib })
+        self.optional_child(unsafe { (*self.ptr).attrib })
     }
 
     /// Get the attributes of this SEXP, returning `NULL` when there are none.
     #[inline]
     pub fn try_attrib(&self) -> SexpResult<Sexp<'a>> {
-        Self::checked_child(unsafe { (*self.ptr).attrib })
+        self.checked_child(unsafe { (*self.ptr).attrib })
     }
 
     /// Check if this object has the OBJECT flag set (has a class attribute).
@@ -267,14 +267,23 @@ impl<'a> Sexp<'a> {
         Ok(unsafe { (*self.ptr).data.charsxp_truelen })
     }
 
-    // Internal SEXP views deliberately consume the non-Copy handle.
     #[allow(clippy::wrong_self_convention)]
-    pub fn as_bytes(self) -> Option<&'a [u8]> {
-        self.try_as_bytes().ok()
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn as_bytes(&self) -> Option<&'_ [u8]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_as_bytes()
+        }
+        .ok()
     }
 
     /// Return the CHARSXP bytes with typed error reporting.
-    pub fn try_as_bytes(self) -> SexpResult<&'a [u8]> {
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn try_as_bytes(&self) -> SexpResult<&'_ [u8]> {
         self.expect_type(SEXPTYPE::CHARSXP, "character scalar")?;
         let len = unsafe { (*self.ptr).data.charsxp_truelen } as usize;
         let data = unsafe { (*self.ptr).gengc_next_node as *const u8 };
@@ -289,15 +298,37 @@ impl<'a> Sexp<'a> {
         Ok(unsafe { std::slice::from_raw_parts(data, len) })
     }
 
-    // Internal SEXP views deliberately consume the non-Copy handle.
     #[allow(clippy::wrong_self_convention)]
-    pub fn as_str(self) -> Option<&'a str> {
-        self.try_as_str().ok()
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn as_str(&self) -> Option<&'_ str> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_as_str()
+        }
+        .ok()
     }
 
     /// Return the CHARSXP bytes as UTF-8 with typed error reporting.
-    pub fn try_as_str(self) -> SexpResult<&'a str> {
-        std::str::from_utf8(self.try_as_bytes()?).map_err(|_| SexpError::InvalidUtf8)
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn try_as_str(&self) -> SexpResult<&'_ str> {
+        std::str::from_utf8(unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_as_bytes()
+        }?).map_err(|_| SexpError::InvalidUtf8)
+    }
+
+    /// Copy a character scalar into owned UTF-8 text.
+    pub fn try_as_string(&self) -> SexpResult<String> {
+        // SAFETY: copying invokes no R code, and self retains its allocation.
+        unsafe { self.try_as_str() }.map(str::to_owned)
+    }
+
+    pub fn as_string(&self) -> Option<String> {
+        self.try_as_string().ok()
     }
 
     // --- Complex vector accessors ---
@@ -335,19 +366,31 @@ impl<'a> Sexp<'a> {
         Ok(())
     }
 
-    // Internal SEXP views deliberately consume the non-Copy handle.
     #[allow(clippy::wrong_self_convention)]
-    pub fn as_complex_slice(self) -> Option<&'a [Rcomplex]> {
-        self.try_as_complex_slice().ok()
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn as_complex_slice(&self) -> Option<&'_ [Rcomplex]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_as_complex_slice()
+        }
+        .ok()
     }
 
     /// Get a complex slice view with typed error reporting.
-    pub fn try_as_complex_slice(self) -> SexpResult<&'a [Rcomplex]> {
-        self.try_typed_slice::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn try_as_complex_slice(&self) -> SexpResult<&'_ [Rcomplex]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_typed_slice::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")
+        }
     }
 
     pub fn iter_complex(self) -> impl Iterator<Item = Rcomplex> + 'a {
-        self.as_complex_slice().unwrap_or(&[]).iter().copied()
+        (0..self.len()).filter_map(move |i| self.complex_elt(i))
     }
 
     // --- Dot-dot-dot (DOTSXP) ---
@@ -389,7 +432,7 @@ impl<'a> Sexp<'a> {
 
     pub fn extptr_tag(&self) -> Option<Sexp<'a>> {
         if self.is_extptr() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.extptr[1] as SEXP })
+            self.optional_child(unsafe { (*self.ptr).data.extptr[1] as SEXP })
         } else {
             None
         }
@@ -398,12 +441,12 @@ impl<'a> Sexp<'a> {
     /// Get the external pointer tag with typed error reporting.
     pub fn try_extptr_tag(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")?;
-        Self::checked_child(unsafe { (*self.ptr).data.extptr[1] as SEXP })
+        self.checked_child(unsafe { (*self.ptr).data.extptr[1] as SEXP })
     }
 
     pub fn extprot(&self) -> Option<Sexp<'a>> {
         if self.is_extptr() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.extptr[2] as SEXP })
+            self.optional_child(unsafe { (*self.ptr).data.extptr[2] as SEXP })
         } else {
             None
         }
@@ -412,7 +455,7 @@ impl<'a> Sexp<'a> {
     /// Get the external pointer protected value with typed error reporting.
     pub fn try_extprot(&self) -> SexpResult<Sexp<'a>> {
         self.expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")?;
-        Self::checked_child(unsafe { (*self.ptr).data.extptr[2] as SEXP })
+        self.checked_child(unsafe { (*self.ptr).data.extptr[2] as SEXP })
     }
 
     // --- Weak reference (WEAKREFSXP) ---

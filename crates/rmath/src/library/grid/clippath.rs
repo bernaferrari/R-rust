@@ -119,8 +119,8 @@ pub unsafe fn resolveClipPath(path: SEXP, dd: pGEDevDesc) -> SEXP {
     let resolve_sym =
         unsafe { Rf_install(b"resolveClipPath\0".as_ptr() as *const std::os::raw::c_char) };
     let resolve_fn = unsafe { findFun(resolve_sym, env) };
-    let _resolve_fn_guard = crate::sexp::protect::protect(resolve_fn);
+    let _resolve_fn_guard = unsafe { crate::sexp::protect::protect(resolve_fn) };
     let r_fcall = unsafe { Rf_lang2(resolve_fn, path) };
-    let _r_fcall_guard = crate::sexp::protect::protect(r_fcall);
+    let _r_fcall_guard = unsafe { crate::sexp::protect::protect(r_fcall) };
     unsafe { ge::Rf_eval_with_gd(r_fcall, env, dd) }
 }

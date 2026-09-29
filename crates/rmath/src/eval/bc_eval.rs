@@ -412,8 +412,7 @@ unsafe fn fixup_scalar_logical(value: SEXP, call: SEXP, arg: &str, op: &str) -> 
         if !gnu_is_number(value) {
             crate::mainutils::coerce::errorcall(
                 call,
-                &format!("invalid {arg} type in 'x {op} y'"),
-            );
+                &format!("invalid {arg} type in 'x {op} y'"));
         }
         crate::mainutils::coerce::asLogical2(value, 1, call)
     }
@@ -632,8 +631,7 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
                 && TYPEOF(code) == SEXPTYPE::SYMSXP
                 && crate::sexp::envir::R_missing(
                     code,
-                    crate::sexp::accessors::PRENV(value),
-                ) != 0
+                    crate::sexp::accessors::PRENV(value)) != 0
             {
                 return R_MissingArg();
             }
@@ -1280,9 +1278,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     if val == FALSE || val == NA_LOGICAL {
                         let index = stack.depth() - 1;
-                        let result = with_stack_rooted(&stack, R_NilValue(), || {
-                            Rf_ScalarLogical(val)
-                        });
+                        let result = with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(val));
                         stack.set(index, result);
                     }
                     super::runtime::set_visible(TRUE);
@@ -1314,9 +1310,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     if val != FALSE {
                         let index = stack.depth() - 1;
-                        let result = with_stack_rooted(&stack, R_NilValue(), || {
-                            Rf_ScalarLogical(val)
-                        });
+                        let result = with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(val));
                         stack.set(index, result);
                     }
                     super::runtime::set_visible(TRUE);
@@ -1463,8 +1457,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             // internal function table like do_internal.
                             let pname = crate::sexp::accessors::PRINTNAME(symbol);
                             let name = std::ffi::CStr::from_ptr(
-                                crate::sexp::accessors::CHAR(pname),
-                            );
+                                crate::sexp::accessors::CHAR(pname));
                             let idx =
                                 crate::mainutils::names::StrToInternal(name.as_ptr());
                             if idx != crate::sexp::ffi::NA_INTEGER {
@@ -1473,8 +1466,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                 if (entry.eval % 100) / 10 != 0 {
                                     internal = crate::mainutils::dstruct::mkPRIMSXP(
                                         idx,
-                                        entry.eval % 10,
-                                    );
+                                        entry.eval % 10);
                                 }
                             }
                         }
@@ -1535,8 +1527,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         let srcref = VECTOR_ELT(fb, 2);
                         if srcref != R_NilValue() && !srcref.is_null() {
                             let srcref_symbol = crate::sexp::symbol::Rf_install(
-                                c"srcref".as_ptr(),
-                            );
+                                c"srcref".as_ptr());
                             crate::attrib_core::setAttrib(value, srcref_symbol, srcref);
                         }
                     }
@@ -1560,8 +1551,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         let h = with_stack_rooted(&stack, fun, || {
                             crate::sexp::envir::R_findVar(
                                 crate::sexp::symbol::R_DotsSymbol(),
-                                rho,
-                            )
+                                rho)
                         });
                         if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
                             let mut cell = h;
@@ -1616,8 +1606,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         {
                             fun = crate::sexp::envir::findFun(
                                 symbol,
-                                super::runtime::base_env(),
-                            );
+                                super::runtime::base_env());
                         }
                         if fun == R_UnboundValue() || TYPEOF(fun) != SEXPTYPE::SPECIALSXP {
                             let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))
@@ -1691,8 +1680,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             {
                                 fun = crate::sexp::envir::findFun(
                                     symbol,
-                                    super::runtime::base_env(),
-                                );
+                                    super::runtime::base_env());
                             }
                             if (fun == R_UnboundValue() || fun.is_null())
                                 && opcode == super::bytecode::GNU_OP_GETFUN
@@ -1895,13 +1883,15 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             bc_error("GNU CALLBUILTIN frame does not contain a builtin");
                         }
                         let result = match TYPEOF(fun) {
-                            kind if kind == SEXPTYPE::CLOSXP => super::apply::apply_closure_safe(
+                            kind if kind == SEXPTYPE::CLOSXP => {
+                                        super::apply::apply_closure_safe(
                                 function,
                                 call,
                                 Sexp::from_raw_unchecked(args),
                                 env,
-                            ),
-                            kind if kind == SEXPTYPE::SPECIALSXP => {
+                            )
+                                    }
+                                    kind if kind == SEXPTYPE::SPECIALSXP => {
                                 super::apply::apply_special_safe(
                                     function,
                                     call,
@@ -2309,10 +2299,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             // non-numeric args are coerced first. Factors stay
                             // intact so do_colon can still take cross_colon.
                             let (lhs_arg, rhs_arg) = if crate::mainutils::essentials::sexp_has_class(
-                                lhs, "factor",
-                            ) && crate::mainutils::essentials::sexp_has_class(
-                                rhs, "factor",
-                            ) {
+                                lhs, "factor") && crate::mainutils::essentials::sexp_has_class(
+                                rhs, "factor") {
                                 (lhs, rhs)
                             } else {
                                 (gnu_colon_numeric_arg(lhs), gnu_colon_numeric_arg(rhs))
@@ -2372,9 +2360,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         ));
                     }
                     let x = stack_pop_checked(&mut stack, "GNU DOLLAR");
-                    let result = with_stack_rooted(&stack, x, || {
-                        eval_gnu_dollar(call, symbol, x, rho)
-                    });
+                    let result = with_stack_rooted(&stack, x, || eval_gnu_dollar(call, symbol, x, rho));
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
                 }
@@ -2893,9 +2879,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     let call_index = words[pc] as usize;
                     let vexpr_index = words[pc + 1] as usize;
                     pc += 2;
-                    let frame = gnu_call_frames.pop().unwrap_or_else(|| {
-                        bc_error("GNU SETTER_CALL has no active GETFUN call")
-                    });
+                    let frame = gnu_call_frames.pop().unwrap_or_else(|| bc_error("GNU SETTER_CALL has no active GETFUN call"));
                     if frame.raw_args {
                         bc_error("GNU SETTER_CALL requires a GETFUN call frame");
                     }
@@ -2948,9 +2932,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_GETTER_CALL => {
                     let call_index = words[pc] as usize;
                     pc += 1;
-                    let frame = gnu_call_frames.pop().unwrap_or_else(|| {
-                        bc_error("GNU GETTER_CALL has no active GETFUN call")
-                    });
+                    let frame = gnu_call_frames.pop().unwrap_or_else(|| bc_error("GNU GETTER_CALL has no active GETFUN call"));
                     if frame.raw_args {
                         bc_error("GNU GETTER_CALL requires a GETFUN call frame");
                     }
@@ -4458,7 +4440,10 @@ mod tests {
             (*clos).data.closxp.env = crate::sexp::globals::R_BaseEnv();
             clos
         });
-        let _callee_guard = crate::sexp::protect::protect(gc_closure);
+        let _callee_guard = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            crate::sexp::protect::protect(gc_closure)
+        };
 
         // Detached arena keeps the bytecode alive for the whole test but is
         // invisible to the instance collector.

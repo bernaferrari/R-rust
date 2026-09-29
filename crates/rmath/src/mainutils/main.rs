@@ -602,11 +602,13 @@ pub unsafe fn R_GetMaxNSize() -> u64 {
 }
 
 pub unsafe fn R_GetVSize() -> u64 {
-    crate::sexp::memory::with_arena(|a| a.total_bytes_allocated() as u64)
+    unsafe { crate::sexp::memory::with_arena(|a| a.total_bytes_allocated() as u64)
+}
 }
 
 pub unsafe fn R_GetNSize() -> u64 {
-    crate::sexp::memory::with_arena(|a| a.node_count() as u64)
+    unsafe {
+    crate::sexp::memory::with_arena(|a| a.node_count() as u64) }
 }
 
 // ---------------------------------------------------------------------------

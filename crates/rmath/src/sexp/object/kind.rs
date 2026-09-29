@@ -8,7 +8,11 @@ use crate::sexp::globals::R_NilValue;
 /// while preserving their null-tolerant predicate semantics.
 #[inline]
 pub(crate) fn raw_is_atomic_vector(ptr: SEXP) -> bool {
-    Sexp::from_raw(ptr).is_some_and(|sexp| sexp.is_atomic())
+    unsafe {
+        /* SAFETY: caller established graph liveness and excludes payload mutation. */
+        Sexp::from_raw(ptr)
+    }
+    .is_some_and(|sexp| sexp.is_atomic())
 }
 
 /// Return whether a raw pointer is any R vector type.
@@ -16,31 +20,56 @@ pub(crate) fn raw_is_atomic_vector(ptr: SEXP) -> bool {
 /// This is the raw-boundary companion to [`Sexp::is_vector`].
 #[inline]
 pub(crate) fn raw_is_vector(ptr: SEXP) -> bool {
-    Sexp::from_raw(ptr).is_some_and(|sexp| sexp.is_vector())
+    unsafe {
+        /* SAFETY: caller established graph liveness and excludes payload mutation. */
+        Sexp::from_raw(ptr)
+    }
+    .is_some_and(|sexp| sexp.is_vector())
 }
 
 impl<'a> Sexp<'a> {
     /// Return a Rust-shaped borrowed view for this SEXP.
-    pub fn view(self) -> SexpResult<SexpView<'a>> {
+    /// # Safety
+    /// Retain this handle and exclude all mutation of the borrowed payload
+    /// until the returned reference dies. Do not execute R while it is borrowed.
+    pub unsafe fn view(&self) -> SexpResult<SexpView<'_>> {
         if self.clone().is_nil() {
             return Ok(SexpView::Nil);
         }
         match self.clone().typeof_() {
-            SEXPTYPE::LGLSXP => Ok(SexpView::Logical(self.try_as_logical_slice()?)),
-            SEXPTYPE::INTSXP => Ok(SexpView::Integer(self.try_as_integer_slice()?)),
-            SEXPTYPE::REALSXP => Ok(SexpView::Real(self.try_as_real_slice()?)),
-            SEXPTYPE::CPLXSXP => Ok(SexpView::Complex(self.try_as_complex_slice()?)),
-            SEXPTYPE::RAWSXP => Ok(SexpView::Raw(self.try_as_raw_slice()?)),
-            SEXPTYPE::CHARSXP => Ok(SexpView::Char(self.try_as_bytes()?)),
-            SEXPTYPE::STRSXP => Ok(SexpView::StringVector(self)),
-            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => Ok(SexpView::GenericVector(self)),
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => Ok(SexpView::Pairlist(self)),
-            SEXPTYPE::ENVSXP => Ok(SexpView::Environment(self)),
-            SEXPTYPE::SYMSXP => Ok(SexpView::Symbol(self)),
+            SEXPTYPE::LGLSXP => Ok(SexpView::Logical(unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                self.try_as_logical_slice()
+            }?)),
+            SEXPTYPE::INTSXP => Ok(SexpView::Integer(unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                self.try_as_integer_slice()
+            }?)),
+            SEXPTYPE::REALSXP => Ok(SexpView::Real(unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                self.try_as_real_slice()
+            }?)),
+            SEXPTYPE::CPLXSXP => Ok(SexpView::Complex(unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                self.try_as_complex_slice()
+            }?)),
+            SEXPTYPE::RAWSXP => Ok(SexpView::Raw(unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                self.try_as_raw_slice()
+            }?)),
+            SEXPTYPE::CHARSXP => Ok(SexpView::Char(unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                self.try_as_bytes()
+            }?)),
+            SEXPTYPE::STRSXP => Ok(SexpView::StringVector(self.clone())),
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => Ok(SexpView::GenericVector(self.clone())),
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => Ok(SexpView::Pairlist(self.clone())),
+            SEXPTYPE::ENVSXP => Ok(SexpView::Environment(self.clone())),
+            SEXPTYPE::SYMSXP => Ok(SexpView::Symbol(self.clone())),
             SEXPTYPE::CLOSXP | SEXPTYPE::SPECIALSXP | SEXPTYPE::BUILTINSXP => {
-                Ok(SexpView::Function(self))
+                Ok(SexpView::Function(self.clone()))
             }
-            _ => Ok(SexpView::Other(self)),
+            _ => Ok(SexpView::Other(self.clone())),
         }
     }
 

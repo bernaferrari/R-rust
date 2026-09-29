@@ -39,7 +39,7 @@ unsafe fn errorcall(_call: SEXP, msg: &str) {
 
 unsafe fn warningcall(call: SEXP, msg: &str) {
     let c = std::ffi::CString::new(msg).unwrap_or_default();
-    crate::mainutils::errors::warningcall(call, c.as_ptr());
+    unsafe { crate::mainutils::errors::warningcall(call, c.as_ptr()) };
 }
 
 unsafe fn isNull(x: SEXP) -> bool {
@@ -817,8 +817,7 @@ pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             let dots = crate::sexp::envir::R_findVarInFrame(
                 rho,
-                crate::sexp::symbol::R_DotsSymbol(),
-            );
+                crate::sexp::symbol::R_DotsSymbol());
             if TYPEOF(dots) == SEXPTYPE::DOTSXP {
                 alternatives = dots;
             }

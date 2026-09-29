@@ -80,9 +80,9 @@ const OBJSXP: c_int = SEXPTYPE::OBJSXP.as_c_int();
 
 /// Rust-shaped evaluator bound to one environment.
 ///
-/// This is the preferred entrypoint for Rust code. It keeps expression and
-/// environment ownership in the type system; raw `SEXP` pointers should only
-/// reach this layer after an arena or session has wrapped them as `Sexp`.
+/// Internal typed dispatcher. Safe callers enter through `RSession`, which
+/// activates and validates the owner. Calling this dispatcher directly requires
+/// the explicit owner, rooting and payload-loan contract of `eval`.
 #[derive(Clone, Debug)]
 pub struct EvalContext<'a> {
     env: Sexp<'a>,
@@ -100,15 +100,21 @@ impl<'a> EvalContext<'a> {
     }
 
     /// Evaluate an expression in this context.
-    pub fn eval(self, expr: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    /// # Safety
+    /// Activate the live owner of all inputs and retain their reachable graphs
+    /// through allocation and R reentry. No Rust payload loan may cross execution.
+    pub unsafe fn eval(self, expr: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if !self.env.clone().is_owner_scoped() {
             return Err("eval context environment is not owner-scoped".to_string());
         }
         if !expr.clone().is_owner_scoped() {
             return Err("eval expression is not owner-scoped".to_string());
         }
-        eval_expr(expr, self.env)
+        unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            eval_expr(expr, self.env)
     }
+}
 }
 
 /// Evaluate an expression using owner-scoped Rust handles.
@@ -116,12 +122,18 @@ impl<'a> EvalContext<'a> {
 /// This function is the Rust-shaped evaluator entrypoint. It performs the
 /// evaluator-side cancellation/visibility setup that the legacy raw `Rf_eval`
 /// shim used to own, then delegates to the safe evaluator implementation.
-pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+pub unsafe fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let _timer = EvalTimerGuard::start_if_needed();
     crate::sexp::instance::check_cancellation();
     super::runtime::set_visible(TRUE);
 
-    match eval_safe(expr.clone(), env) {
+    match unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        eval_safe(expr.clone(), env)
+    } {
         Ok(result) => Ok(result),
         Err(message) if is_simple_warning_hook_call(expr) => {
             Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
@@ -130,10 +142,10 @@ pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
     }
 }
 
-/// Safe evaluation of an R expression.
+/// Typed evaluation of an R expression through the legacy core.
 ///
-/// This is the idiomatic Rust API for evaluating R expressions.
-/// It catches panics, uses safe Sexp types, and returns Result.
+/// It catches R error signals and returns Result. The historical `_safe`
+/// suffix describes error handling; direct calls still require unsafe authority.
 ///
 /// # Arguments
 /// * `expr` - The expression to evaluate
@@ -142,7 +154,10 @@ pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
 /// # Returns
 /// * `Ok(Sexp)` - The result of evaluation
 /// * `Err(String)` - A description of the error that occurred
-pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+pub unsafe fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // Dynamically constructed calls can contain literal heap values that are
     // reachable only through this expression while recursive evaluation runs.
     let _expr_root = unsafe { crate::sexp::protect::protect(expr.clone().as_raw()) };
@@ -150,7 +165,10 @@ pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
     let _guard = check_eval_depth()?;
 
     let result =
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| eval_safe_inner(expr, env)));
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        eval_safe_inner(expr, env)
+    }));
 
     match result {
         Ok(inner) => inner,
@@ -187,11 +205,14 @@ fn symbol_name_for_error(expr: Sexp<'_>) -> String {
     "<unknown>".to_string()
 }
 
-fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+unsafe fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     match classify_expr(expr.clone()) {
         EvalKind::SelfEvaluating => Ok(expr),
         EvalKind::Symbol => {
-            if let Some(value) = find_var_result(expr.clone(), env.clone())? {
+            if let Some(value) = (unsafe {
+                /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+                find_var_result(expr.clone(), env.clone())
+            })? {
                 return Ok(value);
             }
             match primitive_for_symbol(expr.clone()) {
@@ -205,20 +226,26 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
                 },
             }
         }
-        EvalKind::Language => eval_lang_safe(expr, env),
+        EvalKind::Language => unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            eval_lang_safe(expr, env)
+        },
         EvalKind::Closure => Ok(expr),
         // Environments are first-class values (upstream Rf_eval returns
         // ENVSXP unchanged): `local({...})` blocks capture them via
         // `environment()`, and package shims return them as values.
         EvalKind::Environment => Ok(expr),
-        EvalKind::Promise => eval_promise_safe(expr, env),
+        EvalKind::Promise => unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            eval_promise_safe(expr, env)
+        },
         EvalKind::Dots => eval_dots_safe(expr, env),
-        EvalKind::Bytecode => eval_bytecode_safe(expr, env),
+        EvalKind::Bytecode => unsafe { eval_bytecode_safe(expr, env) },
         EvalKind::Unsupported(kind) => Err(format!("cannot evaluate type {:?}", kind)),
     }
 }
 
-fn eval_bytecode_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+unsafe fn eval_bytecode_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     if super::jit::get_R_disable_bytecode() != 0 {
         return Err("bytecode evaluation is disabled for this R session".to_string());
     }
@@ -278,7 +305,10 @@ fn classify_expr(expr: Sexp<'_>) -> EvalKind {
 }
 
 /// Safe evaluation of a language object (function call).
-pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+pub(crate) unsafe fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let fun = e
         .clone()
         .try_car()
@@ -293,20 +323,25 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
     // R uses function-position lookup for symbolic call heads: non-function
     // bindings are skipped while walking enclosing environments.
     let fun_val = if fun.clone().typeof_() == SEXPTYPE::SYMSXP {
-        match find_fun_result(fun.clone(), rho.clone())? {
+        match (unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            find_fun_result(fun.clone(), rho.clone())
+        })? {
             Some(value) => value,
             None => match primitive_for_symbol(fun.clone()) {
                 Some(primitive) => primitive,
                 None => unsafe {
                     crate::mainutils::errors::R_FunctionNotFoundError(
                         fun.as_raw(),
-                        e.as_raw(),
-                    )
+                        e.as_raw())
                 },
             },
         }
     } else {
-        eval_safe(fun.clone(), rho.clone())?
+        (unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            eval_safe(fun.clone(), rho.clone())
+        })?
     };
 
     match fun_val.clone().typeof_() {
@@ -357,8 +392,11 @@ pub(crate) fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
 /// Safe variable lookup using Sexp types.
 ///
 /// Walks the environment chain looking for a symbol binding.
-pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
-    find_var_result(symbol, rho).ok().flatten()
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+pub unsafe fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
+    (unsafe { /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */ find_var_result(symbol, rho) }).ok().flatten()
 }
 
 /// Raise R's missing-argument error, attributed like upstream.
@@ -383,7 +421,10 @@ fn missing_arg_error(name: &str) -> ! {
 ///
 /// `Ok(None)` means the binding was not found. `Err` means the environment
 /// chain or binding cells were structurally invalid for the operation.
-pub(crate) fn find_var_result<'a>(
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+pub(crate) unsafe fn find_var_result<'a>(
     symbol: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Option<Sexp<'a>>, String> {
@@ -406,7 +447,10 @@ pub(crate) fn find_var_result<'a>(
     // GNU Rf_eval SYMSXP: DDVAL names (`..1`, `..2`, ...) go through
     // ddfindVar, not ordinary findVar.
     if crate::sexp::envir::dd_val(symbol.clone()).is_some() {
-        let Some(value) = crate::sexp::envir::dd_find_var_safe(symbol.clone(), rho) else {
+        let Some(value) = (unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            crate::sexp::envir::dd_find_var_safe(symbol.clone(), rho)
+        }) else {
             return Ok(None);
         };
         if value.clone().as_raw() == unsafe { R_MissingArg() } {
@@ -420,7 +464,10 @@ pub(crate) fn find_var_result<'a>(
     // GNU Rf_eval SYMSXP: findVar is unforced. A MissingArg *binding* is
     // a missing formal. A promise whose forced value is the empty symbol
     // (lapply/vapply over formals) is a real value.
-    let binding = crate::sexp::envir::find_var_binding_result(symbol.clone(), rho.clone())?;
+    let binding = (unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        crate::sexp::envir::find_var_binding_result(symbol.clone(), rho.clone())
+    })?;
     let Some(binding) = binding else {
         return Ok(None);
     };
@@ -429,7 +476,7 @@ pub(crate) fn find_var_result<'a>(
         missing_arg_error(&name);
     }
     if binding.clone().typeof_() == SEXPTYPE::PROMSXP {
-        return eval_promise_safe(binding, rho).map(|v| { mark_named_on_read(v.clone().as_raw()); Some(v) });
+        return (unsafe { /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */ eval_promise_safe(binding, rho) }).map(|v| { mark_named_on_read(v.clone().as_raw()); Some(v) });
     }
     mark_named_on_read(binding.clone().as_raw());
     Ok(Some(binding))
@@ -445,7 +492,7 @@ fn mark_named_on_read(x: SEXP) {
 
 
 /// Safe promise evaluation.
-fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
+unsafe fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // If already evaluated, return the value
     let val = prom
         .clone()
@@ -458,7 +505,7 @@ fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, Stri
 
     // Force the promise
     let raw_result = unsafe { forcePromise(prom.as_raw()) };
-    Sexp::try_from_raw(raw_result).map_err(|err| sexp_err("forced promise result", err))
+    (unsafe { /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */ Sexp::try_from_raw(raw_result) }).map_err(|err| sexp_err("forced promise result", err))
 }
 
 /// Safe dots evaluation.
@@ -475,8 +522,14 @@ fn eval_dots_safe<'a>(_dots: Sexp<'a>, _rho: Sexp<'a>) -> Result<Sexp<'a>, Strin
 ///
 /// This wraps the raw FFI `Rf_eval` and provides a `Result` return type.
 #[must_use = "eval returns a Result that should be checked"]
-pub fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    eval_safe(e, rho)
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+pub unsafe fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        eval_safe(e, rho)
+    }
 }
 
 /// Internal safe eval implementation (legacy, delegates to eval_safe).
@@ -489,7 +542,10 @@ unsafe fn eval_inner_safe<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
 
     let expr = unsafe { Sexp::from_raw_unchecked(e) };
     let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    eval_safe(expr, env)
+    unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        eval_safe(expr, env)
+    }
 }
 
 /// Check if a SEXPTYPE is self-evaluating (returns as-is without further evaluation).
@@ -520,14 +576,20 @@ fn is_self_evaluating(t: c_int) -> bool {
 unsafe fn eval_dispatch<'a>(t: c_int, e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let expr = unsafe { Sexp::from_raw_unchecked(e) };
     let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    eval_safe(expr, env)
+    unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        eval_safe(expr, env)
+    }
 }
 
 /// Evaluate a symbol (SYMSXP) — variable lookup (legacy).
 unsafe fn eval_symbol<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let expr = unsafe { Sexp::from_raw_unchecked(e) };
     let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    eval_safe(expr, env)
+    unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        eval_safe(expr, env)
+    }
 }
 
 /// Extract the name of a symbol for error messages.
@@ -560,8 +622,20 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 /// `e` and `rho` must be valid SEXP pointers (or null).
 #[must_use]
 pub(crate) unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
-    match (Sexp::from_raw(e), Sexp::from_raw(rho)) {
-        (Some(expr), Some(env)) => match eval_expr(expr, env) {
+    match (
+        (unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            Sexp::from_raw(e)
+        }),
+        (unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            Sexp::from_raw(rho)
+        }),
+    ) {
+        (Some(expr), Some(env)) => match unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            eval_expr(expr, env)
+        } {
             Ok(result) => unsafe { super::jit::handle_exec_continuation(result.as_raw()) },
             Err(msg) => {
                 std::panic::panic_any(crate::sexp::context::RSignal::Error { message: msg });
@@ -597,7 +671,10 @@ pub(crate) unsafe fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
 unsafe fn eval_lang<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let expr = unsafe { Sexp::from_raw_unchecked(e) };
     let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    eval_lang_safe(expr, env)
+    unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        eval_lang_safe(expr, env)
+    }
 }
 
 /// Evaluate a SPECIAL function (arguments not evaluated) — legacy wrapper.
@@ -790,8 +867,8 @@ mod tests {
         let expr = session.sexp(expr).expect("expr belongs to session");
         let env = session.global_env().expect("global env should exist");
 
-        let result = EvalContext::new(env)
-            .eval(expr)
+        let result = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ EvalContext::new(env)
+            .eval(expr) }
             .expect("self-evaluating scalar should evaluate");
 
         assert_eq!(result.integer_elt(0), Some(123));
@@ -869,8 +946,8 @@ mod tests {
             (*inst).eval_state.disable_bytecode = TRUE;
         });
 
-        let err = EvalContext::new(env)
-            .eval(bcode)
+        let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ EvalContext::new(env)
+            .eval(bcode) }
             .expect_err("disabled bytecode should not execute");
         assert!(err.contains("bytecode evaluation is disabled"));
     }
@@ -881,11 +958,11 @@ mod tests {
         let raw = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
-        let expr = Sexp::from_raw(raw).expect("legacy raw wrapper should construct");
+        let expr = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(raw) }.expect("legacy raw wrapper should construct");
         let env = session.global_env().expect("global env should exist");
 
-        let err = EvalContext::new(env)
-            .eval(expr)
+        let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ EvalContext::new(env)
+            .eval(expr) }
             .expect_err("unowned expression should be rejected");
         assert!(err.contains("expression is not owner-scoped"));
     }
@@ -1301,8 +1378,7 @@ identical(f(abc = 1, abd = 2, extra = 3), list(1, 2, list(extra = 3))) &&
     fn print_digits_argument_is_honored() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(
-            "print(c(2.44140624e-04, 8), digits = 1)\n",
-        );
+            "print(c(2.44140624e-04, 8), digits = 1)\n");
         assert!(
             captured.stdout.contains("[1] 2e-04 8e+00")
                 || captured.stdout.contains("[1] 0.0002 8"),
@@ -1374,8 +1450,7 @@ identical(format(m[, 1], digits = 1), format(m[, 2], digits = 1)) &&
     fn cat_uses_scientific_for_large_whole_doubles() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(
-            "cat(signif(1.234567891234567e27, 1), \"\\n\")\n",
-        );
+            "cat(signif(1.234567891234567e27, 1), \"\\n\")\n");
         assert!(
             captured.stdout.contains("1e+27"),
             "cat of signif(1e27, 1) must be scientific, got {:?}",
@@ -1631,8 +1706,7 @@ invisible(NULL)
     fn print_primitive_includes_argsenv_formals() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(
-            "print(base::list)\ninvisible(NULL)\n",
-        );
+            "print(base::list)\ninvisible(NULL)\n");
         assert_eq!(
             captured.stdout.trim_end(),
             "function (...)  .Primitive(\"list\")",
@@ -1646,8 +1720,7 @@ invisible(NULL)
 
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            "h <- function(...) ...length(); identical(h(), 0L)",
-        );
+            "h <- function(...) ...length(); identical(h(), 0L)");
         let result = result.expect("empty ... must have length 0");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -1692,8 +1765,7 @@ invisible(NULL)
     fn summary_true_prints_like_gnu() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(
-            "summary(TRUE)\ninvisible(NULL)\n",
-        );
+            "summary(TRUE)\ninvisible(NULL)\n");
         assert_eq!(
             captured.stdout,
             "   Mode    TRUE \nlogical       1 \n",
@@ -1707,8 +1779,7 @@ invisible(NULL)
     fn summary_pi_prints_gnu_digits() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(
-            "options(digits=7); summary(pi)\ninvisible(NULL)\n",
-        );
+            "options(digits=7); summary(pi)\ninvisible(NULL)\n");
         assert!(
             captured.stdout.contains("3.142"),
             "named numeric summaryDefault must use digits=max(3,digits-3), got {:?}",
@@ -1762,8 +1833,7 @@ invisible(NULL)
     fn print_noquote_empty_character_omits_class() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(
-            "print(noquote(character(0)))\ninvisible(NULL)\n",
-        );
+            "print(noquote(character(0)))\ninvisible(NULL)\n");
         assert_eq!(
             captured.stdout.trim_end(),
             "character(0)",
@@ -1800,8 +1870,7 @@ identical(a, b) && identical(a, c) && isTRUE(all.equal(a, 10)) &&
     fn str_named_character_quotes_like_gnu() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(
-            "str(c(F=0.3, `Tail area`=60))\ninvisible(NULL)\n",
-        );
+            "str(c(F=0.3, `Tail area`=60))\ninvisible(NULL)\n");
         assert!(
             captured.stdout.contains("chr [1:2] \"F\" \"Tail area\""),
             "str() of character names must quote, got {:?}",
@@ -2031,8 +2100,7 @@ inherits(e1, "error")
     fn deparse_pi_uses_dbl_dig_not_options_digits() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            "identical(deparse(pi), \"3.14159265358979\")",
-        );
+            "identical(deparse(pi), \"3.14159265358979\")");
         let result = result.expect("deparse must pin R_print.digits to DBL_DIG");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -3441,8 +3509,7 @@ isClass("bar") && extends("bar", "foo")
     fn seq_int_named_to_before_from_matches_gnu() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            "identical(seq.int(to = 3, from = 1), 1:3)",
-        );
+            "identical(seq.int(to = 3, from = 1), 1:3)");
         let result = result.expect("seq.int must matchArgs, not check1arg the first tag");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -5094,16 +5161,7 @@ if (!isTRUE(ok)) {
                 "setClass(\"SIG\", contains=\"signature\")\n",
                 "invisible(lapply(getClasses(globalenv()), removeClass))\n",
                 "validObject(new(\"signature\", obj = \"mle\"))\n",
-            ),
-
-
-
-
-
-
-
-
-        );
+            ));
         let result = result.unwrap_or_else(|e| {
             panic!(
                 "signature after removeClass: {e}\nstdout={}\nstderr={}",
@@ -5129,8 +5187,7 @@ if (!isTRUE(ok)) {
                 "exists(\".__C__signature\", \"package:methods\", inherits=FALSE) &&\n",
                 "  exists(\"pi\", \"package:base\") &&\n",
                 "  !exists(\".__C__signature\", \".GlobalEnv\", inherits=FALSE)\n",
-            ),
-        );
+            ));
         let result = result.unwrap_or_else(|e| {
             panic!(
                 "exists where-string: {e}\nstdout={}\nstderr={}",
@@ -6840,8 +6897,7 @@ TRUE
     fn class_of_null_is_null_string() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            "identical(class(NULL), \"NULL\")",
-        );
+            "identical(class(NULL), \"NULL\")");
         let result = result.expect("class(NULL) must be GNU's implicit NULL class");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }

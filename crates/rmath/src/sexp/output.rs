@@ -427,11 +427,11 @@ pub(crate) fn capture_stderr_in(inst: *mut RInstance, msg: &str) {
     }
 }
 
-pub(crate) fn format_sexp(x: SEXP) -> String {
+pub(crate) unsafe fn format_sexp(x: SEXP) -> String {
     if x.is_null() {
         return "NULL".to_string();
     }
-    if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
+    if let Some(sexp) = unsafe { crate::sexp::object::Sexp::from_raw(x) } {
         format_sexp_direct(sexp)
     } else {
         "NULL".to_string()
@@ -1401,9 +1401,7 @@ fn format_array(x: Sexp<'_>) -> Option<String> {
             SEXPTYPE::INTSXP => format_integer_element(x.clone(), index),
             SEXPTYPE::REALSXP => format_real_element(x.clone(), index),
             SEXPTYPE::CPLXSXP => format_complex_element(x.clone(), index),
-            SEXPTYPE::STRSXP => {
-                format_string_element_maybe_quoted(x.clone(), index, true)
-            }
+            SEXPTYPE::STRSXP => format_string_element_maybe_quoted(x.clone(), index, true),
             _ => "NA".to_string(),
         }
     };
@@ -1485,14 +1483,14 @@ fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
     }
 }
 
-fn string_vector_contains(x: SEXP, needle: &str) -> bool {
-    string_vector_values(x)
+unsafe fn string_vector_contains(x: SEXP, needle: &str) -> bool {
+    unsafe { string_vector_values(x) }
         .map(|values| values.iter().any(|value| value == needle))
         .unwrap_or(false)
 }
 
-fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
-    let sexp = Sexp::from_raw(x)?;
+unsafe fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
+    let sexp = unsafe { Sexp::from_raw(x) }?;
     if sexp.clone().typeof_() != SEXPTYPE::STRSXP {
         return None;
     }
@@ -1503,8 +1501,8 @@ fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
     Some(values)
 }
 
-fn string_vector_labels(x: SEXP) -> Option<Vec<String>> {
-    let sexp = Sexp::from_raw(x)?;
+unsafe fn string_vector_labels(x: SEXP) -> Option<Vec<String>> {
+    let sexp = unsafe { Sexp::from_raw(x) }?;
     if sexp.clone().typeof_() != SEXPTYPE::STRSXP {
         return None;
     }
@@ -1550,8 +1548,8 @@ fn format_named_atomic_vector(x: Sexp<'_>, values: Vec<String>) -> Option<String
     Some(format_named_values(&names, &values))
 }
 
-fn string_element_text<'a>(x: Sexp<'a>, i: R_xlen_t) -> Option<Option<&'a str>> {
-    x.string_text_elt(i)
+fn string_element_text(x: Sexp<'_>, i: R_xlen_t) -> Option<Option<String>> {
+    x.string_value_elt(i)
 }
 
 fn format_string_element(x: Sexp<'_>, i: R_xlen_t) -> String {
@@ -1560,7 +1558,7 @@ fn format_string_element(x: Sexp<'_>, i: R_xlen_t) -> String {
 
 fn format_string_element_maybe_quoted(x: Sexp<'_>, i: R_xlen_t, quote: bool) -> String {
     match string_element_text(x, i) {
-        Some(Some(value)) if quote => format!("\"{}\"", escape_printed_string(value)),
+        Some(Some(value)) if quote => format!("\"{}\"", escape_printed_string(&value)),
         Some(Some(value)) => value.to_string(),
         Some(None) | None => "NA".to_string(),
     }
@@ -1768,8 +1766,7 @@ fn format_posixlt_vector(x: Sexp<'_>) -> String {
     }
     unsafe {
         use crate::sexp::constructors::{
-            Rf_ScalarInteger, Rf_ScalarLogical, Rf_cons, Rf_mkString,
-        };
+            Rf_ScalarInteger, Rf_ScalarLogical, Rf_cons, Rf_mkString};
         use crate::sexp::ffi::{NA_INTEGER, TRUE};
         use crate::sexp::protect::protect;
         let format = Rf_mkString(c"".as_ptr());
@@ -1899,7 +1896,7 @@ fn table_title(x: Sexp<'_>) -> Option<String> {
         if title.clone().typeof_() != SEXPTYPE::STRSXP || title.clone().len() == 0 {
             return None;
         }
-        string_element_text(title, 0).flatten().map(str::to_string)
+        string_element_text(title, 0).flatten()
     }
 }
 
@@ -1969,8 +1966,7 @@ fn with_summary_default_digits<T>(f: impl FnOnce() -> T) -> T {
                 scipen: old.scipen,
                 na_width: old.na_width,
                 na_width_noquote: old.na_width_noquote,
-            },
-        );
+            });
         let rendered = f();
         crate::mainutils::format::format_set_R_print(previous);
         rendered
@@ -2418,8 +2414,7 @@ fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
         }
         let klass = crate::sexp::attrib_core::getAttrib(
             raw,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+            crate::sexp::attrib_core::R_ClassSymbol());
         let env = crate::sexp::globals::R_GlobalEnv();
         let method = crate::mainutils::objects::lookup_s3_method_for_classes(
             "print", klass, env, env, env, false,
@@ -2439,8 +2434,7 @@ fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
         let _call = crate::sexp::protect::protect(call);
         let guard = OutputCaptureGuard::start();
         let Some(_) = crate::mainutils::essentials::apply_s3_closure_method(
-            "print", call, args, env,
-        ) else {
+            "print", call, args, env) else {
             return None;
         };
 
@@ -3758,14 +3752,14 @@ pub fn print_structure(x: Sexp<'_>, indent: usize) {
 
 /// FFI function: Rf_PrintValue
 pub(crate) unsafe fn Rf_PrintValue(x: SEXP) {
-    if let Some(s) = Sexp::from_raw(x) {
+    if let Some(s) = unsafe { Sexp::from_raw(x) } {
         print_value(s);
     }
 }
 
 /// FFI function: Rf_PrintValueEnv (print with environment context)
 pub(crate) unsafe fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
-    if let Some(s) = Sexp::from_raw(x) {
+    if let Some(s) = unsafe { Sexp::from_raw(x) } {
         print_value(s);
     }
 }
@@ -3955,7 +3949,7 @@ mod tests {
         session
             .with_arena(|arena| {
                 let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 3);
-                let sexp = Sexp::from_raw(ptr).expect("logical vector allocation failed");
+                let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(ptr) }.expect("logical vector allocation failed");
                 assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_logical_elt(0, 0) });
                 assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_logical_elt(1, 1) });
                 assert!(
@@ -3987,9 +3981,9 @@ mod tests {
         session
             .with_arena(|arena| {
                 let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, 2);
-                let sexp = Sexp::from_raw(ptr).expect("string vector allocation failed");
-                let value = Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("CHARSXP");
-                let missing = Sexp::from_raw(unsafe { crate::sexp::globals::R_NaString() })
+                let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(ptr) }.expect("string vector allocation failed");
+                let value = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_charsxp(b"a")) }.expect("CHARSXP");
+                let missing = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(unsafe { crate::sexp::globals::R_NaString() }) }
                     .expect("NA_STRING");
                 unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone()
                     .try_set_string_elt(0, value) }
@@ -4016,7 +4010,7 @@ mod tests {
         let mut session = RSession::new();
         session
             .with_arena(|arena| {
-                let real = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1))
+                let real = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1)) }
                     .expect("real vector allocation failed");
 
                 assert!(
@@ -4048,7 +4042,7 @@ mod tests {
         session
             .with_arena(|arena| {
                 let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-                let sexp = Sexp::from_raw(ptr).expect("real vector allocation failed");
+                let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(ptr) }.expect("real vector allocation failed");
                 unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(0, 200.0) }.expect("set real");
                 unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(1, 80200.0) }.expect("set real");
                 unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(2, 100.5) }.expect("set real");

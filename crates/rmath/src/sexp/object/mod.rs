@@ -37,6 +37,8 @@ mod mut_ref;
 mod owned;
 mod pairlist;
 mod primitive;
+#[cfg(test)]
+mod safety_tests;
 mod slots;
 mod value;
 mod vector;
@@ -112,8 +114,9 @@ pub enum SexpOwner {
 ///
 /// Handles move by default; cloning explicitly creates another raw alias.
 /// Neither moving nor cloning establishes exclusivity over the R object.
-/// Mutation requires unsafe acquisition of [`SexpMut`], whose caller must
-/// exclude borrowed payload references for the mutation window.
+/// Checked mutation uses [`SexpMut::try_from_checked`]. Legacy raw acquisition
+/// and payload loans are unsafe; their callers must exclude borrowed payload
+/// references for the mutation window.
 ///
 /// ```text
 /// use crate::sexp::{Sexp, SEXPTYPE};
@@ -131,7 +134,16 @@ pub struct Sexp<'a> {
     ptr: SEXP,
     owner: SexpOwner,
     pub(crate) session_owner_ptr: Option<std::ptr::NonNull<crate::sexp::instance::RInstance>>,
+    root: Option<std::rc::Rc<RootLease<'a>>>,
     _marker: std::marker::PhantomData<&'a SexprecCore>,
+}
+
+struct RootLease<'a>(crate::sexp::protect::IndexedProtectGuard<'a>);
+
+impl std::fmt::Debug for RootLease<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("RootLease").field(&self.0.slot()).finish()
+    }
 }
 
 /// Duplicate this handle; the clone aliases the same R object, it does not
@@ -148,6 +160,7 @@ impl Clone for Sexp<'_> {
             ptr: self.ptr,
             owner: self.owner,
             session_owner_ptr: self.session_owner_ptr,
+            root: self.root.clone(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -157,8 +170,8 @@ impl Clone for Sexp<'_> {
 ///
 /// Alias for [`Sexp`]: a shared, reborrowable read handle with no mutation
 /// surface. Reads (`typeof_`, `len`, predicates, `*_elt` / `try_*_elt`
-/// element reads, slice views, child-handle accessors) are shared-borrow
-/// safe and may coexist; in-place mutation goes through
+/// element reads and child-handle accessors) copy values safely. Payload
+/// views require an unsafe loan; in-place mutation goes through
 /// [`SexpMut`](crate::sexp::object::SexpMut) (`from_owned` -> `set_*` ->
 /// `freeze()`).
 pub type SexpRef<'a> = Sexp<'a>;
@@ -207,16 +220,25 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if the pointer is null or visibly invalid. Public safe
     /// code should use owner-scoped wrapping through `RArena::sexp` or
     /// `RSession::sexp` instead.
+    ///
+    /// # Safety
+    /// Non-null aligned pointers must name live, initialized R objects whose
+    /// entire reachable graph outlives `'a`. The caller must retain GC roots
+    /// across every allocating call; alignment checks do not establish liveness.
     #[inline]
-    pub(crate) fn from_raw(ptr: SEXP) -> Option<Self> {
-        Self::try_from_raw(ptr).ok()
+    pub(crate) unsafe fn from_raw(ptr: SEXP) -> Option<Self> {
+        unsafe { Self::try_from_raw(ptr) }.ok()
     }
 
     /// Create a `Sexp` from a raw SEXP pointer for internal boundary code.
     ///
     /// Unlike [`from_raw`](Self::from_raw), this reports why wrapping failed.
+    ///
+    /// # Safety
+    /// The liveness, initialization, graph and rooting requirements of
+    /// [`from_raw`](Self::from_raw) apply.
     #[inline]
-    pub(crate) fn try_from_raw(ptr: SEXP) -> SexpResult<Self> {
+    pub(crate) unsafe fn try_from_raw(ptr: SEXP) -> SexpResult<Self> {
         if ptr.is_null() {
             Err(SexpError::NullPointer)
         } else if (ptr as usize) % std::mem::align_of::<SexprecCore>() != 0 {
@@ -228,6 +250,7 @@ impl<'a> Sexp<'a> {
                 ptr,
                 owner: SexpOwner::Unknown,
                 session_owner_ptr: None,
+                root: None,
                 _marker: std::marker::PhantomData,
             })
         }
@@ -239,21 +262,41 @@ impl<'a> Sexp<'a> {
         ptr: SEXP,
         arena: &'arena crate::sexp::memory::RArena,
     ) -> SexpResult<Sexp<'arena>> {
-        let mut sexp = Sexp::try_from_raw(ptr)?;
+        if !arena.contains(ptr) {
+            return Err(SexpError::UnownedPointer {
+                address: ptr as usize,
+            });
+        }
+        let mut sexp = unsafe { Sexp::try_from_raw(ptr) }?;
         sexp.owner = SexpOwner::Arena(Self::arena_owner_token(arena));
         Ok(sexp)
     }
 
-    /// Wrap a pointer that has already been validated against session-owned
-    /// persistent storage.
+    /// Validate and root a pointer against session-owned storage.
+    ///
+    /// # Safety
+    /// `instance` is the original live owner pointer, with write provenance
+    /// for root-table bookkeeping, and its allocation must outlive `'session`.
+    /// No whole-instance borrow may remain live during root installation.
     #[inline]
-    pub(crate) fn from_session_raw<'session>(
+    pub(crate) unsafe fn from_session_raw<'session>(
         ptr: SEXP,
-        instance: &'session crate::sexp::instance::RInstance,
+        instance: *mut crate::sexp::instance::RInstance,
     ) -> SexpResult<Sexp<'session>> {
-        let mut sexp = Sexp::try_from_raw(ptr)?;
-        sexp.owner = SexpOwner::Session(Self::session_owner_token(instance));
-        sexp.session_owner_ptr = std::ptr::NonNull::new(instance as *const _ as *mut _);
+        if crate::sexp::session::is_immutable_singleton(ptr) {
+            return Ok(unsafe { Sexp::from_static_raw_unchecked(ptr) });
+        }
+        if instance.is_null() || !unsafe { (*instance).owns_sexp(ptr) } {
+            return Err(SexpError::UnownedPointer {
+                address: ptr as usize,
+            });
+        }
+        let mut sexp = unsafe { Sexp::try_from_raw(ptr) }?;
+        sexp.owner = SexpOwner::Session(instance as usize);
+        sexp.session_owner_ptr = std::ptr::NonNull::new(instance);
+        let guard = crate::sexp::protect::try_protect_sexp_with_index(sexp.clone())
+            .map_err(|_| SexpError::RootUnavailable)?;
+        sexp.root = Some(std::rc::Rc::new(RootLease(guard)));
         Ok(sexp)
     }
 
@@ -269,6 +312,7 @@ impl<'a> Sexp<'a> {
             ptr,
             owner: SexpOwner::Unknown,
             session_owner_ptr: None,
+            root: None,
             _marker: std::marker::PhantomData,
         }
     }
@@ -280,6 +324,7 @@ impl<'a> Sexp<'a> {
             ptr,
             owner: SexpOwner::Static,
             session_owner_ptr: None,
+            root: None,
             _marker: std::marker::PhantomData,
         }
     }
@@ -404,17 +449,20 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn typed_slice<T>(self, expected: SEXPTYPE) -> Option<&'a [T]> {
-        self.try_typed_slice::<T>(expected, sexptype_name(expected))
-            .ok()
+    unsafe fn typed_slice<T>(&self, expected: SEXPTYPE) -> Option<&'_ [T]> {
+        unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            self.try_typed_slice::<T>(expected, sexptype_name(expected))
+        }
+        .ok()
     }
 
     #[inline]
-    fn try_typed_slice<T>(
-        self,
+    unsafe fn try_typed_slice<T>(
+        &self,
         expected: SEXPTYPE,
         expected_name: &'static str,
-    ) -> SexpResult<&'a [T]> {
+    ) -> SexpResult<&'_ [T]> {
         self.expect_type(expected, expected_name)?;
         let len = self.clone().len() as usize;
         if len == 0 {
@@ -485,12 +533,53 @@ impl<'a> Sexp<'a> {
         self.try_index(i).is_ok()
     }
 
-    #[inline]
-    fn checked_child(ptr: SEXP) -> SexpResult<Sexp<'a>> {
-        if ptr.is_null() {
-            Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
+    fn check_child_owner(&self, child: &Sexp<'_>) -> SexpResult<()> {
+        let ptr = child.clone().as_raw();
+        let valid = if crate::sexp::session::is_immutable_singleton(ptr) {
+            true
         } else {
-            Sexp::try_from_raw(ptr)
+            match self.owner {
+                SexpOwner::Session(_) => self.session_owner_ptr.is_some_and(|owner| {
+                    // SAFETY: this handle retains the live session owner.
+                    unsafe { (*owner.as_ptr()).owns_sexp(ptr) }
+                }),
+                SexpOwner::Arena(_) => self.owner == child.owner,
+                SexpOwner::Static => false,
+                // Raw factories require the caller to establish graph ownership.
+                SexpOwner::Unknown => true,
+            }
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(SexpError::UnownedPointer {
+                address: ptr as usize,
+            })
+        }
+    }
+
+    fn optional_child(&self, ptr: SEXP) -> Option<Sexp<'a>> {
+        if ptr.is_null() {
+            None
+        } else {
+            self.checked_child(ptr).ok()
+        }
+    }
+
+    #[inline]
+    fn checked_child(&self, ptr: SEXP) -> SexpResult<Sexp<'a>> {
+        if ptr.is_null() {
+            Ok(Sexp::nil())
+        } else if let Some(owner) = self.session_owner_ptr {
+            // SAFETY: the parent handle retains this session's lifetime.
+            // Children receive independent leases before the parent can drop.
+            unsafe { Self::from_session_raw(ptr, owner.as_ptr()) }
+        } else {
+            // SAFETY: the parent factory established graph liveness for this lifetime.
+            let mut child = unsafe {
+            Sexp::try_from_raw(ptr) }?;
+            child.owner = self.owner;
+            Ok(child)
         }
     }
 
@@ -559,7 +648,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn car(&self) -> Option<Sexp<'a>> {
         if self.is_pairlist() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.carval })
+            self.optional_child(unsafe { (*self.ptr).data.listsxp.carval })
         } else {
             None
         }
@@ -569,7 +658,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_car(&self) -> SexpResult<Sexp<'a>> {
         self.try_pairlist()?;
-        Self::checked_child(unsafe { (*self.ptr).data.listsxp.carval })
+        self.checked_child(unsafe { (*self.ptr).data.listsxp.carval })
     }
 
     /// Get the CDR (next cell) of a pairlist element.
@@ -578,7 +667,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn cdr(&self) -> Option<Sexp<'a>> {
         if self.is_pairlist() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.cdrval })
+            self.optional_child(unsafe { (*self.ptr).data.listsxp.cdrval })
         } else {
             None
         }
@@ -588,7 +677,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_cdr(&self) -> SexpResult<Sexp<'a>> {
         self.try_pairlist()?;
-        Self::checked_child(unsafe { (*self.ptr).data.listsxp.cdrval })
+        self.checked_child(unsafe { (*self.ptr).data.listsxp.cdrval })
     }
 
     /// Get the TAG (name) of a pairlist element.
@@ -597,7 +686,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn tag(&self) -> Option<Sexp<'a>> {
         if self.is_pairlist() {
-            Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.tagval })
+            self.optional_child(unsafe { (*self.ptr).data.listsxp.tagval })
         } else {
             None
         }
@@ -607,7 +696,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_tag(&self) -> SexpResult<Sexp<'a>> {
         self.try_pairlist()?;
-        Self::checked_child(unsafe { (*self.ptr).data.listsxp.tagval })
+        self.checked_child(unsafe { (*self.ptr).data.listsxp.tagval })
     }
 
     /// Return the next pairlist cell, or `None` at the end of the chain.
@@ -666,7 +755,9 @@ impl<'a> Sexp<'a> {
             return Ok(false);
         }
 
-        Ok(tag.try_printname()?.try_as_bytes()? == name)
+        let printname = tag.try_printname()?;
+        // SAFETY: compare immediately, without allocation or R reentry.
+        Ok(unsafe { printname.try_as_bytes() }? == name)
     }
 }
 
@@ -724,19 +815,22 @@ mod tests {
 
     #[test]
     fn test_sexp_from_raw_null() {
-        assert!(Sexp::from_raw(ptr::null_mut()).is_none());
+        assert!(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(ptr::null_mut()) }.is_none());
     }
 
     #[test]
     fn test_sexp_from_raw_misaligned_pointer() {
-        assert!(Sexp::from_raw(std::ptr::without_provenance_mut(0x1)).is_none());
+        assert!(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(std::ptr::without_provenance_mut(0x1)) }.is_none());
     }
 
     #[test]
     fn test_raw_wrapped_sexp_has_unknown_owner() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert_eq!(sexp.clone().owner(), SexpOwner::Unknown);
         assert!(!sexp.is_owner_scoped());
     }
@@ -762,7 +856,10 @@ mod tests {
     fn test_sexp_len_non_vector() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_node(SEXPTYPE::SYMSXP);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert_eq!(sexp.clone().len(), 0);
         assert!(sexp.clone().is_empty());
         assert!(sexp.is_symbol());
@@ -772,7 +869,10 @@ mod tests {
     fn test_sexp_len_vector() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 5);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert_eq!(sexp.clone().len(), 5);
         assert!(!sexp.clone().is_empty());
         assert!(sexp.is_vector());
@@ -782,7 +882,10 @@ mod tests {
     fn test_sexp_bounds_check() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert!(sexp.clone().integer_elt(5).is_none());
         assert!(sexp.clone().integer_elt(-1).is_none());
         assert!(sexp.clone().integer_elt(0).is_some());
@@ -793,7 +896,10 @@ mod tests {
     fn test_pairlist_iter() {
         let mut arena = RArena::new();
         let list = arena.alloc_list_chain(3);
-        let sexp = some(Sexp::from_raw(list));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(list)
+        });
         let items: Vec<_> = PairlistIter::new(sexp).collect();
         assert_eq!(items.len(), 3);
     }
@@ -802,8 +908,14 @@ mod tests {
     fn test_sexp_partial_eq() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp1 = some(Sexp::from_raw(ptr));
-        let sexp2 = some(Sexp::from_raw(ptr));
+        let sexp1 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
+        let sexp2 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert_eq!(sexp1, sexp2);
     }
 
@@ -811,7 +923,10 @@ mod tests {
     fn test_sexp_display() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 5);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         let s = format!("{}", sexp);
         assert!(s.contains("len=5"));
     }
@@ -820,7 +935,10 @@ mod tests {
     fn test_set_integer_elt() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(0, 42) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(5, 99) } == false);
         assert_eq!(sexp.integer_elt(0), Some(42));
@@ -830,7 +948,10 @@ mod tests {
     fn test_set_real_elt() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(0, 3.14) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(5, 99.0) } == false);
         assert_eq!(sexp.real_elt(0), Some(3.14));
@@ -840,7 +961,10 @@ mod tests {
     fn test_set_raw_elt() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 3);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(0, 0xFF) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(5, 0xAA) } == false);
         assert_eq!(sexp.raw_elt(0), Some(0xFF));
@@ -850,8 +974,14 @@ mod tests {
     fn test_as_integer_slice() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = some(Sexp::from_raw(ptr));
-        let slice = sexp.as_integer_slice();
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
+        let slice = unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            sexp.as_integer_slice()
+        };
         assert!(slice.is_some());
         assert_eq!(some(slice).len(), 3);
     }
@@ -860,8 +990,14 @@ mod tests {
     fn test_as_real_slice() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
-        let sexp = some(Sexp::from_raw(ptr));
-        let slice = sexp.as_real_slice();
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
+        let slice = unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            sexp.as_real_slice()
+        };
         assert!(slice.is_some());
         assert_eq!(some(slice).len(), 4);
     }
@@ -870,8 +1006,14 @@ mod tests {
     fn test_as_raw_slice() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 5);
-        let sexp = some(Sexp::from_raw(ptr));
-        let slice = sexp.as_raw_slice();
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
+        let slice = unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            sexp.as_raw_slice()
+        };
         assert!(slice.is_some());
         assert_eq!(some(slice).len(), 5);
     }
@@ -880,7 +1022,10 @@ mod tests {
     fn test_iter_integer() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         let items: Vec<_> = sexp.iter_integer().collect();
         assert_eq!(items.len(), 3);
     }
@@ -889,7 +1034,10 @@ mod tests {
     fn test_iter_real() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         let items: Vec<_> = sexp.iter_real().collect();
         assert_eq!(items.len(), 4);
     }
@@ -898,7 +1046,10 @@ mod tests {
     fn test_iter_raw() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 5);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         let items: Vec<_> = sexp.iter_raw().collect();
         assert_eq!(items.len(), 5);
     }
@@ -907,8 +1058,14 @@ mod tests {
     fn test_sexp_equality() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
-        let a = some(Sexp::from_raw(ptr));
-        let b = some(Sexp::from_raw(ptr));
+        let a = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
+        let b = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert_eq!(a, b);
         assert_eq!(a.len(), b.len());
     }
@@ -919,8 +1076,14 @@ mod tests {
         let mut arena = RArena::new();
         let p1 = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
         let p2 = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-        let a = some(Sexp::from_raw(p1));
-        let b = some(Sexp::from_raw(p2));
+        let a = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(p1)
+        });
+        let b = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(p2)
+        });
         let mut set = HashSet::new();
         set.insert(a.clone());
         assert!(set.contains(&a));
@@ -931,7 +1094,10 @@ mod tests {
     fn test_sexp_display_len10() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 10);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         let s = format!("{}", sexp);
         assert!(s.contains("len=10"));
     }
@@ -940,7 +1106,10 @@ mod tests {
     fn test_sexp_mutation() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert_eq!(sexp.clone().integer_elt(0), Some(0));
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(0, 42) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(1, -7) });
@@ -956,7 +1125,10 @@ mod tests {
     fn test_sexp_real_mutation() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(0, 1.5) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(1, 2.5) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(2, 3.5) });
@@ -969,12 +1141,18 @@ mod tests {
     fn test_sexp_slice_views() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 4);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(0, 10) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(1, 20) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(2, 30) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(3, 40) });
-        let slice = some(sexp.as_integer_slice());
+        let slice = some(unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            sexp.as_integer_slice()
+        });
         assert_eq!(slice, &[10, 20, 30, 40]);
     }
 
@@ -982,11 +1160,17 @@ mod tests {
     fn test_sexp_real_slice() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(0, 1.1) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(1, 2.2) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(2, 3.3) });
-        let slice = some(sexp.as_real_slice());
+        let slice = some(unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            sexp.as_real_slice()
+        });
         assert!((slice[0] - 1.1).abs() < f64::EPSILON);
         assert!((slice[1] - 2.2).abs() < f64::EPSILON);
         assert!((slice[2] - 3.3).abs() < f64::EPSILON);
@@ -996,7 +1180,10 @@ mod tests {
     fn test_sexp_iterators() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         for i in 0..5 {
             unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(i, (i * 10) as i32) };
         }
@@ -1008,7 +1195,10 @@ mod tests {
     fn test_sexp_real_iterator() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         for i in 0..4 {
             unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(i, i as f64 * 0.5) };
         }
@@ -1023,12 +1213,18 @@ mod tests {
     fn test_sexp_raw_mutation() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 4);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(0, 0xDE) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(1, 0xAD) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(2, 0xBE) });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(3, 0xEF) });
-        let slice = some(sexp.as_raw_slice());
+        let slice = some(unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            sexp.as_raw_slice()
+        });
         assert_eq!(slice, &[0xDE, 0xAD, 0xBE, 0xEF]);
     }
 
@@ -1036,7 +1232,10 @@ mod tests {
     fn test_try_accessors_report_type_and_bounds_errors() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 2);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone()
             .try_set_integer_elt(0, 10) }
             .expect("set integer");
@@ -1059,11 +1258,18 @@ mod tests {
     fn test_sexp_view_exposes_typed_borrow() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 2);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(0, 1.5) }.expect("set real");
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(1, 2.5) }.expect("set real");
 
-        match sexp.view().expect("view") {
+        match unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            sexp.view()
+        }
+        .expect("view") {
             SexpView::Real(values) => assert_eq!(values, &[1.5, 2.5]),
             other => panic!("unexpected view: {other:?}"),
         }
@@ -1072,7 +1278,10 @@ mod tests {
     #[test]
     fn test_to_owned_value_maps_atomic_na_values() {
         let mut arena = RArena::new();
-        let logical = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 3)));
+        let logical = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 3))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical
             .clone()
             .try_set_logical_elt(0, 1) }
@@ -1086,7 +1295,10 @@ mod tests {
             .try_set_logical_elt(2, NA_LOGICAL) }
             .expect("set logical");
 
-        let integer = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
+        let integer = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ integer
             .clone()
             .try_set_integer_elt(0, 10) }
@@ -1096,7 +1308,10 @@ mod tests {
             .try_set_integer_elt(1, NA_INTEGER) }
             .expect("set integer");
 
-        let real = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1)));
+        let real = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ real.clone().try_set_real_elt(0, NA_REAL) }.expect("set real");
 
         assert_eq!(
@@ -1116,9 +1331,15 @@ mod tests {
     #[test]
     fn test_to_owned_value_maps_strings_raw_complex_and_lists() {
         let mut arena = RArena::new();
-        let strings = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)));
-        let hello = some(Sexp::from_raw(arena.alloc_charsxp(b"hello")));
-        let na_string = some(Sexp::from_raw(unsafe { R_NaString() }));
+        let strings = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2))
+        });
+        let hello = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_charsxp(b"hello"))
+        });
+        let na_string = some(unsafe { Sexp::from_raw(R_NaString()) });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ strings
             .clone()
             .try_set_string_elt(0, hello) }
@@ -1128,19 +1349,33 @@ mod tests {
             .try_set_string_elt(1, na_string) }
             .expect("set string");
         assert_eq!(
-            strings.clone().try_string_text_elt(0).expect("text"),
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                strings.try_string_text_elt(0)
+            }
+            .expect("text"),
             Some("hello")
         );
         assert_eq!(
-            strings.clone().try_string_text_elt(1).expect("NA text"),
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                strings.try_string_text_elt(1)
+            }
+            .expect("NA text"),
             None
         );
 
-        let raw = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::RAWSXP, 2)));
+        let raw = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::RAWSXP, 2))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ raw.clone().try_set_raw_elt(0, 0x41) }.expect("set raw");
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ raw.clone().try_set_raw_elt(1, 0x5a) }.expect("set raw");
 
-        let complex = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)));
+        let complex = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
             .clone()
             .try_set_complex_elt(0, Rcomplex { r: 1.0, i: -2.0 }) }
@@ -1150,7 +1385,10 @@ mod tests {
             .try_set_complex_elt(1, Rcomplex { r: NA_REAL, i: 0.0 }) }
             .expect("set complex");
 
-        let list = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::VECSXP, 3)));
+        let list = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::VECSXP, 3))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ list.clone()
             .try_set_vector_elt(0, strings) }
             .expect("set list");
@@ -1179,7 +1417,10 @@ mod tests {
     fn test_to_owned_value_preserves_core_metadata() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let mut arena = RArena::new();
-        let vector = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
+        let vector = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
             .clone()
             .try_set_integer_elt(0, 10) }
@@ -1189,7 +1430,10 @@ mod tests {
             .try_set_integer_elt(1, 20) }
             .expect("set integer");
 
-        let names = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)));
+        let names = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
             .clone()
             .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"a")))) }
@@ -1199,29 +1443,44 @@ mod tests {
             .try_set_string_elt(1, some(Sexp::from_raw(arena.alloc_charsxp(b"b")))) }
             .expect("set name");
 
-        let dim = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
+        let dim = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ dim.clone().try_set_integer_elt(0, 1) }.expect("set dim");
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ dim.clone().try_set_integer_elt(1, 2) }.expect("set dim");
 
-        let class = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)));
+        let class = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1))
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ class
             .clone()
             .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"matrix")))) }
             .expect("set class");
 
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let class_cell = arena.cons(class.as_raw(), nil, unsafe {
+        let class_cell = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.cons(class.as_raw(), nil, unsafe {
             crate::sexp::symbol::Rf_install(c"class".as_ptr())
-        });
-        let dim_cell = arena.cons(dim.as_raw(), class_cell, unsafe {
+        })
+        };
+        let dim_cell = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.cons(dim.as_raw(), class_cell, unsafe {
             crate::sexp::symbol::Rf_install(c"dim".as_ptr())
-        });
-        let names_cell = arena.cons(names.as_raw(), dim_cell, unsafe {
+        })
+        };
+        let names_cell = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.cons(names.as_raw(), dim_cell, unsafe {
             crate::sexp::symbol::Rf_install(c"names".as_ptr())
-        });
+        })
+        };
         unsafe { crate::sexp::accessors::SET_ATTRIB(vector.clone().as_raw(), names_cell) };
 
-        let value = vector.to_owned_value().expect("owned value");
+        let value = vector.clone().to_owned_value().expect("owned value");
         let SexpValue::Attributed { value, metadata } = value else {
             panic!("expected attributed value");
         };
@@ -1240,7 +1499,10 @@ mod tests {
     fn test_try_accessors_cover_non_vector_slots() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-        let sexp = some(Sexp::from_raw(ptr));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ptr)
+        });
         unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_integer_elt(0, 7) }.expect("set integer");
 
         assert_eq!(sexp.clone().try_as_f64(), Ok(7.0));
@@ -1255,13 +1517,19 @@ mod tests {
             Err(SexpError::TypeMismatch { expected, .. }) if expected == "closure"
         ));
 
-        let symbol = some(Sexp::from_raw(arena.alloc_node(SEXPTYPE::SYMSXP)));
+        let symbol = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_node(SEXPTYPE::SYMSXP))
+        });
         assert!(matches!(
             symbol.try_data_ptr(),
             Err(SexpError::TypeMismatch { expected, .. }) if expected == "vector or character scalar"
         ));
 
-        let extptr = some(Sexp::from_raw(arena.alloc_node(SEXPTYPE::EXTPTRSXP)));
+        let extptr = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_node(SEXPTYPE::EXTPTRSXP))
+        });
         assert!(
             extptr
                 .clone()
@@ -1292,18 +1560,21 @@ mod tests {
         let list = arena.alloc_list_chain(2);
         let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
 
-        assert!(some(Sexp::from_raw(sym)).is_symbol());
-        assert!(some(Sexp::from_raw(closure)).is_closure());
-        assert!(some(Sexp::from_raw(env)).is_environment());
-        assert!(some(Sexp::from_raw(list)).is_pairlist());
-        assert!(some(Sexp::from_raw(vec)).is_vector());
-        assert!(some(Sexp::from_raw(vec)).is_atomic());
+        assert!(some(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(sym) }).is_symbol());
+        assert!(some(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(closure) }).is_closure());
+        assert!(some(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(env) }).is_environment());
+        assert!(some(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(list) }).is_pairlist());
+        assert!(some(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(vec) }).is_vector());
+        assert!(some(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(vec) }).is_atomic());
     }
 
     #[test]
     fn test_pairlist_iter_empty() {
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let sexp = some(Sexp::from_raw(nil));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(nil)
+        });
         let items: Vec<_> = PairlistIter::new(sexp).collect();
         assert_eq!(items.len(), 0);
     }
@@ -1313,12 +1584,18 @@ mod tests {
         let mut arena = RArena::new();
         let car_val = arena.alloc_node(SEXPTYPE::INTSXP);
         let tag_val = arena.alloc_node(SEXPTYPE::SYMSXP);
-        let cell = arena.cons(
+        let cell = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.cons(
             car_val,
             unsafe { crate::sexp::globals::R_NilValue() },
             tag_val,
-        );
-        let sexp = some(Sexp::from_raw(cell));
+        )
+        };
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(cell)
+        });
         assert!(sexp.clone().car().is_some());
         assert!(sexp.clone().cdr().is_some());
         assert!(sexp.clone().tag().is_some());
@@ -1334,11 +1611,23 @@ mod tests {
         let second_value = arena.alloc_node(SEXPTYPE::REALSXP);
         let na_rm = unsafe { crate::sexp::symbol::Rf_install(c"na.rm".as_ptr()) };
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let second_cell = arena.cons(second_value, nil, nil);
-        let first_cell = arena.cons(first_value, second_cell, na_rm);
+        let second_cell = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.cons(second_value, nil, nil)
+        };
+        let first_cell = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.cons(first_value, second_cell, na_rm)
+        };
 
-        let first = some(Sexp::from_raw(first_cell));
-        let second = some(Sexp::from_raw(second_cell));
+        let first = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(first_cell)
+        });
+        let second = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(second_cell)
+        });
 
         assert_eq!(
             first.clone().try_pairlist_arg(0).unwrap().as_raw(),
@@ -1392,7 +1681,10 @@ mod tests {
             (*closure).data.closxp.body = body;
             (*closure).data.closxp.env = env;
         }
-        let sexp = some(Sexp::from_raw(closure));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(closure)
+        });
         assert!(sexp.clone().is_closure());
         assert!(sexp.clone().formals().is_some());
         assert!(sexp.clone().body().is_some());
@@ -1410,7 +1702,10 @@ mod tests {
             (*env).data.envsxp.enclos = enclos;
             (*env).data.envsxp.hashtab = ptr::null_mut();
         }
-        let sexp = some(Sexp::from_raw(env));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(env)
+        });
         assert!(sexp.clone().is_environment());
         assert!(sexp.clone().frame().is_some());
         assert!(sexp.enclos().is_some());
@@ -1420,40 +1715,92 @@ mod tests {
     fn test_sexp_slice_wrong_type() {
         let mut arena = RArena::new();
         let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
-        let sexp = some(Sexp::from_raw(sym));
-        assert!(sexp.clone().as_integer_slice().is_none());
-        assert!(sexp.clone().as_real_slice().is_none());
-        assert!(sexp.as_raw_slice().is_none());
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(sym)
+        });
+        assert!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                sexp.as_integer_slice()
+            }
+            .is_none());
+        assert!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                sexp.as_real_slice()
+            }
+            .is_none());
+        assert!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                sexp.as_raw_slice()
+            }
+            .is_none());
     }
 
     #[test]
     fn test_atomic_accessors_reject_wrong_vector_type() {
         let mut arena = RArena::new();
-        let real = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 2)));
-        let int = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
-        let logical = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 2)));
+        let real = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 2))
+        });
+        let int = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
+        });
+        let logical = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 2))
+        });
 
         assert!(real.clone().integer_elt(0).is_none());
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ real.clone().set_integer_elt(0, 1) } == false);
-        assert!(real.clone().as_integer_slice().is_none());
+        assert!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                real.as_integer_slice()
+            }
+            .is_none());
         assert!(real.iter_integer().next().is_none());
 
         assert!(int.clone().real_elt(0).is_none());
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ int.clone().set_real_elt(0, 1.0) } == false);
-        assert!(int.clone().as_real_slice().is_none());
+        assert!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                int.as_real_slice()
+            }
+            .is_none());
         assert!(int.iter_real().next().is_none());
 
         assert!(logical.clone().integer_elt(0).is_none());
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical.clone().set_integer_elt(0, 1) } == false);
-        assert!(logical.clone().as_integer_slice().is_none());
-        assert_eq!(logical.as_logical_slice(), Some(&[0, 0][..]));
+        assert!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                logical.as_integer_slice()
+            }
+            .is_none());
+        assert_eq!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                logical.as_logical_slice()
+            }, Some(&[0, 0][..]));
     }
 
     #[test]
     fn test_vector_accessors_reject_string_vectors() {
         let mut arena = RArena::new();
-        let strings = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)));
-        let ch = some(Sexp::from_raw(arena.alloc_charsxp(b"x")));
+        let strings = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1))
+        });
+        let ch = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(arena.alloc_charsxp(b"x"))
+        });
         assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ strings.clone().set_string_elt(0, ch) });
         assert!(strings.clone().string_elt(0).is_some());
         assert!(strings.clone().vector_elt(0).is_none());
@@ -1467,7 +1814,10 @@ mod tests {
         unsafe {
             (*special).data.primsxp.offset = 42;
         }
-        let sexp = some(Sexp::from_raw(special));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(special)
+        });
         assert!(sexp.clone().is_special());
         assert!(sexp.clone().is_primitive());
         assert!(!sexp.clone().is_builtin());
@@ -1477,14 +1827,20 @@ mod tests {
         unsafe {
             (*builtin).data.primsxp.offset = 7;
         }
-        let sexp2 = some(Sexp::from_raw(builtin));
+        let sexp2 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(builtin)
+        });
         assert!(sexp2.clone().is_builtin());
         assert!(sexp2.clone().is_primitive());
         assert!(!sexp2.clone().is_special());
         assert_eq!(sexp2.primoffset(), Some(7));
 
         let other = arena.alloc_node(SEXPTYPE::INTSXP);
-        let sexp3 = some(Sexp::from_raw(other));
+        let sexp3 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(other)
+        });
         assert!(!sexp3.clone().is_primitive());
         assert_eq!(sexp3.primoffset(), None);
     }
@@ -1493,24 +1849,51 @@ mod tests {
     fn test_sexp_charsxp_accessors() {
         let mut arena = RArena::new();
         let charsxp = arena.alloc_charsxp(b"hello world");
-        let sexp = some(Sexp::from_raw(charsxp));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(charsxp)
+        });
         assert!(sexp.clone().is_charsxp());
         assert_eq!(sexp.clone().char_len(), Some(11));
-        assert_eq!(sexp.clone().as_bytes(), Some(&b"hello world"[..]));
-        assert_eq!(sexp.as_str(), Some("hello world"));
+        assert_eq!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                sexp.as_bytes()
+            }, Some(&b"hello world"[..]));
+        assert_eq!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                sexp.as_str()
+            }, Some("hello world"));
 
         let other = arena.alloc_node(SEXPTYPE::INTSXP);
-        let sexp2 = some(Sexp::from_raw(other));
+        let sexp2 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(other)
+        });
         assert!(!sexp2.clone().is_charsxp());
-        assert!(sexp2.clone().as_bytes().is_none());
-        assert!(sexp2.as_str().is_none());
+        assert!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                sexp2.as_bytes()
+            }
+            .is_none());
+        assert!(
+            unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                sexp2.as_str()
+            }
+            .is_none());
     }
 
     #[test]
     fn test_sexp_complex_accessors() {
         let mut arena = RArena::new();
         let vec = arena.alloc_vector(SEXPTYPE::CPLXSXP, 3);
-        let sexp = some(Sexp::from_raw(vec));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(vec)
+        });
 
         let c1 = Rcomplex { r: 1.0, i: 2.0 };
         let c2 = Rcomplex { r: 3.0, i: 4.0 };
@@ -1525,7 +1908,10 @@ mod tests {
         assert_eq!(sexp.clone().complex_elt(1), Some(c2));
         assert_eq!(sexp.clone().complex_elt(2), Some(c3));
 
-        let slice = some(sexp.clone().as_complex_slice());
+        let slice = some(unsafe {
+            /* SAFETY: caller retains the handle and excludes payload mutation. */
+            sexp.as_complex_slice()
+        });
         assert_eq!(slice.len(), 3);
         assert_eq!(slice[0].r, 1.0);
         assert_eq!(slice[2].i, 6.0);
@@ -1539,11 +1925,17 @@ mod tests {
         let mut arena = RArena::new();
 
         let dots = arena.alloc_node(SEXPTYPE::DOTSXP);
-        let sexp = some(Sexp::from_raw(dots));
+        let sexp = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(dots)
+        });
         assert!(sexp.clone().is_dots());
 
         let bc = arena.alloc_node(SEXPTYPE::BCODESXP);
-        let sexp2 = some(Sexp::from_raw(bc));
+        let sexp2 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(bc)
+        });
         assert!(sexp2.is_bytecode());
 
         let ext = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
@@ -1554,25 +1946,40 @@ mod tests {
                 std::ptr::null_mut(),
             ];
         }
-        let sexp3 = some(Sexp::from_raw(ext));
+        let sexp3 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(ext)
+        });
         assert!(sexp3.clone().is_extptr());
         assert!(sexp3.clone().extptr_ptr().is_some());
         assert!(sexp3.extptr_tag().is_none());
 
         let wr = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
-        let sexp4 = some(Sexp::from_raw(wr));
+        let sexp4 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(wr)
+        });
         assert!(sexp4.is_weakref());
 
         let s4 = arena.alloc_node(SEXPTYPE::OBJSXP);
-        let sexp5 = some(Sexp::from_raw(s4));
+        let sexp5 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(s4)
+        });
         assert!(sexp5.is_s4());
 
         let expr = arena.alloc_vector(SEXPTYPE::EXPRSXP, 0);
-        let sexp6 = some(Sexp::from_raw(expr));
+        let sexp6 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(expr)
+        });
         assert!(sexp6.is_expression());
 
         let clos = arena.alloc_node(SEXPTYPE::CLOSXP);
-        let sexp7 = some(Sexp::from_raw(clos));
+        let sexp7 = some(unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            Sexp::from_raw(clos)
+        });
         assert!(sexp7.is_function());
         assert!(sexp.is_function() == false);
     }

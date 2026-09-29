@@ -160,7 +160,10 @@ fn test_eval_safe_wrapper() {
         Sexp::from_raw_unchecked(v)
     };
 
-    let result = crate::eval::eval::eval_safe(val, env);
+    let result = unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        crate::eval::eval::eval_safe(val, env)
+    };
     assert!(result.is_ok());
     let r = must(result);
     assert_eq!(r.integer_elt(0), Some(99));
@@ -173,7 +176,10 @@ fn test_eval_null_via_safe() {
     let env = unsafe { Sexp::from_raw_unchecked(env_raw) };
     let null = unsafe { Sexp::from_raw_unchecked(R_NilValue()) };
 
-    let result = crate::eval::eval::eval_safe(null, env);
+    let result = unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        crate::eval::eval::eval_safe(null, env)
+    };
     assert!(result.is_ok());
     assert_eq!(must(result).typeof_(), SEXPTYPE::NILSXP);
 }
@@ -354,14 +360,19 @@ fn test_cons_and_car_cdr() {
 
 #[test]
 fn test_gc_after_allocations() {
-    let _session = crate::sexp::session::RSession::new();
+    let mut session = crate::sexp::session::RSession::new_without_default_packages();
     unsafe {
         for _ in 0..100 {
             let v = Rf_allocVector(SEXPTYPE::INTSXP, 10);
             assert!(!v.is_null());
         }
     }
-    crate::sexp::memory::reset_arena();
+    session.gc();
+    let (result, _, _) = session.eval_code_with_output_capture("1L + 2L");
+    assert_eq!(
+        result.expect("live runtime after GC").integer_elt(0),
+        Some(3)
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -576,7 +587,10 @@ fn test_arena_large_alloc() {
     assert!(!p.is_null());
     assert_eq!(arena.node_count(), 1);
 
-    let s = some(Sexp::from_raw(p));
+    let s = some(unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        Sexp::from_raw(p)
+    });
     assert_eq!(s.len(), n as i64);
 }
 
@@ -693,7 +707,10 @@ fn test_eval_arithmetic_direct() {
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
     let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
 
-    let result = eval_safe(e, env);
+    let result = unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        eval_safe(e, env)
+    };
     assert!(result.is_ok(), "eval failed: {:?}", result);
     let val = must(result);
     let v = val.real_elt(0).unwrap_or(0.0);
@@ -736,7 +753,10 @@ fn test_eval_abs_debug() {
     }
 
     let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
-    let result = eval_safe(e, env.clone());
+    let result = unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        eval_safe(e, env.clone())
+    };
     eprintln!(
         "result: {:?}",
         result
@@ -747,7 +767,10 @@ fn test_eval_abs_debug() {
     let inner_expr = unsafe { CAR(CDR(expr)) };
     eprintln!("inner_expr type={}", unsafe { TYPEOF(inner_expr) });
     let inner_e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(inner_expr) };
-    let inner_result = eval_safe(inner_e, env);
+    let inner_result = unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        eval_safe(inner_e, env)
+    };
     eprintln!(
         "inner_result: {:?}",
         inner_result.as_ref().map(|v| format!(
@@ -798,7 +821,10 @@ fn test_eval_math_builtins() {
     for (code, expected) in cases {
         let expr = must(parser::parse(code, &mut arena));
         let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
-        let result = eval_safe(e, env.clone());
+        let result = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            eval_safe(e, env.clone())
+        };
         assert!(result.is_ok(), "eval '{}' failed: {:?}", code, result);
         let val = must(result);
         let v = val
@@ -837,7 +863,10 @@ fn test_eval_length_builtin() {
 
     let expr = must(parser::parse("length(42)", &mut arena));
     let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
-    let result = must(eval_safe(e, env));
+    let result = must(unsafe {
+        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+        eval_safe(e, env)
+    });
     let v = result.integer_elt(0).unwrap_or(0);
     assert_eq!(v, 1, "length(42) should be 1, got {}", v);
 

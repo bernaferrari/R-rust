@@ -256,10 +256,14 @@ pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GnuFrameReject {
     Empty,
-    Version { version: c_int },
-    UnknownOpcode { opcode: c_int, offset: usize },
-    RangeOverflow { opcode: c_int },
-    Truncated { opcode: c_int, offset: usize, width: usize },
+    Version { version: c_int,
+    },
+    UnknownOpcode { opcode: c_int, offset: usize,
+    },
+    RangeOverflow { opcode: c_int,
+    },
+    Truncated { opcode: c_int, offset: usize, width: usize,
+    },
 }
 
 /// Next instruction boundary after the opcode at `opcode_pc`.
@@ -401,8 +405,10 @@ mod kani_proofs {
         if unknown {
             assert!(result.is_err());
         }
-        kani::cover(code.len() >= 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 0 && result.is_ok(), "reachable");
-        kani::cover(code.len() == 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 2 && result.is_err(), "reachable");
+        kani::cover(code.len() >= 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 0 && result.is_ok(), "reachable",
+        );
+        kani::cover(code.len() == 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 2 && result.is_err(), "reachable",
+        );
         kani::cover(code.is_empty() && result.is_err(), "reachable");
     }
 
@@ -432,7 +438,8 @@ mod kani_proofs {
         let unknown = super::gnu_next_pc(0, -1, 4);
         assert!(matches!(unknown, Err(super::GnuFrameReject::UnknownOpcode { .. })));
         kani::cover(result.is_ok(), "advances");
-        kani::cover(matches!(result, Err(super::GnuFrameReject::Truncated { .. })), "truncated");
+        kani::cover(matches!(result, Err(super::GnuFrameReject::Truncated { .. })), "truncated",
+        );
     }
 }
 
@@ -1419,8 +1426,7 @@ fn validate_gnu_adapter_impl(
                     raw_target,
                     depth,
                     entered,
-                    call_stack.clone(),
-                ));
+                    call_stack.clone()));
             }
             GNU_OP_STEPFOR => {
                 if loop_stack.last() != Some(&instruction_pc) {
@@ -1706,12 +1712,13 @@ fn read_jump_target(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<
     Ok(target)
 }
 
-fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
-    let lgl = with_arena(|arena| arena.alloc_vector(SEXPTYPE::LGLSXP, 1));
+unsafe fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
+    let lgl = unsafe { with_arena(|arena| arena.alloc_vector(SEXPTYPE::LGLSXP, 1)) };
     if lgl.is_null() {
         return Err("failed to allocate logical scalar".to_string());
     }
-    let sexp = Sexp::from_raw(lgl).ok_or_else(|| "invalid logical scalar pointer".to_string())?;
+    let sexp = unsafe { Sexp::from_raw(lgl) }
+        .ok_or_else(|| "invalid logical scalar pointer".to_string())?;
     // SAFETY: this freshly allocated scalar has no borrowed payload views.
     let mut guard = unsafe { SexpMut::from_owned(sexp) };
     guard
@@ -1724,12 +1731,13 @@ fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
     Ok(sexp)
 }
 
-fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
-    let real = with_arena(|arena| arena.alloc_vector(SEXPTYPE::REALSXP, 1));
+unsafe fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
+    let real = unsafe { with_arena(|arena| arena.alloc_vector(SEXPTYPE::REALSXP, 1)) };
     if real.is_null() {
         return Err("failed to allocate real scalar".to_string());
     }
-    let sexp = Sexp::from_raw(real).ok_or_else(|| "invalid real scalar pointer".to_string())?;
+    let sexp =
+        unsafe { Sexp::from_raw(real) }.ok_or_else(|| "invalid real scalar pointer".to_string())?;
     // SAFETY: this freshly allocated scalar has no borrowed payload views.
     let mut guard = unsafe { SexpMut::from_owned(sexp) };
     guard
@@ -1742,12 +1750,13 @@ fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
     Ok(sexp)
 }
 
-fn make_int<'a>(val: c_int) -> Result<Sexp<'a>, String> {
-    let int = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+unsafe fn make_int<'a>(val: c_int) -> Result<Sexp<'a>, String> {
+    let int = unsafe { with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1)) };
     if int.is_null() {
         return Err("failed to allocate integer scalar".to_string());
     }
-    let sexp = Sexp::from_raw(int).ok_or_else(|| "invalid integer scalar pointer".to_string())?;
+    let sexp = unsafe { Sexp::from_raw(int) }
+        .ok_or_else(|| "invalid integer scalar pointer".to_string())?;
     // SAFETY: this freshly allocated scalar has no borrowed payload views.
     let mut guard = unsafe { SexpMut::from_owned(sexp) };
     guard
@@ -1794,7 +1803,7 @@ fn scalar_bool_or_false(value: Sexp<'_>, context: &str) -> Result<bool, String> 
     }
 }
 
-fn apply_binary_op<'a, FR, FI>(
+unsafe fn apply_binary_op<'a, FR, FI>(
     a: Sexp<'a>,
     b: Sexp<'a>,
     real_op: FR,
@@ -1807,19 +1816,21 @@ where
     if a.clone().typeof_() == SEXPTYPE::REALSXP && b.clone().typeof_() == SEXPTYPE::REALSXP {
         let av = scalar_real(a, "left real operand")?;
         let bv = scalar_real(b, "right real operand")?;
-        make_real(real_op(av, bv))
+        unsafe { make_real(real_op(av, bv)) }
     } else if a.clone().typeof_() == SEXPTYPE::INTSXP && b.clone().typeof_() == SEXPTYPE::INTSXP {
         let av = scalar_int(a, "left integer operand")?;
         let bv = scalar_int(b, "right integer operand")?;
-        make_int(int_op(av, bv))
+        unsafe { make_int(int_op(av, bv))
+    }
     } else {
         let av = scalar_f64_or_zero(a, "left numeric operand")?;
         let bv = scalar_f64_or_zero(b, "right numeric operand")?;
-        make_real(real_op(av, bv))
+        unsafe { make_real(real_op(av, bv))
     }
 }
+}
 
-fn apply_comparison<'a, F>(a: Sexp<'a>, b: Sexp<'a>, cmp: F) -> Result<Sexp<'a>, String>
+unsafe fn apply_comparison<'a, F>(a: Sexp<'a>, b: Sexp<'a>, cmp: F) -> Result<Sexp<'a>, String>
 where
     F: Fn(c_double, c_double) -> bool,
 {
@@ -1838,22 +1849,37 @@ where
         let bv = scalar_f64_or_zero(b, "right comparison operand")?;
         if cmp(av, bv) { 1 } else { 0 }
     };
-    make_lgl(result)
+    unsafe { make_lgl(result)
+}
 }
 
-pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    let bytecode = code
-        .clone()
-        .try_as_integer_slice()
-        .clone()
-        .map_err(|err| sexp_err("invalid bytecode vector", err))?;
+pub unsafe fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    // Never retain an R payload reference across instruction execution.
+    let instruction_count = unsafe { code.try_as_integer_slice() }
+        .map_err(|err| sexp_err("invalid bytecode vector", err))?
+        .len();
+    let scratch_bytes = instruction_count
+        .checked_mul(std::mem::size_of::<c_int>())
+        .ok_or_else(|| "bytecode scratch size overflow".to_string())?;
+    let _scratch = unsafe { with_arena(|arena| arena.try_reserve_transient(scratch_bytes)) }
+        .ok_or_else(|| "bytecode scratch exceeds session memory limit".to_string())?;
+    let mut bytecode = Vec::new();
+    bytecode
+        .try_reserve_exact(instruction_count)
+        .map_err(|_| "failed to allocate bytecode scratch".to_string())?;
+    // SAFETY: copy immediately, without R callbacks, while code remains rooted.
+    bytecode.extend_from_slice(
+        unsafe { code.try_as_integer_slice() }
+            .map_err(|err| sexp_err("invalid bytecode vector", err))?,
+    );
     let mut pc: usize = 0;
     let mut stack: Vec<Sexp<'a>> = Vec::new();
     let constants = code.attrib();
-    eval_bytecode_loop(bytecode, &mut pc, &mut stack, constants, env).map(|(sexp, _)| sexp)
+    unsafe { eval_bytecode_loop(&bytecode, &mut pc, &mut stack, constants, env) }
+        .map(|(sexp, _)| sexp)
 }
 
-fn eval_bytecode_loop<'a>(
+unsafe fn eval_bytecode_loop<'a>(
     bytecode: &[c_int],
     pc: &mut usize,
     stack: &mut Vec<Sexp<'a>>,
@@ -1874,7 +1900,7 @@ fn eval_bytecode_loop<'a>(
             BCgvar | BCsvar => {
                 let idx = read_operand_index(bytecode, pc, "variable")?;
                 let sym = get_constant(constants.clone(), idx)?;
-                let val = crate::eval::eval::find_var_result(sym, env.clone())?
+                let val = unsafe { crate::eval::eval::find_var_result(sym, env.clone()) }?
                     .ok_or_else(|| "variable not found".to_string())?;
                 stack.push(val);
             }
@@ -1904,7 +1930,7 @@ fn eval_bytecode_loop<'a>(
                 } else {
                     0
                 };
-                stack.push(make_lgl(if v != 0 { 0 } else { 1 })?);
+                stack.push(unsafe { make_lgl(if v != 0 { 0 } else { 1 }) }?);
             }
             BCadd => {
                 let b = stack
@@ -1913,12 +1939,13 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on add".to_string())?;
-                stack.push(apply_binary_op(
+                stack.push(unsafe {
+                    apply_binary_op(
                     a,
                     b,
                     |x, y| x + y,
-                    |x, y| x.wrapping_add(y),
-                )?);
+                    |x, y| x.wrapping_add(y))
+                }?);
             }
             BCsub => {
                 let b = stack
@@ -1927,12 +1954,13 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on sub".to_string())?;
-                stack.push(apply_binary_op(
+                stack.push(unsafe {
+                    apply_binary_op(
                     a,
                     b,
                     |x, y| x - y,
-                    |x, y| x.wrapping_sub(y),
-                )?);
+                    |x, y| x.wrapping_sub(y))
+                }?);
             }
             BCmul => {
                 let b = stack
@@ -1941,12 +1969,13 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on mul".to_string())?;
-                stack.push(apply_binary_op(
+                stack.push(unsafe {
+                    apply_binary_op(
                     a,
                     b,
                     |x, y| x * y,
-                    |x, y| x.wrapping_mul(y),
-                )?);
+                    |x, y| x.wrapping_mul(y))
+                }?);
             }
             BCdiv => {
                 let b = stack
@@ -1955,7 +1984,7 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on div".to_string())?;
-                stack.push(apply_binary_op(a, b, |x, y| x / y, |x, y| x / y)?);
+                stack.push(unsafe { apply_binary_op(a, b, |x, y| x / y, |x, y| x / y) }?);
             }
             BCmod => {
                 let b = stack
@@ -1967,26 +1996,31 @@ fn eval_bytecode_loop<'a>(
                 if a.clone().typeof_() == SEXPTYPE::REALSXP
                     && b.clone().typeof_() == SEXPTYPE::REALSXP
                 {
-                    stack.push(make_real(
+                    stack.push(unsafe {
+                        make_real(
                         scalar_real(a, "left real modulo operand")?
                             % scalar_real(b, "right real modulo operand")?,
-                    )?);
+                    )
+                    }?);
                 } else if a.clone().typeof_() == SEXPTYPE::INTSXP
                     && b.clone().typeof_() == SEXPTYPE::INTSXP
                 {
                     let bv = scalar_int(b, "right integer modulo operand")?;
                     if bv != 0 {
-                        stack.push(make_int(
-                            scalar_int(a, "left integer modulo operand")? % bv,
-                        )?);
+                        stack.push(unsafe {
+                            make_int(
+                            scalar_int(a, "left integer modulo operand")? % bv)
+                        }?);
                     } else {
-                        stack.push(make_real(f64::NAN)?);
+                        stack.push(unsafe { make_real(f64::NAN) }?);
                     }
                 } else {
-                    stack.push(make_real(
+                    stack.push(unsafe {
+                        make_real(
                         scalar_f64_or_zero(a, "left modulo operand")?
                             % scalar_f64_or_zero(b, "right modulo operand")?,
-                    )?);
+                    )
+                    }?);
                 }
             }
             BCpow => {
@@ -1996,40 +2030,42 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on pow".to_string())?;
-                stack.push(make_real(
+                stack.push(unsafe {
+                    make_real(
                     scalar_f64_or_zero(a, "left power operand")?
                         .powf(scalar_f64_or_zero(b, "right power operand")?),
-                )?);
+                )
+                }?);
             }
             BCeq => {
                 let b = stack.pop().ok_or_else(|| "empty stack on eq".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on eq".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x == y)?);
+                stack.push(unsafe { apply_comparison(a, b, |x, y| x == y) }?);
             }
             BCne => {
                 let b = stack.pop().ok_or_else(|| "empty stack on ne".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on ne".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x != y)?);
+                stack.push(unsafe { apply_comparison(a, b, |x, y| x != y) }?);
             }
             BClt => {
                 let b = stack.pop().ok_or_else(|| "empty stack on lt".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on lt".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x < y)?);
+                stack.push(unsafe { apply_comparison(a, b, |x, y| x < y) }?);
             }
             BCle => {
                 let b = stack.pop().ok_or_else(|| "empty stack on le".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on le".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x <= y)?);
+                stack.push(unsafe { apply_comparison(a, b, |x, y| x <= y) }?);
             }
             BCgt => {
                 let b = stack.pop().ok_or_else(|| "empty stack on gt".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on gt".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x > y)?);
+                stack.push(unsafe { apply_comparison(a, b, |x, y| x > y) }?);
             }
             BCge => {
                 let b = stack.pop().ok_or_else(|| "empty stack on ge".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on ge".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x >= y)?);
+                stack.push(unsafe { apply_comparison(a, b, |x, y| x >= y) }?);
             }
             BCand => {
                 let b = stack
@@ -2038,7 +2074,8 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on and".to_string())?;
-                stack.push(make_lgl(
+                stack.push(unsafe {
+                    make_lgl(
                     if scalar_bool_or_false(a, "left and operand")?
                         && scalar_bool_or_false(b, "right and operand")?
                     {
@@ -2046,12 +2083,14 @@ fn eval_bytecode_loop<'a>(
                     } else {
                         0
                     },
-                )?);
+                )
+                }?);
             }
             BCor => {
                 let b = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
-                stack.push(make_lgl(
+                stack.push(unsafe {
+                    make_lgl(
                     if scalar_bool_or_false(a, "left or operand")?
                         || scalar_bool_or_false(b, "right or operand")?
                     {
@@ -2059,7 +2098,8 @@ fn eval_bytecode_loop<'a>(
                     } else {
                         0
                     },
-                )?);
+                )
+                }?);
             }
             BCcall => {
                 let idx = read_operand_index(bytecode, pc, "call function")?;
@@ -2078,18 +2118,21 @@ fn eval_bytecode_loop<'a>(
                     let mut arg_list =
                         unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
                     for arg in args_vec.into_iter().rev() {
-                        let cell = with_arena(|arena| {
+                        let cell = unsafe {
+                            with_arena(|arena| {
                             arena.cons(
                                 arg.as_raw(),
                                 arg_list.clone().as_raw(),
                                 std::ptr::null_mut(),
                             )
-                        });
-                        arg_list = Sexp::from_raw(cell).unwrap_or(arg_list);
+                        })
+                        };
+                        arg_list = unsafe { Sexp::from_raw(cell) }.unwrap_or(arg_list);
                     }
-                    let result =
+                    let result = unsafe {
                         crate::eval::closure::apply_closure_safe(fun, arg_list, env.clone())
-                            .map_err(|e| format!("closure call failed: {e}"))?;
+                    }
+                    .map_err(|e| format!("closure call failed: {e}"))?;
                     stack.push(result);
                 } else {
                     stack.push(fun);
@@ -2191,21 +2234,26 @@ fn eval_bytecode_loop<'a>(
 
                 for i in 0..len as usize {
                     let idx_val = if seq_val.clone().typeof_() == SEXPTYPE::INTSXP {
-                        make_int(
+                        unsafe {
+                            make_int(
                             seq_val
                                 .clone()
                                 .try_integer_elt(i as i64)
                                 .map_err(|err| sexp_err("for-loop integer sequence", err))?,
-                        )?
+                        )
+                        }?
                     } else if seq_val.clone().typeof_() == SEXPTYPE::REALSXP {
+                        unsafe {
                         make_real(
                             seq_val
                                 .clone()
                                 .try_real_elt(i as i64)
                                 .map_err(|err| sexp_err("for-loop real sequence", err))?,
-                        )?
+                        )
+                        }?
                     } else {
-                        make_int(i as c_int)?
+                        unsafe {
+                        make_int(i as c_int) }?
                     };
 
                     unsafe {
@@ -2218,17 +2266,19 @@ fn eval_bytecode_loop<'a>(
                     stack.push(idx_val);
 
                     let mut loop_pc = body_offset;
-                    let (_, control) = eval_bytecode_loop(
+                    let (_, control) = unsafe {
+                        eval_bytecode_loop(
                         bytecode,
                         &mut loop_pc,
                         stack,
                         constants.clone(),
                         env.clone(),
-                    )?;
+                    )
+                    }?;
 
                     if control == ControlFlow::Break {
                         *pc = end_offset;
-                        return Ok((make_lgl(0)?, ControlFlow::Normal));
+                        return Ok((unsafe { make_lgl(0) }?, ControlFlow::Normal));
                     }
                 }
                 *pc = end_offset;
@@ -2240,30 +2290,34 @@ fn eval_bytecode_loop<'a>(
 
                 loop {
                     let mut cond_pc = cond_offset;
-                    let (cond_result, cond_control) = eval_bytecode_loop(
+                    let (cond_result, cond_control) = unsafe {
+                        eval_bytecode_loop(
                         bytecode,
                         &mut cond_pc,
                         stack,
                         constants.clone(),
                         env.clone(),
-                    )?;
+                    )
+                    }?;
                     if cond_control != ControlFlow::Normal {
                         return Ok((cond_result, cond_control));
                     }
 
                     if !scalar_bool_or_false(cond_result, "while condition")? {
                         *pc = end_offset;
-                        return Ok((make_lgl(0)?, ControlFlow::Normal));
+                        return Ok((unsafe { make_lgl(0) }?, ControlFlow::Normal));
                     }
 
                     let mut body_pc = body_offset;
-                    let (body_result, body_control) = eval_bytecode_loop(
+                    let (body_result, body_control) = unsafe {
+                        eval_bytecode_loop(
                         bytecode,
                         &mut body_pc,
                         stack,
                         constants.clone(),
                         env.clone(),
-                    )?;
+                    )
+                    }?;
 
                     if body_control == ControlFlow::Break {
                         *pc = end_offset;
@@ -2277,13 +2331,15 @@ fn eval_bytecode_loop<'a>(
 
                 loop {
                     let mut body_pc = body_offset;
-                    let (body_result, body_control) = eval_bytecode_loop(
+                    let (body_result, body_control) = unsafe {
+                        eval_bytecode_loop(
                         bytecode,
                         &mut body_pc,
                         stack,
                         constants.clone(),
                         env.clone(),
-                    )?;
+                    )
+                    }?;
 
                     if body_control == ControlFlow::Break {
                         *pc = end_offset;
@@ -2292,10 +2348,10 @@ fn eval_bytecode_loop<'a>(
                 }
             }
             BCbreak => {
-                return Ok((make_lgl(0)?, ControlFlow::Break));
+                return Ok((unsafe { make_lgl(0) }?, ControlFlow::Break));
             }
             BCnext => {
-                return Ok((make_lgl(0)?, ControlFlow::Next));
+                return Ok((unsafe { make_lgl(0) }?, ControlFlow::Next));
             }
             BCspecial => {
                 let idx = read_operand_index(bytecode, pc, "special function")?;
@@ -2316,23 +2372,28 @@ fn eval_bytecode_loop<'a>(
                     let mut arg_list =
                         unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
                     for arg in args_vec.into_iter().rev() {
-                        let cell = with_arena(|arena| {
+                        let cell = unsafe {
+                            with_arena(|arena| {
                             arena.cons(
                                 arg.as_raw(),
                                 arg_list.clone().as_raw(),
                                 std::ptr::null_mut(),
                             )
-                        });
-                        arg_list = Sexp::from_raw(cell).unwrap_or(arg_list);
+                        })
+                        };
+                        arg_list = unsafe { Sexp::from_raw(cell) }.unwrap_or(arg_list);
                     }
 
-                    let call = with_arena(|arena| {
+                    let call = unsafe {
+                        with_arena(|arena| {
                         arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
-                    });
+                    })
+                    };
                     let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
 
-                    let result = crate::eval::eval::eval_lang_safe(call_sexp, env.clone())
-                        .map_err(|e| format!("special call failed: {e}"))?;
+                    let result =
+                        unsafe { crate::eval::eval::eval_lang_safe(call_sexp, env.clone()) }
+                            .map_err(|e| format!("special call failed: {e}"))?;
                     stack.push(result);
                 } else {
                     stack.push(fun);
@@ -2357,23 +2418,28 @@ fn eval_bytecode_loop<'a>(
                     let mut arg_list =
                         unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
                     for arg in args_vec.into_iter().rev() {
-                        let cell = with_arena(|arena| {
+                        let cell = unsafe {
+                            with_arena(|arena| {
                             arena.cons(
                                 arg.as_raw(),
                                 arg_list.clone().as_raw(),
                                 std::ptr::null_mut(),
                             )
-                        });
-                        arg_list = Sexp::from_raw(cell).unwrap_or(arg_list);
+                        })
+                        };
+                        arg_list = unsafe { Sexp::from_raw(cell) }.unwrap_or(arg_list);
                     }
 
-                    let call = with_arena(|arena| {
+                    let call = unsafe {
+                        with_arena(|arena| {
                         arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
-                    });
+                    })
+                    };
                     let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
 
-                    let result = crate::eval::eval::eval_lang_safe(call_sexp, env.clone())
-                        .map_err(|e| format!("builtin call failed: {e}"))?;
+                    let result =
+                        unsafe { crate::eval::eval::eval_lang_safe(call_sexp, env.clone()) }
+                            .map_err(|e| format!("builtin call failed: {e}"))?;
                     stack.push(result);
                 } else {
                     stack.push(fun);
@@ -2384,9 +2450,9 @@ fn eval_bytecode_loop<'a>(
                     .pop()
                     .ok_or_else(|| "empty stack on neg".to_string())?;
                 if val.clone().typeof_() == SEXPTYPE::REALSXP {
-                    stack.push(make_real(-scalar_real(val, "real negation operand")?)?);
+                    stack.push(unsafe { make_real(-scalar_real(val, "real negation operand")?) }?);
                 } else if val.clone().typeof_() == SEXPTYPE::INTSXP {
-                    stack.push(make_int(-scalar_int(val, "integer negation operand")?)?);
+                    stack.push(unsafe { make_int(-scalar_int(val, "integer negation operand")?) }?);
                 } else {
                     stack.push(val);
                 }
@@ -2430,7 +2496,7 @@ mod tests {
         let _session = RSession::new();
         let mut pc = 0;
         let mut stack = Vec::new();
-        let err = eval_bytecode_loop(&[BCpush], &mut pc, &mut stack, None, nil_sexp())
+        let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ eval_bytecode_loop(&[BCpush], &mut pc, &mut stack, None, nil_sexp()) }
             .expect_err("truncated operand should return an error");
         assert!(err.contains("push bytecode operand is truncated"));
     }
@@ -2440,7 +2506,7 @@ mod tests {
         let _session = RSession::new();
         let mut pc = 0;
         let mut stack = Vec::new();
-        let err = eval_bytecode_loop(&[BCpush, -1], &mut pc, &mut stack, None, nil_sexp())
+        let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ eval_bytecode_loop(&[BCpush, -1], &mut pc, &mut stack, None, nil_sexp()) }
             .expect_err("negative operand should return an error");
         assert!(err.contains("push bytecode operand index -1 is negative"));
     }
@@ -2450,7 +2516,7 @@ mod tests {
         let _session = RSession::new();
         let mut pc = 0;
         let mut stack = Vec::new();
-        let err = eval_bytecode_loop(&[BCjump, 99], &mut pc, &mut stack, None, nil_sexp())
+        let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ eval_bytecode_loop(&[BCjump, 99], &mut pc, &mut stack, None, nil_sexp()) }
             .expect_err("invalid jump should return an error");
         assert!(err.contains("jump bytecode jump target 99 is outside"));
     }

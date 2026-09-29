@@ -1395,9 +1395,7 @@ fn css_ma1_sma1(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
         ma = golden_min(-0.99, 0.99, 80, |a| {
             arma_css(y, &[], &expand(a, sma), ic, 0)
         });
-        sma = golden_min(-0.99, 0.99, 80, |s| {
-            arma_css(y, &[], &expand(ma, s), ic, 0)
-        });
+        sma = golden_min(-0.99, 0.99, 80, |s| arma_css(y, &[], &expand(ma, s), ic, 0));
         ic = golden_min(lo_ic, hi_ic, 80, |m| {
             arma_css(y, &[], &expand(ma, sma), m, 0)
         });
@@ -1454,7 +1452,9 @@ fn css_ma1_sar1(y: &[f64], period: usize) -> (f64, f64, f64, f64) {
     for _ in 0..25 {
         ma = golden_min(-0.99, 0.99, 80, |a| arma_css(y, &phi(sar), &[a], ic, ncond));
         sar = golden_min(-0.99, 0.99, 80, |s| arma_css(y, &phi(s), &[ma], ic, ncond));
-        ic = golden_min(lo_ic, hi_ic, 80, |m| arma_css(y, &phi(sar), &[ma], m, ncond));
+        ic = golden_min(lo_ic, hi_ic, 80, |m| {
+            arma_css(y, &phi(sar), &[ma], m, ncond)
+        });
     }
     let s2 = arma_css(y, &phi(sar), &[ma], ic, ncond);
     (ma, sar, ic, s2)
@@ -2002,7 +2002,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let (sar, sma, mu, s2) = css_sar1_sma1(&y, period as usize);
             (
                 vec![sar, sma, mu],
-                vec!["sar1".to_string(), "sma1".to_string(), "intercept".to_string()],
+                vec!["sar1".to_string(), "sma1".to_string(), "intercept".to_string(),
+                ],
                 s2,
             )
         } else if p <= 0 && q <= 0 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
@@ -2029,7 +2030,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let (ar, sar, mu, s2) = css_ar1_sar1(&y, period as usize);
             (
                 vec![ar, sar, mu],
-                vec!["ar1".to_string(), "sar1".to_string(), "intercept".to_string()],
+                vec!["ar1".to_string(), "sar1".to_string(), "intercept".to_string(),
+                ],
                 s2,
             )
         } else if p <= 0 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
@@ -2038,7 +2040,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let (ma, sma, mu, s2) = css_ma1_sma1(&y, period as usize);
             (
                 vec![ma, sma, mu],
-                vec!["ma1".to_string(), "sma1".to_string(), "intercept".to_string()],
+                vec!["ma1".to_string(), "sma1".to_string(), "intercept".to_string(),
+                ],
                 s2,
             )
         } else if p == 1 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
@@ -2047,7 +2050,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let (ar, sma, mu, s2) = css_ar1_sma1(&y, period as usize);
             (
                 vec![ar, sma, mu],
-                vec!["ar1".to_string(), "sma1".to_string(), "intercept".to_string()],
+                vec!["ar1".to_string(), "sma1".to_string(), "intercept".to_string(),
+                ],
                 s2,
             )
         } else if p <= 0 && q == 1 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
@@ -2056,7 +2060,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let (ma, sar, mu, s2) = css_ma1_sar1(&y, period as usize);
             (
                 vec![ma, sar, mu],
-                vec!["ma1".to_string(), "sar1".to_string(), "intercept".to_string()],
+                vec!["ma1".to_string(), "sar1".to_string(), "intercept".to_string(),
+                ],
                 s2,
             )
         } else if p <= 0 && q <= 0 {
@@ -2086,7 +2091,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let (t1, t2, mu, s2) = css_ma2(&y);
             (
                 vec![t1, t2, mu],
-                vec!["ma1".to_string(), "ma2".to_string(), "intercept".to_string()],
+                vec!["ma1".to_string(), "ma2".to_string(), "intercept".to_string(),
+                ],
                 s2,
             )
         } else if p == 1
@@ -2159,7 +2165,8 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let (phi, th, mu, s2) = css_arma11(&y);
             (
                 vec![phi, th, mu],
-                vec!["ar1".to_string(), "ma1".to_string(), "intercept".to_string()],
+                vec!["ar1".to_string(), "ma1".to_string(), "intercept".to_string(),
+                ],
                 s2,
             )
         } else if p == 2 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
@@ -2224,8 +2231,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![ar, ma],
                 vec!["ar1".to_string(), "ma1".to_string()],
-                s2,
-            )
+                s2)
         } else if !css
             && no_mean
             && p <= 0
@@ -2252,8 +2258,7 @@ pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (
                 vec![t1, t2],
                 vec!["ma1".to_string(), "ma2".to_string()],
-                s2,
-            )
+                s2)
         } else if no_mean && p == 1 && q <= 0 && sar_p == 1 && period >= 2 {
             let (ar, sar, s2) = css_ar1_sar1_no_mean(&y, period as usize);
             (
@@ -2323,7 +2328,7 @@ pub unsafe fn do_arima0(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// GNU `arima0.diag(...)` — `.Defunct()`.
 pub unsafe fn do_arima0_diag(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::mainutils::errors::errorcall_str(
-        crate::mainutils::errors::R_getCurrentCall(),
+        unsafe { crate::mainutils::errors::R_getCurrentCall() },
         "'arima0.diag' is defunct.\nSee help(\"Defunct\")",
     );
 }
@@ -2331,7 +2336,7 @@ pub unsafe fn do_arima0_diag(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 /// GNU `plclust(...)` — `.Defunct("plot")`.
 pub unsafe fn do_plclust(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::mainutils::errors::errorcall_str(
-        crate::mainutils::errors::R_getCurrentCall(),
+        unsafe { crate::mainutils::errors::R_getCurrentCall() },
         "'plclust' is defunct.\nUse 'plot' instead.\nSee help(\"Defunct\")",
     );
 }
@@ -2692,7 +2697,8 @@ pub unsafe extern "C-unwind" fn c_kalman_fore(n_ahead: SEXP, model: SEXP, _updat
         do_kalman_forecast(R_NilValue(), R_NilValue(), args, R_NilValue())
     }
 }
-pub unsafe extern "C-unwind" fn c_kalman_like(y: SEXP, model: SEXP, _nit: SEXP, fast: SEXP, _update: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn c_kalman_like(y: SEXP, model: SEXP, _nit: SEXP, fast: SEXP, _update: SEXP,
+) -> SEXP {
     unsafe {
         let want_run = TYPEOF(fast) == SEXPTYPE::LGLSXP
             && LENGTH(fast) >= 1
@@ -3930,8 +3936,7 @@ pub unsafe fn do_acf2AR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         crate::sexp::attrib_core::setAttrib(
             mat,
             crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
+            dn);
         mat
     }
 }
@@ -4056,8 +4061,7 @@ pub unsafe fn do_is_tskernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let x = CAR(args);
         let class = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+            crate::sexp::attrib_core::R_ClassSymbol());
         let mut ok = false;
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(class) {
@@ -4147,7 +4151,8 @@ pub unsafe fn do_as_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         *REAL(tsp) = 1.0;
         *REAL(tsp).add(1) = n as f64;
         *REAL(tsp).add(2) = 1.0;
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::Rf_install(c"tsp".as_ptr()), tsp);
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::Rf_install(c"tsp".as_ptr()), tsp,
+        );
         crate::sexp::attrib_core::setAttrib(
             x,
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -4199,7 +4204,8 @@ pub unsafe fn do_has_tsp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         *REAL(tsp) = 1.0;
         *REAL(tsp).add(1) = n as f64;
         *REAL(tsp).add(2) = 1.0;
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::Rf_install(c"tsp".as_ptr()), tsp);
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::Rf_install(c"tsp".as_ptr()), tsp,
+        );
         x
     }
 }
@@ -4477,8 +4483,7 @@ pub unsafe fn do_is_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x = CAR(args);
         let class = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+            crate::sexp::attrib_core::R_ClassSymbol());
         let mut ok = false;
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(class) {
@@ -4499,8 +4504,7 @@ pub unsafe fn do_is_mts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let x = CAR(args);
         let class = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+            crate::sexp::attrib_core::R_ClassSymbol());
         let mut has_ts = false;
         let mut has_mts = false;
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
@@ -4555,8 +4559,7 @@ pub unsafe fn do_is_stepfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             || TYPEOF(x) == SEXPTYPE::SPECIALSXP;
         let class = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+            crate::sexp::attrib_core::R_ClassSymbol());
         let mut has = false;
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(class) {
@@ -4693,8 +4696,7 @@ pub unsafe fn do_labels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let class = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+            crate::sexp::attrib_core::R_ClassSymbol());
         if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(class) {
                 let raw = CHAR(STRING_ELT(class, i));
@@ -4708,8 +4710,7 @@ pub unsafe fn do_labels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let names = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_NamesSymbol());
         if !names.is_null()
             && names != R_NilValue()
             && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -4738,7 +4739,8 @@ pub unsafe fn do_na_action(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 return v;
             }
         }
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::Rf_install(c"na.action".as_ptr()))
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::Rf_install(c"na.action".as_ptr()),
+        )
     }
 }
 
@@ -4895,8 +4897,7 @@ pub unsafe fn do_model_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
         crate::sexp::attrib_core::setAttrib(
             mat,
             crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
+            dn);
         let assign = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         let _as = protect(assign);
         *INTEGER(assign) = 0;
@@ -4915,8 +4916,7 @@ pub unsafe fn do_model_matrix_default(
     call: SEXP,
     op: SEXP,
     args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+    rho: SEXP) -> SEXP {
     unsafe {
         let data = CAR(CDR(args));
         if data.is_null() || data == R_NilValue() || TYPEOF(data) != SEXPTYPE::VECSXP {
@@ -4946,8 +4946,7 @@ pub unsafe fn do_model_matrix_default(
         };
         let names = crate::sexp::attrib_core::getAttrib(
             data,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_NamesSymbol());
         let mut col = R_NilValue();
         if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(names) {
@@ -5056,8 +5055,7 @@ pub unsafe fn do_reformulate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         crate::sexp::attrib_core::setAttrib(
             form,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+            class);
         form
     }
 }
@@ -5328,7 +5326,8 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>,
                 name.as_str(),
                 "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
             ) {
-                let stored = if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(name.as_bytes()) { name } else { format!("`{name}`") };
+                let stored = if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(name.as_bytes(),
+                ) { name } else { format!("`{name}`") };
                 record(stored, expr, out, nodes);
             }
             return;
@@ -5451,8 +5450,7 @@ pub unsafe fn do_model_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let env = crate::sexp::memory_ext::NewEnvironment(
             R_NilValue(),
             _rho,
-            R_NilValue(),
-        );
+            R_NilValue());
         let _env = protect(env);
         if !data.is_null() && data != R_NilValue() && TYPEOF(data) == SEXPTYPE::VECSXP {
             let data_names = crate::sexp::attrib_core::getAttrib(
@@ -5518,8 +5516,7 @@ pub unsafe fn do_expand_model_frame(
     call: SEXP,
     op: SEXP,
     args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+    rho: SEXP) -> SEXP {
     unsafe {
         let model = CAR(args);
         let extras = CAR(CDR(args));
@@ -5816,8 +5813,7 @@ unsafe fn named_list_elt(x: SEXP, name: &str) -> SEXP {
         }
         let names = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_NamesSymbol());
         if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
@@ -5933,8 +5929,7 @@ fn mark_formula(x: SEXP) -> SEXP {
         crate::sexp::attrib_core::setAttrib(
             x,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+            class);
         x
     }
 }
@@ -6003,8 +5998,7 @@ fn inherits_formula(x: SEXP) -> bool {
     unsafe {
         let class = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+            crate::sexp::attrib_core::R_ClassSymbol());
         if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
             return false;
         }
@@ -6049,8 +6043,7 @@ pub unsafe fn do_df2formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let x = CAR(args);
         let names = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_NamesSymbol());
         if names.is_null()
             || TYPEOF(names) != SEXPTYPE::STRSXP
             || XLENGTH(names) < 2
@@ -6145,16 +6138,14 @@ pub unsafe fn do_get_xlevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         let names = crate::sexp::attrib_core::getAttrib(
             m,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_NamesSymbol());
         let mut out_cols: Vec<SEXP> = Vec::new();
         let mut out_names: Vec<String> = Vec::new();
         for j in 0..XLENGTH(m) {
             let col = VECTOR_ELT(m, j);
             let class = crate::sexp::attrib_core::getAttrib(
                 col,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-            );
+                crate::sexp::attrib_core::R_ClassSymbol());
             let mut is_fac = false;
             if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
                 for i in 0..XLENGTH(class) {
@@ -6205,8 +6196,7 @@ pub unsafe fn do_mfclass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let x = CAR(args);
         let class = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+            crate::sexp::attrib_core::R_ClassSymbol());
         let mut is_factor = false;
         let mut is_ordered = false;
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
@@ -6264,15 +6254,13 @@ pub unsafe fn do_check_mf_classes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         }
         let cl_names = crate::sexp::attrib_core::getAttrib(
             cl,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_NamesSymbol());
         if cl_names.is_null() || TYPEOF(cl_names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
         let m_names = crate::sexp::attrib_core::getAttrib(
             m,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_NamesSymbol());
         if m_names.is_null() || TYPEOF(m_names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
@@ -6597,8 +6585,7 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
         crate::sexp::attrib_core::setAttrib(
             form,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+            class);
         crate::sexp::attrib_core::setAttrib(
             form,
             crate::sexp::symbol::Rf_install(c"response".as_ptr()),
@@ -6689,21 +6676,19 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
         for (name, node) in labels.iter().zip(term_nodes.iter().copied()) {
             if is_formula_interaction(name) {
                 for part in split_top_level_colon(name) {
-                    if var_syms.iter().any(|&s| {
-                        symbol_print_name(s) == part || deparse_call(s) == part
-                    }) {
+                    if var_syms.iter().any(|&s| symbol_print_name(s) == part || deparse_call(s) == part) {
                         continue;
                     }
-                    if let Some(node) = term_nodes.iter().copied().find(|&node| {
-                        symbol_print_name(node) == part || deparse_call(node) == part
-                    }) {
+                    if let Some(node) = term_nodes.iter().copied().find(|&node| symbol_print_name(node) == part || deparse_call(node) == part) {
                         var_syms.push(node);
                         continue;
                     }
                     let c = std::ffi::CString::new(part).unwrap_or_default();
                     var_syms.push(crate::sexp::symbol::Rf_install(c.as_ptr()));
                 }
-            } else if !var_syms.iter().any(|&s| s == node || formula_vars_equal(s, node) || (!deparse_call(node).is_empty() && deparse_call(s) == deparse_call(node))) {
+            } else if !var_syms.iter().any(|&s| {
+                s == node || formula_vars_equal(s, node) || (!deparse_call(node).is_empty() && deparse_call(s) == deparse_call(node))
+            }) {
                 var_syms.push(node);
             }
         }
@@ -6870,8 +6855,7 @@ unsafe fn expand_formula_dot(form: SEXP, data: SEXP) {
         }
         let names = crate::sexp::attrib_core::getAttrib(
             data,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+            crate::sexp::attrib_core::R_NamesSymbol());
         if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) == 0 {
             return;
         }
@@ -7026,13 +7010,13 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
         let form = CAR(args);
         if form.is_null() || TYPEOF(form) != SEXPTYPE::LANGSXP {
             crate::main::errors::Rf_error(
-                b"argument is not a valid model\0".as_ptr() as *const std::os::raw::c_char,
+                b"argument is not a valid model\0".as_ptr() as *const std::os::raw::c_char
             );
         }
         let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
         if CAR(form) != tilde {
             crate::main::errors::Rf_error(
-                b"argument is not a valid model\0".as_ptr() as *const std::os::raw::c_char,
+                b"argument is not a valid model\0".as_ptr() as *const std::os::raw::c_char
             );
         }
         let dup = crate::mainutils::duplicate::Rf_duplicate(form);
@@ -7089,7 +7073,7 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 
         if TYPEOF(variables) != SEXPTYPE::VECSXP || TYPEOF(varnames) != SEXPTYPE::STRSXP {
             crate::main::errors::Rf_error(
-                b"invalid variables\0".as_ptr() as *const std::os::raw::c_char,
+                b"invalid variables\0".as_ptr() as *const std::os::raw::c_char
             );
         }
         let nvars = XLENGTH(variables);
@@ -7142,8 +7126,7 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         crate::sexp::attrib_core::setAttrib(
             data,
             crate::sexp::attrib_core::R_NamesSymbol(),
-            names,
-        );
+            names);
         for i in 0..XLENGTH(data) {
             let ans = VECTOR_ELT(data, i);
             let t = TYPEOF(ans);
@@ -7178,7 +7161,9 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 let msg = std::ffi::CString::new(format!(
                     "invalid type ({ty}) for variable '{name}'"
                 ))
-                .unwrap_or_else(|_| std::ffi::CString::new("invalid type for variable").unwrap());
+                .unwrap_or_else(|_| {
+                            std::ffi::CString::new("invalid type for variable").unwrap()
+                        });
                 crate::main::errors::Rf_error(msg.as_ptr());
             }
         }
@@ -7262,8 +7247,7 @@ fn model_column_rows(col: SEXP) -> R_xlen_t {
         }
         let dim = crate::sexp::attrib_core::getAttrib(
             col,
-            crate::sexp::attrib_core::R_DimSymbol(),
-        );
+            crate::sexp::attrib_core::R_DimSymbol());
         if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
             let n = *INTEGER(dim);
             if n > 0 {
@@ -7332,7 +7316,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let data = CADR(args);
         if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP || XLENGTH(data) == 0 {
             crate::main::errors::Rf_error(
-                b"invalid model frame\0".as_ptr() as *const std::os::raw::c_char,
+                b"invalid model frame\0".as_ptr() as *const std::os::raw::c_char
             );
         }
         let first = VECTOR_ELT(data, 0);
@@ -7459,8 +7443,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let mat = crate::mainutils::array::allocMatrix(
             SEXPTYPE::REALSXP.as_c_int(),
             n as i32,
-            p as i32,
-        );
+            p as i32);
         let _m = protect(mat);
         let dst = REAL(mat);
         let mut col = 0i64;
@@ -7599,8 +7582,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let rn = character_row_names(
             crate::sexp::attrib_core::getAttrib(
                 data,
-                crate::sexp::attrib_core::R_RowNamesSymbol(),
-            ),
+                crate::sexp::attrib_core::R_RowNamesSymbol()),
             n,
         );
         let _rn = protect(rn);
@@ -7686,7 +7668,8 @@ fn factor_contrast_columns(colx: SEXP) -> Vec<Vec<f64>> {
         };
         let mut cols = Vec::new();
         for lev in 2..=nlev {
-            cols.push(codes.iter().map(|&c| if c == lev as i32 { 1.0 } else { 0.0 }).collect());
+            cols.push(codes.iter().map(|&c| if c == lev as i32 { 1.0 } else { 0.0 }).collect(),
+            );
         }
         cols
     }
@@ -7835,8 +7818,7 @@ fn contrast_suffixes(colx: SEXP, prefix: &str) -> Vec<String> {
         }
         let levels = crate::sexp::attrib_core::getAttrib(
             colx,
-            crate::sexp::attrib_core::R_LevelsSymbol(),
-        );
+            crate::sexp::attrib_core::R_LevelsSymbol());
         let mut out = Vec::new();
         if TYPEOF(levels) == SEXPTYPE::STRSXP {
             for i in 1..XLENGTH(levels) {
@@ -8058,8 +8040,7 @@ pub unsafe fn do_drop_terms(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             call,
             op,
             Rf_cons(kept, R_NilValue()),
-            rho,
-        );
+            rho);
         let _f = protect(form);
         let marked = mark_terms(form, 0, R_NilValue());
         let ic = crate::sexp::attrib_core::getAttrib(
@@ -8210,8 +8191,7 @@ pub unsafe fn do_contr_treatment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         crate::sexp::attrib_core::setAttrib(
             mat,
             crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
+            dn);
         mat
     }
 }
@@ -8254,8 +8234,7 @@ pub unsafe fn do_contr_sum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         crate::sexp::attrib_core::setAttrib(
             mat,
             crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
+            dn);
         mat
     }
 }
@@ -8300,8 +8279,7 @@ pub unsafe fn do_contr_helmert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         crate::sexp::attrib_core::setAttrib(
             mat,
             crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
+            dn);
         mat
     }
 }
@@ -8370,8 +8348,7 @@ pub unsafe fn do_contr_sas(
     call: SEXP,
     op: SEXP,
     args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+    rho: SEXP) -> SEXP {
     unsafe {
         let n_s = CAR(args);
         let n = if TYPEOF(n_s) == SEXPTYPE::INTSXP {
@@ -8392,8 +8369,7 @@ pub unsafe fn do_contrasts(
     call: SEXP,
     op: SEXP,
     args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+    rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let stored = crate::sexp::attrib_core::getAttrib(
@@ -8405,8 +8381,7 @@ pub unsafe fn do_contrasts(
         }
         let levels = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::attrib_core::R_LevelsSymbol(),
-        );
+            crate::sexp::attrib_core::R_LevelsSymbol());
         let n = if !levels.is_null()
             && levels != R_NilValue()
             && TYPEOF(levels) == SEXPTYPE::STRSXP
@@ -8445,8 +8420,7 @@ pub unsafe fn do_contrasts(
         crate::sexp::attrib_core::setAttrib(
             mat,
             crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
+            dn);
         mat
     }
 }

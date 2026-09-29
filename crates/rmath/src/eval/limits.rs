@@ -270,11 +270,14 @@ pub(crate) fn poll_computation() {
 ///
 /// Sets the thread-local evaluation limits for the duration of this call, then
 /// restores the previous limits afterward.
-pub fn eval_with_limits<'a>(
+pub unsafe fn eval_with_limits<'a>(
     expr: Sexp<'a>,
     env: Sexp<'a>,
     limits: EvalLimits,
 ) -> Result<Sexp<'a>, String> {
     let _guard = EvalLimitsOverrideGuard::install(limits);
-    super::eval::eval_safe(expr, env)
+    unsafe {
+        /* SAFETY: caller supplies the active owner, rooted inputs and no payload loan. */
+        super::eval::eval_safe(expr, env)
+}
 }

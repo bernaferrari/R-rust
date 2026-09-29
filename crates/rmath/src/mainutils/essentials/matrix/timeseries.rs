@@ -347,7 +347,8 @@ unsafe fn cbind_ts(args: SEXP, union: bool) -> SEXP {
         let _c = protect(class);
         SET_STRING_ELT(class, 0, Rf_mkChar(c"mts".as_ptr()));
         SET_STRING_ELT(class, 1, Rf_mkChar(c"ts".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class,
+        );
         result
     }
 }
@@ -382,6 +383,7 @@ mod tests {
         assert_eq!(tsp.clone().real_elt(0), Some(1959.25));
         assert_eq!(tsp.clone().real_elt(1), Some(1961.5));
         assert_eq!(tsp.real_elt(2), Some(4.0));
+        drop(tsp);
 
         let (class, _, _) = session.eval_code_with_output_capture("identical(class(z), \"ts\")");
         assert_eq!(

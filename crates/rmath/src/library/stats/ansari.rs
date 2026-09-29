@@ -138,10 +138,10 @@ pub unsafe fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     let m = as_integer(sm);
     let n = as_integer(sn);
     let q = unsafe { crate::main::coerce::coerceVector(q, SEXPTYPE::REALSXP.as_c_int()) };
-    let _q_guard = protect_sexp(q);
+    let _q_guard = unsafe { protect_sexp(q) };
     let len = unsafe { LENGTH(q) };
     let p = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, len as c_int) };
-    let _p_guard = protect_sexp(p);
+    let _p_guard = unsafe { protect_sexp(p) };
     let q_slice = unsafe { slice::from_raw_parts(REAL(q), len as usize) };
     let p_slice = unsafe { slice::from_raw_parts_mut(REAL(p), len as usize) };
     pansari(len as c_int, q_slice, p_slice, m, n);
@@ -152,10 +152,10 @@ pub unsafe fn qAnsari(p: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     let m = as_integer(sm);
     let n = as_integer(sn);
     let p = unsafe { crate::main::coerce::coerceVector(p, SEXPTYPE::REALSXP.as_c_int()) };
-    let _p_guard = protect_sexp(p);
+    let _p_guard = unsafe { protect_sexp(p) };
     let len = unsafe { LENGTH(p) };
     let q = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, len as c_int) };
-    let _q_guard = protect_sexp(q);
+    let _q_guard = unsafe { protect_sexp(q) };
     let p_slice = unsafe { slice::from_raw_parts(REAL(p), len as usize) };
     let q_slice = unsafe { slice::from_raw_parts_mut(REAL(q), len as usize) };
     qansari(len as c_int, p_slice, q_slice, m, n);

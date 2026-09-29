@@ -41,7 +41,10 @@ fn sexp_err(context: &str, err: SexpError) -> String {
 /// It extracts formals, body, and environment from the closure,
 /// matches arguments to formals, creates a new evaluation environment,
 /// and evaluates the body.
-pub fn apply_closure_safe<'a>(
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+pub unsafe fn apply_closure_safe<'a>(
     closure: Sexp<'a>,
     args: Sexp<'a>,
     rho: Sexp<'a>,
@@ -85,10 +88,10 @@ pub fn apply_closure_safe<'a>(
 
 
     // Match arguments to formals
-    let matched = match_args_safe(formals.clone(), args.clone())?;
+    let matched = unsafe { match_args_safe(formals.clone(), args.clone()) }?;
 
     // Create new environment with matched arguments
-    let new_env = create_env_safe(matched, cloenv)?;
+    let new_env = unsafe { create_env_safe(matched, cloenv) }?;
 
     // Bind the matched arguments into the new environment
     let frame = new_env
@@ -107,7 +110,7 @@ pub fn apply_closure_safe<'a>(
             let val = cell
                 .try_car()
                 .map_err(|err| sexp_err("matched argument value lookup", err))?;
-            new_env_bindings.clone().define(sym, val).clone()?;
+            unsafe { new_env_bindings.clone().define(sym, val) }.clone()?;
         }
     }
 
@@ -119,20 +122,24 @@ pub fn apply_closure_safe<'a>(
     // Evaluate body in new environment.
     // If the body was compiled to BCODESXP by cmpfun or the invocation JIT,
     // the top-level eval_safe dispatch (EvalKind::Bytecode) calls bcEval.
-    crate::eval::eval::eval_safe(body, new_env)
+    unsafe { crate::eval::eval::eval_safe(body, new_env)
+}
 }
 
 /// Safe argument matching using Sexp<'a> and PairlistIter.
 ///
 /// Matches actual arguments to formal parameters, building a new
 /// pairlist with the matched values.
-pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>, String> {
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+pub unsafe fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>, String> {
     if formals.clone().is_nil() {
         return Ok(args);
     }
 
     unsafe { match_closure_args(formals.as_raw(), args.as_raw()) }.and_then(|matched| {
-        Sexp::try_from_raw(matched).map_err(|err| sexp_err("matched argument wrap", err))
+        unsafe { Sexp::try_from_raw(matched) }.map_err(|err| sexp_err("matched argument wrap", err))
     })
 }
 
@@ -140,9 +147,13 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>
 ///
 /// Creates a new environment with the given bindings as its frame
 /// and the given parent as its enclosing environment.
-pub fn create_env_safe<'a>(bindings: Sexp<'a>, parent: Sexp<'a>) -> Result<Sexp<'a>, String> {
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+pub unsafe fn create_env_safe<'a>(bindings: Sexp<'a>, parent: Sexp<'a>,
+) -> Result<Sexp<'a>, String> {
     let env = unsafe { NewEnvironment(bindings.as_raw(), parent.as_raw(), ptr::null_mut()) };
-    Sexp::try_from_raw(env).map_err(|err| sexp_err("failed to create environment", err))
+    unsafe { Sexp::try_from_raw(env) }.map_err(|err| sexp_err("failed to create environment", err))
 }
 
 // ---------------------------------------------------------------------------
@@ -620,8 +631,7 @@ pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SE
                 };
                 let cloenv = Sexp::from_raw_unchecked(remap_methods_snapshot_cloenv(
                     op,
-                    cloenv.as_raw(),
-                ));
+                    cloenv.as_raw()));
                 let cloenv = reparent_empty_utils_runner(op, cloenv.as_raw());
                 let cloenv = Sexp::from_raw_unchecked(cloenv);
 

@@ -90,8 +90,14 @@ mod no_altrep_guards {
         let _session = crate::sexp::session::RSession::new();
         let sym =
             unsafe { crate::sexp::symbol::Rf_install(b"no_altrep_probe\0".as_ptr() as *const _) };
-        let outer = with_arena(|arena| arena.alloc_vector(SEXPTYPE::VECSXP, 2));
-        let inner = with_arena(|arena| arena.alloc_vector(SEXPTYPE::REALSXP, 4));
+        let outer = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| arena.alloc_vector(SEXPTYPE::VECSXP, 2))
+        };
+        let inner = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            with_arena(|arena| arena.alloc_vector(SEXPTYPE::REALSXP, 4))
+        };
         unsafe {
             *((*outer).gengc_next_node as *mut SEXP) = inner;
             crate::sexp::envir::defineVar(sym, outer, crate::sexp::globals::R_GlobalEnv());

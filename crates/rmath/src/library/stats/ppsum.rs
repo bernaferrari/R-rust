@@ -60,7 +60,7 @@ fn non_negative_usize(value: c_int, name: &'static [u8]) -> usize {
 
 pub unsafe fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
     let u = unsafe { coerceVector(u, SEXPTYPE::REALSXP) };
-    let _u_guard = protect(u);
+    let _u_guard = unsafe { protect(u) };
     let n = unsafe { LENGTH(u) };
     let l = unsafe { asInteger(sl) };
     let values = unsafe { slice::from_raw_parts(REAL(u), n as usize) };
@@ -70,9 +70,9 @@ pub unsafe fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
 
 pub unsafe fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
     let x = unsafe { coerceVector(x, SEXPTYPE::REALSXP) };
-    let _x_guard = protect(x);
+    let _x_guard = unsafe { protect(x) };
     let xi = unsafe { coerceVector(xi, SEXPTYPE::REALSXP) };
-    let _xi_guard = protect(xi);
+    let _xi_guard = unsafe { protect(xi) };
 
     let n = unsafe { LENGTH(x) };
     let xi_len = unsafe { LENGTH(xi) };
@@ -85,7 +85,7 @@ pub unsafe fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
         .checked_add(lag)
         .unwrap_or_else(|| error(b"result length is too large\0"));
     let ans = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, output_len) };
-    let _ans_guard = protect(ans);
+    let _ans_guard = unsafe { protect(ans) };
 
     let x_values = unsafe { slice::from_raw_parts(REAL(x), n as usize) };
     let xi_values = unsafe { slice::from_raw_parts(REAL(xi), xi_len as usize) };

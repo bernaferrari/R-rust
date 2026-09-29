@@ -31,7 +31,7 @@ unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
 }
 
 unsafe extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
-    crate::sexp::globals::R_NilValue()
+    unsafe { crate::sexp::globals::R_NilValue() }
 }
 unsafe extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
     unsafe {
@@ -63,7 +63,8 @@ unsafe extern "C-unwind" fn c_str_metric(args: SEXP) -> SEXP {
         } else {
             crate::sexp::accessors::XLENGTH(labels)
         };
-        let out = crate::sexp::constructors::Rf_allocVector(crate::sexp::ffi::SEXPTYPE::REALSXP, n as i32);
+        let out = crate::sexp::constructors::Rf_allocVector(crate::sexp::ffi::SEXPTYPE::REALSXP, n as i32,
+        );
         for i in 0..n {
             *crate::sexp::accessors::REAL(out).add(i as usize) = 1.0;
         }
@@ -90,16 +91,14 @@ unsafe extern "C-unwind" fn c_nil(_args: SEXP) -> SEXP {
 pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "par" => Some(unsafe { std::mem::transmute(c_par as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP) }),
-        "plot_new" => Some(unsafe { std::mem::transmute(c_plot_new as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP) }),
+        "par" => Some(unsafe { std::mem::transmute(c_par as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+            ) }),
+        "plot_new" => Some(unsafe { std::mem::transmute(c_plot_new as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+            ) }),
         "plot_window" => Some(unsafe { std::mem::transmute(c_plot_window as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
         "axis" => Some(unsafe { std::mem::transmute(c_axis as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
-        "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "box" | "segments" | "rect" | "polygon" | "abline" => {
-            Some(unsafe { std::mem::transmute(c_plot_xy as unsafe extern "C-unwind" fn(SEXP) -> SEXP) })
-        }
-        "strWidth" | "strHeight" => {
-            Some(unsafe { std::mem::transmute(c_str_metric as unsafe extern "C-unwind" fn(SEXP) -> SEXP) })
-        }
+        "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "box" | "segments" | "rect" | "polygon" | "abline" => Some(unsafe { std::mem::transmute(c_plot_xy as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
+        "strWidth" | "strHeight" => Some(unsafe { std::mem::transmute(c_str_metric as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
         "BinCount" => Some(unsafe {
             std::mem::transmute(
                 c_bin_count as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
@@ -119,16 +118,19 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
         }),
         "filledcontour" | "persp" | "arrows" | "clip" | "convertX" | "convertY"
         | "dend" | "dendwindow" | "erase" | "path" | "raster" | "symbols" | "xspline"
-        | "locator" | "identify" | "StemLeaf" => Some(unsafe {
+        | "locator" | "identify" | "StemLeaf" => {
+            Some(unsafe {
             std::mem::transmute(c_nil as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }),
+        })
+        }
         _ => None,
     }
 }
 
 pub unsafe fn install_call_symbols(env: SEXP) {
     unsafe {
-        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_abline", "C_strWidth", "C_strHeight", "C_BinCount", "C_contourDef", "C_contour", "C_image", "C_layout", "C_filledcontour", "C_persp", "C_arrows", "C_clip", "C_convertX", "C_convertY", "C_dend", "C_dendwindow", "C_erase", "C_path", "C_raster", "C_symbols", "C_xspline", "C_locator", "C_identify", "C_StemLeaf"] {
+        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_abline", "C_strWidth", "C_strHeight", "C_BinCount", "C_contourDef", "C_contour", "C_image", "C_layout", "C_filledcontour", "C_persp", "C_arrows", "C_clip", "C_convertX", "C_convertY", "C_dend", "C_dendwindow", "C_erase", "C_path", "C_raster", "C_symbols", "C_xspline", "C_locator", "C_identify", "C_StemLeaf",
+        ] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(
                 crate::sexp::symbol::Rf_install(cname.as_ptr()),

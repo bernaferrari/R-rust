@@ -244,7 +244,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
     }
 
     let rval = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, len) };
-    let _rval_guard = protect_sexp(rval);
+    let _rval_guard = unsafe { protect_sexp(rval) };
     let rval_int = unsafe { slice::from_raw_parts_mut(INTEGER(rval), len as usize) };
     rval_int.fill(1);
 

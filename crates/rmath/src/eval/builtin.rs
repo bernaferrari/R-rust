@@ -49,13 +49,16 @@ pub unsafe fn R_mkPrim(_name: *const std::os::raw::c_char, offset: c_int, kind: 
         SEXPTYPE::BUILTINSXP
     };
 
-    memory::with_arena(|arena| {
+    unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        memory::with_arena(|arena| {
         let prim = arena.alloc_node(sexptype);
         if !prim.is_null() {
             unsafe { SET_PRIMOFFSET(prim, offset) };
         }
         prim
     })
+    }
 }
 
 /// Handler type for BUILTINSXP functions.

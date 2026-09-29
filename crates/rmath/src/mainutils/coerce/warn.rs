@@ -392,12 +392,16 @@ pub unsafe fn CoercionWarning(warn: c_int) {
     let override_call = COERCION_WARN_CALL.get();
     let emit = |msg: &[u8]| {
         if !override_call.is_null() {
-            crate::mainutils::errors::warningcall(
+            unsafe {
+                crate::mainutils::errors::warningcall(
                 override_call,
                 msg.as_ptr() as *const core::ffi::c_char,
-            );
+            )
+            };
         } else {
-            crate::mainutils::errors::Rf_warning(msg.as_ptr() as *const core::ffi::c_char);
+            unsafe {
+            crate::mainutils::errors::Rf_warning(msg.as_ptr() as *const core::ffi::c_char)
+            };
         }
     };
     if warn & WARN_NA != 0 {

@@ -1,6 +1,7 @@
 //! Checked element mutation over a crate-internal SEXP handle.
 //!
-//! Acquiring a mutation guard is unsafe: consuming a clone does not prove
+//! Checked handles support safe mutation with copied reads. Acquiring a guard
+//! from an unknown raw handle is unsafe: consuming a clone does not prove
 //! uniqueness or revoke borrowed slices. The caller must exclude borrowed
 //! payload views throughout the guard's lifetime and keep the object alive.
 //! Setters then check type and bounds and take `&mut self`.
@@ -27,6 +28,22 @@ pub struct SexpMut<'a> {
 // is the blessed mutation path, so the deprecation lint is noise here.
 #[allow(deprecated)]
 impl<'a> SexpMut<'a> {
+    /// Mutate a checked arena or session value using copied element access.
+    ///
+    /// Checked factories retain the allocation and safe reads never lend Rust
+    /// payload references. Unsafe payload loans must exclude all mutation,
+    /// including this API. Unknown raw handles and immutable sentinels fail.
+    pub fn try_from_checked(sexp: Sexp<'a>) -> SexpResult<Self> {
+        if matches!(
+            sexp.owner(),
+            super::SexpOwner::Arena(_) | super::SexpOwner::Session(_)
+        ) {
+            Ok(Self { inner: sexp })
+        } else {
+            Err(super::SexpError::UncheckedMutation)
+        }
+    }
+
     /// Acquire mutation authority over an existing handle.
     ///
     /// # Safety
@@ -35,6 +52,10 @@ impl<'a> SexpMut<'a> {
     /// may exist, but cannot access the payload concurrently with a write.
     #[inline]
     pub(crate) unsafe fn from_owned(sexp: Sexp<'a>) -> Self {
+        assert!(
+            !matches!(sexp.owner(), super::SexpOwner::Static),
+            "immutable singleton cannot be mutated"
+        );
         Self { inner: sexp }
     }
 
@@ -345,7 +366,11 @@ mod tests {
         let sexp = arena.alloc_vector_sexp(SEXPTYPE::REALSXP, 2).unwrap();
         let alias = sexp.clone();
         {
-            let shared = alias.clone().as_real_slice().unwrap();
+            let shared = unsafe {
+                /* SAFETY: caller retains the handle and excludes payload mutation. */
+                alias.as_real_slice()
+            }
+            .unwrap();
             assert_eq!(shared, &[0.0, 0.0]);
         }
         // SAFETY: all payload borrows have ended. Arena remains borrowed

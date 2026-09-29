@@ -511,7 +511,7 @@ unsafe fn make_charsxp(bytes: &[u8]) -> SEXP {
 ///
 /// Translate characters in `x`: replace characters in `old` with corresponding
 /// characters in `new`.
-pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP, String> {
+pub unsafe fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP, String> {
     let na = unsafe { get_na_string() };
 
     if old.clone().typeof_() != SEXPTYPE::STRSXP {
@@ -573,7 +573,7 @@ pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP
 
     let n = x.clone().len() as c_int;
     let y = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n) };
-    let _y_guard = protect(y);
+    let _y_guard = unsafe { protect(y) };
 
     for i in 0..i64::from(n) {
         let el = x.clone().string_elt(i).ok_or("missing string element")?;
@@ -630,8 +630,8 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// Safe version of toupper using `Sexp<'a>`.
-pub fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
-    case_transform_safe(x, true)
+pub unsafe fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
+    unsafe { case_transform_safe(x, true) }
 }
 
 /// Convert characters in a character vector to uppercase.
@@ -662,8 +662,8 @@ pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// Safe version of tolower using `Sexp<'a>`.
-pub fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
-    case_transform_safe(x, false)
+pub unsafe fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
+    unsafe { case_transform_safe(x, false) }
 }
 
 /// Convert characters in a character vector to lowercase.
@@ -690,7 +690,7 @@ pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 }
 
 /// Shared safe implementation for toupper and tolower.
-fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
+unsafe fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
     let na = unsafe { get_na_string() };
 
     if x.clone().typeof_() != SEXPTYPE::STRSXP {
@@ -699,7 +699,7 @@ fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
 
     let n = x.clone().len();
     let y = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n as c_int) };
-    let _y_guard = protect(y);
+    let _y_guard = unsafe { protect(y) };
 
     for i in 0..i64::from(n) {
         let el = x.clone().string_elt(i).ok_or("missing string element")?;
@@ -736,7 +736,7 @@ pub enum NcharType {
 }
 
 /// Safe version of nchar using `Sexp<'a>`.
-pub fn nchar_safe(
+pub unsafe fn nchar_safe(
     x: Sexp<'_>,
     type_: NcharType,
     allow_na: bool,
@@ -756,7 +756,7 @@ pub fn nchar_safe(
 
     let len = x.clone().len();
     let s = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, len as c_int) };
-    let _s_guard = protect(s);
+    let _s_guard = unsafe { protect(s) };
 
     for i in 0..len {
         let sxi = x.clone().string_elt(i).ok_or("missing string element")?;
@@ -887,7 +887,7 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Safe version of substr using `Sexp<'a>`.
-pub fn substr_safe<'a>(
+pub unsafe fn substr_safe<'a>(
     x: Sexp<'a>,
     starts: Sexp<'a>,
     stops: Option<Sexp<'a>>,
@@ -921,7 +921,7 @@ pub fn substr_safe<'a>(
     // length only, silently dropping the extra positions.
     let n = len.max(k).max(l_val);
     let s = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n as c_int) };
-    let _s_guard = protect(s);
+    let _s_guard = unsafe { protect(s) };
 
     for i in 0..n {
         let start = starts

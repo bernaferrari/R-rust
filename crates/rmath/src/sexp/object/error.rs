@@ -7,6 +7,12 @@ pub enum SexpError {
     NullPointer,
     /// A raw pointer was visibly not aligned for `SexprecCore`.
     MisalignedPointer { address: usize },
+    /// A checked owner does not contain this pointer.
+    UnownedPointer { address: usize },
+    /// The owner could not install a live root lease.
+    RootUnavailable,
+    /// Safe mutation requires a checked, mutable owner.
+    UncheckedMutation,
     /// The SEXP had the wrong R type for the requested operation.
     TypeMismatch {
         expected: &'static str,
@@ -32,6 +38,13 @@ impl std::fmt::Display for SexpError {
             SexpError::NullPointer => write!(f, "SEXP pointer is null"),
             SexpError::MisalignedPointer { address } => {
                 write!(f, "SEXP pointer {address:#x} is misaligned")
+            }
+            SexpError::UnownedPointer { address } => {
+                write!(f, "SEXP pointer {address:#x} does not belong to its owner")
+            }
+            SexpError::RootUnavailable => write!(f, "SEXP owner could not retain its root"),
+            SexpError::UncheckedMutation => {
+                write!(f, "safe mutation requires a checked mutable owner")
             }
             SexpError::TypeMismatch { expected, actual } => {
                 write!(f, "expected {expected}, got {:?}", actual.0)

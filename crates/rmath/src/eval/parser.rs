@@ -25,7 +25,7 @@
 use std::ffi::CString;
 
 use crate::sexp::accessors::{
-    CADR, CAR, CDR, CHAR, INTEGER, PRINTNAME, SETCAR, SETTAG, SET_ATTRIB, TAG, TYPEOF,
+    CADR, CAR, CDR, CHAR, INTEGER, PRINTNAME, SET_ATTRIB, SETCAR, SETTAG, TAG, TYPEOF,
 };
 use crate::sexp::builder::{
     scalar_bytes_in, scalar_complex_in, scalar_integer_in, scalar_logical_in, scalar_real_in,
@@ -1201,7 +1201,10 @@ impl<'arena> Parser<'arena> {
     }
 
     fn cons(&mut self, car: SEXP, cdr: SEXP) -> Result<SEXP, ParseError> {
-        let cell = self.arena.cons(car, cdr, std::ptr::null_mut());
+        let cell = unsafe {
+            /* SAFETY: parser owns this arena lend; parsed children remain in the same arena. */
+            self.arena.cons(car, cdr, std::ptr::null_mut())
+        };
         if cell.is_null() {
             Err(self.allocation_error())
         } else {
@@ -1278,6 +1281,7 @@ impl<'arena> Parser<'arena> {
         };
         let data = unsafe { (*strings.clone().as_raw()).gengc_next_node as *mut SEXP };
         if data.is_null() {
+            drop(strings);
             return Err(self.allocation_error());
         }
         unsafe {
@@ -2972,7 +2976,7 @@ mod tests {
     use super::*;
 
     use crate::sexp::accessors::{
-        CADR, CADDR, CAR, CDR, CHAR, COMPLEX, PRINTNAME, STRING_ELT, TAG, TYPEOF, XLENGTH,
+        CADDR, CADR, CAR, CDR, CHAR, COMPLEX, PRINTNAME, STRING_ELT, TAG, TYPEOF, XLENGTH,
     };
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;

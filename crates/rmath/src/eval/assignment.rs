@@ -6,7 +6,7 @@
 
 use crate::sexp::accessors::ENCLOS;
 use crate::sexp::accessors::{
-    CADR, CADDR, CAR, CDDR, CDR, CHAR, INTEGER_ELT, LOGICAL_ELT, NAMED, PRINTNAME, REAL_ELT,
+    CADDR, CADR, CAR, CDDR, CDR, CHAR, INTEGER_ELT, LOGICAL_ELT, NAMED, PRINTNAME, REAL_ELT,
     SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 
@@ -93,16 +93,16 @@ unsafe fn assign_to_symbol(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
     }
 }
 
-fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
+unsafe fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
     let target_env = if primval == 2 {
         unsafe { ENCLOS(rho) }
     } else {
         rho
     };
     let (Some(sym), Some(value), Some(target_env)) = (
-        Sexp::from_raw(sym),
-        Sexp::from_raw(value),
-        Sexp::from_raw(target_env),
+        unsafe { Sexp::from_raw(sym) },
+        unsafe { Sexp::from_raw(value) },
+        unsafe { Sexp::from_raw(target_env) },
     ) else {
         return;
     };
@@ -111,8 +111,8 @@ fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
     };
 
     if primval == 2 {
-        env.set(sym, value);
-    } else if let Err(err) = env.define(sym, value) {
+        unsafe { env.set(sym, value) };
+    } else if let Err(err) = unsafe { env.define(sym, value) } {
         error(&format!("failed to assign binding: {err}"));
     }
 }

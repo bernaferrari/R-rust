@@ -611,7 +611,7 @@ pub fn try_protect_sexp<'a>(value: Sexp<'a>) -> Result<ProtectGuard<'a>, Protect
 /// Legacy compatibility helper for translated code. Prefer
 /// [`protect_sexp`] when the caller has an owner-scoped value. The guard
 /// holds a generational root-table slot and may be dropped in any order.
-pub(crate) fn protect(s: SEXP) -> ProtectGuard<'static> {
+pub(crate) unsafe fn protect(s: SEXP) -> ProtectGuard<'static> {
     protect_raw(s)
 }
 
@@ -681,7 +681,7 @@ fn push_protect(s: SEXP) {
 /// Push a raw SEXP onto the LEGACY protection stack and return it.
 ///
 /// The equivalent of R's `Rf_protect()`.
-pub(crate) fn protect_raw_pointer(s: SEXP) -> SEXP {
+pub(crate) unsafe fn protect_raw_pointer(s: SEXP) -> SEXP {
     push_protect(s);
     s
 }
@@ -902,7 +902,7 @@ impl<'a> IndexedProtectGuard<'a> {
         }
     }
 
-    pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
+    pub(crate) unsafe fn reprotect_raw(&mut self, value: SEXP) {
         if let Some(owner) = self.owner {
             // SAFETY: See ProtectGuard::drop.
             with_guard_owner(owner, |inst| reprotect_slot_in(inst, self.slot, value));
@@ -922,7 +922,8 @@ impl<'a> IndexedProtectGuard<'a> {
         if !self.slot_generation_is(self.slot.generation) {
             return Err(ProtectError::StaleSlot);
         }
-        self.reprotect_raw(value.as_raw());
+        // SAFETY: checked value has the same live owner as this managed slot.
+        unsafe { self.reprotect_raw(value.as_raw()) };
         Ok(())
     }
 }
@@ -1049,7 +1050,7 @@ impl<'a> RootedSexp<'a> {
     }
 
     /// Consume the root, returning the guarded handle. The protection is
-    /// released; the caller owns the returned handle without a table root.
+    /// released; a checked session handle retains its own shared root lease.
     pub fn unroot(self) -> Sexp<'a> {
         let Self { value, guard, .. } = self;
         drop(guard);
@@ -1094,7 +1095,7 @@ pub fn try_protect_sexp_with_index<'a>(
 ///
 /// Legacy compatibility helper for translated Rust modules. Prefer
 /// [`protect_sexp_with_index`] when the caller has an owner-scoped value.
-pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<'static> {
+pub(crate) unsafe fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<'static> {
     if s.is_null() {
         return IndexedProtectGuard {
             owner: None,
@@ -1385,7 +1386,7 @@ mod tests {
 
     #[test]
     fn test_protect_unprotect() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             let fake = 0x1 as SEXP;
             let result = protect_raw_pointer(fake);
@@ -1398,7 +1399,7 @@ mod tests {
 
     #[test]
     fn test_protect_null() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             protect_raw_pointer(ptr::null_mut());
             assert_eq!(R_ProtectCount(), 0);
@@ -1407,7 +1408,7 @@ mod tests {
 
     #[test]
     fn test_protect_multiple() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             let a = 0x1 as SEXP;
             let b = 0x2 as SEXP;
@@ -1425,7 +1426,7 @@ mod tests {
 
     #[test]
     fn test_unprotect_ptr() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             let a = 0x1 as SEXP;
             let b = 0x2 as SEXP;
@@ -1441,7 +1442,7 @@ mod tests {
 
     #[test]
     fn test_unprotect_ptr_null() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             unprotect_ptr(ptr::null_mut());
             assert_eq!(R_ProtectCount(), 0);
@@ -1450,7 +1451,7 @@ mod tests {
 
     #[test]
     fn test_unprotect_zero() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
             unprotect_count(0);
             assert_eq!(R_ProtectCount(), 0);
@@ -1459,7 +1460,7 @@ mod tests {
 
     #[test]
     fn test_unprotect_exceeds_stack() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             protect_raw_pointer(0x1 as SEXP);
             unprotect_count(5);
@@ -1469,7 +1470,7 @@ mod tests {
 
     #[test]
     fn test_protect_n_guard() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
             let depth_before = R_ProtectCount();
             unsafe {
@@ -1486,12 +1487,18 @@ mod tests {
 
     #[test]
     fn test_protect_n_guard_drops_against_original_instance() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        let mut left = RInstance::new_for_gc_tests();
+        let mut right = RInstance::new_for_gc_tests();
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
 
-        protect_raw_pointer(0x1 as SEXP);
-        protect_raw_pointer(0x2 as SEXP);
+        unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            protect_raw_pointer(0x1 as SEXP)
+        };
+        unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            protect_raw_pointer(0x2 as SEXP)
+        };
         let guard = protect_n(2);
         assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 2);
 
@@ -1509,7 +1516,7 @@ mod tests {
 
     #[test]
     fn test_with_protected_objects() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             protect_raw_pointer(0x1 as SEXP);
             protect_raw_pointer(0x2 as SEXP);
@@ -1523,7 +1530,7 @@ mod tests {
 
     #[test]
     fn test_update_protect_stack_refs() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             protect_raw_pointer(0x1 as SEXP);
             protect_raw_pointer(0x2 as SEXP);
@@ -1546,7 +1553,7 @@ mod tests {
 
     #[test]
     fn test_protect_sexp_guard() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let value = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
@@ -1560,18 +1567,18 @@ mod tests {
             assert_eq!(R_ProtectCount(), legacy_before);
             with_protected_objects(|legacy, roots| {
                 assert_eq!(legacy.len(), legacy_before);
-                assert_eq!(roots, &[value.as_raw()]);
+                assert_eq!(roots, &[value.clone().as_raw(); 2]);
             });
-            let _ = roots_before;
+            assert_eq!(roots_before, 1);
             drop(guard);
-            with_protected_objects(|_, roots| assert!(roots.is_empty()));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), roots_before));
             assert_eq!(R_ProtectCount(), legacy_before);
         });
     }
 
     #[test]
     fn test_rooted_sexp_roots_and_unroots() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let value = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
@@ -1579,18 +1586,18 @@ mod tests {
 
         session.with_protected(|| {
             let root = RootedSexp::root(value.clone());
-            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw()]));
+            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw(); 2]));
             let readback = root.get().expect("fresh root must resolve").clone();
             assert_eq!(readback, value);
             let sexp = root.unroot();
             assert_eq!(sexp.as_raw(), value.clone().as_raw());
-            with_protected_objects(|_, roots| assert!(roots.is_empty()));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
         });
     }
 
     #[test]
     fn test_rooted_sexp_reprotect_and_nested_lifo_drop() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let (raw_first, raw_second) = session
             .with_arena(|arena| {
                 (
@@ -1610,24 +1617,26 @@ mod tests {
             }
             // The tail drop collapses the inner slot off the table, so the
             // outer root is the only entry left.
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
             outer.reprotect(second.clone());
-            with_protected_objects(|_, roots| assert_eq!(roots, &[second.clone().as_raw()]));
+            with_protected_objects(|_, roots| {
+                assert_eq!(roots, &[raw_first, raw_second, raw_second])
+            });
             assert_eq!(
                 outer.get().expect("outer root must resolve").clone(),
                 second
             );
             drop(outer);
-            with_protected_objects(|_, roots| assert!(roots.is_empty()));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 2));
         });
     }
 
     #[test]
     fn test_raw_protect_guard_null_legacy() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
             let depth_before = R_ProtectCount();
-            let guard = protect(ptr::null_mut());
+            let guard = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(ptr::null_mut()) };
             assert_eq!(R_ProtectCount(), depth_before);
             drop(guard);
             assert_eq!(R_ProtectCount(), depth_before);
@@ -1637,11 +1646,11 @@ mod tests {
 
     #[test]
     fn test_safe_protect_rejects_unknown_owner() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let raw = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
-        let value = Sexp::from_raw(raw).expect("raw value should wrap as legacy boundary");
+        let value = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(raw) }.expect("raw value should wrap as legacy boundary");
 
         session.with_protected(|| {
             assert!(matches!(
@@ -1670,7 +1679,7 @@ mod tests {
 
     #[test]
     fn test_preserve_sexp_guard() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let value = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
@@ -1686,7 +1695,7 @@ mod tests {
 
     #[test]
     fn test_indexed_protect_guard_reprotects_and_unwinds() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let first = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
@@ -1699,21 +1708,28 @@ mod tests {
             .expect("second value belongs to session");
 
         session.with_protected(|| {
-            let mut guard = protect_sexp_with_index(first);
+            let mut guard = protect_sexp_with_index(first.clone());
             assert!(guard.slot().is_active());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
             guard.reprotect_sexp(second.clone());
-            with_protected_objects(|_, roots| assert_eq!(roots, &[second.as_raw()]));
+            with_protected_objects(|_, roots| {
+                assert_eq!(roots, &[
+                        first.clone().as_raw(),
+                        second.clone().as_raw(),
+                        second.clone().as_raw()
+                    ]
+                )
+            });
             drop(guard);
-            with_protected_objects(|_, roots| assert!(roots.is_empty()));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 2));
         });
     }
 
     #[test]
     fn test_indexed_raw_guard_null_is_inactive() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
-            let guard = protect_with_index_raw(ptr::null_mut(), "test");
+            let guard = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(ptr::null_mut(), "test") };
             assert!(!guard.slot().is_active());
             drop(guard);
             with_protected_objects(|_, roots| assert!(roots.is_empty()));
@@ -1722,12 +1738,15 @@ mod tests {
 
     #[test]
     fn test_protect_guard_drops_against_original_instance() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        let mut left = RInstance::new_for_gc_tests();
+        let mut right = RInstance::new_for_gc_tests();
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
 
         let left_ptr = current_instance_ptr().expect("left should be installed");
-        let guard = protect(0x1 as SEXP);
+        let guard = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            protect(0x1 as SEXP)
+        };
         // As above: inspect through the installed pointer, never a fresh
         // borrow of the local, while the guard is live.
         with_protected_objects_in(left_ptr, |legacy, roots| {
@@ -1756,8 +1775,8 @@ mod tests {
 
     #[test]
     fn test_indexed_guard_drops_against_original_instance() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        let mut left = RInstance::new_for_gc_tests();
+        let mut right = RInstance::new_for_gc_tests();
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
         // Mid-guard inspection goes through the pointer recorded at install
         // time: a fresh `&mut left`/`&left` (or reference derivation from a
@@ -1766,7 +1785,10 @@ mod tests {
         // (aliasing UB under Stacked Borrows).
         let left_ptr = current_instance_ptr().expect("left should be installed");
 
-        let mut guard = protect_with_index_raw(0x1 as SEXP, "test");
+        let mut guard = unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            protect_with_index_raw(0x1 as SEXP, "test")
+        };
         with_protected_objects_in(left_ptr, |legacy, roots| {
             assert!(legacy.is_empty());
             assert_eq!(roots, &[0x1 as SEXP]);
@@ -1775,7 +1797,10 @@ mod tests {
         unsafe {
             replace_current_instance(Some(&mut right));
         }
-        guard.reprotect_raw(0x2 as SEXP);
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            guard.reprotect_raw(0x2 as SEXP)
+        });
         with_protected_objects_in(left_ptr, |legacy, roots| {
             assert!(legacy.is_empty());
             assert_eq!(roots, &[0x2 as SEXP])
@@ -1797,7 +1822,7 @@ mod tests {
 
     #[test]
     fn test_protect_with_index() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             let fake = 0x1 as SEXP;
             let idx = R_ProtectWithIndex(fake);
@@ -1814,7 +1839,7 @@ mod tests {
 
     #[test]
     fn test_protect_with_index_null() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             let idx = R_ProtectWithIndex(ptr::null_mut());
             assert!((idx as usize) == 0);
@@ -1825,7 +1850,7 @@ mod tests {
 
     #[test]
     fn test_reprotect() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             let a = 0x1 as SEXP;
             let b = 0x2 as SEXP;
@@ -1837,7 +1862,7 @@ mod tests {
 
     #[test]
     fn test_reprotect_null_index() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             R_Reprotect(0x1 as SEXP, ptr::null_mut());
         });
@@ -1855,7 +1880,7 @@ mod tests {
 
     #[test]
     fn test_preserve_release() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             let fake = 0x1 as SEXP;
             R_PreserveObject(fake);
@@ -1867,7 +1892,7 @@ mod tests {
 
     #[test]
     fn test_preserve_null() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             R_PreserveObject(ptr::null_mut());
             with_preserved_objects(|objects| assert_eq!(objects.len(), 0));
@@ -1876,7 +1901,7 @@ mod tests {
 
     #[test]
     fn test_release_null() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             R_ReleaseObject(ptr::null_mut());
         });
@@ -1884,8 +1909,8 @@ mod tests {
 
     #[test]
     fn test_preserve_guard_drops_against_original_instance() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        let mut left = RInstance::new_for_gc_tests();
+        let mut right = RInstance::new_for_gc_tests();
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
         // Direct access to the installed instance goes through the pointer
         // recorded at install time: a fresh `&mut left` would retag the
@@ -1894,7 +1919,7 @@ mod tests {
         let left_ptr = current_instance_ptr().expect("left should be installed");
         let raw = unsafe { (*left_ptr).arena.alloc_node(SEXPTYPE::INTSXP) };
         let value =
-            Sexp::from_session_raw(raw, unsafe { &*left_ptr }).expect("left object should wrap");
+            unsafe { Sexp::from_session_raw(raw, left_ptr) }.expect("left object should wrap");
 
         let guard = preserve_sexp(value);
         with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
@@ -1920,15 +1945,15 @@ mod tests {
 
     #[test]
     fn test_slot_generations_differ_across_release_and_reuse() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
-            let first = protect_with_index_raw(0x1 as SEXP, "test");
+            let first = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0x1 as SEXP, "test") };
             let first_slot = first.slot();
             assert!(first_slot.is_active());
             drop(first);
 
             // The same index is handed out again with a fresh generation.
-            let second = protect_with_index_raw(0x2 as SEXP, "test");
+            let second = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0x2 as SEXP, "test") };
             let second_slot = second.slot();
             assert_ne!(first_slot.generation(), second_slot.generation());
 
@@ -1942,7 +1967,7 @@ mod tests {
 
     #[test]
     fn test_rooted_sexp_generation_survives_full_gc() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let value = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
@@ -1961,13 +1986,13 @@ mod tests {
             assert_eq!(root.slot().generation(), generation);
             let readback = root.get().expect("rooted value must resolve after gc");
             assert_eq!(readback.clone().as_raw(), value.clone().as_raw());
-            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw()]));
+            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw(); 2]));
         });
     }
 
     #[test]
     fn test_released_slot_reuse_reports_stale_generation() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let raw = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
@@ -1984,7 +2009,7 @@ mod tests {
             // is handed out again.
             let sexp = root.unroot();
             assert_eq!(sexp.as_raw(), value.clone().as_raw());
-            with_protected_objects(|_, roots| assert!(roots.is_empty()));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
             crate::sexp::instance::with_required_current_instance(|inst| unsafe {
                 for _ in 0..1000 {
                     (*inst).arena.alloc_node(SEXPTYPE::INTSXP);
@@ -2006,7 +2031,7 @@ mod tests {
 
     #[test]
     fn test_arbitrary_drop_order_keeps_surviving_roots_live() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let value = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
@@ -2016,7 +2041,7 @@ mod tests {
             let first = RootedSexp::root(value.clone());
             let second = RootedSexp::root(value.clone());
             let third = RootedSexp::root(value.clone());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 4));
             assert!(!first.is_stale());
             assert!(!second.is_stale());
             assert!(!third.is_stale());
@@ -2028,7 +2053,7 @@ mod tests {
             assert!(third.get().is_some());
             assert!(!second.is_stale());
             assert!(!third.is_stale());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 4));
 
             // The freed index is reusable: a fresh root lands exactly there
             // with a newer generation while the survivors stay healthy.
@@ -2037,20 +2062,20 @@ mod tests {
             assert!(fresh.get().is_some());
             assert!(!second.is_stale());
             assert!(!third.is_stale());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 4));
 
             drop(fresh);
             drop(third);
             drop(second);
             // All slots released: the tail collapse pops every entry, so the
             // live-entry depth is restored exactly.
-            with_protected_objects(|_, roots| assert!(roots.is_empty()));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
         });
     }
 
     #[test]
     fn test_shuffled_roots_survive_vec_drop_order() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let value = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
@@ -2059,7 +2084,7 @@ mod tests {
         session.with_protected(|| {
             let mut roots: Vec<RootedSexp<'_>> =
                 (0..16).map(|_| RootedSexp::root(value.clone())).collect();
-            with_protected_objects(|_, table| assert_eq!(table.len(), 16));
+            with_protected_objects(|_, table| assert_eq!(table.len(), 17));
             // Deterministic bit-reversal permutation: exercises a genuinely
             // shuffled drop order without pulling in an RNG dependency.
             let mut permuted: Vec<RootedSexp<'_>> = Vec::with_capacity(roots.len());
@@ -2075,15 +2100,15 @@ mod tests {
             // Drain the rest in the shuffled order too: every release either
             // reuses, tombstones, or collapses, so the depth is restored.
             while roots.pop().is_some() {}
-            with_protected_objects(|_, table| assert!(table.is_empty()));
+            with_protected_objects(|_, table| assert_eq!(table.len(), 1));
         });
     }
 
     #[test]
     fn test_slot_reuse_rejects_old_token() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
-            let first = protect_with_index_raw(0x1 as SEXP, "test");
+            let first = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0x1 as SEXP, "test") };
             let stale_token = first.slot();
             assert!(stale_token.is_active());
             assert!(!stale_token.is_stale());
@@ -2091,7 +2116,7 @@ mod tests {
             assert!(stale_token.is_stale());
 
             // The freed index is handed out again with a fresh generation.
-            let second = protect_with_index_raw(0x2 as SEXP, "test");
+            let second = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0x2 as SEXP, "test") };
             let live_token = second.slot();
             assert!(live_token.is_active());
             assert_ne!(stale_token.generation(), live_token.generation());
@@ -2112,7 +2137,7 @@ mod tests {
 
     #[test]
     fn test_legacy_unprotect_never_truncates_root_slots() {
-        let mut session = RSession::new();
+        let mut session = RSession::new_for_gc_tests();
         let value = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("session should be active");
@@ -2138,19 +2163,19 @@ mod tests {
             assert!(second.get().is_some());
             with_protected_objects(|legacy, roots| {
                 assert!(legacy.is_empty());
-                assert_eq!(roots.len(), 2);
+                assert_eq!(roots.len(), 3);
             });
 
             drop(second);
             assert!(!first.is_stale());
             drop(first);
-            with_protected_objects(|_, roots| assert!(roots.is_empty()));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
         });
     }
 
     #[test]
     fn test_root_release_never_shifts_legacy_entries() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
             unsafe {
                 protect_raw_pointer(0x1 as SEXP);
@@ -2161,8 +2186,8 @@ mod tests {
 
             // Claim and release roots (in any order) around the live legacy
             // entries: the legacy stack must not shift.
-            let a = protect(0xA1 as SEXP);
-            let b = protect_with_index_raw(0xA2 as SEXP, "test");
+            let a = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0xA1 as SEXP) };
+            let b = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0xA2 as SEXP, "test") };
             drop(a);
             with_protected_objects(|legacy, _| {
                 assert_eq!(legacy, &[0x1 as SEXP, 0x2 as SEXP, 0x3 as SEXP]);
@@ -2187,17 +2212,17 @@ mod tests {
         // instance pointer (never a fresh `&mut`), so guard owner
         // exposures stay valid while the ambient instance switches — the
         // documented owner discipline (see `with_guard_owner`).
-        let left = RSession::new();
-        let right = RSession::new();
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
 
         let left_root = left.with_active(|| RootedSexp::root(left.global_env().unwrap()));
-        let left_guard = left.with_active(|| protect(0x10 as SEXP));
-        let right_guard = right.with_active(|| protect(0x20 as SEXP));
+        let left_guard = left.with_active(|| unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x10 as SEXP) });
+        let right_guard = right.with_active(|| unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x20 as SEXP) });
 
         left.with_active(|| {
             with_protected_objects(|legacy, roots| {
                 assert!(legacy.is_empty());
-                assert_eq!(roots.len(), 2); // left_root + left_guard
+                assert_eq!(roots.len(), 3); // handle lease + explicit root + left_guard
             })
         });
         right.with_active(|| {
@@ -2220,7 +2245,7 @@ mod tests {
     }
     #[test]
     fn test_update_protect_stack_refs_covers_both_storages() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             protect_raw_pointer(0x1 as SEXP);
             let _root = protect_with_index_raw(0x2 as SEXP, "test");
@@ -2241,7 +2266,7 @@ mod tests {
 
     #[test]
     fn test_update_preserve_stack_refs() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             R_PreserveObject(0x1 as SEXP);
             update_preserve_stack_refs(|ptr| 0x200 as SEXP);
@@ -2254,7 +2279,7 @@ mod tests {
 
     #[test]
     fn test_with_preserved_objects() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
             R_PreserveObject(0x1 as SEXP);
             R_PreserveObject(0x2 as SEXP);
@@ -2267,12 +2292,12 @@ mod tests {
     }
     #[test]
     fn safe_roots_use_value_owner_not_ambient_session() {
-        let left = RSession::new();
-        let right = RSession::new();
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
         let value = left.global_env().unwrap();
         let mut root = protect_sexp_with_index(value.clone());
         left.with_active(|| {
-            with_protected_objects(|_, roots| assert_eq!(roots, &[value.as_raw()]))
+            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw(); 2]))
         });
         right.with_active(|| with_protected_objects(|_, roots| assert!(roots.is_empty())));
         assert_eq!(
@@ -2283,7 +2308,7 @@ mod tests {
 
     #[test]
     fn stale_reprotect_cannot_replace_reused_slot() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         let mut old = protect_sexp_with_index(session.global_env().unwrap());
         release_protect_slot(old.slot());
         let live = protect_sexp_with_index(session.base_env().unwrap());
@@ -2292,8 +2317,15 @@ mod tests {
             Err(ProtectError::StaleSlot)
         );
         reprotect_slot(old.slot(), session.global_env().unwrap().as_raw());
+        let base = session.base_env().unwrap().as_raw();
         with_protected_objects(|_, roots| {
-            assert_eq!(roots, &[session.base_env().unwrap().as_raw()])
+            assert_eq!(roots
+                    .iter()
+                    .copied()
+                    .filter(|p| !p.is_null())
+                    .collect::<Vec<_>>(),
+                vec![base]
+            );
         });
         drop(old);
         assert!(!live.slot().is_stale());
@@ -2301,7 +2333,7 @@ mod tests {
 
     #[test]
     fn public_scope_does_not_revoke_returned_root() {
-        let session = RSession::new();
+        let session = RSession::new_for_gc_tests();
         let root = session.with_protected(|| RootedSexp::root(session.global_env().unwrap()));
         session.gc();
         assert!(!root.is_stale());

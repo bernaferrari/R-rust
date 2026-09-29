@@ -16,14 +16,16 @@ use super::memory::{self};
 // FFI-compatible constructor functions
 // ---------------------------------------------------------------------------
 
-fn require_allocation(value: SEXP) -> SEXP {
+unsafe fn require_allocation(value: SEXP) -> SEXP {
     if !value.is_null() {
         return value;
     }
-    let bounded = memory::with_arena(|arena| {
+    let bounded = unsafe {
+        memory::with_arena(|arena| {
         let budget = arena.budget();
         budget.max_bytes > 0 || budget.max_nodes > 0
-    });
+    })
+    };
     if value.is_null() && bounded {
         std::panic::panic_any(super::context::RError {
             message: "R allocation failed: memory or node budget exceeded".into(),
@@ -33,9 +35,11 @@ fn require_allocation(value: SEXP) -> SEXP {
 }
 
 unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
-    require_allocation(memory::with_arena(|arena| {
+    unsafe {
+        require_allocation(memory::with_arena(|arena| {
         arena.alloc_vector(sexptype, length)
     }))
+}
 }
 
 unsafe fn alloc_vector_inner(sexptype: SEXPTYPE, length: c_int) -> SEXP {
@@ -51,9 +55,11 @@ pub unsafe fn Rf_allocVector<T: Into<SEXPTYPE>>(sexptype: T, length: c_int) -> S
 }
 
 pub unsafe fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP {
-    require_allocation(memory::with_arena(|arena| {
+    unsafe {
+        require_allocation(memory::with_arena(|arena| {
         arena.cons(car, cdr, ptr::null_mut())
     }))
+}
 }
 
 /// Create a tagged cons cell (LANGSXP).
@@ -111,11 +117,11 @@ pub unsafe fn Rf_lang5(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEX
 }
 /// Allocate a pairlist chain of n NILSXP elements.
 pub unsafe fn Rf_allocList(n: c_int) -> SEXP {
-    let value = memory::with_arena(|arena| arena.alloc_list_chain(n));
+    let value = unsafe { memory::with_arena(|arena| arena.alloc_list_chain(n)) };
     if n == 0 {
         value
     } else {
-        require_allocation(value)
+        unsafe { require_allocation(value) }
     }
 }
 

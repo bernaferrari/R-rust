@@ -74,9 +74,12 @@ impl<'a> Sexp<'a> {
                 }
             }
             SEXPTYPE::STRSXP => self.try_string_values().map(SexpValue::StringVector),
-            SEXPTYPE::RAWSXP => self
+            SEXPTYPE::RAWSXP => unsafe {
+                /* SAFETY: read is copied without R reentry while its handle remains live. */
+                self
                 .try_as_raw_slice()
-                .map(|values| SexpValue::RawVector(values.to_vec())),
+            }
+            .map(|values| SexpValue::RawVector(values.to_vec())),
             SEXPTYPE::CPLXSXP => self.try_complex_values().map(SexpValue::ComplexVector),
             SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
                 let mut values = Vec::with_capacity(len as usize);
@@ -150,7 +153,7 @@ impl<'a> Sexp<'a> {
             return Ok(None);
         }
 
-        Ok(Some(tag.try_printname()?.try_as_str()?.to_string()))
+        Ok(Some(tag.try_printname()?.try_as_string()?))
     }
 
     // Ownership: element accessors consume the handle, so each element read
@@ -201,11 +204,7 @@ impl<'a> Sexp<'a> {
     fn try_string_values(self) -> SexpResult<Vec<Option<String>>> {
         let len = self.clone().len();
         (0..len)
-            .map(|i| {
-                self.clone()
-                    .try_string_text_elt(i)
-                    .map(|value| value.map(str::to_string))
-            })
+            .map(|i| self.try_string_value_elt(i))
             .collect()
     }
 
