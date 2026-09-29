@@ -2237,21 +2237,17 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
 
         let mn0 = min_np as usize;
         let mn1 = (if n > p { n } else { p }) as usize;
-        let rwork_len = if unsafe { *ju } == b'N' {
-            mn0.saturating_mul(7)
-        } else {
-            mn0.saturating_mul((5 * mn1 + 7).max(2 * mn1 + 2 * mn0 + 1))
-        };
-        let Some(scratch_bytes) = super::workspace_size::complex_svd_scratch_bytes(
+        let Some(scratch) = super::workspace_size::complex_svd_scratch(
             len,
-            min_np as usize,
+            unsafe { *ju } == b'N',
+            mn0,
+            mn1,
             std::mem::size_of::<LapRcomplex>(),
         ) else {
             crate::sexp::context::r_error("matrix dimensions are too large");
         };
-        let iwork_len = rwork_len.saturating_mul(8);
         let scratch_reservation = with_current_instance(|instance| {
-            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch_bytes))
+            with_arena_in(instance, |arena| arena.try_reserve_transient(scratch.bytes))
         });
         if matches!(scratch_reservation, Some(None)) {
             crate::sexp::context::r_error(
@@ -2264,8 +2260,8 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
         if len != 0 {
             ptr::copy_nonoverlapping(COMPLEX(x) as *const LapRcomplex, x_copy.as_mut_ptr(), len);
         }
-        let mut rwork = vec![0.0f64; rwork_len];
-        let mut iwork = vec![0 as c_int; iwork_len];
+        let mut rwork = vec![0.0f64; scratch.rwork_len];
+        let mut iwork = vec![0 as c_int; scratch.iwork_len];
 
         let mut tmp = LapRcomplex::default();
         let mut info: c_int = 0;
