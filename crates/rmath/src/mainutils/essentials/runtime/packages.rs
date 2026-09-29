@@ -397,11 +397,106 @@ pub unsafe fn do_load_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
+unsafe fn namespace_version_ok(package: &str, check: SEXP) -> bool {
+    unsafe {
+        let op = list_named_string(check, "op").unwrap_or_else(|| "==".to_string());
+        let want = list_named_version(check, "version");
+        let have = installed_package_version(package);
+        version_cmp(&have, &want, &op)
+    }
+}
+
+unsafe fn list_named_string(list: SEXP, name: &str) -> Option<String> {
+    unsafe {
+        let value = list_named(list, name)?;
+        Some(elt_to_string(value, 0))
+    }
+}
+
+unsafe fn list_named_version(list: SEXP, name: &str) -> Vec<i32> {
+    unsafe {
+        let Some(value) = list_named(list, name) else {
+            return vec![0];
+        };
+        if TYPEOF(value) == SEXPTYPE::VECSXP && XLENGTH(value) > 0 {
+            let parts = VECTOR_ELT(value, 0);
+            if TYPEOF(parts) == SEXPTYPE::INTSXP {
+                return (0..XLENGTH(parts)).map(|i| INTEGER_ELT(parts, i as i32)).collect();
+            }
+        }
+        parse_version(&elt_to_string(value, 0))
+    }
+}
+
+unsafe fn list_named(list: SEXP, name: &str) -> Option<SEXP> {
+    unsafe {
+        if TYPEOF(list) != SEXPTYPE::VECSXP {
+            return None;
+        }
+        let names = crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+        for i in 0..XLENGTH(list) {
+            if TYPEOF(names) == SEXPTYPE::STRSXP && elt_to_string(names, i) == name {
+                return Some(VECTOR_ELT(list, i));
+            }
+        }
+        None
+    }
+}
+
+fn installed_package_version(_package: &str) -> Vec<i32> {
+    // Matches do_getRversion / do_getNamespaceVersion: 4.4.1.
+    vec![4, 4, 1]
+}
+
+fn parse_version(text: &str) -> Vec<i32> {
+    text.split(|c: char| !c.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .map(|part| part.parse().unwrap_or(0))
+        .collect()
+}
+
+fn version_cmp(have: &[i32], want: &[i32], op: &str) -> bool {
+    let n = have.len().max(want.len());
+    let mut order = std::cmp::Ordering::Equal;
+    for i in 0..n {
+        let a = have.get(i).copied().unwrap_or(0);
+        let b = want.get(i).copied().unwrap_or(0);
+        order = a.cmp(&b);
+        if order != std::cmp::Ordering::Equal {
+            break;
+        }
+    }
+    match op {
+        ">" => order.is_gt(),
+        ">=" => order.is_ge(),
+        "<" => order.is_lt(),
+        "<=" => order.is_le(),
+        "!=" => order.is_ne(),
+        _ => order.is_eq(),
+    }
+}
+
 /// R's `requireNamespace(package, quietly = FALSE)` — namespace availability probe.
 pub unsafe fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package_arg = arg_by_name_or_position(args, &["package"], 0);
         let package = elt_to_string(package_arg, 0);
+        let quietly = arg_by_name_or_position(args, &["quietly"], 1);
+        let is_quiet = !quietly.is_null()
+            && quietly != R_NilValue()
+            && crate::sexp::accessors::LOGICAL_ELT(quietly, 0) == TRUE;
+        let check = arg_by_name_or_position(args, &["versionCheck"], 2);
+        if !check.is_null() && check != R_NilValue() && !namespace_version_ok(&package, check) {
+            if !is_quiet {
+                let msg = std::ffi::CString::new(format!(
+                    "package {package} does not satisfy the version requirement"
+                ))
+                .unwrap_or_default();
+                crate::mainutils::errors::warningcall(_call, msg.as_ptr());
+            }
+            return Rf_ScalarLogical(FALSE);
+        }
+
         Rf_ScalarLogical(if load_package_namespace_by_name(&package).is_ok() {
             TRUE
         } else {
