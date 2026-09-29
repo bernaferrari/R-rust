@@ -2215,11 +2215,35 @@ unsafe fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
 }
 
 /// stock complex_math2 `logbase`: `Clog(x) / Clog(base)` element-wise.
-unsafe fn complex_log_with_base(sx: SEXP, sbase: SEXP) -> SEXP {
+pub unsafe fn complex_log_with_base(sx: SEXP, sbase: SEXP) -> SEXP {
     unsafe {
-        let lx = super::complex_arith::complex_unary_vec(sx, super::complex_arith::complex_log);
+        let as_cplx = |s: SEXP| -> SEXP {
+            if TYPEOF(s) == SEXPTYPE::CPLXSXP {
+                return s;
+            }
+            let n = XLENGTH(s);
+            let out = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+            let dst = crate::sexp::accessors::COMPLEX(out);
+            for i in 0..n {
+                let r = if TYPEOF(s) == SEXPTYPE::REALSXP {
+                    *crate::sexp::accessors::REAL(s).add(i as usize)
+                } else if TYPEOF(s) == SEXPTYPE::INTSXP || TYPEOF(s) == SEXPTYPE::LGLSXP {
+                    let iv = *crate::sexp::accessors::INTEGER(s).add(i as usize);
+                    if iv == crate::sexp::ffi::NA_INTEGER { crate::sexp::ffi::NA_REAL } else { iv as f64 }
+                } else {
+                    crate::sexp::ffi::NA_REAL
+                };
+                *dst.add(i as usize) = Rcomplex { r, i: 0.0 };
+            }
+            out
+        };
+        let cx = as_cplx(sx);
+        let _cx = protect(cx);
+        let cb = as_cplx(sbase);
+        let _cb = protect(cb);
+        let lx = super::complex_arith::complex_unary_vec(cx, super::complex_arith::complex_log);
         let _lx_guard = protect(lx);
-        let lb = super::complex_arith::complex_unary_vec(sbase, super::complex_arith::complex_log);
+        let lb = super::complex_arith::complex_unary_vec(cb, super::complex_arith::complex_log);
         let _lb_guard = protect(lb);
         super::complex_arith::complex_binary("/", lx, lb)
     }
@@ -2336,20 +2360,16 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     let _ = result_mut.freeze();
                     return out;
                 }
-                "log10" => super::complex_arith::complex_unary_vec(x, |c| {
-                    let l = super::complex_arith::complex_log(c);
-                    Rcomplex {
-                        r: l.r * std::f64::consts::LOG10_E,
-                        i: l.i * std::f64::consts::LOG10_E,
-                    }
-                }),
-                "log2" => super::complex_arith::complex_unary_vec(x, |c| {
-                    let l = super::complex_arith::complex_log(c);
-                    Rcomplex {
-                        r: l.r * std::f64::consts::LOG2_E,
-                        i: l.i * std::f64::consts::LOG2_E,
-                    }
-                }),
+                "log10" => {
+                    let base = crate::sexp::constructors::Rf_ScalarReal(10.0);
+                    let _g = protect(base);
+                    complex_log_with_base(x, base)
+                }
+                "log2" => {
+                    let base = crate::sexp::constructors::Rf_ScalarReal(2.0);
+                    let _g = protect(base);
+                    complex_log_with_base(x, base)
+                }
                 _ => arithmetic_error("unimplemented complex function"),
             };
         }

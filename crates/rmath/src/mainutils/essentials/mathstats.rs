@@ -54,6 +54,15 @@ pub unsafe fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
         let n = XLENGTH(x_arg);
         let t = TYPEOF(x_arg);
+        if t == SEXPTYPE::CPLXSXP {
+            let base_sexp = if base_arg.is_null() || base_arg == R_NilValue() {
+                crate::sexp::constructors::Rf_ScalarReal(2.0)
+            } else {
+                base_arg
+            };
+            let _g = protect(base_sexp);
+            return crate::eval::arithmetic::complex_log_with_base(x_arg, base_sexp);
+        }
         if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
                 call,
@@ -14928,6 +14937,11 @@ pub unsafe fn do_beta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
             return R_NilValue();
         }
+        if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
+            std::panic::panic_any(RError {
+                message: "unimplemented complex function".to_string(),
+            });
+        }
         apply_binary_scalar_fn(call, a, b, |x, y| {
             crate::special::lbeta::lbeta(x, y).exp()
         })
@@ -14941,6 +14955,11 @@ pub unsafe fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let b = CAR(CDR(args));
         if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
             return R_NilValue();
+        }
+        if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
+            std::panic::panic_any(RError {
+                message: "unimplemented complex function".to_string(),
+            });
         }
         apply_binary_scalar_fn(call, a, b, crate::special::lbeta::lbeta)
     }
