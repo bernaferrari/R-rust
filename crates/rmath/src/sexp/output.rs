@@ -1975,7 +1975,8 @@ fn with_summary_default_digits<T>(f: impl FnOnce() -> T) -> T {
 
 fn format_named_summary_reals(x: Sexp<'_>, names: &[String]) -> Option<Vec<String>> {
     unsafe {
-        let slice = x.as_real_slice()?;
+        if x.typeof_() != SEXPTYPE::REALSXP { return None; }
+        let slice: Vec<_> = x.iter_real().collect();
         if slice.len() != names.len() {
             return None;
         }
@@ -2141,11 +2142,11 @@ fn data_frame_nrows(x: Sexp<'_>) -> R_xlen_t {
         if let Some(row_names) = Sexp::from_raw(row_names)
             && row_names.clone().typeof_() == SEXPTYPE::INTSXP
             && row_names.clone().len() == 2
-            && let Some(values) = row_names.as_integer_slice()
-            && values[0] == NA_INTEGER
-            && values[1] < 0
+            && row_names.integer_elt(0) == Some(NA_INTEGER)
+            && let Some(last) = row_names.integer_elt(1)
+            && last < 0
         {
-            return (-values[1]) as R_xlen_t;
+            return -(last as R_xlen_t);
         }
     }
     x.iter_vector().map(|col| col.len()).max().unwrap_or(0)

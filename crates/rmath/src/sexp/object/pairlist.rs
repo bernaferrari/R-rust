@@ -65,7 +65,7 @@ impl<'a> Iterator for PairlistIter<'a> {
 pub(crate) struct PairlistBuilder<'a> {
     head: Option<Sexp<'a>>,
     tail: SEXP,
-    owner: *mut crate::sexp::instance::RInstance,
+    owner: crate::sexp::owner::OwnerToken<'a>,
 }
 
 impl<'a> PairlistBuilder<'a> {
@@ -75,10 +75,16 @@ impl<'a> PairlistBuilder<'a> {
     /// The active owner must remain live for `'a`. Each append must run with
     /// that owner active, with no outstanding Rust payload borrow of a cell.
     pub(crate) unsafe fn new() -> Self {
+        let pointer = crate::sexp::instance::with_required_current_instance(|owner| owner);
+        // SAFETY: caller supplies the owner lifetime and excludes arena/payload loans.
+        Self::new_in(unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) })
+    }
+
+    pub(crate) fn new_in(owner: crate::sexp::owner::OwnerToken<'a>) -> Self {
         Self {
             head: None,
             tail: ptr::null_mut(),
-            owner: crate::sexp::instance::with_required_current_instance(|owner| owner),
+            owner,
         }
     }
 
@@ -92,26 +98,24 @@ impl<'a> PairlistBuilder<'a> {
 
     /// Append a cell. The builder's head lease retains every linked cell.
     /// Legacy callers may additionally protect the returned raw cell.
-    pub(crate) fn push_cell(
-        &mut self,
-        value: Sexp<'a>,
-        tag: Option<Sexp<'a>>) -> SexpResult<SEXP> {
+    pub(crate) fn push_cell(&mut self, value: Sexp<'a>, tag: Option<Sexp<'a>>) -> SexpResult<SEXP> {
         let active = crate::sexp::instance::with_current_instance(|owner| owner);
-        if active != Some(self.owner) {
+        if active != Some(self.owner.as_ptr()) {
             return Err(SexpError::RootUnavailable);
         }
         // SAFETY: new's owner contract holds. Membership validation precedes
         // linking, and these independent leases retain inputs during allocation.
-        let value = unsafe { Sexp::from_session_raw(value.clone().as_raw(), self.owner) }?;
-        let tag = tag.map(|tag| unsafe { Sexp::from_session_raw(tag.clone().as_raw(), self.owner) })
+        let value = self.owner.sexp(value.clone().as_raw())?;
+        let tag = tag
+            .map(|tag| self.owner.sexp(tag.clone().as_raw()))
             .transpose()?;
         let cell = unsafe { Rf_cons(value.clone().as_raw(), R_NilValue()) };
-            if cell.is_null() {
-                return Err(SexpError::AllocationFailed {
-                    object: "pairlist cell",
-                });
-            }
-        let cell_handle = unsafe { Sexp::from_session_raw(cell, self.owner) }?;
+        if cell.is_null() {
+            return Err(SexpError::AllocationFailed {
+                object: "pairlist cell",
+            });
+        }
+        let cell_handle = self.owner.sexp(cell)?;
         unsafe {
             if let Some(tag) = tag {
                 SETTAG(cell, tag.clone().as_raw());

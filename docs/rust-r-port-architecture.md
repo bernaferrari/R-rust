@@ -114,10 +114,18 @@ accepts checked mutable owners and rejects unknown raw handles and immutable
 singletons. Its setters check type, bounds, and child ownership. Read-handle
 clones may coexist because safe reads never lend Rust payload references.
 
-Borrowed slices, strings and `SexpView` require unsafe access. They borrow the
-handle itself, and their caller must exclude payload mutation and R execution
-until the reference dies. `SexpMut::from_owned` remains unsafe for legacy raw
+Borrowed slices and strings are private to the object implementation. Its
+unsafe loans borrow the handle itself and exclude payload mutation and R
+execution until the reference dies. Runtime consumers use copied elements,
+owned snapshots, or copies into caller-owned buffers. The former session view
+callback was removed. `SexpMut::from_owned` remains unsafe for legacy raw
 handles. Moving or cloning a handle does not prove uniqueness.
+
+`OwnerToken<'session>` binds checked wrapping, incremental pairlist builders,
+and collection to a live session without creating a whole-instance Rust
+reference. Collection checks that this owner is active before dispatching
+callbacks. Raw owner-pointer collection entrypoints are unsafe; translated
+core bridges still carry explicit lifetime, rooting and reentry obligations.
 
 Unscoped raw wrappers and evaluator entrypoints are unsafe. Functions retaining
 the historical `_safe` suffix may return typed errors while still requiring an

@@ -30,6 +30,7 @@ pub(crate) mod memory_ext;
 pub(crate) mod numeric;
 pub mod object;
 pub mod output;
+pub(crate) mod owner;
 pub mod protect;
 pub mod session;
 pub mod symbol;
@@ -60,7 +61,7 @@ pub use instance::SessionCapabilities;
 #[allow(unused_imports)]
 pub use object::{
     PairlistIter, Sexp, SexpAttribute, SexpComplex, SexpError, SexpMetadata, SexpMut, SexpRef,
-    SexpResult, SexpValue, SexpView,
+    SexpResult, SexpValue,
 };
 #[allow(unused_imports)]
 pub use session::{CancellationToken, RSession};

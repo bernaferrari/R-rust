@@ -1,4 +1,6 @@
-use super::{Sexp, SexpResult, SexpView};
+use super::Sexp;
+#[cfg(test)]
+use super::{SexpResult, SexpView};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
@@ -32,7 +34,8 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn view(&self) -> SexpResult<SexpView<'_>> {
+    #[cfg(test)]
+    pub(super) unsafe fn view(&self) -> SexpResult<SexpView<'_>> {
         if self.clone().is_nil() {
             return Ok(SexpView::Nil);
         }

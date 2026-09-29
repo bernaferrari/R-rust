@@ -271,7 +271,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn as_bytes(&self) -> Option<&'_ [u8]> {
+    pub(super) unsafe fn as_bytes(&self) -> Option<&'_ [u8]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_as_bytes()
@@ -283,7 +283,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn try_as_bytes(&self) -> SexpResult<&'_ [u8]> {
+    pub(super) unsafe fn try_as_bytes(&self) -> SexpResult<&'_ [u8]> {
         self.expect_type(SEXPTYPE::CHARSXP, "character scalar")?;
         let len = unsafe { (*self.ptr).data.charsxp_truelen } as usize;
         let data = unsafe { (*self.ptr).gengc_next_node as *const u8 };
@@ -302,7 +302,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn as_str(&self) -> Option<&'_ str> {
+    pub(super) unsafe fn as_str(&self) -> Option<&'_ str> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_as_str()
@@ -314,7 +314,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn try_as_str(&self) -> SexpResult<&'_ str> {
+    pub(super) unsafe fn try_as_str(&self) -> SexpResult<&'_ str> {
         std::str::from_utf8(unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_as_bytes()
@@ -370,7 +370,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn as_complex_slice(&self) -> Option<&'_ [Rcomplex]> {
+    pub(super) unsafe fn as_complex_slice(&self) -> Option<&'_ [Rcomplex]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_as_complex_slice()
@@ -382,7 +382,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn try_as_complex_slice(&self) -> SexpResult<&'_ [Rcomplex]> {
+    pub(super) unsafe fn try_as_complex_slice(&self) -> SexpResult<&'_ [Rcomplex]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_typed_slice::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")

@@ -6,26 +6,44 @@ pub enum SexpError {
     /// A raw pointer was null.
     NullPointer,
     /// A raw pointer was visibly not aligned for `SexprecCore`.
-    MisalignedPointer { address: usize },
+    MisalignedPointer {
+        address: usize,
+    },
     /// A checked owner does not contain this pointer.
-    UnownedPointer { address: usize },
+    UnownedPointer {
+        address: usize,
+    },
     /// The owner could not install a live root lease.
     RootUnavailable,
     /// Safe mutation requires a checked, mutable owner.
     UncheckedMutation,
+    OwnerNotActive,
+    LengthMismatch {
+        expected: usize,
+        actual: usize,
+    },
     /// The SEXP had the wrong R type for the requested operation.
     TypeMismatch {
         expected: &'static str,
         actual: SEXPTYPE,
     },
     /// An element index was outside the vector length.
-    OutOfBounds { index: R_xlen_t, len: R_xlen_t },
+    OutOfBounds {
+        index: R_xlen_t,
+        len: R_xlen_t,
+    },
     /// A requested pairlist argument was not present.
-    MissingArgument { index: usize },
+    MissingArgument {
+        index: usize,
+    },
     /// Allocation returned a null pointer while building an object.
-    AllocationFailed { object: &'static str },
+    AllocationFailed {
+        object: &'static str,
+    },
     /// A vector-like object had no data buffer.
-    MissingData { sexptype: SEXPTYPE },
+    MissingData {
+        sexptype: SEXPTYPE,
+    },
     /// A string value was not valid UTF-8.
     InvalidUtf8,
     /// Recursive host projection exceeded its fixed nesting bound.
@@ -43,6 +61,10 @@ impl std::fmt::Display for SexpError {
                 write!(f, "SEXP pointer {address:#x} does not belong to its owner")
             }
             SexpError::RootUnavailable => write!(f, "SEXP owner could not retain its root"),
+            SexpError::OwnerNotActive => write!(f, "activate the owning session before collection"),
+            SexpError::LengthMismatch { expected, actual } => {
+                write!(f, "expected output length {expected}, got {actual}")
+            }
             SexpError::UncheckedMutation => {
                 write!(f, "safe mutation requires a checked mutable owner")
             }

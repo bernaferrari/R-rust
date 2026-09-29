@@ -974,7 +974,7 @@ fn update_all_references_in(instance: *mut instance::RInstance, old_to_new: &Has
 ///
 /// Returns (promoted_count, freed_count).
 pub fn minor_gc() -> (usize, usize) {
-    instance::with_required_current_instance(minor_gc_in)
+    instance::with_required_current_instance(|owner| unsafe { minor_gc_in(owner) })
 }
 
 fn run_gc_cycle_in<F>(instance: *mut instance::RInstance, collect: F) -> (usize, usize)
@@ -1055,7 +1055,13 @@ fn clear_persistent_node_marks_in(instance: *mut instance::RInstance) {
     }
 }
 
-pub(crate) fn minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
+/// Collect in an explicitly selected owner.
+///
+/// # Safety
+/// `instance` is the original writable pointer to a live, active RInstance.
+/// No whole-instance borrow or Rust payload loan may overlap collection or
+/// callbacks. Arena lends are detected and defer the collection request.
+pub(crate) unsafe fn minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
     unsafe { run_gc_cycle_in(instance, do_minor_gc_in) }
 }
 
@@ -1412,10 +1418,16 @@ fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
 ///
 /// Returns (promoted_count, freed_count).
 pub fn full_gc() -> (usize, usize) {
-    instance::with_required_current_instance(full_gc_in)
+    instance::with_required_current_instance(|owner| unsafe { full_gc_in(owner) })
 }
 
-pub(crate) fn full_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
+/// Collect in an explicitly selected owner.
+///
+/// # Safety
+/// `instance` is the original writable pointer to a live, active RInstance.
+/// No whole-instance borrow or Rust payload loan may overlap collection or
+/// callbacks. Arena lends are detected and defer the collection request.
+pub(crate) unsafe fn full_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
     unsafe { run_gc_cycle_in(instance, do_full_mark_sweep_in) }
 }
 

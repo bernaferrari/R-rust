@@ -672,6 +672,14 @@ impl RSession {
         f(self.instance)
     }
 
+    /// Retain this session lifetime without borrowing the RInstance itself.
+    pub(crate) fn owner_token(&self) -> Option<super::owner::OwnerToken<'_>> {
+        if !self.active { return None; }
+        // SAFETY: self retains the original allocation; the return lifetime
+        // prevents closing or moving this session while the token is used.
+        Some(unsafe { super::owner::OwnerToken::from_raw(self.instance) })
+    }
+
     /// Check if this session is active.
     ///
     /// Returns `false` after [`RSession::close`] has been called.
@@ -734,34 +742,10 @@ impl RSession {
         } else if self.inst().owns_sexp(ptr) {
             // SAFETY: self owns the original pointer and bounds the returned
             // handle's lifetime. No instance borrow survives root installation.
-            unsafe { Sexp::from_session_raw(ptr, self.instance) }.ok()
+            self.owner_token()?.sexp(ptr).ok()
         } else {
             None
         }
-    }
-
-    /// Inspect payloads while exclusively borrowing this session.
-    ///
-    /// The callback cannot return borrowed payloads or run another method on
-    /// this session. It may return scalar copies or owned Rust values.
-    ///
-    /// # Safety
-    /// The callback must not reenter R through an ambient internal entrypoint
-    /// or mutate any borrowed payload through a raw alias.
-    pub(crate) unsafe fn with_sexp_view<T>(
-        &mut self,
-        ptr: SEXP,
-        f: impl for<'view> FnOnce(super::object::SexpView<'view>) -> T,
-    ) -> super::object::SexpResult<T> {
-        let value = self
-            .sexp(ptr)
-            .ok_or(super::object::SexpError::UnownedPointer {
-                address: ptr as usize,
-            })?;
-        // SAFETY: value retains its root; caller excludes ambient mutation and
-        // R reentry for the callback, in addition to the exclusive session borrow.
-        let view = unsafe { value.view()? };
-        Ok(f(view))
     }
 
     fn owned_sexp<'session>(
@@ -1538,8 +1522,10 @@ impl RSession {
     ///
     /// Performs a minor GC on the young generation.
     pub fn gc(&self) {
-        self.with_active_in(|instance| {
-            super::gengc::minor_gc_in(instance);
+        self.with_active_in(|_| {
+            if let Some(owner) = self.owner_token() {
+                owner.minor_gc().expect("owning session is active");
+            }
         });
     }
 

@@ -3,7 +3,7 @@
 //!
 //! This module is the safe, Rust-facing layer over raw R `SEXP` pointers. It
 //! keeps R's object categories recognizable while adding lifetime tracking,
-//! checked accessors, type-directed borrowed views, owned projections, and
+//! checked accessors, copied elements, owned projections, and
 //! pairlist iteration.
 //!
 //! # Design
@@ -14,8 +14,8 @@
 //! [`RSession`](crate::sexp::session::RSession), so the returned wrapper is
 //! tied to the arena or session that owns the object. All element access is
 //! bounds-checked. Legacy `Option<T>` accessors are kept for existing ported
-//! C-shaped code, while new Rust code should prefer the `try_*` methods and
-//! [`SexpView`] so type mistakes and bounds errors stay explicit.
+//! C-shaped code, while new Rust code should prefer the `try_*` methods so
+//! type mistakes and bounds errors stay explicit.
 //!
 //! # Type Predicates
 //!
@@ -27,9 +27,9 @@
 //!
 //! Use the `*_elt` methods (e.g., [`integer_elt`](Sexp::integer_elt),
 //! [`real_elt`](Sexp::real_elt)) for bounds-checked access to individual
-//! elements. For bulk access, use the slice methods
-//! (e.g., [`as_integer_slice`](Sexp::as_integer_slice)) or iterators
-//! (e.g., [`iter_integer`](Sexp::iter_integer)).
+//! elements. For bulk access, use copied iterators (e.g.,
+//! [`iter_integer`](Sexp::iter_integer)), [`copy_integer_into`](Sexp::copy_integer_into),
+//! or [`to_owned_value`](Sexp::to_owned_value). Payload loans are private to this module.
 
 mod error;
 mod kind;
@@ -42,6 +42,7 @@ mod safety_tests;
 mod slots;
 mod value;
 mod vector;
+#[cfg(test)]
 mod view;
 
 pub use error::{SexpError, SexpResult};
@@ -50,7 +51,8 @@ pub use mut_ref::SexpMut;
 pub(crate) use pairlist::PairlistBuilder;
 pub use pairlist::PairlistIter;
 pub use value::{SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
-pub use view::SexpView;
+#[cfg(test)]
+use view::SexpView;
 
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use super::globals::R_NilValue;
@@ -171,8 +173,8 @@ impl Clone for Sexp<'_> {
 /// Alias for [`Sexp`]: a shared, reborrowable read handle with no mutation
 /// surface. Reads (`typeof_`, `len`, predicates, `*_elt` / `try_*_elt`
 /// element reads and child-handle accessors) copy values safely. Payload
-/// views require an unsafe loan; in-place mutation goes through
-/// [`SexpMut`](crate::sexp::object::SexpMut) (`from_owned` -> `set_*` ->
+/// loans stay inside the object implementation; in-place mutation goes through
+/// [`SexpMut`](crate::sexp::object::SexpMut) (`try_from_checked` -> `try_set_*` ->
 /// `freeze()`).
 pub type SexpRef<'a> = Sexp<'a>;
 
@@ -272,17 +274,13 @@ impl<'a> Sexp<'a> {
         Ok(sexp)
     }
 
-    /// Validate and root a pointer against session-owned storage.
-    ///
-    /// # Safety
-    /// `instance` is the original live owner pointer, with write provenance
-    /// for root-table bookkeeping, and its allocation must outlive `'session`.
-    /// No whole-instance borrow may remain live during root installation.
+    /// Validate and root a pointer against a lifetime-bound owner capability.
     #[inline]
-    pub(crate) unsafe fn from_session_raw<'session>(
+    pub(crate) fn from_owner_raw<'session>(
         ptr: SEXP,
-        instance: *mut crate::sexp::instance::RInstance,
+        owner: crate::sexp::owner::OwnerToken<'session>,
     ) -> SexpResult<Sexp<'session>> {
+        let instance = owner.as_ptr();
         if crate::sexp::session::is_immutable_singleton(ptr) {
             return Ok(unsafe { Sexp::from_static_raw_unchecked(ptr) });
         }
@@ -573,7 +571,7 @@ impl<'a> Sexp<'a> {
         } else if let Some(owner) = self.session_owner_ptr {
             // SAFETY: the parent handle retains this session's lifetime.
             // Children receive independent leases before the parent can drop.
-            unsafe { Self::from_session_raw(ptr, owner.as_ptr()) }
+            unsafe { crate::sexp::owner::OwnerToken::from_raw(owner.as_ptr()) }.sexp(ptr)
         } else {
             // SAFETY: the parent factory established graph liveness for this lifetime.
             let mut child = unsafe {

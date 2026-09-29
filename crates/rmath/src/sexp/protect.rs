@@ -1919,7 +1919,7 @@ mod tests {
         let left_ptr = current_instance_ptr().expect("left should be installed");
         let raw = unsafe { (*left_ptr).arena.alloc_node(SEXPTYPE::INTSXP) };
         let value =
-            unsafe { Sexp::from_session_raw(raw, left_ptr) }.expect("left object should wrap");
+            unsafe { crate::sexp::owner::OwnerToken::from_raw(left_ptr) }.sexp(raw).expect("left object should wrap");
 
         let guard = preserve_sexp(value);
         with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {

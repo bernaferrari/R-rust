@@ -2085,7 +2085,7 @@ unsafe fn charsxp_to_string(charsxp: SEXP) -> Option<String> {
         if charsxp.is_null() || charsxp == R_NaString() {
             return None;
         }
-        Sexp::from_raw(charsxp).and_then(|s| s.try_as_str().ok().map(str::to_string))
+        Sexp::from_raw(charsxp).and_then(|s| s.try_as_string().ok())
     }
 }
 

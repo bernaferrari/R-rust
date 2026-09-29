@@ -1022,16 +1022,8 @@ mod tests {
         let mut arena = RArena::new();
         let c = some(mk_char_in(&mut arena, b"hello"));
         assert!(c.clone().is_charsxp());
-        assert_eq!(
-            unsafe {
-                /* SAFETY: read is copied without R reentry while its handle remains live. */
-                c.as_str()
-            }, Some("hello"));
-        assert_eq!(
-            unsafe {
-                /* SAFETY: read is copied without R reentry while its handle remains live. */
-                c.as_bytes()
-            }, Some(&b"hello"[..]));
+        assert_eq!(c.as_string().as_deref(), Some("hello"));
+        assert_eq!(c.as_string().map(String::into_bytes), Some(b"hello".to_vec()));
     }
 
     #[test]

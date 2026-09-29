@@ -1,4 +1,4 @@
-use super::{Sexp, SexpMut, SexpView, pairlist::PairlistBuilder};
+use super::{Sexp, SexpMut, SexpValue, pairlist::PairlistBuilder};
 use crate::sexp::{ffi::SEXPTYPE, memory::RArena, session::RSession};
 
 fn alloc(session: &RSession, kind: SEXPTYPE, len: i32) -> crate::sexp::ffi::SEXP {
@@ -8,8 +8,8 @@ fn alloc(session: &RSession, kind: SEXPTYPE, len: i32) -> crate::sexp::ffi::SEXP
 }
 
 fn full_gc(session: &RSession) {
-    session.with_active_in(|owner| {
-        crate::sexp::gengc::full_gc_in(owner);
+    session.with_active_in(|_| {
+        session.owner_token().unwrap().full_gc().unwrap();
     });
 }
 
@@ -104,8 +104,7 @@ fn typed_builders_retain_and_reject_foreign_inputs() {
 #[test]
 fn incremental_pairlist_retains_head_between_allocations() {
     let session = RSession::new_for_gc_tests();
-    // SAFETY: this owner outlives the builder and no cell payload is borrowed.
-    let mut builder = unsafe { PairlistBuilder::new() };
+    let mut builder = PairlistBuilder::new_in(session.owner_token().unwrap());
     for i in 0..8 {
         let value = session.sexp(alloc(&session, SEXPTYPE::INTSXP, 1)).unwrap();
         unsafe {
@@ -128,7 +127,7 @@ fn incremental_pairlist_rejects_foreign_values_before_linking() {
     let right = RSession::new_for_gc_tests();
     let value = right.sexp(alloc(&right, SEXPTYPE::INTSXP, 1)).unwrap();
     left.with_active_in(|_| {
-        let mut builder = unsafe { PairlistBuilder::new() };
+        let mut builder = PairlistBuilder::new_in(left.owner_token().unwrap());
         assert!(builder.push(value, None).is_err());
         assert!(builder.is_empty());
     });
@@ -152,20 +151,14 @@ fn direct_gc_defers_while_arena_is_lent() {
 }
 
 #[test]
-fn scoped_loan_returns_owned_values_and_ends_before_mutation() {
-    let mut session = RSession::new_for_gc_tests();
+fn owned_snapshot_does_not_alias_checked_mutation() {
+    let session = RSession::new_for_gc_tests();
     let ptr = alloc(&session, SEXPTYPE::REALSXP, 2);
-    let copied = unsafe {
-        session.with_sexp_view(ptr, |view| match view {
-            SexpView::Real(data) => data.to_vec(),
-            _ => panic!("real view"),
-        })
-    }
-    .unwrap();
-    assert_eq!(copied, vec![0.0, 0.0]);
     let value = session.sexp(ptr).unwrap();
-    let mut mutation = unsafe { SexpMut::from_owned(value) };
+    let copied = value.clone().to_owned_value().unwrap();
+    let mut mutation = SexpMut::try_from_checked(value).unwrap();
     mutation.try_set_real_elt(0, 2.5).unwrap();
+    assert_eq!(copied, SexpValue::RealVector(vec![Some(0.0), Some(0.0)]));
     assert_eq!(mutation.freeze().real_elt(0), Some(2.5));
 }
 
@@ -205,7 +198,7 @@ fn checked_results_survive_gc_in_live_base_runtime() {
     // Simulate C-core collection while the checked result retains its lease.
     // The safe session API correctly forbids borrowing session again here.
     for _ in 0..3 {
-        crate::sexp::gengc::full_gc_in(owner);
+        unsafe { crate::sexp::gengc::full_gc_in(owner) };
     }
     assert_eq!(result.iter_integer().collect::<Vec<_>>(), vec![1, 2, 3, 4]);
     let (result, _, _) = session.eval_code_with_output_capture("sum(1:4)");
@@ -215,4 +208,48 @@ fn checked_results_survive_gc_in_live_base_runtime() {
             .integer_elt(0),
         Some(10)
     );
+}
+
+#[test]
+fn owner_capability_rejects_collection_in_another_active_runtime() {
+    let left = RSession::new_for_gc_tests();
+    let owner = left.owner_token().unwrap();
+    let value = owner.sexp(alloc(&left, SEXPTYPE::INTSXP, 2)).unwrap();
+    let right = RSession::new_for_gc_tests();
+    assert!(matches!(
+        owner.full_gc(),
+        Err(super::SexpError::OwnerNotActive)
+    ));
+    assert!(matches!(
+        owner.minor_gc(),
+        Err(super::SexpError::OwnerNotActive)
+    ));
+    // Wrapping uses the original owner even when ambient dispatch differs.
+    let alias = owner.sexp(value.as_raw()).unwrap();
+    assert_eq!(alias.integer_elt(0), Some(0));
+    assert!(owner.sexp(alloc(&right, SEXPTYPE::INTSXP, 1)).is_err());
+    left.with_active_in(|_| owner.full_gc().unwrap());
+    assert_eq!(alias.integer_elt(1), Some(0));
+}
+
+#[test]
+fn integer_copy_checks_extent_and_retains_an_independent_snapshot() {
+    let session = RSession::new_for_gc_tests();
+    let value = session.sexp(alloc(&session, SEXPTYPE::INTSXP, 2)).unwrap();
+    let mut short = [99];
+    assert!(matches!(
+        value.copy_integer_into(&mut short),
+        Err(super::SexpError::LengthMismatch {
+            expected: 2,
+            actual: 1
+        })
+    ));
+    assert_eq!(short, [99]);
+    let mut snapshot = [99; 2];
+    value.copy_integer_into(&mut snapshot).unwrap();
+    let mut mutation = SexpMut::try_from_checked(value).unwrap();
+    mutation.try_set_integer_elt(0, 7).unwrap();
+    session.gc();
+    assert_eq!(snapshot, [0, 0]);
+    assert_eq!(mutation.freeze().integer_elt(0), Some(7));
 }

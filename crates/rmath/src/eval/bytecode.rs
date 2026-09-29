@@ -1855,9 +1855,12 @@ where
 
 pub unsafe fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // Never retain an R payload reference across instruction execution.
-    let instruction_count = unsafe { code.try_as_integer_slice() }
-        .map_err(|err| sexp_err("invalid bytecode vector", err))?
-        .len();
+    if code.typeof_() != SEXPTYPE::INTSXP {
+        return Err(sexp_err("invalid bytecode vector", SexpError::TypeMismatch {
+            expected: "integer vector", actual: code.typeof_(),
+        }));
+    }
+    let instruction_count = code.len() as usize;
     let scratch_bytes = instruction_count
         .checked_mul(std::mem::size_of::<c_int>())
         .ok_or_else(|| "bytecode scratch size overflow".to_string())?;
@@ -1867,11 +1870,9 @@ pub unsafe fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a
     bytecode
         .try_reserve_exact(instruction_count)
         .map_err(|_| "failed to allocate bytecode scratch".to_string())?;
-    // SAFETY: copy immediately, without R callbacks, while code remains rooted.
-    bytecode.extend_from_slice(
-        unsafe { code.try_as_integer_slice() }
-            .map_err(|err| sexp_err("invalid bytecode vector", err))?,
-    );
+    bytecode.resize(instruction_count, 0);
+    code.copy_integer_into(&mut bytecode)
+        .map_err(|err| sexp_err("invalid bytecode vector", err))?;
     let mut pc: usize = 0;
     let mut stack: Vec<Sexp<'a>> = Vec::new();
     let constants = code.attrib();

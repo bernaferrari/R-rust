@@ -828,7 +828,7 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 Ok(s) => s,
                 Err(_) => return crate::sexp::globals::R_NilValue(),
             };
-            let type_str = match type_char.try_as_str() {
+            let type_str = match type_char.try_as_string() {
                 Ok(s) => s,
                 Err(_) => return crate::sexp::globals::R_NilValue(),
             };

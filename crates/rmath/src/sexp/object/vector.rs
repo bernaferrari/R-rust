@@ -1,6 +1,6 @@
 use std::os::raw::{c_double, c_int};
 
-use super::{Sexp, SexpResult};
+use super::{Sexp, SexpError, SexpResult};
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 
@@ -119,7 +119,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn try_string_text_elt(&self, i: R_xlen_t) -> SexpResult<Option<&'_ str>> {
+    pub(super) unsafe fn try_string_text_elt(&self, i: R_xlen_t) -> SexpResult<Option<&'_ str>> {
         let chars = self.try_string_elt(i)?;
         if chars.clone().as_raw() == unsafe { R_NaString() } {
             Ok(None)
@@ -140,7 +140,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn string_text_elt(&self, i: R_xlen_t) -> Option<Option<&'_ str>> {
+    pub(super) unsafe fn string_text_elt(&self, i: R_xlen_t) -> Option<Option<&'_ str>> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_string_text_elt(i)
@@ -413,6 +413,19 @@ impl<'a> Sexp<'a> {
         Ok(())
     }
 
+    /// Copy integer payloads into caller-owned storage without lending a view.
+    pub fn copy_integer_into(&self, output: &mut [c_int]) -> SexpResult<()> {
+        self.expect_type(SEXPTYPE::INTSXP, "integer vector")?;
+        let expected = self.len() as usize;
+        if output.len() != expected {
+            return Err(SexpError::LengthMismatch { expected, actual: output.len() });
+        }
+        // SAFETY: copy synchronously without R callbacks; the handle retains
+        // the allocation. Safe callers cannot obtain a Rust R-payload borrow.
+        output.copy_from_slice(unsafe { self.try_as_integer_slice() }?);
+        Ok(())
+    }
+
     // --- Slice views ---
 
     /// Get a slice view of the logical data.
@@ -423,7 +436,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn as_logical_slice(&self) -> Option<&'_ [c_int]> {
+    pub(super) unsafe fn as_logical_slice(&self) -> Option<&'_ [c_int]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_as_logical_slice()
@@ -435,7 +448,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn try_as_logical_slice(&self) -> SexpResult<&'_ [c_int]> {
+    pub(super) unsafe fn try_as_logical_slice(&self) -> SexpResult<&'_ [c_int]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_typed_slice::<c_int>(SEXPTYPE::LGLSXP, "logical vector")
@@ -449,7 +462,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn as_integer_slice(&self) -> Option<&'_ [c_int]> {
+    pub(super) unsafe fn as_integer_slice(&self) -> Option<&'_ [c_int]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_as_integer_slice()
@@ -461,7 +474,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn try_as_integer_slice(&self) -> SexpResult<&'_ [c_int]> {
+    pub(super) unsafe fn try_as_integer_slice(&self) -> SexpResult<&'_ [c_int]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_typed_slice::<c_int>(SEXPTYPE::INTSXP, "integer vector")
@@ -475,7 +488,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn as_real_slice(&self) -> Option<&'_ [c_double]> {
+    pub(super) unsafe fn as_real_slice(&self) -> Option<&'_ [c_double]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_as_real_slice()
@@ -487,7 +500,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn try_as_real_slice(&self) -> SexpResult<&'_ [c_double]> {
+    pub(super) unsafe fn try_as_real_slice(&self) -> SexpResult<&'_ [c_double]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_typed_slice::<c_double>(SEXPTYPE::REALSXP, "real vector")
@@ -501,7 +514,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn as_raw_slice(&self) -> Option<&'_ [Rbyte]> {
+    pub(super) unsafe fn as_raw_slice(&self) -> Option<&'_ [Rbyte]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_as_raw_slice()
@@ -513,7 +526,7 @@ impl<'a> Sexp<'a> {
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
-    pub unsafe fn try_as_raw_slice(&self) -> SexpResult<&'_ [Rbyte]> {
+    pub(super) unsafe fn try_as_raw_slice(&self) -> SexpResult<&'_ [Rbyte]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_typed_slice::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")
