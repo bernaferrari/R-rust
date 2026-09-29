@@ -438,8 +438,12 @@ pub unsafe fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEX
             };
             result_axes.extend(axis_range);
         }
-
         let result_len = if rows { leading } else { trailing };
+
+
+        if TYPEOF(x) == SEXPTYPE::CPLXSXP {
+            return complex_margin_summary(x, rows, mean, na_rm, leading, trailing, result_len, &result_axes, dim_attr);
+        }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
         if result.is_null() {
             return R_NilValue();
@@ -459,6 +463,63 @@ pub unsafe fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEX
         }
 
         set_margin_summary_attrs(result, dim_attr, &result_axes, x);
+        result
+    }
+}
+
+unsafe fn complex_margin_summary(
+    x: SEXP,
+    rows: bool,
+    mean: bool,
+    na_rm: bool,
+    leading: R_xlen_t,
+    trailing: R_xlen_t,
+    result_len: R_xlen_t,
+    result_axes: &[R_xlen_t],
+    dim_attr: SEXP,
+) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, result_len);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _g = protect(result);
+        let part_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+        let one = |index: R_xlen_t| -> Rcomplex {
+            let mut sr = 0.0;
+            let mut si = 0.0;
+            let mut nr = 0.0;
+            let mut ni = 0.0;
+            let mut re_na = false;
+            let mut im_na = false;
+            let count = if rows { trailing } else { leading };
+            for k in 0..count {
+                let cell = if rows { index + k * leading } else { index * leading + k };
+                let z = *COMPLEX(x).add(cell as usize);
+                let bad = part_na(z.r) || part_na(z.i);
+                if na_rm && bad {
+                    continue;
+                }
+                if part_na(z.r) { re_na = true; } else { sr += z.r; nr += 1.0; }
+                if part_na(z.i) { im_na = true; } else { si += z.i; ni += 1.0; }
+            }
+            let finish = |na: bool, sum: f64, n: f64| -> f64 {
+                if na { if mean { f64::NAN } else { crate::sexp::ffi::NA_REAL } }
+                else if mean { if n == 0.0 { crate::sexp::ffi::NA_REAL } else { sum / n } }
+                else { sum }
+            };
+            Rcomplex { r: finish(re_na, sr, nr), i: finish(im_na, si, ni) }
+        };
+        if rows {
+            for row in 0..leading {
+                *COMPLEX(result).add(row as usize) = one(row);
+            }
+        } else {
+            for col in 0..trailing {
+                *COMPLEX(result).add(col as usize) = one(col);
+            }
+        }
+        set_margin_summary_attrs(result, dim_attr, result_axes, x);
         result
     }
 }
