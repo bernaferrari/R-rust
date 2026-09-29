@@ -579,7 +579,7 @@ pub unsafe fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
 /// Port of: static SEXP La_dgecon(SEXP a, SEXP norm)
 pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
-        if TYPEOF(norm) != 16 {
+        if TYPEOF(norm) != 16 || XLENGTH(norm) < 1 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
         }
         if TYPEOF(a) != REALSXP_C {
@@ -611,6 +611,9 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
         };
         if len > c_int::MAX as usize || XLENGTH(a) as usize != len {
             crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+        if n == 0 {
+            crate::sexp::context::r_error("error code -4 from Lapack routine 'dgetrf()'");
         }
 
         let work_norm_len = if norm_c == b'I' { n as usize } else { 0 };
@@ -935,7 +938,7 @@ pub unsafe fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
 /// Port of: static SEXP La_zgecon(SEXP a, SEXP norm)
 pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
-        if TYPEOF(norm) != 16 {
+        if TYPEOF(norm) != 16 || XLENGTH(norm) < 1 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
         }
         if TYPEOF(a) != CPLXSXP_C {
@@ -967,6 +970,9 @@ pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
         };
         if len > c_int::MAX as usize || XLENGTH(a) as usize != len {
             crate::sexp::context::r_error("invalid matrix dimensions or length");
+        }
+        if n == 0 {
+            crate::sexp::context::r_error("error code -4 from Lapack routine 'zgetrf()'");
         }
 
         let work_norm_len = if norm_c == b'I' { n as usize } else { 0 };

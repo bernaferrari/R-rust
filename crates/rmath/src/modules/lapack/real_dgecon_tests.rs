@@ -43,16 +43,17 @@ fn error_message(result: Result<(), Box<dyn std::any::Any + Send>>) -> String {
 }
 
 #[test]
-fn real_dgecon_accepts_zero_dimensional_square() {
+fn real_dgecon_rejects_zero_dimensional_square_like_gnu_internal() {
     let session = RSession::new();
     session.with_active(|| unsafe {
         let input = make_input(&[0, 0], &[]);
         let _guard = protect(input);
         let norm = one_norm();
         let _n = protect(norm);
-        let ans = La_dgecon(input, norm);
-        let _ans = protect(ans);
-        assert!((*REAL(ans)).is_infinite());
+        let message = error_message(catch_unwind(AssertUnwindSafe(|| {
+            La_dgecon(input, norm);
+        })));
+        assert_eq!(message, "error code -4 from Lapack routine 'dgetrf()'");
     });
 }
 
