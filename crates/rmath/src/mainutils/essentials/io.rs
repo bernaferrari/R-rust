@@ -375,11 +375,11 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 && TYPEOF(expr) == SEXPTYPE::LANGSXP
                 && CAR(expr) == crate::sexp::symbol::R_BraceSymbol()
             {
+                let _expr_guard = protect(expr);
                 let mut stmt = CDR(expr);
                 while !stmt.is_null() && stmt != R_NilValue() {
+                    let _stmt_guard = protect(stmt);
                     fail(crate::eval::eval::Rf_eval(CAR(stmt), rho));
-
-
                     stmt = CDR(stmt);
                 }
             } else if !named_exprs
@@ -1297,12 +1297,18 @@ pub unsafe fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `packageStartupMessage(...)` — startup message.
-pub unsafe fn do_package_startup_message(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_package_startup_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let output = condition_message_text(args, &["domain", "appendLF"]);
-        eprintln!("{}", output);
-        crate::sexp::globals::set_R_Visible(FALSE);
-        R_NilValue()
+        let message = if output.ends_with('\n') { output } else { format!("{output}\n") };
+        let condition = super::conditions::simple_condition(
+            &message,
+            &["packageStartupMessage", "simpleMessage", "message", "condition"],
+        );
+        let _c = protect(condition);
+        let wrapped = Rf_cons(condition, R_NilValue());
+        let _w = protect(wrapped);
+        super::conditions::do_message(call, op, wrapped, rho)
     }
 }
 

@@ -1648,7 +1648,7 @@ pub(crate) unsafe fn simple_warning_condition(message: &str, call: SEXP) -> SEXP
         )
     }
 }
-unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
+pub(crate) unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         if result.is_null() {
