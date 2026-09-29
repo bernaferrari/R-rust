@@ -5,7 +5,8 @@ use crate::library::graphics::par::{ParValue, parameter, set_plot_parameter};
 use crate::mainutils::essentials::{arg_by_name_or_position, base_error, elt_to_string};
 use crate::sexp::{
     accessors::*,
-    ffi::{SEXP, SEXPTYPE},
+    constructors::Rf_allocVector3,
+    ffi::{R_xlen_t, SEXP, SEXPTYPE},
     globals::R_NilValue,
     instance::with_required_current_instance,
 };
