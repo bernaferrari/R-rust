@@ -2153,7 +2153,7 @@ mod tests {
     /// collection or a mark/sweep bug.
     #[test]
     fn gc_stress_protected_vectors_retain_data_across_collections() {
-        stress_protected_vectors(RSession::new_without_default_packages());
+        stress_protected_vectors(RSession::new_for_gc_tests());
     }
 
     #[test]

@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn pairlist_builder_preserves_order_and_tags() {
-        let session = crate::sexp::session::RSession::new();
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
 
         let first = unsafe { Rf_ScalarInteger(1) };
         let second = unsafe { Rf_ScalarInteger(2) };

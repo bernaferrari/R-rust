@@ -1712,7 +1712,8 @@ fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
         return Err("failed to allocate logical scalar".to_string());
     }
     let sexp = Sexp::from_raw(lgl).ok_or_else(|| "invalid logical scalar pointer".to_string())?;
-    let mut guard = SexpMut::from_owned(sexp);
+    // SAFETY: this freshly allocated scalar has no borrowed payload views.
+    let mut guard = unsafe { SexpMut::from_owned(sexp) };
     guard
         .try_set_logical_elt(0, val)
         .map_err(|err| sexp_err("failed to initialize logical scalar", err))?;
@@ -1729,7 +1730,8 @@ fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
         return Err("failed to allocate real scalar".to_string());
     }
     let sexp = Sexp::from_raw(real).ok_or_else(|| "invalid real scalar pointer".to_string())?;
-    let mut guard = SexpMut::from_owned(sexp);
+    // SAFETY: this freshly allocated scalar has no borrowed payload views.
+    let mut guard = unsafe { SexpMut::from_owned(sexp) };
     guard
         .try_set_real_elt(0, val)
         .map_err(|err| sexp_err("failed to initialize real scalar", err))?;
@@ -1746,7 +1748,8 @@ fn make_int<'a>(val: c_int) -> Result<Sexp<'a>, String> {
         return Err("failed to allocate integer scalar".to_string());
     }
     let sexp = Sexp::from_raw(int).ok_or_else(|| "invalid integer scalar pointer".to_string())?;
-    let mut guard = SexpMut::from_owned(sexp);
+    // SAFETY: this freshly allocated scalar has no borrowed payload views.
+    let mut guard = unsafe { SexpMut::from_owned(sexp) };
     guard
         .try_set_integer_elt(0, val)
         .map_err(|err| sexp_err("failed to initialize integer scalar", err))?;

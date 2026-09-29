@@ -16,6 +16,16 @@ pub struct RuntimePathPolicy {
 }
 
 impl RuntimePathPolicy {
+    /// Deterministic storage-only tests must not discover or access host R.
+    #[cfg(test)]
+    pub(crate) fn for_gc_tests() -> Self {
+        Self {
+            library_paths: Vec::new(),
+            temp_dir: PathBuf::from("/tmp"),
+            cache_dir: None,
+        }
+    }
+
     pub fn from_env() -> Self {
         let mut library_paths = Vec::new();
         extend_env_paths(&mut library_paths, "R_LIBS_USER");

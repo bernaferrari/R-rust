@@ -1423,32 +1423,32 @@ stop("after-echo")
         let _session = crate::sexp::session::RSession::new();
         let mut arena = crate::sexp::memory::RArena::new();
         let vector = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)).expect("vector");
-        vector
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
             .clone()
-            .try_set_integer_elt(0, 1)
+            .try_set_integer_elt(0, 1) }
             .expect("set integer");
-        vector
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
             .clone()
-            .try_set_integer_elt(1, 2)
+            .try_set_integer_elt(1, 2) }
             .expect("set integer");
 
         let names = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)).expect("names");
-        names
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
             .clone()
-            .try_set_string_elt(0, Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("name"))
+            .try_set_string_elt(0, Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("name")) }
             .expect("set name");
-        names
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
             .clone()
-            .try_set_string_elt(1, Sexp::from_raw(arena.alloc_charsxp(b"b")).expect("name"))
+            .try_set_string_elt(1, Sexp::from_raw(arena.alloc_charsxp(b"b")).expect("name")) }
             .expect("set name");
 
         let class = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)).expect("class");
-        class
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ class
             .clone()
             .try_set_string_elt(
                 0,
                 Sexp::from_raw(arena.alloc_charsxp(b"foo")).expect("class"),
-            )
+            ) }
             .expect("set class");
 
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
@@ -1488,11 +1488,11 @@ stop("after-echo")
 
         let mut arena = crate::sexp::memory::RArena::new();
         let complex = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)).unwrap();
-        complex
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
             .clone()
-            .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 })
+            .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 }) }
             .unwrap();
-        complex
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
             .clone()
             .try_set_complex_elt(
                 1,
@@ -1500,7 +1500,7 @@ stop("after-echo")
                     r: crate::sexp::NA_REAL,
                     i: 0.0,
                 },
-            )
+            ) }
             .unwrap();
 
         assert_eq!(

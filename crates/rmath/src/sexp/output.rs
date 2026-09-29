@@ -3956,11 +3956,11 @@ mod tests {
             .with_arena(|arena| {
                 let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 3);
                 let sexp = Sexp::from_raw(ptr).expect("logical vector allocation failed");
-                assert!(sexp.clone().set_logical_elt(0, 0));
-                assert!(sexp.clone().set_logical_elt(1, 1));
+                assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_logical_elt(0, 0) });
+                assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_logical_elt(1, 1) });
                 assert!(
-                    sexp.clone()
-                        .set_logical_elt(2, crate::sexp::ffi::NA_LOGICAL)
+                    unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone()
+                        .set_logical_elt(2, crate::sexp::ffi::NA_LOGICAL) }
                 );
 
                 start_capture();
@@ -3991,11 +3991,11 @@ mod tests {
                 let value = Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("CHARSXP");
                 let missing = Sexp::from_raw(unsafe { crate::sexp::globals::R_NaString() })
                     .expect("NA_STRING");
-                sexp.clone()
-                    .try_set_string_elt(0, value)
+                unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone()
+                    .try_set_string_elt(0, value) }
                     .expect("set string");
-                sexp.clone()
-                    .try_set_string_elt(1, missing)
+                unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone()
+                    .try_set_string_elt(1, missing) }
                     .expect("set string");
 
                 assert_eq!(format_sexp_direct(sexp.clone()), "[1] \"a\" NA ");
@@ -4049,9 +4049,9 @@ mod tests {
             .with_arena(|arena| {
                 let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
                 let sexp = Sexp::from_raw(ptr).expect("real vector allocation failed");
-                sexp.clone().try_set_real_elt(0, 200.0).expect("set real");
-                sexp.clone().try_set_real_elt(1, 80200.0).expect("set real");
-                sexp.clone().try_set_real_elt(2, 100.5).expect("set real");
+                unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(0, 200.0) }.expect("set real");
+                unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(1, 80200.0) }.expect("set real");
+                unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(2, 100.5) }.expect("set real");
 
                 assert_eq!(
                     format_sexp_direct(sexp.clone()),

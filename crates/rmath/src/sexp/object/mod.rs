@@ -1,4 +1,5 @@
 //! Rust object model for R SEXP values.
+#![deny(unsafe_op_in_unsafe_fn)]
 //!
 //! This module is the safe, Rust-facing layer over raw R `SEXP` pointers. It
 //! keeps R's object categories recognizable while adding lifetime tracking,
@@ -109,13 +110,10 @@ pub enum SexpOwner {
 ///
 /// # Intentionally Not `Copy`
 ///
-/// `Sexp` deliberately does not implement `Copy`. A `Copy` handle would let
-/// a stale alias legally survive an in-place mutation of the same R object
-/// reached through another handle (`SET_*` element writes, attribute
-/// assignment, environment rebinding) — precisely the aliasing-undefined-
-/// behavior class this crate forbids. Handles therefore move by default;
-/// clone explicitly (see the [`Clone`] impl) when a second handle is
-/// actually intended:
+/// Handles move by default; cloning explicitly creates another raw alias.
+/// Neither moving nor cloning establishes exclusivity over the R object.
+/// Mutation requires unsafe acquisition of [`SexpMut`], whose caller must
+/// exclude borrowed payload references for the mutation window.
 ///
 /// ```text
 /// use crate::sexp::{Sexp, SEXPTYPE};
@@ -141,11 +139,8 @@ pub struct Sexp<'a> {
 ///
 /// A cloned [`Sexp`] is a second lightweight handle (same raw `SEXP`
 /// pointer, same [`SexpOwner`] token) over identical R memory. Cloning is
-/// cheap and never touches R's heap, but every clone is an alias and the
-/// aliasing discipline that forbids `Copy` applies to it: never retain a
-/// clone across an in-place mutation of the object reached through another
-/// handle. Where a clone exists merely to keep an earlier handle alive,
-/// prefer re-deriving the handle from its owner instead.
+/// cheap and never deep-copies R's heap. A clone is an alias, not an
+/// independent object or a uniqueness proof.
 impl Clone for Sexp<'_> {
     #[inline]
     fn clone(&self) -> Self {
@@ -176,7 +171,7 @@ pub type SexpRef<'a> = Sexp<'a>;
 // first candidate exists and the call below resolves; the moment
 // someone adds `impl Copy for Sexp`, both traits become applicable and
 // the build fails with an ambiguity error (E0034) instead of silently
-// legalizing stale aliases.
+// changing handle move semantics.
 #[allow(dead_code)]
 trait SexpCopyGuardIfNotCopy {
     fn sexp_copy_guard(&self) {}
@@ -734,7 +729,7 @@ mod tests {
 
     #[test]
     fn test_sexp_from_raw_misaligned_pointer() {
-        assert!(Sexp::from_raw(0x1 as SEXP).is_none());
+        assert!(Sexp::from_raw(std::ptr::without_provenance_mut(0x1)).is_none());
     }
 
     #[test]
@@ -826,8 +821,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.clone().set_integer_elt(0, 42));
-        assert!(sexp.clone().set_integer_elt(5, 99) == false);
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(0, 42) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(5, 99) } == false);
         assert_eq!(sexp.integer_elt(0), Some(42));
     }
 
@@ -836,8 +831,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.clone().set_real_elt(0, 3.14));
-        assert!(sexp.clone().set_real_elt(5, 99.0) == false);
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(0, 3.14) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(5, 99.0) } == false);
         assert_eq!(sexp.real_elt(0), Some(3.14));
     }
 
@@ -846,8 +841,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.clone().set_raw_elt(0, 0xFF));
-        assert!(sexp.clone().set_raw_elt(5, 0xAA) == false);
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(0, 0xFF) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(5, 0xAA) } == false);
         assert_eq!(sexp.raw_elt(0), Some(0xFF));
     }
 
@@ -947,13 +942,13 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
         assert_eq!(sexp.clone().integer_elt(0), Some(0));
-        assert!(sexp.clone().set_integer_elt(0, 42));
-        assert!(sexp.clone().set_integer_elt(1, -7));
-        assert!(sexp.clone().set_integer_elt(2, 99));
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(0, 42) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(1, -7) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(2, 99) });
         assert_eq!(sexp.clone().integer_elt(0), Some(42));
         assert_eq!(sexp.clone().integer_elt(1), Some(-7));
         assert_eq!(sexp.clone().integer_elt(2), Some(99));
-        assert!(!sexp.clone().set_integer_elt(5, 0));
+        assert!(!unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(5, 0) });
         assert!(sexp.integer_elt(5).is_none());
     }
 
@@ -962,9 +957,9 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.clone().set_real_elt(0, 1.5));
-        assert!(sexp.clone().set_real_elt(1, 2.5));
-        assert!(sexp.clone().set_real_elt(2, 3.5));
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(0, 1.5) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(1, 2.5) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(2, 3.5) });
         assert_eq!(sexp.clone().real_elt(0), Some(1.5));
         assert_eq!(sexp.clone().real_elt(1), Some(2.5));
         assert_eq!(sexp.real_elt(2), Some(3.5));
@@ -975,10 +970,10 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 4);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.clone().set_integer_elt(0, 10));
-        assert!(sexp.clone().set_integer_elt(1, 20));
-        assert!(sexp.clone().set_integer_elt(2, 30));
-        assert!(sexp.clone().set_integer_elt(3, 40));
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(0, 10) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(1, 20) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(2, 30) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(3, 40) });
         let slice = some(sexp.as_integer_slice());
         assert_eq!(slice, &[10, 20, 30, 40]);
     }
@@ -988,9 +983,9 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.clone().set_real_elt(0, 1.1));
-        assert!(sexp.clone().set_real_elt(1, 2.2));
-        assert!(sexp.clone().set_real_elt(2, 3.3));
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(0, 1.1) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(1, 2.2) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(2, 3.3) });
         let slice = some(sexp.as_real_slice());
         assert!((slice[0] - 1.1).abs() < f64::EPSILON);
         assert!((slice[1] - 2.2).abs() < f64::EPSILON);
@@ -1003,7 +998,7 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
         let sexp = some(Sexp::from_raw(ptr));
         for i in 0..5 {
-            sexp.clone().set_integer_elt(i, (i * 10) as i32);
+            unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(i, (i * 10) as i32) };
         }
         let values: Vec<_> = sexp.iter_integer().collect();
         assert_eq!(values, vec![0, 10, 20, 30, 40]);
@@ -1015,7 +1010,7 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
         let sexp = some(Sexp::from_raw(ptr));
         for i in 0..4 {
-            sexp.clone().set_real_elt(i, i as f64 * 0.5);
+            unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(i, i as f64 * 0.5) };
         }
         let values: Vec<_> = sexp.iter_real().collect();
         assert!((values[0] - 0.0).abs() < f64::EPSILON);
@@ -1029,10 +1024,10 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 4);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.clone().set_raw_elt(0, 0xDE));
-        assert!(sexp.clone().set_raw_elt(1, 0xAD));
-        assert!(sexp.clone().set_raw_elt(2, 0xBE));
-        assert!(sexp.clone().set_raw_elt(3, 0xEF));
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(0, 0xDE) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(1, 0xAD) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(2, 0xBE) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(3, 0xEF) });
         let slice = some(sexp.as_raw_slice());
         assert_eq!(slice, &[0xDE, 0xAD, 0xBE, 0xEF]);
     }
@@ -1042,11 +1037,11 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 2);
         let sexp = some(Sexp::from_raw(ptr));
-        sexp.clone()
-            .try_set_integer_elt(0, 10)
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone()
+            .try_set_integer_elt(0, 10) }
             .expect("set integer");
-        sexp.clone()
-            .try_set_integer_elt(1, 20)
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone()
+            .try_set_integer_elt(1, 20) }
             .expect("set integer");
 
         assert_eq!(sexp.clone().try_integer_elt(1), Ok(20));
@@ -1065,8 +1060,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 2);
         let sexp = some(Sexp::from_raw(ptr));
-        sexp.clone().try_set_real_elt(0, 1.5).expect("set real");
-        sexp.clone().try_set_real_elt(1, 2.5).expect("set real");
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(0, 1.5) }.expect("set real");
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(1, 2.5) }.expect("set real");
 
         match sexp.view().expect("view") {
             SexpView::Real(values) => assert_eq!(values, &[1.5, 2.5]),
@@ -1078,31 +1073,31 @@ mod tests {
     fn test_to_owned_value_maps_atomic_na_values() {
         let mut arena = RArena::new();
         let logical = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 3)));
-        logical
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical
             .clone()
-            .try_set_logical_elt(0, 1)
+            .try_set_logical_elt(0, 1) }
             .expect("set logical");
-        logical
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical
             .clone()
-            .try_set_logical_elt(1, 0)
+            .try_set_logical_elt(1, 0) }
             .expect("set logical");
-        logical
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical
             .clone()
-            .try_set_logical_elt(2, NA_LOGICAL)
+            .try_set_logical_elt(2, NA_LOGICAL) }
             .expect("set logical");
 
         let integer = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
-        integer
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ integer
             .clone()
-            .try_set_integer_elt(0, 10)
+            .try_set_integer_elt(0, 10) }
             .expect("set integer");
-        integer
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ integer
             .clone()
-            .try_set_integer_elt(1, NA_INTEGER)
+            .try_set_integer_elt(1, NA_INTEGER) }
             .expect("set integer");
 
         let real = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1)));
-        real.clone().try_set_real_elt(0, NA_REAL).expect("set real");
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ real.clone().try_set_real_elt(0, NA_REAL) }.expect("set real");
 
         assert_eq!(
             logical.to_owned_value().expect("logical value"),
@@ -1124,13 +1119,13 @@ mod tests {
         let strings = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)));
         let hello = some(Sexp::from_raw(arena.alloc_charsxp(b"hello")));
         let na_string = some(Sexp::from_raw(unsafe { R_NaString() }));
-        strings
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ strings
             .clone()
-            .try_set_string_elt(0, hello)
+            .try_set_string_elt(0, hello) }
             .expect("set string");
-        strings
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ strings
             .clone()
-            .try_set_string_elt(1, na_string)
+            .try_set_string_elt(1, na_string) }
             .expect("set string");
         assert_eq!(
             strings.clone().try_string_text_elt(0).expect("text"),
@@ -1142,26 +1137,26 @@ mod tests {
         );
 
         let raw = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::RAWSXP, 2)));
-        raw.clone().try_set_raw_elt(0, 0x41).expect("set raw");
-        raw.clone().try_set_raw_elt(1, 0x5a).expect("set raw");
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ raw.clone().try_set_raw_elt(0, 0x41) }.expect("set raw");
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ raw.clone().try_set_raw_elt(1, 0x5a) }.expect("set raw");
 
         let complex = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)));
-        complex
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
             .clone()
-            .try_set_complex_elt(0, Rcomplex { r: 1.0, i: -2.0 })
+            .try_set_complex_elt(0, Rcomplex { r: 1.0, i: -2.0 }) }
             .expect("set complex");
-        complex
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
             .clone()
-            .try_set_complex_elt(1, Rcomplex { r: NA_REAL, i: 0.0 })
+            .try_set_complex_elt(1, Rcomplex { r: NA_REAL, i: 0.0 }) }
             .expect("set complex");
 
         let list = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::VECSXP, 3)));
-        list.clone()
-            .try_set_vector_elt(0, strings)
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ list.clone()
+            .try_set_vector_elt(0, strings) }
             .expect("set list");
-        list.clone().try_set_vector_elt(1, raw).expect("set list");
-        list.clone()
-            .try_set_vector_elt(2, complex)
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ list.clone().try_set_vector_elt(1, raw) }.expect("set list");
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ list.clone()
+            .try_set_vector_elt(2, complex) }
             .expect("set list");
 
         assert_eq!(
@@ -1182,36 +1177,36 @@ mod tests {
 
     #[test]
     fn test_to_owned_value_preserves_core_metadata() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let mut arena = RArena::new();
         let vector = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
-        vector
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
             .clone()
-            .try_set_integer_elt(0, 10)
+            .try_set_integer_elt(0, 10) }
             .expect("set integer");
-        vector
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
             .clone()
-            .try_set_integer_elt(1, 20)
+            .try_set_integer_elt(1, 20) }
             .expect("set integer");
 
         let names = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)));
-        names
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
             .clone()
-            .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"a"))))
+            .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"a")))) }
             .expect("set name");
-        names
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
             .clone()
-            .try_set_string_elt(1, some(Sexp::from_raw(arena.alloc_charsxp(b"b"))))
+            .try_set_string_elt(1, some(Sexp::from_raw(arena.alloc_charsxp(b"b")))) }
             .expect("set name");
 
         let dim = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
-        dim.clone().try_set_integer_elt(0, 1).expect("set dim");
-        dim.clone().try_set_integer_elt(1, 2).expect("set dim");
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ dim.clone().try_set_integer_elt(0, 1) }.expect("set dim");
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ dim.clone().try_set_integer_elt(1, 2) }.expect("set dim");
 
         let class = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)));
-        class
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ class
             .clone()
-            .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"matrix"))))
+            .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"matrix")))) }
             .expect("set class");
 
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
@@ -1246,7 +1241,7 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
         let sexp = some(Sexp::from_raw(ptr));
-        sexp.clone().try_set_integer_elt(0, 7).expect("set integer");
+        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_integer_elt(0, 7) }.expect("set integer");
 
         assert_eq!(sexp.clone().try_as_f64(), Ok(7.0));
         assert_eq!(sexp.clone().try_to_bool(), Ok(true));
@@ -1333,7 +1328,7 @@ mod tests {
 
     #[test]
     fn test_pairlist_argument_helpers() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let mut arena = RArena::new();
         let first_value = arena.alloc_node(SEXPTYPE::INTSXP);
         let second_value = arena.alloc_node(SEXPTYPE::REALSXP);
@@ -1439,17 +1434,17 @@ mod tests {
         let logical = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 2)));
 
         assert!(real.clone().integer_elt(0).is_none());
-        assert!(real.clone().set_integer_elt(0, 1) == false);
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ real.clone().set_integer_elt(0, 1) } == false);
         assert!(real.clone().as_integer_slice().is_none());
         assert!(real.iter_integer().next().is_none());
 
         assert!(int.clone().real_elt(0).is_none());
-        assert!(int.clone().set_real_elt(0, 1.0) == false);
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ int.clone().set_real_elt(0, 1.0) } == false);
         assert!(int.clone().as_real_slice().is_none());
         assert!(int.iter_real().next().is_none());
 
         assert!(logical.clone().integer_elt(0).is_none());
-        assert!(logical.clone().set_integer_elt(0, 1) == false);
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical.clone().set_integer_elt(0, 1) } == false);
         assert!(logical.clone().as_integer_slice().is_none());
         assert_eq!(logical.as_logical_slice(), Some(&[0, 0][..]));
     }
@@ -1459,7 +1454,7 @@ mod tests {
         let mut arena = RArena::new();
         let strings = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)));
         let ch = some(Sexp::from_raw(arena.alloc_charsxp(b"x")));
-        assert!(strings.clone().set_string_elt(0, ch));
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ strings.clone().set_string_elt(0, ch) });
         assert!(strings.clone().string_elt(0).is_some());
         assert!(strings.clone().vector_elt(0).is_none());
         assert!(strings.iter_vector().next().is_none());
@@ -1521,10 +1516,10 @@ mod tests {
         let c2 = Rcomplex { r: 3.0, i: 4.0 };
         let c3 = Rcomplex { r: 5.0, i: 6.0 };
 
-        assert!(sexp.clone().set_complex_elt(0, c1));
-        assert!(sexp.clone().set_complex_elt(1, c2));
-        assert!(sexp.clone().set_complex_elt(2, c3));
-        assert!(!sexp.clone().set_complex_elt(3, c1)); // out of bounds
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_complex_elt(0, c1) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_complex_elt(1, c2) });
+        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_complex_elt(2, c3) });
+        assert!(!unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_complex_elt(3, c1) }); // out of bounds
 
         assert_eq!(sexp.clone().complex_elt(0), Some(c1));
         assert_eq!(sexp.clone().complex_elt(1), Some(c2));

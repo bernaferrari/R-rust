@@ -302,20 +302,30 @@ impl<'a> Sexp<'a> {
 
     // --- Complex vector accessors ---
 
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> bool {
-        self.try_set_complex_elt(i, v).is_ok()
+    pub(crate) unsafe fn set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> bool {
+        unsafe {
+            /* SAFETY: caller excludes borrowed payload views. */
+            self.try_set_complex_elt(i, v)
+        }
+        .is_ok()
     }
 
     /// Set the i-th complex value with typed error reporting.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn try_set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> SexpResult<()> {
+    pub(crate) unsafe fn try_set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")

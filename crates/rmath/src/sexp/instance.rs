@@ -553,6 +553,20 @@ impl RInstance {
     /// This allocates three persistent environment sentinels (empty → base →
     /// global) owned by the instance, plus an empty arena and protect stack.
     pub fn new() -> Self {
+        Self::new_with_base_bindings(true, crate::mainutils::paths::RuntimePathPolicy::default())
+    }
+
+    /// Real session storage without evaluating the base library. Intended for
+    /// collector and ownership tests whose subject is independent of R code.
+    #[cfg(test)]
+    pub(crate) fn new_for_gc_tests() -> Self {
+        Self::new_with_base_bindings(false, crate::mainutils::paths::RuntimePathPolicy::for_gc_tests())
+    }
+
+    fn new_with_base_bindings(
+        initialize_base: bool,
+        path_policy: crate::mainutils::paths::RuntimePathPolicy,
+    ) -> Self {
         let nil = unsafe { super::globals::R_NilValue() };
 
         // Nodes are kept as raw pointers obtained via `Box::into_raw`: the
@@ -637,7 +651,7 @@ impl RInstance {
             connections_state: crate::mainutils::connections::ConnectionsState::default(),
             browser_files: crate::mainutils::browser_files::BrowserFileStore::default(),
             browser_files_enabled: false,
-            path_policy: crate::mainutils::paths::RuntimePathPolicy::default(),
+            path_policy,
             file_creation_umask: 0o022,
             graphics_device_registry:
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),
@@ -673,8 +687,10 @@ impl RInstance {
         // Miri-clean provenance chain (re-borrowing `&mut instance`
         // across the raw-pointer window violates Stacked Borrows).
         let instance_ptr: *mut RInstance = &raw mut instance;
-        Self::initialize_base_bindings_via(instance_ptr);
-        instance.initialized = true;
+        if initialize_base {
+            Self::initialize_base_bindings_via(instance_ptr);
+            instance.initialized = true;
+        }
         instance
     }
 

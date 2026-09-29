@@ -461,9 +461,19 @@ impl RSession {
 
     fn new_with_default_packages(attach_default_packages: bool) -> Self {
         super::context::install_r_panic_hook();
+        Self::new_with_instance(RInstance::new(), attach_default_packages)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_gc_tests() -> Self {
+        Self::new_with_instance(RInstance::new_for_gc_tests(), false)
+    }
+
+    fn new_with_instance(instance: RInstance, attach_default_packages: bool) -> Self {
+        super::context::install_r_panic_hook();
         // Disown the box immediately: the thread-local current-instance
         // pointer must be the stable borrowing root for this allocation.
-        let instance: *mut RInstance = Box::into_raw(Box::new(RInstance::new()));
+        let instance: *mut RInstance = Box::into_raw(Box::new(instance));
         // Expose the session root provenance: protect guards reconstitute
         // the owning instance from a bare address at drop time (see
         // `protect::with_guard_owner`), and Miri validates that wildcard
@@ -2127,7 +2137,7 @@ mod tests {
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("session should be active");
         let expr = session.sexp(expr).expect("expr belongs to session");
-        assert!(expr.clone().set_integer_elt(0, 7));
+        assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ expr.clone().set_integer_elt(0, 7) });
         let env = session.global_env().expect("session has global env");
 
         let result = session.with_active(|| {
@@ -2181,7 +2191,7 @@ mod tests {
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("session should be active");
         let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
-        assert!(sexp.set_integer_elt(0, 42));
+        assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, 42) });
 
         let value = session.sexp(value).expect("value belongs to session");
         assert!(session.define_var("session_defined_value", value));
@@ -2201,7 +2211,7 @@ mod tests {
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("older session should be active");
         let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
-        assert!(sexp.set_integer_elt(0, 123));
+        assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, 123) });
 
         let value = older.sexp(value).expect("value belongs to older session");
         assert!(older.define_var("session_local_symbol", value));
@@ -2234,7 +2244,7 @@ mod tests {
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("session should be active");
         let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
-        assert!(sexp.set_integer_elt(0, 99));
+        assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, 99) });
 
         let value = session.sexp(value).expect("value belongs to session");
         assert!(!session.define_var("session_bad\0name", value));
@@ -2381,7 +2391,7 @@ mod tests {
                         .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
                         .expect("session should be active");
                     let sexp = Sexp::from_raw(value).expect("allocation failed");
-                    assert!(sexp.set_integer_elt(0, (i + 100) as i32));
+                    assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, (i + 100) as i32) });
 
                     let value = session.sexp(value).expect("value belongs to session");
                     assert!(session.define_var(&var_name, value));

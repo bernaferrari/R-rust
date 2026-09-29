@@ -156,20 +156,30 @@ impl<'a> Sexp<'a> {
     /// Set the i-th logical value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn set_logical_elt(self, i: R_xlen_t, v: c_int) -> bool {
-        self.try_set_logical_elt(i, v).is_ok()
+    pub(crate) unsafe fn set_logical_elt(self, i: R_xlen_t, v: c_int) -> bool {
+        unsafe {
+            /* SAFETY: caller excludes borrowed payload views. */
+            self.try_set_logical_elt(i, v)
+        }
+        .is_ok()
     }
 
     /// Set the i-th logical value with typed error reporting.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn try_set_logical_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
+    pub(crate) unsafe fn try_set_logical_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<c_int>(SEXPTYPE::LGLSXP, "logical vector")
@@ -184,20 +194,30 @@ impl<'a> Sexp<'a> {
     /// Set the i-th integer value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn set_integer_elt(self, i: R_xlen_t, v: c_int) -> bool {
-        self.try_set_integer_elt(i, v).is_ok()
+    pub(crate) unsafe fn set_integer_elt(self, i: R_xlen_t, v: c_int) -> bool {
+        unsafe {
+            /* SAFETY: caller excludes borrowed payload views. */
+            self.try_set_integer_elt(i, v)
+        }
+        .is_ok()
     }
 
     /// Set the i-th integer value with typed error reporting.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn try_set_integer_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
+    pub(crate) unsafe fn try_set_integer_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<c_int>(SEXPTYPE::INTSXP, "integer vector")
@@ -212,20 +232,30 @@ impl<'a> Sexp<'a> {
     /// Set the i-th real (double) value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn set_real_elt(self, i: R_xlen_t, v: c_double) -> bool {
-        self.try_set_real_elt(i, v).is_ok()
+    pub(crate) unsafe fn set_real_elt(self, i: R_xlen_t, v: c_double) -> bool {
+        unsafe {
+            /* SAFETY: caller excludes borrowed payload views. */
+            self.try_set_real_elt(i, v)
+        }
+        .is_ok()
     }
 
     /// Set the i-th real value with typed error reporting.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn try_set_real_elt(self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
+    pub(crate) unsafe fn try_set_real_elt(self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<c_double>(SEXPTYPE::REALSXP, "real vector")
@@ -240,20 +270,30 @@ impl<'a> Sexp<'a> {
     /// Set the i-th raw byte.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> bool {
-        self.try_set_raw_elt(i, v).is_ok()
+    pub(crate) unsafe fn set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> bool {
+        unsafe {
+            /* SAFETY: caller excludes borrowed payload views. */
+            self.try_set_raw_elt(i, v)
+        }
+        .is_ok()
     }
 
     /// Set the i-th raw byte with typed error reporting.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn try_set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
+    pub(crate) unsafe fn try_set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")
@@ -269,20 +309,30 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns `false` if this is not a string vector, `v` is not CHARSXP,
     /// the index is out of bounds, or data pointer is null.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
-        self.try_set_string_elt(i, v).is_ok()
+    pub(crate) unsafe fn set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
+        unsafe {
+            /* SAFETY: caller excludes borrowed payload views. */
+            self.try_set_string_elt(i, v)
+        }
+        .is_ok()
     }
 
     /// Set the i-th string element with typed error reporting.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+    pub(crate) unsafe fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
         v.clone()
             .expect_type(SEXPTYPE::CHARSXP, "character scalar")
             .clone()?;
@@ -301,20 +351,30 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns `false` if this is not a generic/expression vector, the index is
     /// out of bounds, or data pointer is null.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
-        self.try_set_vector_elt(i, v).is_ok()
+    pub(crate) unsafe fn set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
+        unsafe {
+            /* SAFETY: caller excludes borrowed payload views. */
+            self.try_set_vector_elt(i, v)
+        }
+        .is_ok()
     }
 
     /// Set the i-th generic/expression vector element with typed error reporting.
+    /// # Safety
+    /// The object must remain live and have no borrowed payload references
+    /// during this write. Consuming a clone does not prove exclusivity.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+    pub(crate) unsafe fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
         let data = self.clone().try_vector_sexp_data_mut().clone()?;
         let i = self.try_index(i)?;
         unsafe {

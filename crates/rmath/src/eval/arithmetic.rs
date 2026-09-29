@@ -123,6 +123,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         warn_if_non_multiple_recycling(a.clone().len(), b.clone().len());
         let mut integer_overflow = false;
@@ -226,6 +227,7 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         warn_if_non_multiple_recycling(a.clone().len(), b.clone().len());
 
@@ -599,6 +601,7 @@ unsafe fn coerce_difftime_operand(
         let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
         };
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         for i in 0..input.clone().len() {
             let value = input.clone().real_at(i);
@@ -646,6 +649,7 @@ unsafe fn coerce_character_comparison_operand(
             return R_NilValue();
         };
         let input_len = input.len();
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         for i in 0..input_len {
             let value = STRING_ELT(source, i);
@@ -984,6 +988,7 @@ unsafe fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> 
                     .filter_map(|i| result_sexp.try_real_elt(i).ok())
                     .collect();
                 let (units, scale) = auto_difftime_units(&values);
+                // SAFETY: result is freshly allocated; no payload reference was lent.
                 let mut result_mut = SexpMut::from_owned(result_sexp);
                 for i in 0..result_mut.len() {
                     if let Ok(value) = result_mut.try_real_elt(i)
@@ -1050,6 +1055,7 @@ unsafe fn math1_vec(call: SEXP, sa: SEXP, f: fn(f64) -> f64) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         let mut naflag = false;
         for i in 0..n {
@@ -1134,6 +1140,7 @@ unsafe fn factor_na_result(e1: SEXP, e2: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         for i in 0..n {
             result_mut.set_logical_elt(i, NA_LOGICAL);
@@ -1355,6 +1362,7 @@ unsafe fn factor_scalar_string_compare(op: &str, f: SEXP, levels: &[String], oth
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         for i in 0..n {
             let code = INTEGER_ELT(f, i as i32);
@@ -1395,6 +1403,7 @@ unsafe fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         for i in 0..n {
             let x = crate::sexp::accessors::COMPLEX_ELT(a, i as i32);
@@ -1911,6 +1920,7 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         if result_type == SEXPTYPE::REALSXP {
             for i in 0..n {
@@ -1977,6 +1987,7 @@ unsafe fn ordered_factor_compare(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
         };
         let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(a_len, b_len);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         for i in 0..n {
             let lhs = ordered_operand_code(sa, i % a_len, &levels);
@@ -2098,6 +2109,7 @@ unsafe fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         };
         let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(a_len, b_len);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
 
         for i in 0..n {
@@ -2179,6 +2191,7 @@ unsafe fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
         };
         let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(nx, nb);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         let mut naflag = false;
         for i in 0..n {
@@ -2345,6 +2358,7 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         return R_NilValue();
                     };
                     let _out_guard = protect(out);
+                    // SAFETY: result is freshly allocated; no payload reference was lent.
                     let mut result_mut = SexpMut::from_owned(result);
                     for i in 0..n {
                         let c = crate::sexp::accessors::COMPLEX_ELT(x, i as i32);
@@ -2449,6 +2463,7 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     return result;
                 };
                 let _iresult_guard = protect(iresult_raw);
+                // SAFETY: result is freshly allocated; no payload reference was lent.
                 let mut iresult_mut = SexpMut::from_owned(iresult);
                 for i in 0..n {
                     let v = result_vec.clone().real_at(i);
@@ -3140,6 +3155,7 @@ unsafe fn eval_range(args: SEXP, shape: SummaryShape, na_rm: bool, finite: bool)
         };
         let result = Rf_allocVector3(result_type, 2);
         let result_view = Sexp::from_raw_unchecked(result);
+        // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result_view);
         match result_type {
             SEXPTYPE::REALSXP => {
