@@ -37,9 +37,9 @@ unsafe fn errorcall(_call: SEXP, msg: &str) {
     }
 }
 
-unsafe fn warningcall(_call: SEXP, msg: &str) {
-    // In embedded mode, warnings are logged but not fatal
-    let _ = msg;
+unsafe fn warningcall(call: SEXP, msg: &str) {
+    let c = std::ffi::CString::new(msg).unwrap_or_default();
+    crate::mainutils::errors::warningcall(call, c.as_ptr());
 }
 
 unsafe fn isNull(x: SEXP) -> bool {
@@ -408,13 +408,13 @@ pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             SET_CLOENV(dup, env);
             return dup;
         } else if env_is_null || env_is_env {
-            if !env_is_null
-                && (TYPEOF(s) == SEXPTYPE::BUILTINSXP || TYPEOF(s) == SEXPTYPE::SPECIALSXP)
-            {
-                warningcall(
-                    call,
-                    "setting environment(<primitive function>) is not possible and trying it is deprecated",
-                );
+            if TYPEOF(s) == SEXPTYPE::BUILTINSXP || TYPEOF(s) == SEXPTYPE::SPECIALSXP {
+                if !env_is_null {
+                    warningcall(
+                        call,
+                        "setting environment(<primitive function>) is not possible and trying it is deprecated",
+                    );
+                }
             } else {
                 setAttrib(
                     s,

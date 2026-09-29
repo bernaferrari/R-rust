@@ -6721,6 +6721,7 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
         if TYPEOF(specials) == SEXPTYPE::STRSXP && XLENGTH(specials) > 0 {
             let nspec = XLENGTH(specials) as usize;
             let mut spec = R_NilValue();
+            let mut roots = Vec::new();
             for s in (0..nspec).rev() {
                 let want = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(specials, s as i64)))
                     .to_string_lossy()
@@ -6747,7 +6748,9 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
                     }
                     iv
                 };
+                let _val_guard = protect(val);
                 spec = crate::sexp::constructors::Rf_cons(val, spec);
+                roots.push(protect(spec));
                 let tag = crate::sexp::symbol::Rf_install(
                     std::ffi::CString::new(want).unwrap_or_default().as_ptr(),
                 );
