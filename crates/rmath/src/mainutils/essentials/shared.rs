@@ -2186,6 +2186,69 @@ pub(crate) unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
     }
 }
 
+unsafe fn ensure_s3methods_slot(info: SEXP) {
+    unsafe {
+        let sym = Rf_install(c"S3methods".as_ptr());
+        let existing = crate::sexp::envir::R_findVarInFrame(info, sym);
+        if !existing.is_null() && existing != crate::sexp::globals::R_UnboundValue() {
+            return;
+        }
+        let methods = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dim) = 0;
+        *INTEGER(dim).add(1) = 4;
+        crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        crate::sexp::envir::defineVar(sym, methods, info);
+    }
+}
+
+unsafe fn record_s3_method_row(package_env: SEXP, generic: &str, class: &str, method: &str) {
+    unsafe {
+        let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
+        let mut info = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
+        if info.is_null()
+            || info == crate::sexp::globals::R_UnboundValue()
+            || TYPEOF(info) != SEXPTYPE::ENVSXP
+        {
+            return;
+        }
+        ensure_s3methods_slot(info);
+        let sym = Rf_install(c"S3methods".as_ptr());
+        let old = crate::sexp::envir::R_findVarInFrame(info, sym);
+        let old_n = if old.is_null() || TYPEOF(old) != SEXPTYPE::STRSXP {
+            0
+        } else {
+            let dim = crate::sexp::attrib_core::getAttrib(old, crate::sexp::attrib_core::R_DimSymbol());
+            if dim.is_null() || XLENGTH(dim) < 1 {
+                0
+            } else {
+                INTEGER_ELT(dim, 0).max(0) as i64
+            }
+        };
+        let new_n = old_n + 1;
+        let methods = Rf_allocVector3(SEXPTYPE::STRSXP, new_n * 4);
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dim) = new_n as i32;
+        *INTEGER(dim).add(1) = 4;
+        crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        if old_n > 0 {
+            for i in 0..(old_n * 4) {
+                SET_STRING_ELT(methods, i, STRING_ELT(old, i));
+            }
+        }
+        let put = |col: i64, text: &str| {
+            let c = CString::new(text).unwrap_or_default();
+            SET_STRING_ELT(methods, old_n + col * new_n, Rf_mkChar(c.as_ptr()));
+        };
+        put(0, generic);
+        put(1, class);
+        put(2, method);
+        SET_STRING_ELT(methods, old_n + 3 * new_n, crate::sexp::globals::R_NaString());
+        crate::sexp::envir::defineVar(sym, methods, info);
+    }
+}
+
+
 /// GNU `makeNamespace` + `namespaceExport`: `.__NAMESPACE__.` holds
 /// `exports` so `.isExported` / `.minimalName` / `show()` work.
 unsafe fn ensure_namespace_info(
@@ -2201,6 +2264,7 @@ unsafe fn ensure_namespace_info(
             && existing != crate::sexp::globals::R_UnboundValue()
             && TYPEOF(existing) == SEXPTYPE::ENVSXP
         {
+            ensure_s3methods_slot(existing);
             return;
         }
 
@@ -2265,6 +2329,8 @@ unsafe fn ensure_namespace_info(
             spec_names,
         );
         crate::sexp::envir::defineVar(Rf_install(c"spec".as_ptr()), spec, info);
+        ensure_s3methods_slot(info);
+
 
         let path = Rf_mkString(
             CString::new(package_dir.to_string_lossy().as_ref()).unwrap_or_default().as_ptr(),
@@ -3299,6 +3365,8 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                 method_value = crate::sexp::accessors::PRVALUE(method_value);
             }
             define_s3_method(package_env, local_generic, &method.class, method_value)?;
+            record_s3_method_row(package_env, local_generic, &method.class, &method_name);
+
             // GNU registerS3method: methods for a closure generic live in
             // environment(fdef); primitives use .BaseNamespaceEnv.
             if let Ok(generic_cstr) = CString::new(local_generic) {

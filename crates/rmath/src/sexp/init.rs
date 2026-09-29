@@ -2517,6 +2517,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             ".getNamespaceInfo",
             "function(ns, which) {\n\
              info <- get(\".__NAMESPACE__.\", envir = ns, inherits = FALSE)\n\
+             if (!exists(which, envir = info, inherits = FALSE) && which == \"S3methods\") {\n\
+               assign(which, matrix(NA_character_, 0L, 4L), envir = info)\n\
+             }\n\
              get(which, envir = info, inherits = FALSE)\n\
              }",
         );
