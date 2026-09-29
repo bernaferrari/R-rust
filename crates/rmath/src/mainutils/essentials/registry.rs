@@ -498,7 +498,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     ".asS4",
 
     ".OBJSXP",
-    "is",
     "setClass",
 
     "setValidity",
