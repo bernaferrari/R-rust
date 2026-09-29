@@ -281,6 +281,7 @@ pub unsafe fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _g = protect(ans);
         let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        let _nms = protect(nms);
         crate::sexp::accessors::SET_STRING_ELT(nms, 0, Rf_mkChar(c"size".as_ptr()));
         crate::sexp::accessors::SET_STRING_ELT(nms, 1, Rf_mkChar(c"nchains".as_ptr()));
         crate::sexp::accessors::SET_STRING_ELT(nms, 2, Rf_mkChar(c"counts".as_ptr()));
@@ -288,6 +289,7 @@ pub unsafe fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         crate::sexp::accessors::SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(size));
         crate::sexp::accessors::SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(nchains));
         let cv = Rf_allocVector3(SEXPTYPE::INTSXP, counts.len() as R_xlen_t);
+        let _cv = protect(cv);
         let ip = INTEGER(cv);
         for (i, c) in counts.iter().enumerate() {
             *ip.add(i) = *c;
