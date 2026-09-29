@@ -449,6 +449,17 @@ impl RSession {
     /// thread. Session methods still scope activation explicitly, so nested
     /// operations restore the previous instance.
     pub fn new() -> Self {
+        Self::new_with_default_packages(true)
+    }
+
+    /// Build the real base runtime without host package discovery. Collector
+    /// unit tests use this to avoid loading unrelated installed R packages.
+    #[cfg(test)]
+    pub(crate) fn new_without_default_packages() -> Self {
+        Self::new_with_default_packages(false)
+    }
+
+    fn new_with_default_packages(attach_default_packages: bool) -> Self {
         super::context::install_r_panic_hook();
         // Disown the box immediately: the thread-local current-instance
         // pointer must be the stable borrowing root for this allocation.
@@ -487,6 +498,9 @@ impl RSession {
             instance,
             _thread_confined: PhantomData,
         };
+        if !attach_default_packages {
+            return session;
+        }
         session.with_active(|| unsafe {
             // GNU defaultPackages: datasets, utils, grDevices, graphics,
             // stats, methods. library() inserts at pos 2, so attach in

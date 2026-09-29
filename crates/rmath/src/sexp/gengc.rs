@@ -1642,7 +1642,7 @@ mod tests {
     /// frame walks) dereferenced as garbage.
     #[test]
     fn test_persistent_env_roots_retraced_every_cycle() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         let sym =
             unsafe { crate::sexp::symbol::Rf_install(b"retrace_probe\0".as_ptr() as *const _) };
@@ -1690,11 +1690,26 @@ mod tests {
     fn reset_gc_test_arena(arena: &mut RArena) {
         *arena = RArena::new();
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
+        unsafe {
+            // Base bootstrap inserts heap-owned Autoloads (and a full session
+            // inserts package environments) into this chain. They were freed
+            // with the old arena; keep only the persistent sentinels.
+            (*crate::sexp::globals::R_GlobalEnv()).data.envsxp.enclos =
+                crate::sexp::globals::R_BaseEnv();
+        }
         instance::with_required_current_instance(|instance| unsafe {
             // Test-harness bulk reset via raw place accesses: BOTH
             // protection storages go back to empty.
             (*instance).legacy_protect.clear();
             (*instance).root_table.clear();
+            (*instance).preserve_stack.borrow_mut().clear();
+            (*instance).base_wrappers.borrow_mut().clear();
+            (*instance).package_namespace_cache.clear();
+            (*instance).unwrap_methods_ns = nil;
+            (*instance).unwrap_methods_closures.clear();
+            (*instance).active_bindings.clear();
+            (*instance).objects_state.deferred_default_object = nil;
+            (*instance).eval_state.bc_stack.set_depth(0);
             (*instance).context_stack.clear();
             (*instance).gc_state.remembered_set.clear();
             (*instance).error_state.warnings = nil;
@@ -1756,8 +1771,44 @@ mod tests {
     }
 
     #[test]
+    fn test_bulk_reset_detaches_discarded_heap_roots() {
+        let _session = RSession::new_without_default_packages();
+        let global = unsafe { crate::sexp::globals::R_GlobalEnv() };
+        let base = unsafe { crate::sexp::globals::R_BaseEnv() };
+        with_arena(|arena| {
+            assert!(arena.contains(unsafe { (*global).data.envsxp.enclos }));
+            reset_gc_test_arena(arena);
+            assert_eq!(unsafe { (*global).data.envsxp.enclos }, base);
+        });
+        instance::with_required_current_instance(|inst| unsafe {
+            assert!((*inst).preserve_stack.borrow().is_empty());
+            assert!((*inst).base_wrappers.borrow().is_empty());
+            assert!((*inst).package_namespace_cache.is_empty());
+        });
+        assert_eq!(full_gc(), (0, 0));
+    }
+
+    #[test]
+    fn test_live_base_runtime_survives_repeated_collections() {
+        let mut session = RSession::new_without_default_packages();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "kept <- list(v = 1:8, f = function(x) x + 1, e = new.env()); kept$e$answer <- 42L",
+        );
+        result.expect("initialize live runtime fixture");
+        for _ in 0..20 {
+            full_gc();
+            let (result, _, _) = session.eval_script_with_output_capture(
+                "identical(kept$v, 1:8) && identical(kept$f(9), 10) && identical(kept$e$answer, 42L)",
+            );
+            let value = result.expect("evaluate after collection");
+            assert_eq!(value.logical_elt(0), Some(1));
+        }
+    }
+
+    #[test]
     fn test_write_barrier_detects_old_to_young() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
+        let previous = with_gc_state(|state| state.remembered_set.len());
 
         with_arena(|arena| {
             let old_obj = arena.alloc_node(SEXPTYPE::LISTSXP);
@@ -1770,7 +1821,7 @@ mod tests {
 
             write_barrier(old_obj, young_obj);
 
-            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
+            assert_eq!(with_gc_state(|state| state.remembered_set.len()), previous + 1);
         });
     }
 
@@ -1805,14 +1856,14 @@ mod tests {
             .with_entries(|entries| assert_eq!(entries[0], new));
         left.root_table
             .with_entries(|entries| assert_eq!(entries[0], new));
-        assert_eq!(left.preserve_stack.borrow()[0], new);
+        assert_eq!(left.preserve_stack.borrow().last().copied(), Some(new));
         assert!(left.gc_state.remembered_set.iter().any(|obj| obj == new));
         assert!(!left.gc_state.remembered_set.iter().any(|obj| obj == old));
 
         right
             .legacy_protect
             .with_entries(|entries| assert_eq!(entries[0], right_obj));
-        assert_eq!(right.preserve_stack.borrow()[0], right_obj);
+        assert_eq!(right.preserve_stack.borrow().last().copied(), Some(right_obj));
         assert!(
             right
                 .gc_state
@@ -1824,7 +1875,7 @@ mod tests {
 
     #[test]
     fn test_gc_with_empty_arena() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -1836,7 +1887,7 @@ mod tests {
 
     #[test]
     fn test_gc_with_only_young_objects() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -1850,7 +1901,7 @@ mod tests {
 
     #[test]
     fn test_gc_with_only_old_objects() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -1868,7 +1919,7 @@ mod tests {
 
     #[test]
     fn test_gc_with_mixed_objects() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -1886,7 +1937,7 @@ mod tests {
 
     #[test]
     fn test_minor_gc_traces_global_environment_bindings() {
-        let session = RSession::new();
+        let session = RSession::new_without_default_packages();
 
         let value_raw = with_arena(|arena| {
             let value = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
@@ -1921,7 +1972,7 @@ mod tests {
 
     #[test]
     fn test_gc_reentrancy_guard() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         instance::with_required_current_instance(|instance| unsafe {
             (*instance).gc_state.in_progress = true;
@@ -1933,7 +1984,7 @@ mod tests {
 
     #[test]
     fn test_gc_stats_tracking() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         reset_gc_stats();
         with_arena(|arena| {
@@ -1948,7 +1999,7 @@ mod tests {
 
     #[test]
     fn test_gc_callback_invocation() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         reset_gc_stats();
         let (tx, rx) = std::sync::mpsc::channel();
@@ -1982,7 +2033,7 @@ mod tests {
 
     #[test]
     fn test_full_gc_empty_arena() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -1994,7 +2045,7 @@ mod tests {
 
     #[test]
     fn test_full_gc_collects_unreachable_old_objects() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -2015,7 +2066,7 @@ mod tests {
 
     #[test]
     fn test_full_gc_preserves_protected_old_objects() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         use super::super::protect::protect;
 
@@ -2045,7 +2096,7 @@ mod tests {
 
     #[test]
     fn test_full_gc_never_moves_protected_objects() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         use super::super::protect::protect;
 
@@ -2083,7 +2134,15 @@ mod tests {
     /// collection or a mark/sweep bug.
     #[test]
     fn gc_stress_protected_vectors_retain_data_across_collections() {
-        let _session = RSession::new();
+        stress_protected_vectors(RSession::new_without_default_packages());
+    }
+
+    #[test]
+    fn gc_stress_protected_vectors_with_default_packages() {
+        stress_protected_vectors(RSession::new());
+    }
+
+    fn stress_protected_vectors(_session: RSession) {
         use super::super::protect::protect;
 
         const N: usize = 64;
@@ -2131,7 +2190,7 @@ mod tests {
 
     #[test]
     fn test_full_gc_preserves_external_pointer_edges_without_moving() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         use super::super::protect::protect;
 
@@ -2176,7 +2235,7 @@ mod tests {
 
     #[test]
     fn test_full_gc_weakref_traces_value_and_finalizer_but_not_key() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         use super::super::protect::protect;
 
@@ -2230,7 +2289,7 @@ mod tests {
 
     #[test]
     fn test_full_gc_weakref_forwards_live_key_without_marking_it() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         use super::super::protect::protect;
 
@@ -2281,7 +2340,7 @@ mod tests {
 
     #[test]
     fn test_gc_stats_reset() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         reset_gc_stats();
         with_arena(|arena| {
@@ -2301,8 +2360,9 @@ mod tests {
 
     #[test]
     fn test_session_gc_stats_are_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let mut left = RSession::new_without_default_packages();
+        let mut right = RSession::new_without_default_packages();
+        let right_initial_collections = right.with_active(|| get_gc_stats().collections);
 
         left.with_arena(|arena| {
             reset_gc_stats();
@@ -2316,7 +2376,7 @@ mod tests {
 
         right
             .with_arena(|arena| {
-                assert_eq!(get_gc_stats().collections, 0);
+                assert_eq!(get_gc_stats().collections, right_initial_collections);
                 reset_gc_stats();
                 reset_gc_test_arena(arena);
                 arena.alloc_node(SEXPTYPE::INTSXP);
@@ -2336,8 +2396,8 @@ mod tests {
 
     #[test]
     fn test_session_remembered_sets_are_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let mut left = RSession::new_without_default_packages();
+        let mut right = RSession::new_without_default_packages();
 
         left.with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -2392,7 +2452,7 @@ mod tests {
 
     #[test]
     fn test_gc_deterministic_behavior() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         for _ in 0..5 {
             with_arena(|arena| {
@@ -2412,7 +2472,7 @@ mod tests {
 
     #[test]
     fn test_gc_with_protected_objects() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         use super::super::protect::protect;
 
@@ -2431,7 +2491,7 @@ mod tests {
 
     #[test]
     fn test_compact_if_needed_runs_gc_but_never_moves() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -2442,7 +2502,7 @@ mod tests {
 
     #[test]
     fn test_get_fragmentation_ratio_empty() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -2453,7 +2513,7 @@ mod tests {
 
     #[test]
     fn test_force_compact_only_normalizes_free_list() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -2463,7 +2523,7 @@ mod tests {
 
     #[test]
     fn test_minor_gc_does_not_refree_nodes_on_free_list() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -2482,7 +2542,7 @@ mod tests {
 
     #[test]
     fn test_update_object_references_skips_atomic_vector_payloads() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
@@ -2508,7 +2568,7 @@ mod tests {
 
     #[test]
     fn test_update_object_references_updates_pointer_vector_payloads() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
@@ -2533,7 +2593,7 @@ mod tests {
 
     #[test]
     fn deeply_nested_cyclic_graph_uses_bounded_call_stack() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
         let (head, tail) = with_arena(|arena| {
             let mut head = unsafe { crate::sexp::globals::R_NilValue() };
             let mut tail = head;
@@ -2566,7 +2626,7 @@ mod tests {
 
     #[test]
     fn test_dotsxp_chain_is_traced_from_protected_head() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -2608,7 +2668,7 @@ mod tests {
 
     #[test]
     fn test_remembered_old_list_keeps_young_car_across_minor_gc() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -2651,7 +2711,7 @@ mod tests {
 
     #[test]
     fn test_remembered_vector_element_survives_and_dedupes() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
@@ -2694,6 +2754,7 @@ mod tests {
     #[test]
     fn test_remembered_set_remap_updates_membership() {
         let mut inst = instance::RInstance::new();
+        let previous = inst.gc_state.remembered_set.len();
         let old = inst.arena.alloc_node(SEXPTYPE::INTSXP);
         let new = inst.arena.alloc_node(SEXPTYPE::REALSXP);
         unsafe {
@@ -2710,9 +2771,9 @@ mod tests {
         // Membership follows the remapped address: re-adding the new pointer
         // deduplicates, while the stale old address is no longer a member.
         inst.gc_state.remembered_set.add(new);
-        assert_eq!(inst.gc_state.remembered_set.len(), 1);
+        assert_eq!(inst.gc_state.remembered_set.len(), previous + 1);
         inst.gc_state.remembered_set.add(old);
-        assert_eq!(inst.gc_state.remembered_set.len(), 2);
+        assert_eq!(inst.gc_state.remembered_set.len(), previous + 2);
     }
 
     fn make_detached_env() -> SEXP {
@@ -2731,7 +2792,7 @@ mod tests {
     /// swept the namespace env and left a dangling raw SEXP in the cache.
     #[test]
     fn test_package_namespace_cache_value_is_traced() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         let payload = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
         unsafe {
@@ -2789,7 +2850,7 @@ mod tests {
         std::fs::write(package.join("R").join("answer.R"), "answer <- 4242\n")
             .expect("write package source");
 
-        let mut session = RSession::new();
+        let mut session = RSession::new_without_default_packages();
         let library_literal = library
             .to_string_lossy()
             .replace('\\', "\\\\")
@@ -2833,7 +2894,7 @@ mod tests {
     /// mark/remap contract as the namespace cache.
     #[test]
     fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
         const NAMESPACE_ROOT: usize = if cfg!(target_arch = "wasm32") { 3 } else { 6 };
         let roots = with_arena(|arena| {
             (0..=NAMESPACE_ROOT)
@@ -2912,7 +2973,7 @@ mod tests {
     /// free list recycles the address onto a new node.
     #[test]
     fn test_active_bindings_traced_and_dead_entries_swept() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         let sym =
             unsafe { crate::sexp::symbol::Rf_install(b"active_probe\0".as_ptr() as *const _) };
@@ -2966,7 +3027,7 @@ mod tests {
     /// nodes; entries whose keys stay live must survive collections.
     #[test]
     fn test_locked_tables_swept_with_dead_keys_live_keys_kept() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         let sym = unsafe { crate::sexp::symbol::Rf_install(b"lock_probe\0".as_ptr() as *const _) };
         let live_env = make_detached_env();
@@ -3010,7 +3071,7 @@ mod tests {
     /// rooted envs keep resolving and swept envs leave no stale entries.
     #[test]
     fn test_binding_tables_resolve_across_gc_churn() {
-        let _session = RSession::new();
+        let _session = RSession::new_without_default_packages();
 
         let sym_active =
             unsafe { crate::sexp::symbol::Rf_install(b"churn_active\0".as_ptr() as *const _) };
@@ -3106,8 +3167,8 @@ mod tests {
             RUNS.fetch_add(1, Ordering::SeqCst);
         }
 
-        let _session = RSession::new();
-        let session = RSession::new();
+        let _session = RSession::new_without_default_packages();
+        let session = RSession::new_without_default_packages();
         session.with_protected(|| unsafe {
             instance::with_required_current_instance(|inst| {
                 (*inst).memory_state.pending_finalizers.clear();
@@ -3147,8 +3208,8 @@ mod tests {
             RUNS.fetch_add(1, Ordering::SeqCst);
         }
 
-        let _session = RSession::new();
-        let session = RSession::new();
+        let _session = RSession::new_without_default_packages();
+        let session = RSession::new_without_default_packages();
         session.with_protected(|| unsafe {
             instance::with_required_current_instance(|inst| {
                 (*inst).memory_state.pending_finalizers.clear();
