@@ -13,7 +13,7 @@ use super::error::EvalError;
 /// A limit of `0` means unlimited for that dimension.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct EvalLimits {
-    /// Maximum evaluation recursion depth (0 = default of 500).
+    /// Maximum evaluation recursion depth (0 = R's expressions option).
     pub max_eval_depth: usize,
     /// Maximum execution time in milliseconds (0 = unlimited).
     pub max_execution_time_ms: u64,
@@ -185,6 +185,19 @@ unsafe fn current_call_hint() -> String {
 
 
 
+fn effective_eval_depth_limit(configured: usize, r_expressions: c_int) -> usize {
+    let option_limit = if r_expressions > 0 {
+        r_expressions as usize
+    } else {
+        5000
+    };
+    if configured > 0 {
+        configured.min(option_limit)
+    } else {
+        option_limit
+    }
+}
+
 /// Check evaluation depth and time limits, returning a guard that decrements on drop.
 pub fn check_eval_depth() -> Result<DepthGuard, String> {
     let (instance, limits, depth, elapsed) = with_required_current_instance(|inst| unsafe {
@@ -195,17 +208,10 @@ pub fn check_eval_depth() -> Result<DepthGuard, String> {
             (*inst).eval_state.start_time.map(|start| start.elapsed()),
         )
     });
-    let from_option = crate::mainutils::errors::R_Expressions();
-    let from_option = if from_option > 0 {
-        from_option as usize
-    } else {
-        5000
-    };
-    let max_depth = if limits.max_eval_depth > 0 {
-        limits.max_eval_depth.max(from_option)
-    } else {
-        from_option
-    };
+    let max_depth = effective_eval_depth_limit(
+        limits.max_eval_depth,
+        crate::mainutils::errors::R_Expressions(),
+    );
     if depth as usize > max_depth {
         let hint = unsafe { current_call_hint() };
         return Err(format!(
@@ -226,6 +232,18 @@ pub fn check_eval_depth() -> Result<DepthGuard, String> {
         (*instance).eval_state.eval_depth = depth;
     }
     Ok(DepthGuard { instance, depth })
+}
+
+#[cfg(test)]
+mod depth_limit_tests {
+    use super::effective_eval_depth_limit;
+
+    #[test]
+    fn session_limit_cannot_be_relaxed_by_r_expressions() {
+        assert_eq!(effective_eval_depth_limit(7, 5000), 7);
+        assert_eq!(effective_eval_depth_limit(500, 100), 100);
+        assert_eq!(effective_eval_depth_limit(0, 200), 200);
+    }
 }
 
 /// Cooperative checkpoint for long-running native computations. This checks
