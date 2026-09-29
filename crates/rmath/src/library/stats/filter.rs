@@ -6657,6 +6657,35 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
                 var_syms.push(CAR(resp));
             }
         }
+        fn walk_vars(expr: SEXP, var_syms: &mut Vec<SEXP>) {
+            unsafe {
+                if expr.is_null() || expr == R_NilValue() {
+                    return;
+                }
+                if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+                    if !var_syms.iter().any(|&s| s == expr || formula_vars_equal(s, expr)) {
+                        var_syms.push(expr);
+                    }
+                    return;
+                }
+                if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+                    return;
+                }
+                let name = symbol_print_name(CAR(expr));
+                if name == "~" || name == "+" || name == "*" || name == ":" || name == "(" {
+                    let mut cell = CDR(expr);
+                    while !cell.is_null() && cell != R_NilValue() {
+                        walk_vars(CAR(cell), var_syms);
+                        cell = CDR(cell);
+                    }
+                    return;
+                }
+                if !var_syms.iter().any(|&s| s == expr || formula_vars_equal(s, expr)) {
+                    var_syms.push(expr);
+                }
+            }
+        }
+        walk_vars(rhs, &mut var_syms);
         for (name, node) in labels.iter().zip(term_nodes.iter().copied()) {
             if is_formula_interaction(name) {
                 for part in split_top_level_colon(name) {
@@ -6674,7 +6703,7 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
                     let c = std::ffi::CString::new(part).unwrap_or_default();
                     var_syms.push(crate::sexp::symbol::Rf_install(c.as_ptr()));
                 }
-            } else if !var_syms.iter().any(|&s| s == node) {
+            } else if !var_syms.iter().any(|&s| s == node || formula_vars_equal(s, node) || (!deparse_call(node).is_empty() && deparse_call(s) == deparse_call(node))) {
                 var_syms.push(node);
             }
         }
@@ -6918,6 +6947,75 @@ unsafe fn plus_chain(cols: &[String]) -> SEXP {
             acc = crate::sexp::constructors::Rf_lang3(plus, acc, sym);
         }
         acc
+    }
+}
+
+fn formula_vars_equal(a: SEXP, b: SEXP) -> bool {
+    if a == b {
+        return true;
+    }
+    unsafe {
+        let ta = TYPEOF(a);
+        let tb = TYPEOF(b);
+        if ta == SEXPTYPE::SYMSXP && tb == SEXPTYPE::SYMSXP {
+            return symbol_print_name(a) == symbol_print_name(b);
+        }
+        if ta == SEXPTYPE::LANGSXP && tb == SEXPTYPE::LANGSXP {
+            let mut pa = a;
+            let mut pb = b;
+            while !pa.is_null() && pa != R_NilValue() && !pb.is_null() && pb != R_NilValue() {
+                if !formula_vars_equal(CAR(pa), CAR(pb)) {
+                    return false;
+                }
+                pa = CDR(pa);
+                pb = CDR(pb);
+            }
+            return (pa.is_null() || pa == R_NilValue()) && (pb.is_null() || pb == R_NilValue());
+        }
+        if ta == SEXPTYPE::CPLXSXP || tb == SEXPTYPE::CPLXSXP {
+            return false;
+        }
+        if ta == SEXPTYPE::STRSXP || tb == SEXPTYPE::STRSXP {
+            if ta == SEXPTYPE::STRSXP && tb == SEXPTYPE::STRSXP && XLENGTH(a) == 0 && XLENGTH(b) == 0 {
+                return true;
+            }
+            if ta != SEXPTYPE::STRSXP || tb != SEXPTYPE::STRSXP || XLENGTH(a) != 1 || XLENGTH(b) != 1 {
+                return false;
+            }
+            let sa = STRING_ELT(a, 0);
+            let sb = STRING_ELT(b, 0);
+            if sa == crate::sexp::globals::R_NaString() && sb == crate::sexp::globals::R_NaString() {
+                return true;
+            }
+            return std::ffi::CStr::from_ptr(CHAR(sa)).to_bytes() == std::ffi::CStr::from_ptr(CHAR(sb)).to_bytes();
+        }
+        let num = |s: SEXP, t: i32| -> Option<f64> {
+            if XLENGTH(s) != 1 {
+                return None;
+            }
+            if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
+                let iv = *INTEGER(s);
+                if iv == crate::sexp::ffi::NA_INTEGER {
+                    Some(f64::NAN)
+                } else {
+                    Some(iv as f64)
+                }
+            } else if t == SEXPTYPE::REALSXP {
+                let r = *REAL(s);
+                if r.is_nan() {
+                    Some(f64::NAN)
+                } else {
+                    Some(r)
+                }
+            } else {
+                None
+            }
+        };
+        match (num(a, ta), num(b, tb)) {
+            (Some(x), Some(y)) if x.is_nan() && y.is_nan() => true,
+            (Some(x), Some(y)) => x == y,
+            _ => false,
+        }
     }
 }
 
