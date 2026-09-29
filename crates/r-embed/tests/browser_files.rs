@@ -4,7 +4,9 @@ fn browser_files_standard_io_and_isolation() {
     let mut s = RSession::new().unwrap();
     s.import_file("input.csv", b"x,y\n1,2\n").unwrap();
     assert_eq!(
-        s.eval("d <- read.csv('input.csv'); d$x[1]+d$y[1]").unwrap(),
+        s.eval("d <- read.csv('input.csv'); d$x[1]+d$y[1]")
+            .unwrap()
+            .trim(),
         "[1] 3"
     );
     s.import_file("script.R", b"answer <- 42\n").unwrap();
@@ -32,6 +34,14 @@ fn browser_mode_creates_files_without_import_and_opens_deferred_connections() {
     s.enable_browser_files();
     s.eval("writeLines('first', 'created.txt')").unwrap();
     assert_eq!(s.export_file("created.txt").unwrap(), b"first\n");
+    assert_eq!(
+        s.eval(
+            "Sys.setFileTime('created.txt', as.POSIXct(1700000000, origin = '1970-01-01', tz = 'UTC')) && file.info('created.txt')$size == 6 && as.numeric(file.mtime('created.txt')) == 1700000000 && file.exists('created.txt') && file.access('created.txt', 0) == 0 && is.na(file.info('missing.txt')$size)",
+        )
+        .unwrap()
+        .trim(),
+        "[1] TRUE"
+    );
     s.eval("con <- file('created.txt', 'w'); close(con)")
         .unwrap();
     assert_eq!(s.export_file("created.txt").unwrap(), b"");
@@ -40,7 +50,8 @@ fn browser_mode_creates_files_without_import_and_opens_deferred_connections() {
     assert_eq!(s.export_file("later.txt").unwrap(), b"later\n");
     assert_eq!(
         s.eval("con <- file('later.txt', 'r'); x <- readLines(con); close(con); x")
-            .unwrap(),
+            .unwrap()
+            .trim(),
         "[1] \"later\""
     );
     assert!(s.eval("file('missing', 'r+')").is_err());

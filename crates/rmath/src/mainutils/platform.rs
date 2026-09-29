@@ -851,6 +851,27 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
+                if let Some(info) = crate::mainutils::browser_files::info_current(path) {
+                    *crate::sexp::accessors::REAL(size_col).add(i) = info.size as f64;
+                    *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = FALSE;
+                    *crate::sexp::accessors::INTEGER(mode_col).add(i) = 0o644;
+                    *crate::sexp::accessors::REAL(mtime_col).add(i) = info.mtime;
+                    *crate::sexp::accessors::REAL(ctime_col).add(i) = info.ctime;
+                    *crate::sexp::accessors::REAL(atime_col).add(i) = info.atime;
+                    *crate::sexp::accessors::LOGICAL(exe_col).add(i) = FALSE;
+                    continue;
+                }
+                if crate::mainutils::browser_files::enabled() {
+                    *crate::sexp::accessors::REAL(size_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::LOGICAL(isdir_col).add(i) =
+                        crate::sexp::ffi::NA_INTEGER;
+                    *crate::sexp::accessors::INTEGER(mode_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                    *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::LOGICAL(exe_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                    continue;
+                }
                 match fs::metadata(path) {
                     Ok(meta) => {
                         *crate::sexp::accessors::REAL(size_col).add(i) = meta.len() as f64;
@@ -971,22 +992,30 @@ pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let ok = if elt.is_null() || !secs.is_finite() {
                 false
             } else {
-                #[cfg(target_arch = "wasm32")]
+                let path = CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+                    .to_str()
+                    .unwrap_or("");
+                if crate::mainutils::browser_files::contains_current(path)
+                    || crate::mainutils::browser_files::enabled()
                 {
-                    // Browser files have no host filesystem timestamp to update.
-                    false
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let path = crate::sexp::accessors::CHAR(elt);
-                    let whole = secs.trunc() as i64;
-                    let nsec = ((secs - whole as f64) * 1e9) as i64;
-                    let ts = libc::timespec {
-                        tv_sec: whole,
-                        tv_nsec: nsec,
-                    };
-                    let times_buf = [ts, ts];
-                    libc::utimensat(libc::AT_FDCWD, path, times_buf.as_ptr(), 0) == 0
+                    crate::mainutils::browser_files::set_time_current(path, secs)
+                } else {
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        false
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let path = crate::sexp::accessors::CHAR(elt);
+                        let whole = secs.trunc() as i64;
+                        let nsec = ((secs - whole as f64) * 1e9) as i64;
+                        let ts = libc::timespec {
+                            tv_sec: whole,
+                            tv_nsec: nsec,
+                        };
+                        let times_buf = [ts, ts];
+                        libc::utimensat(libc::AT_FDCWD, path, times_buf.as_ptr(), 0) == 0
+                    }
                 }
             };
             *LOGICAL(ans).add(i) = if ok { 1 } else { 0 };
@@ -1019,9 +1048,15 @@ pub unsafe fn do_filesize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 let path = CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
                     .to_str()
                     .unwrap_or("");
-                std::fs::metadata(path)
-                    .map(|meta| meta.len() as f64)
-                    .unwrap_or(crate::sexp::ffi::NA_REAL)
+                if let Some(info) = crate::mainutils::browser_files::info_current(path) {
+                    info.size as f64
+                } else if crate::mainutils::browser_files::enabled() {
+                    crate::sexp::ffi::NA_REAL
+                } else {
+                    std::fs::metadata(path)
+                        .map(|meta| meta.len() as f64)
+                        .unwrap_or(crate::sexp::ffi::NA_REAL)
+                }
             };
         }
         ans
@@ -1052,14 +1087,20 @@ pub unsafe fn do_filemtime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 let path = CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
                     .to_str()
                     .unwrap_or("");
-                std::fs::metadata(path)
-                    .ok()
-                    .and_then(|meta| meta.modified().ok())
-                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|duration| {
-                        duration.as_secs() as f64 + duration.subsec_nanos() as f64 / 1e9
-                    })
-                    .unwrap_or(crate::sexp::ffi::NA_REAL)
+                if let Some(info) = crate::mainutils::browser_files::info_current(path) {
+                    info.mtime
+                } else if crate::mainutils::browser_files::enabled() {
+                    crate::sexp::ffi::NA_REAL
+                } else {
+                    std::fs::metadata(path)
+                        .ok()
+                        .and_then(|meta| meta.modified().ok())
+                        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|duration| {
+                            duration.as_secs() as f64 + duration.subsec_nanos() as f64 / 1e9
+                        })
+                        .unwrap_or(crate::sexp::ffi::NA_REAL)
+                }
             };
         }
 
@@ -1096,7 +1137,11 @@ pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
-                *pa.add(i) = if Path::new(path).is_dir() {
+                *pa.add(i) = if crate::mainutils::browser_files::enabled()
+                    || crate::mainutils::browser_files::contains_current(path)
+                {
+                    FALSE
+                } else if Path::new(path).is_dir() {
                     TRUE
                 } else {
                     FALSE
@@ -1483,7 +1528,11 @@ pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
-                *pa.add(i) = if Path::new(path).exists() {
+                *pa.add(i) = if crate::mainutils::browser_files::contains_current(path) {
+                    TRUE
+                } else if crate::mainutils::browser_files::enabled() {
+                    FALSE
+                } else if Path::new(path).exists() {
                     TRUE
                 } else {
                     FALSE
@@ -1534,7 +1583,11 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
                 let p = Path::new(path);
-                let allowed = if mode == 0 {
+                let allowed = if crate::mainutils::browser_files::contains_current(path) {
+                    mode & 1 == 0
+                } else if crate::mainutils::browser_files::enabled() {
+                    false
+                } else if mode == 0 {
                     p.exists()
                 } else {
                     std::fs::metadata(path)

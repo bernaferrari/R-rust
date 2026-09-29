@@ -3,15 +3,39 @@
 use crate::sexp::instance::with_current_instance;
 use std::collections::HashMap;
 use std::io;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const MAX_FILE_BYTES: usize = 1024 * 1024;
 pub const MAX_SESSION_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_FILE_COUNT: usize = 128;
 
+struct StoredFile {
+    bytes: Vec<u8>,
+    mtime: f64,
+    atime: f64,
+    ctime: f64,
+}
+
+/// Timestamps are Unix seconds, including a fractional part.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BrowserFileInfo {
+    pub size: u64,
+    pub mtime: f64,
+    pub atime: f64,
+    pub ctime: f64,
+}
+
 #[derive(Default)]
 pub struct BrowserFileStore {
-    files: HashMap<String, Vec<u8>>,
+    files: HashMap<String, StoredFile>,
     total_bytes: usize,
+}
+
+fn unix_now() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64())
+        .unwrap_or(0.0)
 }
 
 pub fn enabled() -> bool {
@@ -41,6 +65,17 @@ pub fn read_current(path: &str) -> Option<Vec<u8>> {
 pub fn contains_current(path: &str) -> bool {
     with_current_instance(|instance| unsafe { (*instance).browser_files.contains(path) })
         .unwrap_or(false)
+}
+
+pub fn info_current(path: &str) -> Option<BrowserFileInfo> {
+    with_current_instance(|instance| unsafe { (*instance).browser_files.info(path) }).flatten()
+}
+
+pub fn set_time_current(path: &str, secs: f64) -> bool {
+    with_current_instance(|instance| unsafe {
+        (*instance).browser_files.set_file_time(path, secs)
+    })
+    .unwrap_or(false)
 }
 
 pub fn write_current(path: &str, bytes: &[u8]) -> Result<(), String> {
@@ -104,7 +139,31 @@ impl BrowserFileStore {
     }
 
     pub fn read(&self, path: &str) -> Option<&[u8]> {
-        self.files.get(path).map(Vec::as_slice)
+        self.files.get(path).map(|file| file.bytes.as_slice())
+    }
+
+    pub fn info(&self, path: &str) -> Option<BrowserFileInfo> {
+        self.files.get(path).map(|file| BrowserFileInfo {
+            size: file.bytes.len() as u64,
+            mtime: file.mtime,
+            atime: file.atime,
+            ctime: file.ctime,
+        })
+    }
+
+    /// GNU `Sys.setFileTime` updates modification and access time together.
+    /// A non-finite time is rejected and the stored times stay unchanged.
+    pub fn set_file_time(&mut self, path: &str, secs: f64) -> bool {
+        if !secs.is_finite() {
+            return false;
+        }
+        let Some(file) = self.files.get_mut(path) else {
+            return false;
+        };
+        file.mtime = secs;
+        file.atime = secs;
+        file.ctime = unix_now();
+        true
     }
 
     pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
@@ -115,7 +174,7 @@ impl BrowserFileStore {
                 MAX_FILE_BYTES
             ));
         }
-        let old = self.files.get(path).map_or(0, Vec::len);
+        let old = self.files.get(path).map_or(0, |file| file.bytes.len());
         if old == 0 && !self.files.contains_key(path) && self.files.len() >= MAX_FILE_COUNT {
             return Err(format!(
                 "browser file store exceeds {} file limit",
@@ -132,7 +191,17 @@ impl BrowserFileStore {
                 MAX_SESSION_BYTES
             ));
         }
-        self.files.insert(path.to_owned(), bytes.to_vec());
+        let now = unix_now();
+        let ctime = self.files.get(path).map(|file| file.ctime).unwrap_or(now);
+        self.files.insert(
+            path.to_owned(),
+            StoredFile {
+                bytes: bytes.to_vec(),
+                mtime: now,
+                atime: now,
+                ctime,
+            },
+        );
         self.total_bytes = total;
         Ok(())
     }
@@ -143,10 +212,10 @@ impl BrowserFileStore {
     }
 
     pub fn remove(&mut self, path: &str) -> bool {
-        let Some(bytes) = self.files.remove(path) else {
+        let Some(file) = self.files.remove(path) else {
             return false;
         };
-        self.total_bytes = self.total_bytes.saturating_sub(bytes.len());
+        self.total_bytes = self.total_bytes.saturating_sub(file.bytes.len());
         true
     }
 
@@ -184,5 +253,24 @@ mod tests {
         }
         assert!(store.put("overflow", b"").is_err());
         store.put("0", b"replacement").unwrap();
+    }
+
+    #[test]
+    fn set_file_time_roundtrips_and_rejects_a_missing_or_nonfinite_time() {
+        let mut store = BrowserFileStore::default();
+        store.put("note.txt", b"hello").unwrap();
+        let created = store.info("note.txt").expect("stored file");
+        assert_eq!(created.size, 5);
+        assert!(created.mtime.is_finite() && created.atime.is_finite());
+        assert!(store.set_file_time("note.txt", 1_700_000_000.25));
+        let updated = store.info("note.txt").expect("stored file");
+        assert_eq!(updated.size, 5);
+        assert_eq!(updated.mtime, 1_700_000_000.25);
+        assert_eq!(updated.atime, 1_700_000_000.25);
+        assert!(updated.ctime.is_finite());
+        assert!(!store.set_file_time("missing.txt", 10.0));
+        assert!(store.info("missing.txt").is_none());
+        assert!(!store.set_file_time("note.txt", f64::NAN));
+        assert_eq!(store.info("note.txt").unwrap().mtime, 1_700_000_000.25);
     }
 }
