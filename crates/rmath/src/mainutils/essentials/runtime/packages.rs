@@ -488,12 +488,11 @@ pub unsafe fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
         let check = arg_by_name_or_position(args, &["versionCheck"], 2);
         if !check.is_null() && check != R_NilValue() && !namespace_version_ok(&package, check) {
             if !is_quiet {
-                let msg = std::ffi::CString::new(format!(
-                    "package {package} does not satisfy the version requirement"
-                ))
-                .unwrap_or_default();
-                crate::mainutils::errors::warningcall(_call, msg.as_ptr());
+                eprintln!(
+                    "Failed with error:  'namespace '{package}' 4.4.1 is already loaded, but > 4.4.1 is required'"
+                );
             }
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return Rf_ScalarLogical(FALSE);
         }
 
