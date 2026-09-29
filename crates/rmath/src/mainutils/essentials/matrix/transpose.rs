@@ -509,6 +509,39 @@ pub unsafe fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 std::panic::panic_any(RError { message });
             }
         };
+        let start = *REAL(tsp);
+        let end = *REAL(tsp).add(1);
+        let frequency = *REAL(tsp).add(2);
+        let n = {
+            let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            if !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) >= 1 {
+                INTEGER_ELT(dim, 0) as R_xlen_t
+            } else {
+                XLENGTH(x)
+            }
+        };
+        if n == 0 {
+            std::panic::panic_any(RError {
+                message: "cannot assign 'tsp' to zero-length vector".to_string(),
+            });
+        }
+        let eps_opt = crate::mainutils::options::GetOption1(Rf_install(c"ts.eps".as_ptr()));
+        let eps = if !eps_opt.is_null()
+            && eps_opt != R_NilValue()
+            && TYPEOF(eps_opt) == SEXPTYPE::REALSXP
+        {
+            REAL_ELT(eps_opt, 0)
+        } else {
+            1e-5
+        };
+        if frequency.is_finite()
+            && (end - start - (n - 1) as f64 / frequency).abs() > eps
+        {
+            std::panic::panic_any(RError {
+                message: "invalid time series parameters specified (1)".to_string(),
+            });
+        }
+
         crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_TspSymbol(), tsp);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x

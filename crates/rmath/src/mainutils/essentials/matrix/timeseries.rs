@@ -153,6 +153,7 @@ pub unsafe fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let data = supplied_arg(args, "data", 0).unwrap_or_else(|| Rf_ScalarReal(NA_REAL));
         let _data_guard = protect(data);
+
         let dim =
             crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimSymbol());
         let (ndata, nseries) = if dim != R_NilValue() && XLENGTH(dim) == 2 {
@@ -219,7 +220,7 @@ pub unsafe fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let cycles = (end - start) * frequency;
         let rounded_cycles = cycles.round();
-        if (rounded_cycles - cycles).abs() > 1e-5 * cycles.max(1.0) {
+        if (rounded_cycles - cycles).abs() > ts_eps * cycles.max(1.0) {
             std::panic::panic_any(RError {
                 message: "'end' must be a whole number of cycles after 'start'".to_string(),
             });
@@ -232,6 +233,12 @@ pub unsafe fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _result_guard = protect(result);
         if nseries > 1 {
             set_ts_matrix_dimnames(result, data, nseries, args);
+        }
+
+        if (end - start - (nobs - 1) as f64 / frequency).abs() > ts_eps {
+            std::panic::panic_any(RError {
+                message: "invalid time series parameters specified (1)".to_string(),
+            });
         }
 
         let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
