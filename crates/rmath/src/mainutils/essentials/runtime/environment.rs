@@ -81,14 +81,27 @@ pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         } else {
             crate::sexp::globals::R_GlobalEnv()
         };
-
-
-        // Create a new environment with empty frame and parent
+        let hash_arg = arg_by_name_or_position(args, &["hash"], 0);
+        let size_arg = arg_by_name_or_position(args, &["size"], 2);
+        let hash = hash_arg.is_null()
+            || hash_arg == R_NilValue()
+            || hash_arg == R_MissingArg()
+            || crate::sexp::accessors::LOGICAL_ELT(hash_arg, 0) != 0;
+        let size = if size_arg.is_null() || size_arg == R_NilValue() || size_arg == R_MissingArg() {
+            29
+        } else if TYPEOF(size_arg) == SEXPTYPE::REALSXP {
+            crate::sexp::accessors::REAL_ELT(size_arg, 0) as i32
+        } else {
+            crate::sexp::accessors::INTEGER_ELT(size_arg, 0)
+        };
         let env = crate::sexp::memory_ext::NewEnvironment(
-            R_NilValue(), // empty frame
-            parent,       // enclosing env
-            R_NilValue(), // no hash table (simplified)
+            R_NilValue(),
+            parent,
+            R_NilValue(),
         );
+        if hash {
+            crate::sexp::env_hash::mark_hashed(env, size);
+        }
         env
     }
 }
@@ -187,7 +200,24 @@ pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
             let value = STRING_ELT(name, 0);
             if !value.is_null() && value != R_NilValue() {
-                return Rf_mkString(CHAR(value));
+                let text = std::ffi::CStr::from_ptr(CHAR(value)).to_string_lossy();
+                // Namespace spec is `stats`; the search-path name is `package:stats`.
+                let shown = {
+                    let info = crate::sexp::envir::R_findVarInFrame(
+                        env,
+                        Rf_install(c".__NAMESPACE__.".as_ptr()),
+                    );
+                    let is_ns = !info.is_null()
+                        && info != crate::sexp::globals::R_UnboundValue()
+                        && TYPEOF(info) == SEXPTYPE::ENVSXP;
+                    if is_ns && let Some(spec) = text.strip_prefix("package:") {
+                        spec.to_string()
+                    } else {
+                        text.into_owned()
+                    }
+                };
+                let c = std::ffi::CString::new(shown).unwrap_or_default();
+                return Rf_mkString(c.as_ptr());
             }
         }
         Rf_mkString(c"".as_ptr())
@@ -218,5 +248,51 @@ pub unsafe fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         // For vectors, check length
         let n = XLENGTH(env);
         Rf_ScalarLogical(if n == 0 { TRUE } else { FALSE })
+    }
+}
+
+/// GNU `.Internal(env.profile(env))`.
+pub unsafe fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let env = CAR(args);
+        if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+            base_error("argument must be a hashed environment");
+        }
+        let Some(initial) = crate::sexp::env_hash::hashed_size(env) else {
+            return R_NilValue();
+        };
+        let mut names = Vec::new();
+        let mut frame = (*env).data.envsxp.frame;
+        while !frame.is_null() && frame != R_NilValue() {
+            let tag = crate::sexp::accessors::TAG(frame);
+            if !tag.is_null() && tag != R_NilValue() {
+                let pname = crate::sexp::accessors::PRINTNAME(tag);
+                if !pname.is_null() {
+                    let s = crate::sexp::accessors::CHAR(pname);
+                    if !s.is_null() {
+                        names.push(std::ffi::CStr::from_ptr(s).to_bytes().to_vec());
+                    }
+                }
+            }
+            frame = crate::sexp::accessors::CDR(frame);
+        }
+        names.reverse();
+        let (size, nchains, counts) = crate::sexp::env_hash::gnu_chain_profile(initial, &names);
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _g = protect(ans);
+        let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        crate::sexp::accessors::SET_STRING_ELT(nms, 0, Rf_mkChar(c"size".as_ptr()));
+        crate::sexp::accessors::SET_STRING_ELT(nms, 1, Rf_mkChar(c"nchains".as_ptr()));
+        crate::sexp::accessors::SET_STRING_ELT(nms, 2, Rf_mkChar(c"counts".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), nms);
+        crate::sexp::accessors::SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(size));
+        crate::sexp::accessors::SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(nchains));
+        let cv = Rf_allocVector3(SEXPTYPE::INTSXP, counts.len() as R_xlen_t);
+        let ip = INTEGER(cv);
+        for (i, c) in counts.iter().enumerate() {
+            *ip.add(i) = *c;
+        }
+        crate::sexp::accessors::SET_VECTOR_ELT(ans, 2, cv);
+        ans
     }
 }

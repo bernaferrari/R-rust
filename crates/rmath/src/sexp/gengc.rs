@@ -914,6 +914,9 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         (*instance)
             .locked_environments
             .retain(|env| !old_to_new.contains_key(env));
+        (*instance)
+            .env_hash_sizes
+            .retain(|env, _| !old_to_new.contains_key(env));
         (*instance).locked_bindings.retain(|(env, symbol)| {
             !old_to_new.contains_key(env) && !old_to_new.contains_key(symbol)
         });

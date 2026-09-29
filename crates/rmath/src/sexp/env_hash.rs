@@ -130,6 +130,89 @@ pub(crate) fn remove_env_in(instance: *mut instance::RInstance, env: SEXP) {
     });
 }
 
+/// Remember that `env` is a hashed environment created at `size` (GNU `R_NewHashTable`).
+///
+/// The size lives on the session instance. Collection sweeps reclaimed keys the
+/// same way as `locked_environments`, because node addresses are recycled.
+pub(crate) fn mark_hashed(env: SEXP, size: i32) {
+    if env.is_null() {
+        return;
+    }
+    let size = if size <= 0 { 29 } else { size };
+    instance::with_required_current_instance(|inst| unsafe {
+        (*inst).env_hash_sizes.insert(env as usize, size);
+    });
+    promote_to_hash_table(env, &[]);
+}
+
+pub(crate) fn hashed_size(env: SEXP) -> Option<i32> {
+    instance::with_required_current_instance(|inst| unsafe {
+        (*inst).env_hash_sizes.get(&(env as usize)).copied()
+    })
+}
+
+fn hashpjw(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0;
+    for &b in bytes {
+        h = h.wrapping_shl(4).wrapping_add(b as u32);
+        let g = h & 0xf000_0000;
+        if g != 0 {
+            h ^= g >> 24;
+            h ^= g;
+        }
+    }
+    h
+}
+
+pub(crate) fn gnu_chain_profile(initial: i32, names: &[Vec<u8>]) -> (i32, i32, Vec<i32>) {
+    let size = if initial <= 0 { 29 } else { initial };
+    replay_chains(size, names)
+}
+
+fn replay_chains(mut size: i32, names: &[Vec<u8>]) -> (i32, i32, Vec<i32>) {
+    let mut inserted: Vec<&[u8]> = Vec::new();
+    let mut counts = vec![0i32; size as usize];
+    let mut pri = 0i32;
+    for name in names {
+        if (inserted.len() as f64) > (size as f64) * 0.85 {
+            let mut new_size = 1 + (size as f64 * 1.2) as i32;
+            if new_size <= size {
+                new_size = size + 1;
+            }
+            loop {
+                let (c, p) = place(new_size, &inserted);
+                if (inserted.len() as f64) <= (new_size as f64) * 0.85 {
+                    size = new_size;
+                    counts = c;
+                    pri = p;
+                    break;
+                }
+                new_size = 1 + (new_size as f64 * 1.2) as i32;
+            }
+        }
+        let idx = (hashpjw(name) % size as u32) as usize;
+        if counts[idx] == 0 {
+            pri += 1;
+        }
+        counts[idx] += 1;
+        inserted.push(name);
+    }
+    (size, pri, counts)
+}
+
+fn place(size: i32, names: &[&[u8]]) -> (Vec<i32>, i32) {
+    let mut counts = vec![0i32; size as usize];
+    let mut pri = 0i32;
+    for name in names {
+        let idx = (hashpjw(name) % size as u32) as usize;
+        if counts[idx] == 0 {
+            pri += 1;
+        }
+        counts[idx] += 1;
+    }
+    (counts, pri)
+}
+
 #[cfg(test)]
 mod tests {
     use std::ptr::addr_of_mut;

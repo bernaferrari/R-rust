@@ -440,6 +440,11 @@ pub struct RInstance {
     pub options_initialized: bool,
     /// Per-instance environment hash side tables.
     pub(crate) env_hash_tables: hashbrown::HashMap<usize, hashbrown::HashMap<usize, SEXP>>,
+    /// Initial table size of hashed environments, keyed by environment address.
+    /// GC contract: entries whose environment is collected are swept by the
+    /// `gengc` reference-update pass (the address would otherwise alias a
+    /// recycled node and `env.profile` would report the previous size).
+    pub(crate) env_hash_sizes: hashbrown::HashMap<usize, i32>,
     /// Per-instance locked environments keyed by raw environment address.
     /// GC contract: entries whose keyed environment is collected are swept by
     /// the `gengc` reference-update pass (the address would otherwise alias a
@@ -606,6 +611,7 @@ impl RInstance {
             options: HashMap::new(),
             options_initialized: false,
             env_hash_tables: hashbrown::HashMap::new(),
+            env_hash_sizes: hashbrown::HashMap::new(),
             locked_environments: HashSet::new(),
             locked_bindings: HashSet::new(),
             active_bindings: HashMap::new(),
