@@ -280,13 +280,21 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 }
             }
             let s = elt_to_string(x, xi);
+            let chars: Vec<char> = s.chars().collect();
             let si = if nstart == 0 { 0 } else { i % nstart };
             let ei = if nstop == 0 { 0 } else { i % nstop };
             let start = (real_elt_or_default(start_arg, si, 1.0) as usize).max(1) - 1;
-            let stop = real_elt_or_default(stop_arg, ei, 1000.0) as usize;
-            let chars: Vec<char> = s.chars().collect();
+            let missing = crate::sexp::globals::R_MissingArg();
+            let stop_open = stop_arg.is_null()
+                || stop_arg == R_NilValue()
+                || stop_arg == missing;
+            let stop = if stop_open {
+                chars.len()
+            } else {
+                real_elt_or_default(stop_arg, ei, chars.len() as f64) as usize
+            };
             let end = stop.min(chars.len());
-            let sub: String = if start < chars.len() {
+            let sub: String = if start < end {
                 chars[start..end].iter().collect()
             } else {
                 String::new()
