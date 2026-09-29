@@ -199,15 +199,12 @@ unsafe fn currentTime() -> c_double {
             libc::gettimeofday(&mut tv, ptr::null_mut());
             tv.tv_sec as c_double + tv.tv_usec as c_double * 1e-6
         }
-        // wasm32: no libc clocks; the portable wall clock drives elapsed
-        // time (the only field the sandbox reports).
+        // wasm32: no libc clocks. SystemTime::now panics on bare
+        // wasm32-unknown-unknown before a fallback can run, so this
+        // clock stays at the Unix epoch.
         #[cfg(target_arch = "wasm32")]
         {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            match SystemTime::now().duration_since(UNIX_EPOCH) {
-                Ok(d) => d.as_secs() as c_double + f64::from(d.subsec_nanos()) * 1e-9,
-                Err(_) => 0.0,
-            }
+            0.0
         }
     }
 }
