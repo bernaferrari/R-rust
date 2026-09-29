@@ -7047,6 +7047,44 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             crate::sexp::attrib_core::R_NamesSymbol(),
             names,
         );
+        for i in 0..XLENGTH(data) {
+            let ans = VECTOR_ELT(data, i);
+            let t = TYPEOF(ans);
+            let ok = t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::INTSXP
+                || t == SEXPTYPE::REALSXP
+                || t == SEXPTYPE::CPLXSXP
+                || t == SEXPTYPE::STRSXP
+                || t == SEXPTYPE::RAWSXP;
+            if !ok {
+                let ty = if t == SEXPTYPE::VECSXP {
+                    "list"
+                } else if t == SEXPTYPE::CLOSXP {
+                    "closure"
+                } else if t == SEXPTYPE::LANGSXP {
+                    "language"
+                } else if t == SEXPTYPE::SYMSXP {
+                    "symbol"
+                } else if t == SEXPTYPE::ENVSXP {
+                    "environment"
+                } else if t == SEXPTYPE::NILSXP {
+                    "NULL"
+                } else {
+                    "unknown"
+                };
+                let raw = CHAR(STRING_ELT(names, i));
+                let name = if raw.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
+                };
+                let msg = std::ffi::CString::new(format!(
+                    "invalid type ({ty}) for variable '{name}'"
+                ))
+                .unwrap_or_else(|_| std::ffi::CString::new("invalid type for variable").unwrap());
+                crate::main::errors::Rf_error(msg.as_ptr());
+            }
+        }
         let mut nr: R_xlen_t = 0;
         for i in 0..XLENGTH(data) {
             nr = nr.max(model_column_rows(VECTOR_ELT(data, i)));
