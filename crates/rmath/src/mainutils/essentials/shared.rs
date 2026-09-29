@@ -2,7 +2,7 @@
 //!
 //! These are the most fundamental R functions that every R program uses.
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
@@ -1850,28 +1850,35 @@ unsafe fn install_utils_str_option(env: SEXP) {
     }
 }
 
-thread_local! {
-    /// Packages whose `load_package_namespace` call is still on this thread's stack.
-    static NAMESPACE_LOADS_IN_PROGRESS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-}
-
-/// Pops a non-reentrant load from [`NAMESPACE_LOADS_IN_PROGRESS`] when the load returns.
+/// Pops a non-reentrant load from the session that pushed it.
 struct NamespaceLoadGuard {
+    instance: *mut crate::sexp::instance::RInstance,
     package: String,
     reentered: bool,
 }
 
 impl NamespaceLoadGuard {
     fn enter(package: &str) -> Self {
-        let reentered = NAMESPACE_LOADS_IN_PROGRESS.with(|stack| {
-            let mut stack = stack.borrow_mut();
+        let Some(instance) = crate::sexp::instance::current_instance_ptr() else {
+            return Self {
+                instance: std::ptr::null_mut(),
+                package: package.to_string(),
+                reentered: false,
+            };
+        };
+        // The pointer is copied out of the thread-local before the stack is
+        // touched, so this does not re-borrow that cell. Drop pops the same
+        // session even if another session is ambient.
+        let reentered = unsafe {
+            let stack = &mut (*instance).namespace_loads_in_progress;
             let reentered = stack.iter().any(|name| name == package);
             if !reentered {
                 stack.push(package.to_string());
             }
             reentered
-        });
+        };
         Self {
+            instance,
             package: package.to_string(),
             reentered,
         }
@@ -1880,15 +1887,15 @@ impl NamespaceLoadGuard {
 
 impl Drop for NamespaceLoadGuard {
     fn drop(&mut self) {
-        if self.reentered {
+        if self.reentered || self.instance.is_null() {
             return;
         }
-        NAMESPACE_LOADS_IN_PROGRESS.with(|stack| {
-            let mut stack = stack.borrow_mut();
+        unsafe {
+            let stack = &mut (*self.instance).namespace_loads_in_progress;
             if let Some(index) = stack.iter().rposition(|name| name == &self.package) {
                 stack.remove(index);
             }
-        });
+        }
     }
 }
 

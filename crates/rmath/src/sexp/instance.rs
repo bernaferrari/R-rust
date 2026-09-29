@@ -495,6 +495,13 @@ pub struct RInstance {
     /// standing in for upstream's install-time evaluation against the
     /// package directory.
     pub(crate) loading_package_dir: Option<std::path::PathBuf>,
+    /// Packages whose namespace load is still on this session's stack.
+    ///
+    /// A fresh dependency vector cannot see an outer load, so cache hits
+    /// would re-run native installers. Keeping the stack on the session
+    /// also keeps a same-thread session switch from observing another
+    /// session's loads.
+    pub(crate) namespace_loads_in_progress: Vec<String>,
     /// Per-instance headless graphics device registry.
     pub(crate) graphics_device_registry: crate::library::grdevices::device_registry::DeviceRegistry,
     /// Per-instance graphics engine registration state.
@@ -624,6 +631,7 @@ impl RInstance {
             unwrap_methods_closures: Vec::new(),
 
             loading_package_dir: None,
+            namespace_loads_in_progress: Vec::new(),
             fft_state: crate::library::stats::fft::FftState::default(),
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
             connections_state: crate::mainutils::connections::ConnectionsState::default(),
