@@ -103,19 +103,21 @@ pub extern "C" fn R_pretty(
 
     if cell < subsmall {
         if cell > 0.0 {
-            eprintln!(
-                "R_pretty(): very small range 'cell'={}, increased to {}",
-                cell, subsmall
-            );
+            let msg = std::ffi::CString::new(format!(
+                "R_pretty(): very small range 'cell'={cell}, increased to {subsmall}"
+            ))
+            .unwrap_or_default();
+            unsafe { crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr()); }
         }
         cell = subsmall;
     } else if cell > dbL_MAX / max_f {
-        eprintln!(
-            "R_pretty(): very large range 'cell'={}, decreased to {}",
-            cell,
-            dbL_MAX / max_f
-        );
-        cell = dbL_MAX / max_f;
+        let shrunk = dbL_MAX / max_f;
+        let msg = std::ffi::CString::new(format!(
+            "R_pretty(): very large range 'cell'={cell}, decreased to {shrunk}"
+        ))
+        .unwrap_or_default();
+        unsafe { crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr()); }
+        cell = shrunk;
     }
 
     let base = pow(10.0, floor(log10(cell))); // base <= cell < 10*base
