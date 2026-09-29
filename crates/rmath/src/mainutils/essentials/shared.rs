@@ -2,7 +2,7 @@
 //!
 //! These are the most fundamental R functions that every R program uses.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
@@ -1850,6 +1850,48 @@ unsafe fn install_utils_str_option(env: SEXP) {
     }
 }
 
+thread_local! {
+    /// Packages whose `load_package_namespace` call is still on this thread's stack.
+    static NAMESPACE_LOADS_IN_PROGRESS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Pops a non-reentrant load from [`NAMESPACE_LOADS_IN_PROGRESS`] when the load returns.
+struct NamespaceLoadGuard {
+    package: String,
+    reentered: bool,
+}
+
+impl NamespaceLoadGuard {
+    fn enter(package: &str) -> Self {
+        let reentered = NAMESPACE_LOADS_IN_PROGRESS.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            let reentered = stack.iter().any(|name| name == package);
+            if !reentered {
+                stack.push(package.to_string());
+            }
+            reentered
+        });
+        Self {
+            package: package.to_string(),
+            reentered,
+        }
+    }
+}
+
+impl Drop for NamespaceLoadGuard {
+    fn drop(&mut self) {
+        if self.reentered {
+            return;
+        }
+        NAMESPACE_LOADS_IN_PROGRESS.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            if let Some(index) = stack.iter().rposition(|name| name == &self.package) {
+                stack.remove(index);
+            }
+        });
+    }
+}
+
 pub(crate) unsafe fn load_package_namespace(
     package: &str,
     package_dir: &Path,
@@ -1859,6 +1901,22 @@ pub(crate) unsafe fn load_package_namespace(
         if package == "compiler" {
             let env = crate::eval::compiler::namespace();
             return Ok((env, None));
+        }
+        // The namespace is registered before its R code runs, but a cache hit
+        // also reinstalls native helpers. Those helpers evaluate package code
+        // (`RweaveLatexRuncode <- ...` in utils) which can lazy-load a
+        // namespace reference and call back into this function. Returning the
+        // in-flight environment here matches GNU: the registry entry is the
+        // namespace under construction, and `.onLoad` does not run again.
+        let load_guard = NamespaceLoadGuard::enter(package);
+        if load_guard.reentered {
+            if let Some(env) = cached_package_namespace(package, package_dir) {
+                let directives = read_namespace_directives(package_dir).ok().flatten();
+                return Ok((env, directives));
+            }
+            return Err(format!(
+                "cyclic namespace load while loading '{package}'"
+            ));
         }
         if let Some(env) = cached_package_namespace(package, package_dir) {
             if package == "methods" {
