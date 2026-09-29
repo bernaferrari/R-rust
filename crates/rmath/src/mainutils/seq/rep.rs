@@ -1044,7 +1044,7 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         );
                     }
                 }
-                if lx as c_double * it as c_double * each as c_double > R_XLEN_T_MAX_DBL {
+                if lx as c_double * it as c_double * each as c_double > 4503599627370496.0 {
                     errorcall(
                         call,
                         b"length(x) * 'times' * 'each' is too large\0".as_ptr() as *const c_char,
@@ -1055,7 +1055,12 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if nt as c_double != lx as c_double * each as c_double {
                     errorcall(
                         call,
-                        b"invalid 'times' argument\0".as_ptr() as *const c_char,
+                        if each == 1 {
+                            b"invalid 'times' argument\0".as_ptr() as *const c_char
+                        } else {
+                            b"invalid 'times' argument, given the value of 'each'\0".as_ptr()
+                                as *const c_char
+                        },
                     );
                 }
                 if TYPEOF(times) == REALSXP_VAL {
