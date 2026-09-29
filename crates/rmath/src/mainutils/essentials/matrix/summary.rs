@@ -122,8 +122,14 @@ pub unsafe fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         {
             return ans;
         }
-        let x = CAR(args);
-        let value = CAR(CDR(args));
+        let mut x = CAR(args);
+        let mut value = CAR(CDR(args));
+        if TYPEOF(x) == SEXPTYPE::PROMSXP {
+            x = crate::eval::eval::Rf_eval(x, rho);
+        }
+        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+            value = crate::eval::eval::Rf_eval(value, rho);
+        }
         if x.is_null() || x == R_NilValue() {
             std::panic::panic_any(RError {
                 message: "cannot set length of NULL".to_string(),
@@ -283,6 +289,11 @@ pub unsafe fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
         } else if kind == SEXPTYPE::VECSXP.as_c_int() || kind == SEXPTYPE::EXPRSXP.as_c_int() {
             for i in 0..copy_len {
                 SET_VECTOR_ELT(result, i, VECTOR_ELT(x, i));
+            }
+            if kind == SEXPTYPE::EXPRSXP.as_c_int() {
+                for i in copy_len..new_len {
+                    SET_VECTOR_ELT(result, i, R_NilValue());
+                }
             }
         } else {
             std::panic::panic_any(RError {
@@ -458,12 +469,15 @@ pub unsafe fn margin_summary_dims(dims_arg: SEXP, dim_len: R_xlen_t, rows: bool)
         if dims_arg.is_null() || dims_arg == R_NilValue() {
             return default;
         }
+        if XLENGTH(dims_arg) != 1 {
+            base_error("invalid 'dims'");
+        }
         let value = real_or_default(dims_arg, default as f64);
-        if !value.is_finite() || value < 0.0 || value.fract() != 0.0 {
+        if !value.is_finite() || value < 1.0 || value.fract() != 0.0 {
             base_error("invalid 'dims'");
         }
         let dims = value as R_xlen_t;
-        if dim_len > 0 && dims > dim_len {
+        if dim_len > 0 && dims > dim_len - 1 {
             base_error("invalid 'dims'");
         }
         dims
