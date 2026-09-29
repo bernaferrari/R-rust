@@ -491,16 +491,21 @@ impl RSession {
             // GNU defaultPackages: datasets, utils, grDevices, graphics,
             // stats, methods. library() inserts at pos 2, so attach in
             // that order and stats sits just under .GlobalEnv.
+            let mut stats_loaded = false;
             for package in ["methods", "datasets", "utils", "grDevices", "graphics", "stats"] {
                 let path = crate::mainutils::essentials::find_package_path(package);
                 if !path.is_empty() {
-                    let _ = crate::mainutils::essentials::load_pure_r_package(
+                    let loaded = crate::mainutils::essentials::load_pure_r_package(
                         package,
                         std::path::Path::new(&path),
-                    );
+                    )
+                    .is_ok();
+                    if package == "stats" {
+                        stats_loaded = loaded;
+                    }
                 }
             }
-            if let Ok(exprs) = super::memory::with_arena(|arena| {
+            if stats_loaded && let Ok(exprs) = super::memory::with_arena(|arena| {
                 crate::eval::parser::parse_expressions(
                     "library(grDevices); library(graphics); detach(\"package:stats\"); library(stats)",
                     arena,
@@ -513,7 +518,7 @@ impl RSession {
                     );
                 }
             }
-            if let Ok(exprs) = super::memory::with_arena(|arena| {
+            if stats_loaded && let Ok(exprs) = super::memory::with_arena(|arena| {
                 crate::eval::parser::parse_expressions(
                     "{ if (\"package:stats\" %in% search()) { assign(\"reorder\", get(\"reorder\", baseenv()), envir = as.environment(\"package:stats\")); if (bindingIsLocked(\"xtabs\", as.environment(\"package:stats\"))) unlockBinding(\"xtabs\", as.environment(\"package:stats\")); assign(\"xtabs\", get(\"xtabs\", baseenv()), envir = as.environment(\"package:stats\")) }; f <- get(\"diff.ts\", baseenv()); for (env in list(baseenv(), get(\".BaseNamespaceEnv\", baseenv()), asNamespace(\"stats\"), as.environment(\"package:stats\"))) { tab <- tryCatch(get(\".__S3MethodsTable__.\", env), error = function(e) NULL); if (!is.null(tab) && exists(\"diff.ts\", tab, inherits = FALSE)) { if (bindingIsLocked(\"diff.ts\", tab)) unlockBinding(\"diff.ts\", tab); assign(\"diff.ts\", f, tab) }; if (exists(\"diff.ts\", env, inherits = FALSE)) { if (bindingIsLocked(\"diff.ts\", env)) unlockBinding(\"diff.ts\", env); assign(\"diff.ts\", f, env) } } }",
                     arena,

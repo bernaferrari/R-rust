@@ -9,7 +9,7 @@ import { WasmRSession } from './pkg/r_wasm.js';
 const s = new WasmRSession();
 
 const out = s.eval("1+1");
-if (out !== "[1] 2") throw new Error(`M3 oracle mismatch: ${JSON.stringify(out)}`);
+if (out !== "[1] 2\n") throw new Error(`M3 oracle mismatch: ${JSON.stringify(out)}`);
 
 if (!s.is_input_complete("1 + 1")) throw new Error("complete input reported incomplete");
 if (s.is_input_complete("f <- function(x) {")) {
@@ -23,6 +23,9 @@ if (!s.global_binding_names().includes("m3_smoke_var")) {
 }
 if (s.global_binding_names().includes("..rport_handles..")) {
     throw new Error("engine-internal handle environment leaked into bindings");
+}
+if (s.eval("e <- new.env(parent=emptyenv()); e$alpha <- 1; e$attr_two <- 2; e$beta <- 3; identical(ls(envir=e, pattern='^a'), c('alpha', 'attr_two'))") !== "[1] TRUE\n") {
+    throw new Error("ls(pattern=) did not filter bindings");
 }
 
 s.close();
