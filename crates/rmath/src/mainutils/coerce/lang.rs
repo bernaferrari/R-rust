@@ -15,22 +15,24 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         if TYPEOF(arglist) != SEXPTYPE::VECSXP {
             error("list argument expected");
         }
+        // GNU `as.function.default` defaults a missing envir to parent.frame().
+        // This handler is the builtin itself, so a one-argument call has no
+        // second cell and uses the caller environment. An explicit NULL is a
+        // different value: `environment()` of a primitive is NULL, and
+        // `formals<-` / `body<-` pass that through. GNU errors there
+        // ("use of NULL environment is defunct") instead of substituting.
         let envir_cell = CDR(args);
-        let envir_arg = if envir_cell.is_null() || envir_cell == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(envir_cell)
-        };
-        let envir = if envir_arg.is_null()
-            || envir_arg == R_NilValue()
-            || envir_arg == crate::sexp::globals::R_MissingArg()
-            || envir_arg == crate::sexp::globals::R_UnboundValue()
-        {
-            // GNU as.function.default: envir = parent.frame(). Binding the
-            // .Internal handler as a builtin must default the same way.
+        let envir = if envir_cell.is_null() || envir_cell == R_NilValue() {
             rho
         } else {
-            envir_arg
+            let envir_arg = CAR(envir_cell);
+            if envir_arg == crate::sexp::globals::R_MissingArg() {
+                rho
+            } else if envir_arg.is_null() || envir_arg == R_NilValue() {
+                error("use of NULL environment is defunct");
+            } else {
+                envir_arg
+            }
         };
         if isNull(envir) {
             error("use of NULL environment is defunct");
