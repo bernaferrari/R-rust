@@ -233,6 +233,13 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         if x.is_null() || which.is_null() {
             return;
         }
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+            let kind = if t == SEXPTYPE::BUILTINSXP { "builtin" } else { "special" };
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: format!("cannot set an attribute on a '{kind}'"),
+            });
+        }
         // GNU classgets: empty/NULL class strips; non-string errors.
         // GNU dimgets: coerce dims to INTSXP first.
         let value = if which == R_ClassSymbol() {
