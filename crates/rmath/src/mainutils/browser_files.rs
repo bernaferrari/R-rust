@@ -3,6 +3,7 @@
 use crate::sexp::instance::with_current_instance;
 use std::collections::HashMap;
 use std::io;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const MAX_FILE_BYTES: usize = 1024 * 1024;
@@ -31,11 +32,23 @@ pub struct BrowserFileStore {
     total_bytes: usize,
 }
 
+/// Unix seconds, including a fraction.
+///
+/// `SystemTime::now` panics on bare `wasm32-unknown-unknown` before
+/// `unwrap_or` can run, so automatic stamps there are the Unix epoch.
+/// An explicit `Sys.setFileTime` value is still stored as given.
 fn unix_now() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs_f64())
-        .unwrap_or(0.0)
+    #[cfg(target_arch = "wasm32")]
+    {
+        0.0
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs_f64())
+            .unwrap_or(0.0)
+    }
 }
 
 pub fn enabled() -> bool {
@@ -272,5 +285,23 @@ mod tests {
         assert!(store.info("missing.txt").is_none());
         assert!(!store.set_file_time("note.txt", f64::NAN));
         assert_eq!(store.info("note.txt").unwrap().mtime, 1_700_000_000.25);
+    }
+
+    /// Bare wasm has no wall clock. Creation stamps and the ctime written by
+    /// `set_file_time` stay at the epoch, and the caller-supplied time is kept.
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn wasm_automatic_stamps_stay_at_the_epoch() {
+        let mut store = BrowserFileStore::default();
+        store.put("note.txt", b"hello").unwrap();
+        let created = store.info("note.txt").expect("stored file");
+        assert_eq!(created.mtime, 0.0);
+        assert_eq!(created.atime, 0.0);
+        assert_eq!(created.ctime, 0.0);
+        assert!(store.set_file_time("note.txt", 1_700_000_000.25));
+        let updated = store.info("note.txt").expect("stored file");
+        assert_eq!(updated.mtime, 1_700_000_000.25);
+        assert_eq!(updated.atime, 1_700_000_000.25);
+        assert_eq!(updated.ctime, 0.0);
     }
 }
