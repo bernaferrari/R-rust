@@ -14,7 +14,7 @@ use bzip2::Compression as BzCompression;
 use bzip2::read::BzDecoder;
 use bzip2::write::BzEncoder;
 use flate2::Compression as GzCompression;
-use flate2::read::GzDecoder;
+use flate2::read::{GzDecoder, MultiGzDecoder};
 use flate2::write::GzEncoder;
 
 use crate::sexp::accessors::*;
@@ -290,7 +290,7 @@ pub fn open_gz_conn(conn: &mut RConn, mode: &str) -> io::Result<()> {
         let path = Path::new(&conn.description);
         if path.exists() {
             let mut file = File::open(path)?;
-            let mut decoder = GzDecoder::new(&mut file);
+            let mut decoder = MultiGzDecoder::new(&mut file);
             if decoder.read_to_end(&mut conn.raw_data).is_err() {
                 conn.raw_data.clear();
                 let mut plain = File::open(path)?;
@@ -576,6 +576,44 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         ans
     }
 }
+pub unsafe fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let scon = CAR(args);
+        if scon.is_null() || scon == R_NilValue() {
+            r_error("invalid connection");
+        }
+        let i = checked_connection_index(as_integer(scon));
+        let mut table = connection_table();
+        let Some(conn) = table[i].as_mut() else {
+            r_error("invalid connection");
+        };
+        let path = Path::new(&conn.description);
+        let bytes = if path.is_file() {
+            std::fs::read(path).unwrap_or_default()
+        } else {
+            conn.raw_data.clone()
+        };
+        let inflated = if bytes.is_empty() {
+            Vec::new()
+        } else {
+            let mut out = Vec::new();
+            let mut decoder = MultiGzDecoder::new(&bytes[..]);
+            if decoder.read_to_end(&mut out).is_err() {
+                r_error("invalid compressed data");
+            }
+            out
+        };
+        conn.raw_data = inflated;
+        conn.raw_pos = 0;
+        conn.kind = ConnKind::GzFile;
+        conn.isopen = true;
+        conn.canread = true;
+        conn.text = false;
+        drop(table);
+        scon
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // do_bzfile — bzfile(description, open, compression)

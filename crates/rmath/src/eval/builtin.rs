@@ -4001,6 +4001,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_gzfile,
     },
     EvaluatedBuiltin {
+        name: "gzcon",
+        handler: crate::mainutils::connections::do_gzcon,
+    },
+
+    EvaluatedBuiltin {
         name: "bzfile",
         handler: crate::mainutils::connections::do_bzfile,
     },
