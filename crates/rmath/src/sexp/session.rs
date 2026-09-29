@@ -646,8 +646,20 @@ impl RSession {
     where
         F: FnOnce() -> T,
     {
+        self.with_active_in(|_| f())
+    }
+
+    /// Pass the owning instance through a scoped activation.
+    ///
+    /// A raw owner permits interpreter reentry without holding a protected
+    /// `&mut RInstance` borrow. Callers must use short field borrows (P1/P2),
+    /// and must not retain the pointer beyond this session's lifetime.
+    pub(crate) fn with_active_in<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce(*mut RInstance) -> T,
+    {
         let _guard = self.activate();
-        f()
+        f(self.instance)
     }
 
     /// Check if this session is active.
@@ -971,7 +983,11 @@ impl RSession {
                                 0,
                             );
                         }
-                        crate::sexp::gengc::run_pending_gc_if_quiescent();
+                        // SAFETY: activation owns the live instance. No field borrow
+                        // survives collection or finalizer reentry.
+                        unsafe {
+                            crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+                        }
                         continue;
                     }
 
@@ -1019,7 +1035,11 @@ impl RSession {
                         crate::mainutils::errors::print_warnings_at_statement_boundary();
                     }
                 }
-                crate::sexp::gengc::run_pending_gc_if_quiescent();
+                // SAFETY: activation owns the live instance. No field borrow
+                // survives collection or finalizer reentry.
+                unsafe {
+                    crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+                }
             }
             let _result_guard = result.as_ref().ok().map(|value| {
                 // Immortals (R_NilValue & friends) are static and
@@ -1027,7 +1047,11 @@ impl RSession {
                 // UnownedHandle (empty scripts surface NULL here).
                 RootedSexp::try_root(value.clone()).ok()
             });
-            crate::sexp::gengc::run_pending_gc_if_quiescent();
+            // SAFETY: activation owns the live instance. No field borrow
+            // survives collection or finalizer reentry.
+            unsafe {
+                crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+            }
             let visible = self.inst().eval_state.visible != 0;
             let output = self.inst().output_capture.borrow_mut().stop();
             f(result, output, visible)
@@ -1168,7 +1192,11 @@ impl RSession {
                         crate::mainutils::errors::print_warnings_at_statement_boundary();
                     }
                 }
-                crate::sexp::gengc::run_pending_gc_if_quiescent();
+                // SAFETY: activation owns the live instance. No field borrow
+                // survives collection or finalizer reentry.
+                unsafe {
+                    crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+                }
             }
             let _result_guard = result.as_ref().ok().map(|value| {
                 // Immortals (R_NilValue & friends) are static and
@@ -1176,7 +1204,11 @@ impl RSession {
                 // UnownedHandle (empty scripts surface NULL here).
                 RootedSexp::try_root(value.clone()).ok()
             });
-            crate::sexp::gengc::run_pending_gc_if_quiescent();
+            // SAFETY: activation owns the live instance. No field borrow
+            // survives collection or finalizer reentry.
+            unsafe {
+                crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+            }
             let visible = self.inst().eval_state.visible != 0;
             let output = self.inst().output_capture.borrow_mut().stop();
             f(result, output, visible)
@@ -1240,7 +1272,11 @@ impl RSession {
                 // UnownedHandle (empty scripts surface NULL here).
                 RootedSexp::try_root(value.clone()).ok()
             });
-            crate::sexp::gengc::run_pending_gc_if_quiescent();
+            // SAFETY: activation owns the live instance. No field borrow
+            // survives collection or finalizer reentry.
+            unsafe {
+                crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+            }
             let visible = self.inst().eval_state.visible != 0;
             let output = self.inst().output_capture.borrow_mut().stop();
             f(result, output, visible)
@@ -1454,7 +1490,9 @@ impl RSession {
     ///
     /// Performs a minor GC on the young generation.
     pub fn gc(&self) {
-        self.with_active(super::gengc::minor_gc);
+        self.with_active_in(|instance| {
+            super::gengc::minor_gc_in(instance);
+        });
     }
 
     /// Generate a uniform random number using this session's RNG state.
@@ -1861,6 +1899,40 @@ mod tests {
         unsafe {
             replace_current_instance(previous);
         }
+    }
+
+    #[test]
+    fn test_explicit_gc_owner_restores_nested_activation() {
+        let left = RSession::new_without_default_packages();
+        let right = RSession::new_without_default_packages();
+        left.with_active_in(|left_inst| {
+            unsafe {
+                (*left_inst).gc_state.gc_pending = true;
+            }
+            right.with_active_in(|right_inst| unsafe {
+                assert_eq!(with_current_instance(|inst| inst), Some(right_inst));
+                (*right_inst).gc_state.gc_pending = true;
+                // An evaluation frame must defer collection for this owner.
+                (*right_inst).eval_state.eval_depth = 1;
+                super::super::gengc::run_pending_gc_if_quiescent_in(right_inst);
+                assert!((*right_inst).gc_state.gc_pending);
+                (*right_inst).eval_state.eval_depth = 0;
+                super::super::gengc::run_pending_gc_if_quiescent_in(right_inst);
+                assert!(!(*right_inst).gc_state.gc_pending);
+                assert!((*left_inst).gc_state.gc_pending);
+            });
+            assert_eq!(with_current_instance(|inst| inst), Some(left_inst));
+            unsafe {
+                super::super::gengc::run_pending_gc_if_quiescent_in(left_inst);
+                assert!(!(*left_inst).gc_state.gc_pending);
+            }
+            // A callback unwind must also restore the outer owner.
+            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                right.with_active_in(|_| panic!("nested activation"));
+            }));
+            assert!(panic.is_err());
+            assert_eq!(with_current_instance(|inst| inst), Some(left_inst));
+        });
     }
 
     #[test]

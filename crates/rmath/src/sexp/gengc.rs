@@ -1286,7 +1286,26 @@ fn run_pending_finalizers_after_collection() {
 /// run any finalizers the collection made ready (upstream runs finalizers
 /// at these same between-expression quiescent points).
 pub fn run_pending_gc_if_quiescent() {
-    let collected = instance::with_current_instance(|inst| unsafe {
+    instance::with_current_instance(|inst| unsafe {
+        run_pending_gc_if_quiescent_in(inst);
+    });
+}
+
+/// Flush deferred GC for an explicitly supplied, currently active owner.
+///
+/// # Safety
+/// `inst` must point to a live instance for the duration of this call. No
+/// Rust borrow of it or its fields may survive GC or finalizer reentry.
+pub(crate) unsafe fn run_pending_gc_if_quiescent_in(inst: *mut instance::RInstance) {
+    // Finalizers still use compatibility dispatch. Check its owner before
+    // touching GC state so a caller cannot collect one session and execute
+    // its finalizers against another session's bindings.
+    assert_eq!(
+        instance::with_current_instance(|active| active),
+        Some(inst),
+        "deferred GC requires activation of its owning session"
+    );
+    let collected = unsafe {
         // Raw place accesses: minor_gc_in reenters instance bookkeeping.
         if (*inst).eval_state.eval_depth == 0 && (*inst).gc_state.gc_pending {
             (*inst).gc_state.gc_pending = false;
@@ -1295,8 +1314,8 @@ pub fn run_pending_gc_if_quiescent() {
         } else {
             false
         }
-    });
-    if collected.unwrap_or(false) {
+    };
+    if collected {
         run_pending_finalizers_after_collection();
     }
 }
@@ -3169,7 +3188,7 @@ mod tests {
 
         let _session = RSession::new_without_default_packages();
         let session = RSession::new_without_default_packages();
-        session.with_protected(|| unsafe {
+        session.with_active_in(|inst| unsafe {
             instance::with_required_current_instance(|inst| {
                 (*inst).memory_state.pending_finalizers.clear();
                 (*inst).gc_state.gc_pending = false;
@@ -3183,13 +3202,13 @@ mod tests {
             crate::mainutils::memory_main::R_RegisterCFinalizerEx(key, count_finalizer, 0);
 
             // Nothing pending: no collection, so the finalizer stays put.
-            run_pending_gc_if_quiescent();
+            run_pending_gc_if_quiescent_in(inst);
             assert_eq!(RUNS.load(Ordering::SeqCst), 0);
 
             instance::with_required_current_instance(|inst| {
                 (*inst).gc_state.gc_pending = true;
             });
-            run_pending_gc_if_quiescent();
+            run_pending_gc_if_quiescent_in(inst);
             assert_eq!(RUNS.load(Ordering::SeqCst), 1);
         });
     }
