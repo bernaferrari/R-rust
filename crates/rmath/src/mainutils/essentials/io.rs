@@ -665,7 +665,8 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             _ => -1_i64,
         };
         let contents = if let Some(text) = text {
-            text
+            crate::mainutils::browser_files::admit_text(text)
+                .unwrap_or_else(|error| scan_error(error.to_string()))
         } else {
             if file_arg.is_null() || file_arg == R_NilValue() || file_arg == R_MissingArg() {
                 scan_error("scan() requires a file path in the Android/headless runtime");
@@ -732,7 +733,8 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if let Some((idx, bytes)) = from_conn {
                 scan_conn_idx = Some(idx);
                 scan_conn_bytes = bytes;
-                filename
+                crate::mainutils::browser_files::admit_text(filename)
+                    .unwrap_or_else(|error| scan_error(error.to_string()))
             } else {
                 match crate::mainutils::browser_files::read_text_or_host(&filename) {
                     Ok(s) => s,
@@ -758,11 +760,11 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             real_or_default(skip_arg, 0.0).max(0.0) as usize
         };
-        let contents = if skip_n == 0 {
-            contents
-        } else {
-            contents.split('\n').skip(skip_n).collect::<Vec<_>>().join("\n")
-        };
+        // Skip within the admitted buffer, avoiding another full text copy.
+        let contents = contents
+            .splitn(skip_n.saturating_add(1), '\n')
+            .nth(skip_n)
+            .unwrap_or("");
         let sep_arg = by_slot(&["sep"], 3);
         let sep = if sep_arg.is_null() || sep_arg == R_NilValue() {
             String::new()
@@ -777,14 +779,14 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let contents = if nlines >= 0 {
             let quotes: Vec<char> = quote.chars().collect();
-            let mut out = String::new();
+            let mut end = 0;
             let mut records = 0i64;
             let mut in_quote: Option<char> = None;
-            for c in contents.chars() {
+            for (index, c) in contents.char_indices() {
                 if records >= nlines {
                     break;
                 }
-                out.push(c);
+                end = index + c.len_utf8();
                 if let Some(q) = in_quote {
                     if c == q {
                         in_quote = None;
@@ -795,7 +797,7 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     records += 1;
                 }
             }
-            out
+            &contents[..end]
         } else {
             contents
         };
@@ -2280,14 +2282,16 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             real_or_default(skip_arg, 0.0).max(0.0) as usize
         };
 
-        let content: String = if !text_arg.is_null()
+        let content = if !text_arg.is_null()
             && text_arg != R_NilValue()
             && TYPEOF(text_arg) == SEXPTYPE::STRSXP
         {
-            (0..XLENGTH(text_arg))
+            let text = (0..XLENGTH(text_arg))
                 .map(|i| elt_to_string(text_arg, i))
                 .collect::<Vec<_>>()
-                .join("\n")
+                .join("\n");
+            crate::mainutils::browser_files::admit_text(text)
+                .unwrap_or_else(|error| scan_error(error.to_string()))
         } else if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) >= 1 {
             let con = *INTEGER(file_arg);
             let mut bytes = Vec::new();
@@ -2298,7 +2302,8 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 }
                 bytes.push(c as u8);
             }
-            String::from_utf8_lossy(&bytes).into_owned()
+            crate::mainutils::browser_files::admit_text(String::from_utf8_lossy(&bytes).into_owned())
+                .unwrap_or_else(|error| scan_error(error.to_string()))
         } else {
             if file_arg.is_null()
                 || file_arg == R_NilValue()
