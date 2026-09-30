@@ -3953,8 +3953,9 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
         let value = logical_arg_by_name_or_position(args, "value", 3).unwrap_or(false);
-        let perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
+        let mut perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
         let fixed = logical_arg_by_name_or_position(args, "fixed", 5).unwrap_or(false);
+        super::shared::ignore_perl_when_fixed(&mut perl, fixed);
         let invert = logical_arg_by_name_or_position(args, "invert", 7).unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let matches = grep_match_indices(x_arg, &pattern, ignore_case, perl, fixed, invert);
@@ -4025,8 +4026,9 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
-        let perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
+        let mut perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
         let fixed = logical_arg_by_name_or_position(args, "fixed", 5).unwrap_or(false);
+        super::shared::ignore_perl_when_fixed(&mut perl, fixed);
         let pattern = elt_to_string(pattern_arg, 0);
         let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
@@ -4296,8 +4298,9 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let replacement_arg = CAR(CDR(args));
         let x_arg = CAR(CDR(CDR(args)));
         let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 3).unwrap_or(false);
-        let perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
+        let mut perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
         let fixed = logical_arg_by_name_or_position(args, "fixed", 5).unwrap_or(false);
+        super::shared::ignore_perl_when_fixed(&mut perl, fixed);
         if x_arg.is_null() || x_arg == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
@@ -4464,7 +4467,8 @@ pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         }
         let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
-        let perl = named_logical_arg(args, "perl").unwrap_or(false);
+        let mut perl = named_logical_arg(args, "perl").unwrap_or(false);
+        super::shared::ignore_perl_when_fixed(&mut perl, fixed);
         let n = XLENGTH(x_arg);
         let tlen = if split_arg == R_NilValue() {
             0
@@ -6539,6 +6543,33 @@ unsafe fn quote_wrap(x: SEXP, q: char, rho: SEXP) -> SEXP {
             SET_STRING_ELT(out, i, Rf_mkChar(cs.as_ptr()));
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod fixed_perl_warning_tests {
+    #[test]
+    fn fixed_true_warns_that_perl_is_ignored() {
+        let mut session = crate::sexp::session::RSession::new();
+        let message = session.eval_script_with_output_capture_then(
+            r#"tryCatch(grep("a", "aba", fixed=TRUE, perl=TRUE), warning=function(w) conditionMessage(w))"#,
+            |result, _, _| {
+                let value = result.expect("grep");
+                let raw = value.as_raw();
+                assert_eq!(
+                    unsafe { crate::sexp::accessors::TYPEOF(raw) },
+                    crate::sexp::ffi::SEXPTYPE::STRSXP,
+                    "fixed=TRUE, perl=TRUE did not warn"
+                );
+                let elt = unsafe { crate::sexp::accessors::STRING_ELT(raw, 0) };
+                unsafe {
+                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            },
+        );
+        assert_eq!(message, "argument 'perl = TRUE' will be ignored");
     }
 }
 

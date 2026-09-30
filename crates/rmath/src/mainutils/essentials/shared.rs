@@ -4215,6 +4215,17 @@ pub(crate) fn grep_value_matches(
     }
 }
 
+/// GNU grep.c: `fixed = TRUE` wins, warns, and then runs as a fixed match.
+pub(crate) unsafe fn ignore_perl_when_fixed(perl: &mut bool, fixed: bool) {
+    if fixed && *perl {
+        let msg = CString::new("argument 'perl = TRUE' will be ignored").unwrap_or_default();
+        unsafe {
+            crate::mainutils::errors::Rf_warning(msg.as_ptr());
+        }
+        *perl = false;
+    }
+}
+
 pub(crate) fn grep_match_indices(
     x: SEXP,
     pattern: &str,
