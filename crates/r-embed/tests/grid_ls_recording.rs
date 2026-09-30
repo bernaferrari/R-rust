@@ -142,3 +142,87 @@ fn current_viewport_inches_follow_the_pushed_viewport() {
         "ROOT|1.00000000|0.50000000|2.00000000|1.00000000|TRUE|inner|1.00000000|0.50000000|1.00000000|0.25000000|TRUE"
     );
 }
+
+#[test]
+fn fractional_up_and_pop_truncate_toward_zero_like_gnu() {
+    // GNU R 4.6.1 on a::b::c::d. as.integer truncates toward 0, and the C
+    // viewport walk still moves one viewport when that integer is 0.
+    // Exact 0 means the whole stack. n < 0 stops. Five steps past a depth of
+    // four stops. up(1) at ROOT is left as this port's top-level stop.
+    let mut session = RSession::new().unwrap();
+    let out = report(&mut session, r#"
+        library(grid)
+        step <- function(label, which, n) {
+          grid.newpage()
+          pushViewport(viewport(name='a'))
+          pushViewport(viewport(name='b'))
+          pushViewport(viewport(name='c'))
+          pushViewport(viewport(name='d'))
+          tryCatch({
+            if (which == 'up') upViewport(n) else popViewport(n)
+            paste0(label, '=', current.viewport()$name)
+          }, error = function(e) paste0(label, '=ERR:', conditionMessage(e)))
+        }
+        root_pop <- tryCatch({
+          grid.newpage()
+          popViewport(1)
+          'pop-root=OK'
+        }, error = function(e) paste0('pop-root=ERR:', conditionMessage(e)))
+        out <- paste(c(
+          step('up-1', 'up', -1),
+          step('pop-1', 'pop', -1),
+          step('up0', 'up', 0),
+          step('pop0', 'pop', 0),
+          step('up0.1', 'up', 0.1),
+          step('pop0.1', 'pop', 0.1),
+          step('up0.9', 'up', 0.9),
+          step('pop0.9', 'pop', 0.9),
+          step('up1', 'up', 1),
+          step('pop1', 'pop', 1),
+          step('up1.1', 'up', 1.1),
+          step('pop1.1', 'pop', 1.1),
+          step('up1.9', 'up', 1.9),
+          step('pop1.9', 'pop', 1.9),
+          step('up2', 'up', 2),
+          step('pop2', 'pop', 2),
+          step('up2.1', 'up', 2.1),
+          step('pop2.1', 'pop', 2.1),
+          step('up3', 'up', 3),
+          step('pop3', 'pop', 3),
+          step('up4', 'up', 4),
+          step('pop4', 'pop', 4),
+          step('up5', 'up', 5),
+          step('pop5', 'pop', 5),
+          root_pop
+        ), collapse='|')
+    "#);
+    let expected = [
+        "up-1=ERR:must navigate up at least one viewport",
+        "pop-1=ERR:must pop at least one viewport",
+        "up0=ROOT",
+        "pop0=ROOT",
+        "up0.1=c",
+        "pop0.1=c",
+        "up0.9=c",
+        "pop0.9=c",
+        "up1=c",
+        "pop1=c",
+        "up1.1=c",
+        "pop1.1=c",
+        "up1.9=c",
+        "pop1.9=c",
+        "up2=b",
+        "pop2=b",
+        "up2.1=b",
+        "pop2.1=b",
+        "up3=a",
+        "pop3=a",
+        "up4=ROOT",
+        "pop4=ROOT",
+        "up5=ERR:cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)",
+        "pop5=ERR:cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)",
+        "pop-root=ERR:cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)",
+    ]
+    .join("|");
+    assert_eq!(out, expected);
+}
