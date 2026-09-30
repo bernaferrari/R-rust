@@ -3110,6 +3110,18 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_RETURNJMP => {
                     return stack_pop_checked(&mut stack, "GNU RETURNJMP");
                 }
+                super::bytecode::GNU_OP_DOLOOPNEXT | super::bytecode::GNU_OP_DOLOOPBREAK => {
+                    let is_break = opcode == super::bytecode::GNU_OP_DOLOOPBREAK;
+                    let Some(ctx) = loop_stack.last() else {
+                        bc_error(if is_break {
+                            "GNU DOLOOPBREAK has no active loop context"
+                        } else {
+                            "GNU DOLOOPNEXT has no active loop context"
+                        });
+                    };
+                    let jump = loop_jump_from_context(ctx, is_break);
+                    pc = apply_loop_jump(&mut stack, &mut for_loops, jump) as usize;
+                }
                 super::bytecode::GNU_OP_DOTCALL => {
                     let call_index = words[pc] as usize;
                     let nargs = words[pc + 1];
@@ -4235,6 +4247,76 @@ mod tests {
             let result = bcEval(bcode, R_BaseEnv());
             assert_eq!(*INTEGER(result), 42);
         }
+    }
+
+    fn gnu_tagged_bcode(instructions: &[c_int], consts: SEXP) -> SEXP {
+        unsafe {
+            let code = Rf_allocVector(SEXPTYPE::INTSXP, instructions.len() as c_int);
+            let code_data = INTEGER(code);
+            for (i, instruction) in instructions.iter().enumerate() {
+                *code_data.add(i) = *instruction;
+            }
+            let stack_hint = Rf_ScalarInteger(8);
+            let marker = Rf_ScalarInteger(super::super::bytecode::GNU_BC_DIALECT_MARKER);
+            let source = Rf_ScalarInteger(0);
+            let bcode = Rf_allocVector(SEXPTYPE::BCODESXP, 5);
+            SET_VECTOR_ELT(bcode, 0, code);
+            SET_VECTOR_ELT(bcode, 1, consts);
+            SET_VECTOR_ELT(bcode, 2, stack_hint);
+            SET_VECTOR_ELT(bcode, 3, marker);
+            SET_VECTOR_ELT(bcode, 4, source);
+            bcode
+        }
+    }
+
+    #[test]
+    fn gnu_doloopbreak_skips_the_loop_body_constant() {
+        // GNU DOLOOPBREAK findcontext(CTXT_BREAK) jumps to STARTLOOPCNTXT's
+        // break operand and drops values the body pushed.
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let code = [
+                super::super::bytecode::GNU_BC_MAX_VERSION,
+                super::super::bytecode::GNU_OP_STARTLOOPCNTXT,
+                0, // while, not for
+                7, // break target: the result LDCONST
+                super::super::bytecode::GNU_OP_LDCONST,
+                0, // poison 7, must not be returned
+                super::super::bytecode::GNU_OP_DOLOOPBREAK,
+                super::super::bytecode::GNU_OP_LDCONST,
+                1, // 42
+                super::super::bytecode::GNU_OP_RETURN,
+            ];
+            let consts = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            SET_VECTOR_ELT(consts, 0, Rf_ScalarInteger(7));
+            SET_VECTOR_ELT(consts, 1, Rf_ScalarInteger(42));
+            let result = bcEval(gnu_tagged_bcode(&code, consts), R_BaseEnv());
+            assert_eq!(*INTEGER(result), 42);
+        }
+    }
+
+    #[test]
+    fn gnu_doloopnext_outside_a_loop_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        let err = assert_r_error(|| unsafe {
+            // False condition jumps to DOLOOPNEXT. The other edge reaches
+            // RETURN, so the stream is otherwise a complete GNU program.
+            let code = [
+                super::super::bytecode::GNU_BC_MAX_VERSION,
+                super::super::bytecode::GNU_OP_LDFALSE,
+                super::super::bytecode::GNU_OP_BRIFNOT,
+                0,
+                8,
+                super::super::bytecode::GNU_OP_LDCONST,
+                0,
+                super::super::bytecode::GNU_OP_RETURN,
+                super::super::bytecode::GNU_OP_DOLOOPNEXT,
+            ];
+            let consts = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+            SET_VECTOR_ELT(consts, 0, Rf_ScalarInteger(42));
+            let _ = bcEval(gnu_tagged_bcode(&code, consts), R_BaseEnv());
+        });
+        assert!(err.message.contains("DOLOOPNEXT"), "{}", err.message);
     }
 
     #[test]

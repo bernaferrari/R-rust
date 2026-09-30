@@ -562,6 +562,39 @@ fn gnu_stepfor_exits_through_endfor(code: &[c_int], step_pc: usize) -> bool {
     isfor == Some(1) && code.get(after) == Some(&GNU_OP_ENDFOR)
 }
 
+/// Innermost `STARTLOOPCNTXT` that syntactically contains `at`.
+///
+/// GNU places `DOLOOPNEXT` / `DOLOOPBREAK` between that opcode and its
+/// `ENDLOOPCNTXT`. The break and next edges are already queued from
+/// `STARTLOOPCNTXT`, so the jump itself does not continue this path.
+fn gnu_enclosing_loop(code: &[c_int], at: usize, opcode: c_int) -> Result<(usize, usize), String> {
+    let mut pc = 1usize;
+    let mut open: Vec<(usize, usize)> = Vec::new();
+    while pc < at && pc < code.len() {
+        let op = code[pc];
+        let next = gnu_next_pc(pc, op, code.len()).map_err(|_| {
+            format!("GNU bytecode control flow reaches invalid instruction {pc}")
+        })?;
+        if op == GNU_OP_STARTLOOPCNTXT {
+            let break_target = code[pc + 2] as usize;
+            open.push((break_target, next));
+        } else if op == GNU_OP_ENDLOOPCNTXT && open.pop().is_none() {
+            return Err(format!(
+                "GNU ENDLOOPCNTXT at instruction {pc} has no active loop context"
+            ));
+        }
+        pc = next;
+    }
+    let name = if opcode == GNU_OP_DOLOOPNEXT {
+        "DOLOOPNEXT"
+    } else {
+        "DOLOOPBREAK"
+    };
+    open.last()
+        .copied()
+        .ok_or_else(|| format!("GNU {name} has no active loop context"))
+}
+
 fn validate_gnu_adapter_impl(
     code: &[c_int],
     constant_count: usize,
@@ -589,7 +622,7 @@ fn validate_gnu_adapter_impl(
             | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
             | GNU_OP_ISNUMERIC | GNU_OP_DOMISSING | GNU_OP_DFLTSUBSET
             | GNU_OP_DFLTSUBASSIGN | GNU_OP_DFLTSUBASSIGN2 | GNU_OP_DFLTSUBSET2 | GNU_OP_SWAP
-            | GNU_OP_DUP2ND | GNU_OP_RETURNJMP => {}
+            | GNU_OP_DUP2ND | GNU_OP_RETURNJMP | GNU_OP_DOLOOPNEXT | GNU_OP_DOLOOPBREAK => {}
             GNU_OP_STARTLOOPCNTXT => {
                 let isfor = code[pc];
                 let target = code[pc + 1];
@@ -1661,6 +1694,9 @@ fn validate_gnu_adapter_impl(
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_INVISIBLE => pending.push((next, depth, loop_stack, call_stack.clone())),
+            GNU_OP_DOLOOPNEXT | GNU_OP_DOLOOPBREAK => {
+                gnu_enclosing_loop(code, instruction_pc, opcode)?;
+            }
             GNU_OP_STARTLOOPCNTXT => {
                 pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
                 pending.push((
