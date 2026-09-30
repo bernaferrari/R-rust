@@ -490,6 +490,10 @@ pub(crate) fn format_real_value(v: f64) -> String {
         } else {
             "Inf".to_string()
         }
+    } else if v == 0.0 {
+        // log10(0) is -inf. The i32 cast saturates and the decimal count
+        // overflows before clamp. GNU prints both signed zeros as 0.
+        "0".to_string()
     } else if !needs_scientific(v) {
         let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
         let exponent = v.abs().log10().floor() as i32;
@@ -4079,6 +4083,16 @@ mod tests {
         assert_eq!(format_real_value(f64::NAN), "NaN");
         assert_eq!(format_real_value(f64::INFINITY), "Inf");
         assert_eq!(format_real_value(f64::NEG_INFINITY), "-Inf");
+    }
+
+    #[test]
+    fn test_format_real_value_prints_signed_zero_as_zero() {
+        // GNU EncodeReal0 canonicalizes both zeros. R 4.6.1 `cat(0)` and
+        // `cat(-0)` emit `0`. The session is required: the fixed-format path
+        // reads options("digits") before it chooses a decimal count.
+        let _session = RSession::new();
+        assert_eq!(format_real_value(0.0), "0");
+        assert_eq!(format_real_value(-0.0), "0");
     }
 
     #[test]
