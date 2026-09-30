@@ -111,17 +111,16 @@ unsafe fn draw_portable_plot_xy(args: SEXP) -> SEXP {
 
 unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let result = plot::C_plot_new(call, op, args, rho);
         #[cfg(feature = "renderplot-device")]
         if renderplot_backend_active() {
-            // GNU plot.new is .External2, so it never reaches draw_builtin.
-            // plot.window then asks for the portable plot this installs.
-            crate::mainutils::portable_plot::draw_builtin(
+            // The renderplot scene is the device. The legacy plot.new calls
+            // GEcurrentDevice, which opens options("device") and writes pdf.
+            return crate::mainutils::portable_plot::draw_builtin(
                 "plot.new",
                 crate::sexp::accessors::CDR(args),
             );
         }
-        result
+        plot::C_plot_new(call, op, args, rho)
     }
 }
 unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {

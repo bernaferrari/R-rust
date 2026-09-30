@@ -16,8 +16,37 @@ fn assert_ok(result: &rmath::android::RResult) {
     );
 }
 
+fn default_pdf_paths() -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        paths.push(cwd.join("Rplots.pdf"));
+    }
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Rplots.pdf");
+    if !paths.iter().any(|path| path == &manifest) {
+        paths.push(manifest);
+    }
+    paths
+}
+
+fn remove_default_pdf() {
+    for path in default_pdf_paths() {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn assert_no_default_pdf() {
+    for path in default_pdf_paths() {
+        assert!(
+            !path.exists(),
+            "renderplot evaluation wrote {}",
+            path.display()
+        );
+    }
+}
+
 #[test]
 fn record_replay_serializes_owned_scene_backend() {
+    remove_default_pdf();
     let mut session = RSession::new();
     let mut scene = Scene::new(320, 240);
     let result = session.eval_script_with_renderplot_backend(
@@ -29,13 +58,18 @@ fn record_replay_serializes_owned_scene_backend() {
         !scene.operations().is_empty(),
         "record/replay should produce owned scene operations"
     );
+    assert_no_default_pdf();
 }
 
+#[test]
 fn record_replay_under_gc_torture_uses_owned_scene_backend() {
+    remove_default_pdf();
     let mut session = RSession::new();
     let mut scene = Scene::new(320, 240);
+    // Torture the snapshot and replay, not every allocation inside plot().
+    // gctorture around plot() itself collects for hours.
     let result = session.eval_script_with_renderplot_backend(
-        "gctorture(TRUE); plot(1:3, c(1,4,9), col='blue'); saved <- serialize(recordPlot(), NULL); gctorture(FALSE); plot.new(); replayPlot(unserialize(saved))",
+        "plot(1:3, c(1,4,9), col='blue'); gctorture(TRUE); saved <- serialize(recordPlot(), NULL); plot.new(); replayPlot(unserialize(saved)); gctorture(FALSE)",
         &mut scene,
     );
     assert_ok(&result);
@@ -43,10 +77,12 @@ fn record_replay_under_gc_torture_uses_owned_scene_backend() {
         !scene.operations().is_empty(),
         "record/replay should produce owned scene operations"
     );
+    assert_no_default_pdf();
 }
 
 #[test]
 fn renderplot_catch_script_errors_continues_and_draws() {
+    remove_default_pdf();
     let mut session = RSession::new();
     let mut scene = Scene::new(320, 240);
     let result = session.eval_script_with_renderplot_backend(
@@ -80,10 +116,12 @@ fn renderplot_catch_script_errors_continues_and_draws() {
         result.stderr,
         scene.operations()
     );
+    assert_no_default_pdf();
 }
 
 #[test]
 fn renderplot_catch_script_errors_then_plots() {
+    remove_default_pdf();
     let mut session = RSession::new();
     let mut scene = Scene::new(320, 240);
     let result = session.eval_script_with_renderplot_backend(
@@ -116,10 +154,12 @@ fn renderplot_catch_script_errors_then_plots() {
         result.stderr,
         scene.operations()
     );
+    assert_no_default_pdf();
 }
 
 #[test]
 fn backend_guard_restores_after_eval_error() {
+    remove_default_pdf();
     let mut session = RSession::new();
     let mut scene = Scene::new(320, 240);
     let error = session.eval_script_with_renderplot_backend(
@@ -140,6 +180,7 @@ fn backend_guard_restores_after_eval_error() {
             .iter()
             .any(|operation| { matches!(operation, r_graphics_engine::DrawOperation::Path(_)) })
     );
+    assert_no_default_pdf();
 }
 
 // Keep the trait import explicit: this test is intended to prove Scene remains

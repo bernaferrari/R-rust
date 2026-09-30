@@ -1649,7 +1649,14 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             // GNU plot.new calls GEcurrentDevice first. With no device open
             // that evaluates options("device"); a closure that opens nothing
             // is "no active device and default getOption(\"device\") is invalid".
-            let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
+            // A live renderplot backend is the device, so that lookup must not
+            // open the default pdf in the working directory.
+            let backend_open = with_required_current_instance(|inst| unsafe {
+                (*inst).current_renderplot_backend.is_some()
+            });
+            if !backend_open {
+                let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
+            }
             let (c, clear) = coordinates(args, &[0., 1.], &[0., 1.], true);
             install(c);
             let target = &mut *renderer();

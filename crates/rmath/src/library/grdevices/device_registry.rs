@@ -983,28 +983,104 @@ unsafe fn open_default_device() {
         }
     }
 }
+#[cfg(feature = "renderplot-device")]
+fn renderplot_scene_is_device() -> bool {
+    with_required_current_instance(|inst| unsafe { (*inst).current_renderplot_backend.is_some() })
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+fn renderplot_scene_is_device() -> bool {
+    false
+}
+
+/// `dev.cur()` names the device from baseenv `.Devices`. A renderplot scene
+/// has no file, so the list entry must exist without evaluating `pdf()`.
+fn remember_device_name(name: &std::ffi::CStr) {
+    unsafe {
+        let base = crate::sexp::globals::R_BaseEnv();
+        let sym = crate::sexp::symbol::Rf_install(c".Devices".as_ptr());
+        let old = crate::sexp::envir::R_findVarInFrame(base, sym);
+        let unbound = crate::sexp::globals::R_UnboundValue();
+        let n = if !old.is_null()
+            && old != unbound
+            && crate::sexp::accessors::TYPEOF(old) == SEXPTYPE::VECSXP
+        {
+            crate::sexp::accessors::XLENGTH(old)
+        } else {
+            0
+        };
+        let needed = with_registry(|registry| i64::from(registry.num_devices()));
+        if needed <= n {
+            return;
+        }
+        let devices = Rf_allocVector(SEXPTYPE::VECSXP, needed as i32);
+        let _devices_guard = crate::sexp::protect::protect(devices);
+        for i in 0..n {
+            crate::sexp::accessors::SET_VECTOR_ELT(
+                devices,
+                i,
+                crate::sexp::accessors::VECTOR_ELT(old, i),
+            );
+        }
+        if n == 0 {
+            crate::sexp::accessors::SET_VECTOR_ELT(
+                devices,
+                0,
+                crate::sexp::constructors::Rf_mkString(c"null device".as_ptr()),
+            );
+        }
+        let start = if n == 0 { 1 } else { n };
+        for i in start..needed {
+            let label = if i + 1 == needed {
+                crate::sexp::constructors::Rf_mkString(name.as_ptr())
+            } else {
+                crate::sexp::constructors::Rf_mkString(c"null device".as_ptr())
+            };
+            crate::sexp::accessors::SET_VECTOR_ELT(devices, i, label);
+        }
+        crate::sexp::envir::defineVar(sym, devices, base);
+        let current = crate::sexp::constructors::Rf_mkString(name.as_ptr());
+        let _current_guard = crate::sexp::protect::protect(current);
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".Device".as_ptr()),
+            current,
+            base,
+        );
+    }
+}
+
 #[unsafe(export_name = "rmath_GEcurrentDevice")]
 pub unsafe extern "C-unwind" fn GEcurrentDevice() -> pGEDevDesc {
     unsafe {
         if NoDevices() != 0 {
-            static OPENING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-            if OPENING
-                .compare_exchange(
-                    false,
-                    true,
-                    std::sync::atomic::Ordering::SeqCst,
-                    std::sync::atomic::Ordering::SeqCst,
-                )
-                .is_ok()
-            {
-                struct ClearFlag;
-                impl Drop for ClearFlag {
-                    fn drop(&mut self) {
-                        OPENING.store(false, std::sync::atomic::Ordering::SeqCst);
+            if renderplot_scene_is_device() {
+                // The scene is already the device. options("device") is pdf(),
+                // and evaluating it writes Rplots.pdf into the working directory.
+                with_registry(|registry| {
+                    registry.open_new_device();
+                });
+                remember_device_name(c"renderplot");
+            } else {
+                static OPENING: std::sync::atomic::AtomicBool =
+                    std::sync::atomic::AtomicBool::new(false);
+                if OPENING
+                    .compare_exchange(
+                        false,
+                        true,
+                        std::sync::atomic::Ordering::SeqCst,
+                        std::sync::atomic::Ordering::SeqCst,
+                    )
+                    .is_ok()
+                {
+                    struct ClearFlag;
+                    impl Drop for ClearFlag {
+                        fn drop(&mut self) {
+                            OPENING.store(false, std::sync::atomic::Ordering::SeqCst);
+                        }
                     }
+                    let _clear = ClearFlag;
+                    open_default_device();
                 }
-                let _clear = ClearFlag;
-                open_default_device();
             }
         }
         with_registry(|registry| registry.current_ptr())
