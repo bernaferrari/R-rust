@@ -3,6 +3,13 @@ ls <- function (name, pos = -1L, envir = if (missing(name) && identical(pos, -1L
                 pattern, sorted = TRUE)
 {
     if (!missing(name)) {
+        # Dead call whose function position is not a symbol. The bytecode
+        # compiler rejects that and leaves this closure interpreted, so
+        # tryCatch still sees the unevaluated `name`. Compiled calls unwrap
+        # that promise and an unbound symbol escapes as "object not found"
+        # instead of the warning below. `base::tryCatch` is not called.
+        if (FALSE)
+            base::tryCatch()
         pos <- tryCatch(name, error = function(e) e)
         if (inherits(pos, "error")) {
             name <- substitute(name)
