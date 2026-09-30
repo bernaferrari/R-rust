@@ -169,33 +169,34 @@ pub(crate) fn gnu_chain_profile(initial: i32, names: &[Vec<u8>]) -> (i32, i32, V
     replay_chains(size, names)
 }
 
+/// `1 + (int)(size * 1.2)`. The cast of `size * 1.2` equals `size` when size <= 4.
+fn hash_resize_size(size: i32) -> i32 {
+    let mut new_size = 1 + (size as f64 * 1.2) as i32;
+    if new_size <= size {
+        new_size = size.saturating_add(1);
+    }
+    new_size
+}
+
 fn replay_chains(mut size: i32, names: &[Vec<u8>]) -> (i32, i32, Vec<i32>) {
     let mut inserted: Vec<&[u8]> = Vec::new();
     let mut counts = vec![0i32; size as usize];
+    // HASHPRI counts each new binding. Resize once when it exceeds 0.85 * size,
+    // then rebuild it as the number of non-empty chains.
     let mut pri = 0i32;
     for name in names {
-        if (inserted.len() as f64) > (size as f64) * 0.85 {
-            let mut new_size = 1 + (size as f64 * 1.2) as i32;
-            if new_size <= size {
-                new_size = size + 1;
-            }
-            loop {
-                let (c, p) = place(new_size, &inserted);
-                if (inserted.len() as f64) <= (new_size as f64) * 0.85 {
-                    size = new_size;
-                    counts = c;
-                    pri = p;
-                    break;
-                }
-                new_size = 1 + (new_size as f64 * 1.2) as i32;
-            }
-        }
-        let idx = (hashpjw(name) % size as u32) as usize;
-        if counts[idx] == 0 {
+        if !inserted.iter().any(|have| *have == name.as_slice()) {
+            let idx = (hashpjw(name) % size as u32) as usize;
             pri += 1;
+            counts[idx] += 1;
+            inserted.push(name.as_slice());
         }
-        counts[idx] += 1;
-        inserted.push(name);
+        if (pri as f64) > (size as f64) * 0.85 {
+            size = hash_resize_size(size);
+            let (next_counts, next_pri) = place(size, &inserted);
+            counts = next_counts;
+            pri = next_pri;
+        }
     }
     (size, pri, counts)
 }
