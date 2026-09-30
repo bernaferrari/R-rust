@@ -1,1 +1,5 @@
-function(name, recording=TRUE) { if(!isTRUE(recording)) stop('unrecorded grid operations are not supported'); if(length(name)!=1L || !is.character(name)) stop('invalid viewport name'); .rport_grid('seek', list(name=name)); invisible(NULL) }
+function(name, recording=TRUE) {
+  if (!isTRUE(recording)) stop('unrecorded grid operations are not supported')
+  upViewport(0, recording=recording)
+  downViewport(name, recording=recording)
+}

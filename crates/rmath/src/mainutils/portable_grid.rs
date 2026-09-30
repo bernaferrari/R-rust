@@ -790,6 +790,100 @@ unsafe fn result(v: &[f64]) -> SEXP {
         x
     }
 }
+fn plot_params(style: &Gp) -> PlotParameters {
+    PlotParameters {
+        font_face: style.face,
+        font_size: style.size as f32,
+        text_color: Color::BLACK,
+        dpi: DPI as f32,
+        text_anchor: TextAnchor::Start,
+        text_angle: 0.,
+    }
+}
+/// Width and height, in device pixels, of one label at `index`.
+/// A list (stringWidth's data) selects one element; a character or
+/// expression vector selects one label. An empty string still has font height.
+unsafe fn label_box(item: SEXP, index: usize, style: &Gp) -> (f64, f64) {
+    unsafe {
+        if item == R_NilValue() {
+            base_error("data is required for stringWidth/stringHeight units");
+        }
+        let params = plot_params(style);
+        let owned = if TYPEOF(item) == SEXPTYPE::VECSXP {
+            if XLENGTH(item) == 0 {
+                return (0., 0.);
+            }
+            crate::mainutils::plotmath::labels(VECTOR_ELT(
+                item,
+                (index as i64) % XLENGTH(item),
+            ))
+        } else {
+            crate::mainutils::plotmath::labels(item)
+        };
+        if owned.is_empty() {
+            return (0., 0.);
+        }
+        let label = if TYPEOF(item) == SEXPTYPE::VECSXP {
+            &owned[0]
+        } else {
+            &owned[index % owned.len()]
+        };
+        let (w, h) = label.dimensions(&*device(), &params);
+        let (w, h) = (f64::from(w), f64::from(h));
+        if !w.is_finite() || !h.is_finite() {
+            base_error("grid unit conversion overflow");
+        }
+        (w, h)
+    }
+}
+/// GNU sizes text by the positions actually drawn, which is
+/// max(length(x), length(y)), recycling labels. One shared anchor therefore
+/// measures only the first label. The result is the axis-aligned box after
+/// the grob's own rotation, using the grob gpar over the viewport gpar.
+unsafe fn text_grob_extent(grob: SEXP, data: SEXP, frame: &Frame, axis: usize) -> f64 {
+    unsafe {
+        let style = gp(field(grob, "gp"), &frame.gp);
+        let labels = field(data, "label");
+        if labels == R_NilValue() || XLENGTH(labels) == 0 {
+            return 0.;
+        }
+        let xs = units(field(data, "x"), "npc", frame, 0, false);
+        let ys = units(field(data, "y"), "npc", frame, 1, false);
+        if xs.is_empty() || ys.is_empty() {
+            base_error("grid text requires coordinates");
+        }
+        let n = xs.len().max(ys.len());
+        let mut just = justification(field(data, "just"));
+        just[0] = num(field(data, "hjust"), just[0]);
+        just[1] = num(field(data, "vjust"), just[1]);
+        let rot = num(field(data, "rot"), 0.).to_radians();
+        let (c, s) = (rot.cos(), rot.sin());
+        let mut xmin = f64::INFINITY;
+        let mut xmax = f64::NEG_INFINITY;
+        let mut ymin = f64::INFINITY;
+        let mut ymax = f64::NEG_INFINITY;
+        for i in 0..n {
+            let (w, h) = label_box(labels, i, &style);
+            let x = xs[i % xs.len()];
+            let y = ys[i % ys.len()];
+            for (cx, cy) in [(0., 0.), (w, 0.), (w, h), (0., h)] {
+                let px = cx - just[0] * w;
+                let py = cy - just[1] * h;
+                let rx = c * px - s * py + x;
+                let ry = s * px + c * py + y;
+                xmin = xmin.min(rx);
+                xmax = xmax.max(rx);
+                ymin = ymin.min(ry);
+                ymax = ymax.max(ry);
+            }
+        }
+        let extent = if axis == 0 { xmax - xmin } else { ymax - ymin };
+        if !extent.is_finite() {
+            base_error("grid unit conversion overflow");
+        }
+        extent
+    }
+}
 unsafe fn grob_extent(grob: SEXP, frame: &Frame, axis: usize) -> f64 {
     unsafe {
         if grob == R_NilValue() || !crate::mainutils::essentials::sexp_has_class(grob, "grob") {
@@ -801,33 +895,7 @@ unsafe fn grob_extent(grob: SEXP, frame: &Frame, axis: usize) -> f64 {
             ("rect", 0) => units(field(data, "width"), "npc", frame, 0, true)[0],
             ("rect", 1) => units(field(data, "height"), "npc", frame, 1, true)[0],
             ("circle", _) => 2. * units(field(data, "r"), "snpc", frame, axis, true)[0],
-            ("text", 0) => {
-                let labels = field(data, "label");
-                (0..XLENGTH(labels))
-                    .map(|i| {
-                        r_graphics_engine::default_font_book()
-                            .measure_text(
-                                &elt_to_string(labels, i),
-                                frame.gp.size as f32,
-                                frame.gp.face,
-                            )
-                            .width as f64
-                    })
-                    .fold(0., f64::max)
-            }
-            ("text", 1) => {
-                let labels = field(data, "label");
-                (0..XLENGTH(labels))
-                    .map(|i| {
-                        let m = r_graphics_engine::default_font_book().measure_text(
-                            &elt_to_string(labels, i),
-                            frame.gp.size as f32,
-                            frame.gp.face,
-                        );
-                        (m.ascent + m.descent) as f64
-                    })
-                    .fold(0., f64::max)
-            }
+            ("text", _) => text_grob_extent(grob, data, frame, axis),
             _ => base_error(format!("grob unit is not supported for primitive '{kind}'")),
         }
     }
@@ -888,30 +956,24 @@ unsafe fn units(x: SEXP, default: &str, frame: &Frame, axis: usize, dimension: b
                     if data == R_NilValue() {
                         base_error("grob units require grob data");
                     }
+                    // grob_extent is already device pixels. convertWidth divides
+                    // by the destination unit, so do not also divide by DPI here.
                     let extent = grob_extent(data, frame, if name == "grobwidth" { 0 } else { 1 });
-                    let (f, _) = frame.unit_factor("inches", axis, dimension).unwrap();
-                    return v * extent / f;
-                }
-                let mut v = v;
-                if name == "strwidth" || name == "strheight" {
-                    if data == R_NilValue() {
-                        base_error("data is required for stringWidth/stringHeight units");
+                    let resolved = v * extent;
+                    if !resolved.is_finite() {
+                        base_error("grid unit conversion overflow");
                     }
-                    let text = if TYPEOF(data) == SEXPTYPE::STRSXP {
-                        elt_to_string(data, (i as i64) % XLENGTH(data))
-                    } else {
-                        base_error("string units require character data")
-                    };
-                    let metrics = r_graphics_engine::default_font_book().measure_text(
-                        &text,
-                        frame.gp.size as f32,
-                        frame.gp.face,
-                    );
-                    v *= if name == "strwidth" {
-                        metrics.width as f64
-                    } else {
-                        (metrics.ascent + metrics.descent) as f64
-                    };
+                    return resolved;
+                }
+                if name == "strwidth" || name == "strheight" {
+                    // Measured advances are device pixels. The strwidth factor
+                    // below is a 0.6em stand-in and must not scale them again.
+                    let (width, height) = label_box(data, i, &frame.gp);
+                    let resolved = v * if name == "strwidth" { width } else { height };
+                    if !resolved.is_finite() {
+                        base_error("grid unit conversion overflow");
+                    }
+                    return resolved;
                 }
                 let (f, o) = frame
                     .unit_factor(&name, axis, dimension)
@@ -1274,6 +1336,183 @@ unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
     }
 }
 
+fn named_children(state: &GridState, id: usize) -> Vec<usize> {
+    // GNU keeps one child per name (the latest push) and searches `ls()` order.
+    let mut last: Vec<(String, usize)> = Vec::new();
+    for &child in &state.nodes[id].children {
+        let Some(name) = state.nodes[child].frame.name.clone() else {
+            continue;
+        };
+        if let Some(pos) = last.iter().position(|(existing, _)| existing == &name) {
+            last[pos].1 = child;
+        } else {
+            last.push((name, child));
+        }
+    }
+    last.sort_by(|a, b| a.0.cmp(&b.0));
+    last.into_iter().map(|(_, child)| child).collect()
+}
+
+fn path_match(path: &str, so_far: Option<&str>, strict: bool) -> bool {
+    // grid::pathMatch uses grepl. Strict anchors the pattern; otherwise it is unanchored.
+    let Some(so_far) = so_far else {
+        return false;
+    };
+    let pattern = if strict {
+        format!("^{path}$")
+    } else {
+        path.to_string()
+    };
+    let expression = fancy_regex::Regex::new(&pattern).unwrap_or_else(|_| {
+        base_error(format!(
+            "invalid viewport path regular expression '{path}'"
+        ))
+    });
+    expression
+        .is_match(so_far)
+        .unwrap_or_else(|_| base_error(format!("invalid viewport path regular expression '{path}'")))
+}
+
+fn find_name(
+    state: &GridState,
+    vp: usize,
+    name: &str,
+    strict: bool,
+    depth: i32,
+) -> Option<(usize, i32)> {
+    let children = named_children(state, vp);
+    if children.is_empty() {
+        return None;
+    }
+    if let Some(child) = children
+        .iter()
+        .copied()
+        .find(|&child| state.nodes[child].frame.name.as_deref() == Some(name))
+    {
+        return Some((child, depth));
+    }
+    if strict {
+        return None;
+    }
+    children.into_iter().find_map(|child| find_name(state, child, name, strict, depth + 1))
+}
+
+fn find_vppath(
+    state: &GridState,
+    vp: usize,
+    path: &str,
+    name: &str,
+    strict: bool,
+    path_so_far: Option<&str>,
+    depth: i32,
+) -> Option<(usize, i32)> {
+    let children = named_children(state, vp);
+    if children.is_empty() {
+        return None;
+    }
+    if children
+        .iter()
+        .any(|&child| state.nodes[child].frame.name.as_deref() == Some(name))
+        && path_match(path, path_so_far, strict)
+    {
+        let child = children
+            .into_iter()
+            .find(|child| state.nodes[*child].frame.name.as_deref() == Some(name))
+            .unwrap();
+        return Some((child, depth));
+    }
+    for child in children {
+        let child_name = state.nodes[child].frame.name.clone().unwrap_or_default();
+        let grown = match path_so_far {
+            None => child_name,
+            Some(so_far) => format!("{so_far}::{child_name}"),
+        };
+        if let Some(found) = find_vppath(
+            state,
+            child,
+            path,
+            name,
+            strict,
+            Some(grown.as_str()),
+            depth + 1,
+        ) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn activate(state: &mut GridState, id: usize) {
+    let mut path = Vec::new();
+    let mut cur = Some(id);
+    while let Some(node) = cur {
+        path.push(node);
+        cur = state.nodes[node].parent;
+    }
+    path.reverse();
+    state.active = path;
+    state.frames = state
+        .active
+        .iter()
+        .map(|node| state.nodes[*node].frame.clone())
+        .collect();
+}
+
+fn current_path(state: &GridState) -> Option<String> {
+    let mut names = Vec::new();
+    let mut id = *state.active.last().unwrap();
+    while state.nodes[id].parent.is_some() {
+        if let Some(name) = state.nodes[id].frame.name.clone() {
+            names.push(name);
+        }
+        id = state.nodes[id].parent.unwrap();
+    }
+    names.reverse();
+    if names.is_empty() {
+        None
+    } else {
+        Some(names.join("::"))
+    }
+}
+
+fn current_name(state: &GridState) -> String {
+    let id = *state.active.last().unwrap();
+    if state.nodes[id].parent.is_none() {
+        "ROOT".to_string()
+    } else {
+        state.nodes[id]
+            .frame
+            .name
+            .clone()
+            .unwrap_or_else(|| "ROOT".to_string())
+    }
+}
+
+unsafe fn logical_flag(x: SEXP, default: bool) -> bool {
+    unsafe {
+        if x == R_NilValue() || XLENGTH(x) == 0 {
+            return default;
+        }
+        match SEXPTYPE(TYPEOF(x)) {
+            SEXPTYPE::LGLSXP => *LOGICAL(x) != 0,
+            SEXPTYPE::INTSXP => *INTEGER(x) != 0,
+            SEXPTYPE::REALSXP => {
+                let value = *REAL(x);
+                value.is_nan() || value != 0.
+            }
+            _ => base_error("invalid 'strict' value"),
+        }
+    }
+}
+
+unsafe fn mk_string(value: &str) -> SEXP {
+    unsafe {
+        let text = std::ffi::CString::new(value)
+            .unwrap_or_else(|_| base_error("viewport name contains an embedded nul"));
+        Rf_mkString(text.as_ptr())
+    }
+}
+
 /// Internal evaluated dispatcher, fed by ordinary R closures below.
 pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1284,6 +1523,7 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut state = with_required_current_instance(|p| (*p).portable_grid.clone());
         state.ensure(dims);
         let parent = state.frames.last().unwrap().clone();
+        let mut returned = R_NilValue();
         match operation.as_str() {
             "newpage" => {
                 state = GridState::default();
@@ -1292,16 +1532,30 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             "push" => {
                 let frame = push(data, &parent);
-                state.frames.push(frame);
                 let parent_id = *state.active.last().unwrap();
+                let mut replaced = false;
+                if let Some(name) = frame.name.clone() {
+                    let keep: Vec<usize> = state.nodes[parent_id]
+                        .children
+                        .iter()
+                        .copied()
+                        .filter(|&child| state.nodes[child].frame.name.as_deref() != Some(name.as_str()))
+                        .collect();
+                    replaced = keep.len() != state.nodes[parent_id].children.len();
+                    state.nodes[parent_id].children = keep;
+                }
+                state.frames.push(frame.clone());
                 let id = state.nodes.len();
                 state.nodes.push(ViewportNode {
                     parent: Some(parent_id),
-                    frame: state.frames.last().unwrap().clone(),
+                    frame,
                     children: vec![],
                 });
                 state.nodes[parent_id].children.push(id);
                 state.active.push(id);
+                if replaced {
+                    state.compact_tree();
+                }
             }
             "pop" => {
                 let n = num(data, 1.);
@@ -1314,7 +1568,9 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     n as usize
                 };
                 if n >= state.frames.len() {
-                    base_error("cannot pop the top-level viewport");
+                    base_error(
+                        "cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)",
+                    );
                 }
                 state.frames.truncate(state.frames.len() - n);
                 let removed = state.active.split_off(state.frames.len());
@@ -1336,7 +1592,9 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     n as usize
                 };
                 if n >= state.frames.len() {
-                    base_error("cannot move above top-level viewport");
+                    base_error(
+                        "cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)",
+                    );
                 }
                 let keep = state.frames.len() - n;
                 state.frames.truncate(keep);
@@ -1392,56 +1650,35 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             "down" => {
                 let name = string(field(data, "name"), "");
-                if name.is_empty() {
-                    base_error("viewport name must not be empty");
-                }
-                let strict = num(field(data, "strict"), 1.) != 0.;
                 let parts = name
                     .split("::")
                     .filter(|part| !part.is_empty())
+                    .map(str::to_string)
                     .collect::<Vec<_>>();
+                if parts.is_empty() {
+                    base_error("a viewport path must contain at least one viewport name");
+                }
+                let strict = logical_flag(field(data, "strict"), false);
                 let start = *state.active.last().unwrap();
-                let mut found = None;
-                let mut queue = vec![start];
-                while let Some(id) = queue.pop() {
-                    for child in state.nodes[id].children.iter().rev() {
-                        let direct =
-                            state.nodes[*child].frame.name.as_deref() == Some(name.as_str());
-                        let mut path = vec![];
-                        let mut cursor = Some(*child);
-                        while let Some(node) = cursor {
-                            if let Some(n) = state.nodes[node].frame.name.as_deref() {
-                                path.push(n);
-                            }
-                            cursor = state.nodes[node].parent;
-                        }
-                        path.reverse();
-                        if direct || (!parts.is_empty() && path.ends_with(&parts)) {
-                            found = Some(*child);
-                            break;
-                        }
-                        if !strict {
-                            queue.push(*child);
-                        }
-                    }
-                    if found.is_some() {
-                        break;
-                    }
-                }
-                let id = found.unwrap_or_else(|| base_error("named child viewport was not found"));
-                let mut path = vec![];
-                let mut cur = Some(id);
-                while let Some(node) = cur {
-                    path.push(node);
-                    cur = state.nodes[node].parent;
-                }
-                path.reverse();
-                state.active = path;
-                state.frames = state
-                    .active
-                    .iter()
-                    .map(|node| state.nodes[*node].frame.clone())
-                    .collect();
+                let final_name = parts.last().cloned().unwrap();
+                let found = if parts.len() == 1 {
+                    find_name(&state, start, &final_name, strict, 1)
+                } else {
+                    let path = parts[..parts.len() - 1].join("::");
+                    find_vppath(&state, start, &path, &final_name, strict, None, 1)
+                };
+                let (id, depth) = found.unwrap_or_else(|| {
+                    base_error(format!("Viewport '{final_name}' was not found"));
+                });
+                activate(&mut state, id);
+                returned = Rf_ScalarInteger(depth);
+            }
+            "current.name" => returned = mk_string(&current_name(&state)),
+            "current.path" => {
+                returned = match current_path(&state) {
+                    Some(path) => mk_string(&path),
+                    None => R_NilValue(),
+                };
             }
             "convert" => {
                 let axis = num(field(data, "axis"), 0.);
@@ -1478,7 +1715,7 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         with_required_current_instance(|p| (*p).portable_grid = state);
         crate::eval::runtime::set_visible(0);
-        R_NilValue()
+        returned
     }
 }
 enum Drawing {
@@ -2024,6 +2261,8 @@ pub(crate) const EXPORTS: &[&str] = &[
     "upViewport",
     "downViewport",
     "seekViewport",
+    "current.viewport",
+    "current.vpPath",
     "grid.newpage",
     "convertX",
     "convertY",
@@ -2039,6 +2278,8 @@ pub(crate) const EXPORTS: &[&str] = &[
     "is.grob",
     "grobWidth",
     "grobHeight",
+    "stringWidth",
+    "stringHeight",
     "rectGrob",
     "grid.rect",
     "circleGrob",
@@ -2066,11 +2307,11 @@ unsafe fn new_grid_environment() -> SEXP {
         for name in EXPORTS {
             let symbol_name = std::ffi::CString::new(*name).expect("static grid export");
             let symbol = Rf_install(symbol_name.as_ptr());
-            let value = if *name == "editDetails" {
+            let value = if let Some(source) = grid_closure_source(name) {
                 let parsed = crate::sexp::memory::with_arena(|arena| {
-                    crate::eval::parser::parse(include_str!("portable_grid/edit_details.R"), arena)
+                    crate::eval::parser::parse(source, arena)
                 })
-                .expect("checked-in grid generic must parse");
+                .expect("checked-in grid function must parse");
                 let _parsed = protect(parsed);
                 crate::eval::eval::Rf_eval(parsed, env)
             } else {
@@ -2079,15 +2320,31 @@ unsafe fn new_grid_environment() -> SEXP {
             let _value_guard = protect(value);
             defineVar(symbol, value, env);
         }
+        let auto_name = std::ffi::CString::new(".rport.vp.autoname").expect("static grid counter");
+        let auto_symbol = Rf_install(auto_name.as_ptr());
+        let auto_value = crate::sexp::constructors::Rf_ScalarInteger(0);
+        let _auto_value = protect(auto_value);
+        defineVar(auto_symbol, auto_value, env);
         env
+    }
+}
+
+fn grid_closure_source(name: &str) -> Option<&'static str> {
+    match name {
+        "editDetails" => Some(include_str!("portable_grid/edit_details.R")),
+        "current.viewport" => Some(include_str!("portable_grid/current_viewport.R")),
+        "current.vpPath" => Some(include_str!("portable_grid/current_vp_path.R")),
+        "stringWidth" => Some(include_str!("portable_grid/string_width.R")),
+        "stringHeight" => Some(include_str!("portable_grid/string_height.R")),
+        _ => None,
     }
 }
 pub(crate) unsafe fn namespace() -> SEXP {
     unsafe {
         let cached = with_required_current_instance(|p| {
-            (*p).package_namespace_cache
-                .get("grid")
-                .map(|(_, env)| *env)
+            (*p).package_namespace_cache.get("grid").and_then(|(dir, env)| {
+                (dir.as_os_str() == "<builtin:grid>").then_some(*env)
+            })
         });
         if let Some(env) = cached {
             return env;
