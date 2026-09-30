@@ -897,32 +897,8 @@ unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
         };
         let call = crate::sexp::constructors::Rf_lang2(fun, s);
         let _call_guard = protect(call);
-        if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::eval::eval::Rf_eval(call, env);
-        })) {
-            // Temporary: auto-print must not abort the REPL. Tracked as
-            // rport-2gpp.2.5 — GNU prints the error and continues.
-            let message = payload
-                .downcast_ref::<crate::sexp::context::RError>()
-                .map(|e| e.message.clone())
-                .or_else(|| {
-                    payload
-                        .downcast_ref::<crate::sexp::context::RSignal>()
-                        .and_then(|s| match s {
-                            crate::sexp::context::RSignal::Error { message } => {
-                                Some(message.clone())
-                            }
-                            _ => None,
-                        })
-                })
-                .unwrap_or_else(|| "error during show()".to_string());
-            let text = format!("Error: {message}\n");
-            if crate::sexp::output::is_capturing() {
-                crate::sexp::output::capture_stdout(&text);
-            } else {
-                eprint!("{text}");
-            }
-        }
+        // GNU PrintObjectS4 eval()s show with no local handler.
+        let _ = crate::eval::eval::Rf_eval(call, env);
     }
 }
 

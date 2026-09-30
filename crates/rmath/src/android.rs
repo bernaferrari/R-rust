@@ -56,6 +56,33 @@ fn result_from_sexp(sexp: Sexp<'_>) -> RResult {
 
 }
 
+fn auto_print_error(payload: &(dyn std::any::Any + Send)) -> Option<String> {
+    if let Some(err) = payload.downcast_ref::<crate::sexp::context::RError>() {
+        return Some(err.message.clone());
+    }
+    if let Some(crate::sexp::context::RSignal::Error { message }) =
+        payload.downcast_ref::<crate::sexp::context::RSignal>()
+    {
+        return Some(message.clone());
+    }
+    None
+}
+
+/// Format a visible value. `show()` `stop()` panics out of
+/// `format_sexp_direct`; that must become an eval error, not a host panic
+/// and not a successful print.
+fn format_visible_value(sexp: Sexp<'_>) -> Result<String, String> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        output::format_sexp_direct(sexp)
+    })) {
+        Ok(text) => Ok(text),
+        Err(payload) => match auto_print_error(payload.as_ref()) {
+            Some(message) => Err(message),
+            None => std::panic::resume_unwind(payload),
+        },
+    }
+}
+
 fn result_from_eval(
     sexp: Sexp<'_>,
     captured: output::RCapturedOutput,
@@ -70,11 +97,29 @@ fn result_from_eval(
             }
         }
     }
+    let auto_stdout = if visible {
+        match format_visible_value(sexp.clone()) {
+            Ok(text) => text,
+            Err(message) => return error_result_with_captured(message, &captured),
+        }
+    } else {
+        String::new()
+    };
+    // stdout and display each format the value. A show() error on the
+    // second pass must still fail the eval.
+    let auto_display = if visible {
+        match format_visible_value(sexp.clone()) {
+            Ok(text) => text,
+            Err(message) => return error_result_with_captured(message, &captured),
+        }
+    } else {
+        String::new()
+    };
     let mut stdout = captured.stdout;
     if visible {
         // GNU concatenates auto-print onto a prior cat() that had no
         // trailing newline (`cat(deparse(x)); TRUE` → `...)[1] TRUE`).
-        stdout.push_str(&output::format_sexp_direct(sexp.clone()));
+        stdout.push_str(&auto_stdout);
     }
     if !stdout.is_empty() && !stdout.ends_with('\n') {
         stdout.push('\n');
@@ -88,7 +133,7 @@ fn result_from_eval(
     }
     let mut display = captured.interleaved;
     if visible {
-        display.push_str(&output::format_sexp_direct(sexp.clone()));
+        display.push_str(&auto_display);
     }
     if !display.is_empty() && !display.ends_with('\n') {
         display.push('\n');

@@ -2397,9 +2397,16 @@ fn format_dispatched_show(raw: crate::sexp::ffi::SEXP) -> Option<String> {
         let _call = crate::sexp::protect::protect(call);
         let env = crate::sexp::globals::R_GlobalEnv();
         let guard = OutputCaptureGuard::start();
-        let _ = crate::eval::eval::Rf_eval(call, env);
+        // Rf_eval turns stop() into a panic. Returning stdout here would
+        // make that auto-print look successful.
+        let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(call, env)
+        }));
         let captured = guard.finish();
-        Some(captured.stdout.trim_end_matches('\n').to_string())
+        match evaluated {
+            Ok(_) => Some(captured.stdout.trim_end_matches('\n').to_string()),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
     }
 }
 
@@ -3412,6 +3419,19 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
     }
     if has_class(x.clone(), "lm") {
         if let Some(text) = format_dispatched_print(x.clone()) {
+            return text;
+        }
+    }
+    // Final values are rendered here, not through PrintValueEnv. An S4 object
+    // is type 25, which otherwise falls through to "[unknown; length=0]".
+    if unsafe {
+        crate::mainutils::coerce::IS_S4_OBJECT(x.clone().as_raw()) != 0
+            || x.typeof_() == SEXPTYPE::S4SXP
+    } {
+        if let Some(text) = format_dispatched_print(x.clone()) {
+            return text;
+        }
+        if let Some(text) = format_dispatched_show(x.clone().as_raw()) {
             return text;
         }
     }
