@@ -1192,9 +1192,6 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let entrypoint = if PRIMVAL(op) == 0 { ".C" } else { ".Fortran" };
-        if native_extension_policy_enabled() {
-            native_extension_policy_error(call, entrypoint);
-        }
 
         let mut naok: c_int = 0;
         let mut nargs_val: c_int = 0;
@@ -1211,6 +1208,18 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             errorcall(call, "'.NAME' is missing");
         }
         check1arg2(args, call, ".NAME");
+
+        // In-tree Rust ports are registered by name. Resolve those before the
+        // host-loader policy so stats routines such as hclust run, and still
+        // reject every other .C/.Fortran symbol while native extensions are off.
+        if let Some(name) = ported_call_name(CAR(args)) {
+            fun = crate::library::tools::native_calls::lookup_c(&name);
+        }
+        let ported_dtrco = fun.is_none()
+            && ported_call_name(CAR(args)).as_deref() == Some("dtrco");
+        if fun.is_none() && !ported_dtrco && native_extension_policy_enabled() {
+            native_extension_policy_error(call, entrypoint);
+        }
 
         let call_args = resolveNativeRoutine(
             args,
