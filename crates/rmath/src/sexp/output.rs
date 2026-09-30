@@ -389,15 +389,21 @@ pub(crate) fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
     }
 }
 
-/// Append to the session's single interleaved output stream — the stdout
-/// capture buffer, bypassing any `sink()` diversion — falling back to real
-/// stderr when no capture is active. Signal-time message() emission uses
-/// this: upstream writes messages to stderr and the terminal interleaves
-/// the two streams in real time; the session model keeps one ordered stream
-/// so the text lands in statement order between print() side effects,
-/// deferred warnings, and auto-printed values.
+/// Append a `message()` to the session's interleaved stream.
+///
+/// `sink(type="message")` (connection other than the default stderr, 2)
+/// receives the text first. Otherwise it joins the capture frame, then
+/// real stderr. The session keeps one ordered stream so the text lands
+/// between print() side effects, deferred warnings, and auto-printed values.
 pub(crate) fn capture_interleaved(msg: &str) {
     super::instance::with_current_instance(|inst| unsafe {
+        // GNU `sink(type="message")` diverts message() before any capture
+        // frame. Connection 2 is the default stderr and stays on the frame.
+        let error_con = crate::mainutils::connections::sink_state().error_con;
+        if error_con != 2 {
+            crate::mainutils::connections::connection_write_bytes(error_con, msg.as_bytes());
+            return;
+        }
         let captured = (*inst)
             .output_capture
             .borrow_mut()

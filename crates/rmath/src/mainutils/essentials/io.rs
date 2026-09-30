@@ -1327,6 +1327,32 @@ struct CaptureFileGuard {
     instance: *mut crate::sexp::instance::RInstance,
     connection: Option<usize>,
 }
+
+/// Restores `sink(type="message")` after `capture.output` evaluates its
+/// expressions, including when that evaluation unwinds.
+struct MessageSinkGuard {
+    instance: *mut crate::sexp::instance::RInstance,
+    previous: i32,
+}
+
+impl MessageSinkGuard {
+    fn push(index: i32) -> Self {
+        let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
+        let previous = unsafe { (*instance).connections_state.sink.error_con };
+        unsafe {
+            (*instance).connections_state.sink.error_con = index;
+        }
+        Self { instance, previous }
+    }
+}
+
+impl Drop for MessageSinkGuard {
+    fn drop(&mut self) {
+        unsafe {
+            (*self.instance).connections_state.sink.error_con = self.previous;
+        }
+    }
+}
 impl CaptureFileGuard {
     fn close(&mut self) {
         if let Some(index) = self.connection.take() {
@@ -1468,6 +1494,13 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
         if let Some(index) = destination {
             capture.set_connection(index);
         }
+        // GNU capture.output(type="message", file=) is sink(file, type="message").
+        // message() follows that connection rather than the output capture frame.
+        let message_sink = if capture_type == "message" {
+            destination.map(MessageSinkGuard::push)
+        } else {
+            None
+        };
         let mut argument = args;
         while argument != R_NilValue() && !argument.is_null() {
             if control_name(argument).is_some() {
@@ -1504,6 +1537,7 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
             }
             argument = CDR(argument);
         }
+        drop(message_sink);
         let captured = capture.finish();
 
         let captured_stream = if capture_type == "message" {
