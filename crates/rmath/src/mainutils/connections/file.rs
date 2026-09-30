@@ -732,6 +732,10 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         if conn.isopen {
             return R_NilValue();
         }
+        // `con->mode` is `char[5]` (R_ext/Connections.h).
+        if requested.len() >= 5 {
+            r_error("invalid 'open' argument");
+        }
 
         let open_mode = if requested.is_empty() {
             if conn.mode.is_empty() {

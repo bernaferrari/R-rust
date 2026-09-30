@@ -18,6 +18,8 @@ const DBL_EPSILON: f64 = 2.220446049250313e-16;
 const DBL_MAX: f64 = 1.7976931348623157e+308;
 const DBL_MIN: f64 = 2.2250738585072014e-308;
 const M_SQRT_2dPI: f64 = 0.79788456080286535587989211986876; // sqrt(2/pi)
+/// `M_bessel_ik_max_alpha` from Rmath.h.
+const MAX_ALPHA_K: f64 = 1e9;
 
 // Mathematical constants
 const A: f64 = 0.11593151565841244881; // LOG(2) - Euler's constant
@@ -102,7 +104,15 @@ pub fn bessel_k(x: f64, alpha: f64, expo: f64) -> f64 {
         return ML_NAN;
     }
     let ize = expo as i32;
+    // The sign reflection happens before the cap. math_3B sizes its work
+    // array from |nu|, so a negative order uses the same limit.
     let mut alpha = if alpha < 0.0 { -alpha } else { alpha };
+    if alpha > MAX_ALPHA_K {
+        ml_warn_message(&format!(
+            "besselK(x, nu): nu={alpha} > max_alpha_k (= {MAX_ALPHA_K}): too large for bessel_k() algorithm"
+        ));
+        return ML_NAN;
+    }
     let nb = 1 + floor(alpha) as i32; /* nb-1 <= |alpha| < nb */
     alpha -= (nb - 1) as f64;
 
@@ -149,6 +159,12 @@ pub fn bessel_k_ex(x: f64, alpha: f64, expo: f64, bk: &mut [f64]) -> f64 {
     }
     let ize = expo as i32;
     let mut alpha = if alpha < 0.0 { -alpha } else { alpha };
+    if alpha > MAX_ALPHA_K {
+        ml_warn_message(&format!(
+            "besselK(x, nu): nu={alpha} > max_alpha_k (= {MAX_ALPHA_K}): too large for bessel_k() algorithm"
+        ));
+        return ML_NAN;
+    }
     let nb = 1 + floor(alpha) as i32; /* nb-1 <= |alpha| < nb */
     alpha -= (nb - 1) as f64;
 

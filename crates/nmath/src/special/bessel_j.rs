@@ -19,13 +19,18 @@ use libm::*;
 // Constants from bessel.h
 // =====================================================================
 
+/// `M_bessel_j_max_alpha` from Rmath.h. Raised from the shared 1e7 JY cap.
+const MAX_ALPHA_J: f64 = 1e9;
+
 const NSIG_BESS: f64 = 16.0;
 const ENSIG_BESS: f64 = 1e16;
 const RTNSIG_BESS: f64 = 1e-4;
 const ENMTEN_BESS: f64 = 8.9e-308;
 const ENTEN_BESS: f64 = 1e308;
 
-const XLRG_BESS_IJ: f64 = 1e5;
+/// Former `xlrg_BESS_J` was 1e5. Trunk now takes the asymptotic branch
+/// until `x` passes 1e24 (bessel_j.c `xlarge_J_Bessel`).
+const XLARGE_J_BESSEL: f64 = 1e24;
 
 /// 2^-800 = 1.4996968....e-241 (bessel_j.c: #define very_small_nu 0x1p-800)
 const VERY_SMALL_NU: f64 = f64::from_bits(0x0DF0_0000_0000_0000); // 2^-800
@@ -83,12 +88,14 @@ fn j_bessel(x: f64, alpha: f64, nb: i32, b: &mut [f64]) -> i32 {
             b[i] = 0.0;
         }
 
-        if x > XLRG_BESS_IJ {
+        // x past 1e24 is the limit 0. Smaller large x uses the asymptotic
+        // series so the cutoff is not applied orders of magnitude too early.
+        if x > XLARGE_J_BESSEL {
             ml_warning(ME_RANGE, "J_bessel");
             return ncalc;
         }
 
-        let intx = x as i32;
+        let fl_x = floor(x);
 
         /*===================================================================
         Branch into  3 cases :
@@ -142,9 +149,10 @@ fn j_bessel(x: f64, alpha: f64, nb: i32, b: &mut [f64]) -> i32 {
                     }
                 }
             }
-        } else if x > 25.0 && nb <= intx + 1 {
+        } else if x > (i32::MAX as f64) - 1.0 || (x > 25.0 && nb as f64 <= fl_x + 1.0) {
             /* ============= branch 2)
-            Asymptotic series for X > 25 (and not much larger nb) */
+            Asymptotic series for X > 25 (and not much larger nb).
+            x above INT_MAX-1 cannot form the integer index used by branch 3. */
 
             // m := #{terms in asymptotic series} to be used
             let m_asym: i32 = if x >= 130.0 {
@@ -252,9 +260,12 @@ fn j_bessel(x: f64, alpha: f64, nb: i32, b: &mut [f64]) -> i32 {
                 twonu = ldexp(nu, 1);
             }
 
+            // x <= INT_MAX-1 here, so the truncated index fits in i32.
+            let intx = x as i32;
             let nbmx = nb - intx; // = nb - floor(x)
             let mut n: i32 = intx + 1;
-            en = ((n + n) as f64) + twonu;
+            // 2*n overflows i32 once floor(x) exceeds 2^30. Use the double.
+            en = 2.0 * fl_x + 2.0 + twonu;
             p = en / x;
 
             /* Calculate general significance test. */
@@ -536,8 +547,10 @@ pub fn bessel_j(x: f64, alpha: f64) -> f64 {
             bessel_y(x, -alpha) * sinpi(alpha)
         };
         return part1 + part2;
-    } else if alpha > 1e7 {
-        ml_warning(ME_RANGE, "bessel_j");
+    } else if alpha > MAX_ALPHA_J {
+        ml_warn_message(&format!(
+            "besselJ(x, nu): nu={alpha} > max_alpha_j (= {MAX_ALPHA_J}): too large for bessel_j() algorithm"
+        ));
         return ML_NAN;
     }
     let nb = 1 + (na as i32); /* nb-1 <= alpha < nb */
@@ -606,8 +619,10 @@ pub fn bessel_j_ex(x: f64, alpha: f64, bj: &mut [f64]) -> f64 {
             bessel_y_ex(x, -alpha, bj) * sinpi(alpha)
         };
         return part1 + part2;
-    } else if alpha > 1e7 {
-        ml_warning(ME_RANGE, "bessel_j");
+    } else if alpha > MAX_ALPHA_J {
+        ml_warn_message(&format!(
+            "besselJ(x, nu): nu={alpha} > max_alpha_j (= {MAX_ALPHA_J}): too large for bessel_j() algorithm"
+        ));
         return ML_NAN;
     }
     let nb: i32 = 1 + (na as i32); /* nb-1 <= alpha < nb */

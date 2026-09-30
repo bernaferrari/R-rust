@@ -27,6 +27,8 @@ const ENMTEN_BESS: f64 = 8.9e-308;
 const ENTEN_BESS: f64 = 1e308;
 const EXPARG_BESS: f64 = 709.0;
 const XLRG_BESS_IJ: f64 = 1e5;
+/// `M_bessel_ik_max_alpha` from Rmath.h. Orders above this must not allocate.
+const MAX_ALPHA_I: f64 = 1e9;
 
 /// Minimum of two ints
 #[inline(always)]
@@ -397,6 +399,13 @@ pub fn bessel_i(x: f64, alpha: f64, expo: f64) -> f64 {
                     / std::f64::consts::PI
                     * sinpi(-alpha)
             };
+    } else if alpha > MAX_ALPHA_I {
+        // Same bound as the math_3B work-array clamp. A larger nu used to
+        // allocate before the algorithm could reject it.
+        ml_warn_message(&format!(
+            "besselI(x, nu): nu={alpha} > max_alpha_i (= {MAX_ALPHA_I}): too large for bessel_i() algorithm"
+        ));
+        return ML_NAN;
     }
 
     let nb = 1 + (na as i32); // nb-1 <= alpha < nb
@@ -446,6 +455,11 @@ pub fn bessel_i_ex(x: f64, alpha: f64, expo: f64, bi: &mut [f64]) -> f64 {
                     / std::f64::consts::PI
                     * sinpi(-alpha)
             };
+    } else if alpha > MAX_ALPHA_I {
+        ml_warn_message(&format!(
+            "besselI(x, nu): nu={alpha} > max_alpha_i (= {MAX_ALPHA_I}): too large for bessel_i() algorithm"
+        ));
+        return ML_NAN;
     }
 
     let nb: i32 = 1 + (na as i32);

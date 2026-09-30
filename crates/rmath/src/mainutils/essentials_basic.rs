@@ -2202,8 +2202,13 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 pub unsafe fn do_as_list_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if TYPEOF(x) == SEXPTYPE::CLOSXP {
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::CLOSXP {
             return function_as_list(x);
+        }
+        if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
+            // as.list.function on a non-function continues the generic.
+            return do_as_list(_call, _op, args, _rho);
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         let _r = protect(result);
@@ -2405,6 +2410,34 @@ unsafe fn coerce_to_type(args: SEXP, target: c_int) -> SEXP {
                 result
             }
             _ => duplicate_without_attributes(x),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::do_as_list_function;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn trunk_r90451_as_list_function_of_a_number_is_as_list() {
+        let _session = RSession::new();
+        unsafe {
+            let x = crate::sexp::constructors::Rf_ScalarReal(1.0);
+            let args = crate::sexp::constructors::Rf_cons(x, crate::sexp::globals::R_NilValue());
+            let ans = do_as_list_function(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(
+                crate::sexp::accessors::TYPEOF(ans),
+                crate::sexp::ffi::SEXPTYPE::VECSXP
+            );
+            assert_eq!(crate::sexp::accessors::XLENGTH(ans), 1);
+            let elt = crate::sexp::accessors::VECTOR_ELT(ans, 0);
+            assert_eq!(*crate::sexp::accessors::REAL(elt), 1.0);
         }
     }
 }

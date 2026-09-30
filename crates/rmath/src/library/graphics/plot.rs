@@ -220,9 +220,9 @@ unsafe fn TypeCheck(s: SEXP, stype: c_int) {
 pub unsafe fn isNAcol(col: SEXP, index: c_int, ncol: c_int) -> Rboolean {
     unsafe {
         let mut result: Rboolean = 1; /* TRUE by default */
-        if Rf_isNull(col) != 0 {
-            result = 1;
-        } else {
+        // A length-0 colour is NA, same as NULL (PR19178). Indexing it
+        // used to divide by ncol == 0.
+        if Rf_isNull(col) == 0 && crate::sexp::accessors::XLENGTH(col) != 0 {
             if isLogical(col) != 0 {
                 result =
                     (LOGICAL(col).add((index % ncol) as usize).read() == NA_LOGICAL) as Rboolean;
@@ -1798,7 +1798,18 @@ pub unsafe fn C_convertY(args: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::session::RSession;
+
+    #[test]
+    fn trunk_r90451_empty_colour_is_treated_as_na() {
+        let _session = RSession::new();
+        unsafe {
+            let empty = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            assert_eq!(isNAcol(empty, 0, 0), 1);
+            assert_eq!(isNAcol(crate::sexp::globals::R_NilValue(), 0, 0), 1);
+        }
+    }
 
     #[test]
     fn dendrogram_state_is_session_local_on_same_thread() {

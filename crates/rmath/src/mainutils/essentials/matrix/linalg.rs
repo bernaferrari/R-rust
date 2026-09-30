@@ -403,7 +403,38 @@ pub unsafe fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         } else {
             size_arg
         };
-        crate::modules::lapack::lapack_impl::La_chol2inv(x, size)
+        let mut linpack_supplied = false;
+        let mut diag_only = R_NilValue();
+        let mut cell = CDR(CDR(args));
+        let mut untagged = 0usize;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP
+            {
+                std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    crate::sexp::accessors::PRINTNAME(tag),
+                ))
+                .to_string_lossy()
+                .into_owned()
+            } else {
+                String::new()
+            };
+            if name.is_empty() {
+                untagged += 1;
+                if untagged == 1 {
+                    linpack_supplied = true;
+                }
+            } else if name == "LINPACK" {
+                linpack_supplied = true;
+            } else if name == "diag.only" {
+                diag_only = CAR(cell);
+            }
+            cell = CDR(cell);
+        }
+        if linpack_supplied {
+            base_error("the LINPACK argument has been defunct since R 3.1.0".to_owned());
+        }
+        crate::modules::lapack::lapack_impl::La_chol2inv(x, size, diag_only)
     }
 }
 

@@ -198,6 +198,34 @@ mod tests {
     }
 
     #[test]
+    fn trunk_r90451_bessel_orders_above_the_algorithm_cap_are_nan() {
+        // PR19175: nu past the work-array cap warns and returns NaN
+        // instead of allocating. J's cap moved from 1e7 to 1e9; Y stays
+        // at 1e7; I and K use 1e9.
+        assert!(bessel_i(1.0, 1e11, false).is_nan());
+        assert!(bessel_k(1.0, 1e11, false).is_nan());
+        assert!(bessel_j(1.0, 1e11).is_nan());
+        assert!(bessel_y(1.0, 1e7 + 1.0).is_nan());
+        assert!(bessel_i(1.0, -1e11, false).is_nan());
+        assert!(bessel_k(1.0, -1e11, false).is_nan());
+    }
+
+    #[test]
+    fn trunk_r90451_bessel_j_uses_the_asymptotic_series_past_1e5() {
+        // bessel_j.c now keeps the asymptotic branch until x > 1e24.
+        // The previous cutoff returned 0 for every x above 1e5.
+        let x = 1.0e6;
+        let value = bessel_j(x, 0.0);
+        assert!(value.is_finite(), "{value}");
+        let amplitude = (2.0 / (std::f64::consts::PI * x)).sqrt();
+        let expected = amplitude * (x - std::f64::consts::FRAC_PI_4).cos();
+        assert!(
+            (value - expected).abs() < 1e-6,
+            "bessel_j({x}, 0) = {value}, asymptotic {expected}"
+        );
+    }
+
+    #[test]
     fn test_ffi_shims() {
         assert_eq!(ffi::Rf_bessel_i(2.0, 1.0, 0), bessel_i(2.0, 1.0, false));
         assert_eq!(ffi::bessel_i(2.0, 1.0, 1), bessel_i(2.0, 1.0, true));

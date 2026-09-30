@@ -6655,6 +6655,42 @@ pub unsafe fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             return R_NilValue();
         }
         let n = n.min(XLENGTH(y) as usize).min(XLENGTH(w) as usize);
+        let wtol_cell = CDR(CDR(CDR(args)));
+        let wtol = if wtol_cell.is_null()
+            || wtol_cell == R_NilValue()
+            || CAR(wtol_cell).is_null()
+            || CAR(wtol_cell) == R_NilValue()
+        {
+            0.0
+        } else {
+            elt_real_safe(CAR(wtol_cell), 0)
+        };
+        if wtol.is_nan() || wtol < 0.0 {
+            crate::mainutils::essentials::base_error("value of 'wtol' must be >= 0".to_owned());
+        }
+        let mut weights = vec![0.0; n];
+        let mut sumw = 0.0;
+        for i in 0..n {
+            weights[i] = elt_real_safe(w, i as i64);
+            sumw += weights[i];
+        }
+        let thresh = wtol * sumw;
+        let mut dropped = false;
+        for weight in &mut weights {
+            if *weight <= thresh {
+                if wtol > 0.0 {
+                    dropped = true;
+                }
+                *weight = 0.0;
+            }
+        }
+        if dropped {
+            let msg = std::ffi::CString::new(format!(
+                "weights smaller than tolerance wtol*sum(w) = {thresh} treated as zero"
+            ))
+            .unwrap_or_default();
+            crate::mainutils::errors::Rf_warning1(msg.as_ptr());
+        }
         let mut a00 = 0.0;
         let mut sx = 0.0;
         let mut sxx = 0.0;
@@ -6675,7 +6711,7 @@ pub unsafe fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 *INTEGER(x).add(i + n) as f64
             };
             let yi = elt_real_safe(y, i as i64);
-            let wi = elt_real_safe(w, i as i64);
+            let wi = weights[i];
             x0s[i] = x0;
             xs[i] = x1;
             ys[i] = yi;
@@ -6819,6 +6855,9 @@ pub unsafe fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let mut epsilon = 1e-8;
         let mut maxit = 25.0;
         let mut trace = 0;
+        let mut tol = f64::NAN;
+        let mut wtol = 0.0;
+        let mut tol_set = false;
         let mut cell = args;
         let mut pos = 0usize;
         while !cell.is_null() && cell != R_NilValue() {
@@ -6843,21 +6882,51 @@ pub unsafe fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 if TYPEOF(v) == SEXPTYPE::LGLSXP {
                     trace = *LOGICAL(v);
                 }
+            } else if name == "tol" || (name.is_empty() && pos == 3) {
+                if !v.is_null() && v != R_NilValue() {
+                    tol = elt_real_safe(v, 0);
+                    tol_set = true;
+                }
+            } else if name == "wtol" || (name.is_empty() && pos == 4) {
+                if !v.is_null() && v != R_NilValue() {
+                    wtol = elt_real_safe(v, 0);
+                }
             }
             pos += 1;
             cell = CDR(cell);
         }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        if epsilon.is_nan() || epsilon <= 0.0 {
+            crate::mainutils::essentials::base_error("value of 'epsilon' must be > 0".to_owned());
+        }
+        if maxit.is_nan() || maxit <= 0.0 {
+            crate::mainutils::essentials::base_error(
+                "maximum number of iterations must be > 0".to_owned(),
+            );
+        }
+        if !tol_set {
+            tol = (1e-7_f64).min(epsilon / 1000.0);
+        }
+        if tol.is_nan() || tol < 0.0 {
+            crate::mainutils::essentials::base_error("value of 'tol' must be >= 0".to_owned());
+        }
+        if wtol.is_nan() || wtol < 0.0 {
+            crate::mainutils::essentials::base_error("value of 'wtol' must be >= 0".to_owned());
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, Rf_ScalarReal(epsilon));
         SET_VECTOR_ELT(result, 1, Rf_ScalarReal(maxit));
         SET_VECTOR_ELT(result, 2, Rf_ScalarLogical(trace));
+        SET_VECTOR_ELT(result, 3, Rf_ScalarReal(tol));
+        SET_VECTOR_ELT(result, 4, Rf_ScalarReal(wtol));
         crate::mainutils::essentials::set_string_names(
             result,
             &[
                 "epsilon".to_string(),
                 "maxit".to_string(),
                 "trace".to_string(),
+                "tol".to_string(),
+                "wtol".to_string(),
             ],
         );
         result
@@ -15973,5 +16042,136 @@ pub unsafe fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             return val;
         }
         x
+    }
+}
+
+#[cfg(test)]
+mod trunk_r90451_tests {
+    use super::{do_glm_control, do_lm_wfit};
+    use crate::sexp::context::RError;
+    use crate::sexp::session::RSession;
+
+    fn r_error_message<F: FnOnce()>(body: F) -> String {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(body))
+            .expect_err("expected an R error")
+            .downcast::<RError>()
+            .expect("R error")
+            .message
+    }
+
+    #[test]
+    fn trunk_r90451_glm_control_reports_tol_and_wtol() {
+        let _session = RSession::new();
+        unsafe {
+            let ans = do_glm_control(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                crate::sexp::globals::R_NilValue(),
+                std::ptr::null_mut(),
+            );
+            assert_eq!(crate::sexp::accessors::XLENGTH(ans), 5);
+            let epsilon = *crate::sexp::accessors::REAL(crate::sexp::accessors::VECTOR_ELT(ans, 0));
+            let tol = *crate::sexp::accessors::REAL(crate::sexp::accessors::VECTOR_ELT(ans, 3));
+            let wtol = *crate::sexp::accessors::REAL(crate::sexp::accessors::VECTOR_ELT(ans, 4));
+            assert!((epsilon - 1e-8).abs() < 1e-18);
+            assert!((tol - 1e-11).abs() < 1e-20, "{tol}");
+            assert_eq!(wtol, 0.0);
+
+            let inf = crate::sexp::constructors::Rf_ScalarReal(f64::INFINITY);
+            let args = crate::sexp::constructors::Rf_cons(inf, crate::sexp::globals::R_NilValue());
+            let wide = do_glm_control(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+            let wide_tol =
+                *crate::sexp::accessors::REAL(crate::sexp::accessors::VECTOR_ELT(wide, 3));
+            assert!((wide_tol - 1e-7).abs() < 1e-18, "{wide_tol}");
+
+            let zero = crate::sexp::constructors::Rf_ScalarReal(0.0);
+            let bad = crate::sexp::constructors::Rf_cons(zero, crate::sexp::globals::R_NilValue());
+            let message = r_error_message(|| {
+                do_glm_control(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    bad,
+                    std::ptr::null_mut(),
+                );
+            });
+            assert!(
+                message.contains("value of 'epsilon' must be > 0"),
+                "{message}"
+            );
+        }
+    }
+
+    #[test]
+    fn trunk_r90451_lm_wfit_drops_weights_below_wtol_times_sum() {
+        let _session = RSession::new();
+        unsafe {
+            let x = crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::REALSXP, 6);
+            for (i, value) in [1.0, 1.0, 1.0, 0.0, 1.0, 2.0].iter().enumerate() {
+                *crate::sexp::accessors::REAL(x).add(i) = *value;
+            }
+            let dim = crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::INTSXP, 2);
+            *crate::sexp::accessors::INTEGER(dim) = 3;
+            *crate::sexp::accessors::INTEGER(dim).add(1) = 2;
+            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), dim);
+            let y = crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::REALSXP, 3);
+            for (i, value) in [0.0, 1.0, 100.0].iter().enumerate() {
+                *crate::sexp::accessors::REAL(y).add(i) = *value;
+            }
+            let w = crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::REALSXP, 3);
+            for (i, value) in [1.0, 1.0, 1e-8].iter().enumerate() {
+                *crate::sexp::accessors::REAL(w).add(i) = *value;
+            }
+            let wtol = crate::sexp::constructors::Rf_ScalarReal(0.1);
+            let args = crate::sexp::constructors::Rf_cons(
+                x,
+                crate::sexp::constructors::Rf_cons(
+                    y,
+                    crate::sexp::constructors::Rf_cons(
+                        w,
+                        crate::sexp::constructors::Rf_cons(wtol, crate::sexp::globals::R_NilValue()),
+                    ),
+                ),
+            );
+            let ans = do_lm_wfit(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+            let coef = crate::sexp::accessors::VECTOR_ELT(ans, 0);
+            let b0 = *crate::sexp::accessors::REAL(coef);
+            let b1 = *crate::sexp::accessors::REAL(coef).add(1);
+            assert!(b0.abs() < 1e-8, "{b0}");
+            assert!((b1 - 1.0).abs() < 1e-8, "{b1}");
+
+            let negative = crate::sexp::constructors::Rf_ScalarReal(-1.0);
+            let bad = crate::sexp::constructors::Rf_cons(
+                x,
+                crate::sexp::constructors::Rf_cons(
+                    y,
+                    crate::sexp::constructors::Rf_cons(
+                        w,
+                        crate::sexp::constructors::Rf_cons(
+                            negative,
+                            crate::sexp::globals::R_NilValue(),
+                        ),
+                    ),
+                ),
+            );
+            let message = r_error_message(|| {
+                do_lm_wfit(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    bad,
+                    std::ptr::null_mut(),
+                );
+            });
+            assert!(message.contains("value of 'wtol' must be >= 0"), "{message}");
+        }
     }
 }

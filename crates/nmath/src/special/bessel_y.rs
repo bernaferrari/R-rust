@@ -19,6 +19,9 @@ use libm::*;
 // Constants from bessel.h
 // =====================================================================
 
+/// `M_bessel_y_max_alpha` from Rmath.h. Y stays at the old shared JY cap.
+const MAX_ALPHA_Y: f64 = 1e7;
+
 const XLRG_BESS_Y: f64 = 1e8;
 const THRESH_BESS_Y: f64 = 16.0;
 const M_EPS_SINC: f64 = 2.149119e-8;
@@ -469,8 +472,10 @@ pub fn bessel_y(x: f64, alpha: f64) -> f64 {
             bessel_j(x, -alpha) * sinpi(alpha)
         };
         return part1 - part2;
-    } else if alpha > 1e7 {
-        ml_warning(ME_RANGE, "bessel_y");
+    } else if alpha > MAX_ALPHA_Y {
+        ml_warn_message(&format!(
+            "besselY(x, nu): nu={alpha} > {MAX_ALPHA_Y} =: max_alpha_y too large for bessel_y() algorithm"
+        ));
         return ML_NAN;
     }
     let nb = 1 + (na as i32); /* nb-1 <= alpha < nb */
@@ -534,8 +539,10 @@ pub fn bessel_y_ex(x: f64, alpha: f64, by: &mut [f64]) -> f64 {
             bessel_j_ex(x, -alpha, by) * sinpi(alpha)
         };
         return part1 - part2;
-    } else if alpha > 1e7 {
-        ml_warning(ME_RANGE, "bessel_y");
+    } else if alpha > MAX_ALPHA_Y {
+        ml_warn_message(&format!(
+            "besselY(x, nu): nu={alpha} > {MAX_ALPHA_Y} =: max_alpha_y, too large for bessel_y() algorithm"
+        ));
         return ML_NAN;
     }
     let nb = 1 + (na as i32); /* nb-1 <= alpha < nb */

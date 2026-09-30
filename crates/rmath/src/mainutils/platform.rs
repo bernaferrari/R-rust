@@ -2048,6 +2048,32 @@ mod tests {
             clear_current_instance();
         }
     }
+
+    #[test]
+    fn trunk_r90451_dircreate_rejects_a_path_past_path_max() {
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
+            let too_long = "a".repeat(libc::PATH_MAX as usize);
+            let bytes = std::ffi::CString::new(too_long).unwrap();
+            let path = crate::sexp::constructors::Rf_mkString(bytes.as_ptr());
+            let args =
+                crate::sexp::constructors::Rf_cons(path, crate::sexp::globals::R_NilValue());
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                do_dircreate(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    args,
+                    std::ptr::null_mut(),
+                );
+            }));
+            let message = err
+                .expect_err("path longer than PATH_MAX must error")
+                .downcast::<crate::sexp::context::RError>()
+                .expect("R error")
+                .message;
+            assert!(message.contains("invalid 'path' argument"), "{message}");
+        });
+    }
 }
 
 /// R's `path.expand()` — expand file paths (~ and environment variables).
@@ -2253,6 +2279,11 @@ pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
+                // platform.c rejects an expanded path that does not fit in
+                // `dir[R_PATH_MAX]` before strcpy. R_PATH_MAX is PATH_MAX.
+                if path.len() > (libc::PATH_MAX as usize) - 1 {
+                    crate::sexp::context::r_error("invalid 'path' argument");
+                }
                 let result = if do_recursive {
                     fs::create_dir_all(path)
                 } else {

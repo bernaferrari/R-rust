@@ -1239,6 +1239,21 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if ndim == 2 {
             let transposed = do_transpose(call, op, args, env);
             if resize {
+                // c69642: aperm preserves names(dim). The 2D fast path used
+                // to return t()'s fresh dim vector with those names dropped.
+                let nmdm = getAttrib(source_dim, R_NamesSymbol());
+                if !nmdm.is_null()
+                    && nmdm != R_NilValue()
+                    && TYPEOF(nmdm) == SEXPTYPE::STRSXP
+                    && XLENGTH(nmdm) >= 2
+                {
+                    let dimsr = getAttrib(transposed, R_DimSymbol());
+                    let nm_dr = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+                    let _nm = protect(nm_dr);
+                    SET_STRING_ELT(nm_dr, 0, STRING_ELT(nmdm, 1));
+                    SET_STRING_ELT(nm_dr, 1, STRING_ELT(nmdm, 0));
+                    setAttrib(dimsr, R_NamesSymbol(), nm_dr);
+                }
                 return transposed;
             }
             setAttrib(transposed, R_DimSymbol(), source_dim);
@@ -2078,11 +2093,10 @@ mod tests {
             assert_eq!(*INTEGER(result_dim), 3);
             assert_eq!(*INTEGER(result_dim).add(1), 2);
 
-            // Trunk PR#19133: 2D non-identity aperm delegates to t(), which
-            // builds a fresh dim vector, so names(dim) are NOT permuted here
-            // (unlike the n > 2 general path).
+            // c69642 / the 2D fast path: names(dim) swap with the transpose.
             let dim_names = getAttrib(result_dim, R_NamesSymbol());
-            assert_eq!(dim_names, R_NilValue());
+            assert_eq!(string_elt_str(dim_names, 0), "cols");
+            assert_eq!(string_elt_str(dim_names, 1), "rows");
 
             let result_dimnames = getAttrib(result, R_DimNamesSymbol());
             let result_dimnames_names = getAttrib(result_dimnames, R_NamesSymbol());

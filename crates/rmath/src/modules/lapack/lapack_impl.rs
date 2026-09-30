@@ -1402,9 +1402,17 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
 
 /// La_chol2inv - real inverse from Cholesky factor.
 ///
-/// Port of: static SEXP La_chol2inv(SEXP a, SEXP size)
-pub unsafe fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
+/// Port of: static SEXP La_chol2inv(SEXP a, SEXP size, SEXP diag_only)
+pub unsafe fn La_chol2inv(a: SEXP, size: SEXP, diag_only: SEXP) -> SEXP {
     unsafe {
+        let only_diag = if diag_only.is_null() || diag_only == R_NilValue() {
+            0
+        } else {
+            asLogical(diag_only)
+        };
+        if only_diag == NA_INTEGER {
+            crate::sexp::context::r_error("invalid 'diag.only' argument");
+        }
         let n = asInteger(size);
         if n == NA_INTEGER || n <= 0 {
             Rf_error(b"'size' must be a positive integer\0".as_ptr() as *const c_char);
@@ -1472,6 +1480,16 @@ pub unsafe fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
 
         if info != 0 {
             Rf_error(b"error code from Lapack routine 'dpotri'\0".as_ptr() as *const c_char);
+        }
+
+        // diag.only is the diagonal of inv(R'R). This backend's dpotri
+        // writes that diagonal as the squared row norms of R^{-1}.
+        if only_diag != 0 {
+            let diag = Rf_allocVector(REALSXP_C, n);
+            for i in 0..sz {
+                *REAL(diag).add(i) = a_copy[i + i * sz];
+            }
+            return diag;
         }
 
         // Copy upper triangle to lower (dpotri U writes i<=j only).

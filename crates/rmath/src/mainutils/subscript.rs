@@ -817,9 +817,9 @@ unsafe fn logicalSubscript(
     nx: R_xlen_t,
     stretch: *mut R_xlen_t,
     call: SEXP,
+    dimno: c_int,
 ) -> SEXP {
     unsafe {
-        let _ = call;
         // Trunk semantics: entry value > 0 means stretching is allowed; when
         // the logical subscript is longer than x, the caller must grow x to
         // `ns` (not merely to the count of TRUEs, which could leave the
@@ -834,6 +834,20 @@ unsafe fn logicalSubscript(
         }
 
         let out_len = if ns < nx { nx } else { ns };
+
+        // PR19155: a logical subscript that does not tile the target warns.
+        // dimno 0 is a vector; an array dimension is 1-based.
+        if ns != 0 && out_len % ns != 0 {
+            let msg = if dimno == 0 {
+                "object length is not a multiple of subscript length".to_string()
+            } else {
+                format!(
+                    "length of dimension {dimno} is not a multiple of logical subscript length"
+                )
+            };
+            let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+            crate::mainutils::errors::Rf_warningcall1(call, c_msg.as_ptr());
+        }
 
         // Count TRUE and NA values to determine result length. R logical
         // subscripts recycle to the target length when shorter; NA selects an
@@ -906,7 +920,7 @@ unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> 
 
         // Now use logicalSubscript on the mask
         let mut stretch = 0;
-        logicalSubscript(mask, nx, nx, &mut stretch, ptr::null_mut())
+        logicalSubscript(mask, nx, nx, &mut stretch, call, 0)
     }
 }
 
@@ -1068,7 +1082,7 @@ unsafe fn realSubscript(
                         *pindx.add(ix as usize) = 0;
                     }
                 }
-                return logicalSubscript(indx, nx, nx, &mut stretch2, call);
+                return logicalSubscript(indx, nx, nx, &mut stretch2, call, 0);
             } else {
                 error("only 0's may be mixed with negative subscripts");
             }
@@ -1281,7 +1295,7 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
         let ans = if stype == SEXPTYPE::NILSXP {
             Rf_allocVector3(SEXPTYPE::INTSXP, 0)
         } else if stype == SEXPTYPE::LGLSXP {
-            logicalSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call)
+            logicalSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call, dim + 1)
         } else if stype == SEXPTYPE::INTSXP {
             integerSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call, x)
         } else if stype == SEXPTYPE::REALSXP {
@@ -1404,7 +1418,7 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
             }
             Rf_allocVector3(SEXPTYPE::INTSXP, 0)
         } else if stype2 == SEXPTYPE::LGLSXP {
-            logicalSubscript(s, ns, nx, stretch, call)
+            logicalSubscript(s, ns, nx, stretch, call, 0)
         } else if stype2 == SEXPTYPE::INTSXP {
             integerSubscript(s, ns, nx, stretch, call, x)
         } else if stype2 == SEXPTYPE::REALSXP {
@@ -1761,6 +1775,48 @@ mod tests {
             // arraySubscript delegates to int_arraySubscript which returns empty INTSXP
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 0);
+        }
+    }
+
+    #[test]
+    fn trunk_r90451_logical_subscript_warns_when_recycling_is_fractional() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let x = make_real_vector(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+            let s = Rf_allocVector3(SEXPTYPE::LGLSXP, 2);
+            *LOGICAL(s) = 1;
+            *LOGICAL(s).add(1) = 0;
+            let mut stretch: R_xlen_t = 0;
+            let idx = makeSubscript(x, s, &mut stretch, ptr::null_mut());
+            assert_eq!(LENGTH(idx), 3);
+            assert_eq!(*INTEGER(idx), 1);
+            assert_eq!(*INTEGER(idx).add(1), 3);
+            assert_eq!(*INTEGER(idx).add(2), 5);
+
+            let dims = make_int_vector(&[5]);
+            let array_idx = int_arraySubscript(0, s, dims, x, ptr::null_mut());
+            assert_eq!(LENGTH(array_idx), 3);
+
+            // warn >= 2 turns the recycling warning into an error, which is
+            // the readable form of the message without poking the collector.
+            crate::mainutils::options::SetOptionByName("warn", Rf_ScalarInteger(2));
+            let vector_msg = panic_message(|| {
+                let mut stretch: R_xlen_t = 0;
+                makeSubscript(x, s, &mut stretch, ptr::null_mut());
+            });
+            assert!(
+                vector_msg.contains("object length is not a multiple of subscript length"),
+                "{vector_msg}"
+            );
+            let dim_msg = panic_message(|| {
+                int_arraySubscript(0, s, dims, x, ptr::null_mut());
+            });
+            assert!(
+                dim_msg.contains(
+                    "length of dimension 1 is not a multiple of logical subscript length"
+                ),
+                "{dim_msg}"
+            );
         }
     }
 

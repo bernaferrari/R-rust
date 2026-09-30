@@ -53,7 +53,7 @@ fn real_chol2inv_rejects_malformed_dims_and_payload() {
             let input = make_input(&dims, &values);
             let _guard = protect(input);
             let message = error_message(catch_unwind(AssertUnwindSafe(|| {
-                La_chol2inv(input, size);
+                La_chol2inv(input, size, R_NilValue());
             })));
             assert!(
                 message.contains("matrix") || message.contains("dimension"),
@@ -63,7 +63,7 @@ fn real_chol2inv_rejects_malformed_dims_and_payload() {
         let input = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
         let _guard = protect(input);
         let message = error_message(catch_unwind(AssertUnwindSafe(|| {
-            La_chol2inv(input, size);
+            La_chol2inv(input, size, R_NilValue());
         })));
         assert!(message.contains("numeric matrix"), "{message}");
         let input = make_input(&[2, 2], &[1.0, 0.0, 0.0, 1.0]);
@@ -71,7 +71,7 @@ fn real_chol2inv_rejects_malformed_dims_and_payload() {
         let bad_size = Rf_ScalarInteger(3);
         let _bs = protect(bad_size);
         let message = error_message(catch_unwind(AssertUnwindSafe(|| {
-            La_chol2inv(input, bad_size);
+            La_chol2inv(input, bad_size, R_NilValue());
         })));
         assert!(
             message.contains("matrix")
@@ -96,7 +96,7 @@ fn real_chol2inv_reserves_caller_scratch_before_allocation_and_recovers() {
         let _guard = protect(input);
         let _size = protect(size);
         let message = error_message(catch_unwind(AssertUnwindSafe(|| {
-            La_chol2inv(input, size);
+            La_chol2inv(input, size, R_NilValue());
         })));
         assert!(
             message.contains("native Cholesky inverse workspace exceeds resource limit"),
@@ -107,11 +107,30 @@ fn real_chol2inv_reserves_caller_scratch_before_allocation_and_recovers() {
     session.with_active(|| unsafe {
         let _guard = protect(input);
         let _size = protect(size);
-        let ans = La_chol2inv(input, size);
+        let ans = La_chol2inv(input, size, R_NilValue());
         let _ans = protect(ans);
         assert!((*REAL(ans) - 0.5).abs() < 1e-12);
         assert!((*REAL(ans).add(1)).abs() < 1e-12);
         assert!((*REAL(ans).add(2)).abs() < 1e-12);
         assert!((*REAL(ans).add(3) - 0.5).abs() < 1e-12);
+    });
+}
+
+#[test]
+fn trunk_r90451_chol2inv_diag_only_returns_the_inverse_diagonal() {
+    let session = RSession::new();
+    session.with_active(|| unsafe {
+        let scale = 2.0_f64.sqrt();
+        let input = make_input(&[2, 2], &[scale, 0.0, 0.0, scale]);
+        let _guard = protect(input);
+        let size = Rf_ScalarInteger(2);
+        let _size = protect(size);
+        let diag_only = crate::sexp::constructors::Rf_ScalarLogical(1);
+        let _diag = protect(diag_only);
+        let ans = La_chol2inv(input, size, diag_only);
+        let _ans = protect(ans);
+        assert_eq!(crate::sexp::accessors::XLENGTH(ans), 2);
+        assert!((*REAL(ans) - 0.5).abs() < 1e-12);
+        assert!((*REAL(ans).add(1) - 0.5).abs() < 1e-12);
     });
 }

@@ -914,8 +914,29 @@ pub unsafe fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c
 // Line end / join parameter functions
 // ---------------------------------------------------------------------------
 
+/// Real line codes at or above 2^31 do not fit in a C `int`. engine.c
+/// rejects them before the cast (the same guard as line join and line type).
+fn reject_real_line_code_past_int(value: SEXP, ind: c_int, what: &str) {
+    unsafe {
+        if value.is_null() || TYPEOF(value) != SEXPTYPE::REALSXP.as_c_int() {
+            return;
+        }
+        let len = LENGTH(value);
+        if len == 0 {
+            return;
+        }
+        let rcode = *REAL(value).add(wrap_index(len, ind));
+        if rcode >= (c_int::MAX as f64) + 1.0 {
+            let msg = CString::new(format!("invalid {what}"))
+                .expect("line-parameter error contains no NUL");
+            Rf_error(msg.as_ptr());
+        }
+    }
+}
+
 /// Parse a line end specification from an R SEXP value.
 pub unsafe fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
+    reject_real_line_code_past_int(value, ind, "line end");
     if let Some(name) = sexp_string_at(value, ind) {
         if let Some(parsed) = parse_lend_name(&name) {
             return parsed;
@@ -940,6 +961,7 @@ pub unsafe fn GE_LENDget(lend: c_int) -> SEXP {
 
 /// Parse a line join specification from an R SEXP value.
 pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
+    reject_real_line_code_past_int(value, ind, "line join");
     if let Some(name) = sexp_string_at(value, ind) {
         if let Some(parsed) = parse_ljoin_name(&name) {
             return parsed;
@@ -1577,6 +1599,7 @@ pub unsafe fn GEstring_to_pch(pch: SEXP) -> c_int {
 
 /// Parse a line type specification from an R SEXP value.
 pub unsafe fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
+    reject_real_line_code_past_int(value, ind, "line type");
     if let Some(name) = sexp_string_at(value, ind) {
         if let Some(named) = parse_lty_name(&name) {
             return named;
@@ -1934,7 +1957,7 @@ pub(crate) unsafe fn compute_closed_spline(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
+    use crate::sexp::accessors::{REAL, SET_STRING_ELT, SET_VECTOR_ELT};
     use crate::sexp::attrib_core::setAttrib;
 
     unsafe fn named_list(items: &[(&str, SEXP)]) -> SEXP {
@@ -2196,6 +2219,42 @@ mod tests {
         unsafe {
             let numeric = Rf_ScalarInteger(2);
             assert_eq!(GE_LTYpar(numeric, 0), LTY_DASHED as c_uint);
+        }
+    }
+
+    #[test]
+    fn trunk_r90451_line_codes_at_or_above_two_to_the_31_error() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let huge = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+            *REAL(huge) = (c_int::MAX as f64) + 1.0;
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GE_LTYpar(huge, 0)
+            }));
+            let message = err
+                .expect_err("huge line code must error")
+                .downcast::<crate::sexp::context::RError>()
+                .expect("R error")
+                .message;
+            assert!(message.contains("invalid line type"), "{message}");
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GE_LENDpar(huge, 0)
+            }));
+            let message = err
+                .expect_err("huge line end must error")
+                .downcast::<crate::sexp::context::RError>()
+                .expect("R error")
+                .message;
+            assert!(message.contains("invalid line end"), "{message}");
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GE_LJOINpar(huge, 0)
+            }));
+            let message = err
+                .expect_err("huge line join must error")
+                .downcast::<crate::sexp::context::RError>()
+                .expect("R error")
+                .message;
+            assert!(message.contains("invalid line join"), "{message}");
         }
     }
 

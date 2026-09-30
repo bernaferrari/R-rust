@@ -337,6 +337,12 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             }
             cell = CDR(cell);
         }
+        // An explicit NULL is not a missing argument. sort(NULL) has
+        // length 0 and ksmooth returns empty x and y (PR19153).
+        if user_xp && (xp.is_null() || xp == R_NilValue()) {
+            xp = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            let _empty_xp = protect(xp);
+        }
         if xp.is_null() || xp == R_NilValue() {
             let mut xmin = f64::INFINITY;
             let mut xmax = f64::NEG_INFINITY;
@@ -373,12 +379,17 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             let np = XLENGTH(xp) as usize;
             let src = coerceVector(xp, SEXPTYPE::REALSXP.as_c_int());
             let _src = protect(src);
-            let mut vals: Vec<f64> = (0..np).map(|i| *REAL(src).add(i)).collect();
+            // sort() drops NA. An empty result returns numeric x and y
+            // before the smoother reads past the sample (PR19153, PR19171).
+            let mut vals: Vec<f64> = (0..np)
+                .map(|i| *REAL(src).add(i))
+                .filter(|v| !v.is_nan())
+                .collect();
             vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            let sorted = Rf_allocVector3(SEXPTYPE::REALSXP, np as i64);
+            let sorted = Rf_allocVector3(SEXPTYPE::REALSXP, vals.len() as i64);
             let _s = protect(sorted);
-            for i in 0..np {
-                *REAL(sorted).add(i) = vals[i];
+            for (i, value) in vals.iter().enumerate() {
+                *REAL(sorted).add(i) = *value;
             }
             xp = sorted;
         }
@@ -424,7 +435,51 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 #[cfg(test)]
 mod tests {
-    use super::BDRksmooth;
+    use super::*;
+    use crate::sexp::accessors::{REAL, SETTAG, VECTOR_ELT, XLENGTH};
+    use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
+    use crate::sexp::ffi::{SEXP, SEXPTYPE};
+    use crate::sexp::globals::R_NilValue;
+    use crate::sexp::symbol::Rf_install;
+    use std::ffi::CString;
+
+    #[test]
+    fn trunk_r90451_empty_or_na_x_points_return_an_empty_list() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let x = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+            *REAL(x) = 0.0;
+            *REAL(x).add(1) = 1.0;
+            let y = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+            *REAL(y) = 1.0;
+            *REAL(y).add(1) = 2.0;
+            let mut samples: Vec<SEXP> = Vec::new();
+            for xp_values in [Vec::<f64>::new(), vec![f64::NAN]] {
+                let xp = Rf_allocVector3(SEXPTYPE::REALSXP, xp_values.len() as i64);
+                for (i, value) in xp_values.iter().enumerate() {
+                    *REAL(xp).add(i) = *value;
+                }
+                samples.push(xp);
+            }
+            samples.push(R_NilValue());
+            for xp in samples {
+                let tagged = Rf_cons(xp, R_NilValue());
+                SETTAG(
+                    tagged,
+                    Rf_install(CString::new("x.points").unwrap().as_ptr()),
+                );
+                let args = Rf_cons(x, Rf_cons(y, tagged));
+                let ans = do_ksmooth(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    args,
+                    std::ptr::null_mut(),
+                );
+                assert_eq!(XLENGTH(VECTOR_ELT(ans, 0)), 0);
+                assert_eq!(XLENGTH(VECTOR_ELT(ans, 1)), 0);
+            }
+        }
+    }
 
     #[test]
     fn empty_input_initializes_predictions_to_na() {

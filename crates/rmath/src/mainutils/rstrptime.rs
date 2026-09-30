@@ -13,9 +13,9 @@
 //!   and `Inf` is accepted (`R_strtod` reads "Inf").
 //! - r90442: `%OS<n>` skips the `<n>` digits instead of failing
 //!   (`strptime("56.789", "%OS3")`).
-//! - r90447 (PR#19124): `strptime("0", "%w")` in a "C" locale works in
-//!   valid cases -- the week reconciliation adds 7 to a negative computed
-//!   `yday` instead of leaving it out of range.
+//! - r90447 / r90566 (PR#19124): `strptime("0", "%w")` reconciles the
+//!   week with `yday = (7 - (wday - offset)) % 7 + (week - (del >= 0)) * 7 + del`.
+//!   A negative result is a week that does not contain that weekday.
 
 use std::os::raw::{c_double, c_int};
 
@@ -674,36 +674,48 @@ fn strptime_internal(
         if !have_yday {
             // Get yday from the week and day-of-the-week.
             // This does not validate yday against any upper limit.
-            tm.tm_yday =
-                (7 - (tm.tm_wday - w_offset)) % 7 + (week_no - 1) * 7 + save_wday - w_offset;
-            if tm.tm_yday < 0 {
-                tm.tm_yday += 7; // r90447 / PR#19124
-            }
+            // `del >= 0` selects the week origin. The old `yday < 0`
+            // adjustment double-counted a negative weekday offset.
+            let del = save_wday - w_offset;
+            tm.tm_yday = (7 - (tm.tm_wday - w_offset)) % 7
+                + (week_no - c_int::from(del >= 0)) * 7
+                + del;
         }
 
         if !have_mday || !have_mon {
-            let mut t_mon = 0usize;
             let yr = 1900 + tm.tm_year;
-            if tm.tm_yday > if isleap(yr) { 365 } else { 364 } {
-                let msg = std::ffi::CString::new(format!(
-                    "(0-based) yday {} in year {} is invalid\n",
-                    tm.tm_yday, yr
-                ))
-                .unwrap_or_default();
-                unsafe {
-                    crate::mainutils::errors::Rf_warning1(msg.as_ptr());
+            if tm.tm_yday < 0 {
+                // `__mon_yday[leap][t_mon - 1]` is out of range. The C
+                // index is undefined; R rejects the broken-down time.
+                if !have_mon {
+                    tm.tm_mon = -1;
                 }
-                t_mon = 12;
+                if !have_mday {
+                    tm.tm_mday = 0;
+                }
             } else {
-                while MON_YDAY[isleap(yr) as usize][t_mon] <= tm.tm_yday {
-                    t_mon += 1;
+                let mut t_mon = 0usize;
+                if tm.tm_yday > if isleap(yr) { 365 } else { 364 } {
+                    let msg = std::ffi::CString::new(format!(
+                        "(0-based) yday {} in year {} is invalid\n",
+                        tm.tm_yday, yr
+                    ))
+                    .unwrap_or_default();
+                    unsafe {
+                        crate::mainutils::errors::Rf_warning1(msg.as_ptr());
+                    }
+                    t_mon = 12;
+                } else {
+                    while MON_YDAY[isleap(yr) as usize][t_mon] <= tm.tm_yday {
+                        t_mon += 1;
+                    }
                 }
-            }
-            if !have_mon {
-                tm.tm_mon = t_mon as c_int - 1;
-            }
-            if !have_mday {
-                tm.tm_mday = tm.tm_yday - MON_YDAY[isleap(yr) as usize][t_mon - 1] + 1;
+                if !have_mon {
+                    tm.tm_mon = t_mon as c_int - 1;
+                }
+                if !have_mday {
+                    tm.tm_mday = tm.tm_yday - MON_YDAY[isleap(yr) as usize][t_mon - 1] + 1;
+                }
             }
         }
 
@@ -753,4 +765,47 @@ pub fn R_strptime(
         });
     }
     strptime_internal(&wbuf, 0, &wfmt, tm, psecs, poffset).is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::R_strptime;
+    use crate::mainutils::datetime::stm;
+
+    fn ymd(text: &str, format: &str) -> Option<(i32, i32, i32)> {
+        let mut tm = stm::new();
+        let mut secs = 0.0;
+        let mut offset = 0;
+        if !R_strptime(text, format, &mut tm, &mut secs, &mut offset) {
+            return None;
+        }
+        if tm.tm_mon < 0 || tm.tm_mday <= 0 {
+            return None;
+        }
+        Some((tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday))
+    }
+
+    #[test]
+    fn trunk_r90451_strptime_week_and_weekday_zero() {
+        // tests/datetime3.R after r90566. %U is Sunday-based, %W Monday-based.
+        assert!(ymd("2026 0 0", "%Y %U %w").is_none());
+        assert!(ymd("2026 0 1", "%Y %U %w").is_none());
+        assert!(ymd("2026 0 2", "%Y %U %w").is_none());
+        assert_eq!(ymd("2026 1 0", "%Y %U %w"), Some((2026, 1, 4)));
+        assert_eq!(ymd("2026 2 0", "%Y %U %w"), Some((2026, 1, 11)));
+        assert_eq!(ymd("2026 1 1", "%Y %U %w"), Some((2026, 1, 5)));
+        assert_eq!(ymd("2026 2 1", "%Y %U %w"), Some((2026, 1, 12)));
+        assert_eq!(ymd("2026 1 2", "%Y %U %w"), Some((2026, 1, 6)));
+        assert_eq!(ymd("2026 2 2", "%Y %U %w"), Some((2026, 1, 13)));
+
+        assert_eq!(ymd("2026 0 0", "%Y %W %w"), Some((2026, 1, 4)));
+        assert_eq!(ymd("2026 1 0", "%Y %W %w"), Some((2026, 1, 11)));
+        assert_eq!(ymd("2026 2 0", "%Y %W %w"), Some((2026, 1, 18)));
+        assert!(ymd("2026 0 1", "%Y %W %w").is_none());
+        assert!(ymd("2026 0 2", "%Y %W %w").is_none());
+        assert_eq!(ymd("2026 1 1", "%Y %W %w"), Some((2026, 1, 5)));
+        assert_eq!(ymd("2026 2 1", "%Y %W %w"), Some((2026, 1, 12)));
+        assert_eq!(ymd("2026 1 2", "%Y %W %w"), Some((2026, 1, 6)));
+        assert_eq!(ymd("2026 2 2", "%Y %W %w"), Some((2026, 1, 13)));
+    }
 }
