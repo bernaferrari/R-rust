@@ -166,14 +166,15 @@ where
     }
 }
 
-fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
-    if let Some(err) = payload.downcast_ref::<RError>() {
+fn print_panic_r_error(payload: &(dyn std::any::Any + Send)) -> Option<REvalError> {
+    let message = if let Some(err) = payload.downcast_ref::<RError>() {
         err.message.clone()
     } else if let Some(RSignal::Error { message }) = payload.downcast_ref::<RSignal>() {
         message.clone()
     } else {
-        "error during auto-print".to_string()
-    }
+        return None;
+    };
+    Some(REvalError { message })
 }
 
 fn remember_last_value(value: SEXP) {
@@ -186,7 +187,7 @@ fn remember_last_value(value: SEXP) {
     }
 }
 
-fn auto_print_visible(value: Sexp<'_>) {
+fn auto_print_visible(value: Sexp<'_>) -> RResult<()> {
     let s4 = unsafe { crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw()) } != 0;
     let srcref = unsafe {
         let class = crate::sexp::attrib_core::getAttrib(
@@ -212,17 +213,22 @@ fn auto_print_visible(value: Sexp<'_>) {
         crate::mainutils::essentials::sexp_has_class(value.clone().as_raw(), "data.frame")
     };
     if s4 || srcref || data_frame {
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| {
+        // PrintObjectS4 evals show() with no local handler, so a stop()
+        // inside tryCatch never reaches this frame. Only an R error that
+        // escapes print becomes a script error; any other panic keeps unwinding.
+        match catch_unwind(AssertUnwindSafe(|| {
             super::output::print_value(value);
         })) {
-            super::output::capture_stdout(&format!(
-                "Error: {}\n",
-                panic_payload_message(payload.as_ref())
-            ));
+            Ok(()) => Ok(()),
+            Err(payload) => match print_panic_r_error(payload.as_ref()) {
+                Some(err) => Err(err),
+                None => std::panic::resume_unwind(payload),
+            },
         }
     } else {
         let rendered = super::output::format_sexp_top_level(value);
         super::output::capture_stdout(&format!("{rendered}\n"));
+        Ok(())
     }
 }
 
@@ -977,6 +983,29 @@ impl RSession {
                     remember_last_value(value.clone().as_raw());
                 }
                 crate::eval::parser::flush_parsed_expr_warnings(index);
+                let _expr_guard = result.as_ref().ok().map(|value| {
+                    RootedSexp::try_root(value.clone()).ok()
+                });
+                let visible_flag = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
+                // main.c REPL loop: upstream auto-prints EVERY visible
+                // top-level expression (PrintValueEnv), not just the final
+                // one. Intermediate values render through the same formatter
+                // result assembly uses for the final value, written into the
+                // captured stream so print() side effects, sink diversion,
+                // and auto-printed values interleave in statement order. The
+                // final statement keeps its caller-side render path, which
+                // also flushes that statement's deferred warnings after the
+                // value. A show()/print error is the same script error as eval.
+                let to_print = if index != last_index && visible_flag != 0 {
+                    result.as_ref().ok().cloned()
+                } else {
+                    None
+                };
+                if let Some(value) = to_print {
+                    if let Err(err) = auto_print_visible(value) {
+                        result = Err(err);
+                    }
+                }
                 if result.is_err() {
                     let catch_script = unsafe {
                         crate::mainutils::options::logical_option_enabled(c"catch.script.errors")
@@ -1017,29 +1046,6 @@ impl RSession {
                     }
 
                     break;
-                }
-
-                let _expr_guard = result.as_ref().ok().map(|value| {
-                    RootedSexp::try_root(value.clone()).ok()
-                });
-                let visible_flag = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
-                // main.c REPL loop: upstream auto-prints EVERY visible
-                // top-level expression (PrintValueEnv), not just the final
-                // one. Intermediate values render through the same formatter
-                // result assembly uses for the final value, written into the
-                // captured stream so print() side effects, sink diversion,
-                // and auto-printed values interleave in statement order. The
-                // final statement keeps its caller-side render path, which
-                // also flushes that statement's deferred warnings after the
-                // value.
-                if index != last_index && self.inst().eval_state.visible != 0 {
-                    if let Ok(value) = result.as_ref() {
-                        auto_print_visible(value.clone());
-                    }
-
-
-
-
                 }
                 if let Ok(value) = result.as_ref() {
                     unsafe {
@@ -1177,11 +1183,6 @@ impl RSession {
                     remember_last_value(value.clone().as_raw());
                 }
                 crate::eval::parser::flush_parsed_expr_warnings(index);
-                if result.is_err() {
-                    // Same top-level halt semantics as the plain script loop:
-                    // an uncaught error stops remaining expressions.
-                    break;
-                }
                 let _expr_guard = result.as_ref().ok().map(|value| {
                     // Immortals (R_NilValue & friends) are static and
                     // need no rooting; rooting them panics with
@@ -1192,15 +1193,21 @@ impl RSession {
                 // above: every visible non-final top-level statement renders
                 // into the captured stream, preserving print()/auto-print
                 // interleaving; the final statement renders at result
-                // assembly.
-                if index != last_index && self.inst().eval_state.visible != 0 {
-                    if let Ok(value) = result.as_ref() {
-                        auto_print_visible(value.clone());
+                // assembly. A print error stops the script, like eval above.
+                let to_print = if index != last_index && self.inst().eval_state.visible != 0 {
+                    result.as_ref().ok().cloned()
+                } else {
+                    None
+                };
+                if let Some(value) = to_print {
+                    if let Err(err) = auto_print_visible(value) {
+                        result = Err(err);
                     }
-
-
-
-
+                }
+                if result.is_err() {
+                    // Same top-level halt semantics as the plain script loop:
+                    // an uncaught error stops remaining expressions.
+                    break;
                 }
                 if let Ok(value) = result.as_ref() {
                     let visible_flag = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
