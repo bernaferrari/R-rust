@@ -16,8 +16,113 @@ unsafe extern "C-unwind" fn c_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
     unsafe { par::C_par(call, op, crate::sexp::accessors::CDR(args), rho) }
 }
 
+#[cfg(feature = "renderplot-device")]
+fn renderplot_backend_active() -> bool {
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).current_renderplot_backend.is_some()
+    })
+}
+
+#[cfg(feature = "renderplot-device")]
+unsafe fn external_routine_name(args: SEXP) -> String {
+    unsafe {
+        let name = crate::sexp::accessors::CAR(args);
+        if name.is_null()
+            || crate::sexp::accessors::TYPEOF(name) != crate::sexp::ffi::SEXPTYPE::STRSXP
+            || crate::sexp::accessors::XLENGTH(name) < 1
+        {
+            return String::new();
+        }
+        let chars = crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(name, 0));
+        if chars.is_null() {
+            return String::new();
+        }
+        std::ffi::CStr::from_ptr(chars).to_string_lossy().into_owned()
+    }
+}
+
+/// `.External` passes the routine name as the first cell. Portable graphics
+/// reads the arguments that follow it.
+#[cfg(feature = "renderplot-device")]
+unsafe fn forward_portable(name: &str, args: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::portable_plot::draw_builtin(name, crate::sexp::accessors::CDR(args))
+    }
+}
+
+/// GNU `plot.xy` passes one xy.coords list, then type, pch, lty, col, bg, cex, lwd.
+/// The portable point/line path reads a named `x` list and a `type` string.
+#[cfg(feature = "renderplot-device")]
+unsafe fn draw_portable_plot_xy(args: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, SETTAG};
+        use crate::sexp::constructors::Rf_cons;
+        use crate::sexp::globals::R_NilValue;
+        use crate::sexp::symbol::Rf_install;
+        let nil = R_NilValue();
+        let mut cell = CDR(args);
+        let xy = if cell.is_null() || cell == nil {
+            nil
+        } else {
+            CAR(cell)
+        };
+        cell = if cell.is_null() || cell == nil {
+            nil
+        } else {
+            CDR(cell)
+        };
+        let typ = if cell.is_null() || cell == nil {
+            nil
+        } else {
+            CAR(cell)
+        };
+        cell = if cell.is_null() || cell == nil {
+            nil
+        } else {
+            CDR(cell)
+        };
+        let tags = ["pch", "lty", "col", "bg", "cex", "lwd"];
+        let mut extras = Vec::new();
+        let mut index = 0;
+        while !cell.is_null() && cell != nil && index < tags.len() {
+            extras.push((tags[index], CAR(cell)));
+            cell = CDR(cell);
+            index += 1;
+        }
+        let mut built = nil;
+        let mut guard = None;
+        for (tag, value) in extras.into_iter().rev() {
+            built = Rf_cons(value, built);
+            guard = Some(crate::sexp::protect::protect(built));
+            let ctag = std::ffi::CString::new(tag).unwrap_or_default();
+            SETTAG(built, Rf_install(ctag.as_ptr()));
+        }
+        built = Rf_cons(typ, built);
+        guard = Some(crate::sexp::protect::protect(built));
+        SETTAG(built, Rf_install(c"type".as_ptr()));
+        built = Rf_cons(xy, built);
+        guard = Some(crate::sexp::protect::protect(built));
+        SETTAG(built, Rf_install(c"x".as_ptr()));
+        let drawn = crate::mainutils::portable_plot::draw_builtin("points", built);
+        drop(guard);
+        drawn
+    }
+}
+
 unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { plot::C_plot_new(call, op, args, rho) }
+    unsafe {
+        let result = plot::C_plot_new(call, op, args, rho);
+        #[cfg(feature = "renderplot-device")]
+        if renderplot_backend_active() {
+            // GNU plot.new is .External2, so it never reaches draw_builtin.
+            // plot.window then asks for the portable plot this installs.
+            crate::mainutils::portable_plot::draw_builtin(
+                "plot.new",
+                crate::sexp::accessors::CDR(args),
+            );
+        }
+        result
+    }
 }
 unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
     unsafe {
@@ -30,15 +135,31 @@ unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
     }
 }
 
-unsafe extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
-    unsafe { crate::sexp::globals::R_NilValue() }
+unsafe extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
+    unsafe {
+        #[cfg(feature = "renderplot-device")]
+        if renderplot_backend_active() {
+            let name = external_routine_name(args);
+            let bare = name.strip_prefix("C_").unwrap_or(name.as_str());
+            return match bare {
+                "plotXY" | "plot_xy" => draw_portable_plot_xy(args),
+                "box" | "title" | "segments" | "rect" | "polygon" | "abline" => {
+                    forward_portable(bare, args)
+                }
+                _ => crate::sexp::globals::R_NilValue(),
+            };
+        }
+        let _ = args;
+        crate::sexp::globals::R_NilValue()
+    }
 }
 unsafe extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::essentials::do_axis(
             crate::sexp::globals::R_NilValue(),
             crate::sexp::globals::R_NilValue(),
-            args,
+            // The first cell is the routine name. Side follows it.
+            crate::sexp::accessors::CDR(args),
             crate::sexp::globals::R_GlobalEnv(),
         )
     }
@@ -87,6 +208,23 @@ unsafe extern "C-unwind" fn c_nil(_args: SEXP) -> SEXP {
     unsafe { crate::sexp::globals::R_NilValue() }
 }
 
+/// GNU `recordPlot` is `.External2(C_getSnapshot)` in the grDevices namespace.
+unsafe extern "C-unwind" fn c_get_snapshot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::graphics_recording::record(call, op, args, rho) }
+}
+
+/// `.External2(C_playSnapshot, x)` puts the routine name in the first cell.
+unsafe extern "C-unwind" fn c_play_snapshot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::graphics_recording::replay(
+            call,
+            op,
+            crate::sexp::accessors::CDR(args),
+            rho,
+        )
+    }
+}
+
 
 pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
@@ -95,6 +233,16 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
             ) }),
         "plot_new" => Some(unsafe { std::mem::transmute(c_plot_new as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
             ) }),
+        "getSnapshot" => Some(unsafe {
+            std::mem::transmute(
+                c_get_snapshot as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+            )
+        }),
+        "playSnapshot" => Some(unsafe {
+            std::mem::transmute(
+                c_play_snapshot as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+            )
+        }),
         "plot_window" => Some(unsafe { std::mem::transmute(c_plot_window as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
         "axis" => Some(unsafe { std::mem::transmute(c_axis as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
         "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "box" | "segments" | "rect" | "polygon" | "abline" => Some(unsafe { std::mem::transmute(c_plot_xy as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),

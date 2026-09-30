@@ -174,6 +174,8 @@ pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
             "C_hsv",
             "C_hcl",
             "C_rgb",
+            "C_getSnapshot",
+            "C_playSnapshot",
         ] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(

@@ -868,6 +868,57 @@ impl RSession {
         })
     }
 
+    /// Print a top-level script error and keep evaluating when
+    /// `catch.script.errors` is set.
+    ///
+    /// Returns true when the caller should continue the script loop. An Ok
+    /// result, and an error while the option is off, both return false so the
+    /// caller can stop on the error.
+    fn caught_script_error_continues<'a>(
+        &self,
+        result: &mut RResult<Sexp<'a>>,
+        raw_expr: SEXP,
+    ) -> bool {
+        if result.is_ok() {
+            return false;
+        }
+        let catch_script = unsafe {
+            crate::mainutils::options::logical_option_enabled(c"catch.script.errors")
+        };
+        if !catch_script {
+            return false;
+        }
+        let message = result.as_ref().unwrap_err().message.clone();
+        let text = crate::mainutils::errors::try_last_rendered_message(&message)
+            .unwrap_or_else(|| format!("Error: {}\n", message));
+        // GNU prints the error on stderr and continues.
+        super::output::capture_stderr(&text);
+        if !text.ends_with('\n') {
+            super::output::capture_stderr("\n");
+        }
+        if crate::mainutils::errors::collect_warnings() > 0 {
+            unsafe {
+                crate::mainutils::errors::print_warnings_at_statement_boundary();
+            }
+        }
+        *result = Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        unsafe {
+            crate::mainutils::main::Rf_callToplevelHandlers(
+                raw_expr,
+                crate::sexp::globals::R_NilValue(),
+                crate::sexp::ffi::FALSE,
+                0,
+            );
+        }
+        // SAFETY: activation owns the live instance. No field borrow
+        // survives collection or finalizer reentry.
+        unsafe {
+            crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+        }
+        true
+    }
+
     /// Parse and evaluate source code, then map the result while this session
     /// is still the scoped active instance.
     ///
@@ -1006,45 +1057,10 @@ impl RSession {
                         result = Err(err);
                     }
                 }
+                if self.caught_script_error_continues(&mut result, raw_expr) {
+                    continue;
+                }
                 if result.is_err() {
-                    let catch_script = unsafe {
-                        crate::mainutils::options::logical_option_enabled(c"catch.script.errors")
-                    };
-                    if catch_script {
-                        if let Err(err) = &result {
-                            let text = crate::mainutils::errors::try_last_rendered_message(
-                                &err.message,
-                            )
-                            .unwrap_or_else(|| format!("Error: {}\n", err.message));
-                            // GNU prints the error on stderr and continues.
-                            super::output::capture_stderr(&text);
-                            if !text.ends_with('\n') {
-                                super::output::capture_stderr("\n");
-                            }
-                            if crate::mainutils::errors::collect_warnings() > 0 {
-                                unsafe {
-                                    crate::mainutils::errors::print_warnings_at_statement_boundary();
-                                }
-                            }
-                        }
-                        result = Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
-                        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                        unsafe {
-                            crate::mainutils::main::Rf_callToplevelHandlers(
-                                raw_expr,
-                                crate::sexp::globals::R_NilValue(),
-                                crate::sexp::ffi::FALSE,
-                                0,
-                            );
-                        }
-                        // SAFETY: activation owns the live instance. No field borrow
-                        // survives collection or finalizer reentry.
-                        unsafe {
-                            crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
-                        }
-                        continue;
-                    }
-
                     break;
                 }
                 if let Ok(value) = result.as_ref() {
@@ -1193,7 +1209,7 @@ impl RSession {
                 // above: every visible non-final top-level statement renders
                 // into the captured stream, preserving print()/auto-print
                 // interleaving; the final statement renders at result
-                // assembly. A print error stops the script, like eval above.
+                // assembly. A print error is the same script error as eval.
                 let to_print = if index != last_index && self.inst().eval_state.visible != 0 {
                     result.as_ref().ok().cloned()
                 } else {
@@ -1204,9 +1220,10 @@ impl RSession {
                         result = Err(err);
                     }
                 }
+                if self.caught_script_error_continues(&mut result, raw_expr) {
+                    continue;
+                }
                 if result.is_err() {
-                    // Same top-level halt semantics as the plain script loop:
-                    // an uncaught error stops remaining expressions.
                     break;
                 }
                 if let Ok(value) = result.as_ref() {
