@@ -1123,6 +1123,69 @@ pub unsafe fn do_append(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// Scalar `n` for the vector `head`/`tail` builtins, following `utils:::.checkHT`.
+///
+/// A missing argument arrives as Nil, same as an explicit NULL, so Nil keeps
+/// the default 6. The closure path rejects NULL.
+unsafe fn head_tail_n(n_arg: SEXP) -> i64 {
+    unsafe {
+        if n_arg.is_null() || n_arg == R_NilValue() {
+            return 6;
+        }
+        let kind = TYPEOF(n_arg);
+        let atomic = kind == SEXPTYPE::LGLSXP
+            || kind == SEXPTYPE::INTSXP
+            || kind == SEXPTYPE::REALSXP
+            || kind == SEXPTYPE::CPLXSXP
+            || kind == SEXPTYPE::STRSXP
+            || kind == SEXPTYPE::RAWSXP;
+        if !atomic {
+            base_error("invalid 'n' - must be numeric, possibly NA.");
+        }
+        let nlen = XLENGTH(n_arg);
+        if nlen == 0 || head_tail_n_all_missing(n_arg, kind, nlen) {
+            base_error("invalid 'n' - must contain at least one non-missing element, got none.");
+        }
+        if kind != SEXPTYPE::LGLSXP && kind != SEXPTYPE::INTSXP && kind != SEXPTYPE::REALSXP {
+            base_error("invalid 'n' - must be numeric, possibly NA.");
+        }
+        real_or_default(n_arg, 6.0) as i64
+    }
+}
+
+unsafe fn head_tail_n_all_missing(n_arg: SEXP, kind: c_int, nlen: R_xlen_t) -> bool {
+    unsafe {
+        if kind == SEXPTYPE::LGLSXP || kind == SEXPTYPE::INTSXP {
+            let data = INTEGER(n_arg);
+            for i in 0..nlen as usize {
+                if *data.add(i) != NA_INTEGER {
+                    return false;
+                }
+            }
+            true
+        } else if kind == SEXPTYPE::REALSXP {
+            let data = REAL(n_arg);
+            for i in 0..nlen as usize {
+                if !(*data.add(i)).is_nan() {
+                    return false;
+                }
+            }
+            true
+        } else if kind == SEXPTYPE::STRSXP {
+            let na = crate::sexp::globals::R_NaString();
+            for i in 0..nlen {
+                let elt = STRING_ELT(n_arg, i);
+                if !elt.is_null() && elt != na {
+                    return false;
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// R's `head(x, n=6)` — first n elements.
 pub unsafe fn do_head(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1132,11 +1195,7 @@ pub unsafe fn do_head(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let len = XLENGTH(x);
-        let n = if n_arg.is_null() || n_arg == R_NilValue() {
-            6i64
-        } else {
-            real_or_default(n_arg, 6.0) as i64
-        };
+        let n = head_tail_n(n_arg);
         let n = if n < 0 {
             (len as i64 + n).max(0) as R_xlen_t
         } else {
@@ -1169,11 +1228,7 @@ pub unsafe fn do_tail(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let len = XLENGTH(x);
-        let n = if n_arg.is_null() || n_arg == R_NilValue() {
-            6i64
-        } else {
-            real_or_default(n_arg, 6.0) as i64
-        };
+        let n = head_tail_n(n_arg);
         let n = if n < 0 {
             (len as i64 + n).max(0) as R_xlen_t
         } else {
@@ -1657,5 +1712,147 @@ unsafe fn pminmax_frame_column(column: SEXP, arg_vecs: &[SEXP], _index: R_xlen_t
             }
         }
         current
+    }
+}
+
+#[cfg(test)]
+mod head_tail_n_tests {
+    use std::ffi::{CStr, CString};
+    use std::panic::AssertUnwindSafe;
+
+    use crate::sexp::accessors::{CHAR, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH};
+    use crate::sexp::constructors::{
+        Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocVector3, Rf_cons, Rf_mkChar, Rf_mkString,
+    };
+    use crate::sexp::context::RError;
+    use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE, TRUE};
+    use crate::sexp::globals::{R_NaString, R_NilValue};
+    use crate::sexp::protect::protect;
+
+    use super::{do_head, do_tail};
+
+    fn describe_sexp(value: SEXP) -> String {
+        unsafe {
+            if value.is_null() || value == R_NilValue() {
+                return "NULL".to_string();
+            }
+            let kind = TYPEOF(value);
+            let n = XLENGTH(value);
+            if kind != SEXPTYPE::STRSXP {
+                return format!("type={kind:?} len={n}");
+            }
+            let mut parts = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                let elt = STRING_ELT(value, i);
+                if elt.is_null() || elt == R_NaString() {
+                    parts.push("NA".to_string());
+                } else {
+                    parts.push(CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned());
+                }
+            }
+            format!("len={n}:{}", parts.join(","))
+        }
+    }
+
+    fn call_ht(which: &str, x: SEXP, n: SEXP) -> String {
+        let caught = std::panic::catch_unwind(AssertUnwindSafe(|| unsafe {
+            let args = Rf_cons(x, Rf_cons(n, R_NilValue()));
+            let _args = protect(args);
+            if which == "head" {
+                do_head(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    args,
+                    std::ptr::null_mut(),
+                )
+            } else {
+                do_tail(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    args,
+                    std::ptr::null_mut(),
+                )
+            }
+        }));
+        match caught {
+            Ok(value) => format!("OK:{}", describe_sexp(value)),
+            Err(payload) => {
+                if let Some(err) = payload.downcast_ref::<RError>() {
+                    format!("ERR:{}", err.message)
+                } else if let Some(err) = payload.downcast_ref::<String>() {
+                    format!("PANIC:{err}")
+                } else {
+                    "PANIC:unknown".to_string()
+                }
+            }
+        }
+    }
+
+    unsafe fn letters_vector() -> SEXP {
+        unsafe {
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, 26);
+            let _guard = protect(out);
+            for i in 0..26u8 {
+                let bytes = [b'a' + i];
+                let cs = CString::new(bytes.as_slice()).unwrap();
+                SET_STRING_ELT(out, i as i64, Rf_mkChar(cs.as_ptr()));
+            }
+            out
+        }
+    }
+
+    unsafe fn direct_report() -> String {
+        unsafe {
+            let letters = letters_vector();
+            let _letters = protect(letters);
+            let chr = CString::new("3").unwrap();
+            let n_chr = Rf_mkString(chr.as_ptr());
+            let n_true = Rf_ScalarLogical(TRUE);
+            let n_three = Rf_ScalarInteger(3);
+            let n_na = Rf_ScalarLogical(NA_INTEGER);
+            format!(
+                "head_chr={}\ntail_chr={}\nhead_true={}\ntail_true={}\nhead_3={}\nhead_na={}\ntail_na={}",
+                call_ht("head", letters, n_chr),
+                call_ht("tail", letters, n_chr),
+                call_ht("head", letters, n_true),
+                call_ht("tail", letters, n_true),
+                call_ht("head", letters, n_three),
+                call_ht("head", letters, n_na),
+                call_ht("tail", letters, n_na),
+            )
+        }
+    }
+
+    #[test]
+    fn head_tail_rejects_non_numeric_n() {
+        // GNU R 4.6.1 utils:::.checkHT (reg-tests-1e.R PR#18357).
+        let mut session = crate::sexp::session::RSession::new();
+        let direct = unsafe { direct_report() };
+        let r_level = session.eval_script_with_output_capture_then(
+            r#"paste(c(
+                tryCatch(paste(head(letters, "3"), collapse=","), error=function(e) conditionMessage(e)),
+                tryCatch(paste(tail(letters, "3"), collapse=","), error=function(e) conditionMessage(e)),
+                tryCatch(paste(head(letters, TRUE), collapse=","), error=function(e) conditionMessage(e)),
+                tryCatch(paste(tail(letters, TRUE), collapse=","), error=function(e) conditionMessage(e)),
+                tryCatch(paste(head(letters, 3), collapse=","), error=function(e) conditionMessage(e)),
+                tryCatch(paste(head(letters, NA), collapse=","), error=function(e) conditionMessage(e)),
+                tryCatch(paste(tail(letters, NA), collapse=","), error=function(e) conditionMessage(e))
+            ), collapse="|")"#,
+            |result, output, _| match result {
+                Ok(value) => describe_sexp(value.as_raw()),
+                Err(err) => format!("EVAL_ERR:{} stderr:{}", err.message, output.stderr),
+            },
+        );
+        let report = format!("r={r_level}\n{direct}");
+        let expected = "\
+r=len=1:invalid 'n' - must be numeric, possibly NA.|invalid 'n' - must be numeric, possibly NA.|a|z|a,b,c|invalid 'n' - must contain at least one non-missing element, got none.|invalid 'n' - must contain at least one non-missing element, got none.
+head_chr=ERR:invalid 'n' - must be numeric, possibly NA.
+tail_chr=ERR:invalid 'n' - must be numeric, possibly NA.
+head_true=OK:len=1:a
+tail_true=OK:len=1:z
+head_3=OK:len=3:a,b,c
+head_na=ERR:invalid 'n' - must contain at least one non-missing element, got none.
+tail_na=ERR:invalid 'n' - must contain at least one non-missing element, got none.";
+        assert_eq!(report, expected);
     }
 }
