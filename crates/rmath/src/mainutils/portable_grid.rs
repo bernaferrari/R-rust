@@ -467,6 +467,9 @@ pub(crate) struct GridState {
 #[derive(Clone, Serialize, Deserialize)]
 struct ListedGrob {
     name: String,
+    // First class, so fullNames can print text[label]. Old recordings omit it.
+    #[serde(default)]
+    class_name: String,
     #[serde(default)]
     children: Vec<ListedGrob>,
 }
@@ -1547,12 +1550,19 @@ fn current_inches(state: &GridState) -> [f64; 4] {
     ]
 }
 
-fn append_listing(grob: &ListedGrob, depth: usize, out: &mut Vec<String>) {
+fn append_listing(grob: &ListedGrob, depth: usize, full_names: bool, out: &mut Vec<String>) {
     let mut line = "  ".repeat(depth);
-    line.push_str(&grob.name);
+    if full_names && !grob.class_name.is_empty() {
+        line.push_str(&grob.class_name);
+        line.push('[');
+        line.push_str(&grob.name);
+        line.push(']');
+    } else {
+        line.push_str(&grob.name);
+    }
     out.push(line);
     for child in &grob.children {
-        append_listing(child, depth + 1, out);
+        append_listing(child, depth + 1, full_names, out);
     }
 }
 
@@ -1570,7 +1580,19 @@ unsafe fn listed_grob(x: SEXP) -> ListedGrob {
         }
         ListedGrob {
             name: string(field(x, "name"), ""),
+            class_name: grob_listing_class(x),
             children,
+        }
+    }
+}
+
+unsafe fn grob_listing_class(x: SEXP) -> String {
+    unsafe {
+        let class = getAttrib(x, R_ClassSymbol());
+        if class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP || XLENGTH(class) < 1 {
+            String::new()
+        } else {
+            elt_to_string(class, 0)
         }
     }
 }
@@ -1789,9 +1811,10 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             "current.inches" => returned = result(&current_inches(&state)),
             "record" => state.display_list.push(listed_grob(data)),
             "ls" => {
+                let full_names = logical_flag(field(data, "fullNames"), false);
                 let mut lines = Vec::new();
                 for grob in &state.display_list {
-                    append_listing(grob, 0, &mut lines);
+                    append_listing(grob, 0, full_names, &mut lines);
                 }
                 returned = strings(&lines);
             }

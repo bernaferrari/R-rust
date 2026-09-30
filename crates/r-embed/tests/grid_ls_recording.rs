@@ -226,3 +226,29 @@ fn fractional_up_and_pop_truncate_toward_zero_like_gnu() {
     .join("|");
     assert_eq!(out, expected);
 }
+
+#[test]
+fn grid_ls_full_names_print_class_and_name() {
+    // GNU R 4.6.1: grid.ls(fullNames=TRUE) prints class[name]. A gTree indents
+    // children by two spaces. fullNames=FALSE keeps the bare names.
+    let mut session = RSession::new().unwrap();
+    let out = report(
+        &mut session,
+        r#"
+        library(grid)
+        grid.newpage()
+        grid.text('hi', name='label')
+        grid.rect(name='box')
+        plain <- paste(capture.output(grid.ls()), collapse='\n')
+        full <- paste(capture.output(grid.ls(fullNames=TRUE)), collapse='\n')
+        grid.newpage()
+        grid.draw(grobTree(textGrob('hi', name='label'), rectGrob(name='box'), name='tree'))
+        tree <- paste(capture.output(grid.ls(fullNames=TRUE)), collapse='\n')
+        out <- paste(plain, full, tree, sep='||')
+        "#,
+    );
+    assert_eq!(
+        out,
+        "label\nbox||text[label]\nrect[box]||gTree[tree]\n  text[label]\n  rect[box]"
+    );
+}
