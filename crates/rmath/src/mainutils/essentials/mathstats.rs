@@ -14557,8 +14557,9 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
         let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
-        let perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
+        let mut perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
         let fixed = logical_arg_by_name_or_position(args, "fixed", 4).unwrap_or(false);
+        super::shared::ignore_perl_when_fixed(&mut perl, fixed);
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
