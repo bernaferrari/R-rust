@@ -1165,6 +1165,71 @@ pub unsafe fn BCODE_EXPR(x: SEXP) -> SEXP {
     }
 }
 
+fn gnu_plain_numeric(x: SEXP) -> bool {
+    unsafe {
+        let ty = TYPEOF(x);
+        ty == SEXPTYPE::LGLSXP || ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::REALSXP
+    }
+}
+
+/// Non-object `LOGBASE` follows GNU `math2`: a zero-length numeric side
+/// yields `numeric(0)`, with attributes taken from `x` only when `x` is
+/// empty. Objects and complex values keep the `do_math1` path.
+unsafe fn gnu_logbase_empty_result(value: SEXP, base: SEXP) -> Option<SEXP> {
+    unsafe {
+        if crate::sexp::accessors::OBJECT(value) != 0 || crate::sexp::accessors::OBJECT(base) != 0
+        {
+            return None;
+        }
+        let n_value = crate::sexp::accessors::XLENGTH(value);
+        let n_base = crate::sexp::accessors::XLENGTH(base);
+        if n_value != 0 && n_base != 0 {
+            return None;
+        }
+        if TYPEOF(value) == SEXPTYPE::CPLXSXP || TYPEOF(base) == SEXPTYPE::CPLXSXP {
+            return None;
+        }
+        if !gnu_plain_numeric(value) || !gnu_plain_numeric(base) {
+            bc_error("non-numeric argument to mathematical function");
+        }
+        let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        let _empty = crate::sexp::protect::protect(empty);
+        if n_value == 0 {
+            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(empty, value);
+        }
+        Some(empty)
+    }
+}
+
+/// GNU `math1` / `do_math1` always return real for `log`, `floor`, and
+/// `ceiling`. The shared dispatcher may narrow an integer or logical input
+/// to `INTSXP` when every image fits in an int, including length 0.
+unsafe fn gnu_math1_real_result(result: SEXP) -> SEXP {
+    unsafe {
+        if result.is_null() || result == R_NilValue() || TYPEOF(result) != SEXPTYPE::INTSXP {
+            return result;
+        }
+        let _keep = crate::sexp::protect::protect(result);
+        let n = crate::sexp::accessors::XLENGTH(result);
+        let out = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _out = crate::sexp::protect::protect(out);
+        if n > 0 {
+            let src = INTEGER(result);
+            let dst = REAL(out);
+            for i in 0..n as usize {
+                let iv = *src.add(i);
+                *dst.add(i) = if iv == crate::sexp::ffi::NA_INTEGER {
+                    crate::sexp::ffi::NA_REAL
+                } else {
+                    iv as f64
+                };
+            }
+        }
+        crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(out, result);
+        out
+    }
+}
+
 fn expr_mentions_symbol(expr: SEXP, name: &str) -> bool {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
@@ -2106,21 +2171,28 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     pc += 1;
                     let result = if opcode == super::bytecode::GNU_OP_LOG {
                         let value = stack_pop_checked(&mut stack, "GNU LOG");
-                        let result = with_stack_rooted(&stack, value, || {
+                        with_stack_rooted(&stack, value, || {
                             let args = Rf_cons(value, R_NilValue());
                             let _args = crate::sexp::protect::protect(args);
                             let op = crate::sexp::envir::findFun(
                                 crate::sexp::symbol::Rf_install(c"log".as_ptr()),
                                 super::runtime::base_env(),
                             );
-                            crate::eval::arithmetic::do_math1(call, op, args, rho)
-                        });
-                        result
+                            let result = crate::eval::arithmetic::do_math1(call, op, args, rho);
+                            if crate::sexp::accessors::OBJECT(value) == 0 {
+                                gnu_math1_real_result(result)
+                            } else {
+                                result
+                            }
+                        })
                     } else {
                         let base = stack_pop_checked(&mut stack, "GNU LOGBASE");
                         let value = stack_pop_checked(&mut stack, "GNU LOGBASE");
-                        let result = with_stack_rooted(&stack, value, || {
+                        with_stack_rooted(&stack, value, || {
                             with_stack_rooted(&stack, base, || {
+                                if let Some(empty) = gnu_logbase_empty_result(value, base) {
+                                    return empty;
+                                }
                                 let tail = Rf_cons(base, R_NilValue());
                                 let _tail = crate::sexp::protect::protect(tail);
                                 let args = Rf_cons(value, tail);
@@ -2129,10 +2201,17 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                     crate::sexp::symbol::Rf_install(c"log".as_ptr()),
                                     super::runtime::base_env(),
                                 );
-                                crate::eval::arithmetic::do_math1(call, op, args, rho)
+                                let result =
+                                    crate::eval::arithmetic::do_math1(call, op, args, rho);
+                                if crate::sexp::accessors::OBJECT(value) == 0
+                                    && crate::sexp::accessors::OBJECT(base) == 0
+                                {
+                                    gnu_math1_real_result(result)
+                                } else {
+                                    result
+                                }
                             })
-                        });
-                        result
+                        })
                     };
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
@@ -2166,11 +2245,24 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         // GNU's slow path calls do_math1 on the primitive. rport's
                         // do_math1 only covers a subset (floor/sign/log/exp/...), so
                         // dispatch through the named builtin for sin/expm1/etc.
-                        if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(name)
+                        let result = if let Some(handler) =
+                            crate::eval::builtin::evaluated_builtin_handler(name)
                         {
                             handler(call, op, args, rho)
                         } else {
                             crate::eval::arithmetic::do_math1(call, op, args, rho)
+                        };
+                        if crate::sexp::accessors::OBJECT(value) != 0 {
+                            return result;
+                        }
+                        if !result.is_null() && result != R_NilValue() && result != value {
+                            let _keep = crate::sexp::protect::protect(result);
+                            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, value);
+                        }
+                        if name == "floor" || name == "ceiling" {
+                            gnu_math1_real_result(result)
+                        } else {
+                            result
                         }
                     });
                     super::runtime::set_visible(TRUE);
