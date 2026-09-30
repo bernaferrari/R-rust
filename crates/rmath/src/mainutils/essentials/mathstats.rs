@@ -6537,7 +6537,107 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `lm.fit(x, y)` — OLS on a two-column design matrix.
+/// Least squares for designs other than the two-column normal-equation case.
+///
+/// Uses the same LINPACK QR as GNU `C_Cdqrls`, then unpivots coefficients
+/// the way `stats::lm.fit` does (`coef[pivot] <- coef` after NA-filling the
+/// rank-deficient tail).
+unsafe fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
+    unsafe {
+        if XLENGTH(y) != n as i64 {
+            return R_NilValue();
+        }
+        let mut y_values = Vec::with_capacity(n);
+        for i in 0..n {
+            y_values.push(if TYPEOF(y) == SEXPTYPE::REALSXP {
+                *REAL(y).add(i)
+            } else {
+                elt_real_safe(y, i as i64)
+            });
+        }
+        let tol = Rf_ScalarReal(1.0e-7);
+        let _tol = protect(tol);
+        let chk = Rf_ScalarLogical(0);
+        let _chk = protect(chk);
+        let z = crate::library::stats::lm::Cdqrls(x, y, tol, chk);
+        if z.is_null() || TYPEOF(z) != SEXPTYPE::VECSXP || XLENGTH(z) < 6 {
+            return R_NilValue();
+        }
+        let _z = protect(z);
+        let raw_coef = VECTOR_ELT(z, 1);
+        let raw_resid = VECTOR_ELT(z, 2);
+        let rank_s = VECTOR_ELT(z, 4);
+        let pivot = VECTOR_ELT(z, 5);
+        if TYPEOF(raw_coef) != SEXPTYPE::REALSXP
+            || TYPEOF(raw_resid) != SEXPTYPE::REALSXP
+            || TYPEOF(rank_s) != SEXPTYPE::INTSXP
+            || TYPEOF(pivot) != SEXPTYPE::INTSXP
+        {
+            return R_NilValue();
+        }
+        let p = XLENGTH(raw_coef) as usize;
+        if XLENGTH(raw_resid) != n as i64 || XLENGTH(pivot) != p as i64 || p == 0 {
+            return R_NilValue();
+        }
+        let rank = (*INTEGER(rank_s)).max(0) as usize;
+        let mut ordered = vec![0.0; p];
+        for i in 0..p {
+            ordered[i] = if i < rank {
+                *REAL(raw_coef).add(i)
+            } else {
+                crate::sexp::ffi::NA_REAL
+            };
+        }
+        let mut pivoted = false;
+        for i in 0..p {
+            if *INTEGER(pivot).add(i) != (i as i32) + 1 {
+                pivoted = true;
+                break;
+            }
+        }
+        if pivoted {
+            let old = ordered.clone();
+            for i in 0..p {
+                let dest = *INTEGER(pivot).add(i) - 1;
+                if dest >= 0 && (dest as usize) < p {
+                    ordered[dest as usize] = old[i];
+                }
+            }
+        }
+        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, p as i64);
+        let _c = protect(coef);
+        for (i, value) in ordered.iter().enumerate() {
+            *REAL(coef).add(i) = *value;
+        }
+        let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _e = protect(resid);
+        let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _f = protect(fitted);
+        for i in 0..n {
+            let ri = *REAL(raw_resid).add(i);
+            *REAL(resid).add(i) = ri;
+            *REAL(fitted).add(i) = y_values[i] - ri;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, coef);
+        SET_VECTOR_ELT(result, 1, resid);
+        SET_VECTOR_ELT(result, 2, fitted);
+        SET_VECTOR_ELT(result, 3, Rf_ScalarInteger(rank as i32));
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "coefficients".to_string(),
+                "residuals".to_string(),
+                "fitted.values".to_string(),
+                "rank".to_string(),
+            ],
+        );
+        result
+    }
+}
+
+/// GNU `lm.fit(x, y)` — two-column normal equations, or LINPACK QR otherwise.
 pub unsafe fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -6553,6 +6653,9 @@ pub unsafe fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         };
         if n < 2 || p != 2 || y.is_null() || y == R_NilValue() {
+            if p > 2 && n >= 1 && !y.is_null() && y != R_NilValue() {
+                return lm_fit_via_qr(x, y, n);
+            }
             return R_NilValue();
         }
         let ny = XLENGTH(y) as usize;
@@ -13898,8 +14001,9 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
         let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
-        let perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
+        let mut perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
         let fixed = logical_arg_by_name_or_position(args, "fixed", 4).unwrap_or(false);
+        super::shared::ignore_perl_when_fixed(&mut perl, fixed);
         let n = XLENGTH(text);
 
         // grep.c drops perl when fixed = TRUE, so only a genuine perl run
@@ -14148,8 +14252,9 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
         let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
-        let perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
+        let mut perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
         let fixed = logical_arg_by_name_or_position(args, "fixed", 4).unwrap_or(false);
+        super::shared::ignore_perl_when_fixed(&mut perl, fixed);
         // grep.c drops perl when fixed = TRUE, so only a genuine perl run
         // gets capture attribution (same guard as do_regexpr).
         let (capture_count, capture_names) = if perl && !fixed {
@@ -16172,6 +16277,65 @@ mod trunk_r90451_tests {
                 );
             });
             assert!(message.contains("value of 'wtol' must be >= 0"), "{message}");
+        }
+    }
+
+    #[test]
+    fn lm_fit_three_columns_matches_gnu_qr() {
+        // GNU R 4.6.1 lm.fit(cbind(1, 1:4, c(2,0,1,3)), c(1,3,3,6)).
+        let _session = RSession::new();
+        unsafe {
+            let x = crate::mainutils::array::allocMatrix(
+                crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int(),
+                4,
+                3,
+            );
+            let xr = crate::sexp::accessors::REAL(x);
+            let cols = [
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 2.0, 3.0, 4.0],
+                [2.0, 0.0, 1.0, 3.0],
+            ];
+            for (j, col) in cols.iter().enumerate() {
+                for (i, value) in col.iter().enumerate() {
+                    *xr.add(i + j * 4) = *value;
+                }
+            }
+            let y = crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::REALSXP, 4);
+            let ys = [1.0, 3.0, 3.0, 6.0];
+            for (i, value) in ys.iter().enumerate() {
+                *crate::sexp::accessors::REAL(y).add(i) = *value;
+            }
+            let args = crate::sexp::constructors::Rf_cons(
+                x,
+                crate::sexp::constructors::Rf_cons(y, crate::sexp::globals::R_NilValue()),
+            );
+            let result = super::do_lm_fit(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+            assert!(
+                !result.is_null() && result != crate::sexp::globals::R_NilValue(),
+                "lm.fit returned NULL for a 3-column design"
+            );
+            let coef = crate::sexp::accessors::VECTOR_ELT(result, 0);
+            let expected = [-0.5595238095_f64, 1.4523809524, 0.1190476190];
+            for (i, want) in expected.iter().enumerate() {
+                let got = *crate::sexp::accessors::REAL(coef).add(i);
+                assert!((got - want).abs() < 1e-8, "coef {i}: {got} vs {want}");
+            }
+            let rank = *crate::sexp::accessors::INTEGER(
+                crate::sexp::accessors::VECTOR_ELT(result, 3),
+            );
+            assert_eq!(rank, 3);
+            let resid = crate::sexp::accessors::VECTOR_ELT(result, 1);
+            let expected_resid = [-0.1309523810_f64, 0.6547619048, -0.9166666667, 0.3928571429];
+            for (i, want) in expected_resid.iter().enumerate() {
+                let got = *crate::sexp::accessors::REAL(resid).add(i);
+                assert!((got - want).abs() < 1e-8, "resid {i}: {got} vs {want}");
+            }
         }
     }
 }
