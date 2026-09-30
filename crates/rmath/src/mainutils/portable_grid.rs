@@ -579,8 +579,6 @@ impl GridState {
         let scale = |f: &mut Frame| {
             f.width *= sx;
             f.height *= sy;
-            f.anchor_x *= sx;
-            f.anchor_y *= sy;
             f.matrix[0] *= sx;
             f.matrix[2] *= sx;
             f.matrix[4] *= sx;
@@ -602,6 +600,17 @@ impl GridState {
         };
         self.frames.iter_mut().for_each(scale);
         self.nodes.iter_mut().for_each(|n| scale(&mut n.frame));
+        // Root anchor is device pixels; current.inches reads it without the
+        // matrix. Nested anchors stay in parent-user pixels, and the parent
+        // matrix scale already applies this resize.
+        if let Some(root) = self.frames.first_mut() {
+            root.anchor_x *= sx;
+            root.anchor_y *= sy;
+        }
+        if let Some(root) = self.nodes.first_mut() {
+            root.frame.anchor_x *= sx;
+            root.frame.anchor_y *= sy;
+        }
         self.dimensions = target;
         if self
             .frames
@@ -2518,5 +2527,47 @@ mod snapshot_tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn replay_scales_viewport_inches_once() {
+        let mut root_only = GridState::default();
+        root_only.ensure((192, 96));
+        let before_root = current_inches(&root_only);
+        root_only.scale_snapshot((192, 96), (384, 192)).unwrap();
+        let after_root = current_inches(&root_only);
+        for i in 0..4 {
+            assert!(
+                (after_root[i] - before_root[i] * 2.).abs() < 1e-9,
+                "root {i}: {before_root:?} -> {after_root:?}"
+            );
+        }
+
+        let mut state = GridState::default();
+        state.ensure((192, 96));
+        let parent = state.frames[0].clone();
+        let anchor_x = 96.;
+        let anchor_y = 48.;
+        let mut child = parent.clone();
+        child.width = 96.;
+        child.height = 24.;
+        child.anchor_x = anchor_x;
+        child.anchor_y = anchor_y;
+        child.matrix = compose(parent.matrix, [1., 0., 0., 1., anchor_x, anchor_y]);
+        state.frames.push(child);
+        let before = current_inches(&state);
+        assert!(
+            (before[0] - 1.).abs() < 1e-9 && (before[1] - 0.5).abs() < 1e-9,
+            "{before:?}"
+        );
+        assert!(
+            (before[2] - 1.).abs() < 1e-9 && (before[3] - 0.25).abs() < 1e-9,
+            "{before:?}"
+        );
+        state.scale_snapshot((192, 96), (384, 192)).unwrap();
+        let after = current_inches(&state);
+        for (i, expected) in [2., 1., 2., 0.5].into_iter().enumerate() {
+            assert!((after[i] - expected).abs() < 1e-9, "child {i}: {after:?}");
+        }
     }
 }
