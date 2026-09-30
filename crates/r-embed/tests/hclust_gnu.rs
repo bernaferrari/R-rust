@@ -37,12 +37,25 @@ fn hclust_matches_gnu_oracle() {
             d <- dist(cbind(c(0, 0, 1, 3)))
             complete <- run("complete", check("complete", c(0, 1, 3)))
             single <- run("single", check("single", c(0, 1, 2)))
-            paste("OK", complete, single, sep=" || ")
+            # GNU kappa(..., LINPACK=TRUE) is 2, so dtrco's rcond is 1/2.
+            # An unknown symbol stays on the host-extension error.
+            z <- matrix(c(2, 0, 1, 3), 2, 2)
+            dtrco <- tryCatch(
+                sprintf("%.17g", .Fortran("dtrco", z, 2L, 2L, k = double(1), double(2), 1L)$k),
+                error = function(e) paste("ERR", conditionMessage(e)))
+            blocked <- tryCatch(
+                .Fortran("not_a_real_symbol"),
+                error = function(e) conditionMessage(e))
+            paste("OK", complete, single, dtrco, blocked, sep=" || ")
             "#,
         )
         .expect("hclust gnu oracle");
     assert!(
-        out.contains("OK || complete || single"),
+        out.contains("OK || complete || single || 0.5 || "),
         "hclust oracle script failed: {out}"
+    );
+    assert!(
+        out.contains("native extension code, which is disabled"),
+        "unregistered .Fortran was not rejected: {out}"
     );
 }

@@ -1209,15 +1209,21 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
         check1arg2(args, call, ".NAME");
 
-        // In-tree Rust ports are registered by name. Resolve those before the
-        // host-loader policy so stats routines such as hclust run, and still
-        // reject every other .C/.Fortran symbol while native extensions are off.
-        if let Some(name) = ported_call_name(CAR(args)) {
-            fun = crate::library::tools::native_calls::lookup_c(&name);
+        // Registered in-tree ports resolve before the host-loader policy.
+        // Unregistered names still stop while native extensions are off.
+        // dtrco is not in that registry; it has its own fallback below. Occupy
+        // `fun` so resolveNativeRoutine does not dlsym a host dtrco first.
+        let requested = ported_call_name(CAR(args));
+        if let Some(name) = requested.as_deref() {
+            fun = crate::library::tools::native_calls::lookup_c(name);
         }
-        let ported_dtrco = fun.is_none()
-            && ported_call_name(CAR(args)).as_deref() == Some("dtrco");
-        if fun.is_none() && !ported_dtrco && native_extension_policy_enabled() {
+        let force_in_tree_dtrco = fun.is_none()
+            && native_extension_policy_enabled()
+            && requested.as_deref() == Some("dtrco");
+        if force_in_tree_dtrco {
+            fun = Some(block_host_symbol_lookup);
+        }
+        if fun.is_none() && native_extension_policy_enabled() {
             native_extension_policy_error(call, entrypoint);
         }
 
@@ -1231,6 +1237,10 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             call,
             env,
         );
+
+        if force_in_tree_dtrco {
+            return fortran_dtrco(call_args);
+        }
 
         if fun.is_none() {
             if let Some(name) = ported_call_name(CAR(args)) {
@@ -1647,6 +1657,10 @@ unsafe fn R_FindNativeSymbolFromDLL(
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+/// Occupies `DL_FUNC` so symbol resolution does not search loaded libraries.
+/// `do_dotCode` returns through `fortran_dtrco` before this is ever called.
+unsafe extern "C" fn block_host_symbol_lookup() {}
 
 unsafe fn fortran_dtrco(args: SEXP) -> SEXP {
     unsafe {
