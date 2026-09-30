@@ -162,14 +162,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function (x, ...) if (typeof(x) == \"list\") x else .Internal(as.vector(x, \"list\"))",
         );
 
-        // GNU formals.R is `as.list(sys.call())[-1L]`. sys.call() forced as
-        // as.list's argument still sees the as.list frame (rport-qc8ct).
-        // Evaluate sys.call in alist first so missing formals stay missing.
-
+        // GNU formals.R. sys.call() forced as as.list's argument names this
+        // frame, so a missing tag stays the missing symbol (rport-qc8ct).
         eval_base_binding(
             base_env,
             "alist",
-            "function(...) { sc <- sys.call(); as.list(sc)[-1L] }",
+            "function(...) as.list(sys.call())[-1L]",
         );
         eval_base_binding(
             base_env,
