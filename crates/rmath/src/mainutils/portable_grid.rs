@@ -1418,7 +1418,7 @@ fn find_vppath(
         let child = children
             .into_iter()
             .find(|child| state.nodes[*child].frame.name.as_deref() == Some(name))
-            .unwrap();
+            .unwrap_or_else(|| base_error("viewport path child was not found"));
         return Some((child, depth));
     }
     for child in children {
@@ -1460,7 +1460,10 @@ fn activate(state: &mut GridState, id: usize) {
 
 fn current_path(state: &GridState) -> Option<String> {
     let mut names = Vec::new();
-    let mut id = *state.active.last().unwrap();
+    let mut id = *state
+        .active
+        .last()
+        .unwrap_or_else(|| base_error("viewport stack is empty"));
     while state.nodes[id].parent.is_some() {
         if let Some(name) = state.nodes[id].frame.name.clone() {
             names.push(name);
@@ -1476,7 +1479,10 @@ fn current_path(state: &GridState) -> Option<String> {
 }
 
 fn current_name(state: &GridState) -> String {
-    let id = *state.active.last().unwrap();
+    let id = *state
+        .active
+        .last()
+        .unwrap_or_else(|| base_error("viewport stack is empty"));
     if state.nodes[id].parent.is_none() {
         "ROOT".to_string()
     } else {
@@ -1659,8 +1665,13 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     base_error("a viewport path must contain at least one viewport name");
                 }
                 let strict = logical_flag(field(data, "strict"), false);
-                let start = *state.active.last().unwrap();
-                let final_name = parts.last().cloned().unwrap();
+                let start = *state
+                    .active
+                    .last()
+                    .unwrap_or_else(|| base_error("viewport stack is empty"));
+                let final_name = parts.last().cloned().unwrap_or_else(|| {
+                    base_error("a viewport path must contain at least one viewport name")
+                });
                 let found = if parts.len() == 1 {
                     find_name(&state, start, &final_name, strict, 1)
                 } else {

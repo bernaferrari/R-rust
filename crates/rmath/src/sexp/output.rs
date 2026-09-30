@@ -2369,6 +2369,34 @@ fn format_pairlist_with_path(x: Sexp<'_>, path: &str) -> String {
     }
 }
 
+thread_local! {
+    static SHOW_STDOUT_BEFORE_ERROR: std::cell::RefCell<String> =
+        const { std::cell::RefCell::new(String::new()) };
+}
+
+/// `show()` stdout captured before `stop()`, kept across the panic.
+pub(crate) fn take_show_stdout_before_error() -> String {
+    SHOW_STDOUT_BEFORE_ERROR.with(|slot| std::mem::take(&mut *slot.borrow_mut()))
+}
+
+fn keep_show_stdout_before_error(text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    // This frame printed before a nested show that already saved its buffer.
+    SHOW_STDOUT_BEFORE_ERROR.with(|slot| {
+        let mut saved = slot.borrow_mut();
+        if saved.is_empty() {
+            saved.push_str(text);
+            return;
+        }
+        let mut combined = String::with_capacity(text.len() + saved.len());
+        combined.push_str(text);
+        combined.push_str(&saved);
+        *saved = combined;
+    });
+}
+
 fn format_dispatched_show(raw: crate::sexp::ffi::SEXP) -> Option<String> {
     unsafe {
         let path = crate::mainutils::essentials::find_package_path("methods");
@@ -2397,15 +2425,18 @@ fn format_dispatched_show(raw: crate::sexp::ffi::SEXP) -> Option<String> {
         let _call = crate::sexp::protect::protect(call);
         let env = crate::sexp::globals::R_GlobalEnv();
         let guard = OutputCaptureGuard::start();
-        // Rf_eval turns stop() into a panic. Returning stdout here would
-        // make that auto-print look successful.
+        // stop() panics. Returning this buffer would look like success, so
+        // resume after saving text that was printed before the error.
         let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(call, env)
         }));
         let captured = guard.finish();
         match evaluated {
             Ok(_) => Some(captured.stdout.trim_end_matches('\n').to_string()),
-            Err(payload) => std::panic::resume_unwind(payload),
+            Err(payload) => {
+                keep_show_stdout_before_error(&captured.stdout);
+                std::panic::resume_unwind(payload)
+            }
         }
     }
 }
@@ -3422,8 +3453,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             return text;
         }
     }
-    // Final values are rendered here, not through PrintValueEnv. An S4 object
-    // is type 25, which otherwise falls through to "[unknown; length=0]".
+    // The type match below does not format S4, so dispatch show() here.
     if unsafe {
         crate::mainutils::coerce::IS_S4_OBJECT(x.clone().as_raw()) != 0
             || x.typeof_() == SEXPTYPE::S4SXP

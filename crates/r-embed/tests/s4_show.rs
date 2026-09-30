@@ -68,4 +68,66 @@ fn final_s4_auto_print_matches_show_default() {
         message.contains("boom-show"),
         "show error was not visible: {message}"
     );
+
+    session
+        .eval(
+            r#"
+            setMethod("show", "Foo", function(object) {
+                cat("before\n")
+                stop("boom-show")
+            })
+            "#,
+        )
+        .unwrap();
+    let before = session.eval(
+        r#"
+        new("Foo", x = 1)
+        "#,
+    );
+    let before_message = before
+        .expect_err("show that prints and then stops must fail eval")
+        .to_string();
+    assert!(
+        before_message.contains("boom-show"),
+        "show error was not visible: {before_message}"
+    );
+    if before_message.contains("before") {
+        assert_eq!(
+            before_message.matches("before").count(),
+            1,
+            "pre-stop output was repeated: {before_message}"
+        );
+    }
+
+    // eval() returns only the error string, so a successful show that
+    // assigns is what proves auto-print ran once.
+    session
+        .eval(
+            r#"
+            x <- 0
+            setMethod("show", "Foo", function(object) {
+                x <<- x + 1
+                cat("once\n")
+            })
+            "#,
+        )
+        .unwrap();
+    let once = session
+        .eval(
+            r#"
+            new("Foo", x = 1)
+            "#,
+        )
+        .unwrap();
+    assert_eq!(
+        once.matches("once").count(),
+        1,
+        "show ran more than once: {once}"
+    );
+    let incremented = session.eval("x").unwrap();
+    assert_eq!(
+        incremented.trim(),
+        "[1] 1",
+        "show side effect ran more than once: {incremented}"
+    );
 }

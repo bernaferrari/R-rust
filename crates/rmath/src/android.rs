@@ -68,10 +68,12 @@ fn auto_print_error(payload: &(dyn std::any::Any + Send)) -> Option<String> {
     None
 }
 
-/// Format a visible value. `show()` `stop()` panics out of
+/// Format a visible value once. `show()` `stop()` panics out of
 /// `format_sexp_direct`; that must become an eval error, not a host panic
-/// and not a successful print.
+/// and not a successful print. Stdout emitted before `stop()` is left in
+/// `take_show_stdout_before_error` for the error result.
 fn format_visible_value(sexp: Sexp<'_>) -> Result<String, String> {
+    let _ = output::take_show_stdout_before_error();
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         output::format_sexp_direct(sexp)
     })) {
@@ -97,20 +99,17 @@ fn result_from_eval(
             }
         }
     }
-    let auto_stdout = if visible {
+    let auto = if visible {
         match format_visible_value(sexp.clone()) {
             Ok(text) => text,
-            Err(message) => return error_result_with_captured(message, &captured),
-        }
-    } else {
-        String::new()
-    };
-    // stdout and display each format the value. A show() error on the
-    // second pass must still fail the eval.
-    let auto_display = if visible {
-        match format_visible_value(sexp.clone()) {
-            Ok(text) => text,
-            Err(message) => return error_result_with_captured(message, &captured),
+            Err(message) => {
+                let partial = output::take_show_stdout_before_error();
+                let mut captured = captured;
+                if !partial.is_empty() {
+                    captured.stdout.push_str(&partial);
+                }
+                return error_result_with_captured(message, &captured);
+            }
         }
     } else {
         String::new()
@@ -119,7 +118,7 @@ fn result_from_eval(
     if visible {
         // GNU concatenates auto-print onto a prior cat() that had no
         // trailing newline (`cat(deparse(x)); TRUE` → `...)[1] TRUE`).
-        stdout.push_str(&auto_stdout);
+        stdout.push_str(&auto);
     }
     if !stdout.is_empty() && !stdout.ends_with('\n') {
         stdout.push('\n');
@@ -133,7 +132,7 @@ fn result_from_eval(
     }
     let mut display = captured.interleaved;
     if visible {
-        display.push_str(&auto_display);
+        display.push_str(&auto);
     }
     if !display.is_empty() && !display.ends_with('\n') {
         display.push('\n');

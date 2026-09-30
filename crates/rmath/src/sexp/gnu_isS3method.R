@@ -1,11 +1,5 @@
 {
-    # GNU utils::isS3method (R 4.6.1, utils/R/objects.R). The closure below
-    # closes over its helpers so multi-dot recursion stays on this function
-    # when utils masks the base binding. Two runtime adjustments:
-    # get0(mode="function") ignores mode, and a base primitive whose name is
-    # on tools::nonS3methods(NULL) (t.test, seq.int, ...) is not the GNU
-    # function — fall through to the registry. A missing .__S3MethodsTable__.
-    # is not a method: exists() on NULL searches the caller.
+    # Local helpers so multi-dot recursion does not call a masked base binding.
     isS3method <- function(method, f, class, envir = parent.frame()) {
         stopList <- list(
             base = c("all.equal", "all.names", "all.vars", "as.data.frame.vector",
@@ -121,9 +115,6 @@
         in_tab <- function(name, tab) {
             is.character(tab) && length(tab) > 0L && isTRUE(any(name == tab))
         }
-        # Kept outside the big named list. A visible base primitive whose GNU
-        # home is stats (t.test) must hit this even if that list element is
-        # not recovered by name.
         stats_non_s3 <- c("anova.lmlist", "expand.model.frame", "fitted.values",
             "influence.measures", "lag.plot", "qr.influence", "t.test",
             "plot.spec.phase", "plot.spec.coherency")
@@ -135,8 +126,8 @@
                     is.na(package) || !nzchar(package) || package == "stats" ||
                     package == "package:stats"))
                 return(TRUE)
-            # NULL package is tools::nonS3methods(NULL): every package vector,
-            # compared one at a time. One giant c() makes any() miss later names.
+            # NULL selects every package vector. One combined c() makes any()
+            # miss later names.
             if (is.null(package) || !is.character(package) || length(package) != 1L ||
                 is.na(package) || !nzchar(package)) {
                 if (in_tab(name, stopList[["base"]])) return(TRUE)
@@ -237,8 +228,8 @@
             ""
         }
         ume_from_fun <- function(fun) {
-            # Do not eval the body. is_ume(body(fun)) on UseMethod("mean")
-            # dispatches mean.default(body(fun)) in this runtime.
+            # Do not eval UseMethod through body(): is_ume(body(fun))
+            # dispatches mean.default on UseMethod("mean").
             txt <- tryCatch(paste(deparse(fun), collapse = "\n"),
                 error = function(err) "")
             hit <- extract_use_method(txt)
@@ -348,16 +339,10 @@
             }
             m <- tryCatch(getfun(method, envir), error = function(err) NULL)
             if (is.function(m)) {
-                # environment() on a builtin goes through getAttrib and can
-                # throw "cannot coerce type to vector of type". GNU
-                # environment(primitive) is NULL and the package is "base".
+                # environment() on a primitive calls getAttrib and can throw.
+                # GNU environment(primitive) is NULL, so the package is "base".
                 kind <- tryCatch(typeof(m), error = function(err) "")
                 if (is.primitive(m) || identical(kind, "builtin") || identical(kind, "special")) {
-                    # Visible primitive on the stop list is not an S3 method.
-                    # Do not consult the registry: a base primitive named
-                    # t.test / seq.int would otherwise be found there.
-                    # An environment that cannot see the primitive falls
-                    # through, so a registered method can still be TRUE.
                     if (on_stop_list(method, NULL) || on_stop_list(method, "base"))
                         return(FALSE)
                     return(TRUE)
