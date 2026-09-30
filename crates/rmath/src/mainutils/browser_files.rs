@@ -94,6 +94,23 @@ pub fn write_current(path: &str, bytes: &[u8]) -> Result<(), String> {
         .ok_or_else(|| "no active R session".to_string())?
 }
 
+pub fn remove_current(path: &str) -> bool {
+    with_current_instance(|instance| unsafe { (*instance).browser_files.remove(path) })
+        .unwrap_or(false)
+}
+
+pub fn list_current() -> Vec<String> {
+    with_current_instance(|instance| unsafe { (*instance).browser_files.names() })
+        .unwrap_or_default()
+}
+
+/// Copy one flat key onto another. A missing source is false and does not
+/// create `to` or read the host.
+pub fn copy_current(from: &str, to: &str) -> bool {
+    with_current_instance(|instance| unsafe { (*instance).browser_files.copy(from, to) })
+        .unwrap_or(false)
+}
+
 pub fn write_text_or_host(path: &str, bytes: &[u8]) -> std::io::Result<()> {
     let enabled = with_current_instance(|instance| unsafe { (*instance).browser_files_enabled })
         .unwrap_or(false);
@@ -382,6 +399,15 @@ impl BrowserFileStore {
         true
     }
 
+    /// Duplicate bytes under a new flat key. Missing `from` is false.
+    /// A rejected `to` leaves both keys as they were.
+    pub fn copy(&mut self, from: &str, to: &str) -> bool {
+        let Some(bytes) = self.files.get(from).map(|file| file.bytes.clone()) else {
+            return false;
+        };
+        self.put(to, &bytes).is_ok()
+    }
+
     pub fn names(&self) -> Vec<String> {
         let mut names = self.files.keys().cloned().collect::<Vec<_>>();
         names.sort();
@@ -552,5 +578,19 @@ mod tests {
         assert_eq!(updated.mtime, 1_700_000_000.25);
         assert_eq!(updated.atime, 1_700_000_000.25);
         assert_eq!(updated.ctime, 0.0);
+    }
+
+    #[test]
+    fn copy_duplicates_bytes_and_a_missing_source_writes_nothing() {
+        let mut store = BrowserFileStore::default();
+        store.put("note.txt", b"hello").unwrap();
+        assert!(!store.copy("missing.txt", "other.txt"));
+        assert!(store.read("other.txt").is_none());
+        assert!(store.copy("note.txt", "other.txt"));
+        assert_eq!(store.read("other.txt"), Some(b"hello".as_slice()));
+        assert_eq!(store.read("note.txt"), Some(b"hello".as_slice()));
+        assert!(store.remove("note.txt"));
+        assert!(!store.remove("note.txt"));
+        assert_eq!(store.names(), vec!["other.txt".to_string()]);
     }
 }

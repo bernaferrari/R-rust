@@ -56,4 +56,92 @@ fn browser_mode_creates_files_without_import_and_opens_deferred_connections() {
     );
     assert!(s.eval("file('missing', 'r+')").is_err());
     assert!(s.eval("readLines('/etc/hosts')").is_err());
+
+    let probe = std::env::temp_dir().join(format!(
+        "rport-browser-host-probe-{}",
+        std::process::id()
+    ));
+    std::fs::write(&probe, b"HOSTSECRET").unwrap();
+    struct DeleteOnDrop(std::path::PathBuf);
+    impl Drop for DeleteOnDrop {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+    let _probe = DeleteOnDrop(probe.clone());
+    let probe_r = probe.to_string_lossy().replace('\\', "/");
+    let temp_r = std::env::temp_dir()
+        .to_string_lossy()
+        .trim_end_matches(|ch: char| ch == '/' || ch == '\\')
+        .replace('\\', "/");
+    assert!(
+        !probe_r.contains('\'') && !temp_r.contains('\''),
+        "host probe paths must be single-quote free"
+    );
+    assert_eq!(
+        s.eval(&format!(
+            "identical(list.files(), c('created.txt', 'later.txt')) && identical(list.files(character(0)), character(0)) && identical(list.files('missing-virtual'), character(0)) && identical(list.files('{temp_r}'), character(0))"
+        ))
+        .unwrap()
+        .trim(),
+        "[1] TRUE"
+    );
+    assert_eq!(
+        s.eval(&format!(
+            "file.copy('later.txt', 'copied.txt') && identical(readLines('copied.txt'), 'later') && identical(file.copy('{probe_r}', 'nope.txt'), FALSE) && !file.exists('nope.txt')"
+        ))
+        .unwrap()
+        .trim(),
+        "[1] TRUE"
+    );
+    assert!(!std::path::Path::new("nope.txt").exists());
+    let shown = s
+        .eval(".Internal(file.show('later.txt', '', '', FALSE, ''))")
+        .unwrap();
+    assert!(
+        shown.contains("later\n"),
+        "file.show did not read store bytes: {shown:?}"
+    );
+    let missing_show = s
+        .eval(&format!(
+            ".Internal(file.show('{probe_r}', '', '', TRUE, ''))"
+        ))
+        .unwrap();
+    assert!(
+        missing_show.contains("Cannot open file"),
+        "missing file.show fell through: {missing_show:?}"
+    );
+    assert!(
+        !missing_show.contains("HOSTSECRET"),
+        "file.show read the host: {missing_show:?}"
+    );
+    assert_eq!(std::fs::read(&probe).unwrap(), b"HOSTSECRET");
+    assert_eq!(
+        s.eval(&format!(
+            "identical(unlink('copied.txt'), TRUE) && !file.exists('copied.txt') && identical(unlink('copied.txt'), FALSE) && identical(unlink('{probe_r}', recursive = TRUE), FALSE) && identical(unlink('missing-virtual', recursive = TRUE), FALSE)"
+        ))
+        .unwrap()
+        .trim(),
+        "[1] TRUE"
+    );
+    assert_eq!(std::fs::read(&probe).unwrap(), b"HOSTSECRET");
+    assert_eq!(
+        s.eval(
+            "writeLines('nested', 'dir/child.txt'); identical(list.files('dir'), character(0)) && 'dir/child.txt' %in% list.files() && identical(readLines('dir/child.txt'), 'nested') && identical(unlink('dir', recursive = TRUE), FALSE) && identical(readLines('dir/child.txt'), 'nested') && identical(unlink('dir/child.txt'), TRUE) && identical(unlink(c('later.txt', 'no-such')), c(TRUE, FALSE))",
+        )
+        .unwrap()
+        .trim(),
+        "[1] TRUE"
+    );
+    assert!(s.export_file("later.txt").is_err());
+    assert_eq!(
+        s.eval(
+            "is.null(.Internal(file.show('created.txt', '', '', TRUE, ''))) && !file.exists('created.txt') && !('created.txt' %in% list.files())",
+        )
+        .unwrap()
+        .trim(),
+        "[1] TRUE"
+    );
+    assert!(s.export_file("created.txt").is_err());
+    assert_eq!(std::fs::read(&probe).unwrap(), b"HOSTSECRET");
 }

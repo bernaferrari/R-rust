@@ -251,6 +251,37 @@ pub unsafe fn do_date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+fn emit_file_show(text: &str) {
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(text);
+    } else {
+        print!("{text}");
+    }
+}
+
+/// Print store bytes. A missing or non-UTF-8 key never opens a host file.
+fn show_stored_file(path: &str) {
+    match crate::mainutils::browser_files::read_current(path) {
+        Some(bytes) => match String::from_utf8(bytes) {
+            Ok(contents) => {
+                emit_file_show(&contents);
+                if !contents.ends_with('\n') {
+                    emit_file_show("\n");
+                }
+                emit_file_show("\n");
+            }
+            Err(err) => {
+                emit_file_show(&format!("Cannot open file '{path}': {err}\n\n"));
+            }
+        },
+        None => {
+            emit_file_show(&format!(
+                "Cannot open file '{path}': browser file not found\n\n"
+            ));
+        }
+    }
+}
+
 /// R's `file.show()` — display file(s) to the user.
 pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -317,22 +348,27 @@ pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             platform_error("invalid 'pager' argument");
         }
 
+        let browser_store = crate::mainutils::browser_files::enabled();
         for i in 0..n {
             let header = path_at(headers, i as usize).unwrap_or_default();
             if !header.is_empty() {
                 println!("{header}\n");
             }
             if let Some(path) = path_at(files, i as usize) {
-                match std::fs::read_to_string(&path) {
-                    Ok(contents) => {
-                        print!("{contents}");
-                        if !contents.ends_with('\n') {
+                if browser_store {
+                    show_stored_file(&path);
+                } else {
+                    match std::fs::read_to_string(&path) {
+                        Ok(contents) => {
+                            print!("{contents}");
+                            if !contents.ends_with('\n') {
+                                println!();
+                            }
                             println!();
                         }
-                        println!();
-                    }
-                    Err(err) => {
-                        println!("Cannot open file '{path}': {err}\n");
+                        Err(err) => {
+                            println!("Cannot open file '{path}': {err}\n");
+                        }
                     }
                 }
             }
@@ -341,7 +377,11 @@ pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if delete_file {
             for i in 0..n {
                 if let Some(path) = path_at(files, i as usize) {
-                    let _ = std::fs::remove_file(path);
+                    if browser_store {
+                        let _ = crate::mainutils::browser_files::remove_current(&path);
+                    } else {
+                        let _ = std::fs::remove_file(path);
+                    }
                 }
             }
         }
@@ -1196,6 +1236,26 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             })
         }
 
+        // Keys are flat. Only the session root is a directory; any other path
+        // is missing and must not be read from the host.
+        fn collect_browser_list_files(
+            path: &str,
+            options: ListFilesOptions<'_>,
+            entries: &mut Vec<String>,
+        ) {
+            if path != "." && !path.is_empty() {
+                return;
+            }
+            for name in crate::mainutils::browser_files::list_current() {
+                if !options.all_files && name.starts_with('.') {
+                    continue;
+                }
+                if pattern_matches(&name, options) {
+                    entries.push(name);
+                }
+            }
+        }
+
         fn collect_list_files(
             base: &std::path::Path,
             relative: &std::path::Path,
@@ -1309,7 +1369,12 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let omit_dotdot = logical_arg(no_dotdot, false);
 
         let mut entries: Vec<String> = Vec::new();
+        let browser_store = crate::mainutils::browser_files::enabled();
         let mut visit_path = |path: String| {
+            if browser_store {
+                collect_browser_list_files(&path, options, &mut entries);
+                return;
+            }
             if options.all_files && !omit_dotdot && !options.recursive && pattern_string.is_none() {
                 push_dir_dots(&path, options.full_names, &mut entries);
             }
@@ -1621,12 +1686,44 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
+/// Remove flat store keys. Missing paths are FALSE and are not looked up on
+/// the host, even when `recursive` is TRUE.
+unsafe fn unlink_browser_files(args: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, LENGTH, LOGICAL};
+        use crate::sexp::constructors::Rf_allocVector3;
+        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
+        use crate::sexp::globals::R_NilValue;
+
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), 0);
+        }
+        let n = LENGTH(x);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _guard = protect(ans);
+        let out = LOGICAL(ans);
+        for i in 0..n as usize {
+            let removed = match path_at(x, i) {
+                Some(path) => crate::mainutils::browser_files::remove_current(&path),
+                None => false,
+            };
+            *out.add(i) = if removed { TRUE } else { FALSE };
+        }
+        ans
+    }
+}
+
 /// R's `unlink()` — remove files or directories.
 pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADDR, CADR, CAR, LENGTH, LOGICAL, STRING_ELT};
         use crate::sexp::constructors::Rf_ScalarInteger;
         use crate::sexp::globals::R_NilValue;
+
+        if crate::mainutils::browser_files::enabled() {
+            return unlink_browser_files(args);
+        }
 
         let x = CAR(args);
         let recursive = CADR(args);
@@ -2203,6 +2300,14 @@ pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 let tc = CStr::from_ptr(crate::sexp::accessors::CHAR(t))
                     .to_str()
                     .unwrap_or("");
+                if crate::mainutils::browser_files::enabled() {
+                    *pa.add(i) = if crate::mainutils::browser_files::copy_current(fc, tc) {
+                        TRUE
+                    } else {
+                        FALSE
+                    };
+                    continue;
+                }
                 let dest = std::path::Path::new(tc);
                 let dest = if dest.is_dir() {
                     dest.join(std::path::Path::new(fc).file_name().unwrap_or_default())

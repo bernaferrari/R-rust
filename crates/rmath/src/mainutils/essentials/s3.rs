@@ -643,8 +643,13 @@ fn unlink_glob(pat: &str, name: &str) -> bool {
     rec(pat.as_bytes(), name.as_bytes())
 }
 
-pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_unlink(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        // Browser mode is a flat key store. Delegate before any host read so a
+        // missing path, including recursive=TRUE, cannot fall through to std::fs.
+        if crate::mainutils::browser_files::enabled() {
+            return crate::mainutils::platform::do_unlink(call, op, args, rho);
+        }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
