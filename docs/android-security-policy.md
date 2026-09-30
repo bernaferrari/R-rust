@@ -41,7 +41,8 @@ runtime core.
 - Unregistered native entrypoints are rejected: `.Call()`, `.C()`, `.Fortran()`,
   `.External()`, `dyn.load()`, `dyn.unload()`, and `library.dynam()` report
   policy errors instead of silently returning `NULL` or loading a host library.
-  A symbol registered as an in-tree Rust port runs as that port.
+  A symbol registered as an in-tree Rust port runs as that port, including the
+  `.Fortran` routines `hclust` and `dtrco`.
 
 ## Processes And Shell
 
