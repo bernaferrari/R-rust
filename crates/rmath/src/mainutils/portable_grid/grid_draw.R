@@ -1,4 +1,4 @@
-function(x,recording=TRUE) { if(!isTRUE(recording)) stop('unrecorded grid operations are not supported');
+function(x,recording=TRUE) {
     if(is.null(x)) return(invisible(NULL))
     if(!inherits(x,'grob')) stop('grid.draw requires a grob')
     pushed <- 0L
@@ -6,7 +6,9 @@ function(x,recording=TRUE) { if(!isTRUE(recording)) stop('unrecorded grid operat
     on.exit(if(pushed>0L) popViewport(pushed))
     if(inherits(x,'gTree')) {
         if(!is.null(x$gp)) { pushViewport(viewport(gp=x$gp)); pushed <- pushed+1L }
-        for(child in x$children) grid.draw(child)
+        # Children are drawn, not recorded; the gTree is one display-list entry.
+        for(child in x$children) grid.draw(child, recording=FALSE)
     } else .rport_grid('draw',x)
+    if(isTRUE(recording)) .rport_grid('record', x)
     invisible(NULL)
 }

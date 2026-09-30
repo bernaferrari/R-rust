@@ -439,6 +439,11 @@ struct Frame {
     gp: Gp,
     layout: Option<Layout>,
     name: Option<String>,
+    // Parent-user pixels of the viewport anchor. Justification moves `matrix`, not this point.
+    #[serde(default)]
+    anchor_x: f64,
+    #[serde(default)]
+    anchor_y: f64,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct Layout {
@@ -455,6 +460,15 @@ pub(crate) struct GridState {
     nodes: Vec<ViewportNode>,
     active: Vec<usize>,
     dimensions: (u32, u32),
+    // Grobs drawn with recording=TRUE. newpage(recording=FALSE) keeps this list.
+    #[serde(default)]
+    display_list: Vec<ListedGrob>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+struct ListedGrob {
+    name: String,
+    #[serde(default)]
+    children: Vec<ListedGrob>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct ViewportNode {
@@ -565,6 +579,8 @@ impl GridState {
         let scale = |f: &mut Frame| {
             f.width *= sx;
             f.height *= sy;
+            f.anchor_x *= sx;
+            f.anchor_y *= sy;
             f.matrix[0] *= sx;
             f.matrix[2] *= sx;
             f.matrix[4] *= sx;
@@ -609,6 +625,8 @@ impl GridState {
                 gp: Gp::default(),
                 layout: None,
                 name: None,
+                anchor_x: dims.0 as f64 / 2.,
+                anchor_y: dims.1 as f64 / 2.,
             };
             self.frames = vec![root.clone()];
             self.nodes = vec![ViewportNode {
@@ -627,6 +645,8 @@ impl Frame {
             && self.width >= 0.
             && self.height.is_finite()
             && self.height >= 0.
+            && self.anchor_x.is_finite()
+            && self.anchor_y.is_finite()
             && self.matrix.iter().all(|v| v.is_finite())
             && self
                 .scale
@@ -1248,6 +1268,8 @@ unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
             gp: gp(field(data, "gp"), &parent.gp),
             layout: None,
             name: None,
+            anchor_x: x,
+            anchor_y: y,
         };
         if f.matrix.iter().any(|v| !v.is_finite()) {
             base_error("viewport transform overflow");
@@ -1494,6 +1516,69 @@ fn current_name(state: &GridState) -> String {
     }
 }
 
+fn current_inches(state: &GridState) -> [f64; 4] {
+    let frame = state
+        .frames
+        .last()
+        .unwrap_or_else(|| base_error("viewport stack is empty"));
+    let (x_px, y_px) = if state.frames.len() == 1 {
+        (frame.anchor_x, frame.anchor_y)
+    } else {
+        let parent = &state.frames[state.frames.len() - 2];
+        let m = parent.matrix;
+        let x = m[0] * frame.anchor_x + m[2] * frame.anchor_y + m[4];
+        let y_down = m[1] * frame.anchor_x + m[3] * frame.anchor_y + m[5];
+        (x, state.dimensions.1 as f64 - y_down)
+    };
+    [
+        x_px / DPI,
+        y_px / DPI,
+        frame.width / DPI,
+        frame.height / DPI,
+    ]
+}
+
+fn append_listing(grob: &ListedGrob, depth: usize, out: &mut Vec<String>) {
+    let mut line = "  ".repeat(depth);
+    line.push_str(&grob.name);
+    out.push(line);
+    for child in &grob.children {
+        append_listing(child, depth + 1, out);
+    }
+}
+
+unsafe fn listed_grob(x: SEXP) -> ListedGrob {
+    unsafe {
+        if x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
+            base_error("grid.draw requires a grob");
+        }
+        let mut children = Vec::new();
+        let kids = field(x, "children");
+        if kids != R_NilValue() && TYPEOF(kids) == SEXPTYPE::VECSXP {
+            for i in 0..XLENGTH(kids) {
+                children.push(listed_grob(VECTOR_ELT(kids, i)));
+            }
+        }
+        ListedGrob {
+            name: string(field(x, "name"), ""),
+            children,
+        }
+    }
+}
+
+unsafe fn strings(values: &[String]) -> SEXP {
+    unsafe {
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as i64);
+        let _guard = crate::sexp::protect::protect(out);
+        for (i, value) in values.iter().enumerate() {
+            let text = std::ffi::CString::new(value.as_str())
+                .unwrap_or_else(|_| base_error("grid listing contains an embedded nul"));
+            SET_STRING_ELT(out, i as i64, Rf_mkChar(text.as_ptr()));
+        }
+        out
+    }
+}
+
 unsafe fn logical_flag(x: SEXP, default: bool) -> bool {
     unsafe {
         if x == R_NilValue() || XLENGTH(x) == 0 {
@@ -1532,8 +1617,15 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut returned = R_NilValue();
         match operation.as_str() {
             "newpage" => {
+                // recording=FALSE still clears the page; only the display list is kept.
+                let kept = if logical_flag(data, true) {
+                    Vec::new()
+                } else {
+                    std::mem::take(&mut state.display_list)
+                };
                 state = GridState::default();
                 state.ensure(dims);
+                state.display_list = kept;
                 (&mut *target).clear(Color::WHITE);
             }
             "push" => {
@@ -1685,6 +1777,15 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 returned = Rf_ScalarInteger(depth);
             }
             "current.name" => returned = mk_string(&current_name(&state)),
+            "current.inches" => returned = result(&current_inches(&state)),
+            "record" => state.display_list.push(listed_grob(data)),
+            "ls" => {
+                let mut lines = Vec::new();
+                for grob in &state.display_list {
+                    append_listing(grob, 0, &mut lines);
+                }
+                returned = strings(&lines);
+            }
             "current.path" => {
                 returned = match current_path(&state) {
                     Some(path) => mk_string(&path),
@@ -2275,6 +2376,7 @@ pub(crate) const EXPORTS: &[&str] = &[
     "current.viewport",
     "current.vpPath",
     "grid.newpage",
+    "grid.ls",
     "convertX",
     "convertY",
     "convertWidth",
@@ -2345,6 +2447,7 @@ fn grid_closure_source(name: &str) -> Option<&'static str> {
         "editDetails" => Some(include_str!("portable_grid/edit_details.R")),
         "current.viewport" => Some(include_str!("portable_grid/current_viewport.R")),
         "current.vpPath" => Some(include_str!("portable_grid/current_vp_path.R")),
+        "grid.ls" => Some(include_str!("portable_grid/grid_ls.R")),
         "stringWidth" => Some(include_str!("portable_grid/string_width.R")),
         "stringHeight" => Some(include_str!("portable_grid/string_height.R")),
         _ => None,
