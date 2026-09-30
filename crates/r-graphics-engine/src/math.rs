@@ -1,6 +1,17 @@
 //! Owned mathematical typesetting. Coordinates use a baseline and a downward Y axis.
 use crate::{DrawTarget, Path, PathCommand, PlotParameters, Point, Stroke, TextAnchor};
 
+/// One inch in the layout's unit. `dpi == 0` means `font_size` is in points,
+/// which is the font oracle. A device that stores font size in pixels also
+/// sets `dpi`, and an inch is then that many pixels.
+fn layout_inch(params: &PlotParameters) -> f32 {
+    if params.dpi > 0. {
+        params.dpi
+    } else {
+        72.
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum MathExpr {
     Text(String),
@@ -618,7 +629,7 @@ impl MathExpr {
                 let axis = target.measure_math_text("+", params).ascent / 2.;
                 let cap = target.measure_math_text("X", params).ascent;
                 // GNU R's rule thickness is .015 inches, independent of cex.
-                let theta = 0.015 * 72.;
+                let theta = 0.015 * layout_inch(params);
                 let (mut u, mut v, phi) = if context.level == 0 {
                     (
                         axis + 3.51 * theta
@@ -654,7 +665,7 @@ impl MathExpr {
                     out.marks.push(Mark::Line(
                         Point { x: 0., y: -axis },
                         Point { x: width, y: -axis },
-                        0.75,
+                        theta,
                     ));
                 }
                 out
@@ -710,7 +721,7 @@ impl MathExpr {
                     }
                 }
                 if let (Some(up), Some(down)) = (&upper, &lower)
-                    && u - up.descent - down.ascent + v < 4. * 0.015 * 72.
+                    && u - up.descent - down.ascent + v < 4. * 0.015 * layout_inch(params)
                 {
                     let psi = 0.8 * xh - (u - up.descent);
                     if psi > 0. {
@@ -1074,5 +1085,29 @@ mod tests {
         );
         assert!(l.width > 0.);
         assert!(l.marks.is_empty());
+    }
+
+    #[test]
+    fn fraction_rule_thickness_follows_device_dpi() {
+        // GNU's fraction rule is 0.015 inches. A 96 dpi device measures that
+        // as 1.44 pixels. Glyph size stays at font_size; only the rule changes.
+        let target = Scene::new(300, 200);
+        let expr = MathExpr::Fraction(
+            Box::new(MathExpr::Text("1".into())),
+            Box::new(MathExpr::Text("2".into())),
+        );
+        let layout = expr.layout(
+            &target,
+            &PlotParameters {
+                font_size: 16.,
+                dpi: 96.,
+                ..Default::default()
+            },
+        );
+        let width = layout.marks.iter().find_map(|mark| match mark {
+            Mark::Line(_, _, width) => Some(*width),
+            _ => None,
+        });
+        assert!((width.expect("fraction rule") - 0.015 * 96.).abs() < 1e-4);
     }
 }
