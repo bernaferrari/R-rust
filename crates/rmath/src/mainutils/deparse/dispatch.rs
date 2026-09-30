@@ -20,10 +20,26 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
         // GNU deparse.c: names(getClassDef(class)@slots), not the local
         // fallback setClass table. .S3Class formula objects have no .Data
         // slot; the language body is emitted via asS3() below.
-        let slots = crate::mainutils::objects::gnu_s4_slot_names(&class_name)
+        let has_s3_class = {
+            let s3_sym = Rf_install(c".S3Class".as_ptr());
+            let s3 = crate::sexp::attrib_core::getAttrib(s, s3_sym);
+            !s3.is_null() && s3 != R_NilValue()
+        };
+        let mut slots = crate::mainutils::objects::gnu_s4_slot_names(&class_name)
             .filter(|names| !names.is_empty())
             .or_else(|| crate::mainutils::objects::s4_all_slots(&class_name))
             .unwrap_or_else(|| s4_instance_slot_names(s));
+        // contains="list" (and other basic vectors) *are* the data part, so
+        // `.Data` is not an attribute. Class metadata can omit that name;
+        // formula subclasses carry `.S3Class` and must not grow a fake slot.
+        if TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int()
+            && !has_s3_class
+            && !slots
+                .iter()
+                .any(|slot| slot == ".Data" || slot == ".xData" || slot == ".S3Class")
+        {
+            slots.insert(0, ".Data".to_string());
+        }
         let has_data = slots.iter().any(|slot| slot == ".Data");
         let mut slot_values: Vec<(String, SEXP)> = Vec::new();
         for slot_name in &slots {
@@ -55,11 +71,6 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
         // GNU: non-S4SXP objects without a .Data slot also deparse asS3(s).
         // Restrict to `.S3Class` (formula/oldClass) so slot-only S4 objects
         // do not grow a trailing empty argument.
-        let has_s3_class = {
-            let s3_sym = Rf_install(c".S3Class".as_ptr());
-            let s3 = crate::sexp::attrib_core::getAttrib(s, s3_sym);
-            !s3.is_null() && s3 != R_NilValue()
-        };
         if has_s3_class && TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int() && !has_data {
             if let Some(s3) = s4_as_s3_view(s) {
                 print2buff(b", \0".as_ptr() as *const c_char, d);
@@ -102,6 +113,48 @@ unsafe fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
         };
         let name_sym = Rf_install(cname.as_ptr());
         let value = crate::mainutils::essentials::R_do_slot(s, name_sym);
+        // getDataPart(NULL.for.none=TRUE) returns NULL when the class def
+        // has no `.Data` slot, even though a list/atomic S4 object is that
+        // slot. A still-S4 result would recurse in deparse2buff.
+        if slot_name == ".Data"
+            && TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int()
+            && (value.is_null()
+                || value == R_NilValue()
+                || IS_S4_OBJECT(value) != 0)
+        {
+            let data = crate::mainutils::duplicate::duplicate(s);
+            if data.is_null() || data == R_NilValue() {
+                return Some(R_NilValue());
+            }
+            let _data = protect(data);
+            crate::sexp::accessors::UNSET_S4_OBJECT(data);
+            let dim = getAttrib(data, crate::sexp::attrib_core::R_DimSymbol());
+            let keep_dim = TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2;
+            if keep_dim {
+                let dimnames = getAttrib(data, crate::sexp::attrib_core::R_DimNamesSymbol());
+                let _dim = protect(dim);
+                let _dimnames = protect(dimnames);
+                SET_ATTRIB(data, R_NilValue());
+                if !dim.is_null() && dim != R_NilValue() {
+                    crate::sexp::attrib_core::setAttrib(
+                        data,
+                        crate::sexp::attrib_core::R_DimSymbol(),
+                        dim,
+                    );
+                }
+                if !dimnames.is_null() && dimnames != R_NilValue() {
+                    crate::sexp::attrib_core::setAttrib(
+                        data,
+                        crate::sexp::attrib_core::R_DimNamesSymbol(),
+                        dimnames,
+                    );
+                }
+            } else {
+                // GNU getDataPart for list/integer/numeric: attributes(object) <- NULL.
+                SET_ATTRIB(data, R_NilValue());
+            }
+            return Some(data);
+        }
         // GNU stores every class slot, including NULL (pseudo_NULL → Nil).
         if value.is_null() {
             Some(R_NilValue())
