@@ -131,3 +131,28 @@ fn final_s4_auto_print_matches_show_default() {
         "show side effect ran more than once: {incremented}"
     );
 }
+
+#[test]
+fn show_nine_distinct_objects_prints_every_level() {
+    // GNU R 4.6.1 prints L1 through L9 for nine nested show() methods.
+    let mut session = RSession::new().unwrap();
+    let out = session
+        .eval(
+            r#"
+            for (i in 1:9) setClass(paste0("C", i), slots = c(x = "numeric"))
+            for (i in 1:8) {
+                local({
+                    ii <- i
+                    setMethod("show", paste0("C", ii), function(object) {
+                        cat("L", ii, "\n", sep = "")
+                        show(new(paste0("C", ii + 1L), x = ii))
+                    })
+                })
+            }
+            setMethod("show", "C9", function(object) cat("L9\n"))
+            cat(paste(capture.output(show(new("C1", x = 1))), collapse = "\n"))
+            "#,
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(out.trim(), "L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9");
+}
