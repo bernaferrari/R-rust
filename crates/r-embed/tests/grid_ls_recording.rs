@@ -69,16 +69,26 @@ fn grid_ls_matches_gnu_listing_and_recording_false_omits_grobs() {
         grid.draw(grobTree(textGrob('hi', name='label'), rectGrob(name='box'), name='tree'))
         tree <- paste(capture.output(grid.ls()), collapse='\n')
 
-        blocked <- tryCatch(
-            pushViewport(viewport(name='nope'), recording=FALSE),
-            error=function(e) conditionMessage(e))
+        pushViewport(viewport(name='inner'), recording=FALSE)
+        pushed <- current.viewport()$name
+        popViewport(recording=FALSE)
+        popped <- current.viewport()$name
+        pushViewport(viewport(name='a'))
+        pushViewport(viewport(name='b'))
+        upViewport(1, recording=FALSE)
+        upn <- current.viewport()$name
+        downViewport('b', recording=FALSE)
+        downn <- current.viewport()$name
+        seekViewport('a', recording=FALSE)
+        seekn <- current.viewport()$name
+        nav <- paste(pushed, popped, upn, downn, seekn, sep='|')
 
         grid.newpage()
         grid.text('hi', name='label')
         grid.draw(rectGrob(name='painted', gp=gpar(fill='red')), recording=FALSE)
         final_ls <- paste(capture.output(grid.ls()), collapse='\n')
 
-        out <- paste(scene, length(empty_lines), empty_first, drawn_false, drawn_true, kept, still, tree, blocked, final_ls, sep='||')
+        out <- paste(scene, length(empty_lines), empty_first, drawn_false, drawn_true, kept, still, tree, nav, final_ls, sep='||')
     "#);
     assert_eq!(
         out,
@@ -91,7 +101,7 @@ fn grid_ls_matches_gnu_listing_and_recording_false_omits_grobs() {
             "label\nbox",
             "label\nbox",
             "tree\n  label\n  box",
-            "unrecorded grid operations are not supported",
+            "inner|ROOT|a|b|a",
             "label",
         ]
         .join("||")

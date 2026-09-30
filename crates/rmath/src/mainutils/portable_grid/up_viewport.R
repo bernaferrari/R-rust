@@ -1,5 +1,4 @@
 function(n=1, recording=TRUE) {
-  if (!isTRUE(recording)) stop('unrecorded grid operations are not supported')
   if (n < 0) stop('must navigate up at least one viewport')
   path <- .rport_grid('current.path', NULL)
   parts <- if (is.null(path) || !nzchar(path)) character() else strsplit(path, '::', fixed=TRUE)[[1L]]

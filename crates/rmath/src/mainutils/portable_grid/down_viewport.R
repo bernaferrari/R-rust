@@ -1,5 +1,4 @@
 function(name, strict=FALSE, recording=TRUE) {
-  if (!isTRUE(recording)) stop('unrecorded grid operations are not supported')
   name <- as.character(name)
   parts <- unlist(strsplit(name, '::', fixed=TRUE), use.names=FALSE)
   if (!length(parts) || anyNA(parts) || any(!nzchar(parts)))

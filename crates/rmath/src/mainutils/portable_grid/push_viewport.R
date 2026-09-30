@@ -1,5 +1,6 @@
 function(..., recording=TRUE) {
-  if (!isTRUE(recording)) stop('unrecorded grid operations are not supported')
+  # recording stays in the signature so GNU callers can pass FALSE.
+  # Navigation still updates the live stack; replay snapshots that stack.
   vs <- list(...)
   if (!length(vs)) stop('must specify at least one viewport')
   for (v in vs) {
