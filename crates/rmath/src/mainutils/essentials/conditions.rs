@@ -1748,6 +1748,13 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 let _ = crate::eval::eval::Rf_eval(finally_expr, rho);
             }
         };
+        // The result is not bound until tryCatch returns. `finally` may
+        // allocate and collect, so the value stays rooted across that eval.
+        let return_after_finally = |value: SEXP| {
+            let _guard = protect(value);
+            run_finally();
+            value
+        };
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(expr, rho)
@@ -1760,10 +1767,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         drop(_pop_guard);
 
         match result {
-            Ok(val) => {
-                run_finally();
-                val
-            }
+            Ok(val) => return_after_finally(val),
             Err(payload) => {
                 let payload = match payload.downcast::<crate::sexp::context::RSignal>() {
                     Ok(signal) => match *signal {
@@ -1778,8 +1782,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                                 let _cond_guard = protect(stashed);
                                 let call = crate::sexp::constructors::Rf_lang2(*handler, stashed);
                                 let handled = crate::eval::eval::Rf_eval(call, rho);
-                                run_finally();
-                                return handled;
+                                return return_after_finally(handled);
                             }
                             std::panic::resume_unwind(Box::new(
                                 crate::sexp::context::RSignal::Message { message: String::new(),
@@ -1804,8 +1807,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                                 let call =
                                     crate::sexp::constructors::Rf_lang2(*handler, condition);
                                 let handled = crate::eval::eval::Rf_eval(call, rho);
-                                run_finally();
-                                return handled;
+                                return return_after_finally(handled);
                             }
                             run_finally();
                             std::panic::resume_unwind(Box::new(
@@ -1867,8 +1869,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 let _cond_guard = protect(condition);
                 let call = crate::sexp::constructors::Rf_lang2(handler, condition);
                 let handled = crate::eval::eval::Rf_eval(call, rho);
-                run_finally();
-                handled
+                return_after_finally(handled)
             }
         }
 

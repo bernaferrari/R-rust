@@ -375,6 +375,59 @@ fn test_gc_after_allocations() {
     );
 }
 
+/// `tryCatch` returns its value only after `finally`. A collection inside
+/// `finally` must not free that value: the caller has not rooted it yet.
+/// The render wrapper is `result <- tryCatch(withVisible(...), finally=...)`
+/// followed by `inherits(result, "error")`.
+fn trycatch_flags(session: &mut crate::sexp::session::RSession, code: &str) -> (c_int, c_int) {
+    let (result, output, _) = session.eval_code_with_output_capture(code);
+    let stderr = output.stderr.clone();
+    let value = result.unwrap_or_else(|err| {
+        panic!("tryCatch result did not survive finally gc(): {err}\nstderr: {stderr}")
+    });
+    (
+        value.logical_elt(0).unwrap_or(-1),
+        value.logical_elt(1).unwrap_or(-1),
+    )
+}
+
+#[test]
+fn trycatch_result_survives_finally_collection() {
+    let mut session = crate::sexp::session::RSession::new_without_default_packages();
+
+    let (is_error, value_ok) = trycatch_flags(
+        &mut session,
+        r#"
+        local({
+          result <- tryCatch(
+            withVisible(1L),
+            error = function(e) e,
+            finally = gc()
+          )
+          c(inherits(result, "error"), identical(result$value, 1L))
+        })
+        "#,
+    );
+    assert_eq!(is_error, 0, "withVisible list is not an error condition");
+    assert_eq!(value_ok, 1, "withVisible value survived finally gc()");
+
+    let (is_error, value_ok) = trycatch_flags(
+        &mut session,
+        r#"
+        local({
+          result <- tryCatch(
+            stop("boom-finally"),
+            error = function(e) withVisible(7L),
+            finally = gc()
+          )
+          c(inherits(result, "error"), identical(result$value, 7L))
+        })
+        "#,
+    );
+    assert_eq!(is_error, 0);
+    assert_eq!(value_ok, 1, "handler withVisible value survived finally gc()");
+}
+
 // ---------------------------------------------------------------------------
 // Math comparison against known R values
 // ---------------------------------------------------------------------------
