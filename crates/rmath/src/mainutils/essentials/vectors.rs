@@ -1133,20 +1133,27 @@ unsafe fn head_tail_n(n_arg: SEXP) -> i64 {
             return 6;
         }
         let kind = TYPEOF(n_arg);
-        let atomic = kind == SEXPTYPE::LGLSXP
-            || kind == SEXPTYPE::INTSXP
-            || kind == SEXPTYPE::REALSXP
-            || kind == SEXPTYPE::CPLXSXP
-            || kind == SEXPTYPE::STRSXP
-            || kind == SEXPTYPE::RAWSXP;
-        if !atomic {
-            base_error("invalid 'n' - must be numeric, possibly NA.");
-        }
         let nlen = XLENGTH(n_arg);
         if nlen == 0 || head_tail_n_all_missing(n_arg, kind, nlen) {
             base_error("invalid 'n' - must contain at least one non-missing element, got none.");
         }
-        if kind != SEXPTYPE::LGLSXP && kind != SEXPTYPE::INTSXP && kind != SEXPTYPE::REALSXP {
+        // is.numeric() || is.logical(). is.logical does not dispatch.
+        // is.numeric rejects factors and the Date/POSIXt/difftime methods.
+        let numeric_or_logical = if kind == SEXPTYPE::LGLSXP {
+            true
+        } else if kind == SEXPTYPE::INTSXP {
+            crate::mainutils::objects::inherits2(n_arg, c"factor".as_ptr()) == 0
+                && crate::mainutils::objects::inherits2(n_arg, c"Date".as_ptr()) == 0
+                && crate::mainutils::objects::inherits2(n_arg, c"POSIXt".as_ptr()) == 0
+                && crate::mainutils::objects::inherits2(n_arg, c"difftime".as_ptr()) == 0
+        } else if kind == SEXPTYPE::REALSXP {
+            crate::mainutils::objects::inherits2(n_arg, c"Date".as_ptr()) == 0
+                && crate::mainutils::objects::inherits2(n_arg, c"POSIXt".as_ptr()) == 0
+                && crate::mainutils::objects::inherits2(n_arg, c"difftime".as_ptr()) == 0
+        } else {
+            false
+        };
+        if !numeric_or_logical {
             base_error("invalid 'n' - must be numeric, possibly NA.");
         }
         real_or_default(n_arg, 6.0) as i64
@@ -1176,6 +1183,46 @@ unsafe fn head_tail_n_all_missing(n_arg: SEXP, kind: c_int, nlen: R_xlen_t) -> b
             for i in 0..nlen {
                 let elt = STRING_ELT(n_arg, i);
                 if !elt.is_null() && elt != na {
+                    return false;
+                }
+            }
+            true
+        } else if kind == SEXPTYPE::CPLXSXP {
+            let data = COMPLEX(n_arg);
+            for i in 0..nlen as usize {
+                let z = *data.add(i);
+                if !z.r.is_nan() && !z.i.is_nan() {
+                    return false;
+                }
+            }
+            true
+        } else if kind == SEXPTYPE::VECSXP {
+            // all(is.na(list)): an element is missing only as a length-1 atomic NA.
+            for i in 0..nlen {
+                let elt = VECTOR_ELT(n_arg, i);
+                let missing = if elt.is_null()
+                    || elt == R_NilValue()
+                    || !SEXPTYPE(TYPEOF(elt)).is_vector_type()
+                    || XLENGTH(elt) != 1
+                {
+                    false
+                } else {
+                    let ek = TYPEOF(elt);
+                    if ek == SEXPTYPE::LGLSXP || ek == SEXPTYPE::INTSXP {
+                        *INTEGER(elt) == NA_INTEGER
+                    } else if ek == SEXPTYPE::REALSXP {
+                        (*REAL(elt)).is_nan()
+                    } else if ek == SEXPTYPE::STRSXP {
+                        let s = STRING_ELT(elt, 0);
+                        !s.is_null() && s == crate::sexp::globals::R_NaString()
+                    } else if ek == SEXPTYPE::CPLXSXP {
+                        let z = *COMPLEX(elt);
+                        z.r.is_nan() || z.i.is_nan()
+                    } else {
+                        false
+                    }
+                };
+                if !missing {
                     return false;
                 }
             }
@@ -1720,12 +1767,15 @@ mod head_tail_n_tests {
     use std::ffi::{CStr, CString};
     use std::panic::AssertUnwindSafe;
 
-    use crate::sexp::accessors::{CHAR, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH};
+    use crate::sexp::accessors::{
+        CHAR, COMPLEX, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF, XLENGTH,
+    };
     use crate::sexp::constructors::{
-        Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocVector3, Rf_cons, Rf_mkChar, Rf_mkString,
+        Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
+        Rf_mkString,
     };
     use crate::sexp::context::RError;
-    use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE, TRUE};
+    use crate::sexp::ffi::{NA_INTEGER, NA_REAL, SEXP, SEXPTYPE, TRUE};
     use crate::sexp::globals::{R_NaString, R_NilValue};
     use crate::sexp::protect::protect;
 
@@ -1823,11 +1873,151 @@ mod head_tail_n_tests {
         }
     }
 
+    unsafe fn scalar_complex(re: f64, im: f64) -> SEXP {
+        let z = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
+        let data = COMPLEX(z);
+        (*data).r = re;
+        (*data).i = im;
+        z
+    }
+
+    unsafe fn classed(x: SEXP, classes: &[&str]) -> SEXP {
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, classes.len() as i64);
+        let _class = protect(class);
+        for (i, name) in classes.iter().enumerate() {
+            let cs = CString::new(*name).unwrap();
+            SET_STRING_ELT(class, i as i64, Rf_mkChar(cs.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
+        x
+    }
+
+    unsafe fn list_of(elts: &[SEXP]) -> SEXP {
+        let v = Rf_allocVector3(SEXPTYPE::VECSXP, elts.len() as i64);
+        for (i, elt) in elts.iter().enumerate() {
+            SET_VECTOR_ELT(v, i as i64, *elt);
+        }
+        v
+    }
+
+    /// GNU R 4.6.1 `utils:::.checkHT` on the head/tail builtins.
+    unsafe fn builtin_missing_and_class_report() -> String {
+        unsafe {
+            let letters = letters_vector();
+            let _letters = protect(letters);
+            let mut lines = Vec::new();
+            let mut pair = |label: &str, n: SEXP| unsafe {
+                let _n = protect(n);
+                lines.push(format!("head_{label}={}", call_ht("head", letters, n)));
+                lines.push(format!("tail_{label}={}", call_ht("tail", letters, n)));
+            };
+
+            pair("na_cplx", scalar_complex(NA_REAL, NA_REAL));
+            pair("cplx_re_na", scalar_complex(NA_REAL, 1.0));
+            pair("cplx_im_na", scalar_complex(1.0, NA_REAL));
+            pair("cplx_re_nan", scalar_complex(f64::NAN, 0.0));
+            pair("cplx_im_nan", scalar_complex(0.0, f64::NAN));
+            let both = Rf_allocVector3(SEXPTYPE::CPLXSXP, 2);
+            let _both = protect(both);
+            let data = COMPLEX(both);
+            (*data).r = NA_REAL;
+            (*data).i = NA_REAL;
+            (*data.add(1)).r = NA_REAL;
+            (*data.add(1)).i = NA_REAL;
+            pair("cplx_pair", both);
+            pair("cplx_one", scalar_complex(1.0, 0.0));
+
+            pair("list0", Rf_allocVector3(SEXPTYPE::VECSXP, 0));
+            let na_lgl = Rf_ScalarLogical(NA_INTEGER);
+            let _na_lgl = protect(na_lgl);
+            pair("list_na", list_of(&[na_lgl]));
+            let na_chr = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            let _na_chr = protect(na_chr);
+            SET_STRING_ELT(na_chr, 0, R_NaString());
+            pair("list_na_chr", list_of(&[na_chr]));
+            pair("list_na_pair", list_of(&[na_lgl, na_chr]));
+            let one = Rf_ScalarReal(1.0);
+            let _one = protect(one);
+            pair("list_one", list_of(&[one]));
+
+            pair("expr0", Rf_allocVector3(SEXPTYPE::EXPRSXP, 0));
+            let expr_na = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
+            let _expr_na = protect(expr_na);
+            SET_VECTOR_ELT(expr_na, 0, na_lgl);
+            pair("expr_na", expr_na);
+
+            pair("factor3", classed(Rf_ScalarInteger(3), &["factor"]));
+            pair(
+                "ordered3",
+                classed(Rf_ScalarInteger(3), &["ordered", "factor"]),
+            );
+            pair("date", classed(Rf_ScalarReal(3.0), &["Date"]));
+            pair(
+                "posixct",
+                classed(Rf_ScalarReal(3.0), &["POSIXct", "POSIXt"]),
+            );
+            pair("int_date", classed(Rf_ScalarInteger(3), &["Date"]));
+            pair("foo", classed(Rf_ScalarInteger(3), &["foo"]));
+            pair(
+                "factor_na",
+                classed(Rf_ScalarInteger(NA_INTEGER), &["factor"]),
+            );
+            pair("date_na", classed(Rf_ScalarReal(NA_REAL), &["Date"]));
+            pair("lgl_date", classed(Rf_ScalarLogical(TRUE), &["Date"]));
+            pair("difftime", classed(Rf_ScalarReal(3.0), &["difftime"]));
+
+            lines.join("\n")
+        }
+    }
+
+    fn expected_builtin_missing_and_class_report() -> String {
+        let miss = "ERR:invalid 'n' - must contain at least one non-missing element, got none.";
+        let num = "ERR:invalid 'n' - must be numeric, possibly NA.";
+        let rows = [
+            ("na_cplx", miss),
+            ("cplx_re_na", miss),
+            ("cplx_im_na", miss),
+            ("cplx_re_nan", miss),
+            ("cplx_im_nan", miss),
+            ("cplx_pair", miss),
+            ("cplx_one", num),
+            ("list0", miss),
+            ("list_na", miss),
+            ("list_na_chr", miss),
+            ("list_na_pair", miss),
+            ("list_one", num),
+            ("expr0", miss),
+            ("expr_na", num),
+            ("factor3", num),
+            ("ordered3", num),
+            ("date", num),
+            ("posixct", num),
+            ("int_date", num),
+            ("foo", "OK"),
+            ("factor_na", miss),
+            ("date_na", miss),
+            ("lgl_date", "OK"),
+            ("difftime", num),
+        ];
+        let mut lines = Vec::new();
+        for (label, msg) in rows {
+            let (head, tail) = match msg {
+                "OK" if label == "foo" => ("OK:len=3:a,b,c", "OK:len=3:x,y,z"),
+                "OK" => ("OK:len=1:a", "OK:len=1:z"),
+                _ => (msg, msg),
+            };
+            lines.push(format!("head_{label}={head}"));
+            lines.push(format!("tail_{label}={tail}"));
+        }
+        lines.join("\n")
+    }
+
     #[test]
     fn head_tail_rejects_non_numeric_n() {
         // GNU R 4.6.1 utils:::.checkHT (reg-tests-1e.R PR#18357).
         let mut session = crate::sexp::session::RSession::new();
         let direct = unsafe { direct_report() };
+        let extra = unsafe { builtin_missing_and_class_report() };
         let r_level = session.eval_script_with_output_capture_then(
             r#"paste(c(
                 tryCatch(paste(head(letters, "3"), collapse=","), error=function(e) conditionMessage(e)),
@@ -1843,8 +2033,10 @@ mod head_tail_n_tests {
                 Err(err) => format!("EVAL_ERR:{} stderr:{}", err.message, output.stderr),
             },
         );
-        let report = format!("r={r_level}\n{direct}");
-        let expected = "\
+        let report = format!("r={r_level}\n{direct}\n{extra}");
+        let expected = format!(
+            "{}\n{}",
+            "\
 r=len=1:invalid 'n' - must be numeric, possibly NA.|invalid 'n' - must be numeric, possibly NA.|a|z|a,b,c|invalid 'n' - must contain at least one non-missing element, got none.|invalid 'n' - must contain at least one non-missing element, got none.
 head_chr=ERR:invalid 'n' - must be numeric, possibly NA.
 tail_chr=ERR:invalid 'n' - must be numeric, possibly NA.
@@ -1852,7 +2044,9 @@ head_true=OK:len=1:a
 tail_true=OK:len=1:z
 head_3=OK:len=3:a,b,c
 head_na=ERR:invalid 'n' - must contain at least one non-missing element, got none.
-tail_na=ERR:invalid 'n' - must contain at least one non-missing element, got none.";
+tail_na=ERR:invalid 'n' - must contain at least one non-missing element, got none.",
+            expected_builtin_missing_and_class_report()
+        );
         assert_eq!(report, expected);
     }
 }
