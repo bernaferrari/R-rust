@@ -130,21 +130,93 @@ fn named_gpath_get_and_edit_copy_nested_gtrees() {
     let result = session
         .eval("library(grid); g <- gTree(children=gList(gTree(children=gList(rectGrob(name='leaf')), name='inner')), name='root'); before <- serialize(g, NULL); h <- editGrob(g, gPath('inner','leaf'), gp=gpar(col='blue')); identical(serialize(g, NULL), before) && identical(getGrob(h, gPath('inner','leaf'))$gp$col, 'blue')")
         .unwrap();
-    assert_eq!(result, "[1] TRUE");
+    assert_eq!(result.trim(), "[1] TRUE");
 }
 
 #[test]
-fn named_gpath_rejects_unsupported_matching_modes() {
+fn grep_and_global_gpath_match_gnu_names() {
+    // GNU R 4.6.1. grep is a regular expression, recycled to one flag per
+    // path component. global keeps going after the first hit. strict stays
+    // on the direct children. A miss warns and returns the original grob.
+    // getGrob is NULL when nothing matches, the grob for one match, and a
+    // gList when several match. editGrob does not modify its input.
     let mut session = RSession::new().unwrap();
-    assert!(
-        session
-            .eval("library(grid); g <- gTree(); getGrob(g, 'x', grep=TRUE)")
-            .is_err()
-    );
-    assert!(
-        session
-            .eval("library(grid); g <- gTree(); editGrob(g, 'x', global=TRUE)")
-            .is_err()
+    let out = session
+        .eval(
+            r#"
+            library(grid)
+            g <- gTree(name='tree', children=gList(
+                textGrob('a', name='label'),
+                rectGrob(name='box'),
+                gTree(name='inner', children=gList(circleGrob(name='dot'), textGrob('b', name='lab2')))
+            ))
+            col1 <- function(x) if (is.null(x) || !length(x)) '.' else as.character(x)[1L]
+            cols <- function(x) paste(c(
+                col1(x$children$label$gp$col),
+                col1(x$children$box$gp$col),
+                col1(x$children$inner$children$dot$gp$col),
+                col1(x$children$inner$children$lab2$gp$col)
+            ), collapse=',')
+            run <- function(expr) {
+                expr <- substitute(expr)
+                warn <- ''
+                out <- withCallingHandlers(
+                    tryCatch(eval(expr), error=function(e) paste0('ERR:', e$message)),
+                    warning=function(w) { warn <<- conditionMessage(w); invokeRestart('muffleWarning') }
+                )
+                body <- if (inherits(out, 'grob')) cols(out) else if (is.null(out)) 'NULL' else paste(out, collapse=',')
+                paste0(body, '~', warn)
+            }
+            gnames <- function(z) if (is.null(z)) 'NULL' else if (inherits(z, 'gList')) paste(vapply(z, function(k) k$name, character(1)), collapse=',') else z$name
+            before <- serialize(g, NULL)
+            out <- paste(
+                run(editGrob(g, gPath='lab', grep=TRUE, global=FALSE, gp=gpar(col='red'))),
+                run(editGrob(g, gPath='lab', grep=TRUE, global=TRUE, gp=gpar(col='red'))),
+                run(editGrob(g, gPath='^lab', grep=TRUE, global=TRUE, gp=gpar(col='red'))),
+                run(editGrob(g, gPath='label|dot', grep=TRUE, global=TRUE, gp=gpar(col='red'))),
+                run(editGrob(g, gPath='nope', grep=TRUE, gp=gpar(col='red'))),
+                run(editGrob(g, gPath='dot', grep=TRUE, strict=TRUE, gp=gpar(col='red'))),
+                run(editGrob(g, gPath='inner::d', grep=TRUE, global=FALSE, gp=gpar(col='purple'))),
+                run(editGrob(g, gPath='label', global=TRUE, gp=gpar(col='blue'))),
+                run(editGrob(g, gPath='inner::d', grep=c(TRUE, FALSE), gp=gpar(col='purple'))),
+                run(editGrob(g, gPath='inner::d', grep=c(FALSE, TRUE), gp=gpar(col='purple'))),
+                run(editGrob(g, gPath='i::d', grep=c(TRUE, TRUE), gp=gpar(col='purple'))),
+                gnames(getGrob(g, 'lab', grep=TRUE, global=TRUE)),
+                gnames(getGrob(g, 'lab', grep=TRUE, global=FALSE)),
+                gnames(getGrob(g, 'nope', grep=TRUE)),
+                gnames(getGrob(g, 'dot', grep=TRUE, strict=TRUE)),
+                gnames(getGrob(g, 'dot', grep=TRUE)),
+                identical(serialize(g, NULL), before),
+                sep='||'
+            )
+            cat(out)
+            "#,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+    assert_eq!(
+        out,
+        [
+            "red,.,.,.~",
+            "red,.,.,red~",
+            "red,.,.,red~",
+            "red,.,red,.~",
+            ".,.,.,.~'gPath' (nope) not found",
+            ".,.,.,.~'gPath' (dot) not found",
+            ".,.,purple,.~",
+            "blue,.,.,.~",
+            ".,.,.,.~'gPath' (inner::d) not found",
+            ".,.,purple,.~",
+            ".,.,purple,.~",
+            "label,lab2",
+            "label",
+            "NULL",
+            "NULL",
+            "dot",
+            "TRUE",
+        ]
+        .join("||")
     );
 }
 

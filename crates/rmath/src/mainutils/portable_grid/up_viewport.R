@@ -1,17 +1,19 @@
 function(n=1, recording=TRUE) {
   if (n < 0) stop('must navigate up at least one viewport')
-  # as.integer truncates toward 0. A positive count that becomes 0 still
-  # moves one viewport; exact 0 means the whole stack and is left unchanged.
-  if (n > 0) n <- max(1L, as.integer(n))
+  # The recorded count is the argument, except exact 0 which records the
+  # depth. The move uses as.integer, and a positive truncation to 0 still
+  # moves one viewport. The returned path is the viewports that were left.
   path <- .rport_grid('current.path', NULL)
   parts <- if (is.null(path) || !nzchar(path)) character() else strsplit(path, '::', fixed=TRUE)[[1L]]
   depth <- length(parts)
-  if (n == 0) n <- depth
+  recorded <- if (n == 0) depth else n
+  nav <- if (n == 0) depth else if (n > 0) max(1L, as.integer(n)) else n
   upPath <- NULL
-  if (n > 0) {
-    if (n > depth) stop("cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)")
-    upPath <- structure(paste(parts[(depth - n + 1L):depth], collapse='::'), class=c('vpPath','path'))
-    .rport_grid('up', as.integer(n))
+  if (nav > 0) {
+    if (nav > depth) stop("cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)")
+    upPath <- structure(paste(parts[(depth - nav + 1L):depth], collapse='::'), class=c('vpPath','path'))
+    .rport_grid('up', as.integer(nav))
+    if (isTRUE(recording)) .rport_grid('record.up', recorded)
   }
   invisible(upPath)
 }

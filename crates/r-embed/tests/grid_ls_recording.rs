@@ -252,3 +252,164 @@ fn grid_ls_full_names_print_class_and_name() {
         "label\nbox||text[label]\nrect[box]||gTree[tree]\n  text[label]\n  rect[box]"
     );
 }
+
+#[test]
+fn grid_ls_viewports_follow_gnu_display_list() {
+    // GNU R 4.6.1 grid.ls(viewports=TRUE) prints ROOT and the recorded
+    // viewport operations around the grobs. fullNames uses class[name].
+    // A push with recording=FALSE is absent. A grob vp stays seekable.
+    let mut session = RSession::new().unwrap();
+    let out = report(
+        &mut session,
+        r#"
+        library(grid)
+        grid.newpage()
+        grid.text('hi', name='label')
+        grid.rect(name='box')
+        root_full <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        root_bare <- paste(capture.output(grid.ls(viewports=TRUE)), collapse='\n')
+
+        grid.newpage()
+        empty <- paste(capture.output(grid.ls(viewports=TRUE)), collapse='\n')
+
+        grid.newpage()
+        pushViewport(viewport(name='a'))
+        grid.text('t', name='label')
+        popViewport()
+        grid.rect(name='box')
+        popped <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+
+        grid.newpage()
+        pushViewport(viewport(name='a'))
+        pushViewport(viewport(name='b'))
+        grid.text('t', name='label')
+        upViewport(0)
+        grid.rect(name='box')
+        up <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+
+        grid.newpage()
+        pushViewport(viewport(name='a'))
+        pushViewport(viewport(name='b'))
+        grid.text('t', name='label')
+        seekViewport('a')
+        grid.rect(name='box')
+        seek <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+
+        grid.newpage()
+        pushViewport(viewport(name='a'))
+        pushViewport(viewport(name='b'))
+        upViewport(0)
+        downViewport('a::b')
+        grid.circle(name='dot')
+        down <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+
+        grid.newpage()
+        grid.draw(grobTree(textGrob('t', name='label', vp=viewport(name='panel')), rectGrob(name='box'), name='tree'))
+        tree <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        tree_plain <- paste(capture.output(grid.ls()), collapse='\n')
+
+        grid.newpage()
+        pushViewport(viewport(name='a'), recording=FALSE)
+        grid.text('t', name='label')
+        hidden <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+
+        grid.newpage()
+        pushViewport(viewport(name='a'))
+        grid.text('t', name='label')
+        grobs_off <- paste(capture.output(grid.ls(grobs=FALSE, viewports=TRUE, fullNames=TRUE)), collapse='\n')
+
+        grid.newpage()
+        grid.draw(textGrob('t', name='label', vp=viewport(name='panel')))
+        grob_vp <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        seekable <- tryCatch({ downViewport('panel'); current.viewport()$name }, error=function(e) paste0('ERR:', e$message))
+
+        out <- paste(root_full, root_bare, empty, popped, up, seek, down, tree, tree_plain, hidden, grobs_off, grob_vp, seekable, sep='||')
+        "#,
+    );
+    assert_eq!(
+        out,
+        [
+            "viewport[ROOT]\n  text[label]\n  rect[box]",
+            "ROOT\n  label\n  box",
+            "ROOT",
+            "viewport[ROOT]\n  viewport[a]\n    text[label]\n    popViewport[1]\n  rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      text[label]\n      upViewport[2]\n  rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      text[label]\n      upViewport[2]\n  downViewport[a]\n    rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      upViewport[2]\n  downViewport[a]\n    downViewport[b]\n      circle[dot]",
+            "viewport[ROOT]\n  gTree[tree]\n    viewport[panel]\n      text[label]\n      upViewport[1]\n    rect[box]",
+            "tree\n  label\n  box",
+            "viewport[ROOT]\n  text[label]",
+            "viewport[ROOT]\n  viewport[a]",
+            "viewport[ROOT]\n  viewport[panel]\n    text[label]\n    upViewport[1]",
+            "panel",
+        ]
+        .join("||")
+    );
+}
+
+#[test]
+fn grid_ls_records_fractional_counts_and_the_path_down_walked() {
+    // GNU R 4.6.1 records the number the user passed. popViewport(0) and
+    // upViewport(0) record the depth instead. The following grob's indent
+    // subtracts that recorded number, while navigation still truncates
+    // toward 0. A non-strict downViewport records every viewport entered.
+    let mut session = RSession::new().unwrap();
+    let out = report(
+        &mut session,
+        r#"
+        library(grid)
+        show <- function(expr) {
+            grid.newpage()
+            pushViewport(viewport(name='a'))
+            pushViewport(viewport(name='b'))
+            pushViewport(viewport(name='c'))
+            pushViewport(viewport(name='d'))
+            eval(expr)
+            grid.rect(name='box')
+            paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        }
+        grid.newpage()
+        pushViewport(viewport(name='a'))
+        popViewport(0.1)
+        grid.rect(name='box')
+        bare <- paste(capture.output(grid.ls(viewports=TRUE)), collapse='\n')
+        grid.newpage()
+        pushViewport(viewport(name='a'))
+        pushViewport(viewport(name='b'))
+        pushViewport(viewport(name='c'))
+        upViewport(0)
+        downViewport('c')
+        grid.circle(name='dot')
+        down <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        out <- paste(
+            show(quote(popViewport(0.1))),
+            show(quote(popViewport(1.9))),
+            show(quote(popViewport(2.1))),
+            show(quote(popViewport(0))),
+            show(quote(upViewport(0.1))),
+            show(quote(upViewport(1.9))),
+            show(quote(upViewport(2.1))),
+            show(quote(upViewport(0))),
+            bare,
+            down,
+            sep='||'
+        )
+        "#,
+    );
+    assert_eq!(
+        out,
+        [
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      viewport[c]\n        viewport[d]\n          popViewport[0.1]\n        rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      viewport[c]\n        viewport[d]\n          popViewport[1.9]\n      rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      viewport[c]\n        viewport[d]\n          popViewport[2.1]\n    rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      viewport[c]\n        viewport[d]\n          popViewport[4]\n  rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      viewport[c]\n        viewport[d]\n          upViewport[0.1]\n        rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      viewport[c]\n        viewport[d]\n          upViewport[1.9]\n      rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      viewport[c]\n        viewport[d]\n          upViewport[2.1]\n    rect[box]",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      viewport[c]\n        viewport[d]\n          upViewport[4]\n  rect[box]",
+            "ROOT\n  a\n    0.1\n  box",
+            "viewport[ROOT]\n  viewport[a]\n    viewport[b]\n      viewport[c]\n        upViewport[3]\n  downViewport[a]\n    downViewport[b]\n      downViewport[c]\n        circle[dot]",
+        ]
+        .join("||")
+    );
+}

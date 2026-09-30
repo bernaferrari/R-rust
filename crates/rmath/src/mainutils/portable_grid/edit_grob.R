@@ -3,13 +3,11 @@ function(grob, gPath = NULL, ..., strict = FALSE, grep = FALSE,
     caller <- parent.frame()
     specs <- list(...)
     if (!is.logical(strict) || length(strict) != 1L ||
-        !is.logical(grep) || length(grep) != 1L ||
+        !is.logical(grep) || !length(grep) ||
         !is.logical(global) || length(global) != 1L ||
         !is.logical(warn) || length(warn) != 1L)
         stop("unsupported gPath matching options")
-    if (isTRUE(grep) || isTRUE(global))
-        stop("grep and global gPath matching are not supported")
-    if (is.na(strict) || is.na(grep) || is.na(global) || is.na(warn)) stop("invalid matching option")
+    if (anyNA(strict) || anyNA(grep) || anyNA(global) || anyNA(warn)) stop("invalid matching option")
     if (!inherits(grob, "grob")) stop("invalid grob")
     if (length(specs) && (is.null(names(specs)) || any(!nzchar(names(specs)))))
         stop("all grob edits must be named")
@@ -113,27 +111,32 @@ function(grob, gPath = NULL, ..., strict = FALSE, grep = FALSE,
         stop("invalid 'gPath'")
     names <- c(if (!is.null(gPath$path)) strsplit(gPath$path, "::", fixed = TRUE)[[1L]],
                gPath$name)
+    # GNU recycles grep to one flag per path component. A true flag is grepl.
+    use_grep <- rep(grep, length.out = length(names))
+    name_matches <- function(pattern, value, use_grep) {
+        if (is.null(value) || !nzchar(value)) return(FALSE)
+        if (isTRUE(use_grep)) isTRUE(grepl(pattern, value)) else identical(as.character(pattern), value)
+    }
     edit_path <- function(tree, index) {
         if (!inherits(tree, "gTree")) return(NULL)
         children <- structure(lapply(tree$children, identity), names = names(tree$children), class = class(tree$children))
-        name <- names[[index]]
-        child <- children[[name]]
         changed <- FALSE
-        if (!is.null(child)) {
-            nested <- if (index == length(names)) edit_one(child) else edit_path(child, index + 1L)
-            if (!is.null(nested)) {
-                children[[name]] <- nested
-                changed <- TRUE
+        pattern <- names[[index]]
+        use <- use_grep[[index]]
+        last <- index == length(names)
+        for (i in seq_along(children)) {
+            child <- children[[i]]
+            child_name <- if (is.null(child$name)) "" else child$name
+            nested <- NULL
+            if (name_matches(pattern, child_name, use)) {
+                nested <- if (last) edit_one(child) else edit_path(child, index + 1L)
+            } else if (!isTRUE(strict) && index == 1L) {
+                nested <- edit_path(child, 1L)
             }
-        }
-        if (!changed && !isTRUE(strict) && index == 1L) {
-            for (i in seq_along(children)) {
-                nested <- edit_path(children[[i]], 1L)
-                if (!is.null(nested)) {
-                    children[[i]] <- nested
-                    changed <- TRUE
-                    break
-                }
+            if (!is.null(nested)) {
+                children[[i]] <- nested
+                changed <- TRUE
+                if (!isTRUE(global)) break
             }
         }
         if (!changed) return(NULL)

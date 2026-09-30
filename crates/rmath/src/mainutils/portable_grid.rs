@@ -462,7 +462,7 @@ pub(crate) struct GridState {
     dimensions: (u32, u32),
     // Grobs drawn with recording=TRUE. newpage(recording=FALSE) keeps this list.
     #[serde(default)]
-    display_list: Vec<ListedGrob>,
+    display_list: Vec<DlEntry>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct ListedGrob {
@@ -470,8 +470,20 @@ struct ListedGrob {
     // First class, so fullNames can print text[label]. Old recordings omit it.
     #[serde(default)]
     class_name: String,
+    // Viewport drawn with this grob. Empty means the grob has no vp slot.
+    #[serde(default)]
+    vp_name: String,
     #[serde(default)]
     children: Vec<ListedGrob>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+enum DlEntry {
+    Grob { grob: ListedGrob },
+    Push { name: String },
+    Pop { n: f64 },
+    Up { n: f64 },
+    Down { name: String },
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct ViewportNode {
@@ -1550,19 +1562,137 @@ fn current_inches(state: &GridState) -> [f64; 4] {
     ]
 }
 
-fn append_listing(grob: &ListedGrob, depth: usize, full_names: bool, out: &mut Vec<String>) {
-    let mut line = "  ".repeat(depth);
-    if full_names && !grob.class_name.is_empty() {
-        line.push_str(&grob.class_name);
-        line.push('[');
-        line.push_str(&grob.name);
-        line.push(']');
+fn listing_indent(depth: f64) -> String {
+    // R's rep() truncates a fractional depth toward 0.
+    let steps = if depth.is_finite() && depth > 0. {
+        depth.trunc() as usize
     } else {
-        line.push_str(&grob.name);
+        0
+    };
+    "  ".repeat(steps)
+}
+
+fn listing_count(n: f64) -> String {
+    if n.is_finite() && n.fract() == 0. && n.abs() < 1e15 {
+        format!("{}", n as i64)
+    } else {
+        format!("{n}")
     }
-    out.push(line);
+}
+
+fn listing_label(class_name: &str, name: &str, full_names: bool) -> String {
+    if full_names {
+        format!("{class_name}[{name}]")
+    } else {
+        name.to_string()
+    }
+}
+
+fn retreat_listing_depth(depth: &mut f64, n: f64) {
+    // The printed count is subtracted as a real number. Integer pops land on
+    // an integer depth; popViewport(0.1) from depth 5 leaves 4.9, which
+    // indents like 4.
+    *depth -= n;
+}
+
+fn append_listing(
+    grob: &ListedGrob,
+    depth: f64,
+    full_names: bool,
+    viewports: bool,
+    out: &mut Vec<String>,
+) {
+    if viewports && !grob.vp_name.is_empty() {
+        out.push(format!(
+            "{}{}",
+            listing_indent(depth),
+            listing_label("viewport", &grob.vp_name, full_names)
+        ));
+        append_grob_line(grob, depth + 1., full_names, viewports, out);
+        out.push(format!(
+            "{}{}",
+            listing_indent(depth + 1.),
+            listing_label("upViewport", "1", full_names)
+        ));
+    } else {
+        append_grob_line(grob, depth, full_names, viewports, out);
+    }
+}
+
+fn append_grob_line(
+    grob: &ListedGrob,
+    depth: f64,
+    full_names: bool,
+    viewports: bool,
+    out: &mut Vec<String>,
+) {
+    let label = if full_names && !grob.class_name.is_empty() {
+        listing_label(&grob.class_name, &grob.name, true)
+    } else {
+        grob.name.clone()
+    };
+    out.push(format!("{}{label}", listing_indent(depth)));
     for child in &grob.children {
-        append_listing(child, depth + 1, full_names, out);
+        append_listing(child, depth + 1., full_names, viewports, out);
+    }
+}
+
+fn append_display_list(
+    entries: &[DlEntry],
+    full_names: bool,
+    viewports: bool,
+    grobs: bool,
+    out: &mut Vec<String>,
+) {
+    if viewports {
+        out.push(listing_label("viewport", "ROOT", full_names));
+        let mut depth = 1.0_f64;
+        for entry in entries {
+            match entry {
+                DlEntry::Grob { grob } if grobs => {
+                    append_listing(grob, depth, full_names, true, out);
+                }
+                DlEntry::Grob { .. } => {}
+                DlEntry::Push { name } => {
+                    out.push(format!(
+                        "{}{}",
+                        listing_indent(depth),
+                        listing_label("viewport", name, full_names)
+                    ));
+                    depth += 1.;
+                }
+                DlEntry::Pop { n } => {
+                    out.push(format!(
+                        "{}{}",
+                        listing_indent(depth),
+                        listing_label("popViewport", &listing_count(*n), full_names)
+                    ));
+                    retreat_listing_depth(&mut depth, *n);
+                }
+                DlEntry::Up { n } => {
+                    out.push(format!(
+                        "{}{}",
+                        listing_indent(depth),
+                        listing_label("upViewport", &listing_count(*n), full_names)
+                    ));
+                    retreat_listing_depth(&mut depth, *n);
+                }
+                DlEntry::Down { name } => {
+                    out.push(format!(
+                        "{}{}",
+                        listing_indent(depth),
+                        listing_label("downViewport", name, full_names)
+                    ));
+                    depth += 1.;
+                }
+            }
+        }
+    } else if grobs {
+        for entry in entries {
+            if let DlEntry::Grob { grob } = entry {
+                append_listing(grob, 0., full_names, false, out);
+            }
+        }
     }
 }
 
@@ -1581,6 +1711,7 @@ unsafe fn listed_grob(x: SEXP) -> ListedGrob {
         ListedGrob {
             name: string(field(x, "name"), ""),
             class_name: grob_listing_class(x),
+            vp_name: string(field(field(x, "vp"), "name"), ""),
             children,
         }
     }
@@ -1809,13 +1940,32 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             "current.name" => returned = mk_string(&current_name(&state)),
             "current.inches" => returned = result(&current_inches(&state)),
-            "record" => state.display_list.push(listed_grob(data)),
+            "record" => state.display_list.push(DlEntry::Grob {
+                grob: listed_grob(data),
+            }),
+            "record.push" => state.display_list.push(DlEntry::Push {
+                name: string(data, ""),
+            }),
+            "record.pop" => state.display_list.push(DlEntry::Pop {
+                n: num(data, 1.),
+            }),
+            "record.up" => state.display_list.push(DlEntry::Up {
+                n: num(data, 1.),
+            }),
+            "record.down" => {
+                let path = string(data, "");
+                for part in path.split("::").filter(|part| !part.is_empty()) {
+                    state.display_list.push(DlEntry::Down {
+                        name: part.to_string(),
+                    });
+                }
+            }
             "ls" => {
                 let full_names = logical_flag(field(data, "fullNames"), false);
+                let viewports = logical_flag(field(data, "viewports"), false);
+                let grobs = logical_flag(field(data, "grobs"), true);
                 let mut lines = Vec::new();
-                for grob in &state.display_list {
-                    append_listing(grob, 0, full_names, &mut lines);
-                }
+                append_display_list(&state.display_list, full_names, viewports, grobs, &mut lines);
                 returned = strings(&lines);
             }
             "current.path" => {
