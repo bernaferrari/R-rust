@@ -873,7 +873,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                 return xtop;
             }
             if nsubs == 0 || CAR(subs) == R_MissingArg() {
-                errorMissingSubscript(x);
+                errorMissingSubscript(x, call);
             }
             if nsubs == 1 {
                 offset = OneIndex(

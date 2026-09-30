@@ -90,9 +90,16 @@ pub(crate) unsafe fn errorNotSubsettable(x: SEXP) {
 }
 
 /// Port of `errorMissingSubscript()` -- signals an error for missing subscripts.
-pub(crate) unsafe fn errorMissingSubscript(x: SEXP) {
+///
+/// GNU uses `R_CurrentExpression`. During `xx[[]] <- pi` that is the source
+/// assignment, which `applydefine` stores on `eval_state.current_expr`.
+pub(crate) unsafe fn errorMissingSubscript(x: SEXP, call: SEXP) {
     unsafe {
-        crate::mainutils::errors::R_MissingSubscriptError(x, R_NilValue());
+        let instance =
+            crate::sexp::instance::with_required_current_instance(|instance| instance);
+        let source = (*instance).eval_state.current_expr;
+        let call = if source.is_null() { call } else { source };
+        crate::mainutils::errors::R_MissingSubscriptError(x, call);
     }
 }
 

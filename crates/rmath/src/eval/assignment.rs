@@ -26,6 +26,36 @@ fn error(msg: &str) -> ! {
     })
 }
 
+/// Saves `eval_state.current_expr` for the source assignment
+/// (`xx[[]] <- pi`) while `applydefine` runs, then restores it.
+///
+/// GNU pushes a `CTXT_CCODE` context with that call so `error()` reports
+/// it. `current_expr` is the scanned slot for the same value.
+struct SourceAssignCall {
+    instance: *mut crate::sexp::instance::RInstance,
+    previous: SEXP,
+}
+
+impl SourceAssignCall {
+    unsafe fn enter(call: SEXP) -> Self {
+        let instance =
+            crate::sexp::instance::with_required_current_instance(|instance| instance);
+        let previous = unsafe { (*instance).eval_state.current_expr };
+        unsafe {
+            (*instance).eval_state.current_expr = call;
+        }
+        Self { instance, previous }
+    }
+}
+
+impl Drop for SourceAssignCall {
+    fn drop(&mut self) {
+        unsafe {
+            (*self.instance).eval_state.current_expr = self.previous;
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // do_set — handle assignment operators (<-, <<-, =)
 // ---------------------------------------------------------------------------
@@ -160,6 +190,9 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let rhs = Rf_eval(CADR(args), rho);
         let _rhs_guard = protect(rhs);
+        // GNU begincontext(CTXT_CCODE) happens after the RHS eval, so a
+        // direct `[[<-` in the right-hand side keeps its own call.
+        let _source_call = SourceAssignCall::enter(call);
 
         let primval = crate::mainutils::relop::PRIMVAL(op);
         let forcelocal = if primval == 1 || primval == 3 { 1 } else { 0 };
