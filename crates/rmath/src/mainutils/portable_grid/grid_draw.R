@@ -6,7 +6,17 @@ function(x,recording=TRUE) {
     # recorded a second time. A gTree gp viewport is only a drawing parent.
     # on.exit(add=TRUE) runs in registration order, so the later gp push is
     # popped before the grob vp is moved up.
-    if(!is.null(x$vp)) pushViewport(x$vp, recording=FALSE)
+    # Character and vpPath slots navigate; only a viewport object is pushed.
+    vp.depth <- 0L
+    if(!is.null(x$vp)) {
+      if (inherits(x$vp, 'viewport')) {
+        pushViewport(x$vp, recording=FALSE)
+        vp.depth <- 1L
+      } else {
+        downViewport(x$vp, strict=TRUE, recording=FALSE)
+        vp.depth <- length(strsplit(as.character(x$vp), '::', fixed=TRUE)[[1L]])
+      }
+    }
     if(inherits(x,'gTree')) {
         if(!is.null(x$gp)) {
             pushViewport(viewport(gp=x$gp), recording=FALSE)
@@ -15,7 +25,7 @@ function(x,recording=TRUE) {
         # Children are drawn, not recorded; the gTree is one display-list entry.
         for(child in x$children) grid.draw(child, recording=FALSE)
     } else .rport_grid('draw',x)
-    if(!is.null(x$vp)) on.exit(upViewport(1, recording=FALSE), add=TRUE)
+    if(vp.depth > 0L) on.exit(upViewport(vp.depth, recording=FALSE), add=TRUE)
     if(isTRUE(recording)) .rport_grid('record', x)
     invisible(NULL)
 }

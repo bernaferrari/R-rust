@@ -413,3 +413,46 @@ fn grid_ls_records_fractional_counts_and_the_path_down_walked() {
         .join("||")
     );
 }
+
+#[test]
+fn grid_ls_lists_a_grob_and_character_viewport_paths() {
+    // GNU R 4.6.1 grid.ls(x=grob) lists that grob. A character vp or vpPath
+    // prints downViewport for each component and one upViewport of that depth.
+    // A viewport() object still prints viewport[name].
+    let mut session = RSession::new().unwrap();
+    let out = report(
+        &mut session,
+        r#"
+        library(grid)
+        g <- textGrob('hi', name='label')
+        one <- paste(capture.output(grid.ls(g, fullNames=TRUE)), collapse='\n')
+        bare <- paste(capture.output(grid.ls(g)), collapse='\n')
+        tree <- paste(capture.output(grid.ls(grobTree(textGrob('hi', name='label'), rectGrob(name='box'), name='tree'), fullNames=TRUE)), collapse='\n')
+        char_vp <- paste(capture.output(grid.ls(textGrob('hi', name='label', vp='panel'), viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        path_vp <- paste(capture.output(grid.ls(textGrob('hi', name='label', vp=vpPath('outer','panel')), viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        nested <- paste(capture.output(grid.ls(gTree(children=gList(textGrob('t', name='label', vp='panel'), rectGrob(name='box')), name='tree'), viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        grobs_off <- paste(capture.output(grid.ls(textGrob('hi', name='label', vp='panel'), grobs=FALSE, viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        grid.newpage()
+        pushViewport(viewport(name='outer'))
+        pushViewport(viewport(name='panel'))
+        upViewport(1)
+        grid.text('hi', name='label', vp='panel')
+        scene <- paste(capture.output(grid.ls(viewports=TRUE, fullNames=TRUE)), collapse='\n')
+        out <- paste(one, bare, tree, char_vp, path_vp, nested, grobs_off, scene, sep='||')
+        "#,
+    );
+    assert_eq!(
+        out,
+        [
+            "text[label]",
+            "label",
+            "gTree[tree]\n  text[label]\n  rect[box]",
+            "downViewport[panel]\n  text[label]\n  upViewport[1]",
+            "downViewport[outer]\n  downViewport[panel]\n    text[label]\n    upViewport[2]",
+            "gTree[tree]\n  downViewport[panel]\n    text[label]\n    upViewport[1]\n  rect[box]",
+            "downViewport[panel]\n  upViewport[1]",
+            "viewport[ROOT]\n  viewport[outer]\n    viewport[panel]\n      upViewport[1]\n    downViewport[panel]\n      text[label]\n      upViewport[1]",
+        ]
+        .join("||")
+    );
+}
