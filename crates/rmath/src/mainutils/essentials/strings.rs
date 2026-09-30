@@ -4043,7 +4043,8 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         for i in 0..n {
             if is_string_na(x_arg, i) {
-                *dst.add(i as usize) = NA_LOGICAL;
+                // GNU grepl: NA in x does not match a non-missing pattern.
+                *dst.add(i as usize) = FALSE;
                 continue;
             }
             let matched =
