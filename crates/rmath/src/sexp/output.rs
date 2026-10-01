@@ -556,6 +556,11 @@ fn format_real_vector_values(x: Sexp<'_>, limit: R_xlen_t) -> Vec<String> {
         .collect()
 }
 
+/// GNU `cat` uses `EncodeRealDrop0`: fixed-point trailing zeros are not kept.
+pub(crate) fn format_cat_real(v: f64) -> String {
+    trim_float(format_real_value(v))
+}
+
 fn trim_float(s: String) -> String {
     let (mut mantissa, exponent) = match s.find(['e', 'E']) {
         Some(idx) => (s[..idx].to_string(), s[idx..].to_string()),

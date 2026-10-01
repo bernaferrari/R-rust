@@ -4544,7 +4544,7 @@ pub(crate) fn cat_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         }
         let idx = i.rem_euclid(n);
         if t == SEXPTYPE::REALSXP {
-            crate::sexp::output::format_real_value(*REAL(x).add(idx as usize))
+            crate::sexp::output::format_cat_real(*REAL(x).add(idx as usize))
         } else if t == SEXPTYPE::CPLXSXP {
             crate::sexp::output::format_complex_value(*COMPLEX(x).add(idx as usize))
         } else if t == SEXPTYPE::RAWSXP {
