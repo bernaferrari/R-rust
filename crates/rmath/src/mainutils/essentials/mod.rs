@@ -117,13 +117,13 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             chain = cell;
         }
         {
+            // GNU datetime.R binds difftime as a closure. Keep the builtin
+            // callable through the symbol value without listing it in baseenv.
             let name = "difftime";
             let prim = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
             let _p = protect(prim);
             let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-            let cell = Rf_cons(prim, chain);
-            (*cell).data.listsxp.tagval = sym;
-            chain = cell;
+            crate::sexp::accessors::SET_SYMVALUE(sym, prim);
         }
         let pi_sym = Rf_install(c"pi".as_ptr());
         let pi_value = Rf_ScalarReal(std::f64::consts::PI);

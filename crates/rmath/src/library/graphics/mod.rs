@@ -208,11 +208,13 @@ unsafe extern "C-unwind" fn c_nil(_args: SEXP) -> SEXP {
 }
 
 /// GNU `recordPlot` is `.External2(C_getSnapshot)` in the grDevices namespace.
+#[cfg(feature = "renderplot-device")]
 unsafe extern "C-unwind" fn c_get_snapshot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::graphics_recording::record(call, op, args, rho) }
 }
 
 /// `.External2(C_playSnapshot, x)` puts the routine name in the first cell.
+#[cfg(feature = "renderplot-device")]
 unsafe extern "C-unwind" fn c_play_snapshot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::graphics_recording::replay(
@@ -232,11 +234,13 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
             ) }),
         "plot_new" => Some(unsafe { std::mem::transmute(c_plot_new as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
             ) }),
+        #[cfg(feature = "renderplot-device")]
         "getSnapshot" => Some(unsafe {
             std::mem::transmute(
                 c_get_snapshot as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
             )
         }),
+        #[cfg(feature = "renderplot-device")]
         "playSnapshot" => Some(unsafe {
             std::mem::transmute(
                 c_play_snapshot as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,

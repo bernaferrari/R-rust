@@ -133,10 +133,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         let devices = super::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 1);
         super::accessors::SET_VECTOR_ELT(devices, 0, Rf_mkString(c"null device".as_ptr()));
         defineVar(Rf_install_in_current(".Devices"), devices, base_env);
-        let message_fn = crate::eval::primitive::make_primitive_binding("message", SEXPTYPE::BUILTINSXP);
-        defineVar(Rf_install_in_current("message"), message_fn, base_env);
-        let inherits_fn = crate::eval::primitive::make_primitive_binding("inherits", SEXPTYPE::BUILTINSXP);
-        defineVar(Rf_install_in_current("inherits"), inherits_fn, base_env);
 
         // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
         // Installed after as.list so parse/eval can see the generic.
@@ -592,8 +588,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "is.na<-.numeric_version",
             "function(x, value) { x[value] <- list(integer()); x }",
         );
-        eval_base_binding(base_env, "as.Date", "as.Date");
-        eval_base_binding(base_env, "as.POSIXct", "as.POSIXct");
         eval_base_binding(
             base_env,
             "as.data.frame.POSIXlt",
@@ -3131,17 +3125,9 @@ const NON_GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto(":::", &[arg("pkg"), arg("name")], false),
     proto("...length", NO_ARGS, false),
     proto("...names", NO_ARGS, false),
-    proto(
-        "rank",
-        &[
-            arg("x"),
-            arg_default("na.last", FormalDefault::True),
-            arg_default("ties.method", FormalDefault::String("average")),
-        ],
-        false,
-    ),
-    proto("rep.int", &[arg("x"), arg("times")], false),
-    proto("rep_len", &[arg("x"), arg("length.out")], false),
+    // GNU base/R/rank.R and base/R/rep.R bind these as closures over
+    // .Internal. They stay out of .ArgsEnv so primitives.R does not treat
+    // the internal dispatch as an S3 generic of the visible function.
     proto("...elt", &[arg("n")], false),
     proto(
         ".C",
@@ -3513,8 +3499,7 @@ unsafe fn prototype_closure(prototype: PrimitivePrototype, base_env: SEXP) -> SE
 
 /// Names GNU R accounts as primitives (ArgsEnv + GenericArgsEnv + langElts).
 pub fn is_accounted_primitive_name(name: &str) -> bool {
-    name == "difftime"
-        || LANGUAGE_ELEMENTS.iter().any(|n| *n == name)
+    LANGUAGE_ELEMENTS.iter().any(|n| *n == name)
         || NON_GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
         || GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
 }

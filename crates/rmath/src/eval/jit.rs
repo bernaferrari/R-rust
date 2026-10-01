@@ -838,6 +838,37 @@ unsafe fn eval_exec_call(args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `getTailcallTarget` (`eval.c`): the innermost closure frame whose
+/// `cloenv` is `rho`. `eval()` also pushes `CTXT_FUNCTION`, but its
+/// `callfun` is the `eval` primitive, so that frame is not a jump target.
+/// An `on.exit` or `cend` closer than the closure blocks the jump.
+unsafe fn get_tailcall_target(rho: SEXP, mask: c_int) -> *mut crate::sexp::context::RCNTXT {
+    unsafe {
+        let mut c = crate::eval::runtime::global_context();
+        while !c.is_null() {
+            let flag = (*c).callflag;
+            if flag == crate::sexp::context::ctxt_flags::CTXT_TOPLEVEL {
+                break;
+            }
+            let conexit = (*c).conexit;
+            let has_onexit = !conexit.is_null() && conexit != R_NilValue();
+            if has_onexit || (*c).cend.is_some() {
+                break;
+            }
+            let callfun = (*c).callfun;
+            if (flag & mask) != 0
+                && (*c).cloenv == rho
+                && !callfun.is_null()
+                && TYPEOF(callfun) == SEXPTYPE::CLOSXP
+            {
+                return c;
+            }
+            c = (*c).nextcontext;
+        }
+        std::ptr::null_mut()
+    }
+}
+
 unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
@@ -849,27 +880,21 @@ unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         (*expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        let _expr_guard = protect(expr);
+
+        let mask = crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+            | crate::sexp::context::ctxt_flags::CTXT_BROWSER;
+        let target = get_tailcall_target(rho, mask);
+        if target.is_null() {
+            // No closure owns this call. GNU evaluates it in place, so
+            // `try(Tailcall(...))` at top level sees an ordinary result
+            // or an ordinary error.
+            return Rf_eval(expr, rho);
+        }
 
         let fun = Rf_eval(CAR(args), rho);
         let value = make_exec_continuation(expr, rho, fun);
         let _guard = protect(value);
-        let mut c = crate::eval::runtime::global_context();
-        let mut target: *mut crate::sexp::context::RCNTXT = std::ptr::null_mut();
-        let mask = crate::sexp::context::ctxt_flags::CTXT_FUNCTION
-            | crate::sexp::context::ctxt_flags::CTXT_BROWSER;
-        while !c.is_null() {
-            let flag = unsafe { (*c).callflag };
-            if flag == crate::sexp::context::ctxt_flags::CTXT_TOPLEVEL {
-                break;
-            }
-            if unsafe { (*c).cloenv } == rho && (flag & mask) != 0 {
-                target = c;
-            }
-            c = unsafe { (*c).nextcontext };
-        }
-        if target.is_null() {
-            tailcall_error("no function to return from, jumping to top level");
-        }
         crate::eval::context::R_jumpctxt(target, mask, value);
     }
 }
@@ -1214,5 +1239,24 @@ mod tests {
 
         let tailcall = session.eval("is.primitive(Tailcall)");
         assert_eq!(tailcall.output, "[1] TRUE");
+    }
+
+    #[test]
+    fn tailcall_at_top_level_evaluates_in_place() {
+        let mut session = crate::android::RSession::new();
+        let result = session.eval(
+            "x <- structure(pi, class = \"testit\")\n\
+             top <- Tailcall(identity, 1)\n\
+             via <- eval(substitute(Tailcall(identity, 1)))\n\
+             caught <- try(eval(substitute(Tailcall(x, x))), silent = TRUE)\n\
+             c(top, via, inherits(caught, \"try-error\"))",
+        );
+        assert!(
+            !matches!(result.typed, crate::android::RValue::Error(_)),
+            "stdout={} stderr={}",
+            result.stdout,
+            result.stderr
+        );
+        assert_eq!(result.stdout.trim(), "[1] 1 1 1");
     }
 }

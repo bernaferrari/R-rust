@@ -91,7 +91,11 @@ fi
 
 # Build the rport file-runner helper (standalone crate). Rebuild when the
 # helper or rmath sources are newer — otherwise oracle runs a stale rmath.
-HELPER_BIN="$HELPER_CRATE/target/release/rport-upstream-run"
+if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+    HELPER_BIN="${CARGO_TARGET_DIR}/release/rport-upstream-run"
+else
+    HELPER_BIN="$HELPER_CRATE/target/release/rport-upstream-run"
+fi
 if [[ ! -x "$HELPER_BIN" ]] || [[ -n "$(find "$HELPER_CRATE/src" "$HELPER_CRATE/Cargo.toml" "$ROOT_DIR/crates/rmath/src" "$ROOT_DIR/crates/rmath/Cargo.toml" "$ROOT_DIR/crates/nmath/src" "$ROOT_DIR/crates/nmath/Cargo.toml" -newer "$HELPER_BIN" 2>/dev/null)" ]]; then
 
     echo "INFO: building rport upstream helper (release)..." >&2
