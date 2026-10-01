@@ -5420,7 +5420,11 @@ fn collect_offsets(expr: SEXP, out: &mut Vec<SEXP>) {
                 .to_string_lossy()
                 .into_owned();
             if name == "offset" {
-                out.push(expr);
+                // walk_vars already records this call. Pushing it again makes
+                // model.offset add the same column twice (PR#18456).
+                if !out.iter().any(|&existing| existing == expr) {
+                    out.push(expr);
+                }
                 return;
             }
         }
