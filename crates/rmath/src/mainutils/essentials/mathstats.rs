@@ -8,8 +8,9 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    LOGICAL, LOGICAL_ELT, OBJECT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ATTRIB, SET_ENCLOS, SET_OBJECT,
+    SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF,
+    UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -228,15 +229,25 @@ fn z_prec_r(re: f64, im: f64, digits: f64) -> (f64, f64) {
     }
 }
 
-/// SHALLOW_DUPLICATE_ATTRIB (attrib.h): shallow-copy every attribute of
-/// `src` onto `dst`. The coerce-level port helper only carries a fixed set
-/// of attributes; stock duplicates the whole list.
+/// `setAttrib` rechecks `tsp` before `dim` is installed and rejects a valid mts.
 unsafe fn copy_all_attribs(dst: SEXP, src: SEXP) {
     unsafe {
-        let mut attr = ATTRIB(src);
-        while !attr.is_null() && attr != R_NilValue() {
-            crate::eval::attrib_core::setAttrib(dst, TAG(attr), CAR(attr));
-            attr = CDR(attr);
+        if dst.is_null() || dst == R_NilValue() || src.is_null() || src == R_NilValue() {
+            return;
+        }
+        let attrs = ATTRIB(src);
+        let copied = if attrs.is_null() || attrs == R_NilValue() {
+            R_NilValue()
+        } else {
+            crate::mainutils::duplicate::shallow_duplicate(attrs)
+        };
+        let _copied = protect(copied);
+        SET_ATTRIB(dst, copied);
+        SET_OBJECT(dst, OBJECT(src));
+        if crate::mainutils::coerce::IS_S4_OBJECT(src) != 0 {
+            SET_S4_OBJECT(dst);
+        } else {
+            UNSET_S4_OBJECT(dst);
         }
     }
 }
@@ -668,7 +679,11 @@ pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::mainutils::errors::errorcall_str(call, "invalid second argument of length 0");
         }
         if nx == 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            let _result_guard = protect(result);
+            // Empty math2 still keeps x's attributes.
+            copy_all_attribs(result, x_arg);
+            return result;
         }
         let nd = if digits_missing {
             0
@@ -710,6 +725,13 @@ pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 } else {
                     crate::fprec::fprec(v, digits)
                 };
+        }
+        // GNU FINISH_Math2: SHALLOW_DUPLICATE_ATTRIB from x when the
+        // result length matches x, otherwise from digits.
+        if n == nx {
+            copy_all_attribs(result, x_arg);
+        } else if n == nd {
+            copy_all_attribs(result, digits_arg);
         }
         result
     }

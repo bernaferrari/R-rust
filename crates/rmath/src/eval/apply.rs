@@ -143,10 +143,7 @@ pub(crate) fn apply_special_safe<'a>(
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
     let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
-    let flag = primitive
-        .clone()
-        .map(|primitive| primitive.print_flag)
-        .unwrap_or(0);
+    let flag = descriptor_print_flag(primitive.as_ref());
     let op_name = primitive_call_name(primitive.clone(), fun.clone(), call.clone());
     set_visibility_for_print_flag(flag);
 
@@ -204,6 +201,12 @@ fn set_visibility_for_print_flag(flag: c_int) {
     super::runtime::set_visible_for_print_flag(flag);
 }
 
+fn descriptor_print_flag(primitive: Option<&PrimitiveDescriptor<'_>>) -> c_int {
+    // No FunTab entry: the handler owns R_Visible, same as PRIMPRINT >= 2.
+    // Flag 0 would force the result visible after show / disassemble.
+    primitive.map(|primitive| primitive.print_flag).unwrap_or(2)
+}
+
 fn finish_application<'a>(
     result: SEXP,
     flag: c_int,
@@ -236,10 +239,7 @@ pub(crate) fn apply_builtin_safe<'a>(
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
     let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
-    let flag = primitive
-        .clone()
-        .map(|primitive| primitive.print_flag)
-        .unwrap_or(0);
+    let flag = descriptor_print_flag(primitive.as_ref());
     set_visibility_for_print_flag(flag);
 
     let frame = PrimitiveCall {
@@ -280,10 +280,7 @@ pub(crate) fn apply_builtin_values_safe<'a>(
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
     let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
-    let flag = primitive
-        .clone()
-        .map(|primitive| primitive.print_flag)
-        .unwrap_or(0);
+    let flag = descriptor_print_flag(primitive.as_ref());
     // Already-forced arguments carry visibility (cat, message, ...elt).
     // A print-flag reset here makes withVisible report TRUE and
     // capture.output prints NULL.

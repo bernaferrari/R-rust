@@ -698,6 +698,52 @@ fn is_hidden_noquote_class(name: &str, x: Sexp<'_>) -> bool {
     name == "class" && has_class(x, "noquote")
 }
 
+enum ClassForPrint {
+    Keep(SEXP),
+    Omit,
+    Filtered(SEXP, crate::sexp::protect::ProtectGuard<'static>),
+}
+
+fn class_for_print(class: SEXP) -> ClassForPrint {
+    unsafe {
+        if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return ClassForPrint::Keep(class);
+        }
+        let n = XLENGTH(class);
+        let na = crate::sexp::globals::R_NaString();
+        let mut keep = Vec::with_capacity(n as usize);
+        let mut dropped = false;
+        for i in 0..n {
+            let elt = STRING_ELT(class, i);
+            let is_asis = !elt.is_null() && elt != na && {
+                let chars = CHAR(elt);
+                !chars.is_null() && std::ffi::CStr::from_ptr(chars).to_bytes() == b"AsIs"
+            };
+            if is_asis {
+                dropped = true;
+            } else {
+                keep.push(elt);
+            }
+        }
+        if !dropped {
+            return ClassForPrint::Keep(class);
+        }
+        // GNU print.AsIs drops every "AsIs" element and prints only what remains.
+        if keep.is_empty() {
+            return ClassForPrint::Omit;
+        }
+        let out = crate::sexp::constructors::Rf_allocVector3(
+            SEXPTYPE::STRSXP,
+            keep.len() as R_xlen_t,
+        );
+        let guard = crate::sexp::protect::protect(out);
+        for (i, elt) in keep.into_iter().enumerate() {
+            crate::sexp::accessors::SET_STRING_ELT(out, i as R_xlen_t, elt);
+        }
+        ClassForPrint::Filtered(out, guard)
+    }
+}
+
 
 
 fn format_printable_attributes(x: Sexp<'_>) -> String {
@@ -705,6 +751,7 @@ fn format_printable_attributes(x: Sexp<'_>) -> String {
         let mut attrs = ATTRIB(x.clone().as_raw());
 
         let mut visible = Vec::new();
+        let mut filtered_classes = Vec::new();
         while !attrs.is_null() && attrs != R_NilValue() {
             if let Some(name) = printable_attribute_name(attrs)
                 && !is_structural_print_attribute(&name)
@@ -712,7 +759,18 @@ fn format_printable_attributes(x: Sexp<'_>) -> String {
             {
                 let value = CAR(attrs);
                 if !value.is_null() && value != R_NilValue() {
-                    visible.push((name, value));
+                    if name == "class" {
+                        match class_for_print(value) {
+                            ClassForPrint::Omit => {}
+                            ClassForPrint::Keep(value) => visible.push((name, value)),
+                            ClassForPrint::Filtered(value, guard) => {
+                                filtered_classes.push(guard);
+                                visible.push((name, value));
+                            }
+                        }
+                    } else {
+                        visible.push((name, value));
+                    }
                 }
             }
             attrs = CDR(attrs);
@@ -732,6 +790,7 @@ fn format_printable_attributes(x: Sexp<'_>) -> String {
                 out.push_str("NULL");
             }
         }
+        let _filtered_classes = filtered_classes;
         out
     }
 }
@@ -842,10 +901,12 @@ fn matrix_dimnames(x: Sexp<'_>, nrow: usize, ncol: usize) -> MatrixDimnames {
             dimnames.clone().as_raw(),
             0,
         ))
-        .filter(|names| names.len() == nrow);
+        .filter(|names| names.len() >= nrow)
+        .map(|names| names.into_iter().take(nrow).collect());
         let col_names =
             string_vector_values(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
-                .filter(|names| names.len() == ncol);
+                .filter(|names| names.len() >= ncol)
+                .map(|names| names.into_iter().take(ncol).collect());
         MatrixDimnames {
             rows: row_names,
             cols: col_names,
@@ -959,6 +1020,26 @@ fn print_quote_flag() -> bool {
             cur = CDR(cur);
         }
         true
+    }
+}
+
+/// GNU `print.default(..., right=)` default FALSE; NA stays FALSE.
+fn print_right_flag() -> bool {
+    unsafe {
+        let extras = print_dispatch_extras();
+        let mut cur = extras;
+        while !cur.is_null() && cur != R_NilValue() {
+            if printable_attribute_name(cur).as_deref() == Some("right") {
+                let value = CAR(cur);
+                if value.is_null() || value == R_NilValue() {
+                    return false;
+                }
+                let right = crate::mainutils::coerce::asLogical(value);
+                return right != crate::sexp::ffi::NA_LOGICAL && right != 0;
+            }
+            cur = CDR(cur);
+        }
+        false
     }
 }
 
@@ -1140,6 +1221,14 @@ where
         })
         .collect();
     let (row_width, lbloff) = matrix_row_geometry(&row_labels, dn.row_title.as_deref());
+    let right = print_right_flag();
+    let align = |text: &str, width: usize| -> String {
+        if right {
+            format!("{text:>width$}")
+        } else {
+            format!("{text:<width$}")
+        }
+    };
     let empty_row_labs = row_labels.iter().all(|s| s.is_empty());
     let mut values = vec![vec![String::new(); ncol]; nrow];
     let mut widths = Vec::with_capacity(ncol);
@@ -1206,8 +1295,8 @@ where
             } else if empty_row_labs {
                 header.push(' ');
             }
-            // GNU printStringMatrix uses LeftMatrixColumnLabel.
-            header.push_str(&format!("{:<width$}", col_labels[c], width = widths[c]));
+            // Gap sits outside the field; `right` chooses the side of the pad.
+            header.push_str(&align(&col_labels[c], widths[c]));
 
         }
         lines.push(header);
@@ -1217,7 +1306,7 @@ where
             let mut line = format!("{label:<row_width$}");
             for c in cs..ce {
                 line.push(' ');
-                line.push_str(&format!("{:<width$}", values[r][c], width = widths[c]));
+                line.push_str(&align(&values[r][c], widths[c]));
             }
             lines.push(line);
         }
@@ -1279,31 +1368,33 @@ fn format_complex_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
 
 fn format_matrix(x: Sexp<'_>) -> Option<String> {
     let Some((nrow, ncol)) = matrix_dims(x.clone()) else {
-        return format_array(x);
+        return format_array(x.clone())
+            .map(|body| format_with_printable_attributes(body, x));
     };
-    match x.clone().typeof_() {
-        SEXPTYPE::INTSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
+    let body = match x.clone().typeof_() {
+        SEXPTYPE::INTSXP => format_matrix_with(x.clone(), nrow, ncol, |r, c| {
             format_integer_element(x.clone(), (r + c * nrow) as i64)
-        })),
-        SEXPTYPE::REALSXP => Some(format_real_matrix_gnu(x.clone(), nrow, ncol)),
-        SEXPTYPE::LGLSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
+        }),
+        SEXPTYPE::REALSXP => format_real_matrix_gnu(x.clone(), nrow, ncol),
+        SEXPTYPE::LGLSXP => format_matrix_with(x.clone(), nrow, ncol, |r, c| {
             format_logical_element(x.clone(), (r + c * nrow) as i64)
-        })),
-        SEXPTYPE::CPLXSXP => Some(format_complex_matrix_gnu(x.clone(), nrow, ncol)),
+        }),
+        SEXPTYPE::CPLXSXP => format_complex_matrix_gnu(x.clone(), nrow, ncol),
         SEXPTYPE::STRSXP => {
             let quote = print_quote_flag()
                 && !has_class(x.clone(), "noquote")
                 && !has_class(x.clone(), "table");
-            Some(format_character_matrix_with(
+            format_character_matrix_with(
                 x.clone(),
                 nrow,
                 ncol,
                 |r, c| format_string_element_maybe_quoted(x.clone(), (r + c * nrow) as i64, quote),
-            ))
+            )
         }
 
-        _ => None,
-    }
+        _ => return None,
+    };
+    Some(format_with_printable_attributes(body, x))
 }
 
 
@@ -1339,48 +1430,108 @@ fn ceil_div(a: usize, b: usize) -> usize {
     }
 }
 
-fn format_array_slice<F>(label_nrow: usize, use_nr: usize, use_nc: usize, value_at: F) -> String
-where
-    F: Fn(usize, usize) -> String,
-{
-    let row_labels: Vec<String> = (0..use_nr)
-        .map(|r| gnu_row_index_label(r, label_nrow.max(1)))
-        .collect();
-    let col_labels: Vec<String> = (0..use_nc).map(|c| format!("[,{}]", c + 1)).collect();
-    let (row_width, lbloff) = matrix_row_geometry(&row_labels, None);
-    let mut values = vec![vec![String::new(); use_nc]; use_nr];
-    let mut widths = Vec::with_capacity(use_nc);
-    for c in 0..use_nc {
-        let mut width = col_labels[c].len().max(1);
-        for r in 0..use_nr {
-            let value = value_at(r, c);
-            width = width.max(value.len());
-            values[r][c] = value;
+fn sexp_string_at(x: SEXP, i: R_xlen_t) -> Option<String> {
+    unsafe {
+        if x.is_null()
+            || x == R_NilValue()
+            || TYPEOF(x) != SEXPTYPE::STRSXP
+            || i < 0
+            || i >= XLENGTH(x)
+        {
+            return None;
         }
-        widths.push(width);
-    }
-    let mut lines = Vec::new();
-    let mut header = " ".repeat(row_width);
-    if row_width > 0 && use_nc > 0 {
-        header.push(' ');
-    }
-    for c in 0..use_nc {
-        header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
-        if c + 1 < use_nc {
-            header.push(' ');
+        let elt = STRING_ELT(x, i);
+        if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+            return Some("NA".to_string());
         }
-    }
-    lines.push(header);
-    for r in 0..use_nr {
-        let label = format!("{:lbloff$}{}", "", row_labels[r]);
-        let mut line = format!("{label:<row_width$}");
-        for c in 0..use_nc {
-            line.push(' ');
-            line.push_str(&format!("{:>width$}", values[r][c], width = widths[c]));
+        let chars = CHAR(elt);
+        if chars.is_null() {
+            return None;
         }
-        lines.push(line);
+        Some(
+            std::ffi::CStr::from_ptr(chars)
+                .to_string_lossy()
+                .into_owned(),
+        )
     }
-    lines.join("\n")
+}
+
+/// GNU `printArray` banner: `, , <dimname>` or `, , <axis> = <dimname>`.
+fn array_slice_banner(x: Sexp<'_>, dims: &[usize], slice: usize) -> String {
+    unsafe {
+        let dimnames = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        let dnn = if !dimnames.is_null()
+            && dimnames != R_NilValue()
+            && TYPEOF(dimnames) == SEXPTYPE::VECSXP
+        {
+            crate::sexp::attrib_core::getAttrib(dimnames, crate::sexp::attrib_core::R_NamesSymbol())
+        } else {
+            R_NilValue()
+        };
+        let has_dnn =
+            !dnn.is_null() && dnn != R_NilValue() && TYPEOF(dnn) == SEXPTYPE::STRSXP;
+        let mut header = String::from(", ");
+        let mut k = 1usize;
+        for (j, &extent) in dims.iter().enumerate().skip(2) {
+            let l = if extent == 0 {
+                1
+            } else {
+                (slice / k) % extent + 1
+            };
+            let dn = if !dimnames.is_null()
+                && dimnames != R_NilValue()
+                && TYPEOF(dimnames) == SEXPTYPE::VECSXP
+                && (j as R_xlen_t) < XLENGTH(dimnames)
+            {
+                VECTOR_ELT(dimnames, j as R_xlen_t)
+            } else {
+                R_NilValue()
+            };
+            if let Some(name) = sexp_string_at(dn, (l as R_xlen_t) - 1) {
+                if has_dnn {
+                    let axis = sexp_string_at(dnn, j as R_xlen_t).unwrap_or_default();
+                    header.push_str(&format!(", {axis} = {name}"));
+                } else {
+                    header.push_str(&format!(", {name}"));
+                }
+            } else {
+                header.push_str(&format!(", {l}"));
+            }
+            k = k.saturating_mul(extent.max(1));
+        }
+        header
+    }
+}
+
+fn format_array_slice_body(
+    x: Sexp<'_>,
+    nr: usize,
+    use_nr: usize,
+    use_nc: usize,
+    offset: usize,
+) -> String {
+    let index_at = move |r: usize, c: usize| (offset + r + c * nr) as i64;
+    if x.clone().typeof_() == SEXPTYPE::STRSXP {
+        let quote = print_quote_flag()
+            && !has_class(x.clone(), "noquote")
+            && !has_class(x.clone(), "table");
+        return format_character_matrix_with(x.clone(), use_nr, use_nc, |r, c| {
+            format_string_element_maybe_quoted(x.clone(), index_at(r, c), quote)
+        });
+    }
+    format_matrix_with(x.clone(), use_nr, use_nc, |r, c| {
+        let index = index_at(r, c);
+        match x.clone().typeof_() {
+            SEXPTYPE::LGLSXP => format_logical_element(x.clone(), index),
+            SEXPTYPE::INTSXP => format_integer_element(x.clone(), index),
+            SEXPTYPE::REALSXP => format_real_element(x.clone(), index),
+            SEXPTYPE::CPLXSXP => format_complex_element(x.clone(), index),
+            _ => "NA".to_string(),
+        }
+    })
 }
 
 fn format_array(x: Sexp<'_>) -> Option<String> {
@@ -1409,37 +1560,21 @@ fn format_array(x: Sexp<'_>) -> Option<String> {
         (nb.max(1), nc, nr)
     };
 
-    let value_at = |offset: usize, r: usize, c: usize| -> String {
-        let index = (offset + r + c * nr) as i64;
-        match x.clone().typeof_() {
-            SEXPTYPE::LGLSXP => format_logical_element(x.clone(), index),
-            SEXPTYPE::INTSXP => format_integer_element(x.clone(), index),
-            SEXPTYPE::REALSXP => format_real_element(x.clone(), index),
-            SEXPTYPE::CPLXSXP => format_complex_element(x.clone(), index),
-            SEXPTYPE::STRSXP => format_string_element_maybe_quoted(x.clone(), index, true),
-            _ => "NA".to_string(),
-        }
-    };
-
     let mut sections = Vec::new();
     for ii in 0..nb_pr {
         let i_last = ii + 1 == nb_pr;
         let use_nc = if i_last { nc_last } else { nc };
         let use_nr = if i_last { nr_last } else { nr };
-        let mut header = String::from(", ");
-        let mut k = 1usize;
-        for &extent in &dims[2..] {
-            let l = if extent == 0 {
-                1
-            } else {
-                (ii / k) % extent + 1
-            };
-            header.push_str(&format!(", {l}"));
-            k = k.saturating_mul(extent.max(1));
-        }
+        let header = array_slice_banner(x.clone(), &dims, ii);
         let offset = ii.saturating_mul(b);
-        let body = format_array_slice(nr, use_nr, use_nc, |r, c| value_at(offset, r, c));
-        sections.push(format!("{header}\n\n{body}\n\n"));
+        let body = format_array_slice_body(x.clone(), nr, use_nr, use_nc, offset);
+        // Caller appends one newline. Ending the body on a single newline
+        // leaves the blank line GNU prints after the last slice, not two.
+        sections.push(format!("{header}\n\n{body}"));
+    }
+    let mut text = sections.join("\n\n");
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
     }
     if max_reached {
         let mut msg =
@@ -1471,9 +1606,10 @@ fn format_array(x: Sexp<'_>) -> Option<String> {
             }
         }
         msg.push_str(" ] ");
-        sections.push(msg);
+        text.push('\n');
+        text.push_str(&msg);
     }
-    Some(sections.join(""))
+    Some(text)
 }
 
 
@@ -2497,6 +2633,27 @@ fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
     }
 }
 
+/// GNU `PrintValue` dispatches `print` when a class is set. try-error,
+/// conditions, srcref, and S4 keep their dedicated printers.
+fn auto_print_method(x: Sexp<'_>) -> Option<String> {
+    if has_class(x.clone(), "try-error")
+        || has_class(x.clone(), "condition")
+        || has_class(x.clone(), "srcref")
+        // These closures still disagree with the printers that match GNU.
+        || has_class(x.clone(), "noquote")
+        || has_class(x.clone(), "summaryDefault")
+    {
+        return None;
+    }
+    if unsafe {
+        crate::mainutils::coerce::IS_S4_OBJECT(x.clone().as_raw()) != 0
+            || x.typeof_() == SEXPTYPE::S4SXP
+    } {
+        return None;
+    }
+    format_dispatched_print(x)
+}
+
 
 fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
     if let Some(dispatched) = format_dispatched_print(elem.clone()) {
@@ -3245,6 +3402,11 @@ pub fn print_value(x: Sexp<'_>) {
         return;
     }
 
+    if let Some(text) = auto_print_method(x.clone()) {
+        emit(&format!("{text}\n"));
+        return;
+    }
+
 
     match x.clone().typeof_() {
         SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP | SEXPTYPE::CLOSXP => {
@@ -3498,10 +3660,8 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
     if has_class(x.clone(), "condition") {
         return unsafe { format_condition(x) };
     }
-    if has_class(x.clone(), "lm") {
-        if let Some(text) = format_dispatched_print(x.clone()) {
-            return text;
-        }
+    if let Some(text) = auto_print_method(x.clone()) {
+        return text;
     }
     // The type match below does not format S4, so dispatch show() here.
     if unsafe {

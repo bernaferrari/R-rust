@@ -16,7 +16,7 @@ use crate::sexp::constructors::{
     Rf_mkString,
 };
 use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, SEXP, SEXPTYPE, TRUE,
+    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
@@ -1901,10 +1901,115 @@ fn data_frame_cell_text(col: SEXP, i: R_xlen_t) -> String {
 }
 
 
+/// Explicit `digits=` only. NULL/missing keeps the historical cell text
+/// so default frames stay on `elt_to_string`.
+fn data_frame_print_digits(args: SEXP) -> Option<i32> {
+    unsafe {
+        let sym = Rf_install(c"digits".as_ptr());
+        let mut arg = args;
+        while !arg.is_null() && arg != R_NilValue() {
+            if TAG(arg) == sym {
+                let mut value = CAR(arg);
+                if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
+                    value = crate::sexp::envir::forcePromise(value);
+                }
+                if value.is_null() || value == R_NilValue() {
+                    return None;
+                }
+                let digits = if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
+                    *INTEGER(value)
+                } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
+                    let number = *REAL(value);
+                    if number.is_finite() {
+                        number as i32
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                };
+                if digits == NA_INTEGER || digits < 1 {
+                    return None;
+                }
+                return Some(digits);
+            }
+            arg = CDR(arg);
+        }
+        None
+    }
+}
+
+fn plain_numeric_column(col: SEXP) -> bool {
+    unsafe {
+        if col.is_null() || col == R_NilValue() {
+            return false;
+        }
+        let class = crate::sexp::attrib_core::getAttrib(
+            col,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if !class.is_null() && class != R_NilValue() && XLENGTH(class) > 0 {
+            return false;
+        }
+        let t = TYPEOF(col);
+        t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP
+    }
+}
+
+/// GNU `format.data.frame` formats each numeric column with `digits`.
+fn format_plain_numeric_column(col: SEXP, nrow: R_xlen_t, digits: i32) -> Vec<String> {
+    unsafe {
+        let trim = Rf_ScalarLogical(TRUE);
+        let dig = Rf_ScalarInteger(digits);
+        let nsmall = Rf_ScalarInteger(0);
+        let width = Rf_ScalarInteger(0);
+        let adj = Rf_ScalarInteger(3);
+        let na_encode = Rf_ScalarLogical(TRUE);
+        let scientific = Rf_ScalarLogical(NA_LOGICAL);
+        let decimal = Rf_mkString(c".".as_ptr());
+        let mut guards = Vec::new();
+        for value in [trim, dig, nsmall, width, adj, na_encode, scientific, decimal] {
+            guards.push(protect(value));
+        }
+        // .Internal(format) is positional: trim, digits, nsmall, width, adj, na.encode, scientific, decimal.mark.
+        let mut rest = R_NilValue();
+        for value in [decimal, scientific, na_encode, adj, width, nsmall, dig, trim] {
+            rest = Rf_cons(value, rest);
+            guards.push(protect(rest));
+        }
+        let args = Rf_cons(col, rest);
+        guards.push(protect(args));
+        let formatted = do_format(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            args,
+            crate::sexp::globals::R_GlobalEnv(),
+        );
+        if formatted.is_null()
+            || formatted == R_NilValue()
+            || TYPEOF(formatted) != SEXPTYPE::STRSXP
+        {
+            return vec![String::new(); nrow.max(0) as usize];
+        }
+        guards.push(protect(formatted));
+        let mut values = Vec::with_capacity(nrow as usize);
+        for i in 0..nrow {
+            let text = if i < XLENGTH(formatted) {
+                elt_to_string(formatted, i).trim().to_string()
+            } else {
+                String::new()
+            };
+            values.push(text);
+        }
+        values
+    }
+}
+
 fn print_data_frame_column_texts(
     x: SEXP,
     ncol: R_xlen_t,
     nrow: R_xlen_t,
+    digits: Option<i32>,
 ) -> (Vec<String>, Vec<Vec<String>>) {
     unsafe {
         let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
@@ -1915,7 +2020,7 @@ fn print_data_frame_column_texts(
             let col = VECTOR_ELT(x, j as R_xlen_t);
             if crate::mainutils::essentials::sexp_has_class(col, "data.frame") && XLENGTH(col) > 0 {
                 let (mut inner_headers, inner_columns) =
-                    print_data_frame_column_texts(col, XLENGTH(col), nrow);
+                    print_data_frame_column_texts(col, XLENGTH(col), nrow, digits);
                 if inner_headers.len() == 1
                     && inner_headers[0].starts_with("[,")
                     && has_names
@@ -1936,10 +2041,15 @@ fn print_data_frame_column_texts(
                 format!("[,{}]", j + 1)
             };
             headers.push(header);
-            let mut values = Vec::with_capacity(nrow as usize);
-            for i in 0..nrow {
-                values.push(data_frame_cell_text(col, i));
-            }
+            let values = if digits.is_some_and(|digits| digits > 0) && plain_numeric_column(col) {
+                format_plain_numeric_column(col, nrow, digits.unwrap_or(7))
+            } else {
+                let mut values = Vec::with_capacity(nrow as usize);
+                for i in 0..nrow {
+                    values.push(data_frame_cell_text(col, i));
+                }
+                values
+            };
             columns.push(values);
         }
         (headers, columns)
@@ -1963,6 +2073,57 @@ fn emit_print_data_frame_line(line: &str) {
         crate::sexp::output::capture_stdout(&format!("{line}\n"));
     } else {
         println!("{line}");
+    }
+}
+
+fn emit_print_data_frame_columns(
+    headers: &[String],
+    columns: &[Vec<String>],
+    widths: &[usize],
+    row_labels: &[String],
+    show_row_names: bool,
+    row_width: usize,
+    print_rows: usize,
+    start: usize,
+    end: usize,
+) {
+    if start >= end {
+        return;
+    }
+    let header = headers[start..end]
+        .iter()
+        .enumerate()
+        .map(|(idx, name)| format!("{:>width$}", name, width = widths[start + idx]))
+        .collect::<Vec<_>>()
+        .join(" ");
+    // With row labels shown, stock pads the header by the label
+    // column width plus one separator; with row.names = FALSE the
+    // label column is empty strings, leaving exactly one separator.
+    let label_pad = if show_row_names {
+        " ".repeat(row_width)
+    } else {
+        String::new()
+    };
+    emit_print_data_frame_line(&format!("{label_pad} {header}"));
+
+    for row in 0..print_rows {
+        let mut cells = Vec::with_capacity((end - start) + usize::from(show_row_names));
+        // Stock left-justifies row labels (auto 1..n, explicit numeric,
+        // and character row names alike) inside the label column; a hidden
+        // label column still contributes its separator space.
+        if show_row_names {
+            cells.push(format!(
+                "{:<row_width$}",
+                row_labels.get(row).map(String::as_str).unwrap_or("")
+            ));
+        } else {
+            cells.push(String::new());
+        }
+        for idx in start..end {
+            let value = columns[idx].get(row).map(String::as_str).unwrap_or("");
+            cells.push(format!("{:>width$}", value, width = widths[idx]));
+        }
+        emit_print_data_frame_line(&cells.join(" "));
     }
 }
 fn print_empty_data_frame(x: SEXP, ncol: R_xlen_t) {
@@ -2110,16 +2271,17 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             nrow as usize
         };
         let print_rows = (nrow as usize).min(n0);
+        let digits = data_frame_print_digits(args);
         let (headers, columns) =
-            print_data_frame_column_texts(x, ncol, print_rows as R_xlen_t);
+            print_data_frame_column_texts(x, ncol, print_rows as R_xlen_t, digits);
         let row_labels = data_frame_row_labels(x, nrow, print_rows as R_xlen_t);
         let shown_labels = &row_labels[..];
+        // GNU formatString uses 0 for a blank row name; a minimum of 1 inserts a pad column.
         let row_width = shown_labels
             .iter()
             .map(|label| label.len())
             .max()
-            .unwrap_or(0)
-            .max(1);
+            .unwrap_or(0);
         let widths: Vec<usize> = headers
             .iter()
             .zip(&columns)
@@ -2130,42 +2292,47 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             })
             .collect();
 
-        if !headers.is_empty() {
-            let header = headers
-                .iter()
-                .enumerate()
-                .map(|(idx, name)| format!("{:>width$}", name, width = widths[idx]))
-                .collect::<Vec<_>>()
-                .join(" ");
-            // With row labels shown, stock pads the header by the label
-            // column width plus one separator; with row.names = FALSE the
-            // label column is empty strings, leaving exactly one separator.
-            let label_pad = if show_row_names {
-                " ".repeat(row_width)
-            } else {
-                String::new()
-            };
-            emit_print_data_frame_line(&format!("{label_pad} {header}"));
-        }
-
-        for row in 0..print_rows {
-            let mut cells = Vec::with_capacity(headers.len() + usize::from(show_row_names));
-            // Stock left-justifies row labels (auto 1..n, explicit numeric,
-            // and character row names alike) inside the label column; a hidden
-            // label column still contributes its separator space.
-            if show_row_names {
-                cells.push(format!(
-                    "{:<row_width$}",
-                    row_labels.get(row).map(String::as_str).unwrap_or("")
-                ));
-            } else {
-                cells.push(String::new());
+        if headers.is_empty() {
+            for row in 0..print_rows {
+                let line = if show_row_names {
+                    format!(
+                        "{:<row_width$}",
+                        row_labels.get(row).map(String::as_str).unwrap_or("")
+                    )
+                } else {
+                    String::new()
+                };
+                emit_print_data_frame_line(&line);
             }
-            for (idx, values) in columns.iter().enumerate() {
-                let value = values.get(row).map(String::as_str).unwrap_or("");
-                cells.push(format!("{:>width$}", value, width = widths[idx]));
+        } else {
+            // GNU keeps the next column only while the line stays strictly under width.
+            let page_width = crate::mainutils::options::GetOptionWidth().max(10) as usize;
+            let rlabw = if show_row_names { row_width } else { 0 };
+            let gap = 1usize;
+            let mut start = 0;
+            while start < headers.len() {
+                let mut used = rlabw;
+                let mut end = start;
+                loop {
+                    used += widths[end] + gap;
+                    end += 1;
+                    if end >= headers.len() || used + widths[end] + gap >= page_width {
+                        break;
+                    }
+                }
+                emit_print_data_frame_columns(
+                    &headers,
+                    &columns,
+                    &widths,
+                    &row_labels,
+                    show_row_names,
+                    row_width,
+                    print_rows,
+                    start,
+                    end,
+                );
+                start = end;
             }
-            emit_print_data_frame_line(&cells.join(" "));
         }
         if (nrow as usize) > n0 {
             emit_print_data_frame_line(&format!(

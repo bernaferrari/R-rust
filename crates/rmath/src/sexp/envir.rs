@@ -63,6 +63,67 @@ pub unsafe fn R_BaseNamespace() -> SEXP {
     }
 }
 
+/// The other of `baseenv()` / `.BaseNamespaceEnv` when `env` is one of them.
+///
+/// New bindings prepend a cell and `SET_FRAME` only the environment that was
+/// assigned into, so the two frames diverge unless the peer is updated too.
+/// Resolved on each call; callers must snapshot this before replacing `FRAME`.
+unsafe fn base_binding_peer(env: SEXP) -> Option<SEXP> {
+    if env.is_null() {
+        return None;
+    }
+    let base = with_current_instance(|inst| super::globals::R_BaseEnv_in(inst))?;
+    unsafe {
+        if base.is_null() || base == R_NilValue() || env == R_NilValue() {
+            return None;
+        }
+        if env == base {
+            let ns = R_BaseNamespace();
+            if ns.is_null() || ns == base || TYPEOF(ns) != SEXPTYPE::ENVSXP {
+                None
+            } else {
+                Some(ns)
+            }
+        } else {
+            let base_frame = FRAME(base);
+            // Shared pairlist head, not a nil frame that every empty env has.
+            if base_frame.is_null() || base_frame == R_NilValue() || FRAME(env) != base_frame {
+                return None;
+            }
+            let ns = R_BaseNamespace();
+            if env == ns { Some(base) } else { None }
+        }
+    }
+}
+
+unsafe fn mirror_base_frame(env: SEXP, peer: Option<SEXP>) {
+    let Some(peer) = peer else {
+        return;
+    };
+    unsafe {
+        let frame = FRAME(env);
+        if FRAME(peer) != frame {
+            SET_FRAME(peer, frame);
+        }
+    }
+}
+
+unsafe fn hash_insert_base_pair(env: SEXP, peer: Option<SEXP>, symbol: SEXP, value: SEXP) {
+    // Insert is a no-op until that environment is promoted, so the peer does
+    // not gain a second table that can drift from this one.
+    super::env_hash::hash_insert(env, symbol, value);
+    if let Some(peer) = peer {
+        super::env_hash::hash_insert(peer, symbol, value);
+    }
+}
+
+unsafe fn hash_remove_base_pair(env: SEXP, peer: Option<SEXP>, symbol: SEXP) {
+    super::env_hash::hash_remove(env, symbol);
+    if let Some(peer) = peer {
+        super::env_hash::hash_remove(peer, symbol);
+    }
+}
+
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
 }
@@ -103,29 +164,41 @@ pub(crate) fn environment_is_locked_raw(env: SEXP) -> bool {
 }
 
 pub(crate) fn lock_binding_raw(env: SEXP, symbol: SEXP) {
+    // One pairlist cell, so a lock on either base env has to block the other.
+    let peer = unsafe { base_binding_peer(env) };
     with_required_current_instance(|instance| unsafe {
         // P2: single-field write; no other raw path touches the instance
         // inside this closure.
         (*instance).locked_bindings.insert(binding_key(env, symbol));
+        if let Some(peer) = peer {
+            (*instance).locked_bindings.insert(binding_key(peer, symbol));
+        }
     });
 }
 
 pub(crate) fn unlock_binding_raw(env: SEXP, symbol: SEXP) {
+    let peer = unsafe { base_binding_peer(env) };
     with_required_current_instance(|instance| unsafe {
         // P2: single-field write; no other raw path touches the instance
         // inside this closure.
         (*instance)
             .locked_bindings
             .remove(&binding_key(env, symbol));
+        if let Some(peer) = peer {
+            (*instance)
+                .locked_bindings
+                .remove(&binding_key(peer, symbol));
+        }
     });
 }
 
 pub(crate) fn binding_is_locked_raw(env: SEXP, symbol: SEXP) -> bool {
+    let peer = unsafe { base_binding_peer(env) };
     with_current_instance(|instance| unsafe {
         // P2: read-only set lookup; no ambient write intervenes.
-        (*instance)
-            .locked_bindings
-            .contains(&binding_key(env, symbol))
+        let locks = &(*instance).locked_bindings;
+        locks.contains(&binding_key(env, symbol))
+            || peer.is_some_and(|peer| locks.contains(&binding_key(peer, symbol)))
     })
     .unwrap_or(false)
 }
@@ -192,24 +265,36 @@ pub(crate) fn remove_binding_raw(env: SEXP, symbol: SEXP) {
             binding_error("cannot remove bindings from a locked environment");
         }
 
+        // Snapshot before SET_FRAME; afterwards the peer no longer shares the head.
+        let peer = base_binding_peer(env);
         let mut previous = R_NilValue();
         let mut current = FRAME(env);
         while !current.is_null() && current != R_NilValue() {
             let tag = TAG(current);
             if !tag.is_null() && symbol_name_bytes_equal(tag, symbol) {
+                // Same cell as the peer, so a lock recorded on the other env applies.
+                if binding_is_locked_raw(env, symbol) {
+                    binding_error("cannot unbind a locked binding");
+                }
                 let next = CDR(current);
                 if previous == R_NilValue() {
                     SET_FRAME(env, next);
+                    mirror_base_frame(env, peer);
                 } else {
                     SETCDR(previous, next);
                 }
-                super::env_hash::hash_remove(env, symbol);
+                hash_remove_base_pair(env, peer, symbol);
                 with_required_current_instance(|instance| unsafe {
                     // P2: strictly-local map writes; no other raw path
                     // touches the instance inside this closure.
                     let key = binding_key(env, symbol);
                     (*instance).active_bindings.remove(&key);
                     (*instance).locked_bindings.remove(&key);
+                    if let Some(peer) = peer {
+                        let peer_key = binding_key(peer, symbol);
+                        (*instance).active_bindings.remove(&peer_key);
+                        (*instance).locked_bindings.remove(&peer_key);
+                    }
                 });
                 return;
             }
@@ -225,6 +310,7 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
             return;
         }
 
+        let peer = base_binding_peer(env);
         let mut frame = super::accessors::FRAME(env);
         while !frame.is_null() && frame != R_NilValue() {
             let tag = super::accessors::TAG(frame);
@@ -238,15 +324,18 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
                     binding_error("cannot change value of locked binding");
                 }
                 SETCAR(frame, fun);
-                if super::env_hash::env_has_hash_table(env) {
-                    super::env_hash::hash_insert(env, symbol, fun);
-                }
+                hash_insert_base_pair(env, peer, symbol, fun);
                 with_required_current_instance(|instance| unsafe {
                     // P2: single-field write; no other raw path touches the
                     // instance inside this closure.
                     (*instance)
                         .active_bindings
                         .insert(binding_key(env, symbol), fun);
+                    if let Some(peer) = peer {
+                        (*instance)
+                            .active_bindings
+                            .insert(binding_key(peer, symbol), fun);
+                    }
                 });
                 return;
             }
@@ -264,15 +353,19 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
         }
         SETTAG(new_cell, symbol);
         SET_FRAME(env, new_cell);
-        if super::env_hash::env_has_hash_table(env) {
-            super::env_hash::hash_insert(env, symbol, fun);
-        }
+        mirror_base_frame(env, peer);
+        hash_insert_base_pair(env, peer, symbol, fun);
         with_required_current_instance(|instance| unsafe {
             // P2: single-field write; no other raw path touches the
             // instance inside this closure.
             (*instance)
                 .active_bindings
                 .insert(binding_key(env, symbol), fun);
+            if let Some(peer) = peer {
+                (*instance)
+                    .active_bindings
+                    .insert(binding_key(peer, symbol), fun);
+            }
         });
     }
 }
@@ -637,6 +730,9 @@ pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) 
         return false;
     }
 
+    // Read before any SET_FRAME. A later lookup would miss the peer once the
+    // heads differ.
+    let peer = unsafe { base_binding_peer(rho.clone().as_raw()) };
     let frame = match rho.clone().try_frame() {
         Ok(f) => f,
         Err(_) => unsafe { Sexp::from_raw_unchecked(R_NilValue()) },
@@ -666,8 +762,13 @@ pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) 
 
 
             increment_named_on_assign(value.clone().as_raw());
-            if super::env_hash::env_has_hash_table(rho.clone().as_raw()) {
-                super::env_hash::hash_insert(rho.as_raw(), symbol.as_raw(), value.as_raw());
+            unsafe {
+                hash_insert_base_pair(
+                    rho.clone().as_raw(),
+                    peer,
+                    symbol.clone().as_raw(),
+                    value.clone().as_raw(),
+                );
             }
             return true;
         }
@@ -682,14 +783,22 @@ pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) 
         unsafe {
             SETTAG(new_cell, symbol.clone().as_raw());
             SET_FRAME(rho.clone().as_raw(), new_cell);
+            mirror_base_frame(rho.clone().as_raw(), peer);
         }
         increment_named_on_assign(value.clone().as_raw());
 
-        if super::env_hash::env_has_hash_table(rho.clone().as_raw()) {
-            super::env_hash::hash_insert(rho.clone().as_raw(), symbol.as_raw(), value.as_raw());
+        unsafe {
+            hash_insert_base_pair(
+                rho.clone().as_raw(),
+                peer,
+                symbol.clone().as_raw(),
+                value.clone().as_raw(),
+            );
         }
 
-        if !super::env_hash::env_has_hash_table(rho.clone().as_raw()) {
+        let peer_has_hash =
+            peer.is_some_and(|peer| super::env_hash::env_has_hash_table(peer));
+        if !super::env_hash::env_has_hash_table(rho.clone().as_raw()) && !peer_has_hash {
             let nil = unsafe { R_NilValue() };
             let mut count = 0usize;
             let mut cur = unsafe { super::accessors::FRAME(rho.clone().as_raw()) };

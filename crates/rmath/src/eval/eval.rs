@@ -3816,6 +3816,41 @@ isBaseNamespace(.BaseNamespaceEnv) &&
     }
 
     #[test]
+    fn base_namespace_bindings_stay_shared() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+exists(".ArgsEnv", envir=baseenv(), inherits=FALSE) &&
+  exists(".ArgsEnv", envir=.BaseNamespaceEnv, inherits=FALSE) &&
+  exists(".GenericArgsEnv", envir=baseenv(), inherits=FALSE) &&
+  exists(".GenericArgsEnv", envir=.BaseNamespaceEnv, inherits=FALSE) &&
+  { assign("rport_base_share", 1, envir=baseenv())
+    exists("rport_base_share", envir=.BaseNamespaceEnv, inherits=FALSE) &&
+      identical(get("rport_base_share", envir=.BaseNamespaceEnv, inherits=FALSE), 1) } &&
+  { rm(rport_base_share, envir=.BaseNamespaceEnv)
+    !exists("rport_base_share", envir=baseenv(), inherits=FALSE) &&
+      inherits(try(get("rport_base_share", envir=baseenv(), inherits=FALSE), silent=TRUE), "try-error") } &&
+  identical(ls(baseenv()), ls(.BaseNamespaceEnv)) &&
+  !identical(.BaseNamespaceEnv, baseenv()) &&
+  identical(parent.env(.BaseNamespaceEnv), .GlobalEnv)
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "base namespace frame share: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
     fn setgeneric_skeleton_matches_gnu() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(

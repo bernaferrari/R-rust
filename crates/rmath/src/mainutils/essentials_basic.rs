@@ -221,7 +221,10 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             output.push_str(part);
         }
-        if fill && !output.ends_with('\n') {
+        // GNU still emits one newline when a separator contains '\n',
+        // even if the text already ends with one. Fill alone does not.
+        let nlsep = seps.iter().any(|sep| sep.contains('\n'));
+        if nlsep || (fill && !output.ends_with('\n')) {
             output.push('\n');
         }
         emit_cat_output(&output, dest, append);
