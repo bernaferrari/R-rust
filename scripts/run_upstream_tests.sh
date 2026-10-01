@@ -116,6 +116,7 @@ normalize() {
     tr -d '\r' <"$1" | sed -E -e 's/[[:space:]]+$//' \
         -e 's/^Time elapsed:.*/Time elapsed: <t>/' \
         -e 's/<environment: 0x[0-9a-fA-F]*>/<environment: 0x*>/' \
+        -e 's/tracemem\[0x[0-9a-fA-F]+ -> 0x[0-9a-fA-F]+\]/tracemem[0x* -> 0x*]/' \
         -e :a -e '/^$/{$d;N;ba' -e '}'
 }
 

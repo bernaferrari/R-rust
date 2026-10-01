@@ -4,13 +4,15 @@
 //!
 //! Provides debug(), undebug(), isdebugged(), debugonce(),
 //! .Internal(trace()), .primTrace/.primUntrace,
-//! tracingState/debuggingState, and memory profiling stubs.
+//! tracingState/debuggingState, and tracemem/untracemem.
 
+use std::cell::RefCell;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 
 use crate::mainutils::errors::Rf_error;
-use crate::sexp::accessors::{CAR, TYPEOF};
-use crate::sexp::constructors::Rf_ScalarLogical;
+use crate::sexp::accessors::{CAR, CHAR, PRINTNAME, TAG, TYPEOF};
+use crate::sexp::constructors::{Rf_ScalarLogical, Rf_mkString};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::globals::set_R_Visible;
@@ -234,26 +236,115 @@ pub extern "C" fn R_current_trace_state() -> c_int {
 }
 
 // ---------------------------------------------------------------------------
-// do_tracemem — stub (memory profiling not compiled in)
+// tracemem / untracemem — GNU debug.c under R_MEMORY_PROFILING
+//
+// The trace bit is sxpinfo.trace (bit 26). `.primTrace` keeps using gp bit
+// 0x10 via the local SET_RTRACE above; those two flags are not the same bit.
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+unsafe fn memory_traced(x: SEXP) -> bool {
+    unsafe { !x.is_null() && (*x).sxpinfo.trace() }
+}
+
+unsafe fn set_memory_traced(x: SEXP, on: bool) {
     unsafe {
-        let _ = (call, op, args, rho);
-        Rf_error(c"R was not compiled with support for memory profiling".as_ptr() as *const _);
-        unreachable!()
+        if !x.is_null() {
+            (*x).sxpinfo.set_trace(on);
+        }
     }
 }
 
-// ---------------------------------------------------------------------------
-// do_untracemem — stub (memory profiling not compiled in)
-// ---------------------------------------------------------------------------
+unsafe fn reject_traced_function(object: SEXP) {
+    unsafe {
+        if object.is_null() {
+            return;
+        }
+        let t = TYPEOF(object);
+        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+            Rf_error(c"argument must not be a function".as_ptr() as *const _);
+        }
+    }
+}
 
+/// GNU `check1arg`: a supplied tag must be a prefix of `x`.
+unsafe fn check_tracemem_arg(args: SEXP, _call: SEXP) {
+    unsafe {
+        let tag = TAG(args);
+        if tag.is_null() || tag == R_NilValue() {
+            return;
+        }
+        let bytes = CHAR(PRINTNAME(tag));
+        if bytes.is_null() {
+            return;
+        }
+        let supplied = CStr::from_ptr(bytes).to_bytes();
+        let formal = b"x";
+        if supplied.is_empty() || supplied.len() > formal.len() || !formal.starts_with(supplied) {
+            let message = CString::new(format!(
+                "supplied argument name '{}' does not match 'x'",
+                String::from_utf8_lossy(supplied)
+            ))
+            .unwrap_or_else(|_| CString::new("supplied argument name does not match 'x'").unwrap());
+            Rf_error(message.as_ptr());
+        }
+    }
+}
+
+/// R's `tracemem(x)` — mark `x` and return `"<address>"`.
+pub unsafe fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let _ = (op, rho);
+        if !args.is_null() && args != R_NilValue() {
+            check_tracemem_arg(args, call);
+        }
+        let object = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(args)
+        };
+        reject_traced_function(object);
+        if object.is_null() || object == R_NilValue() {
+            Rf_error(c"cannot trace NULL".as_ptr() as *const _);
+        }
+        let t = TYPEOF(object);
+        if t == SEXPTYPE::ENVSXP || t == SEXPTYPE::PROMSXP {
+            Rf_error(
+                c"'tracemem' is not useful for promise and environment objects".as_ptr()
+                    as *const _,
+            );
+        }
+        if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP {
+            Rf_error(
+                c"'tracemem' is not useful for weak reference or external pointer objects".as_ptr()
+                    as *const _,
+            );
+        }
+        set_memory_traced(object, true);
+        let buffer = CString::new(format!("<{:p}>", object)).unwrap_or_else(|_| {
+            CString::new("<0x0>").unwrap_or_else(|_| CString::new("").unwrap())
+        });
+        Rf_mkString(buffer.as_ptr())
+    }
+}
+
+/// R's `untracemem(x)` — clear the trace bit. The result is invisible.
 pub unsafe fn do_untracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let _ = (call, op, args, rho);
-        Rf_error(c"R was not compiled with support for memory profiling".as_ptr() as *const _);
-        unreachable!()
+        let _ = (op, rho);
+        if !args.is_null() && args != R_NilValue() {
+            check_tracemem_arg(args, call);
+        }
+        let object = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(args)
+        };
+        reject_traced_function(object);
+        if memory_traced(object) {
+            set_memory_traced(object, false);
+        }
+        set_R_Visible(FALSE);
+        R_NilValue()
     }
 }
 
@@ -270,11 +361,154 @@ pub unsafe fn do_retracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 // ---------------------------------------------------------------------------
-// memtrace_report — no-op stub for memory tracing
+// memtrace_report — GNU debug.c memtrace_report + memtrace_stack_dump
+//
+// Innermost context first. A frame is reported when it is a function or
+// builtin context whose call is a language object. Ordinary builtins such
+// as `unclass` do not push a context, so they do not appear in the line.
+// `do_eval` does push a function context naming `eval`, which is why the
+// primitives.R line contains `eval` twice.
+//
+// GNU `try` is a closure that calls `tryCatch` → `tryCatchList` →
+// `tryCatchOne` → `doTryCatch`. This port implements `try` as a builtin,
+// so those closures are not on the context stack. While that builtin is
+// evaluating its expression, report the same names GNU would, inserted
+// at the framedepth recorded on entry (frames outside `try` stay outside).
 // ---------------------------------------------------------------------------
 
+thread_local! {
+    static BUILTIN_TRY_ENTRIES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
+}
+
+/// RAII marker for [`crate::mainutils::essentials::do_try`].
+pub struct BuiltinTryTrace;
+
+impl BuiltinTryTrace {
+    pub fn enter() -> Self {
+        let depth = unsafe {
+            crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext())
+        };
+        BUILTIN_TRY_ENTRIES.with(|entries| entries.borrow_mut().push(depth));
+        Self
+    }
+}
+
+impl Drop for BuiltinTryTrace {
+    fn drop(&mut self) {
+        BUILTIN_TRY_ENTRIES.with(|entries| {
+            entries.borrow_mut().pop();
+        });
+    }
+}
+
+fn builtin_try_entries() -> Vec<i32> {
+    BUILTIN_TRY_ENTRIES.with(|entries| entries.borrow().clone())
+}
+
+struct ReportedFrame {
+    name: String,
+    function: bool,
+}
+
+/// GNU closure chain that `base::try` pushes around its expression.
+const GNU_TRY_CHAIN: [&str; 5] = [
+    "doTryCatch",
+    "tryCatchOne",
+    "tryCatchList",
+    "tryCatch",
+    "try",
+];
+
+fn insert_builtin_try_frames(frames: &mut Vec<ReportedFrame>) {
+    let entries = builtin_try_entries();
+    if entries.is_empty() || frames.iter().any(|frame| frame.name == "doTryCatch") {
+        return;
+    }
+    let positions: Vec<usize> = frames
+        .iter()
+        .enumerate()
+        .filter(|(_, frame)| frame.function)
+        .map(|(index, _)| index)
+        .collect();
+    let nfunc = positions.len() as i32;
+    let mut insert_at: Vec<usize> = entries
+        .iter()
+        .map(|entry| {
+            let inside = (nfunc - *entry).max(0) as usize;
+            if inside == 0 {
+                0
+            } else {
+                positions[inside - 1] + 1
+            }
+        })
+        .collect();
+    insert_at.sort_unstable_by(|a, b| b.cmp(a));
+    insert_at.dedup();
+    for at in insert_at {
+        for (offset, name) in GNU_TRY_CHAIN.iter().enumerate() {
+            frames.insert(
+                at + offset,
+                ReportedFrame {
+                    name: (*name).to_string(),
+                    function: true,
+                },
+            );
+        }
+    }
+}
+
+unsafe fn traced_call_name(fun: SEXP) -> String {
+    unsafe {
+        if fun.is_null() || fun == R_NilValue() || TYPEOF(fun) != SEXPTYPE::SYMSXP {
+            return "<Anonymous>".to_string();
+        }
+        let pname = PRINTNAME(fun);
+        if pname.is_null() || pname == R_NilValue() {
+            return "<Anonymous>".to_string();
+        }
+        let bytes = CHAR(pname);
+        if bytes.is_null() {
+            return "<Anonymous>".to_string();
+        }
+        CStr::from_ptr(bytes).to_string_lossy().into_owned()
+    }
+}
+
 pub unsafe fn memtrace_report(old: *mut std::ffi::c_void, new: *mut std::ffi::c_void) {
-    let _ = (old, new);
+    if R_current_trace_state() == 0 {
+        return;
+    }
+    let mut line = format!("tracemem[{old:p} -> {new:p}]: ");
+    let mut frames = Vec::new();
+    unsafe {
+        let mut cptr = crate::sexp::context::R_GlobalContext();
+        while !cptr.is_null() {
+            let flag = (*cptr).callflag;
+            let call = (*cptr).call;
+            let function_frame = (flag
+                & (crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+                    | crate::sexp::context::ctxt_flags::CTXT_BUILTIN))
+                != 0;
+            if function_frame
+                && !call.is_null()
+                && call != R_NilValue()
+                && TYPEOF(call) == SEXPTYPE::LANGSXP
+            {
+                frames.push(ReportedFrame {
+                    name: traced_call_name(CAR(call)),
+                    function: (flag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0,
+                });
+            }
+            cptr = (*cptr).nextcontext;
+        }
+    }
+    insert_builtin_try_frames(&mut frames);
+    for frame in &frames {
+        line.push_str(&frame.name);
+        line.push(' ');
+    }
+    line.push('\n');
+    crate::sexp::output::capture_stdout(&line);
 }
 
 // ---------------------------------------------------------------------------
@@ -330,13 +564,10 @@ mod tests {
         });
     }
 
-    /// Test that do_tracemem is defined (actual error behavior tested
-    /// indirectly — panic through extern "C" aborts, so we skip calling it).
+    /// The tracemem entry point is linked. Behavior is covered by the
+    /// upstream primitives.R differential, which needs a full session.
     #[test]
     fn test_tracemem_error() {
-        // do_tracemem always calls Rf_error which panics.
-        // Cannot catch panics across extern "C" boundaries in Rust,
-        // so we just verify the function exists and is callable via FFI.
         assert!((do_tracemem as *const ()) as usize != 0);
     }
 
@@ -371,7 +602,7 @@ mod tests {
         });
     }
 
-    /// Test that memtrace_report is a safe no-op.
+    /// A report with no active session does not panic.
     #[test]
     fn test_memtrace_report_noop() {
         unsafe {

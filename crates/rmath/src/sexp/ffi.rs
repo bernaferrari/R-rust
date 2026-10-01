@@ -291,6 +291,13 @@ impl SxpInfo {
         self.type_and_flags = (self.type_and_flags & !(1 << 24)) | ((v as u32) << 24);
     }
 
+    /// GNU `sxpinfo.trace` (bit 26). Memory profiling (`tracemem`) uses this
+    /// bit. Function tracing (`.primTrace`) uses a separate gp bit.
+    #[inline]
+    pub fn set_trace(&mut self, v: bool) {
+        self.type_and_flags = (self.type_and_flags & !(1 << 26)) | ((v as u32) << 26);
+    }
+
     #[inline]
     pub fn set_named(&mut self, n: u8) {
         self.type_and_flags = (self.type_and_flags & !(0x03 << 29)) | ((n as u32 & 0x03) << 29);

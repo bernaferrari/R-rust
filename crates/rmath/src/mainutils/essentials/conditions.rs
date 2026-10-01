@@ -41,6 +41,9 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // GNU try() is a closure chain. Keep that chain on tracemem
+            // output while this builtin evaluates its expression.
+            let _builtin_try = crate::mainutils::debug::BuiltinTryTrace::enter();
             crate::eval::eval::Rf_eval(expr, rho)
         }));
 

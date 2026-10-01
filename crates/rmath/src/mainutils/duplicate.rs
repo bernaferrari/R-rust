@@ -162,13 +162,38 @@ unsafe fn RTRACE(x: SEXP) -> c_int {
     }
 }
 
-/// Set the RTRACE bit.
+/// Set or clear the RTRACE bit (`sxpinfo.trace`, bit 26).
 #[inline]
-unsafe fn SET_RTRACE(x: SEXP, _v: c_int) {
+unsafe fn SET_RTRACE(x: SEXP, v: c_int) {
     unsafe {
         if !x.is_null() {
-            (*x).sxpinfo.type_and_flags |= RTRACE_MASK;
+            (*x).sxpinfo.set_trace(v != 0);
         }
+    }
+}
+
+/// GNU `duplicate` / `shallow_duplicate`: a traced object reports the copy
+/// and the copy stays traced. Closures, builtins, specials, promises, and
+/// environments are excluded, matching `duplicate.c`.
+unsafe fn trace_duplication(s: SEXP, t: SEXP) {
+    unsafe {
+        if RTRACE(s) == 0 {
+            return;
+        }
+        let ty = TYPEOF(s);
+        if ty == SEXPTYPE::CLOSXP
+            || ty == SEXPTYPE::BUILTINSXP
+            || ty == SEXPTYPE::SPECIALSXP
+            || ty == SEXPTYPE::PROMSXP
+            || ty == SEXPTYPE::ENVSXP
+        {
+            return;
+        }
+        crate::mainutils::debug::memtrace_report(
+            s as *mut std::ffi::c_void,
+            t as *mut std::ffi::c_void,
+        );
+        SET_RTRACE(t, 1);
     }
 }
 
@@ -603,7 +628,11 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
 
 /// Deep duplicate an SEXP.
 pub unsafe fn duplicate(s: SEXP) -> SEXP {
-    unsafe { duplicate1(s, 1) }
+    unsafe {
+        let t = duplicate1(s, 1);
+        trace_duplication(s, t);
+        t
+    }
 }
 
 /// Alias for duplicate (R API).
@@ -613,7 +642,11 @@ pub unsafe fn Rf_duplicate(s: SEXP) -> SEXP {
 
 /// Shallow duplicate an SEXP.
 pub unsafe fn shallow_duplicate(s: SEXP) -> SEXP {
-    unsafe { duplicate1(s, 0) }
+    unsafe {
+        let t = duplicate1(s, 0);
+        trace_duplication(s, t);
+        t
+    }
 }
 
 /// Copy before attribute mutation when the object may be referenced.

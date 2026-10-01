@@ -50,34 +50,130 @@ pub unsafe fn do_is_single(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-/// R's `is.vector(x, mode="any")` — check if x is an atomic or list vector without attributes.
+/// R's `is.vector(x, mode="any")`.
+///
+/// GNU `do_isvector`: mode `"any"` is `isVector` (atomic, list, or expression).
+/// `"numeric"` is integer or double, excluding factors and logicals. Any other
+/// mode must be the type name (`"name"` means `"symbol"`). A names attribute
+/// is allowed; every other attribute makes the result false. A missing mode
+/// is `"any"`, which is what `is.vector(x)` and `str()` pass.
 pub unsafe fn do_is_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        if args.is_null() || args == R_NilValue() {
+            return Rf_ScalarLogical(FALSE);
+        }
+        let mode = match vector_mode_argument(args) {
+            Ok(mode) => mode,
+            Err(message) => panic_r_error(message),
+        };
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
+        let mode_name = if mode == "name" {
+            "symbol".to_string()
+        } else {
+            mode
+        };
+        let matches_mode = if mode_name == "any" {
+            is_gnu_vector(TYPEOF(x))
+        } else if mode_name == "numeric" {
+            is_numeric_mode(x)
+        } else {
+            sexptype_mode_name(x) == mode_name
+        };
+        if !matches_mode || has_disallowed_vector_attribute(x) {
+            return Rf_ScalarLogical(FALSE);
+        }
+        Rf_ScalarLogical(TRUE)
+    }
+}
+
+unsafe fn vector_mode_argument(args: SEXP) -> Result<String, &'static str> {
+    unsafe {
+        let cell = CDR(args);
+        if cell.is_null() || cell == R_NilValue() {
+            return Ok("any".to_string());
+        }
+        let mode = CAR(cell);
+        if mode == R_MissingArg() {
+            return Ok("any".to_string());
+        }
+        if mode.is_null()
+            || mode == R_NilValue()
+            || TYPEOF(mode) != SEXPTYPE::STRSXP
+            || XLENGTH(mode) != 1
+        {
+            return Err("invalid 'mode' argument");
+        }
+        let elt = STRING_ELT(mode, 0);
+        if elt.is_null() || elt == R_NilValue() {
+            return Err("invalid 'mode' argument");
+        }
+        if elt == crate::sexp::globals::R_NaString() {
+            return Ok("NA".to_string());
+        }
+        let bytes = CHAR(elt);
+        if bytes.is_null() {
+            return Err("invalid 'mode' argument");
+        }
+        Ok(CStr::from_ptr(bytes).to_string_lossy().into_owned())
+    }
+}
+
+fn is_gnu_vector(t: c_int) -> bool {
+    t == SEXPTYPE::LGLSXP
+        || t == SEXPTYPE::INTSXP
+        || t == SEXPTYPE::REALSXP
+        || t == SEXPTYPE::CPLXSXP
+        || t == SEXPTYPE::STRSXP
+        || t == SEXPTYPE::RAWSXP
+        || t == SEXPTYPE::VECSXP
+        || t == SEXPTYPE::EXPRSXP
+}
+
+unsafe fn is_numeric_mode(x: SEXP) -> bool {
+    unsafe {
         let t = TYPEOF(x);
-        let is_vec = t == SEXPTYPE::LGLSXP
-            || t == SEXPTYPE::INTSXP
-            || t == SEXPTYPE::REALSXP
-            || t == SEXPTYPE::CPLXSXP
-            || t == SEXPTYPE::STRSXP
-            || t == SEXPTYPE::RAWSXP
-            || t == SEXPTYPE::VECSXP;
+        if t == SEXPTYPE::INTSXP {
+            crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0
+        } else {
+            t == SEXPTYPE::REALSXP
+        }
+    }
+}
+
+unsafe fn sexptype_mode_name(x: SEXP) -> String {
+    unsafe {
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::OBJSXP {
+            let s4 = ((*x).sxpinfo.gp() & (1 << 4)) != 0;
+            return if s4 {
+                "S4".to_string()
+            } else {
+                "object".to_string()
+            };
+        }
+        let raw = crate::mainutils::util_main::type2char(t);
+        if raw.is_null() {
+            return "unknown".to_string();
+        }
+        CStr::from_ptr(raw).to_string_lossy().into_owned()
+    }
+}
+
+unsafe fn has_disallowed_vector_attribute(x: SEXP) -> bool {
+    unsafe {
         let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
-        let nil = crate::sexp::globals::R_NilValue();
-        let mut extra = false;
+        let nil = R_NilValue();
         let mut a = ATTRIB(x);
         while !a.is_null() && a != nil {
-            let tag = TAG(a);
-            if !tag.is_null() && tag != nil && tag != names_sym {
-                extra = true;
-                break;
+            if TAG(a) != names_sym {
+                return true;
             }
             a = CDR(a);
         }
-        Rf_ScalarLogical(if is_vec && !extra { TRUE } else { FALSE })
+        false
     }
 }
 

@@ -989,6 +989,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "tracingState",
         handler: crate::mainutils::debug::do_tracing_state,
     },
+    EvaluatedBuiltin {
+        name: "tracemem",
+        handler: crate::mainutils::debug::do_tracemem,
+    },
+    EvaluatedBuiltin {
+        name: "untracemem",
+        handler: crate::mainutils::debug::do_untracemem,
+    },
+    EvaluatedBuiltin {
+        name: "retracemem",
+        handler: crate::mainutils::debug::do_retracemem,
+    },
 
     EvaluatedBuiltin {
         name: ".isMethodsDispatchOn",
