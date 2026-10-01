@@ -290,12 +290,30 @@ unsafe fn check_tracemem_arg(args: SEXP, _call: SEXP) {
     }
 }
 
+fn memory_profiling_enabled() -> bool {
+    cfg!(feature = "memory-profiling")
+}
+
+unsafe fn reject_without_memory_profiling() {
+    unsafe {
+        Rf_error(
+            c"R was not compiled with support for memory profiling".as_ptr() as *const _,
+        );
+    }
+}
+
 /// R's `tracemem(x)` — mark `x` and return `"<address>"`.
+///
+/// Without the `memory-profiling` feature this is GNU's
+/// `R_MEMORY_PROFILING` stub: check the argument name, then error.
 pub unsafe fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (op, rho);
         if !args.is_null() && args != R_NilValue() {
             check_tracemem_arg(args, call);
+        }
+        if !memory_profiling_enabled() {
+            reject_without_memory_profiling();
         }
         let object = if args.is_null() || args == R_NilValue() {
             R_NilValue()
@@ -333,6 +351,9 @@ pub unsafe fn do_untracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         let _ = (op, rho);
         if !args.is_null() && args != R_NilValue() {
             check_tracemem_arg(args, call);
+        }
+        if !memory_profiling_enabled() {
+            reject_without_memory_profiling();
         }
         let object = if args.is_null() || args == R_NilValue() {
             R_NilValue()
@@ -475,7 +496,7 @@ unsafe fn traced_call_name(fun: SEXP) -> String {
 }
 
 pub unsafe fn memtrace_report(old: *mut std::ffi::c_void, new: *mut std::ffi::c_void) {
-    if R_current_trace_state() == 0 {
+    if !memory_profiling_enabled() || R_current_trace_state() == 0 {
         return;
     }
     let mut line = format!("tracemem[{old:p} -> {new:p}]: ");

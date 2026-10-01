@@ -24,6 +24,10 @@ renderplot-device = ["r-graphics-engine"]
 # collection. Enable only for development of the external-pointer redesign.
 # Dependents (r-embed, r-uniffi) do not enable this feature.
 altrep = []
+# GNU configures this off unless --enable-memory-profiling. The pinned
+# oracle is built without it, so tracemem errors and duplicate does not
+# report copies. Enable to match a Homebrew-style build.
+memory-profiling = []
 
 [dependencies]
 rmath-nmath = { path = "../nmath" }
