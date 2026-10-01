@@ -298,7 +298,16 @@ impl SxpInfo {
 
     #[inline]
     pub fn set_gcgen(&mut self, v: u8) {
-        self.type_and_flags = (self.type_and_flags & !(1 << 28)) | ((v as u32 & 0x01) << 28);
+        let next = v & 0x01;
+        let prev = self.gcgen();
+        self.type_and_flags = (self.type_and_flags & !(1 << 28)) | ((next as u32) << 28);
+        // The torture sweep visits old nodes via a side bitmap. Generation
+        // changes on stack temporaries are not slab nodes; the note is a no-op
+        // when this address is not inside an arena page.
+        if prev != next {
+            let node = self as *mut SxpInfo as *mut SexprecCore;
+            crate::sexp::memory::note_slab_generation(node, next);
+        }
     }
 }
 

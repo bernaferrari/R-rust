@@ -181,10 +181,10 @@ fn verify_gc_invariants_in(instance: *mut instance::RInstance) {
 // ---------------------------------------------------------------------------
 
 // Simplified mark: no per-GC HashSet<usize> "traceable" snapshot of all actives, no hash lookup
-// on every edge. We rely on the mark bit in sxpinfo for "visited this collection" (as review
-// suggested) + null guards + reachability from roots. This eliminates two HashSet allocations
-// per GC and hashing cost on every pointer edge during marking. Sweep still walks actives
-// (necessary) to find unmarked for free.
+// on every edge. Arena nodes record the visit in a per-cycle epoch so torture
+// sweeps do not clear a header bit on every young node. Persistent nodes keep
+// the header mark bit. Sweep walks the occupancy bitmap (or, for torture, only
+// the old generation) to find unmarked nodes.
 // Protected "force" marking uses the traced path (now default behavior).
 #[inline(always)]
 fn mark_reachable(obj: SEXP) {
@@ -217,10 +217,18 @@ fn mark_reachable_traced(obj: SEXP) {
         );
 
         unsafe {
-            if (*obj).sxpinfo.mark() {
-                continue;
+            match super::memory::gc_touch(obj) {
+                super::memory::GcTouch::AlreadyMarked => continue,
+                super::memory::GcTouch::OutsideArena => {
+                    // Persistent nodes are not in a slab. Their header mark bit
+                    // is still the visited flag (cleared at cycle start).
+                    if (*obj).sxpinfo.mark() {
+                        continue;
+                    }
+                    (*obj).sxpinfo.set_mark(true);
+                }
+                super::memory::GcTouch::NewlyMarked => {}
             }
-            (*obj).sxpinfo.set_mark(true);
 
             let t = (*obj).sxpinfo.type_of();
             match t {
@@ -1000,6 +1008,10 @@ where
         // `mark_reachable_traced` short-circuit and sweep bindings that are
         // still reachable, leaving dangling frame chains behind.
         clear_persistent_node_marks_in(instance);
+        // Arena nodes use a cycle counter instead of the header mark bit, so
+        // this collection does not have to clear a bit on every young node.
+        // Persistent nodes still use the header bit cleared above.
+        super::memory::begin_gc_epoch();
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| collect(instance)));
         (*instance).gc_state.in_progress = false;
@@ -1357,7 +1369,7 @@ fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
                 }
                 unsafe {
                     let obj_gen = (*obj).sxpinfo.gcgen();
-                    let marked = (*obj).sxpinfo.mark();
+                    let marked = super::memory::arena_node_marked(obj);
 
                     if obj_gen == Generation::Young as u8 {
                         if marked {
@@ -1453,12 +1465,15 @@ fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize
 
         {
             let arena = &mut (*instance).arena;
-            for obj in arena.active_nodes() {
+            // Young nodes are not reclaimed here and are not promoted, so the
+            // only nodes this pass can free are old. Walking the whole slab
+            // on every allocation is most of a long `gctorture(TRUE)` run.
+            for obj in arena.old_nodes() {
                 if obj.is_null() {
                     continue;
                 }
                 unsafe {
-                    if (*obj).sxpinfo.mark() {
+                    if super::memory::arena_node_marked(obj) {
                         // Marked nodes stay in their generation: promotion to
                         // the old generation here would let the very next forced
                         // collection (only `gc_force_gap` allocations later)
@@ -1466,7 +1481,7 @@ fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize
                         // reachable only from a Rust local. Promotion stays
                         // the safe-point collectors' job.
                         (*obj).sxpinfo.set_mark(false);
-                    } else if (*obj).sxpinfo.gcgen() != Generation::Young as u8 {
+                    } else {
                         // Old-generation garbage: reclaim now.
                         to_free.push(obj);
                     }
@@ -1543,7 +1558,7 @@ fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
                     continue;
                 }
                 unsafe {
-                    if (*obj).sxpinfo.mark() {
+                    if super::memory::arena_node_marked(obj) {
                         if (*obj).sxpinfo.gcgen() == Generation::Young as u8 {
                             (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
                             promoted_count += 1;

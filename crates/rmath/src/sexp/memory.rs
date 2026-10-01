@@ -19,8 +19,8 @@
 //! stack, remembered-set edges). Dropping roots because "there is no GC" is
 //! use-after-free — do not treat this module as GC-free.
 
-use std::alloc::{Layout, alloc, dealloc};
-use std::cell::Cell;
+use std::alloc::{Layout, alloc, alloc_zeroed, dealloc};
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ptr::{self};
 use std::rc::Rc;
@@ -29,9 +29,23 @@ use std::rc::Rc;
 /// and improve cache locality vs one Box per node. Chose 4096 as balance ( ~256KB per page
 /// assuming ~64B SexprecCore).
 const NODE_PAGE_SIZE: usize = 4096;
+/// `u64` words in one page's occupancy bitmap (`NODE_PAGE_SIZE` bits).
+const OCCUPANCY_WORDS_PER_PAGE: usize = NODE_PAGE_SIZE / 64;
+const _: () = assert!(NODE_PAGE_SIZE % 64 == 0);
 
 use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData};
 use super::object::Sexp;
+
+/// Byte size of one node. `pointer.add` uses this stride.
+const NODE_BYTES: usize = std::mem::size_of::<SexprecCore>();
+/// Bytes occupied by the node array itself, before stride rounding.
+const SLAB_BYTES: usize = NODE_PAGE_SIZE * NODE_BYTES;
+/// Power-of-two allocation size and alignment. A node address maps to its
+/// page by masking, which keeps the per-node GC touch off a hash table when
+/// the page is hot.
+const SLAB_STRIDE: usize = SLAB_BYTES.next_power_of_two();
+const _: () = assert!(SLAB_STRIDE.is_power_of_two());
+const _: () = assert!(SLAB_STRIDE >= SLAB_BYTES);
 
 // ---------------------------------------------------------------------------
 // Element sizes by SEXPTYPE
@@ -133,6 +147,24 @@ impl ArenaBudget {
 // RArena: arena allocator for R objects
 // ---------------------------------------------------------------------------
 
+/// Per-page GC side table. Owned as a raw allocation beside the node slab so
+/// an `&RArena` borrow does not cover these bytes (same rule as node slots).
+///
+/// `occupancy` is the live-node bitmap. `old` is the old-generation subset
+/// the torture sweep walks. `epoch[slot] == current` means the node was
+/// marked in this collection, so sweeps do not clear a header bit on every
+/// young node.
+#[repr(C)]
+struct PageGcMeta {
+    occupancy: [u64; OCCUPANCY_WORDS_PER_PAGE],
+    old: [u64; OCCUPANCY_WORDS_PER_PAGE],
+    epoch: [u32; NODE_PAGE_SIZE],
+}
+
+const OCCUPANCY_OFFSET: usize = std::mem::offset_of!(PageGcMeta, occupancy);
+const OLD_OFFSET: usize = std::mem::offset_of!(PageGcMeta, old);
+const EPOCH_OFFSET: usize = std::mem::offset_of!(PageGcMeta, epoch);
+
 /// One raw-allocated slab of `NODE_PAGE_SIZE` node slots.
 ///
 /// Pages are allocated and freed through the allocator API and are only ever
@@ -142,15 +174,311 @@ impl ArenaBudget {
 /// earlier allocations — aliasing UB under Stacked Borrows.
 struct SlabPage {
     base: *mut SexprecCore,
+    meta: *mut PageGcMeta,
 }
 
 impl Drop for SlabPage {
     fn drop(&mut self) {
+        unregister_slab(self.base, self.meta);
+        self.meta = ptr::null_mut();
         if !self.base.is_null() {
-            let layout =
-                Layout::array::<SexprecCore>(NODE_PAGE_SIZE).expect("slab page layout is valid");
-            unsafe { dealloc(self.base.cast(), layout) };
+            unsafe { dealloc(self.base.cast(), slab_layout()) };
+            self.base = ptr::null_mut();
         }
+    }
+}
+
+fn slab_layout() -> Layout {
+    Layout::from_size_align(SLAB_STRIDE, SLAB_STRIDE).expect("slab page layout is valid")
+}
+
+thread_local! {
+    static SLAB_META: RefCell<HashMap<usize, *mut PageGcMeta>> = RefCell::new(HashMap::new());
+    /// Last page touched. Torture marking walks nodes allocated together, so
+    /// the next lookup usually hits this instead of the page map.
+    static SLAB_CACHE: Cell<(usize, *mut PageGcMeta)> = const { Cell::new((0, ptr::null_mut())) };
+    /// 0 means "no collection has started". Node epochs are never 0 after a
+    /// visit, and 0 is never a current epoch, so a stale 0 cannot look marked.
+    static GC_EPOCH: Cell<u32> = const { Cell::new(0) };
+}
+
+fn register_slab(base: *mut SexprecCore, meta: *mut PageGcMeta) {
+    let key = base as usize;
+    SLAB_META.with(|map| {
+        map.borrow_mut().insert(key, meta);
+    });
+    SLAB_CACHE.set((key, meta));
+}
+
+fn unregister_slab(base: *mut SexprecCore, meta: *mut PageGcMeta) {
+    if !base.is_null() {
+        let key = base as usize;
+        SLAB_META.with(|map| {
+            map.borrow_mut().remove(&key);
+        });
+        let (cached_base, cached_meta) = SLAB_CACHE.get();
+        if cached_base == key || cached_meta == meta {
+            SLAB_CACHE.set((0, ptr::null_mut()));
+        }
+    }
+    if !meta.is_null() {
+        unsafe { dealloc(meta.cast(), Layout::new::<PageGcMeta>()) };
+    }
+}
+
+#[inline(always)]
+fn find_slab_slot(ptr: SEXP) -> Option<(*mut PageGcMeta, usize)> {
+    if ptr.is_null() {
+        return None;
+    }
+    let addr = ptr as usize;
+    let base = addr & !(SLAB_STRIDE - 1);
+    let (cached_base, cached_meta) = SLAB_CACHE.get();
+    let meta = if cached_base == base && !cached_meta.is_null() {
+        cached_meta
+    } else {
+        let found = SLAB_META.with(|map| map.borrow().get(&base).copied())?;
+        if found.is_null() {
+            return None;
+        }
+        SLAB_CACHE.set((base, found));
+        found
+    };
+    let delta = addr - base;
+    if !delta.is_multiple_of(NODE_BYTES) {
+        return None;
+    }
+    let slot = delta / NODE_BYTES;
+    if slot >= NODE_PAGE_SIZE {
+        return None;
+    }
+    Some((meta, slot))
+}
+
+#[inline(always)]
+unsafe fn bitmap_word_ptr(meta: *mut PageGcMeta, old: bool, word: usize) -> *mut u64 {
+    let offset = if old { OLD_OFFSET } else { OCCUPANCY_OFFSET };
+    unsafe { (meta as *mut u8).add(offset).cast::<u64>().add(word) }
+}
+
+#[inline(always)]
+unsafe fn epoch_slot_ptr(meta: *mut PageGcMeta, slot: usize) -> *mut u32 {
+    unsafe { (meta as *mut u8).add(EPOCH_OFFSET).cast::<u32>().add(slot) }
+}
+
+#[inline(always)]
+unsafe fn set_bitmap_bit(meta: *mut PageGcMeta, old: bool, slot: usize, on: bool) {
+    let word_ptr = unsafe { bitmap_word_ptr(meta, old, slot >> 6) };
+    let mask = 1u64 << (slot & 63);
+    unsafe {
+        let mut word = ptr::read(word_ptr);
+        if on {
+            word |= mask;
+        } else {
+            word &= !mask;
+        }
+        ptr::write(word_ptr, word);
+    }
+}
+
+#[inline(always)]
+unsafe fn bitmap_word(meta: *const PageGcMeta, old: bool, word: usize) -> u64 {
+    unsafe { ptr::read(bitmap_word_ptr(meta as *mut PageGcMeta, old, word)) }
+}
+
+fn next_set_run(meta: *const PageGcMeta, old_only: bool, mut slot: usize) -> Option<(usize, usize)> {
+    if meta.is_null() {
+        return None;
+    }
+    while slot < NODE_PAGE_SIZE {
+        let word_index = slot >> 6;
+        let bit = slot & 63;
+        let word = unsafe { bitmap_word(meta, old_only, word_index) };
+        if word == 0 || (word >> bit) == 0 {
+            slot = (word_index + 1) << 6;
+            continue;
+        }
+        let start = slot + (word >> bit).trailing_zeros() as usize;
+        let end = occupied_run_end(meta, old_only, start);
+        if end <= start {
+            slot = start + 1;
+            continue;
+        }
+        return Some((start, end));
+    }
+    None
+}
+
+fn occupied_run_end(meta: *const PageGcMeta, old_only: bool, start: usize) -> usize {
+    let mut end = start;
+    while end < NODE_PAGE_SIZE {
+        let word_index = end >> 6;
+        let bit = end & 63;
+        let word = unsafe { bitmap_word(meta, old_only, word_index) };
+        if bit == 0 && word == u64::MAX {
+            end += 64;
+            continue;
+        }
+        let shifted = word >> bit;
+        let ones = (!shifted).trailing_zeros() as usize;
+        if ones == 0 {
+            break;
+        }
+        end += ones;
+        if bit + ones < 64 {
+            break;
+        }
+    }
+    end
+}
+
+/// Result of testing one pointer against the current GC epoch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GcTouch {
+    /// Arena node already marked in this collection.
+    AlreadyMarked,
+    /// Arena node marked by this call.
+    NewlyMarked,
+    /// Not a slab node. Callers keep the header mark bit for persistent objects.
+    OutsideArena,
+}
+
+/// Start a collection. Arena nodes marked after this compare equal to the new
+/// epoch; the previous cycle's marks do not. `gctorture(TRUE)` runs a
+/// collection on every allocation, and the young generation is not reclaimed
+/// there, so the sweep must not walk those nodes just to clear a mark bit.
+pub(crate) fn begin_gc_epoch() {
+    let next = GC_EPOCH.get().wrapping_add(1);
+    if next == 0 {
+        SLAB_META.with(|map| {
+            for meta in map.borrow().values().copied() {
+                if meta.is_null() {
+                    continue;
+                }
+                unsafe {
+                    ptr::write_bytes(epoch_slot_ptr(meta, 0), 0u8, NODE_PAGE_SIZE);
+                }
+            }
+        });
+        GC_EPOCH.set(1);
+    } else {
+        GC_EPOCH.set(next);
+    }
+}
+
+/// Mark `ptr` if it is an arena node. Persistent nodes return [`GcTouch::OutsideArena`]
+/// and keep using the header mark bit.
+#[inline(always)]
+pub(crate) fn gc_touch(ptr: SEXP) -> GcTouch {
+    let Some((meta, slot)) = find_slab_slot(ptr) else {
+        return GcTouch::OutsideArena;
+    };
+    let epoch = GC_EPOCH.get();
+    debug_assert!(
+        epoch != 0,
+        "gc_touch on an arena node before begin_gc_epoch"
+    );
+    unsafe {
+        let slot_epoch = epoch_slot_ptr(meta, slot);
+        if epoch != 0 && ptr::read(slot_epoch) == epoch {
+            return GcTouch::AlreadyMarked;
+        }
+        if epoch != 0 {
+            ptr::write(slot_epoch, epoch);
+        }
+    }
+    GcTouch::NewlyMarked
+}
+
+/// Whether this arena node was [`gc_touch`]ed since the latest [`begin_gc_epoch`].
+#[inline(always)]
+pub(crate) fn arena_node_marked(ptr: SEXP) -> bool {
+    let epoch = GC_EPOCH.get();
+    if epoch == 0 {
+        return false;
+    }
+    let Some((meta, slot)) = find_slab_slot(ptr) else {
+        return false;
+    };
+    unsafe { ptr::read(epoch_slot_ptr(meta, slot)) == epoch }
+}
+
+/// Keep the old-generation bitmap aligned with `sxpinfo.gcgen`.
+///
+/// Called from [`SxpInfo::set_gcgen`](super::ffi::SxpInfo::set_gcgen). Pointers
+/// that are not slab nodes (header temporaries, persistent sentinels) are ignored.
+pub(crate) fn note_slab_generation(ptr: SEXP, generation: u8) {
+    let Some((meta, slot)) = find_slab_slot(ptr) else {
+        return;
+    };
+    unsafe { set_bitmap_bit(meta, true, slot, generation == 1) };
+}
+
+/// Live or old-generation nodes in slab order. Full words collapse to a
+/// pointer walk; zero words are skipped. `gctorture(TRUE)` used to hash every
+/// slot on every allocation.
+pub(crate) struct SlotIter<'a> {
+    pages: &'a [SlabPage],
+    old_only: bool,
+    page: usize,
+    slot: usize,
+    slot_end: usize,
+    base: *mut SexprecCore,
+}
+
+impl Iterator for SlotIter<'_> {
+    type Item = SEXP;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<SEXP> {
+        if self.slot < self.slot_end {
+            // SAFETY: `slot` is inside a run armed from a set bitmap bit, and
+            // bits are set only for slots written by the allocator. `base` is
+            // that page's slab allocation.
+            let ptr = unsafe { self.base.add(self.slot) };
+            self.slot += 1;
+            return Some(ptr);
+        }
+        self.slow_next()
+    }
+}
+
+impl SlotIter<'_> {
+    #[inline(never)]
+    fn slow_next(&mut self) -> Option<SEXP> {
+        if !self.arm_next_run() {
+            return None;
+        }
+        let ptr = unsafe { self.base.add(self.slot) };
+        self.slot += 1;
+        Some(ptr)
+    }
+
+    fn arm_next_run(&mut self) -> bool {
+        let page_count = self.pages.len();
+        let mut page = self.page;
+        let mut slot = self.slot;
+        while page < page_count {
+            if slot >= NODE_PAGE_SIZE {
+                page += 1;
+                slot = 0;
+                continue;
+            }
+            let meta = self.pages[page].meta;
+            if let Some((start, end)) = next_set_run(meta, self.old_only, slot) {
+                self.page = page;
+                self.slot = start;
+                self.slot_end = end;
+                self.base = self.pages[page].base;
+                return true;
+            }
+            page += 1;
+            slot = 0;
+        }
+        self.page = page;
+        self.slot = 0;
+        self.slot_end = 0;
+        false
     }
 }
 
@@ -202,14 +530,26 @@ impl RArena {
     /// Allocate a new page in the slab. Reserves exactly to avoid realloc (stable ptrs inside).
     #[inline(always)]
     fn alloc_new_page(&mut self) {
-        let layout =
-            Layout::array::<SexprecCore>(NODE_PAGE_SIZE).expect("slab page layout is valid");
+        let layout = slab_layout();
         let base = unsafe { alloc(layout) } as *mut SexprecCore;
         assert!(
             !base.is_null(),
             "arena slab page allocation failed (out of memory)"
         );
-        self.node_pages.push(SlabPage { base });
+        debug_assert_eq!(
+            base as usize & (SLAB_STRIDE - 1),
+            0,
+            "slab page is stride-aligned"
+        );
+        let meta = unsafe { alloc_zeroed(Layout::new::<PageGcMeta>()) } as *mut PageGcMeta;
+        assert!(
+            !meta.is_null(),
+            "arena page metadata allocation failed (out of memory)"
+        );
+        // Push before registering so a panic in the page map still frees both
+        // allocations through `SlabPage::drop`.
+        self.node_pages.push(SlabPage { base, meta });
+        register_slab(base, meta);
         self.slab_page = self.node_pages.len() - 1;
         self.slab_offset = 0;
     }
@@ -283,16 +623,37 @@ impl RArena {
     }
 
     fn track_node_active(&mut self, ptr: SEXP) {
-        if !ptr.is_null() {
-            self.active_addrs.insert(ptr as usize);
-            self.free_addrs.remove(&(ptr as usize));
+        if ptr.is_null() {
+            return;
+        }
+        self.active_addrs.insert(ptr as usize);
+        self.free_addrs.remove(&(ptr as usize));
+        let Some((meta, slot)) = find_slab_slot(ptr) else {
+            debug_assert!(ptr.is_null(), "active node is not in a slab page");
+            return;
+        };
+        unsafe {
+            set_bitmap_bit(meta, false, slot, true);
+            // The header is the source of truth (fresh nodes are young; a
+            // copied node may already be old). Drop a stale epoch so the slot
+            // cannot look marked in the collection that is already running.
+            set_bitmap_bit(meta, true, slot, (*ptr).sxpinfo.gcgen() == 1);
+            ptr::write(epoch_slot_ptr(meta, slot), 0);
         }
     }
 
     fn track_node_freed(&mut self, ptr: SEXP) {
-        if !ptr.is_null() {
-            self.active_addrs.remove(&(ptr as usize));
-            self.free_addrs.insert(ptr as usize);
+        if ptr.is_null() {
+            return;
+        }
+        self.active_addrs.remove(&(ptr as usize));
+        self.free_addrs.insert(ptr as usize);
+        if let Some((meta, slot)) = find_slab_slot(ptr) {
+            unsafe {
+                set_bitmap_bit(meta, false, slot, false);
+                set_bitmap_bit(meta, true, slot, false);
+                ptr::write(epoch_slot_ptr(meta, slot), 0);
+            }
         }
     }
 
@@ -797,10 +1158,29 @@ impl RArena {
             })
     }
 
-    /// Iterate over nodes that are currently active, excluding free-list slots.
-    pub(crate) fn active_nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
-        self.nodes()
-            .filter(|ptr| self.active_addrs.contains(&(*ptr as usize)))
+    /// Live nodes in slab order, skipping free-list holes.
+    pub(crate) fn active_nodes(&self) -> SlotIter<'_> {
+        self.slot_iter(false)
+    }
+
+    /// Old-generation nodes in slab order.
+    ///
+    /// Torture collections reclaim only this set. Young nodes stay live until a
+    /// safe-point collection, so walking them on every `gctorture(TRUE)`
+    /// allocation dominated long runs.
+    pub(crate) fn old_nodes(&self) -> SlotIter<'_> {
+        self.slot_iter(true)
+    }
+
+    fn slot_iter(&self, old_only: bool) -> SlotIter<'_> {
+        SlotIter {
+            pages: &self.node_pages,
+            old_only,
+            page: 0,
+            slot: 0,
+            slot_end: 0,
+            base: ptr::null_mut(),
+        }
     }
 
     /// Free a node by adding it to the free list for reuse.
@@ -1379,6 +1759,170 @@ mod tests {
 
         let active: Vec<SEXP> = arena.active_nodes().collect();
         assert_eq!(active, vec![live]);
+    }
+
+    fn membership_scan(arena: &super::RArena) -> Vec<SEXP> {
+        arena
+            .nodes()
+            .filter(|ptr| arena.active_addrs.contains(&(*ptr as usize)))
+            .collect()
+    }
+
+    #[test]
+    fn active_nodes_bitmap_matches_membership_and_old_sweep_skips_young() {
+        let mut arena = super::RArena::new();
+        let a = arena.alloc_node(super::SEXPTYPE::INTSXP);
+        let b = arena.alloc_node(super::SEXPTYPE::REALSXP);
+        let c = arena.alloc_node(super::SEXPTYPE::LGLSXP);
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.free_node(b)
+        });
+        let reused = arena.alloc_node(super::SEXPTYPE::REALSXP);
+        assert_eq!(reused, b);
+        assert_eq!(arena.active_nodes().collect::<Vec<_>>(), vec![a, b, c]);
+        assert_eq!(arena.active_nodes().collect::<Vec<_>>(), membership_scan(&arena));
+
+        (unsafe {
+            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+            arena.free_node(a)
+        });
+        assert_eq!(arena.active_nodes().collect::<Vec<_>>(), vec![b, c]);
+        assert!(arena.old_nodes().next().is_none());
+
+        unsafe {
+            (*c).sxpinfo.set_gcgen(1);
+        }
+        assert_eq!(arena.old_nodes().collect::<Vec<_>>(), vec![c]);
+        unsafe {
+            (*b).sxpinfo.set_gcgen(1);
+            (*c).sxpinfo.set_gcgen(0);
+        }
+        // `b` was allocated before `c`, so the old set stays in slab order.
+        assert_eq!(arena.old_nodes().collect::<Vec<_>>(), vec![b]);
+
+        let mut arena = super::RArena::new();
+        let span = if cfg!(miri) {
+            8
+        } else {
+            super::NODE_PAGE_SIZE + 3
+        };
+        let mut ptrs = Vec::with_capacity(span);
+        for _ in 0..span {
+            ptrs.push(arena.alloc_node(super::SEXPTYPE::INTSXP));
+        }
+        let mut freed = vec![0usize, 1];
+        if span > super::NODE_PAGE_SIZE {
+            freed.push(super::NODE_PAGE_SIZE);
+        }
+        freed.push(span - 1);
+        for index in &freed {
+            (unsafe {
+                /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
+                arena.free_node(ptrs[*index])
+            });
+        }
+        let expect: Vec<SEXP> = ptrs
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !freed.contains(&index))
+            .map(|(_, ptr)| *ptr)
+            .collect();
+        let active = arena.active_nodes().collect::<Vec<_>>();
+        assert_eq!(active, expect);
+        assert_eq!(active, membership_scan(&arena));
+        assert_eq!(active.len(), arena.node_count());
+
+        unsafe {
+            (*ptrs[2]).sxpinfo.set_gcgen(1);
+            (*ptrs[3]).sxpinfo.set_gcgen(1);
+        }
+        super::begin_gc_epoch();
+        assert_eq!(
+            super::gc_touch(std::ptr::null_mut()),
+            super::GcTouch::OutsideArena
+        );
+        let stray = super::SexprecCore::new(super::SEXPTYPE::INTSXP);
+        assert_eq!(
+            super::gc_touch(std::ptr::from_ref(&stray).cast_mut()),
+            super::GcTouch::OutsideArena
+        );
+        assert_eq!(super::gc_touch(ptrs[2]), super::GcTouch::NewlyMarked);
+        assert_eq!(super::gc_touch(ptrs[2]), super::GcTouch::AlreadyMarked);
+        assert!(super::arena_node_marked(ptrs[2]));
+        assert!(!super::arena_node_marked(ptrs[3]));
+        let dead_old: Vec<SEXP> = arena
+            .old_nodes()
+            .filter(|ptr| !super::arena_node_marked(*ptr))
+            .collect();
+        assert_eq!(dead_old, vec![ptrs[3]]);
+        assert!(arena.old_nodes().count() < arena.active_nodes().count());
+
+        if cfg!(miri) {
+            return;
+        }
+
+        let mut arena = super::RArena::new();
+        let total = super::NODE_PAGE_SIZE * 4;
+        let mut live = Vec::with_capacity(total);
+        for index in 0..total {
+            let ptr = arena.alloc_node(super::SEXPTYPE::INTSXP);
+            if index % 64 == 0 {
+                unsafe { (*ptr).sxpinfo.set_gcgen(1) };
+            }
+            live.push(ptr);
+        }
+        // Stand-in for the reachable graph: much smaller than the slab once
+        // young garbage has piled up, which is the long torture run.
+        let reachable: Vec<SEXP> = live.iter().copied().step_by(8).collect();
+        let iters = 12u32;
+        let mut hash_ns = 0u128;
+        let mut bitmap_ns = 0u128;
+        let mut old_ns = 0u128;
+        for _ in 0..iters {
+            let started = std::time::Instant::now();
+            let mut seen = 0usize;
+            for ptr in arena.nodes() {
+                if arena.active_addrs.contains(&(ptr as usize)) {
+                    seen += 1;
+                    std::hint::black_box(ptr);
+                }
+            }
+            hash_ns += started.elapsed().as_nanos();
+            std::hint::black_box(seen);
+
+            let started = std::time::Instant::now();
+            let mut seen = 0usize;
+            for ptr in arena.active_nodes() {
+                seen += 1;
+                std::hint::black_box(ptr);
+            }
+            bitmap_ns += started.elapsed().as_nanos();
+            std::hint::black_box(seen);
+
+            let started = std::time::Instant::now();
+            super::begin_gc_epoch();
+            for ptr in &reachable {
+                std::hint::black_box(super::gc_touch(*ptr));
+            }
+            let mut dead_old = 0usize;
+            for ptr in arena.old_nodes() {
+                if !super::arena_node_marked(ptr) {
+                    dead_old += 1;
+                }
+                std::hint::black_box(ptr);
+            }
+            old_ns += started.elapsed().as_nanos();
+            std::hint::black_box(dead_old);
+        }
+        let hash_per = hash_ns / u128::from(iters);
+        let bitmap_per = bitmap_ns / u128::from(iters);
+        let old_per = old_ns / u128::from(iters);
+        eprintln!(
+            "active_nodes scan: membership {hash_per}ns, bitmap {bitmap_per}ns ({:.1}x), old-generation sweep {old_per}ns ({:.1}x vs membership)",
+            hash_per as f64 / bitmap_per.max(1) as f64,
+            hash_per as f64 / old_per.max(1) as f64
+        );
     }
 
     #[test]
