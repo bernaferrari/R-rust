@@ -2606,8 +2606,43 @@ fn format_primitive(x: Sexp<'_>) -> String {
 
 fn deparse_expression_one(expr: SEXP) -> String {
     unsafe {
-        let text = crate::mainutils::deparse::deparse1line(expr, false);
-        first_deparse_line(text).unwrap_or_default()
+        // GNU print.c DEFAULTDEPARSE is keepNA | keepInteger | niceNames.
+        // `deparse()` adds showAttributes, so a class string with a package
+        // attribute prints as `"foo"` and deparses as structure(...).
+        let opts = (crate::mainutils::deparse::DEFAULTDEPARSE
+            & !crate::mainutils::deparse::SHOWATTRIBUTES)
+            | crate::mainutils::deparse::DIGITS17;
+        let text = crate::mainutils::deparse::deparse1WithCutoff(
+            expr,
+            false,
+            crate::mainutils::deparse::MAX_CUTOFF,
+            true,
+            opts,
+            -1,
+        );
+        let n = XLENGTH(text);
+        if n <= 1 {
+            return first_deparse_line(text).unwrap_or_default();
+        }
+        let mut parts = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let charsxp = STRING_ELT(text, i);
+            if charsxp.is_null() {
+                parts.push(String::new());
+                continue;
+            }
+            let chars = CHAR(charsxp);
+            if chars.is_null() {
+                parts.push(String::new());
+            } else {
+                parts.push(
+                    std::ffi::CStr::from_ptr(chars)
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+        parts.join("\n")
     }
 }
 

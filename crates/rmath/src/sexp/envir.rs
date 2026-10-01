@@ -36,6 +36,33 @@ pub type LookupResult<'a> = Option<Sexp<'a>>;
 /// Result of an operation that may fail with an error message.
 pub type EnvResult<T> = Result<T, String>;
 
+/// GNU `R_BaseNamespace`.
+///
+/// Base closures enclose this environment. It is not the search-path
+/// `package:base` environment (`R_BaseEnv`): its parent is `.GlobalEnv`, and
+/// `isBaseFun` / `getPackageName` recognize it by pointer. Before
+/// `retarget_base_closure_envs` republishes the binding, the lookup is
+/// `R_BaseEnv` itself.
+pub unsafe fn R_BaseNamespace() -> SEXP {
+    unsafe {
+        let base = super::globals::R_BaseEnv();
+        if base.is_null() {
+            return base;
+        }
+        let sym = super::symbol::Rf_install(c".BaseNamespaceEnv".as_ptr());
+        let ns = R_findVarInFrame(base, sym);
+        if !ns.is_null()
+            && ns != R_UnboundValue()
+            && ns != R_NilValue()
+            && TYPEOF(ns) == SEXPTYPE::ENVSXP
+        {
+            ns
+        } else {
+            base
+        }
+    }
+}
+
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
 }

@@ -150,6 +150,9 @@ pub unsafe fn do_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if t != SEXPTYPE::ENVSXP {
             return R_NilValue();
         }
+        if env == crate::sexp::globals::R_EmptyEnv() {
+            base_error("the empty environment has no parent");
+        }
         // enclos is the enclosing/parent environment
         let parent = (*env).data.envsxp.enclos;
         if parent.is_null() {
@@ -193,7 +196,9 @@ pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if env == crate::sexp::globals::R_EmptyEnv() {
             return Rf_mkString(c"R_EmptyEnv".as_ptr());
         }
-        if env == crate::sexp::globals::R_BaseEnv() {
+        if env == crate::sexp::globals::R_BaseEnv()
+            || env == crate::sexp::envir::R_BaseNamespace()
+        {
             return Rf_mkString(c"base".as_ptr());
         }
         let name = crate::sexp::attrib_core::getAttrib(env, Rf_install(c"name".as_ptr()));

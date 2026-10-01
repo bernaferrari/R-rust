@@ -1472,8 +1472,15 @@ impl<'arena> Parser<'arena> {
         self.spans.last().map(|&(_, b)| b).unwrap_or(0)
     }
 
+    /// When set, `function` expressions and their single-call bodies carry a
+    /// `srcref` attribute. GNU `Rscript` leaves `keep.source` false, and
+    /// `identical(body(f), substitute(...))` is how `setGeneric` decides a
+    /// skeleton is a standard generic.
+    pub fn set_keep_srcrefs(&mut self, keep: bool) {
+        self.keep_srcrefs = keep;
+    }
+
     pub fn parse_top_level_with_spans(&mut self) -> Result<Vec<(SEXP, usize, usize)>, ParseError> {
-        self.keep_srcrefs = true;
         begin_parsed_expr_warnings();
         let mut spans = Vec::new();
         loop {

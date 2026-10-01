@@ -151,7 +151,11 @@ pub unsafe fn do_enable_jit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 unsafe fn new_compiler_environment() -> SEXP {
     unsafe {
-        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue());
+        let env = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::envir::R_BaseNamespace(),
+            R_NilValue(),
+        );
         let _guard = protect(env);
         crate::mainutils::essentials::define_package_metadata("compiler", env);
         for name in EXPORTS {

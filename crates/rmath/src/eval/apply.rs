@@ -218,7 +218,10 @@ fn finish_application<'a>(
                 && !internal_result_invisible(op_name)
         }
     };
-    if should_restore && unsafe { crate::sexp::globals::R_Visible() } != crate::sexp::ffi::FALSE {
+    // GNU eval.c overwrites R_Visible from PRIMPRINT when flag < 2, even
+    // if the handler or a dispatched method (cat()) cleared it. `[` must
+    // still auto-print NULL. Visibility-controlling names are excluded above.
+    if should_restore {
         set_visibility_for_print_flag(flag);
     }
     Ok(unsafe { Sexp::from_raw_unchecked(result) })

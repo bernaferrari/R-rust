@@ -884,9 +884,9 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
             return Err("invalid package name".to_string());
         }
         // GNU getNamespace("base") / asNamespace("base") is .BaseNamespaceEnv,
-        // not a separately loaded library/base tree.
+        // not the search-path base environment and not library/base.
         if package == "base" {
-            return Ok(crate::sexp::globals::R_BaseEnv());
+            return Ok(crate::sexp::envir::R_BaseNamespace());
         }
 
 
@@ -1963,9 +1963,14 @@ pub(crate) unsafe fn load_package_namespace(
             return Ok((env, directives));
         }
 
+        // GNU `makeNamespace`: the namespace's enclosure chain ends at
+        // `.BaseNamespaceEnv` (parent `.GlobalEnv`), not `baseenv()`
+        // (parent `emptyenv()`). `getFunction` stops at `isBaseNamespace`;
+        // a chain that never reaches that environment loops on
+        // `parent.env(emptyenv())`.
         let package_env = crate::sexp::memory_ext::NewEnvironment(
             R_NilValue(),
-            crate::sexp::globals::R_BaseEnv(),
+            crate::sexp::envir::R_BaseNamespace(),
             R_NilValue(),
         );
         if package_env.is_null() {
@@ -2089,7 +2094,7 @@ pub(crate) fn uncache_package_namespace(package: &str) {
 
 pub(crate) fn cached_namespace_by_name(package: &str) -> Option<SEXP> {
     if package == "base" {
-        return Some(unsafe { crate::sexp::globals::R_BaseEnv() });
+        return Some(unsafe { crate::sexp::envir::R_BaseNamespace() });
     }
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         (*inst)
@@ -3097,7 +3102,7 @@ unsafe fn namespace_imports_env(package_env: SEXP) -> SEXP {
         let imports = crate::sexp::memory_ext::NewEnvironment(
             R_NilValue(),
             if parent.is_null() {
-                crate::sexp::globals::R_BaseEnv()
+                crate::sexp::envir::R_BaseNamespace()
             } else {
                 parent
             },

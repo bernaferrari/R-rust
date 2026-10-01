@@ -637,6 +637,7 @@ unsafe fn eval_source_text_with_options(
 
         let spans = crate::sexp::memory::with_arena(|arena| {
             let mut parser = crate::eval::parser::Parser::new(content, arena);
+            parser.set_keep_srcrefs(true);
             parser
                 .parse_top_level_with_spans()
                 .map_err(|e| e.to_string())
@@ -781,6 +782,7 @@ unsafe fn eval_source_text_with_name(
         if keep_source {
             let spans = crate::sexp::memory::with_arena(|arena| {
                 let mut parser = crate::eval::parser::Parser::new(content, arena);
+                parser.set_keep_srcrefs(true);
                 parser
                     .parse_top_level_with_spans()
                     .map_err(|e| e.to_string())

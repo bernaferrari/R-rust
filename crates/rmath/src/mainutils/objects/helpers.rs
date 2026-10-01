@@ -494,6 +494,7 @@ pub(crate) unsafe fn topenv(what: SEXP, env: SEXP) -> SEXP {
         if env.is_null() {
             return R_NilValue();
         }
+        let base_ns = crate::sexp::envir::R_BaseNamespace();
         let mut rho = env;
         loop {
             if rho == R_EmptyEnv() {
@@ -502,6 +503,7 @@ pub(crate) unsafe fn topenv(what: SEXP, env: SEXP) -> SEXP {
             if (!what.is_null() && what != R_NilValue() && rho == what)
                 || rho == R_GlobalEnv()
                 || rho == R_BaseEnv()
+                || (rho == base_ns && rho != R_BaseEnv())
             {
                 return rho;
             }

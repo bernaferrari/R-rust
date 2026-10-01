@@ -5002,7 +5002,18 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             let encoded = match TYPEOF(x) {
                 10 => {
                     let v = crate::sexp::accessors::LOGICAL_ELT(x, i as c_int);
-                    crate::mainutils::printutils::EncodeLogical(v, w)
+                    // trim=TRUE passes width 0. EncodeLogical treats that as
+                    // an empty field; GNU still emits TRUE/FALSE/NA.
+                    let field = if w > 0 {
+                        w
+                    } else if v == crate::sexp::ffi::NA_LOGICAL {
+                        crate::mainutils::format::format_get_R_print().na_width
+                    } else if v != 0 {
+                        4
+                    } else {
+                        5
+                    };
+                    crate::mainutils::printutils::EncodeLogical(v, field)
                 }
                 13 => {
                     let v = crate::sexp::accessors::INTEGER_ELT(x, i as c_int);

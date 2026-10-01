@@ -312,7 +312,10 @@ pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
         } else {
             format!("{}", x)
         };
-        let width = w as usize;
+        // GNU `%*d` width is a minimum. `trim=TRUE` passes 0 and must still
+        // emit every digit; `format(100L, width=1)` is `"100"`, not `"1"`.
+        let requested = if w <= 0 { 0 } else { w as usize };
+        let width = val.len().max(requested);
         let mw = if width < NB - 1 { width } else { NB - 1 };
 
         crate::sexp::instance::with_required_current_instance(|inst| {

@@ -959,10 +959,20 @@ impl RSession {
 
         let expressions = {
             let _guard = self.activate();
+            let keep_source = unsafe {
+                let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
+                    c"keep.source".as_ptr(),
+                ));
+                !opt.is_null()
+                    && crate::mainutils::coerce::asLogical(opt) == crate::sexp::ffi::TRUE
+            };
             let spans = unsafe {
                 /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */
                 super::memory::with_arena_in(self.instance, |arena| {
                 let mut parser = crate::eval::parser::Parser::new(code, arena);
+                // GNU Rscript keeps `keep.source` false, so function bodies
+                // have no srcref. `setGeneric` uses `identical(body, substitute(...))`.
+                parser.set_keep_srcrefs(keep_source);
                 parser.parse_top_level_with_spans()
             })
             };
@@ -986,8 +996,11 @@ impl RSession {
                 for (i, &e) in exprs.iter().enumerate() {
                     crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
                 }
-                crate::mainutils::srcref::attach_srcrefs_with_spans(&spans, code, "<text>", vec_sexp,
-                );
+                if keep_source {
+                    crate::mainutils::srcref::attach_srcrefs_with_spans(
+                        &spans, code, "<text>", vec_sexp,
+                    );
+                }
             }
             exprs
         };

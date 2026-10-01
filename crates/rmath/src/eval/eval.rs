@@ -3786,15 +3786,73 @@ ok1 && ok2 && ok3 && ok4 && ok5
     #[test]
     fn is_base_namespace_matches_gnu() {
         let mut session = RSession::new();
-        let (result, _, _) = session.eval_script_with_output_capture(
+        let (result, output, _) = session.eval_script_with_output_capture(
             r#"
 isBaseNamespace(.BaseNamespaceEnv) &&
   identical(asNamespace("base"), .BaseNamespaceEnv) &&
-  !isBaseNamespace(asNamespace("methods"))
+  !isBaseNamespace(asNamespace("methods")) &&
+  !identical(.BaseNamespaceEnv, baseenv()) &&
+  identical(environment(summary), .BaseNamespaceEnv) &&
+  identical(environmentName(.BaseNamespaceEnv), "base") &&
+  identical(parent.env(.BaseNamespaceEnv), .GlobalEnv) &&
+  isNamespace(.BaseNamespaceEnv) &&
+  !isNamespace(baseenv()) &&
+  identical(methods::getPackageName(environment(summary)), "base")
 "#,
         );
-        let result = result.expect("isBaseNamespace is GNU namespace.R");
-        assert_eq!(result.logical_elt(0), Some(TRUE));
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "isBaseNamespace is GNU namespace.R: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
+    }
+
+    #[test]
+    fn setgeneric_skeleton_matches_gnu() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            r#"
+invisible(require(methods, quietly=TRUE))
+e <- asNamespace("methods")
+hit_base_ns <- FALSE
+for (i in seq_len(16L)) {
+  if (isBaseNamespace(e)) { hit_base_ns <- TRUE; break }
+  if (identical(e, emptyenv())) break
+  e <- parent.env(e)
+}
+empty_parent_errors <- inherits(tryCatch(parent.env(emptyenv()), error = function(e) e), "error")
+name <- "foo"
+def <- function(object, arg) standardGeneric("foo")
+std <- substitute(standardGeneric(NAME), list(NAME = name))
+setGeneric("foo", def)
+hit_base_ns &&
+  empty_parent_errors &&
+  identical(body(def), std) &&
+  identical(as.character(class(foo)), "standardGeneric") &&
+  !identical(as.environment("package:methods"), asNamespace("methods"))
+"#,
+        );
+        let result = result.unwrap_or_else(|e| {
+            panic!(
+                "setGeneric skeleton: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
+        });
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}\nstderr={}",
+            output.stdout,
+            output.stderr
+        );
     }
 
     #[test]

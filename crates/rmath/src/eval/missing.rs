@@ -393,6 +393,35 @@ unsafe fn classForGroupDispatch(obj: SEXP) -> SEXP {
 
 /// Try to dispatch to an S3 method.
 ///
+/// GNU reads `SYMVALUE(install(generic))`. This port leaves that slot
+/// unbound unless `InitNames` ran, and stores the real primitive in the
+/// base frame. Method tables are keyed by that primitive.
+unsafe fn dispatch_primitive(generic_sym: SEXP) -> SEXP {
+    unsafe {
+        let op = crate::sexp::accessors::SYMVALUE(generic_sym);
+        if dispatch_op_usable(op) {
+            return op;
+        }
+        let found = R_findVarInFrame(super::runtime::base_env(), generic_sym);
+        if dispatch_op_usable(found) {
+            found
+        } else {
+            op
+        }
+    }
+}
+
+unsafe fn dispatch_op_usable(op: SEXP) -> bool {
+    unsafe {
+        !op.is_null()
+            && op != R_UnboundValue()
+            && op != R_NilValue()
+            && (TYPEOF(op) == SEXPTYPE::BUILTINSXP
+                || TYPEOF(op) == SEXPTYPE::SPECIALSXP
+                || TYPEOF(op) == SEXPTYPE::CLOSXP)
+    }
+}
+
 /// Ported from R's `tryDispatch()` in eval.c. Creates promises for
 /// the arguments, then calls usemethod to dispatch to the appropriate
 /// method. Returns TRUE if dispatch succeeded, FALSE otherwise.
@@ -407,7 +436,7 @@ pub(crate) unsafe fn tryDispatch(
         let generic_sym = Rf_install(generic);
         // GNU eval.c: op = SYMVALUE(install(generic)); R_has_methods(op)
         // requires the primitive, not the symbol.
-        let op = crate::sexp::accessors::SYMVALUE(generic_sym);
+        let op = dispatch_primitive(generic_sym);
 
         let pargs = promiseArgs(CDR(call), rho);
         let _pargs_guard = protect(pargs);

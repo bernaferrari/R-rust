@@ -50,6 +50,13 @@ pub unsafe fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if ns.is_null() || TYPEOF(ns) != SEXPTYPE::ENVSXP {
             return Rf_ScalarLogical(FALSE);
         }
+        // GNU R_IsNamespaceEnv: the base namespace is a namespace even though
+        // it has no `.__NAMESPACE__.` binding. The search-path base
+        // environment is not.
+        let base_ns = crate::sexp::envir::R_BaseNamespace();
+        if ns == base_ns && ns != crate::sexp::globals::R_BaseEnv() {
+            return Rf_ScalarLogical(TRUE);
+        }
         let info = crate::sexp::envir::R_findVarInFrame(
             ns,
             Rf_install(c".__NAMESPACE__.".as_ptr()));

@@ -108,10 +108,10 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
 /// shortcuts so argument promises retain GNU R's lazy semantics.
 unsafe fn initialize_base_functions(base_env: SEXP) {
     unsafe {
-        // GNU base binds `.BaseNamespaceEnv` to namespace:base. rport's
-        // base environment is that namespace; methods extraS4 wrappers
-        // (unlist, as.vector, lengths) must live here so implicitGeneric
-        // treats them as base functions, not primitives.
+        // Placeholder until `retarget_base_closure_envs` publishes the real
+        // base namespace (parent `.GlobalEnv`, distinct from this search-path
+        // environment). methods extraS4 wrappers (unlist, as.vector, lengths)
+        // must live here so implicitGeneric treats them as base functions.
         defineVar(
             Rf_install_in_current(".BaseNamespaceEnv"),
             base_env,
@@ -2965,9 +2965,27 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
 
 
 
+        // GNU base/R/zzz.R: these names share one primitive, so S4 methods
+        // set on `as.numeric` / `is.symbol` dispatch from the alias too.
+        // `.Primitive("as.numeric")` stays the distinct FunTab entry.
+        alias_visible_primitive(base_env, "as.numeric", "as.double");
+        alias_visible_primitive(base_env, "is.name", "is.symbol");
         retarget_base_closure_envs(base_env);
     }
 }
+
+unsafe fn alias_visible_primitive(base_env: SEXP, alias: &str, target: &str) {
+    unsafe {
+        let value = R_findVarInFrame(base_env, Rf_install_in_current(target));
+        if value.is_null() || value == R_UnboundValue() || value == R_NilValue() {
+            return;
+        }
+        let alias_sym = Rf_install_in_current(alias);
+        defineVar(alias_sym, value, base_env);
+        SET_SYMVALUE(alias_sym, value);
+    }
+}
+
 unsafe fn retarget_base_closure_envs(base_env: SEXP) {
     unsafe {
         let global = super::globals::R_GlobalEnv();
@@ -2985,6 +3003,13 @@ unsafe fn retarget_base_closure_envs(base_env: SEXP) {
             }
             cell = super::accessors::CDR(cell);
         }
+        // GNU InitGlobalEnv sets this symbol's value to R_BaseNamespace.
+        // `isBaseFun` is `identical(environment(fun), .BaseNamespaceEnv)`, and
+        // `getPackageName` returns "base" for that same pointer. The binding
+        // already exists, so this updates the shared frame in place.
+        let sym = Rf_install_in_current(".BaseNamespaceEnv");
+        defineVar(sym, namespace, base_env);
+        SET_SYMVALUE(sym, namespace);
     }
 }
 
