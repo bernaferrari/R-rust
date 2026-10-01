@@ -663,9 +663,10 @@ unsafe fn eval_source_text_with_options(
             if expr.is_null() || expr == R_NilValue() {
                 continue;
             }
-            let firstl = byte_line(content, start);
-            let last_byte = end.saturating_sub(1).max(start);
-            let lastl = byte_line(content, last_byte);
+            // Lexer spans are char offsets; counting them as bytes drops lines after non-ASCII.
+            let lloc = crate::mainutils::srcref::srcref_lloc(content, start, end);
+            let firstl = lloc[0];
+            let lastl = lloc[2];
             if i == 0 {
                 lastshown = skip_echo.min(lastl.saturating_sub(1)).max(0);
             }
@@ -708,14 +709,6 @@ unsafe fn eval_source_text_with_options(
         with_visible_result(result, last_visible)
 
     }
-}
-
-fn byte_line(src: &str, byte: usize) -> i32 {
-    src.as_bytes()[..byte.min(src.len())]
-        .iter()
-        .filter(|&&b| b == b'\n')
-        .count() as i32
-        + 1
 }
 
 /// GNU `trySrcLines` + prompt/continue prefixing.

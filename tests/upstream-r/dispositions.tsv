@@ -62,7 +62,7 @@ reg-examples2.R	skip	rport-2gpp.2	requires installed package examples and namesp
 reg-examples3.R	skip	rport-2gpp.2	requires installed package examples, graphics, and datasets
 reg-large.R	skip	rport-2gpp.5	requires memory-intensive long-vector and allocation stress support
 reg-packages.R	skip	rport-2gpp.2	requires source and binary package installation and loading
-reg-plot-latin1.R	xfail	rport-2gpp.3	executes unmodified but still lacks deterministic PDF devices and Latin-1 text rendering
+reg-plot-latin1.R	pass	-	-
 reg-plot.R	skip	rport-2gpp.3	requires complete graphics, grid, device, and PDF comparison behavior
 reg-tests-1a.R	pass	-	-
 reg-tests-1b.R	pass	-	-
