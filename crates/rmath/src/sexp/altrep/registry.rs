@@ -1,4 +1,4 @@
-#![allow(unsafe_code)]
+#![forbid(unsafe_code)]
 //! Immutable class configuration and callback leases. No interpreter field
 //! borrow survives a call into provider or native code.
 use super::*;
@@ -59,10 +59,50 @@ pub(super) struct RegisteredClass {
     pub(super) provider: Rc<dyn AltrepClass>,
     native: Option<NativeMethods>,
 }
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct AltrepRuntimeState {
-    classes: HashMap<usize, Rc<RegisteredClass>>,
-    active: Rc<RefCell<HashSet<Operation>>>,
+    inner: Rc<RuntimeInner>,
+}
+#[derive(Default)]
+struct RuntimeInner {
+    classes: RefCell<HashMap<usize, Rc<RegisteredClass>>>,
+    active: RefCell<HashSet<Operation>>,
+}
+impl AltrepRuntimeState {
+    fn insert(&self, key: usize, class: Rc<RegisteredClass>) -> SexpResult<()> {
+        // No provider code runs while this checked Rust borrow is live.
+        let mut table = self.inner.classes.borrow_mut();
+        if table.contains_key(&key) {
+            return Err(failure("ALTREP class already registered"));
+        }
+        table
+            .try_reserve(1)
+            .map_err(|_| failure("ALTREP class table"))?;
+        table.insert(key, class);
+        Ok(())
+    }
+    fn lookup(&self, key: usize) -> Option<Rc<RegisteredClass>> {
+        self.inner.classes.borrow().get(&key).cloned()
+    }
+    pub(super) fn enter_operation(&self, operation: Operation) -> SexpResult<OperationGuard> {
+        {
+            let mut active = self.inner.active.borrow_mut();
+            active
+                .try_reserve(1)
+                .map_err(|_| failure("callback state allocation"))?;
+            if !active.insert(operation) {
+                return Err(failure("recursive ALTREP operation"));
+            }
+        }
+        Ok(OperationGuard {
+            state: self.clone(),
+            operation,
+        })
+    }
+    #[cfg(test)]
+    pub(super) fn operations_are_idle(&self) -> bool {
+        self.inner.active.borrow().is_empty()
+    }
 }
 
 pub(super) fn register<'s>(
@@ -104,42 +144,32 @@ fn register_record<'s>(
         provider,
         native,
     });
-    // SAFETY: the capability retains this owner. Only this field is borrowed,
-    // and the borrow ends before any callback, allocation of R nodes or GC.
-    unsafe {
-        let table = &mut (*owner.as_ptr()).altrep_state.classes;
-        if table.contains_key(&key) {
-            return Err(failure("ALTREP class already registered"));
-        }
-        table
-            .try_reserve(1)
-            .map_err(|_| failure("ALTREP class table"))?;
-        table.insert(key, class);
-    }
-    Ok(AltrepClassHandle { owner, descriptor })
+    bridge::runtime(owner).insert(key, class.clone())?;
+    Ok(AltrepClassHandle {
+        owner,
+        descriptor,
+        record: class,
+    })
 }
 pub(super) fn lookup(owner: OwnerToken<'_>, descriptor: SEXP) -> Option<Rc<RegisteredClass>> {
-    // SAFETY: copied Rc escapes; no interpreter reference escapes this read.
-    unsafe {
-        (*owner.as_ptr())
-            .altrep_state
-            .classes
-            .get(&(descriptor as usize))
-            .cloned()
-    }
+    bridge::runtime(owner).lookup(descriptor as usize)
 }
+
 pub(crate) fn class_handle<'s>(
     owner: OwnerToken<'s>,
     raw: SEXP,
 ) -> SexpResult<AltrepClassHandle<'s>> {
     let descriptor = owner.sexp(raw)?;
-    lookup(owner, descriptor.clone().as_raw()).ok_or(failure("unregistered ALTREP class"))?;
-    Ok(AltrepClassHandle { owner, descriptor })
+    let record =
+        lookup(owner, descriptor.clone().as_raw()).ok_or(failure("unregistered ALTREP class"))?;
+    Ok(AltrepClassHandle {
+        owner,
+        descriptor,
+        record,
+    })
 }
 pub(crate) fn native_methods_for_class(class: &AltrepClassHandle<'_>) -> Option<NativeMethods> {
-    lookup(class.owner, class.descriptor.clone().as_raw())?
-        .native
-        .clone()
+    class.record.native.clone()
 }
 pub(crate) fn native_methods(object: &Sexp<'_>) -> Option<NativeMethods> {
     let owner = storage::owner(object).ok()?;
@@ -156,33 +186,21 @@ pub(super) enum Operation {
 }
 /// Owns Rust state independently of the interpreter allocation.
 pub(crate) struct OperationGuard {
-    active: Rc<RefCell<HashSet<Operation>>>,
+    state: AltrepRuntimeState,
     operation: Operation,
 }
 impl Drop for OperationGuard {
     fn drop(&mut self) {
-        self.active.borrow_mut().remove(&self.operation);
+        self.state.inner.active.borrow_mut().remove(&self.operation);
     }
 }
 pub(super) fn enter_operation(
     owner: OwnerToken<'_>,
     operation: Operation,
 ) -> SexpResult<OperationGuard> {
-    // SAFETY: end field access before inserting or invoking class code.
-    let active = unsafe { (*owner.as_ptr()).altrep_state.active.clone() };
-    {
-        let mut state = active.borrow_mut();
-        state
-            .try_reserve(1)
-            .map_err(|_| failure("callback state allocation"))?;
-        if !state.insert(operation) {
-            return Err(failure("recursive ALTREP operation"));
-        }
-    }
-    Ok(OperationGuard { active, operation })
+    bridge::runtime(owner).enter_operation(operation)
 }
 #[cfg(test)]
 pub(super) fn operations_are_idle(owner: OwnerToken<'_>) -> bool {
-    // SAFETY: the check does not invoke a callback or retain an instance borrow.
-    unsafe { (*owner.as_ptr()).altrep_state.active.borrow().is_empty() }
+    bridge::runtime(owner).operations_are_idle()
 }

@@ -818,3 +818,47 @@ fn cache_writes_are_visible_to_later_callbacks_during_one_expansion() {
     assert_eq!(x.try_real_elt(0).unwrap(), 1.0);
     assert_eq!(x.try_real_elt(1).unwrap(), 1.0);
 }
+
+struct ProviderDropProbe {
+    drops: Rc<Cell<usize>>,
+}
+impl Drop for ProviderDropProbe {
+    fn drop(&mut self) {
+        self.drops.set(self.drops.get() + 1);
+    }
+}
+impl AltrepClass for ProviderDropProbe {
+    fn vector_type(&self) -> SEXPTYPE {
+        SEXPTYPE::REALSXP
+    }
+    fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+        Ok(0)
+    }
+    fn element<'s>(&self, _: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+        Err(failure("empty provider"))
+    }
+}
+#[test]
+fn owned_registry_and_operation_leases_survive_owner_teardown() {
+    let s = RSession::new_for_gc_tests();
+    let drops = Rc::new(Cell::new(0));
+    let class = s
+        .register_altrep_class(
+            "drop-probe",
+            ProviderDropProbe {
+                drops: drops.clone(),
+            },
+        )
+        .unwrap();
+    let state = bridge::runtime(s.owner_token().unwrap());
+    let operation = state.enter_operation(Operation::Expand(0)).unwrap();
+    drop(class);
+    drop(s);
+    assert_eq!(drops.get(), 0);
+    assert!(!state.operations_are_idle());
+    // This lease never reads the freed owner, arena or its opaque node keys.
+    drop(operation);
+    assert!(state.operations_are_idle());
+    drop(state);
+    assert_eq!(drops.get(), 1);
+}

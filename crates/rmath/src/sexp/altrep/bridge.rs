@@ -3,6 +3,14 @@
 //! handles; raw callers must uphold the documented owner and liveness contract.
 use super::*;
 
+/// Clone an owned Rust lease, rather than returning an interpreter reference.
+/// All subsequent registry reads, writes and guard cleanup use safe Rust.
+pub(super) fn runtime(owner: OwnerToken<'_>) -> AltrepRuntimeState {
+    // SAFETY: the retained owner is live. Borrow only this field long enough to
+    // clone its Rc; no callback, GC or mutable interpreter borrow overlaps.
+    unsafe { (*owner.as_ptr()).altrep_state.clone() }
+}
+
 pub(super) fn eval<'s>(
     owner: OwnerToken<'s>,
     expression: Sexp<'s>,

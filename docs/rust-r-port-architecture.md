@@ -204,12 +204,17 @@ and cache policy are sampled once at registration under the original owner;
 changing provider state cannot change the registered representation. Logical
 length is assigned by a consuming construction handle and stays immutable.
 
-The Rust dispatch module rejects `unsafe` code, and built-in class providers
-forbid it. `altrep/registry.rs` owns one class record including optional native
-methods and Rust callback guards. `altrep/storage.rs` owns typed metadata fields,
+The Rust dispatch module rejects `unsafe` code; built-in class providers and
+the registry forbid it. `altrep/registry.rs` owns one class record including
+optional native methods and Rust callback guards. Runtime state has an owned
+`Rc` lease with checked `RefCell` borrows; class handles retain their immutable
+record directly. Registering, looking up or dropping a guard does not mutably
+borrow an interpreter field, and a Rust state lease remains valid even after
+its interpreter arena is destroyed. The raw bridge clones that lease through
+one short, documented field read. `altrep/storage.rs` owns typed metadata fields,
 traced edges and buffer publication; only a pending instance can set length.
 `altrep/bridge.rs` adapts rooted handles to translated R execution and documents
-the contracts for raw callers. These private modules contain the audited unsafe
+the contracts for raw callers. Only storage and bridge modules contain audited unsafe
 operations; providers receive no mutable interpreter or payload references.
 Context data reads return checked, independently rooted handles to current
 metadata, so a cache write is visible during the same callback and throughout

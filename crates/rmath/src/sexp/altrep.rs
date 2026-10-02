@@ -39,7 +39,8 @@ pub enum AltrepElement<'s> {
     List(Sexp<'s>),
 }
 
-/// Implementations cannot retain session objects: those belong in data1/data2.
+/// Per-instance R values belong in GC-traced data1/data2. Providers are static
+/// Rust code and cannot retain borrowed session handles.
 /// Type and cache policy are sampled once at registration; length is fixed at
 /// construction. Element callbacks may run R or collect; they return copied
 /// scalars or rooted child handles.
@@ -105,6 +106,7 @@ impl<'s> AltrepContext<'s> {
 pub struct AltrepClassHandle<'s> {
     owner: OwnerToken<'s>,
     descriptor: Sexp<'s>,
+    record: Rc<RegisteredClass>,
 }
 impl<'s> AltrepClassHandle<'s> {
     pub fn descriptor(&self) -> Sexp<'s> {
@@ -153,8 +155,7 @@ impl<'s> AltrepBuilder<'s> {
         self
     }
     pub fn build(self) -> SexpResult<Sexp<'s>> {
-        let class = lookup(self.class.owner, self.class.descriptor.clone().as_raw())
-            .ok_or(failure("unregistered ALTREP class"))?;
+        let class = self.class.record.clone();
         let pending = InstanceStorage::create(&self.class, class.kind, self.data1, self.data2)?;
         let context = pending.context();
         let length = context.active(|| class.provider.length(&context))?;
