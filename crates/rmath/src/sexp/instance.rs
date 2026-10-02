@@ -41,6 +41,9 @@ use std::time::Instant;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 use super::memory::RArena;
+#[path = "persistent.rs"]
+pub(crate) mod persistent;
+use persistent::PersistentHeap;
 
 // ---------------------------------------------------------------------------
 // RInstance
@@ -334,6 +337,8 @@ pub struct RInstance {
     liveness: Option<Rc<()>>,
     /// Arena allocator for this instance.
     pub arena: RArena,
+    /// Sole Rust ownership of persistent headers and symbol-name bytes.
+    pub(crate) persistent_nodes: PersistentHeap,
     /// The global environment for this instance.
     pub global_env: SEXP,
     /// The base environment for this instance.
@@ -342,9 +347,7 @@ pub struct RInstance {
     pub empty_env: SEXP,
     /// Owned environment sentinel nodes for empty/base/global environments.
     ///
-    /// Stored as raw pointers (via `Box::into_raw`) rather than `Box` so no
-    /// box move or Rust reference ever retags these allocations; the derived
-    /// SEXPs keep a valid Stacked Borrows tag for the instance's lifetime.
+    /// Compatibility projections; `persistent_nodes` owns their stable cells.
     pub(crate) env_nodes: Vec<*mut SexprecCore>,
     /// Whether this instance has completed R-level initialization.
     pub(crate) initialized: bool,
@@ -423,8 +426,8 @@ pub struct RInstance {
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
     ///
-    /// Raw pointers via `Box::into_raw` (same discipline as `env_nodes`) so
-    /// the interned SEXPs never lose their borrow-stack tag.
+    /// Compatibility projections for symbols and their printed names;
+    /// `persistent_nodes` owns both headers and character storage.
     pub(crate) symbol_nodes: Vec<*mut SexprecCore>,
     /// Per-instance Marsaglia-MultiCarry RNG seed state.
     /// Per-instance Marsaglia-MultiCarry RNG seed state (shared with nmath samplers).
@@ -572,18 +575,17 @@ impl RInstance {
     ) -> Self {
         let nil = unsafe { super::globals::R_NilValue() };
 
-        // Nodes are kept as raw pointers obtained via `Box::into_raw`: the
-        // heap addresses survive Vec reallocation, and because the Box is
-        // disowned immediately and never moved or referenced again, the
-        // derived SEXPs keep a valid borrow-stack tag for good.
+        let arena = RArena::new();
+        let mut persistent_nodes = PersistentHeap::new(arena.heap_identity());
         let mut env_nodes = Vec::with_capacity(3);
-        let empty_env = Self::push_env(&mut env_nodes, nil, nil, nil);
-        let base_env = Self::push_env(&mut env_nodes, nil, empty_env, nil);
-        let global_env = Self::push_env(&mut env_nodes, nil, base_env, nil);
+        let empty_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, nil, nil);
+        let base_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, empty_env, nil);
+        let global_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, base_env, nil);
 
         let mut instance = RInstance {
             liveness: Some(Rc::new(())),
-            arena: RArena::new(),
+            arena,
+            persistent_nodes,
             global_env,
             base_env,
             empty_env,
@@ -718,42 +720,42 @@ impl RInstance {
         }
     }
 
-    /// Allocate an owned environment node outside the arena.
+    /// Allocate an owned permanent environment header in stable Rust cells.
     fn push_env(
+        persistent: &mut PersistentHeap,
         env_nodes: &mut Vec<*mut SexprecCore>,
         frame: SEXP,
         enclos: SEXP,
         hashtab: SEXP,
     ) -> SEXP {
-        // Convert to a raw pointer before anything else touches the box:
-        // moving a `Box` (e.g. into the Vec below) retags it with a fresh
-        // Unique, which invalidates raw pointers derived beforehand.
-        let env: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::ENVSXP)));
-        unsafe {
-            (*env).data.envsxp.frame = frame;
-            (*env).data.envsxp.enclos = enclos;
-            (*env).data.envsxp.hashtab = hashtab;
-        }
+        let mut header = SexprecCore::new(SEXPTYPE::ENVSXP);
+        header.data = super::ffi::SexprecData {
+            envsxp: super::ffi::Envsxp { frame, enclos, hashtab },
+        };
+        let env = persistent.allocate_header(header).expect("persistent environment allocation");
         env_nodes.push(env);
         env
     }
 
-    /// Return true if this instance owns the given SEXP pointer.
-    ///
-    /// This covers arena nodes plus the persistent nodes stored directly on the
-    /// instance (environment sentinels, interned symbols, and raw cons cells).
-    pub(crate) fn owns_sexp(&self, ptr: SEXP) -> bool {
-        if ptr.is_null() {
-            return false;
-        }
+    /// Exact allocation identity for either managed or permanent storage.
+    pub(crate) fn node_token(&self, pointer: SEXP) -> Option<super::heap::CheckedNode> {
+        self.arena.node_token(pointer).or_else(|| self.persistent_nodes.token(pointer))
+    }
 
-        self.arena.contains(ptr)
-            || self.env_nodes.iter().any(|node| std::ptr::eq(*node, ptr))
-            || self
-                .symbol_nodes
-                .iter()
-                .any(|node| std::ptr::eq(*node, ptr))
-            || self.raw_cons.iter().any(|raw| std::ptr::eq(*raw, ptr))
+    /// An address lookup validates membership; only owned cells supply the
+    /// pointer subsequently used to access the allocation.
+    pub(crate) fn canonical_projection(&self, pointer: SEXP) -> Option<SEXP> {
+        if let Some(node) = self.arena.node_token(pointer) {
+            self.arena.resolve_node(node.id())
+        } else {
+            self.persistent_nodes.canonical_projection(pointer)
+        }
+    }
+
+    /// Membership includes symbol names and persistent environments, whose
+    /// stable headers share the arena's checked heap identity.
+    pub(crate) fn owns_sexp(&self, pointer: SEXP) -> bool {
+        self.arena.contains(pointer) || self.persistent_nodes.contains(pointer)
     }
 
     /// Set a RenderPlot backend for the duration of a render / graphics operation.
@@ -807,21 +809,8 @@ impl Drop for RInstance {
         // Provider destructors can run arbitrary Rust code while fields are
         // released. Mark the owner unavailable before teardown starts.
         drop(self.liveness.take());
-        // Persistent sentinel/symbol nodes were disowned via `Box::into_raw`.
-        for ptr in self.env_nodes.drain(..).chain(self.symbol_nodes.drain(..)) {
-            if !ptr.is_null() {
-                unsafe {
-                    drop(Box::from_raw(ptr));
-                }
-            }
-        }
-        for ptr in self.raw_cons.drain(..) {
-            if !ptr.is_null() {
-                unsafe {
-                    let _ = Box::from_raw(ptr);
-                }
-            }
-        }
+        // Persistent headers and character bytes are owned Rust fields; their
+        // pages invalidate outstanding checked identities during normal Drop.
         self.vmax.clear();
         if self.eval_state.profiling.profile_outfile >= 0 {
             // Native only: on wasm32 the profiling stubs never open an

@@ -159,36 +159,11 @@ pub unsafe fn Rf_mkChar(s: *const c_char) -> SEXP {
 }
 
 pub unsafe fn persistent_mkChar(s: *const c_char) -> SEXP {
-    unsafe {
-        use std::alloc::{Layout, alloc};
-        if s.is_null() {
-            return ptr::null_mut();
-        }
-        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-        let len = bytes.len() as R_xlen_t;
-        let total = (len as usize) + 1;
-        let Ok(layout) = Layout::from_size_align(total, 1) else {
-            return ptr::null_mut();
-        };
-        let data_ptr = alloc(layout);
-        if data_ptr.is_null() {
-            return ptr::null_mut();
-        }
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
-        *data_ptr.add(bytes.len()) = 0;
-        // Disown the box immediately: deriving a raw pointer first and then
-        // leaking (moving) the box would retag the allocation and invalidate
-        // the returned SEXP under Stacked Borrows.
-        let charsxp: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::CHARSXP)));
-        (*charsxp).data = SexprecData {
-            vecsxp: super::ffi::Vecsxp {
-                length: len,
-                truelength: 0,
-            },
-        };
-        (*charsxp).gengc_next_node = data_ptr as SEXP;
-        charsxp
-    }
+    if s.is_null() { return ptr::null_mut(); }
+    let bytes = unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes();
+    super::instance::with_required_current_instance(|owner| unsafe {
+        super::symbol::persistent_charsxp_from_bytes_in(owner, bytes)
+    })
 }
 
 /// Create a CHARSXP from a C string with known length.
@@ -674,112 +649,33 @@ mod tests {
 }
 
 pub unsafe fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP {
-    unsafe {
-        let cell: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::LISTSXP)));
-        (*cell).data.listsxp.carval = car;
-        (*cell).data.listsxp.cdrval = cdr;
-        (*cell).data.listsxp.tagval = ptr::null_mut();
-        cell
-    }
+    unsafe { super::memory_ext::cons_raw(car, cdr) }
 }
 
 pub unsafe fn persistent_scalar_integer(val: c_int) -> SEXP {
-    unsafe {
-        use std::alloc::{Layout, alloc};
-        let Ok(layout) = Layout::from_size_align(4, 4) else {
-            return ptr::null_mut();
-        };
-        let data_ptr = alloc(layout);
-        if data_ptr.is_null() {
-            return ptr::null_mut();
-        }
-        *(data_ptr as *mut c_int) = val;
-        // Disown the box immediately: deriving the raw SEXP first and then
-        // leaking (moving) the box would retag the allocation and invalidate
-        // the returned pointer under Stacked Borrows.
-        let node: SEXP = Box::into_raw(Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 1)));
-        (*node).gengc_next_node = data_ptr as SEXP;
-        node
-    }
+    super::instance::with_required_current_instance(|owner| unsafe {
+        (*owner).persistent_nodes.allocate_integer(val, false).unwrap_or(ptr::null_mut())
+    })
 }
 
 pub unsafe fn persistent_scalar_logical(val: c_int) -> SEXP {
-    unsafe {
-        use std::alloc::{Layout, alloc};
-        let Ok(layout) = Layout::from_size_align(4, 4) else {
-            return ptr::null_mut();
-        };
-        let data_ptr = alloc(layout);
-        if data_ptr.is_null() {
-            return ptr::null_mut();
-        }
-        *(data_ptr as *mut c_int) = val;
-        let node: SEXP = Box::into_raw(Box::new(SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1)));
-        (*node).gengc_next_node = data_ptr as SEXP;
-        node
-    }
+    super::instance::with_required_current_instance(|owner| unsafe {
+        (*owner).persistent_nodes.allocate_integer(val, true).unwrap_or(ptr::null_mut())
+    })
 }
 
 pub unsafe fn persistent_scalar_real(val: c_double) -> SEXP {
-    unsafe {
-        use std::alloc::{Layout, alloc};
-        let Ok(layout) = Layout::from_size_align(8, 8) else {
-            return ptr::null_mut();
-        };
-        let data_ptr = alloc(layout);
-        if data_ptr.is_null() {
-            return ptr::null_mut();
-        }
-        *(data_ptr as *mut c_double) = val;
-        let node: SEXP = Box::into_raw(Box::new(SexprecCore::new_vector(SEXPTYPE::REALSXP, 1)));
-        (*node).gengc_next_node = data_ptr as SEXP;
-        node
-    }
+    super::instance::with_required_current_instance(|owner| unsafe {
+        (*owner).persistent_nodes.allocate_real(val).unwrap_or(ptr::null_mut())
+    })
 }
 
 pub unsafe fn persistent_mkstring(s: *const c_char) -> SEXP {
-    unsafe {
-        use std::alloc::{Layout, alloc};
-        if s.is_null() {
-            return ptr::null_mut();
-        }
-        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-        let len = bytes.len() as R_xlen_t;
-
-        let charsxp_boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
-        let charsxp: SEXP = Box::leak(charsxp_boxed);
-        (*charsxp).data = SexprecData {
-            vecsxp: super::ffi::Vecsxp {
-                length: len,
-                truelength: 0,
-            },
-        };
-        let Ok(char_layout) = Layout::from_size_align(len as usize + 1, 1) else {
-            return ptr::null_mut();
-        };
-        let char_data = alloc(char_layout);
-        if char_data.is_null() {
-            return ptr::null_mut();
-        }
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), char_data, bytes.len());
-        *char_data.add(bytes.len()) = 0;
-        (*charsxp).gengc_next_node = char_data as SEXP;
-
-        let Ok(str_layout) =
-            Layout::from_size_align(std::mem::size_of::<SEXP>(), std::mem::align_of::<SEXP>())
-        else {
-            return ptr::null_mut();
-        };
-        let str_data = alloc(str_layout);
-        if str_data.is_null() {
-            return ptr::null_mut();
-        }
-        *(str_data as *mut SEXP) = charsxp;
-        // Disown the box immediately: deriving the raw SEXP first and then
-        // leaking (moving) the box would retag the allocation and invalidate
-        // the returned pointer under Stacked Borrows.
-        let str_ptr: SEXP = Box::into_raw(Box::new(SexprecCore::new_vector(SEXPTYPE::STRSXP, 1)));
-        (*str_ptr).gengc_next_node = str_data as SEXP;
-        str_ptr
-    }
+    if s.is_null() { return ptr::null_mut(); }
+    let bytes = unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes();
+    super::instance::with_required_current_instance(|owner| unsafe {
+        let chars = super::symbol::persistent_charsxp_from_bytes_in(owner, bytes);
+        if chars.is_null() { return chars; }
+        (*owner).persistent_nodes.allocate_string(chars).unwrap_or(ptr::null_mut())
+    })
 }

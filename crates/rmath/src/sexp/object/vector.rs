@@ -2,7 +2,7 @@ use std::os::raw::{c_double, c_int};
 
 use super::{Sexp, SexpError, SexpResult};
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::{R_NaString, R_NilValue};
+use crate::sexp::globals::R_NaString;
 
 #[allow(deprecated)] // deprecated Sexp set_* shims delegate to try_set_* shims
 impl<'a> Sexp<'a> {
@@ -20,11 +20,17 @@ impl<'a> Sexp<'a> {
     /// Get the i-th logical value with typed error reporting.
     #[inline]
     pub fn try_logical_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
+        self.ensure_live()?;
         #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::LGLSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
-            return match result? { crate::sexp::altrep::AltrepElement::Logical(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+            return match result? {
+                crate::sexp::altrep::AltrepElement::Logical(v) => Ok(v),
+                _ => Err(SexpError::Altrep {
+                    reason: "element type mismatch",
+                }),
+            };
         }
         let data = self.try_typed_data::<c_int>(SEXPTYPE::LGLSXP, "logical vector")?;
         let i = self.try_index(i)?;
@@ -47,11 +53,17 @@ impl<'a> Sexp<'a> {
     /// access still goes through [`Self::try_typed_data`] and expands them.
     #[inline]
     pub fn try_integer_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
+        self.ensure_live()?;
         #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::INTSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
-            return match result? { crate::sexp::altrep::AltrepElement::Integer(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+            return match result? {
+                crate::sexp::altrep::AltrepElement::Integer(v) => Ok(v),
+                _ => Err(SexpError::Altrep {
+                    reason: "element type mismatch",
+                }),
+            };
         }
         match self.read_compact_int(i, false) {
             crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
@@ -85,11 +97,17 @@ impl<'a> Sexp<'a> {
     /// Compact sequences answer here, before any buffer allocation.
     #[inline]
     pub fn try_real_elt(&self, i: R_xlen_t) -> SexpResult<c_double> {
+        self.ensure_live()?;
         #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::REALSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
-            return match result? { crate::sexp::altrep::AltrepElement::Real(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+            return match result? {
+                crate::sexp::altrep::AltrepElement::Real(v) => Ok(v),
+                _ => Err(SexpError::Altrep {
+                    reason: "element type mismatch",
+                }),
+            };
         }
         match self.read_compact_real(i, false) {
             crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
@@ -120,11 +138,17 @@ impl<'a> Sexp<'a> {
     /// Get the i-th raw byte with typed error reporting.
     #[inline]
     pub fn try_raw_elt(&self, i: R_xlen_t) -> SexpResult<Rbyte> {
+        self.ensure_live()?;
         #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::RAWSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
-            return match result? { crate::sexp::altrep::AltrepElement::Raw(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+            return match result? {
+                crate::sexp::altrep::AltrepElement::Raw(v) => Ok(v),
+                _ => Err(SexpError::Altrep {
+                    reason: "element type mismatch",
+                }),
+            };
         }
         let data = self.try_typed_data::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")?;
         let i = self.try_index(i)?;
@@ -143,11 +167,17 @@ impl<'a> Sexp<'a> {
     /// Get the i-th complex value with typed error reporting.
     #[inline]
     pub fn try_complex_elt(&self, i: R_xlen_t) -> SexpResult<Rcomplex> {
+        self.ensure_live()?;
         #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::CPLXSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
-            return match result? { crate::sexp::altrep::AltrepElement::Complex(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+            return match result? {
+                crate::sexp::altrep::AltrepElement::Complex(v) => Ok(v),
+                _ => Err(SexpError::Altrep {
+                    reason: "element type mismatch",
+                }),
+            };
         }
         let data = self.try_typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")?;
         let i = self.try_index(i)?;
@@ -166,11 +196,17 @@ impl<'a> Sexp<'a> {
     /// Get the i-th string element with typed error reporting.
     #[inline]
     pub fn try_string_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
+        self.ensure_live()?;
         #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::STRSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
-            return match result? { crate::sexp::altrep::AltrepElement::String(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+            return match result? {
+                crate::sexp::altrep::AltrepElement::String(v) => Ok(v),
+                _ => Err(SexpError::Altrep {
+                    reason: "element type mismatch",
+                }),
+            };
         }
         let data = self.try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
         let i = self.try_index(i)?;
@@ -248,7 +284,12 @@ impl<'a> Sexp<'a> {
         if self.typeof_() == SEXPTYPE::VECSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
-            return match result? { crate::sexp::altrep::AltrepElement::List(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+            return match result? {
+                crate::sexp::altrep::AltrepElement::List(v) => Ok(v),
+                _ => Err(SexpError::Altrep {
+                    reason: "element type mismatch",
+                }),
+            };
         }
         let data = self.try_vector_sexp_data()?;
         let i = self.try_index(i)?;
@@ -496,7 +537,10 @@ impl<'a> Sexp<'a> {
         self.expect_type(SEXPTYPE::INTSXP, "integer vector")?;
         let expected = self.len() as usize;
         if output.len() != expected {
-            return Err(SexpError::LengthMismatch { expected, actual: output.len() });
+            return Err(SexpError::LengthMismatch {
+                expected,
+                actual: output.len(),
+            });
         }
         // SAFETY: copy synchronously without R callbacks; the handle retains
         // the allocation. Safe callers cannot obtain a Rust R-payload borrow.
@@ -649,12 +693,22 @@ impl<'a> Sexp<'a> {
 #[cfg(all(test, feature = "altrep"))]
 mod altrep_borrow_tests {
     use super::*;
-    use crate::sexp::{altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement, is_materialized}, session::RSession};
+    use crate::sexp::{
+        altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement, is_materialized},
+        session::RSession,
+    };
     struct Fresh;
     impl AltrepClass for Fresh {
-        fn vector_type(&self) -> SEXPTYPE { SEXPTYPE::STRSXP }
-        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> { Ok(2) }
-        fn element<'s>(&self, c: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> { c.gc()?; Ok(AltrepElement::String(c.string("fresh")?)) }
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::STRSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+            Ok(2)
+        }
+        fn element<'s>(&self, c: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+            c.gc()?;
+            Ok(AltrepElement::String(c.string("fresh")?))
+        }
     }
     #[test]
     fn altrep_borrowed_string_is_retained_by_parent() {

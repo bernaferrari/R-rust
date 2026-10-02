@@ -19,57 +19,28 @@ use super::instance::RInstance;
 // Symbol table helpers
 // ---------------------------------------------------------------------------
 
-fn persistent_charsxp_from_bytes(bytes: &[u8]) -> SEXP {
-    unsafe {
-        use std::alloc::{Layout, alloc};
-
-        let len = bytes.len() as R_xlen_t;
-        let total = bytes.len() + 1;
-        let Ok(layout) = Layout::from_size_align(total, 1) else {
-            return ptr::null_mut();
-        };
-        let data_ptr = alloc(layout);
-        if data_ptr.is_null() {
-            return ptr::null_mut();
-        }
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
-        *data_ptr.add(bytes.len()) = 0;
-        // Disown the box immediately: deriving a raw pointer first and then
-        // leaking (moving) the box would retag the allocation and invalidate
-        // the returned SEXP under Stacked Borrows.
-        let charsxp: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::CHARSXP)));
-        (*charsxp).data = SexprecData {
-            vecsxp: super::ffi::Vecsxp {
-                length: len,
-                truelength: 0,
-            },
-        };
-        (*charsxp).gengc_next_node = data_ptr as SEXP;
-        charsxp
+/// Own a terminated character header and its bytes in the original session.
+/// # Safety
+/// The owner must be live and no callback may overlap these short field lends.
+pub(crate) unsafe fn persistent_charsxp_from_bytes_in(inst: *mut RInstance, bytes: &[u8]) -> SEXP {
+    let value = unsafe { (*inst).persistent_nodes.allocate_chars(bytes) }
+        .unwrap_or(ptr::null_mut());
+    if !value.is_null() {
+        unsafe { (*inst).symbol_nodes.push(value) };
     }
+    value
 }
 
-fn intern_symbol_with_pname<F>(
+fn intern_symbol_with_pname(
     symbols: &mut HashMap<String, SEXP>,
     nodes: &mut Vec<*mut SexprecCore>,
+    persistent: &mut super::instance::persistent::PersistentHeap,
     name_str: String,
-    make_pname: F,
-) -> SEXP
-where
-    F: FnOnce() -> SEXP,
-{
-    if let Some(&existing) = symbols.get(&name_str) {
-        return existing;
-    }
-
-    let pname = make_pname();
-    if pname.is_null() {
-        return ptr::null_mut();
-    }
-
-    // Disown the box immediately so the later `nodes.push` move cannot
-    // retag the allocation and invalidate the returned SEXP.
-    let sexp: SEXP = Box::into_raw(Box::new(SexprecCore {
+    pname: SEXP,
+) -> SEXP {
+    if let Some(&existing) = symbols.get(&name_str) { return existing; }
+    if pname.is_null() { return ptr::null_mut(); }
+    let header = SexprecCore {
         sxpinfo: super::ffi::SxpInfo::new(SEXPTYPE::SYMSXP),
         attrib: ptr::null_mut(),
         gengc_next_node: ptr::null_mut(),
@@ -81,9 +52,12 @@ where
                 internal: ptr::null_mut(),
             },
         },
-    }));
-    symbols.insert(name_str, sexp);
-    nodes.push(sexp);
+    };
+    let sexp = persistent.allocate_header(header).unwrap_or(ptr::null_mut());
+    if !sexp.is_null() {
+        symbols.insert(name_str, sexp);
+        nodes.push(sexp);
+    }
     sexp
 }
 
@@ -167,14 +141,16 @@ pub(crate) unsafe fn Rf_install_in(inst: *mut RInstance, name: *const c_char) ->
             Err(_) => return ptr::null_mut(),
         };
 
-        // P1: the `&mut` map/node lends below are held only across the
-        // strictly-local interning step (the allocator callback allocates
-        // outside the instance and does not reenter the interpreter).
+        if let Some(&existing) = (*inst).symbols.get(&name_str) { return existing; }
+        // Allocate the printed name before borrowing the projection list;
+        // its short field lends end before interning touches that list again.
+        let pname = persistent_charsxp_from_bytes_in(inst, cstr.to_bytes());
         intern_symbol_with_pname(
             &mut (*inst).symbols,
             &mut (*inst).symbol_nodes,
+            &mut (*inst).persistent_nodes,
             name_str,
-            || super::constructors::persistent_mkChar(name),
+            pname,
         )
     }
 }
@@ -194,19 +170,23 @@ pub(crate) unsafe fn Rf_installChar_in(
     if name.is_null() || len < 0 {
         return ptr::null_mut();
     }
-    let bytes = unsafe { std::slice::from_raw_parts(name as *const u8, len as usize) };
+    let Ok(length) = usize::try_from(len) else { return ptr::null_mut() };
+    let bytes = unsafe { std::slice::from_raw_parts(name as *const u8, length) };
     let name_str = match std::str::from_utf8(bytes) {
         Ok(s) => s.to_string(),
         Err(_) => return ptr::null_mut(),
     };
 
-    // P1: strictly-local interning, as in `Rf_install_in`.
+    // No interpreter callback runs during these owned allocations.
     unsafe {
+        if let Some(&existing) = (*inst).symbols.get(&name_str) { return existing; }
+        let pname = persistent_charsxp_from_bytes_in(inst, bytes);
         intern_symbol_with_pname(
             &mut (*inst).symbols,
             &mut (*inst).symbol_nodes,
+            &mut (*inst).persistent_nodes,
             name_str,
-            || persistent_charsxp_from_bytes(bytes),
+            pname,
         )
     }
 }

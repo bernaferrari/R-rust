@@ -138,6 +138,7 @@ pub enum SexpOwner {
 pub struct Sexp<'a> {
     ptr: SEXP,
     owner: SexpOwner,
+    node: Option<crate::sexp::heap::CheckedNode>,
     pub(crate) session_owner_ptr: Option<std::ptr::NonNull<crate::sexp::instance::RInstance>>,
     root: Option<std::rc::Rc<RootLease<'a>>>,
     _marker: std::marker::PhantomData<&'a SexprecCore>,
@@ -164,6 +165,7 @@ impl Clone for Sexp<'_> {
         Self {
             ptr: self.ptr,
             owner: self.owner,
+            node: self.node.clone(),
             session_owner_ptr: self.session_owner_ptr,
             root: self.root.clone(),
             _marker: std::marker::PhantomData,
@@ -254,6 +256,7 @@ impl<'a> Sexp<'a> {
             Ok(Sexp {
                 ptr,
                 owner: SexpOwner::Unknown,
+                node: None,
                 session_owner_ptr: None,
                 root: None,
                 _marker: std::marker::PhantomData,
@@ -272,7 +275,16 @@ impl<'a> Sexp<'a> {
                 address: ptr as usize,
             });
         }
+        let token = arena.node_token(ptr).ok_or(SexpError::UnownedPointer {
+            address: ptr as usize,
+        })?;
+        let ptr = arena
+            .resolve_node(token.id())
+            .ok_or(SexpError::UnownedPointer {
+                address: ptr as usize,
+            })?;
         let mut sexp = unsafe { Sexp::try_from_raw(ptr) }?;
+        sexp.node = Some(token);
         sexp.owner = SexpOwner::Arena(Self::arena_owner_token(arena));
         Ok(sexp)
     }
@@ -284,15 +296,24 @@ impl<'a> Sexp<'a> {
         owner: crate::sexp::owner::OwnerToken<'session>,
     ) -> SexpResult<Sexp<'session>> {
         let instance = owner.as_ptr();
-        if crate::sexp::session::is_immutable_singleton(ptr) {
-            return Ok(unsafe { Sexp::from_static_raw_unchecked(ptr) });
+        if let Some(canonical) = crate::sexp::session::immutable_singleton_projection(ptr) {
+            return Ok(unsafe { Sexp::from_static_raw_unchecked(canonical) });
         }
         if instance.is_null() || !unsafe { (*instance).owns_sexp(ptr) } {
             return Err(SexpError::UnownedPointer {
                 address: ptr as usize,
             });
         }
+        let ptr =
+            unsafe { (*instance).canonical_projection(ptr) }.ok_or(SexpError::UnownedPointer {
+                address: ptr as usize,
+            })?;
         let mut sexp = unsafe { Sexp::try_from_raw(ptr) }?;
+        sexp.node = Some(unsafe { (*instance).node_token(ptr) }.ok_or(
+            SexpError::UnownedPointer {
+                address: ptr as usize,
+            },
+        )?);
         sexp.owner = SexpOwner::Session(instance as usize);
         sexp.session_owner_ptr = std::ptr::NonNull::new(instance);
         let guard = crate::sexp::protect::try_protect_sexp_with_index(sexp.clone())
@@ -312,6 +333,7 @@ impl<'a> Sexp<'a> {
         Sexp {
             ptr,
             owner: SexpOwner::Unknown,
+            node: None,
             session_owner_ptr: None,
             root: None,
             _marker: std::marker::PhantomData,
@@ -324,6 +346,7 @@ impl<'a> Sexp<'a> {
         Sexp {
             ptr,
             owner: SexpOwner::Static,
+            node: None,
             session_owner_ptr: None,
             root: None,
             _marker: std::marker::PhantomData,
@@ -338,7 +361,23 @@ impl<'a> Sexp<'a> {
     // Internal SEXP views deliberately consume the non-Copy handle.
     #[allow(clippy::wrong_self_convention)]
     pub fn as_raw(self) -> SEXP {
+        self.ensure_live()
+            .expect("SEXP allocation has been reclaimed");
         self.ptr
+    }
+
+    /// Check the allocation generation without dereferencing interpreter memory.
+    /// A reclaimed allocation never becomes valid when its address is reused.
+    pub fn is_live(&self) -> bool {
+        self.node.as_ref().is_none_or(|node| node.is_live())
+    }
+
+    fn ensure_live(&self) -> SexpResult<()> {
+        if self.is_live() {
+            Ok(())
+        } else {
+            Err(SexpError::StaleAllocation)
+        }
     }
 
     /// Return the owner provenance attached to this handle.
@@ -357,7 +396,9 @@ impl<'a> Sexp<'a> {
     /// contains the raw pointer.
     #[inline]
     pub fn belongs_to_arena(&self, arena: &crate::sexp::memory::RArena) -> bool {
-        self.owner == SexpOwner::Arena(Self::arena_owner_token(arena)) && arena.contains(self.ptr)
+        self.owner == SexpOwner::Arena(Self::arena_owner_token(arena))
+            && self.is_live()
+            && arena.contains(self.ptr)
     }
 
     /// Return true when this handle is scoped to persistent storage owned by
@@ -365,6 +406,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn belongs_to_session(&self, instance: &crate::sexp::instance::RInstance) -> bool {
         self.owner == SexpOwner::Session(Self::session_owner_token(instance))
+            && self.is_live()
             && instance.owns_sexp(self.ptr)
     }
 
@@ -389,19 +431,26 @@ impl<'a> Sexp<'a> {
     ///
     /// Single-element readers use the formula instead and never call this.
     fn materialize_compact_payload(&self) -> SexpResult<()> {
+        self.ensure_live()?;
         let header = self.header();
         if header.sxpinfo.alt() && header.payload.is_null() {
             if let Some(owner) = self.session_owner_ptr {
                 // The owner is retained by this handle. Each callback runs after
                 // header copying, with no instance or R payload borrow alive.
-                unsafe { crate::sexp::session::with_instance_active(owner.as_ptr(), || {
-                    #[cfg(feature = "altrep")]
-                    if super::altrep::materialize_raw(self.ptr)? { return Ok(()); }
-                    super::altseq::materialize(self.ptr);
-                    Ok(())
-                }) }?;
+                unsafe {
+                    crate::sexp::session::with_instance_active(owner.as_ptr(), || {
+                        #[cfg(feature = "altrep")]
+                        if super::altrep::materialize_raw(self.ptr)? {
+                            return Ok(());
+                        }
+                        super::altseq::materialize(self.ptr);
+                        Ok(())
+                    })
+                }?;
             } else {
-                unsafe { super::altseq::materialize(self.ptr); }
+                unsafe {
+                    super::altseq::materialize(self.ptr);
+                }
             }
         }
         Ok(())
@@ -424,6 +473,7 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn expect_type(&self, expected: SEXPTYPE, expected_name: &'static str) -> SexpResult<()> {
+        self.ensure_live()?;
         if self.typeof_() != expected {
             Err(SexpError::TypeMismatch {
                 expected: expected_name,
@@ -440,6 +490,7 @@ impl<'a> Sexp<'a> {
         expected_name: &'static str,
         expected: &[SEXPTYPE],
     ) -> SexpResult<()> {
+        self.ensure_live()?;
         let actual = self.typeof_();
         if expected.contains(&actual) {
             Ok(())
@@ -499,6 +550,7 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn try_index(&self, i: R_xlen_t) -> SexpResult<usize> {
+        self.ensure_live()?;
         let len = self.len();
         if i >= 0 && i < len {
             Ok(i as usize)
@@ -514,6 +566,7 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn try_vector_sexp_data(&self) -> SexpResult<*const SEXP> {
+        self.ensure_live()?;
         if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
             return Err(SexpError::TypeMismatch {
                 expected: "generic or expression vector",
@@ -537,6 +590,7 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn try_vector_sexp_data_mut(&self) -> SexpResult<*mut SEXP> {
+        self.ensure_live()?;
         if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
             return Err(SexpError::TypeMismatch {
                 expected: "generic or expression vector",
@@ -560,6 +614,8 @@ impl<'a> Sexp<'a> {
     }
 
     fn check_child_owner(&self, child: &Sexp<'_>) -> SexpResult<()> {
+        self.ensure_live()?;
+        child.ensure_live()?;
         let ptr = child.clone().as_raw();
         let valid = if crate::sexp::session::is_immutable_singleton(ptr) {
             true
@@ -590,8 +646,11 @@ impl<'a> Sexp<'a> {
         if let Some(owner) = self.session_owner_ptr {
             // SAFETY: the handles retain the owner and both live nodes;
             // check_child_owner precedes this strictly-local state update.
-            if !unsafe { crate::sexp::gengc::write_barrier_in(owner.as_ptr(), self.ptr, child.ptr) } {
-                return Err(SexpError::AllocationFailed { object: "GC write barrier" });
+            if !unsafe { crate::sexp::gengc::write_barrier_in(owner.as_ptr(), self.ptr, child.ptr) }
+            {
+                return Err(SexpError::AllocationFailed {
+                    object: "GC write barrier",
+                });
             }
         } else if self.owner == SexpOwner::Unknown {
             // Legacy raw mutation requires the caller's active owner/rooting
@@ -611,16 +670,27 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn checked_child(&self, ptr: SEXP) -> SexpResult<Sexp<'a>> {
+        self.ensure_live()?;
         if ptr.is_null() {
             Ok(Sexp::nil())
+        } else if let Some(canonical) = crate::sexp::session::immutable_singleton_projection(ptr) {
+            Ok(unsafe { Sexp::from_static_raw_unchecked(canonical) })
         } else if let Some(owner) = self.session_owner_ptr {
             // SAFETY: the parent handle retains this session's lifetime.
             // Children receive independent leases before the parent can drop.
             unsafe { crate::sexp::owner::OwnerToken::from_raw(owner.as_ptr()) }.sexp(ptr)
         } else {
             // SAFETY: the parent factory established graph liveness for this lifetime.
-            let mut child = unsafe {
-            Sexp::try_from_raw(ptr) }?;
+            let mut child = unsafe { Sexp::try_from_raw(ptr) }?;
+            if let Some(parent_node) = &self.node {
+                let (canonical, node) = crate::sexp::memory::checked_projection(ptr)
+                    .filter(|(_, node)| parent_node.same_heap(node))
+                    .ok_or(SexpError::UnownedPointer {
+                        address: ptr as usize,
+                    })?;
+                child.ptr = canonical;
+                child.node = Some(node);
+            }
             child.owner = self.owner;
             Ok(child)
         }
@@ -979,8 +1049,16 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(0, 42) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(5, 99) } == false);
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_integer_elt(0, 42)
+        });
+        assert!(
+            unsafe {
+                /* SAFETY: fixture has no outstanding payload borrows. */
+                sexp.clone().set_integer_elt(5, 99)
+            } == false
+        );
         assert_eq!(sexp.integer_elt(0), Some(42));
     }
 
@@ -992,8 +1070,16 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(0, 3.14) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(5, 99.0) } == false);
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_real_elt(0, 3.14)
+        });
+        assert!(
+            unsafe {
+                /* SAFETY: fixture has no outstanding payload borrows. */
+                sexp.clone().set_real_elt(5, 99.0)
+            } == false
+        );
         assert_eq!(sexp.real_elt(0), Some(3.14));
     }
 
@@ -1005,8 +1091,16 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(0, 0xFF) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(5, 0xAA) } == false);
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_raw_elt(0, 0xFF)
+        });
+        assert!(
+            unsafe {
+                /* SAFETY: fixture has no outstanding payload borrows. */
+                sexp.clone().set_raw_elt(5, 0xAA)
+            } == false
+        );
         assert_eq!(sexp.raw_elt(0), Some(0xFF));
     }
 
@@ -1151,13 +1245,25 @@ mod tests {
             Sexp::from_raw(ptr)
         });
         assert_eq!(sexp.clone().integer_elt(0), Some(0));
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(0, 42) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(1, -7) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(2, 99) });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_integer_elt(0, 42)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_integer_elt(1, -7)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_integer_elt(2, 99)
+        });
         assert_eq!(sexp.clone().integer_elt(0), Some(42));
         assert_eq!(sexp.clone().integer_elt(1), Some(-7));
         assert_eq!(sexp.clone().integer_elt(2), Some(99));
-        assert!(!unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(5, 0) });
+        assert!(!unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_integer_elt(5, 0)
+        });
         assert!(sexp.integer_elt(5).is_none());
     }
 
@@ -1169,9 +1275,18 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(0, 1.5) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(1, 2.5) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(2, 3.5) });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_real_elt(0, 1.5)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_real_elt(1, 2.5)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_real_elt(2, 3.5)
+        });
         assert_eq!(sexp.clone().real_elt(0), Some(1.5));
         assert_eq!(sexp.clone().real_elt(1), Some(2.5));
         assert_eq!(sexp.real_elt(2), Some(3.5));
@@ -1185,10 +1300,22 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(0, 10) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(1, 20) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(2, 30) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(3, 40) });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_integer_elt(0, 10)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_integer_elt(1, 20)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_integer_elt(2, 30)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_integer_elt(3, 40)
+        });
         let slice = some(unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             sexp.as_integer_slice()
@@ -1204,9 +1331,18 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(0, 1.1) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(1, 2.2) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(2, 3.3) });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_real_elt(0, 1.1)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_real_elt(1, 2.2)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_real_elt(2, 3.3)
+        });
         let slice = some(unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             sexp.as_real_slice()
@@ -1225,7 +1361,10 @@ mod tests {
             Sexp::from_raw(ptr)
         });
         for i in 0..5 {
-            unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_integer_elt(i, (i * 10) as i32) };
+            unsafe {
+                /* SAFETY: fixture has no outstanding payload borrows. */
+                sexp.clone().set_integer_elt(i, (i * 10) as i32)
+            };
         }
         let values: Vec<_> = sexp.iter_integer().collect();
         assert_eq!(values, vec![0, 10, 20, 30, 40]);
@@ -1240,7 +1379,10 @@ mod tests {
             Sexp::from_raw(ptr)
         });
         for i in 0..4 {
-            unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_real_elt(i, i as f64 * 0.5) };
+            unsafe {
+                /* SAFETY: fixture has no outstanding payload borrows. */
+                sexp.clone().set_real_elt(i, i as f64 * 0.5)
+            };
         }
         let values: Vec<_> = sexp.iter_real().collect();
         assert!((values[0] - 0.0).abs() < f64::EPSILON);
@@ -1257,10 +1399,22 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(0, 0xDE) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(1, 0xAD) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(2, 0xBE) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_raw_elt(3, 0xEF) });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_raw_elt(0, 0xDE)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_raw_elt(1, 0xAD)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_raw_elt(2, 0xBE)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_raw_elt(3, 0xEF)
+        });
         let slice = some(unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             sexp.as_raw_slice()
@@ -1276,12 +1430,16 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone()
-            .try_set_integer_elt(0, 10) }
-            .expect("set integer");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone()
-            .try_set_integer_elt(1, 20) }
-            .expect("set integer");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().try_set_integer_elt(0, 10)
+        }
+        .expect("set integer");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().try_set_integer_elt(1, 20)
+        }
+        .expect("set integer");
 
         assert_eq!(sexp.clone().try_integer_elt(1), Ok(20));
         assert!(matches!(
@@ -1302,14 +1460,23 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(0, 1.5) }.expect("set real");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_real_elt(1, 2.5) }.expect("set real");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().try_set_real_elt(0, 1.5)
+        }
+        .expect("set real");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().try_set_real_elt(1, 2.5)
+        }
+        .expect("set real");
 
         match unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             sexp.view()
         }
-        .expect("view") {
+        .expect("view")
+        {
             SexpView::Real(values) => assert_eq!(values, &[1.5, 2.5]),
             other => panic!("unexpected view: {other:?}"),
         }
@@ -1322,37 +1489,46 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 3))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical
-            .clone()
-            .try_set_logical_elt(0, 1) }
-            .expect("set logical");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical
-            .clone()
-            .try_set_logical_elt(1, 0) }
-            .expect("set logical");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical
-            .clone()
-            .try_set_logical_elt(2, NA_LOGICAL) }
-            .expect("set logical");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            logical.clone().try_set_logical_elt(0, 1)
+        }
+        .expect("set logical");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            logical.clone().try_set_logical_elt(1, 0)
+        }
+        .expect("set logical");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            logical.clone().try_set_logical_elt(2, NA_LOGICAL)
+        }
+        .expect("set logical");
 
         let integer = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ integer
-            .clone()
-            .try_set_integer_elt(0, 10) }
-            .expect("set integer");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ integer
-            .clone()
-            .try_set_integer_elt(1, NA_INTEGER) }
-            .expect("set integer");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            integer.clone().try_set_integer_elt(0, 10)
+        }
+        .expect("set integer");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            integer.clone().try_set_integer_elt(1, NA_INTEGER)
+        }
+        .expect("set integer");
 
         let real = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ real.clone().try_set_real_elt(0, NA_REAL) }.expect("set real");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            real.clone().try_set_real_elt(0, NA_REAL)
+        }
+        .expect("set real");
 
         assert_eq!(
             logical.to_owned_value().expect("logical value"),
@@ -1380,14 +1556,16 @@ mod tests {
             Sexp::from_raw(arena.alloc_charsxp(b"hello"))
         });
         let na_string = some(unsafe { Sexp::from_raw(R_NaString()) });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ strings
-            .clone()
-            .try_set_string_elt(0, hello) }
-            .expect("set string");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ strings
-            .clone()
-            .try_set_string_elt(1, na_string) }
-            .expect("set string");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            strings.clone().try_set_string_elt(0, hello)
+        }
+        .expect("set string");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            strings.clone().try_set_string_elt(1, na_string)
+        }
+        .expect("set string");
         assert_eq!(
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
@@ -1409,33 +1587,55 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::RAWSXP, 2))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ raw.clone().try_set_raw_elt(0, 0x41) }.expect("set raw");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ raw.clone().try_set_raw_elt(1, 0x5a) }.expect("set raw");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            raw.clone().try_set_raw_elt(0, 0x41)
+        }
+        .expect("set raw");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            raw.clone().try_set_raw_elt(1, 0x5a)
+        }
+        .expect("set raw");
 
         let complex = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
-            .clone()
-            .try_set_complex_elt(0, Rcomplex { r: 1.0, i: -2.0 }) }
-            .expect("set complex");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
-            .clone()
-            .try_set_complex_elt(1, Rcomplex { r: NA_REAL, i: 0.0 }) }
-            .expect("set complex");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            complex
+                .clone()
+                .try_set_complex_elt(0, Rcomplex { r: 1.0, i: -2.0 })
+        }
+        .expect("set complex");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            complex
+                .clone()
+                .try_set_complex_elt(1, Rcomplex { r: NA_REAL, i: 0.0 })
+        }
+        .expect("set complex");
 
         let list = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::VECSXP, 3))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ list.clone()
-            .try_set_vector_elt(0, strings) }
-            .expect("set list");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ list.clone().try_set_vector_elt(1, raw) }.expect("set list");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ list.clone()
-            .try_set_vector_elt(2, complex) }
-            .expect("set list");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            list.clone().try_set_vector_elt(0, strings)
+        }
+        .expect("set list");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            list.clone().try_set_vector_elt(1, raw)
+        }
+        .expect("set list");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            list.clone().try_set_vector_elt(2, complex)
+        }
+        .expect("set list");
 
         assert_eq!(
             list.to_owned_value().expect("list value"),
@@ -1461,62 +1661,81 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
-            .clone()
-            .try_set_integer_elt(0, 10) }
-            .expect("set integer");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
-            .clone()
-            .try_set_integer_elt(1, 20) }
-            .expect("set integer");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            vector.clone().try_set_integer_elt(0, 10)
+        }
+        .expect("set integer");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            vector.clone().try_set_integer_elt(1, 20)
+        }
+        .expect("set integer");
 
         let names = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
-            .clone()
-            .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"a")))) }
-            .expect("set name");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
-            .clone()
-            .try_set_string_elt(1, some(Sexp::from_raw(arena.alloc_charsxp(b"b")))) }
-            .expect("set name");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            names
+                .clone()
+                .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"a"))))
+        }
+        .expect("set name");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            names
+                .clone()
+                .try_set_string_elt(1, some(Sexp::from_raw(arena.alloc_charsxp(b"b"))))
+        }
+        .expect("set name");
 
         let dim = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ dim.clone().try_set_integer_elt(0, 1) }.expect("set dim");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ dim.clone().try_set_integer_elt(1, 2) }.expect("set dim");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            dim.clone().try_set_integer_elt(0, 1)
+        }
+        .expect("set dim");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            dim.clone().try_set_integer_elt(1, 2)
+        }
+        .expect("set dim");
 
         let class = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1))
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ class
-            .clone()
-            .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"matrix")))) }
-            .expect("set class");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            class
+                .clone()
+                .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"matrix"))))
+        }
+        .expect("set class");
 
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
         let class_cell = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             arena.cons(class.as_raw(), nil, unsafe {
-            crate::sexp::symbol::Rf_install(c"class".as_ptr())
-        })
+                crate::sexp::symbol::Rf_install(c"class".as_ptr())
+            })
         };
         let dim_cell = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             arena.cons(dim.as_raw(), class_cell, unsafe {
-            crate::sexp::symbol::Rf_install(c"dim".as_ptr())
-        })
+                crate::sexp::symbol::Rf_install(c"dim".as_ptr())
+            })
         };
         let names_cell = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             arena.cons(names.as_raw(), dim_cell, unsafe {
-            crate::sexp::symbol::Rf_install(c"names".as_ptr())
-        })
+                crate::sexp::symbol::Rf_install(c"names".as_ptr())
+            })
         };
         unsafe { crate::sexp::accessors::SET_ATTRIB(vector.clone().as_raw(), names_cell) };
 
@@ -1543,7 +1762,11 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ptr)
         });
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().try_set_integer_elt(0, 7) }.expect("set integer");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().try_set_integer_elt(0, 7)
+        }
+        .expect("set integer");
 
         assert_eq!(sexp.clone().try_as_f64(), Ok(7.0));
         assert_eq!(sexp.clone().try_to_bool(), Ok(true));
@@ -1627,10 +1850,10 @@ mod tests {
         let cell = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             arena.cons(
-            car_val,
-            unsafe { crate::sexp::globals::R_NilValue() },
-            tag_val,
-        )
+                car_val,
+                unsafe { crate::sexp::globals::R_NilValue() },
+                tag_val,
+            )
         };
         let sexp = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -1764,19 +1987,22 @@ mod tests {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 sexp.as_integer_slice()
             }
-            .is_none());
+            .is_none()
+        );
         assert!(
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 sexp.as_real_slice()
             }
-            .is_none());
+            .is_none()
+        );
         assert!(
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 sexp.as_raw_slice()
             }
-            .is_none());
+            .is_none()
+        );
     }
 
     #[test]
@@ -1796,38 +2022,58 @@ mod tests {
         });
 
         assert!(real.clone().integer_elt(0).is_none());
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ real.clone().set_integer_elt(0, 1) } == false);
+        assert!(
+            unsafe {
+                /* SAFETY: fixture has no outstanding payload borrows. */
+                real.clone().set_integer_elt(0, 1)
+            } == false
+        );
         assert!(
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 real.as_integer_slice()
             }
-            .is_none());
+            .is_none()
+        );
         assert!(real.iter_integer().next().is_none());
 
         assert!(int.clone().real_elt(0).is_none());
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ int.clone().set_real_elt(0, 1.0) } == false);
+        assert!(
+            unsafe {
+                /* SAFETY: fixture has no outstanding payload borrows. */
+                int.clone().set_real_elt(0, 1.0)
+            } == false
+        );
         assert!(
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 int.as_real_slice()
             }
-            .is_none());
+            .is_none()
+        );
         assert!(int.iter_real().next().is_none());
 
         assert!(logical.clone().integer_elt(0).is_none());
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ logical.clone().set_integer_elt(0, 1) } == false);
+        assert!(
+            unsafe {
+                /* SAFETY: fixture has no outstanding payload borrows. */
+                logical.clone().set_integer_elt(0, 1)
+            } == false
+        );
         assert!(
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 logical.as_integer_slice()
             }
-            .is_none());
+            .is_none()
+        );
         assert_eq!(
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 logical.as_logical_slice()
-            }, Some(&[0, 0][..]));
+            },
+            Some(&[0, 0][..])
+        );
     }
 
     #[test]
@@ -1841,7 +2087,10 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(arena.alloc_charsxp(b"x"))
         });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ strings.clone().set_string_elt(0, ch) });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            strings.clone().set_string_elt(0, ch)
+        });
         assert!(strings.clone().string_elt(0).is_some());
         assert!(strings.clone().vector_elt(0).is_none());
         assert!(strings.iter_vector().next().is_none());
@@ -1899,12 +2148,16 @@ mod tests {
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 sexp.as_bytes()
-            }, Some(&b"hello world"[..]));
+            },
+            Some(&b"hello world"[..])
+        );
         assert_eq!(
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 sexp.as_str()
-            }, Some("hello world"));
+            },
+            Some("hello world")
+        );
 
         let other = arena.alloc_node(SEXPTYPE::INTSXP);
         let sexp2 = some(unsafe {
@@ -1917,13 +2170,15 @@ mod tests {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 sexp2.as_bytes()
             }
-            .is_none());
+            .is_none()
+        );
         assert!(
             unsafe {
                 /* SAFETY: caller retains the handle and excludes payload mutation. */
                 sexp2.as_str()
             }
-            .is_none());
+            .is_none()
+        );
     }
 
     #[test]
@@ -1939,10 +2194,22 @@ mod tests {
         let c2 = Rcomplex { r: 3.0, i: 4.0 };
         let c3 = Rcomplex { r: 5.0, i: 6.0 };
 
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_complex_elt(0, c1) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_complex_elt(1, c2) });
-        assert!(unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_complex_elt(2, c3) });
-        assert!(!unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ sexp.clone().set_complex_elt(3, c1) }); // out of bounds
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_complex_elt(0, c1)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_complex_elt(1, c2)
+        });
+        assert!(unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_complex_elt(2, c3)
+        });
+        assert!(!unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            sexp.clone().set_complex_elt(3, c1)
+        }); // out of bounds
 
         assert_eq!(sexp.clone().complex_elt(0), Some(c1));
         assert_eq!(sexp.clone().complex_elt(1), Some(c2));

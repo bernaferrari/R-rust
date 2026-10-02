@@ -59,6 +59,30 @@ experimental: its exact proof coverage is tracked in
 `docs/conformance.md`, and its remaining gaps are listed in the
 README's known-gaps ledger.
 
+### Owned header storage and allocation identity
+
+Arena pages own initialized `Cell<SexprecCore>` arrays behind `Rc` storage.
+Permanent environment, symbol, name, cons, and constructor allocations use
+that same page implementation and share the arena's heap identity. Their
+permanent policy keeps them rooted until explicit release or session teardown.
+Permanent character, scalar, and string payloads are typed Rust cell arrays;
+no header or payload is disowned into a raw allocation.
+
+`sexp/heap.rs` and `sexp/persistent.rs` forbid unsafe code. Each allocation has
+an opaque identity comprising heap, page identity, slot, and generation. Slot
+release invalidates its old identity before reuse; generation exhaustion retires
+the slot. Dropping a page invalidates surviving metadata tokens without retaining
+its header bytes. Collector occupancy, age, and epoch metadata use owned cells.
+The legacy pointer directory indexes exact live page ranges without reading a
+candidate pointer's header.
+
+Raw `SEXP` pointers remain projections of those same physical headers during
+the engine migration. Header unions, arena vector payloads, graph fields,
+evaluator access, and native compatibility still have audited unsafe paths.
+Rust ownership of pages alone does not make those operations safe. Shared
+backing storage is essential: moving a boxed page after publishing raw pointers
+invalidates their aliasing provenance even when the bytes do not move.
+
 ### Protect stack (`sexp/protect.rs`)
 
 The port of R's `PROTECT`/`UNPROTECT` mechanism, owned by the active
@@ -91,7 +115,15 @@ The port of R's `PROTECT`/`UNPROTECT` mechanism, owned by the active
 ### Checked handles and managed roots
 
 `RSession::sexp` validates pointer membership before dereferencing and installs
-one managed root lease. Clones share that lease; the last clone releases it.
+one managed root lease. Checked handles also retain their exact allocation
+generation. Reclamation invalidates a handle permanently, even if its address
+is reused; copied header reads and raw projection requests check that identity
+before accessing interpreter memory. Clones share the root lease; the last
+clone releases it.
+Address lookup never authorizes dereferencing the caller's pointer. Successful
+lookup derives a fresh projection from the owned cell, including for immutable
+singletons. An input with the right address but no provenance therefore cannot
+carry an invalid pointer into safe reads or writes.
 Child accessors install independent leases against the original owner, so a
 child remains live after its parent handle drops. Vector iterators retain the
 parent and root yielded children. Guard cleanup uses the original owner even
@@ -99,7 +131,8 @@ when another session is active.
 
 `RArena::sexp` validates membership and ties the handle to an arena borrow.
 Safe builders retain their typed inputs and reject children from other arenas
-or sessions. Raw graph insertion and manual node freeing are unsafe: callers
+or sessions. Child header snapshots validate the owning heap before reading a
+projected pointer. Raw graph insertion and manual node freeing are unsafe: callers
 must establish graph ownership and exclude surviving handles and payload loans.
 
 `RootedSexp` remains useful for an explicitly replaceable root. `get` checks its
@@ -138,7 +171,10 @@ Mutable arena lends reject reentry. Allocation-time GC is deferred until the
 lend ends. Direct collection requests also defer before touching an arena with
 a live mutable lend; quiescent session processing services the pending request.
 No whole-instance Rust borrow may survive R reentry (the P1/P2 rules in
-`sexp/instance.rs`). The collector preserves object addresses.
+`sexp/instance.rs`). The collector preserves object addresses. When an unreachable finalizer key
+becomes ready, the collector traces the key's entire graph before sweeping.
+Its newly retained young children participate in promotion and accounting;
+cycles remain collectible after finalization unless explicitly resurrected.
 
 GC notifications copy statistics and retain owned callback leases before
 invoking user code. No borrow of `GcState` crosses a callback. A callback may

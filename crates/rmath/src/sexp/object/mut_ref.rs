@@ -34,6 +34,7 @@ impl<'a> SexpMut<'a> {
     /// payload references. Unsafe payload loans must exclude all mutation,
     /// including this API. Unknown raw handles and immutable sentinels fail.
     pub fn try_from_checked(sexp: Sexp<'a>) -> SexpResult<Self> {
+        sexp.ensure_live()?;
         if matches!(
             sexp.owner(),
             super::SexpOwner::Arena(_) | super::SexpOwner::Session(_)

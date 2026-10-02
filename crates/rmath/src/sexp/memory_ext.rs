@@ -41,16 +41,16 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
 }
 
 pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
-    unsafe {
-        // Disown the box immediately: deriving a raw pointer first and then
-        // leaking (moving) the box would retag the allocation and invalidate
-        // the returned SEXP under Stacked Borrows.
-        let env: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::ENVSXP)));
-        (*env).data.envsxp.frame = frame;
-        (*env).data.envsxp.enclos = enclos;
-        (*env).data.envsxp.hashtab = hashtab;
-        env
-    }
+    super::instance::with_required_current_instance(|owner| unsafe {
+        let mut header = SexprecCore::new(SEXPTYPE::ENVSXP);
+        header.data = super::ffi::SexprecData {
+            envsxp: super::ffi::Envsxp { frame, enclos, hashtab },
+        };
+        let value = (*owner).persistent_nodes.allocate_header(header)
+            .unwrap_or_else(|_| crate::sexp::context::r_error("persistent environment allocation"));
+        (*owner).env_nodes.push(value);
+        value
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -145,13 +145,12 @@ pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
 }
 
 pub(crate) unsafe fn cons_raw_in(instance: *mut RInstance, car: SEXP, cdr: SEXP) -> SEXP {
-    let boxed = Box::new(SexprecCore::new(SEXPTYPE::LISTSXP));
-    let ptr: SEXP = Box::into_raw(boxed);
-    unsafe {
-        (*ptr).data.listsxp.carval = car;
-        (*ptr).data.listsxp.cdrval = cdr;
-        (*ptr).data.listsxp.tagval = ptr::null_mut();
-    }
+    let mut header = SexprecCore::new(SEXPTYPE::LISTSXP);
+    header.data = super::ffi::SexprecData {
+        listsxp: super::ffi::Listsxp { carval: car, cdrval: cdr, tagval: ptr::null_mut() },
+    };
+    let ptr = unsafe { (*instance).persistent_nodes.allocate_header(header) }
+        .unwrap_or_else(|_| crate::sexp::context::r_error("persistent cons allocation"));
     with_raw_cons_in(instance, |rc| rc.push(ptr));
     ptr
 }
@@ -167,14 +166,12 @@ pub(crate) unsafe fn free_raw_cons_in(instance: *mut RInstance, ptr: SEXP) {
     if ptr.is_null() {
         return;
     }
-    with_raw_cons_in(instance, |cells| {
-        if let Some(pos) = cells.iter().position(|&p| p == ptr) {
-            cells.remove(pos);
-            unsafe {
-                let _ = Box::from_raw(ptr);
-            }
-        }
+    let removed = with_raw_cons_in(instance, |cells| {
+        cells.iter().position(|&p| p == ptr).map(|pos| cells.remove(pos)).is_some()
     });
+    if removed {
+        unsafe { (*instance).persistent_nodes.remove(ptr) };
+    }
 }
 
 /// Create a cons cell that is not reference counted (CONS_NR).
@@ -678,4 +675,58 @@ mod tests {
             assert_eq!(raw_cons_len_in(addr_of_mut!(right)), 0);
         }
     }
+    #[test]
+    fn persistent_owned_headers_and_typed_payloads_survive_collection_and_owner_move() {
+        use crate::sexp::accessors::*;
+        let session = RSession::new_for_gc_tests();
+        let token = session.with_active(|| unsafe {
+            let value = Rf_ScalarInteger(77);
+            let binding = cons_raw(value, R_NilValue());
+            let name = super::super::symbol::Rf_installChar(c"multi-byte-symbol".as_ptr(), 17);
+            SETTAG(binding, name);
+            let environment = NewPersistentEnvironment(binding, crate::sexp::globals::R_BaseEnv(), R_NilValue());
+            let character = persistent_mkChar(c"multi-byte-persistent".as_ptr());
+            let integer = persistent_scalar_integer(41);
+            let logical = persistent_scalar_logical(1);
+            let real = persistent_scalar_real(2.5);
+            let string = persistent_mkstring(c"owned-string-bytes".as_ptr());
+            let instance = super::super::instance::current_instance_ptr().unwrap();
+            let token = (*instance).node_token(environment).unwrap();
+            for raw in [binding, name, character, integer, logical, real, string, value] {
+                assert!(token.same_heap(&(*instance).node_token(raw).unwrap()));
+            }
+            super::super::gengc::full_gc();
+            assert_eq!(INTEGER_ELT(CAR(binding), 0), 77);
+            assert_eq!(std::ffi::CStr::from_ptr(CHAR(character)).to_bytes(), b"multi-byte-persistent");
+            assert_eq!(std::ffi::CStr::from_ptr(CHAR(PRINTNAME(name))).to_bytes(), b"multi-byte-symbol");
+            assert_eq!(INTEGER_ELT(integer, 0), 41);
+            assert_eq!(LOGICAL_ELT(logical, 0), 1);
+            assert_eq!(REAL_ELT(real, 0), 2.5);
+            assert_eq!(std::ffi::CStr::from_ptr(CHAR(STRING_ELT(string, 0))).to_bytes(), b"owned-string-bytes");
+            token
+        });
+        assert!(token.is_live());
+        let moved = Box::new(session);
+        moved.gc();
+        assert!(token.is_live());
+        drop(moved);
+        assert!(!token.is_live());
+    }
+
+    #[test]
+    fn persistent_raw_cons_release_invalidates_the_exact_allocation() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let value = cons_raw(R_NilValue(), R_NilValue());
+            let instance = super::super::instance::current_instance_ptr().unwrap();
+            let token = (*instance).node_token(value).unwrap();
+            free_raw_cons(value);
+            assert!(!token.is_live());
+            assert!((*instance).node_token(value).is_none());
+            assert!(super::super::memory::checked_node(value).is_none());
+            let next = cons_raw(R_NilValue(), R_NilValue());
+            assert_ne!(token, (*instance).node_token(next).unwrap());
+        });
+    }
+
 }

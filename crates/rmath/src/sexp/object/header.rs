@@ -9,8 +9,7 @@ use std::os::raw::{c_double, c_int, c_void};
 
 use super::Sexp;
 use crate::sexp::ffi::{
-    Closxp, Envsxp, Listsxp, Primsxp, Promsxp, SEXP, SEXPTYPE, SexprecCore, Symsxp,
-    SxpInfo, Vecsxp,
+    Closxp, Envsxp, Listsxp, Primsxp, Promsxp, SEXP, SEXPTYPE, SexprecCore, SxpInfo, Symsxp, Vecsxp,
 };
 
 /// Header fields copied out of a node. Every pointer here is a value, not a borrow.
@@ -81,6 +80,8 @@ impl<'a> Sexp<'a> {
     /// Copy this node's header. Does not allocate and does not borrow the node.
     #[inline]
     pub(crate) fn header(&self) -> HeaderSnap {
+        self.ensure_live()
+            .expect("SEXP allocation has been reclaimed");
         read_header(self.ptr)
     }
 
@@ -90,10 +91,29 @@ impl<'a> Sexp<'a> {
     /// not mint a child handle and does not protect, so it does not allocate.
     #[inline]
     pub(crate) fn copied_header(&self, ptr: SEXP) -> Option<HeaderSnap> {
-        let _ = self;
-        if !canonical_node(ptr) {
+        if !self.is_live() || !canonical_node(ptr) {
             return None;
         }
+        let ptr = if let Some(parent_node) = &self.node {
+            if let Some(canonical) = crate::sexp::session::immutable_singleton_projection(ptr) {
+                canonical
+            } else {
+                let canonical = if let Some(owner) = self.session_owner_ptr {
+                    // This handle retains the session lifetime; derive the
+                    // child projection from its owned cell before reading.
+                    unsafe { (*owner.as_ptr()).canonical_projection(ptr) }?
+                } else {
+                    crate::sexp::memory::checked_projection(ptr)?.0
+                };
+                let node = crate::sexp::memory::checked_node(canonical)?;
+                if !parent_node.same_heap(&node) {
+                    return None;
+                }
+                canonical
+            }
+        } else {
+            ptr
+        };
         Some(read_header(ptr))
     }
 }

@@ -115,7 +115,13 @@ fn checked_graph_writes_remember_original_owner_and_retain_unrooted_young_child(
             assert_eq!((*owner).gc_state.remembered_set.len(), 0);
         });
         left.with_active_in(|owner| unsafe {
-            assert!((*owner).gc_state.remembered_set.iter().any(|ptr| ptr == parent_ptr));
+            assert!(
+                (*owner)
+                    .gc_state
+                    .remembered_set
+                    .iter()
+                    .any(|ptr| ptr == parent_ptr)
+            );
             left.owner_token().unwrap().minor_gc().unwrap();
             // Check membership before wrapping or reading a possibly swept node.
             assert!((*owner).arena.contains(child_ptr));
@@ -137,11 +143,18 @@ fn checked_graph_write_barrier_failure_leaves_graph_and_membership_unchanged() {
     let child_ptr = alloc(&session, SEXPTYPE::INTSXP, 1);
     let child = session.sexp(child_ptr).unwrap();
     session.with_active_in(|owner| unsafe {
-        (*owner).gc_state.remembered_set.fail_next_reservation_for_test();
+        (*owner)
+            .gc_state
+            .remembered_set
+            .fail_next_reservation_for_test();
     });
     let mut mutation = SexpMut::try_from_checked(parent).unwrap();
-    assert!(matches!(mutation.try_set_vector_elt(0, child.clone()),
-        Err(super::SexpError::AllocationFailed { object: "GC write barrier" })));
+    assert!(matches!(
+        mutation.try_set_vector_elt(0, child.clone()),
+        Err(super::SexpError::AllocationFailed {
+            object: "GC write barrier"
+        })
+    ));
     let parent = mutation.freeze();
     assert!(parent.vector_elt(0).unwrap().is_nil());
     session.with_active_in(|owner| unsafe {
@@ -150,7 +163,10 @@ fn checked_graph_write_barrier_failure_leaves_graph_and_membership_unchanged() {
     // Retrying the same valid write succeeds after the injected failure.
     let mut mutation = SexpMut::try_from_checked(parent).unwrap();
     mutation.try_set_vector_elt(0, child).unwrap();
-    assert_eq!(mutation.freeze().vector_elt(0).unwrap().integer_elt(0), Some(0));
+    assert_eq!(
+        mutation.freeze().vector_elt(0).unwrap().integer_elt(0),
+        Some(0)
+    );
 }
 
 #[test]
@@ -160,12 +176,17 @@ fn checked_compact_mutation_materializes_in_original_owner_and_restores_active_s
     let value = left.sexp(ptr).unwrap();
     let right = RSession::new_for_gc_tests();
     let right_owner = right.with_active_in(|owner| unsafe {
-        (*owner).arena.set_budget(crate::sexp::memory::ArenaBudget::new(1, 0));
+        (*owner)
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::new(1, 0));
         owner
     });
     let mut mutation = SexpMut::try_from_checked(value).unwrap();
     mutation.try_set_integer_elt(1, 99).unwrap();
-    assert_eq!(crate::sexp::instance::current_instance_ptr(), Some(right_owner));
+    assert_eq!(
+        crate::sexp::instance::current_instance_ptr(),
+        Some(right_owner)
+    );
     drop(right); // The original session must own the expanded payload.
     let value = mutation.freeze();
     full_gc(&left);
@@ -336,4 +357,103 @@ fn integer_copy_checks_extent_and_retains_an_independent_snapshot() {
     session.gc();
     assert_eq!(snapshot, [0, 0]);
     assert_eq!(mutation.freeze().integer_elt(0), Some(7));
+}
+
+#[test]
+fn checked_handle_rejects_reclaimed_and_reused_allocation() {
+    let session = RSession::new_for_gc_tests();
+    let ptr = alloc(&session, SEXPTYPE::INTSXP, 1);
+    let old = session.sexp(ptr).unwrap();
+    let clone = old.clone();
+    assert!(old.is_live());
+    // Exercise invalidation at the unsafe allocator seam without reading the
+    // reclaimed payload. Ordinary collection retains checked handle leases.
+    session.with_active_in(|owner| unsafe {
+        crate::sexp::memory::with_arena_in(owner, |arena| arena.free_node(ptr));
+    });
+    assert!(!old.is_live());
+    assert_eq!(
+        old.try_integer_elt(0),
+        Err(super::SexpError::StaleAllocation)
+    );
+    assert!(matches!(
+        SexpMut::try_from_checked(clone),
+        Err(super::SexpError::StaleAllocation)
+    ));
+    let reused = session.with_active_in(|owner| unsafe {
+        crate::sexp::memory::with_arena_in(owner, |arena| arena.alloc_node(SEXPTYPE::REALSXP))
+    });
+    assert_eq!(ptr, reused, "exercise actual physical slot reuse");
+    let fresh = session.sexp(reused).unwrap();
+    assert!(fresh.is_live());
+    assert!(!old.is_live());
+    assert_eq!(
+        old.try_integer_elt(0),
+        Err(super::SexpError::StaleAllocation)
+    );
+    assert_eq!(fresh.typeof_(), SEXPTYPE::REALSXP);
+    assert_eq!(fresh.len(), 0);
+}
+
+#[test]
+fn checked_child_rejects_foreign_slot_before_header_read() {
+    let left = RSession::new_for_gc_tests();
+    let right = RSession::new_for_gc_tests();
+    let parent = left.sexp(alloc(&left, SEXPTYPE::VECSXP, 1)).unwrap();
+    let foreign = right.sexp(alloc(&right, SEXPTYPE::INTSXP, 1)).unwrap();
+    // A translated-code write bypasses the checked write barrier. The Rust
+    // projection must still reject this graph edge before reading its header.
+    unsafe {
+        let parent_ptr = parent.clone().as_raw();
+        let data = (*parent_ptr)
+            .gengc_next_node
+            .cast::<crate::sexp::ffi::SEXP>();
+        data.write(foreign.clone().as_raw());
+    }
+    assert!(parent.vector_elt(0).is_none());
+    assert!(parent.copied_header(foreign.as_raw()).is_none());
+}
+
+#[test]
+fn checked_factories_recover_owned_provenance_from_address_only_inputs() {
+    use crate::sexp::ffi::SexprecCore;
+    let session = RSession::new_for_gc_tests();
+    let arena_ptr = alloc(&session, SEXPTYPE::INTSXP, 1);
+    let address_only = std::ptr::without_provenance_mut::<SexprecCore>(arena_ptr.addr());
+    let arena_value = session.sexp(address_only).unwrap();
+    assert_eq!(arena_value.integer_elt(0), Some(0));
+    let mut mutation = SexpMut::try_from_checked(arena_value).unwrap();
+    mutation.try_set_integer_elt(0, 51).unwrap();
+    assert_eq!(mutation.integer_elt(0), Some(51));
+    let global = session.with_active(|| unsafe { crate::sexp::globals::R_GlobalEnv() });
+    let address_only = std::ptr::without_provenance_mut::<SexprecCore>(global.addr());
+    assert!(session.sexp(address_only).unwrap().is_environment());
+    let nil = Sexp::nil().as_raw();
+    let address_only = std::ptr::without_provenance_mut::<SexprecCore>(nil.addr());
+    assert_eq!(
+        session.sexp(address_only).unwrap().typeof_(),
+        SEXPTYPE::NILSXP
+    );
+    let parent = session.sexp(alloc(&session, SEXPTYPE::VECSXP, 1)).unwrap();
+    // Legacy graph writes may carry an address without provenance. Checked
+    // child reads rederive a projection from the owned allocation.
+    unsafe {
+        let ptr = parent.clone().as_raw();
+        (*ptr)
+            .gengc_next_node
+            .cast::<crate::sexp::ffi::SEXP>()
+            .write(std::ptr::without_provenance_mut::<SexprecCore>(
+                arena_ptr.addr(),
+            ));
+    }
+    assert_eq!(parent.vector_elt(0).unwrap().integer_elt(0), Some(51));
+    assert!(
+        parent
+            .copied_header(std::ptr::without_provenance_mut(arena_ptr.addr()))
+            .is_some()
+    );
+    let mut arena = RArena::new();
+    let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+    let address_only = std::ptr::without_provenance_mut::<SexprecCore>(ptr.addr());
+    assert_eq!(arena.sexp(address_only).unwrap().integer_elt(0), Some(0));
 }

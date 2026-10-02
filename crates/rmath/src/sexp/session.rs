@@ -204,8 +204,7 @@ fn auto_print_visible(value: Sexp<'_>) -> RResult<()> {
             (0..n).any(|i| {
                 let elt = crate::sexp::accessors::STRING_ELT(class, i);
                 !elt.is_null()
-                    && CStr::from_ptr(crate::sexp::accessors::CHAR(elt)).to_bytes()
-                        == b"srcref"
+                    && CStr::from_ptr(crate::sexp::accessors::CHAR(elt)).to_bytes() == b"srcref"
             })
         }
     };
@@ -231,8 +230,6 @@ fn auto_print_visible(value: Sexp<'_>) -> RResult<()> {
         Ok(())
     }
 }
-
-
 
 fn expr_or_nil(expr: SEXP) -> SEXP {
     if expr.is_null() {
@@ -717,7 +714,9 @@ impl RSession {
 
     /// Retain this session lifetime without borrowing the RInstance itself.
     pub(crate) fn owner_token(&self) -> Option<super::owner::OwnerToken<'_>> {
-        if !self.active { return None; }
+        if !self.active {
+            return None;
+        }
         // SAFETY: self retains the original allocation; the return lifetime
         // prevents closing or moving this session while the token is used.
         Some(unsafe { super::owner::OwnerToken::from_raw(self.instance) })
@@ -780,8 +779,8 @@ impl RSession {
         if ptr.is_null() {
             return None;
         }
-        if is_immutable_singleton(ptr) {
-            Some(unsafe { Sexp::from_static_raw_unchecked(ptr) })
+        if let Some(canonical) = immutable_singleton_projection(ptr) {
+            Some(unsafe { Sexp::from_static_raw_unchecked(canonical) })
         } else if self.inst().owns_sexp(ptr) {
             // SAFETY: self owns the original pointer and bounds the returned
             // handle's lifetime. No instance borrow survives root installation.
@@ -919,9 +918,8 @@ impl RSession {
         if result.is_ok() {
             return false;
         }
-        let catch_script = unsafe {
-            crate::mainutils::options::logical_option_enabled(c"catch.script.errors")
-        };
+        let catch_script =
+            unsafe { crate::mainutils::options::logical_option_enabled(c"catch.script.errors") };
         if !catch_script {
             return false;
         }
@@ -1000,18 +998,17 @@ impl RSession {
                 let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
                     c"keep.source".as_ptr(),
                 ));
-                !opt.is_null()
-                    && crate::mainutils::coerce::asLogical(opt) == crate::sexp::ffi::TRUE
+                !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == crate::sexp::ffi::TRUE
             };
             let spans = unsafe {
                 /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */
                 super::memory::with_arena_in(self.instance, |arena| {
-                let mut parser = crate::eval::parser::Parser::new(code, arena);
-                // GNU Rscript keeps `keep.source` false, so function bodies
-                // have no srcref. `setGeneric` uses `identical(body, substitute(...))`.
-                parser.set_keep_srcrefs(keep_source);
-                parser.parse_top_level_with_spans()
-            })
+                    let mut parser = crate::eval::parser::Parser::new(code, arena);
+                    // GNU Rscript keeps `keep.source` false, so function bodies
+                    // have no srcref. `setGeneric` uses `identical(body, substitute(...))`.
+                    parser.set_keep_srcrefs(keep_source);
+                    parser.parse_top_level_with_spans()
+                })
             };
             let spans = match spans {
                 Ok(spans) => spans,
@@ -1027,8 +1024,12 @@ impl RSession {
                 }
             };
             let exprs: Vec<SEXP> = spans.iter().map(|&(e, _, _)| e).collect();
-            let vec_sexp = unsafe { crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::EXPRSXP, exprs.len() as i64,
-                ) };
+            let vec_sexp = unsafe {
+                crate::sexp::constructors::Rf_allocVector3(
+                    crate::sexp::ffi::SEXPTYPE::EXPRSXP,
+                    exprs.len() as i64,
+                )
+            };
             unsafe {
                 for (i, &e) in exprs.iter().enumerate() {
                     crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
@@ -1181,8 +1182,8 @@ impl RSession {
             // SAFETY: this active session scopes parsing to its arena; no R callback runs.
             unsafe {
                 super::memory::with_arena_in(self.instance, |arena| {
-                crate::eval::parser::parse_expressions(code, arena)
-            })
+                    crate::eval::parser::parse_expressions(code, arena)
+                })
             }
         };
         let expressions = match expressions {
@@ -1277,7 +1278,11 @@ impl RSession {
                     break;
                 }
                 if let Ok(value) = result.as_ref() {
-                    let visible_flag = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
+                    let visible_flag = if self.inst().eval_state.visible != 0 {
+                        1
+                    } else {
+                        0
+                    };
                     unsafe {
                         crate::mainutils::main::Rf_callToplevelHandlers(
                             raw_expr,
@@ -1340,8 +1345,8 @@ impl RSession {
             unsafe {
                 /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */
                 super::memory::with_arena_in(self.instance, |arena| {
-                crate::eval::parser::parse(code, arena)
-            })
+                    crate::eval::parser::parse(code, arena)
+                })
             }
         };
         let raw_expr = match raw_expr {
@@ -1711,16 +1716,26 @@ impl RSession {
     }
 }
 
-pub(crate) fn is_immutable_singleton(ptr: SEXP) -> bool {
+/// Classify by address, then return the singleton's own pointer provenance.
+/// A caller's forged raw pointer is never used to access the sentinel.
+pub(crate) fn immutable_singleton_projection(ptr: SEXP) -> Option<SEXP> {
     unsafe {
-        ptr == R_NilValue()
-            || ptr == R_UnboundValue()
-            || ptr == R_MissingArg()
-            || ptr == R_RestartToken()
-            || ptr == super::globals::R_NaString()
-            || ptr == super::globals::R_True()
-            || ptr == super::globals::R_False()
+        [
+            R_NilValue(),
+            R_UnboundValue(),
+            R_MissingArg(),
+            R_RestartToken(),
+            super::globals::R_NaString(),
+            super::globals::R_True(),
+            super::globals::R_False(),
+        ]
+        .into_iter()
+        .find(|singleton| std::ptr::eq(*singleton, ptr))
     }
+}
+
+pub(crate) fn is_immutable_singleton(ptr: SEXP) -> bool {
+    immutable_singleton_projection(ptr).is_some()
 }
 
 impl Default for RSession {
@@ -2239,7 +2254,10 @@ mod tests {
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("session should be active");
         let expr = session.sexp(expr).expect("expr belongs to session");
-        assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ expr.clone().set_integer_elt(0, 7) });
+        assert!(unsafe {
+            /* SAFETY: fresh fixture with no borrowed payload views. */
+            expr.clone().set_integer_elt(0, 7)
+        });
         let env = session.global_env().expect("session has global env");
 
         let result = session.with_active(|| unsafe {
@@ -2293,7 +2311,10 @@ mod tests {
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("session should be active");
         let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("integer vector allocation failed");
-        assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, 42) });
+        assert!(unsafe {
+            /* SAFETY: fresh fixture with no borrowed payload views. */
+            sexp.set_integer_elt(0, 42)
+        });
 
         let value = session.sexp(value).expect("value belongs to session");
         assert!(session.define_var("session_defined_value", value));
@@ -2313,7 +2334,10 @@ mod tests {
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("older session should be active");
         let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("integer vector allocation failed");
-        assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, 123) });
+        assert!(unsafe {
+            /* SAFETY: fresh fixture with no borrowed payload views. */
+            sexp.set_integer_elt(0, 123)
+        });
 
         let value = older.sexp(value).expect("value belongs to older session");
         assert!(older.define_var("session_local_symbol", value));
@@ -2346,7 +2370,10 @@ mod tests {
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("session should be active");
         let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("integer vector allocation failed");
-        assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, 99) });
+        assert!(unsafe {
+            /* SAFETY: fresh fixture with no borrowed payload views. */
+            sexp.set_integer_elt(0, 99)
+        });
 
         let value = session.sexp(value).expect("value belongs to session");
         assert!(!session.define_var("session_bad\0name", value));

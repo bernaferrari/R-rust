@@ -4,8 +4,12 @@ use super::super::ffi::{R_xlen_t, SEXPTYPE};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SexpError {
     /// An ALTREP class or state violated its declared contract.
-    Altrep { reason: &'static str },
-    EvaluationFailed { message: String },
+    Altrep {
+        reason: &'static str,
+    },
+    EvaluationFailed {
+        message: String,
+    },
     /// A raw pointer was null.
     NullPointer,
     /// A raw pointer was visibly not aligned for `SexprecCore`.
@@ -18,6 +22,8 @@ pub enum SexpError {
     },
     /// The owner could not install a live root lease.
     RootUnavailable,
+    /// The allocation was reclaimed, even if its physical slot was reused.
+    StaleAllocation,
     /// Safe mutation requires a checked, mutable owner.
     UncheckedMutation,
     OwnerNotActive,
@@ -65,6 +71,7 @@ impl std::fmt::Display for SexpError {
             SexpError::UnownedPointer { address } => {
                 write!(f, "SEXP pointer {address:#x} does not belong to its owner")
             }
+            SexpError::StaleAllocation => write!(f, "SEXP allocation has been reclaimed"),
             SexpError::RootUnavailable => write!(f, "SEXP owner could not retain its root"),
             SexpError::OwnerNotActive => write!(f, "activate the owning session before collection"),
             SexpError::LengthMismatch { expected, actual } => {

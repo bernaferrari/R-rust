@@ -24,6 +24,7 @@ pub mod envir;
 pub mod ffi;
 pub mod gengc;
 pub(crate) mod globals;
+pub(crate) mod heap;
 pub(crate) mod init;
 pub(crate) mod instance;
 pub mod memory;

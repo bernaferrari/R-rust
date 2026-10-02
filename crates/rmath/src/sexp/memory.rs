@@ -19,9 +19,9 @@
 //! stack, remembered-set edges). Dropping roots because "there is no GC" is
 //! use-after-free — do not treat this module as GC-free.
 
-use std::alloc::{Layout, alloc, alloc_zeroed, dealloc};
+use std::alloc::{Layout, dealloc};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ptr::{self};
 use std::rc::Rc;
 
@@ -29,24 +29,14 @@ use std::rc::Rc;
 /// and improve cache locality vs one Box per node. Chose 4096 as balance ( ~256KB per page
 /// assuming ~64B SexprecCore).
 const NODE_PAGE_SIZE: usize = 4096;
-/// `u64` words in one page's occupancy bitmap (`NODE_PAGE_SIZE` bits).
-const OCCUPANCY_WORDS_PER_PAGE: usize = NODE_PAGE_SIZE / 64;
 const _: () = assert!(NODE_PAGE_SIZE % 64 == 0);
 
 use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData};
+use super::heap::{CheckedNode, HeapIdentity, NodeId, NodePage, NodeProjection, PageMetadata};
 use super::object::Sexp;
 
-/// Byte size of one node. `pointer.add` uses this stride.
+/// Byte size of one node for checking legacy projection address ranges.
 const NODE_BYTES: usize = std::mem::size_of::<SexprecCore>();
-/// Bytes occupied by the node array itself, before stride rounding.
-const SLAB_BYTES: usize = NODE_PAGE_SIZE * NODE_BYTES;
-/// Power-of-two allocation size and alignment. A node address maps to its
-/// page by masking, which keeps the per-node GC touch off a hash table when
-/// the page is hot.
-const SLAB_STRIDE: usize = SLAB_BYTES.next_power_of_two();
-const _: () = assert!(SLAB_STRIDE.is_power_of_two());
-const _: () = assert!(SLAB_STRIDE >= SLAB_BYTES);
-
 // ---------------------------------------------------------------------------
 // Element sizes by SEXPTYPE
 // ---------------------------------------------------------------------------
@@ -122,7 +112,9 @@ fn vector_layout(sexptype: SEXPTYPE, length: R_xlen_t) -> Result<Layout, ArenaEr
         return Err(ArenaError::InvalidVectorType { sexptype });
     }
     let length = usize::try_from(length).map_err(|_| ArenaError::InvalidLength)?;
-    let bytes = length.checked_mul(elem_size).ok_or(ArenaError::InvalidLength)?;
+    let bytes = length
+        .checked_mul(elem_size)
+        .ok_or(ArenaError::InvalidLength)?;
     Layout::from_size_align(bytes, std::mem::align_of::<u64>())
         .map_err(|_| ArenaError::InvalidLength)
 }
@@ -222,189 +214,126 @@ impl ArenaBudget {
 // RArena: arena allocator for R objects
 // ---------------------------------------------------------------------------
 
-/// Per-page GC side table. Owned as a raw allocation beside the node slab so
-/// an `&RArena` borrow does not cover these bytes (same rule as node slots).
-///
-/// `occupancy` is the live-node bitmap. `old` is the old-generation subset
-/// the torture sweep walks. `epoch[slot] == current` means the node was
-/// marked in this collection, so sweeps do not clear a header bit on every
-/// young node.
-#[repr(C)]
-struct PageGcMeta {
-    occupancy: [u64; OCCUPANCY_WORDS_PER_PAGE],
-    old: [u64; OCCUPANCY_WORDS_PER_PAGE],
-    epoch: [u32; NODE_PAGE_SIZE],
-}
-
-const OCCUPANCY_OFFSET: usize = std::mem::offset_of!(PageGcMeta, occupancy);
-const OLD_OFFSET: usize = std::mem::offset_of!(PageGcMeta, old);
-const EPOCH_OFFSET: usize = std::mem::offset_of!(PageGcMeta, epoch);
-
-/// One raw-allocated slab of `NODE_PAGE_SIZE` node slots.
-///
-/// Pages are allocated and freed through the allocator API and are only ever
-/// accessed through raw pointers. The previous `Vec` storage formed Rust
-/// references over the page on every allocation (`push`, indexing), and each
-/// of those retags invalidated the raw SEXPs of all nodes handed out by
-/// earlier allocations — aliasing UB under Stacked Borrows.
+/// Rust owns the node allocation and safe collector metadata. The `base`
+/// address is used only by the legacy projection directory; slot pointers
+/// always come from their own interior cell, never a sibling's pointer tag.
 struct SlabPage {
-    base: *mut SexprecCore,
-    meta: *mut PageGcMeta,
+    storage: NodePage<SexprecCore>,
+    meta: Rc<PageMetadata>,
+    _registration: NodePageRegistration,
 }
 
-impl Drop for SlabPage {
-    fn drop(&mut self) {
-        unregister_slab(self.base, self.meta);
-        self.meta = ptr::null_mut();
-        if !self.base.is_null() {
-            unsafe { dealloc(self.base.cast(), slab_layout()) };
-            self.base = ptr::null_mut();
-        }
+#[derive(Clone)]
+struct SlabMetadata {
+    base: usize,
+    meta: Rc<PageMetadata>,
+    projection: NodeProjection<SexprecCore>,
+}
+impl SlabMetadata {
+    fn slot(&self, address: usize) -> Option<usize> {
+        let offset = address.checked_sub(self.base)?;
+        (offset < NODE_BYTES * self.meta.slots() && offset.is_multiple_of(NODE_BYTES))
+            .then_some(offset / NODE_BYTES)
     }
-}
-
-fn slab_layout() -> Layout {
-    Layout::from_size_align(SLAB_STRIDE, SLAB_STRIDE).expect("slab page layout is valid")
 }
 
 thread_local! {
-    static SLAB_META: RefCell<HashMap<usize, *mut PageGcMeta>> = RefCell::new(HashMap::new());
-    /// Last page touched. Torture marking walks nodes allocated together, so
-    /// the next lookup usually hits this instead of the page map.
-    static SLAB_CACHE: Cell<(usize, *mut PageGcMeta)> = const { Cell::new((0, ptr::null_mut())) };
-    /// 0 means "no collection has started". Node epochs are never 0 after a
-    /// visit, and 0 is never a current epoch, so a stale 0 cannot look marked.
+    static SLAB_META: RefCell<BTreeMap<usize, SlabMetadata>> = RefCell::new(BTreeMap::new());
+    /// Fast owned metadata lease for the most recently touched range.
+    static SLAB_CACHE: RefCell<Option<SlabMetadata>> = const { RefCell::new(None) };
     static GC_EPOCH: Cell<u32> = const { Cell::new(0) };
 }
-
-fn register_slab(base: *mut SexprecCore, meta: *mut PageGcMeta) {
-    let key = base as usize;
-    SLAB_META.with(|map| {
-        map.borrow_mut().insert(key, meta);
-    });
-    SLAB_CACHE.set((key, meta));
+/// An owned directory entry for an actual owned header page. Drop removes
+/// only this page's identity, so a reused address cannot evict its successor.
+pub(crate) struct NodePageRegistration {
+    base: usize,
+    meta: Rc<PageMetadata>,
 }
-
-fn unregister_slab(base: *mut SexprecCore, meta: *mut PageGcMeta) {
-    if !base.is_null() {
-        let key = base as usize;
+impl Drop for NodePageRegistration {
+    fn drop(&mut self) {
         SLAB_META.with(|map| {
-            map.borrow_mut().remove(&key);
+            let mut map = map.borrow_mut();
+            if map
+                .get(&self.base)
+                .is_some_and(|entry| Rc::ptr_eq(&entry.meta, &self.meta))
+            {
+                map.remove(&self.base);
+            }
         });
-        let (cached_base, cached_meta) = SLAB_CACHE.get();
-        if cached_base == key || cached_meta == meta {
-            SLAB_CACHE.set((0, ptr::null_mut()));
-        }
-    }
-    if !meta.is_null() {
-        unsafe { dealloc(meta.cast(), Layout::new::<PageGcMeta>()) };
+        SLAB_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache
+                .as_ref()
+                .is_some_and(|entry| entry.base == self.base && Rc::ptr_eq(&entry.meta, &self.meta))
+            {
+                *cache = None;
+            }
+        });
     }
 }
-
-#[inline(always)]
-fn find_slab_slot(ptr: SEXP) -> Option<(*mut PageGcMeta, usize)> {
-    if ptr.is_null() {
-        return None;
-    }
-    let addr = ptr as usize;
-    let base = addr & !(SLAB_STRIDE - 1);
-    let (cached_base, cached_meta) = SLAB_CACHE.get();
-    let meta = if cached_base == base && !cached_meta.is_null() {
-        cached_meta
-    } else {
-        let found = SLAB_META.with(|map| map.borrow().get(&base).copied())?;
-        if found.is_null() {
-            return None;
-        }
-        SLAB_CACHE.set((base, found));
-        found
+pub(crate) fn register_node_page(page: &NodePage<SexprecCore>) -> NodePageRegistration {
+    let base = page.raw_slot(0).expect("nonempty node page") as usize;
+    let meta = page.metadata();
+    let entry = SlabMetadata {
+        base,
+        meta: meta.clone(),
+        projection: page.projection(),
     };
-    let delta = addr - base;
-    if !delta.is_multiple_of(NODE_BYTES) {
+    SLAB_META.with(|map| {
+        map.borrow_mut().insert(base, entry.clone());
+    });
+    SLAB_CACHE.with(|cache| {
+        *cache.borrow_mut() = Some(entry);
+    });
+    NodePageRegistration { base, meta }
+}
+#[inline(always)]
+fn find_slab_entry(pointer: SEXP) -> Option<(SlabMetadata, usize)> {
+    if pointer.is_null() {
         return None;
     }
-    let slot = delta / NODE_BYTES;
-    if slot >= NODE_PAGE_SIZE {
-        return None;
+    let address = pointer as usize;
+    let cached = SLAB_CACHE.with(|cache| {
+        cache
+            .borrow()
+            .as_ref()
+            .and_then(|entry| entry.slot(address).map(|slot| (entry.clone(), slot)))
+    });
+    if cached.is_some() {
+        return cached;
     }
-    Some((meta, slot))
+    let entry = SLAB_META.with(|map| {
+        map.borrow()
+            .range(..=address)
+            .next_back()
+            .map(|(_, entry)| entry.clone())
+    })?;
+    let slot = entry.slot(address)?;
+    SLAB_CACHE.with(|cache| {
+        *cache.borrow_mut() = Some(entry.clone());
+    });
+    Some((entry, slot))
 }
 
 #[inline(always)]
-unsafe fn bitmap_word_ptr(meta: *mut PageGcMeta, old: bool, word: usize) -> *mut u64 {
-    let offset = if old { OLD_OFFSET } else { OCCUPANCY_OFFSET };
-    unsafe { (meta as *mut u8).add(offset).cast::<u64>().add(word) }
+fn find_slab_slot(pointer: SEXP) -> Option<(Rc<PageMetadata>, usize)> {
+    let (entry, slot) = find_slab_entry(pointer)?;
+    Some((entry.meta, slot))
 }
 
-#[inline(always)]
-unsafe fn epoch_slot_ptr(meta: *mut PageGcMeta, slot: usize) -> *mut u32 {
-    unsafe { (meta as *mut u8).add(EPOCH_OFFSET).cast::<u32>().add(slot) }
+/// Resolve a live legacy projection to owned, generational metadata. The
+/// token neither dereferences its header nor borrows its arena.
+pub(crate) fn checked_node(pointer: SEXP) -> Option<CheckedNode> {
+    let (meta, slot) = find_slab_slot(pointer)?;
+    CheckedNode::new(meta.clone(), meta.current_id(slot)?)
 }
 
-#[inline(always)]
-unsafe fn set_bitmap_bit(meta: *mut PageGcMeta, old: bool, slot: usize, on: bool) {
-    let word_ptr = unsafe { bitmap_word_ptr(meta, old, slot >> 6) };
-    let mask = 1u64 << (slot & 63);
-    unsafe {
-        let mut word = ptr::read(word_ptr);
-        if on {
-            word |= mask;
-        } else {
-            word &= !mask;
-        }
-        ptr::write(word_ptr, word);
-    }
-}
-
-#[inline(always)]
-unsafe fn bitmap_word(meta: *const PageGcMeta, old: bool, word: usize) -> u64 {
-    unsafe { ptr::read(bitmap_word_ptr(meta as *mut PageGcMeta, old, word)) }
-}
-
-fn next_set_run(meta: *const PageGcMeta, old_only: bool, mut slot: usize) -> Option<(usize, usize)> {
-    if meta.is_null() {
-        return None;
-    }
-    while slot < NODE_PAGE_SIZE {
-        let word_index = slot >> 6;
-        let bit = slot & 63;
-        let word = unsafe { bitmap_word(meta, old_only, word_index) };
-        if word == 0 || (word >> bit) == 0 {
-            slot = (word_index + 1) << 6;
-            continue;
-        }
-        let start = slot + (word >> bit).trailing_zeros() as usize;
-        let end = occupied_run_end(meta, old_only, start);
-        if end <= start {
-            slot = start + 1;
-            continue;
-        }
-        return Some((start, end));
-    }
-    None
-}
-
-fn occupied_run_end(meta: *const PageGcMeta, old_only: bool, start: usize) -> usize {
-    let mut end = start;
-    while end < NODE_PAGE_SIZE {
-        let word_index = end >> 6;
-        let bit = end & 63;
-        let word = unsafe { bitmap_word(meta, old_only, word_index) };
-        if bit == 0 && word == u64::MAX {
-            end += 64;
-            continue;
-        }
-        let shifted = word >> bit;
-        let ones = (!shifted).trailing_zeros() as usize;
-        if ones == 0 {
-            break;
-        }
-        end += ones;
-        if bit + ones < 64 {
-            break;
-        }
-    }
-    end
+/// Use the input address only to select an owned slot. The returned pointer
+/// is freshly projected from that slot's canonical Cell, never from the
+/// caller's potentially provenance-free or invalidated pointer tag.
+pub(crate) fn checked_projection(pointer: SEXP) -> Option<(SEXP, CheckedNode)> {
+    let (entry, slot) = find_slab_entry(pointer)?;
+    entry.projection.resolve_slot(slot)
 }
 
 /// Result of testing one pointer against the current GC epoch.
@@ -426,19 +355,18 @@ pub(crate) fn begin_gc_epoch() {
     let next = GC_EPOCH.get().wrapping_add(1);
     if next == 0 {
         SLAB_META.with(|map| {
-            for meta in map.borrow().values().copied() {
-                if meta.is_null() {
-                    continue;
-                }
-                unsafe {
-                    ptr::write_bytes(epoch_slot_ptr(meta, 0), 0u8, NODE_PAGE_SIZE);
-                }
+            for entry in map.borrow().values() {
+                entry.meta.clear_epochs();
             }
         });
         GC_EPOCH.set(1);
     } else {
         GC_EPOCH.set(next);
     }
+}
+
+pub(crate) fn current_gc_epoch() -> u32 {
+    GC_EPOCH.get()
 }
 
 /// Mark `ptr` if it is an arena node. Persistent nodes return [`GcTouch::OutsideArena`]
@@ -453,14 +381,10 @@ pub(crate) fn gc_touch(ptr: SEXP) -> GcTouch {
         epoch != 0,
         "gc_touch on an arena node before begin_gc_epoch"
     );
-    unsafe {
-        let slot_epoch = epoch_slot_ptr(meta, slot);
-        if epoch != 0 && ptr::read(slot_epoch) == epoch {
-            return GcTouch::AlreadyMarked;
-        }
-        if epoch != 0 {
-            ptr::write(slot_epoch, epoch);
-        }
+    match meta.mark(slot, epoch) {
+        Some(true) => return GcTouch::AlreadyMarked,
+        Some(false) => (),
+        None => return GcTouch::OutsideArena,
     }
     GcTouch::NewlyMarked
 }
@@ -475,7 +399,7 @@ pub(crate) fn arena_node_marked(ptr: SEXP) -> bool {
     let Some((meta, slot)) = find_slab_slot(ptr) else {
         return false;
     };
-    unsafe { ptr::read(epoch_slot_ptr(meta, slot)) == epoch }
+    meta.epoch(slot) == Some(epoch)
 }
 
 /// Keep the old-generation bitmap aligned with `sxpinfo.gcgen`.
@@ -486,7 +410,7 @@ pub(crate) fn note_slab_generation(ptr: SEXP, generation: u8) {
     let Some((meta, slot)) = find_slab_slot(ptr) else {
         return;
     };
-    unsafe { set_bitmap_bit(meta, true, slot, generation == 1) };
+    meta.set_old(slot, generation == 1);
 }
 
 /// Live or old-generation nodes in slab order. Full words collapse to a
@@ -498,7 +422,6 @@ pub(crate) struct SlotIter<'a> {
     page: usize,
     slot: usize,
     slot_end: usize,
-    base: *mut SexprecCore,
 }
 
 impl Iterator for SlotIter<'_> {
@@ -507,10 +430,10 @@ impl Iterator for SlotIter<'_> {
     #[inline(always)]
     fn next(&mut self) -> Option<SEXP> {
         if self.slot < self.slot_end {
-            // SAFETY: `slot` is inside a run armed from a set bitmap bit, and
-            // bits are set only for slots written by the allocator. `base` is
-            // that page's slab allocation.
-            let ptr = unsafe { self.base.add(self.slot) };
+            let ptr = self.pages[self.page]
+                .storage
+                .raw_slot(self.slot)
+                .expect("live page slot");
             self.slot += 1;
             return Some(ptr);
         }
@@ -524,7 +447,10 @@ impl SlotIter<'_> {
         if !self.arm_next_run() {
             return None;
         }
-        let ptr = unsafe { self.base.add(self.slot) };
+        let ptr = self.pages[self.page]
+            .storage
+            .raw_slot(self.slot)
+            .expect("live page slot");
         self.slot += 1;
         Some(ptr)
     }
@@ -539,12 +465,11 @@ impl SlotIter<'_> {
                 slot = 0;
                 continue;
             }
-            let meta = self.pages[page].meta;
-            if let Some((start, end)) = next_set_run(meta, self.old_only, slot) {
+            let meta = &self.pages[page].meta;
+            if let Some((start, end)) = meta.next_run(self.old_only, slot) {
                 self.page = page;
                 self.slot = start;
                 self.slot_end = end;
-                self.base = self.pages[page].base;
                 return true;
             }
             page += 1;
@@ -560,15 +485,13 @@ impl SlotIter<'_> {
 /// An arena allocator for R objects.
 ///
 /// Allocates SexprecCore nodes and their associated vector data.
-/// The arena does NOT support individual deallocation -- the entire arena
-/// is freed at once when dropped.
+/// Collection retires individual allocation identities and reuses their slots.
+/// Dropping the arena releases its owned pages and payloads.
 pub struct RArena {
-    /// Slab pages of raw-allocated node slots. Pages never move once
-    /// allocated and are only touched through raw pointers (see [`SlabPage`]):
-    /// node SEXPs handed out to the rest of the interpreter must keep a
-    /// valid borrow-stack tag for the arena's lifetime. Matches spirit of
-    /// R's NodeClass pages.
+    /// Owned pages of interior cells keep legacy header projections stable.
+    /// Node identities and collector metadata are independent of raw headers.
     node_pages: Vec<SlabPage>,
+    heap_identity: HeapIdentity,
     /// Current page index for allocation (last page usually).
     slab_page: usize,
     /// Current offset within the slab_page (0 .. NODE_PAGE_SIZE).
@@ -602,33 +525,26 @@ pub struct RArena {
     bytes_at_last_gc: usize,
     /// Optional budget to limit arena growth.
     budget: ArenaBudget,
-
 }
 
 impl RArena {
     /// Allocate a new page in the slab. Reserves exactly to avoid realloc (stable ptrs inside).
     #[inline(always)]
     fn alloc_new_page(&mut self) {
-        let layout = slab_layout();
-        let base = unsafe { alloc(layout) } as *mut SexprecCore;
-        assert!(
-            !base.is_null(),
-            "arena slab page allocation failed (out of memory)"
-        );
-        debug_assert_eq!(
-            base as usize & (SLAB_STRIDE - 1),
-            0,
-            "slab page is stride-aligned"
-        );
-        let meta = unsafe { alloc_zeroed(Layout::new::<PageGcMeta>()) } as *mut PageGcMeta;
-        assert!(
-            !meta.is_null(),
-            "arena page metadata allocation failed (out of memory)"
-        );
-        // Push before registering so a panic in the page map still frees both
-        // allocations through `SlabPage::drop`.
-        self.node_pages.push(SlabPage { base, meta });
-        register_slab(base, meta);
+        let storage = NodePage::try_new(
+            self.heap_identity.clone(),
+            self.node_pages.len(),
+            NODE_PAGE_SIZE,
+            || SexprecCore::new(SEXPTYPE::NILSXP),
+        )
+        .expect("arena node page allocation failed");
+        let meta = storage.metadata();
+        let registration = register_node_page(&storage);
+        self.node_pages.push(SlabPage {
+            storage,
+            meta,
+            _registration: registration,
+        });
         self.slab_page = self.node_pages.len() - 1;
         self.slab_offset = 0;
     }
@@ -644,12 +560,10 @@ impl RArena {
         if self.slab_offset >= NODE_PAGE_SIZE {
             self.alloc_new_page();
         }
-        // SAFETY: slab_offset < NODE_PAGE_SIZE and the page holds exactly
-        // NODE_PAGE_SIZE slots. All page access stays at the raw-pointer
-        // level: forming Rust references over the page would retag the
-        // allocation and invalidate the SEXPs of earlier nodes.
-        let ptr: SEXP = unsafe { self.node_pages[self.slab_page].base.add(self.slab_offset) };
-        unsafe { std::ptr::write(ptr, ctor()) };
+        let ptr = self.node_pages[self.slab_page]
+            .storage
+            .replace_inactive(self.slab_offset, ctor())
+            .expect("fresh inactive arena slot");
         self.slab_offset += 1;
         self.add_accounted_bytes(std::mem::size_of::<SexprecCore>());
         self.register_new_node(ptr)
@@ -657,32 +571,25 @@ impl RArena {
 
     /// Create a new empty arena with an unlimited budget.
     pub fn new() -> Self {
-        let mut a = RArena {
-            node_pages: Vec::new(),
-            slab_page: 0,
-            slab_offset: NODE_PAGE_SIZE,
-            data_bufs: HashMap::new(),
-            free_list: Vec::new(),
-            active_addrs: HashSet::new(),
-            free_addrs: HashSet::new(),
-            total_bytes_allocated: 0,
-            transient_bytes: Rc::new(Cell::new(0)),
-            pending_data_bytes: Rc::new(Cell::new(0)),
-            alloc_gc_torture_ticks: 0,
-            alloc_gc_collect_requested: false,
-            nodes_at_last_gc: 0,
-            bytes_at_last_gc: 0,
-            budget: ArenaBudget::unlimited(),
-        };
-
-        a.alloc_new_page();
-        a
+        Self::with_budget(ArenaBudget::unlimited())
     }
 
     /// Create a new empty arena with the given budget.
     pub fn with_budget(budget: ArenaBudget) -> Self {
+        Self::with_budget_and_identity(budget, HeapIdentity::new())
+    }
+
+    /// Reset an arena fixture without changing the session's persistent heap
+    /// domain. New page identities still invalidate all old arena handles.
+    #[cfg(test)]
+    pub(crate) fn fresh_with_identity(identity: HeapIdentity) -> Self {
+        Self::with_budget_and_identity(ArenaBudget::unlimited(), identity)
+    }
+
+    fn with_budget_and_identity(budget: ArenaBudget, heap_identity: HeapIdentity) -> Self {
         let mut a = RArena {
             node_pages: Vec::new(),
+            heap_identity,
             slab_page: 0,
             slab_offset: NODE_PAGE_SIZE,
             data_bufs: HashMap::new(),
@@ -713,14 +620,11 @@ impl RArena {
             debug_assert!(ptr.is_null(), "active node is not in a slab page");
             return;
         };
-        unsafe {
-            set_bitmap_bit(meta, false, slot, true);
-            // The header is the source of truth (fresh nodes are young; a
-            // copied node may already be old). Drop a stale epoch so the slot
-            // cannot look marked in the collection that is already running.
-            set_bitmap_bit(meta, true, slot, (*ptr).sxpinfo.gcgen() == 1);
-            ptr::write(epoch_slot_ptr(meta, slot), 0);
-        }
+        // SAFETY: the original per-cell projection names this initialized
+        // header; copy its age without forming a header reference.
+        let old = unsafe { (*ptr).sxpinfo.gcgen() == 1 };
+        meta.activate(slot, old)
+            .expect("inactive nonretired arena node");
     }
 
     fn track_node_freed(&mut self, ptr: SEXP) {
@@ -730,22 +634,29 @@ impl RArena {
         self.active_addrs.remove(&(ptr as usize));
         self.free_addrs.insert(ptr as usize);
         if let Some((meta, slot)) = find_slab_slot(ptr) {
-            unsafe {
-                set_bitmap_bit(meta, false, slot, false);
-                set_bitmap_bit(meta, true, slot, false);
-                ptr::write(epoch_slot_ptr(meta, slot), 0);
+            if let Some(id) = meta.current_id(slot) {
+                meta.release(&id);
             }
         }
     }
 
     #[inline(always)]
     fn reuse_free_node(&mut self, sexptype: SEXPTYPE) -> Option<SEXP> {
-        let ptr = self.free_list.pop()?;
-        unsafe {
-            *ptr = SexprecCore::new(sexptype);
+        while let Some(pointer) = self.free_list.pop() {
+            let Some((meta, slot)) = find_slab_slot(pointer) else {
+                continue;
+            };
+            if !meta.belongs_to(&self.heap_identity) || !meta.reusable(slot) {
+                continue;
+            }
+            let ptr = self.node_pages[meta.page()]
+                .storage
+                .replace_inactive(slot, SexprecCore::new(sexptype))
+                .expect("reusable arena slot");
+            self.track_node_active(ptr);
+            return Some(ptr);
         }
-        self.track_node_active(ptr);
-        Some(ptr)
+        None
     }
 
     fn register_new_node(&mut self, ptr: SEXP) -> SEXP {
@@ -791,10 +702,13 @@ impl RArena {
             ptr: std::ptr::NonNull::new(ptr).expect("nonempty buffer"),
             layout,
         };
-        self.data_bufs.insert(ptr, SharedBuffer {
-            allocation,
-            headers: std::num::NonZeroUsize::new(1).unwrap(),
-        });
+        self.data_bufs.insert(
+            ptr,
+            SharedBuffer {
+                allocation,
+                headers: std::num::NonZeroUsize::new(1).unwrap(),
+            },
+        );
     }
 
     /// Move a lend-time reservation into the registered buffer map.
@@ -814,9 +728,7 @@ impl RArena {
                 .rev()
                 .find(|ledger| ledger.arena == std::ptr::from_ref(self) as usize)
             {
-                ledger
-                    .total
-                    .set(ledger.total.get().saturating_add(bytes));
+                ledger.total.set(ledger.total.get().saturating_add(bytes));
             }
         });
     }
@@ -830,9 +742,7 @@ impl RArena {
                 .rev()
                 .find(|ledger| ledger.arena == std::ptr::from_ref(self) as usize)
             {
-                ledger
-                    .total
-                    .set(ledger.total.get().saturating_sub(bytes));
+                ledger.total.set(ledger.total.get().saturating_sub(bytes));
             }
         });
     }
@@ -866,7 +776,10 @@ impl RArena {
             buffer.headers = remaining;
             return;
         }
-        let buffer = self.data_bufs.remove(&ptr).expect("registered final buffer owner");
+        let buffer = self
+            .data_bufs
+            .remove(&ptr)
+            .expect("registered final buffer owner");
         self.sub_accounted_bytes(buffer.allocation.layout.size());
         // OwnedBuffer::drop is the only native release boundary.
         drop(buffer);
@@ -906,14 +819,19 @@ impl RArena {
         if bytes == 0 {
             return Ok(());
         }
-        let buffer = self.data_bufs.get_mut(&(src.payload as *mut u8)).ok_or_else(error)?;
+        let buffer = self
+            .data_bufs
+            .get_mut(&(src.payload as *mut u8))
+            .ok_or_else(error)?;
         if buffer.allocation.layout.size() < bytes {
             return Err(error());
         }
         buffer.headers = buffer.headers.checked_add(1).ok_or_else(error)?;
         // SAFETY: both rooted headers have matching shape and a tracked buffer
         // with a newly installed ownership lease; no payload loans are present.
-        unsafe { (*target_ptr).gengc_next_node = src.payload; }
+        unsafe {
+            (*target_ptr).gengc_next_node = src.payload;
+        }
         Ok(())
     }
 
@@ -961,7 +879,6 @@ impl RArena {
                 return ptr;
             }
         }
-
 
         if !self.can_grow_bytes_by(std::mem::size_of::<SexprecCore>()) {
             return ptr::null_mut();
@@ -1082,7 +999,6 @@ impl RArena {
         if self.growth_warrants_gc() {
             self.alloc_gc_collect_requested = true;
         }
-
 
         let data = if data_bytes > 0 {
             Some(OwnedBuffer::zeroed(layout).ok_or(ArenaError::OutOfMemory)?)
@@ -1221,9 +1137,9 @@ impl RArena {
         // Keep the source handles live until the parent is fully initialized.
         let ptr = unsafe {
             self.cons(
-            car.clone().as_raw(),
-            cdr.clone().as_raw(),
-            tag.as_ref()
+                car.clone().as_raw(),
+                cdr.clone().as_raw(),
+                tag.as_ref()
                     .map_or(ptr::null_mut(), |tag| tag.clone().as_raw()),
             )
         };
@@ -1261,16 +1177,7 @@ impl RArena {
             return ptr::null_mut();
         }
 
-        if self.slab_offset >= NODE_PAGE_SIZE {
-            self.alloc_new_page();
-        }
-        // Write through the raw slot pointer; see `allocate_core_in_slab`
-        // for why the page must never be touched through Rust references.
-        let ptr: SEXP = unsafe { self.node_pages[self.slab_page].base.add(self.slab_offset) };
-        unsafe { std::ptr::write(ptr, *node) };
-        self.slab_offset += 1;
-        self.add_accounted_bytes(std::mem::size_of::<SexprecCore>());
-        self.register_new_node(ptr)
+        self.allocate_core_in_slab(|| *node)
     }
 
     /// Get the number of nodes allocated in this arena.
@@ -1293,13 +1200,42 @@ impl RArena {
         self.bytes_at_last_gc = self.total_bytes_allocated;
     }
 
-
     /// Return true if this pointer is one of the arena's active nodes.
     pub(crate) fn contains(&self, ptr: SEXP) -> bool {
         if ptr.is_null() {
             return false;
         }
         self.active_addrs.contains(&(ptr as usize))
+    }
+
+    pub(crate) fn heap_identity(&self) -> HeapIdentity {
+        self.heap_identity.clone()
+    }
+
+    pub(crate) fn node_token(&self, pointer: SEXP) -> Option<CheckedNode> {
+        if !self.contains(pointer) {
+            return None;
+        }
+        checked_node(pointer)
+    }
+
+    pub(crate) fn node_projection(&self, pointer: SEXP) -> Option<(SEXP, CheckedNode)> {
+        if !self.contains(pointer) {
+            return None;
+        }
+        checked_projection(pointer)
+    }
+
+    /// Identity of the currently live allocation at a legacy projection.
+    /// Capturing an address after reuse identifies its new allocation; callers
+    /// retain the returned ID to reject stale handles on later access.
+    pub(crate) fn node_id(&self, pointer: SEXP) -> Option<NodeId> {
+        self.node_token(pointer).map(|token| token.id().clone())
+    }
+
+    /// Resolve an unforgeable identity only while its exact allocation lives.
+    pub(crate) fn resolve_node(&self, id: &NodeId) -> Option<SEXP> {
+        self.node_pages.get(id.page())?.storage.resolve(id)
     }
 
     /// Wrap an active arena-owned pointer in a safe `Sexp`.
@@ -1321,7 +1257,6 @@ impl RArena {
             .iter()
             .enumerate()
             .flat_map(move |(page_idx, page)| {
-                let base = page.base;
                 // Allocation fills pages sequentially: only the current page
                 // can be partially occupied.
                 let used = if page_idx == self.slab_page {
@@ -1329,7 +1264,7 @@ impl RArena {
                 } else {
                     NODE_PAGE_SIZE
                 };
-                (0..used).map(move |i| unsafe { base.add(i) } as SEXP)
+                (0..used).map(move |i| page.storage.raw_slot(i).expect("allocated page slot"))
             })
     }
 
@@ -1354,14 +1289,14 @@ impl RArena {
             page: 0,
             slot: 0,
             slot_end: 0,
-            base: ptr::null_mut(),
         }
     }
 
     /// Free a node by adding it to the free list for reuse.
     #[inline(always)]
     /// # Safety
-    /// No live handle, graph edge or Rust payload borrow may refer to this node.
+    /// No reachable graph edge or Rust payload borrow may refer to this node.
+    /// Unrooted checked metadata handles become stale and reject later access.
     pub(crate) unsafe fn free_node(&mut self, ptr: SEXP) {
         if ptr.is_null() {
             return;
@@ -1458,7 +1393,10 @@ impl TransientReservation {
             return None;
         }
         counter.set(reserved);
-        Some(Self { counter: Rc::clone(counter), bytes })
+        Some(Self {
+            counter: Rc::clone(counter),
+            bytes,
+        })
     }
 }
 
@@ -1873,22 +1811,144 @@ where
 #[cfg(test)]
 mod tests {
     #[test]
+    fn checked_projection_recovers_canonical_provenance_from_address_only_inputs() {
+        let mut arena = super::RArena::new();
+        let first = arena.alloc_node(super::SEXPTYPE::INTSXP);
+        let second = arena.alloc_node(super::SEXPTYPE::REALSXP);
+        for expected in [first, second] {
+            let input = std::ptr::without_provenance_mut::<super::SexprecCore>(expected.addr());
+            let (canonical, token) = super::checked_projection(input).unwrap();
+            assert_eq!(canonical, expected);
+            assert!(token.is_live());
+            assert_eq!(arena.node_projection(input).unwrap().0, expected);
+            // SAFETY: checked_projection re-derives the original live Cell
+            // pointer; the address-only input itself is never dereferenced.
+            unsafe {
+                assert!(!(*canonical).sxpinfo.mark());
+                (*canonical).sxpinfo.set_mark(true);
+                assert!((*canonical).sxpinfo.mark());
+                // A genuine previously projected alias remains valid when
+                // the directory derives another pointer to the same Cell.
+                assert!((*expected).sxpinfo.mark());
+            }
+        }
+        let input = std::ptr::without_provenance_mut::<super::SexprecCore>(first.addr());
+        // SAFETY: the fixture owns first, and no header/payload borrow remains.
+        unsafe {
+            arena.free_node(first);
+        }
+        assert!(super::checked_projection(input).is_none());
+        drop(arena);
+        assert!(super::checked_projection(input).is_none());
+    }
+
+    #[test]
+    fn legacy_node_projection_survives_owned_page_moves() {
+        let page = super::NodePage::try_new(super::HeapIdentity::new(), 0, 2, || {
+            super::SexprecCore::new(super::SEXPTYPE::NILSXP)
+        })
+        .unwrap();
+        let pointer = page
+            .replace_inactive(1, super::SexprecCore::new(super::SEXPTYPE::INTSXP))
+            .unwrap();
+        page.metadata().activate(1, false).unwrap();
+        let token = page.token(1).unwrap();
+        let mut pages = Vec::new();
+        pages.push(page);
+        // SAFETY: the live Cell header belongs to pages; moving its owned
+        // Rc handle must preserve the original projection's access rights.
+        unsafe {
+            assert_eq!((*pointer).sxpinfo.type_of(), super::SEXPTYPE::INTSXP);
+        }
+        pages.reserve(64);
+        assert!(token.is_live());
+        // SAFETY: reserve moved the page handles, and no header borrow is held.
+        unsafe {
+            (*pointer).sxpinfo.set_mark(true);
+            assert!((*pointer).sxpinfo.mark());
+        }
+    }
+
+    #[test]
+    fn node_directory_accepts_only_exact_slots_and_retires_page_tokens() {
+        let page = super::NodePage::try_new(super::HeapIdentity::new(), 0, 3, || {
+            super::SexprecCore::new(super::SEXPTYPE::NILSXP)
+        })
+        .unwrap();
+        let registration = super::register_node_page(&page);
+        let metadata = page.metadata();
+        for slot in 0..3 {
+            metadata.activate(slot, false).unwrap();
+        }
+        let base = page.raw_slot(0).unwrap();
+        let last = page.raw_slot(2).unwrap();
+        assert!(super::checked_node(base).is_some());
+        assert!(super::checked_node(last).is_some());
+        let interior = (base as usize + 1) as super::SEXP;
+        let past_end = (base as usize + 3 * super::NODE_BYTES) as super::SEXP;
+        assert!(super::checked_node(interior).is_none());
+        assert!(super::checked_node(past_end).is_none());
+        let token = super::checked_node(last).unwrap();
+        drop(page);
+        assert!(!token.is_live());
+        assert!(super::checked_node(last).is_none());
+        drop(registration);
+        assert!(super::find_slab_slot(base).is_none());
+    }
+
+    #[test]
+    fn production_arena_identities_reject_reuse_foreign_arenas_and_drop() {
+        let mut arena = super::RArena::new();
+        let pointer = arena.alloc_node(super::SEXPTYPE::INTSXP);
+        let old = arena.node_token(pointer).unwrap();
+        let old_id = old.id().clone();
+        assert_eq!(arena.resolve_node(&old_id), Some(pointer));
+        let foreign = super::RArena::new();
+        assert_eq!(foreign.resolve_node(&old_id), None);
+        assert!(foreign.node_token(pointer).is_none());
+        // SAFETY: this fixture owns the live node and holds no header/payload
+        // reference. Checked metadata leases do not borrow its storage.
+        unsafe {
+            arena.free_node(pointer);
+        }
+        assert!(!old.is_live());
+        assert_eq!(arena.resolve_node(&old_id), None);
+        let replacement = arena.alloc_node(super::SEXPTYPE::REALSXP);
+        assert_eq!(replacement, pointer);
+        let new = arena.node_token(replacement).unwrap();
+        assert_ne!(old, new);
+        assert!(new.is_live());
+        assert_eq!(arena.resolve_node(&old_id), None);
+        drop(arena);
+        assert!(!new.is_live());
+        assert!(super::checked_node(pointer).is_none());
+    }
+
+    #[test]
     fn vector_allocation_validates_platform_length_and_layout_without_consuming_budget() {
         let mut arena = super::RArena::new();
         let before = (arena.node_count(), arena.total_bytes_allocated);
         for kind in [super::SEXPTYPE::RAWSXP, super::SEXPTYPE::REALSXP] {
             for length in [-1, i64::MAX] {
                 assert!(arena.alloc_vector_sexp(kind, length).is_none());
-                assert!(matches!(arena.alloc_vector_checked_sexp(kind, length),
-                    Err(super::ArenaError::InvalidLength)));
+                assert!(matches!(
+                    arena.alloc_vector_checked_sexp(kind, length),
+                    Err(super::ArenaError::InvalidLength)
+                ));
                 assert_eq!((arena.node_count(), arena.total_bytes_allocated), before);
             }
         }
         #[cfg(target_pointer_width = "32")]
         for length in [1_i64 << 32, (1_i64 << 32) + 1] {
-            assert!(arena.alloc_vector_sexp(super::SEXPTYPE::RAWSXP, length).is_none());
-            assert!(matches!(arena.alloc_vector_checked_sexp(super::SEXPTYPE::RAWSXP, length),
-                Err(super::ArenaError::InvalidLength)));
+            assert!(
+                arena
+                    .alloc_vector_sexp(super::SEXPTYPE::RAWSXP, length)
+                    .is_none()
+            );
+            assert!(matches!(
+                arena.alloc_vector_checked_sexp(super::SEXPTYPE::RAWSXP, length),
+                Err(super::ArenaError::InvalidLength)
+            ));
             assert_eq!((arena.node_count(), arena.total_bytes_allocated), before);
         }
     }
@@ -1898,7 +1958,9 @@ mod tests {
         let mut arena = super::RArena::new();
         for tag in 0..=31 {
             let kind = super::SEXPTYPE::from(tag);
-            if super::sexp_elem_size(kind) == 0 { continue; }
+            if super::sexp_elem_size(kind) == 0 {
+                continue;
+            }
             for length in [0, 1, 8] {
                 for checked in [false, true] {
                     let value = if checked {
@@ -1924,7 +1986,10 @@ mod tests {
             }
             for length in [0, 1, 8] {
                 assert!(arena.alloc_vector_sexp(kind, length).is_none(), "tag {tag}");
-                assert!(arena.alloc_vector_checked_sexp(kind, length).is_err(), "tag {tag}");
+                assert!(
+                    arena.alloc_vector_checked_sexp(kind, length).is_err(),
+                    "tag {tag}"
+                );
                 assert_eq!((arena.node_count(), arena.total_bytes_allocated), before);
             }
         }
@@ -1965,17 +2030,17 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|outer| {
-            let before = outer.node_count();
-            let failure = std::panic::catch_unwind(|| with_arena(|_| ()));
-            assert!(failure.is_err());
-            outer.alloc_node(SEXPTYPE::LISTSXP);
-            assert_eq!(outer.node_count(), before + 1);
-        })
+                let before = outer.node_count();
+                let failure = std::panic::catch_unwind(|| with_arena(|_| ()));
+                assert!(failure.is_err());
+                outer.alloc_node(SEXPTYPE::LISTSXP);
+                assert_eq!(outer.node_count(), before + 1);
+            })
         });
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            arena.alloc_node(SEXPTYPE::LISTSXP);
+                arena.alloc_node(SEXPTYPE::LISTSXP);
             })
         });
     }
@@ -2005,7 +2070,6 @@ mod tests {
         }
         assert!(arena.growth_warrants_gc());
     }
-
 
     #[test]
     fn test_arena_alloc_vector_real() {
@@ -2321,7 +2385,10 @@ mod tests {
         let reused = arena.alloc_node(super::SEXPTYPE::REALSXP);
         assert_eq!(reused, b);
         assert_eq!(arena.active_nodes().collect::<Vec<_>>(), vec![a, b, c]);
-        assert_eq!(arena.active_nodes().collect::<Vec<_>>(), membership_scan(&arena));
+        assert_eq!(
+            arena.active_nodes().collect::<Vec<_>>(),
+            membership_scan(&arena)
+        );
 
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */

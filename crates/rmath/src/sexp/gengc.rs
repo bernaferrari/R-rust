@@ -440,6 +440,11 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         mark_reachable((*instance).empty_env);
         mark_reachable((*instance).base_env);
         mark_reachable((*instance).global_env);
+        // Permanent owned headers include scalar/name storage that is not
+        // present in the legacy environment, symbol, or cons projections.
+        for node in (*instance).persistent_nodes.projections() {
+            mark_reachable(node);
+        }
 
         // The collector explicitly scans BOTH protection storages: the
         // legacy C-port stack and the generational root table. Tombstoned
@@ -1930,7 +1935,7 @@ mod tests {
     }
 
     fn reset_gc_test_arena(arena: &mut RArena) {
-        *arena = RArena::new();
+        *arena = RArena::fresh_with_identity(arena.heap_identity());
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
         unsafe {
             // Base bootstrap inserts heap-owned Autoloads (and a full session
@@ -1978,11 +1983,7 @@ mod tests {
             (*instance).eval_state.print.data.env = nil;
             (*instance).eval_state.print.data.callArgs = nil;
             (*instance).symbols.clear();
-            for node in (*instance).symbol_nodes.drain(..) {
-                if !node.is_null() {
-                    drop(unsafe { Box::from_raw(node) });
-                }
-            }
+            (*instance).symbol_nodes.clear();
             (*instance).names_state.ddval_symbols.clear();
             (*instance).bind_state.blank_string = nil;
             (*instance).options.clear();
@@ -1997,16 +1998,43 @@ mod tests {
             (*instance).grid_runtime_state.current_grid_state = nil;
             (*instance).grid_runtime_state.eval_env = nil;
             (*instance).raw_cons.clear();
+            // Retain only the three environment sentinels. Permanent owned
+            // names, scalar buffers, promises, and cons headers can contain
+            // edges into the discarded arena even when no legacy projection
+            // list contains them. Removing each owner also invalidates its
+            // checked tokens before the underlying cell storage is dropped.
+            let sentinels = [
+                (*instance).empty_env,
+                (*instance).base_env,
+                (*instance).global_env,
+            ];
+            let discarded: Vec<_> = (*instance)
+                .persistent_nodes
+                .projections()
+                .filter(|node| !sentinels.contains(node))
+                .collect();
+            for node in discarded {
+                assert!((*instance).persistent_nodes.remove(node));
+            }
+            (*instance).env_nodes.retain(|node| sentinels.contains(node));
         });
-        for env in [
-            unsafe { crate::sexp::globals::R_EmptyEnv() },
-            unsafe { crate::sexp::globals::R_BaseEnv() },
-            unsafe { crate::sexp::globals::R_GlobalEnv() },
+        for (env, enclos) in [
+            (unsafe { crate::sexp::globals::R_EmptyEnv() }, nil),
+            (
+                unsafe { crate::sexp::globals::R_BaseEnv() },
+                unsafe { crate::sexp::globals::R_EmptyEnv() },
+            ),
+            (
+                unsafe { crate::sexp::globals::R_GlobalEnv() },
+                unsafe { crate::sexp::globals::R_BaseEnv() },
+            ),
         ] {
             if !env.is_null() {
                 unsafe {
+                    (*env).attrib = nil;
                     (*env).data.envsxp.frame = nil;
                     (*env).data.envsxp.hashtab = nil;
+                    (*env).data.envsxp.enclos = enclos;
                 }
             }
         }
@@ -2021,14 +2049,31 @@ mod tests {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
             assert!(arena.contains(unsafe { (*global).data.envsxp.enclos }));
+            let discarded = arena.alloc_node(SEXPTYPE::LISTSXP);
+            let arena_token = arena.node_token(discarded).unwrap();
+            let (sentinel_token, permanent_token) =
+                instance::with_required_current_instance(|inst| unsafe {
+                    let mut header = crate::sexp::ffi::SexprecCore::new(SEXPTYPE::PROMSXP);
+                    header.attrib = discarded;
+                    let permanent = (*inst).persistent_nodes.allocate_header(header).unwrap();
+                    (
+                        (*inst).persistent_nodes.token(global).unwrap(),
+                        (*inst).persistent_nodes.token(permanent).unwrap(),
+                    )
+                });
+            assert!(arena_token.same_heap(&sentinel_token));
             reset_gc_test_arena(arena);
             assert_eq!(unsafe { (*global).data.envsxp.enclos }, base);
+            assert!(!arena_token.is_live());
+            assert!(!permanent_token.is_live());
+            assert!(sentinel_token.is_live());
             })
         });
         instance::with_required_current_instance(|inst| unsafe {
             assert!((*inst).preserve_stack.borrow().is_empty());
             assert!((*inst).base_wrappers.borrow().is_empty());
             assert!((*inst).package_namespace_cache.is_empty());
+            assert_eq!((*inst).persistent_nodes.len(), 3);
         });
         assert_eq!(full_gc(), (0, 0));
     }
@@ -2679,11 +2724,13 @@ mod tests {
             reset_gc_stats();
             reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
+        })
+        .unwrap();
+        left.with_active(|| {
             let (_, freed) = minor_gc();
             assert_eq!(freed, 1);
             assert_eq!(get_gc_stats().collections, 1);
-        })
-        .unwrap();
+        });
 
         right
             .with_arena(|arena| {
@@ -2692,11 +2739,13 @@ mod tests {
                 reset_gc_test_arena(arena);
                 arena.alloc_node(SEXPTYPE::INTSXP);
                 arena.alloc_node(SEXPTYPE::REALSXP);
-                let (_, freed) = minor_gc();
-                assert_eq!(freed, 2);
-                assert_eq!(get_gc_stats().collections, 1);
             })
             .unwrap();
+        right.with_active(|| {
+            let (_, freed) = minor_gc();
+            assert_eq!(freed, 2);
+            assert_eq!(get_gc_stats().collections, 1);
+        });
 
         left.with_active(|| {
             let stats = get_gc_stats();
@@ -2735,10 +2784,12 @@ mod tests {
                 }
                 write_barrier(old_obj, young_obj);
                 assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
-                minor_gc();
-                assert_eq!(with_gc_state(|state| state.remembered_set.len()), 0);
             })
             .unwrap();
+        right.with_active(|| {
+            minor_gc();
+            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 0);
+        });
 
         left.with_active(|| {
             assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
