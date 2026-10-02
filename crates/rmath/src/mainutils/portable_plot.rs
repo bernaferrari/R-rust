@@ -401,6 +401,14 @@ fn install(coords: Coordinates) {
         (*inst).portable_graphics.current = Some(coords);
     });
     set_plot_parameter("usr", ParValue::Real(coords.limits.to_vec()));
+    // R-side layout and string metrics must see the dimensions of this
+    // device/figure/plot, rather than the registry's default seven-inch page.
+    for (name, rect) in [("din", coords.device), ("fin", coords.figure), ("pin", coords.rect)] {
+        set_plot_parameter(name, ParValue::Real(vec![
+            f64::from(rect[2] - rect[0]) / 72.,
+            f64::from(rect[3] - rect[1]) / 72.,
+        ]));
+    }
     set_plot_parameter("xlog", ParValue::Logical(vec![i32::from(coords.log[0])]));
     set_plot_parameter("ylog", ParValue::Logical(vec![i32::from(coords.log[1])]));
     if !coords.log[0] {
