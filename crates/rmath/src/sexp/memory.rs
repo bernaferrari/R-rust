@@ -737,7 +737,7 @@ impl RArena {
     /// Set a new budget. Does not retroactively reject existing allocations.
     pub fn set_budget(&mut self, budget: ArenaBudget) {
         self.budget = budget;
-        note_lend_budget(budget.max_bytes);
+        note_lend_budget(std::ptr::from_ref(self) as usize, budget.max_bytes);
     }
 
     /// Reserve native scratch space against this session's byte budget.
@@ -771,7 +771,12 @@ impl RArena {
     fn add_accounted_bytes(&mut self, bytes: usize) {
         self.total_bytes_allocated = self.total_bytes_allocated.saturating_add(bytes);
         LEND_LEDGER.with(|slot| {
-            if let Some(ledger) = slot.borrow().last() {
+            if let Some(ledger) = slot
+                .borrow()
+                .iter()
+                .rev()
+                .find(|ledger| ledger.arena == std::ptr::from_ref(self) as usize)
+            {
                 ledger
                     .total
                     .set(ledger.total.get().saturating_add(bytes));
@@ -782,7 +787,12 @@ impl RArena {
     fn sub_accounted_bytes(&mut self, bytes: usize) {
         self.total_bytes_allocated = self.total_bytes_allocated.saturating_sub(bytes);
         LEND_LEDGER.with(|slot| {
-            if let Some(ledger) = slot.borrow().last() {
+            if let Some(ledger) = slot
+                .borrow()
+                .iter()
+                .rev()
+                .find(|ledger| ledger.arena == std::ptr::from_ref(self) as usize)
+            {
                 ledger
                     .total
                     .set(ledger.total.get().saturating_sub(bytes));
@@ -1030,11 +1040,10 @@ impl RArena {
             Ok(l) => l,
             Err(_) => return ptr::null_mut(),
         };
-        let data_ptr = unsafe { alloc(layout) };
-
-        if data_ptr.is_null() {
+        let Some(data) = OwnedBuffer::zeroed(layout) else {
             return ptr::null_mut();
-        }
+        };
+        let data_ptr = data.as_ptr();
 
         unsafe {
             std::ptr::copy_nonoverlapping(s.as_ptr(), data_ptr, s.len());
@@ -1067,6 +1076,7 @@ impl RArena {
             (*node_ptr).gengc_next_node = data_ptr as SEXP;
         }
 
+        let (data_ptr, layout) = data.into_raw();
         self.register_data_buffer(data_ptr, layout);
         node_ptr
     }
@@ -1435,6 +1445,7 @@ struct PendingDataBuffer {
 
 struct LendLedger {
     instance: usize,
+    arena: usize,
     max_bytes: usize,
     total: Cell<usize>,
     transient: Rc<Cell<usize>>,
@@ -1452,6 +1463,7 @@ fn install_lend_ledger(inst: *mut super::instance::RInstance) {
         let arena = &(*inst).arena;
         LendLedger {
             instance: inst as usize,
+            arena: std::ptr::from_ref(arena) as usize,
             max_bytes: arena.budget.max_bytes,
             total: Cell::new(arena.total_bytes_allocated),
             transient: Rc::clone(&arena.transient_bytes),
@@ -1473,7 +1485,10 @@ pub(crate) unsafe fn reserve_transient_in(
     if is_arena_lent(inst) {
         LEND_LEDGER.with(|slot| {
             let ledgers = slot.borrow();
-            let ledger = ledgers.iter().rev().find(|ledger| ledger.instance == inst as usize)?;
+            let ledger = ledgers
+                .iter()
+                .rev()
+                .find(|ledger| ledger.instance == inst as usize)?;
             TransientReservation::new(
                 ledger.max_bytes,
                 ledger.total.get(),
@@ -1488,9 +1503,14 @@ pub(crate) unsafe fn reserve_transient_in(
     }
 }
 
-fn note_lend_budget(max_bytes: usize) {
+fn note_lend_budget(arena: usize, max_bytes: usize) {
     LEND_LEDGER.with(|slot| {
-        if let Some(ledger) = slot.borrow_mut().last_mut() {
+        if let Some(ledger) = slot
+            .borrow_mut()
+            .iter_mut()
+            .rev()
+            .find(|ledger| ledger.arena == arena)
+        {
             ledger.max_bytes = max_bytes;
         }
     });
@@ -1852,7 +1872,7 @@ mod tests {
 
     #[test]
     fn nested_arena_lend_is_rejected_and_outer_borrow_survives() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|outer| {
@@ -2571,7 +2591,7 @@ mod tests {
 
     #[test]
     fn test_ambient_arena_borrow_depth_resets_after_panic() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             (unsafe {

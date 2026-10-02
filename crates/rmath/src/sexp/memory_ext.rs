@@ -451,13 +451,16 @@ mod tests {
     fn transient_allocations_are_zeroed_aligned_and_isolated_during_nested_lends() {
         let mut left = RInstance::new_for_gc_tests();
         let mut right = RInstance::new_for_gc_tests();
-        left.arena.set_budget(memory::ArenaBudget::new(16, 0));
+        let node_bytes = std::mem::size_of::<SexprecCore>();
+        left.arena.set_budget(memory::ArenaBudget::new(node_bytes + 32, 0));
         right.arena.set_budget(memory::ArenaBudget::new(4, 0));
         unsafe {
             let left_ptr = addr_of_mut!(left);
             let right_ptr = addr_of_mut!(right);
             memory::with_arena_in(left_ptr, |left_arena| {
                 memory::with_arena_in(right_ptr, |_right_arena| {
+                    assert!(!left_arena.alloc_node(SEXPTYPE::LISTSXP).is_null());
+                    left_arena.set_budget(memory::ArenaBudget::new(node_bytes + 16, 0));
                     // This must find the outer owner's ledger, not the top one.
                     let buffer = R_alloc_in(left_ptr, 8, 2).cast::<u64>();
                     assert!(!buffer.is_null());
