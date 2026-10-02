@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Assert the ALTREP cargo feature stays OFF in default / release-shaped builds.
 #
-# The feature-gated method tables are not the supported path: they used to
-# store Rust pointers in SEXP slots the GC traces. Compact sequences (`:`
-# for length > 1) are implemented in the default build as ordinary vectors
-# with a traced `.InternalAltSeq` attribute and no Rust pointer. Dependents
-# must not flip the `altrep` feature on.
+# Default compact sequences (`:` for length > 1) are ordinary vectors with
+# traced metadata. Opt-in Rust class dispatch is tested separately; native
+# GNU C API/ABI parity remains incomplete, so dependents keep their defaults.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

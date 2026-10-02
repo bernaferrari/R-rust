@@ -177,6 +177,13 @@ impl Drop for OwnedBuffer {
     }
 }
 
+/// One native allocation shared by a checked number of live vector headers.
+/// The arena owns the allocation; dropping its final header lease drops it.
+struct SharedBuffer {
+    allocation: OwnedBuffer,
+    headers: std::num::NonZeroUsize,
+}
+
 /// Budget for arena allocations to prevent unbounded growth.
 ///
 /// A budget of `0` means unlimited for that dimension.
@@ -208,7 +215,7 @@ impl ArenaBudget {
 }
 
 // Data buffers now use HashMap for O(1) register/take/remove (was linear scan on Vec).
-// This eliminates one source of O(n) in arena (take_data_buffer, and frequent free of vectors).
+// This eliminates one source of O(n) in arena (buffer release and frequent freeing of vectors).
 // Layouts are small, HashMap overhead acceptable vs scan on many vectors.
 
 // ---------------------------------------------------------------------------
@@ -567,8 +574,8 @@ pub struct RArena {
     /// Current offset within the slab_page (0 .. NODE_PAGE_SIZE).
     slab_offset: usize,
     /// All allocated data buffers. HashMap for O(1) lookup/remove (was Vec + linear .position).
-    /// Key: data ptr; value: layout for dealloc and accounting.
-    data_bufs: HashMap<*mut u8, Layout>,
+    /// Key: data ptr; value: owned allocation and live header lease count.
+    data_bufs: HashMap<*mut u8, SharedBuffer>,
     /// Free list of reclaimed SEXP pointers available for reuse.
     free_list: Vec<SEXP>,
     /// O(1) membership for active node pointers.
@@ -773,8 +780,21 @@ impl RArena {
     }
 
     fn register_data_buffer(&mut self, ptr: *mut u8, layout: Layout) {
+        assert!(
+            !self.data_bufs.contains_key(&ptr),
+            "buffer ownership transferred twice"
+        );
         self.add_accounted_bytes(layout.size());
-        self.data_bufs.insert(ptr, layout);
+        // SAFETY: private callers transfer a newly allocated, unpublished
+        // payload with its original layout. The map now owns its deallocation.
+        let allocation = OwnedBuffer {
+            ptr: std::ptr::NonNull::new(ptr).expect("nonempty buffer"),
+            layout,
+        };
+        self.data_bufs.insert(ptr, SharedBuffer {
+            allocation,
+            headers: std::num::NonZeroUsize::new(1).unwrap(),
+        });
     }
 
     /// Move a lend-time reservation into the registered buffer map.
@@ -829,17 +849,72 @@ impl RArena {
         true
     }
 
+    #[cfg(all(test, feature = "altrep"))]
+    pub(crate) fn tracks_altrep_test_buffer(&self, ptr: *mut u8) -> bool {
+        self.tracks_data_buffer(ptr)
+    }
+
     fn tracks_data_buffer(&self, ptr: *mut u8) -> bool {
         !ptr.is_null() && self.data_bufs.contains_key(&ptr)
     }
 
-    fn take_data_buffer(&mut self, ptr: *mut u8) -> Option<Layout> {
-        if let Some(layout) = self.data_bufs.remove(&ptr) {
-            self.sub_accounted_bytes(layout.size());
-            Some(layout)
-        } else {
-            None
+    fn release_data_buffer(&mut self, ptr: *mut u8) {
+        let Some(buffer) = self.data_bufs.get_mut(&ptr) else {
+            return;
+        };
+        if let Some(remaining) = std::num::NonZeroUsize::new(buffer.headers.get() - 1) {
+            buffer.headers = remaining;
+            return;
         }
+        let buffer = self.data_bufs.remove(&ptr).expect("registered final buffer owner");
+        self.sub_accounted_bytes(buffer.allocation.layout.size());
+        // OwnedBuffer::drop is the only native release boundary.
+        drop(buffer);
+    }
+
+    /// Share a payload between checked live headers in this arena. No callback
+    /// runs during the lend. Type, shape, ownership and publication are checked
+    /// together; neither header can free storage still retained by the other.
+    #[cfg(feature = "altrep")]
+    pub(crate) fn share_vector_payload(
+        &mut self,
+        source: &Sexp<'_>,
+        target: &Sexp<'_>,
+    ) -> super::object::SexpResult<()> {
+        use super::object::SexpError;
+        let error = || SexpError::Altrep {
+            reason: "invalid shared vector payload",
+        };
+        let source_ptr = source.clone().as_raw();
+        let target_ptr = target.clone().as_raw();
+        if source_ptr == target_ptr || !self.contains(source_ptr) || !self.contains(target_ptr) {
+            return Err(error());
+        }
+        let src = source.header();
+        let dst = target.header();
+        if !src.sxpinfo.type_of().is_vector_type()
+            || src.sxpinfo.type_of() != dst.sxpinfo.type_of()
+            || source.len() != target.len()
+            || !dst.payload.is_null()
+        {
+            return Err(error());
+        }
+        let bytes = usize::try_from(source.len())
+            .ok()
+            .and_then(|n| n.checked_mul(sexp_elem_size(source.typeof_())))
+            .ok_or_else(error)?;
+        if bytes == 0 {
+            return Ok(());
+        }
+        let buffer = self.data_bufs.get_mut(&(src.payload as *mut u8)).ok_or_else(error)?;
+        if buffer.allocation.layout.size() < bytes {
+            return Err(error());
+        }
+        buffer.headers = buffer.headers.checked_add(1).ok_or_else(error)?;
+        // SAFETY: both rooted headers have matching shape and a tracked buffer
+        // with a newly installed ownership lease; no payload loans are present.
+        unsafe { (*target_ptr).gengc_next_node = src.payload; }
+        Ok(())
     }
 
     fn can_activate_node(&self) -> bool {
@@ -1301,9 +1376,7 @@ impl RArena {
         unsafe {
             let data_ptr = (*ptr).gengc_next_node as *mut u8;
             if !data_ptr.is_null() {
-                if let Some(layout) = self.take_data_buffer(data_ptr) {
-                    dealloc(data_ptr, layout);
-                }
+                self.release_data_buffer(data_ptr);
             }
             (*ptr).gengc_next_node = ptr::null_mut();
             (*ptr).attrib = ptr::null_mut();
@@ -1352,9 +1425,9 @@ impl RArena {
     /// Verify arena invariants (debug only).
     fn verify_invariants(&self) {
         debug_assert!({
-            for (&ptr, &layout) in &self.data_bufs {
+            for (&ptr, buffer) in &self.data_bufs {
                 if !ptr.is_null() {
-                    debug_assert!(layout.size() > 0);
+                    debug_assert!(buffer.allocation.layout.size() > 0);
                 }
             }
             for &free_ptr in &self.free_list {
@@ -1403,19 +1476,8 @@ impl Default for RArena {
     }
 }
 
-impl Drop for RArena {
-    fn drop(&mut self) {
-        for (&ptr, &layout) in &self.data_bufs {
-            if !ptr.is_null() && layout.size() > 0 {
-                unsafe {
-                    dealloc(ptr, layout);
-                }
-            }
-        }
-        self.data_bufs.clear();
-        self.free_list.clear();
-    }
-}
+// Registered buffers and slab pages own their allocations through RAII.
+// RArena needs no custom deallocator: field destruction releases each once.
 
 // ---------------------------------------------------------------------------
 // Instance evaluation arena

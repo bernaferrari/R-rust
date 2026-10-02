@@ -388,21 +388,23 @@ impl<'a> Sexp<'a> {
     /// Expand a compact sequence before a pointer or element write.
     ///
     /// Single-element readers use the formula instead and never call this.
-    fn materialize_compact_payload(&self) {
+    fn materialize_compact_payload(&self) -> SexpResult<()> {
         let header = self.header();
         if header.sxpinfo.alt() && header.payload.is_null() {
-            // SAFETY: this handle names the live node. `materialize` writes
-            // the payload; the header copy above has already ended.
-            unsafe {
-                if let Some(owner) = self.session_owner_ptr {
-                    crate::sexp::session::with_instance_active(owner.as_ptr(), || {
-                        super::altseq::materialize(self.ptr)
-                    });
-                } else {
+            if let Some(owner) = self.session_owner_ptr {
+                // The owner is retained by this handle. Each callback runs after
+                // header copying, with no instance or R payload borrow alive.
+                unsafe { crate::sexp::session::with_instance_active(owner.as_ptr(), || {
+                    #[cfg(feature = "altrep")]
+                    if super::altrep::materialize_raw(self.ptr)? { return Ok(()); }
                     super::altseq::materialize(self.ptr);
-                }
+                    Ok(())
+                }) }?;
+            } else {
+                unsafe { super::altseq::materialize(self.ptr); }
             }
         }
+        Ok(())
     }
 
     fn try_typed_data<T>(
@@ -411,7 +413,7 @@ impl<'a> Sexp<'a> {
         expected_name: &'static str,
     ) -> SexpResult<*const T> {
         self.expect_type(expected, expected_name)?;
-        self.materialize_compact_payload();
+        self.materialize_compact_payload()?;
         let data = self.header().payload as *const T;
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })
@@ -462,7 +464,7 @@ impl<'a> Sexp<'a> {
         expected_name: &'static str,
     ) -> SexpResult<*mut T> {
         self.expect_type(expected, expected_name)?;
-        self.materialize_compact_payload();
+        self.materialize_compact_payload()?;
         let data = self.header().payload as *mut T;
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })
@@ -541,6 +543,7 @@ impl<'a> Sexp<'a> {
                 actual: self.typeof_(),
             });
         }
+        self.materialize_compact_payload()?;
         let data = self.header().payload as *mut SEXP;
         if data.is_null() {
             Err(SexpError::MissingData {

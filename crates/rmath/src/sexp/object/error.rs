@@ -3,6 +3,9 @@ use super::super::ffi::{R_xlen_t, SEXPTYPE};
 /// Error returned by Rust-shaped SEXP accessors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SexpError {
+    /// An ALTREP class or state violated its declared contract.
+    Altrep { reason: &'static str },
+    EvaluationFailed { message: String },
     /// A raw pointer was null.
     NullPointer,
     /// A raw pointer was visibly not aligned for `SexprecCore`.
@@ -53,6 +56,8 @@ pub enum SexpError {
 impl std::fmt::Display for SexpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            SexpError::Altrep { reason } => write!(f, "ALTREP: {reason}"),
+            SexpError::EvaluationFailed { message } => write!(f, "{message}"),
             SexpError::NullPointer => write!(f, "SEXP pointer is null"),
             SexpError::MisalignedPointer { address } => {
                 write!(f, "SEXP pointer {address:#x} is misaligned")

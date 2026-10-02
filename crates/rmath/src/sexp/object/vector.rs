@@ -20,6 +20,11 @@ impl<'a> Sexp<'a> {
     /// Get the i-th logical value with typed error reporting.
     #[inline]
     pub fn try_logical_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
+        #[cfg(feature = "altrep")]
+        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
+            self.expect_type(SEXPTYPE::LGLSXP, "LGLSXP")?;
+            return match result? { crate::sexp::altrep::AltrepElement::Logical(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+        }
         let data = self.try_typed_data::<c_int>(SEXPTYPE::LGLSXP, "logical vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
@@ -41,6 +46,11 @@ impl<'a> Sexp<'a> {
     /// access still goes through [`Self::try_typed_data`] and expands them.
     #[inline]
     pub fn try_integer_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
+        #[cfg(feature = "altrep")]
+        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
+            self.expect_type(SEXPTYPE::INTSXP, "INTSXP")?;
+            return match result? { crate::sexp::altrep::AltrepElement::Integer(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+        }
         match self.read_compact_int(i, false) {
             crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
             crate::sexp::altseq::LazyRead::OutOfRange => {
@@ -73,6 +83,11 @@ impl<'a> Sexp<'a> {
     /// Compact sequences answer here, before any buffer allocation.
     #[inline]
     pub fn try_real_elt(&self, i: R_xlen_t) -> SexpResult<c_double> {
+        #[cfg(feature = "altrep")]
+        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
+            self.expect_type(SEXPTYPE::REALSXP, "REALSXP")?;
+            return match result? { crate::sexp::altrep::AltrepElement::Real(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+        }
         match self.read_compact_real(i, false) {
             crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
             crate::sexp::altseq::LazyRead::OutOfRange => {
@@ -102,6 +117,11 @@ impl<'a> Sexp<'a> {
     /// Get the i-th raw byte with typed error reporting.
     #[inline]
     pub fn try_raw_elt(&self, i: R_xlen_t) -> SexpResult<Rbyte> {
+        #[cfg(feature = "altrep")]
+        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
+            self.expect_type(SEXPTYPE::RAWSXP, "RAWSXP")?;
+            return match result? { crate::sexp::altrep::AltrepElement::Raw(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+        }
         let data = self.try_typed_data::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
@@ -119,6 +139,11 @@ impl<'a> Sexp<'a> {
     /// Get the i-th complex value with typed error reporting.
     #[inline]
     pub fn try_complex_elt(&self, i: R_xlen_t) -> SexpResult<Rcomplex> {
+        #[cfg(feature = "altrep")]
+        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
+            self.expect_type(SEXPTYPE::CPLXSXP, "CPLXSXP")?;
+            return match result? { crate::sexp::altrep::AltrepElement::Complex(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+        }
         let data = self.try_typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
@@ -136,6 +161,11 @@ impl<'a> Sexp<'a> {
     /// Get the i-th string element with typed error reporting.
     #[inline]
     pub fn try_string_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
+        #[cfg(feature = "altrep")]
+        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
+            self.expect_type(SEXPTYPE::STRSXP, "STRSXP")?;
+            return match result? { crate::sexp::altrep::AltrepElement::String(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+        }
         let data = self.try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
         let i = self.try_index(i)?;
         self.checked_child(unsafe { *data.add(i) })
@@ -151,6 +181,9 @@ impl<'a> Sexp<'a> {
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
     pub(super) unsafe fn try_string_text_elt(&self, i: R_xlen_t) -> SexpResult<Option<&'_ str>> {
+        // A lazy callback may create a fresh child on every read. Before a
+        // borrowed string view escapes, make it a traced child of this parent.
+        self.materialize_compact_payload()?;
         let chars = self.try_string_elt(i)?;
         if chars.clone().as_raw() == unsafe { R_NaString() } {
             Ok(None)
@@ -205,6 +238,11 @@ impl<'a> Sexp<'a> {
     /// Get the i-th generic/expression vector element with typed error reporting.
     #[inline]
     pub fn try_vector_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
+        #[cfg(feature = "altrep")]
+        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
+            self.expect_type(SEXPTYPE::VECSXP, "VECSXP")?;
+            return match result? { crate::sexp::altrep::AltrepElement::List(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
+        }
         let data = self.try_vector_sexp_data()?;
         let i = self.try_index(i)?;
         self.checked_child(unsafe { *data.add(i) })
@@ -598,5 +636,30 @@ impl<'a> Sexp<'a> {
             0
         };
         (0..len).map(move |i| self.vector_elt(i).unwrap_or_else(|| Sexp::nil()))
+    }
+}
+
+#[cfg(all(test, feature = "altrep"))]
+mod altrep_borrow_tests {
+    use super::*;
+    use crate::sexp::{altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement, is_materialized}, session::RSession};
+    struct Fresh;
+    impl AltrepClass for Fresh {
+        fn vector_type(&self) -> SEXPTYPE { SEXPTYPE::STRSXP }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> { Ok(2) }
+        fn element<'s>(&self, c: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> { c.gc()?; Ok(AltrepElement::String(c.string("fresh")?)) }
+    }
+    #[test]
+    fn altrep_borrowed_string_is_retained_by_parent() {
+        let s = RSession::new_for_gc_tests();
+        let class = s.register_altrep_class("borrowed-strings", Fresh).unwrap();
+        let x = AltrepBuilder::new(class).build().unwrap();
+        assert!(!is_materialized(&x));
+        let text = unsafe { x.try_string_text_elt(1) }.unwrap();
+        assert!(is_materialized(&x));
+        assert_eq!(text, Some("fresh"));
+        // The payload loan has ended before R execution resumes.
+        s.gc();
+        assert_eq!(x.try_string_value_elt(1).unwrap().as_deref(), Some("fresh"));
     }
 }

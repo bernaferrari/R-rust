@@ -11,7 +11,7 @@
 
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{ALTREP, TYPEOF, XLENGTH};
+use crate::sexp::accessors::{ALTREP, TYPEOF};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::symbol::Rf_install;
 
@@ -31,38 +31,67 @@ unsafe fn altrep_class_is(x: SEXP, class: SEXP) -> bool {
 
 /// Initialize the compact integer sequence ALTREP class.
 pub unsafe fn R_init_compact_intseq() -> SEXP {
-    unsafe { class_symbol(b"compact_intseq\0") }
-}
-
-/// Check if an SEXP is a compact integer sequence.
-pub unsafe fn R_compact_intseq_check(x: SEXP) -> c_int {
     unsafe {
-        if !altrep_class_is(x, R_init_compact_intseq()) || TYPEOF(x) != SEXPTYPE::INTSXP {
-            return 0;
-        }
-        let data = crate::mainutils::altrep::R_altrep_data1(x);
-        (!data.is_null() && TYPEOF(data) == SEXPTYPE::INTSXP && XLENGTH(data) == 3) as c_int
+        let owner = crate::sexp::owner::OwnerToken::from_raw(
+            crate::sexp::instance::current_instance_ptr().expect("active owner"),
+        );
+        crate::sexp::altrep::builtin_sequence(owner, SEXPTYPE::INTSXP)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+            .descriptor()
+            .as_raw()
     }
 }
 
-// ---------------------------------------------------------------------------
-// compact_realseq — compact real sequence ALTREP class
-// ---------------------------------------------------------------------------
+/// Check copied metadata without allocating a class descriptor or rooting
+/// through the owner. This classifier also works during an arena lend.
+pub unsafe fn R_compact_intseq_check(x: SEXP) -> c_int {
+    unsafe { compact_check(x, SEXPTYPE::INTSXP, b".AltrepClass..builtin.compact_intseq") }
+}
 
 /// Initialize the compact real sequence ALTREP class.
 pub unsafe fn R_init_compact_realseq() -> SEXP {
-    unsafe { class_symbol(b"compact_realseq\0") }
+    unsafe {
+        let owner = crate::sexp::owner::OwnerToken::from_raw(
+            crate::sexp::instance::current_instance_ptr().expect("active owner"),
+        );
+        crate::sexp::altrep::builtin_sequence(owner, SEXPTYPE::REALSXP)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+            .descriptor()
+            .as_raw()
+    }
 }
 
-/// Check if an SEXP is a compact real sequence.
+/// Check if an SEXP is a compact real sequence, without allocating.
 pub unsafe fn R_compact_realseq_check(x: SEXP) -> c_int {
     unsafe {
-        if !altrep_class_is(x, R_init_compact_realseq()) || TYPEOF(x) != SEXPTYPE::REALSXP {
-            return 0;
-        }
-        let data = crate::mainutils::altrep::R_altrep_data1(x);
-        (!data.is_null() && TYPEOF(data) == SEXPTYPE::REALSXP && XLENGTH(data) == 3) as c_int
+        compact_check(
+            x,
+            SEXPTYPE::REALSXP,
+            b".AltrepClass..builtin.compact_realseq",
+        )
     }
+}
+
+unsafe fn compact_check(x: SEXP, kind: SEXPTYPE, name: &[u8]) -> c_int {
+    use crate::sexp::object::{NodeBody, Sexp};
+    let Some(view) = (unsafe { Sexp::from_raw(x) }) else {
+        return 0;
+    };
+    if view.typeof_() != kind {
+        return 0;
+    }
+    if view.compact_seq().is_some() {
+        return 1;
+    }
+    let Some(class) = crate::sexp::altrep::altrep_class(&view) else {
+        return 0;
+    };
+    let NodeBody::Symbol(symbol) = class.header().body else {
+        return 0;
+    };
+    class
+        .copied_header(symbol.pname)
+        .is_some_and(|pname| pname.char_eq(name)) as c_int
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +154,7 @@ mod tests {
 
     #[test]
     fn test_compact_intseq_init() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         unsafe {
             let cls = R_init_compact_intseq();
             assert!(!cls.is_null());
@@ -136,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_compact_realseq_init() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         unsafe {
             let cls = R_init_compact_realseq();
             assert!(!cls.is_null());
@@ -147,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_deferred_string_init() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         unsafe {
             let cls = R_init_deferred_string();
             assert!(!cls.is_null());
@@ -157,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_deferred_names_init() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         unsafe {
             let cls = R_init_deferred_names();
             assert!(!cls.is_null());
@@ -167,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_compact_intseq_check_null() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         unsafe {
             assert_eq!(R_compact_intseq_check(ptr::null_mut()), 0);
         }
@@ -175,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_compact_realseq_check_null() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         unsafe {
             assert_eq!(R_compact_realseq_check(ptr::null_mut()), 0);
         }
@@ -183,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_compact_sequence_checks_recognize_builtin_altreps() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         unsafe {
             let int_seq = crate::mainutils::altrep::R_compact_intseq(1, 3);
             let real_seq = crate::mainutils::altrep::R_compact_realseq(1.0, 0.5, 3);
@@ -197,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_init_altrep_classes() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         unsafe {
             R_init_altrep_classes();
         }

@@ -46,11 +46,7 @@ pub use ffi::{
 
 #[cfg(feature = "altrep")]
 #[allow(unused_imports)]
-pub use altrep::{
-    AltrepBuilder, AltrepClass, AltrepData, REPEAT_CLASS, SEQUENCE_CLASS, altrep_as_integer_slice,
-    altrep_as_real_slice, altrep_class, altrep_dataptr, altrep_elt, altrep_length,
-    force_materialization, is_altrep, is_materialized,
-};
+pub use altrep::{AltrepBuilder, AltrepClass, AltrepClassHandle, AltrepContext, AltrepElement, DeferredClass, SequenceClass, RepeatClass, altrep_class, altrep_elt, altrep_length, force_materialization, is_altrep, is_materialized};
 
 #[allow(unused_imports)]
 pub use output::{

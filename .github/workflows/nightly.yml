@@ -72,6 +72,26 @@ jobs:
           cargo +nightly miri test -p rmath --lib sexp::altseq::tests
           cargo +nightly miri test -p rmath --lib --target i686-unknown-linux-gnu sexp::altseq::tests
 
+  miri-altrep-classes:
+    name: Miri (rooted ALTREP classes and shared GC buffers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      - name: Check callback reentry, cache ownership and publication
+        env:
+          MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-strict-provenance
+        run: |
+          cargo test -p rmath --features altrep --lib sexp::altrep::tests
+          cargo +nightly miri test -p rmath --features altrep --lib sexp::altrep::tests
+          cargo +nightly miri test -p rmath --features altrep --lib altrep_borrowed_string_is_retained_by_parent
+          cargo +nightly miri test -p rmath --features altrep --lib sexp::altseq::tests
+          cargo +nightly miri test -p rmath --features altrep --lib --target i686-unknown-linux-gnu sexp::altrep::tests
+
   miri-modules:
     name: Miri (session-constructing modules)
     runs-on: ubuntu-latest
