@@ -594,26 +594,31 @@ impl BytecodeCompiler {
                 with_arena_in(inst, |arena| {
                     let consts =
                         arena.alloc_vector(SEXPTYPE::VECSXP, (self.consts.len() + 1) as i64);
-                    let consts_data = (*consts).gengc_next_node as *mut SEXP;
-                    *consts_data = source_expr;
+                    let _consts_guard = crate::sexp::protect::protect(consts);
+                    crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, source_expr);
                     for (index, constant) in self.consts.iter().enumerate() {
-                        *consts_data.add(index + 1) = *constant;
+                        crate::sexp::accessors::SET_VECTOR_ELT(
+                            consts,
+                            (index + 1) as i64,
+                            *constant,
+                        );
                     }
                     let code = arena.alloc_vector(SEXPTYPE::INTSXP, self.code.len() as i64);
+                    let _code_guard = crate::sexp::protect::protect(code);
                     let code_data = (*code).gengc_next_node as *mut c_int;
                     for (index, instruction) in self.code.iter().enumerate() {
                         *code_data.add(index) = *instruction;
                     }
 
                     let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                    let _hint_guard = crate::sexp::protect::protect(stack_hint);
                     let stack_data = (*stack_hint).gengc_next_node as *mut c_int;
                     *stack_data = self.stack_hint.max(4);
 
                     let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
-                    let bcode_data = (*bcode).gengc_next_node as *mut SEXP;
-                    *bcode_data = code;
-                    *bcode_data.add(1) = consts;
-                    *bcode_data.add(2) = stack_hint;
+                    crate::sexp::accessors::SET_VECTOR_ELT(bcode, 0, code);
+                    crate::sexp::accessors::SET_VECTOR_ELT(bcode, 1, consts);
+                    crate::sexp::accessors::SET_VECTOR_ELT(bcode, 2, stack_hint);
                     bcode
                 })
             })
@@ -743,6 +748,7 @@ pub unsafe fn compile_expr(expr: SEXP, _rho: SEXP) -> Option<SEXP> {
         Some(compiler.finish(expr))
     }
 }
+
 
 /// Try to compile a closure body and install bytecode on success.
 pub unsafe fn compile_closure(fun: SEXP) -> bool {

@@ -386,7 +386,7 @@ pub(super) fn nwarnings() -> c_int {
     with_error_state(|state| state.nwarnings)
 }
 
-pub(super) fn warnings_ptr() -> SEXP {
+pub(crate) fn warnings_ptr() -> SEXP {
     with_error_state(|state| state.warnings)
 }
 

@@ -468,7 +468,13 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 22 => "externalptr",
                 23 => "weakref",
                 24 => "raw",
-                25 => "S4",
+                25 => {
+                    if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 {
+                        "S4"
+                    } else {
+                        "object"
+                    }
+                },
                 _ => "unknown",
             };
 

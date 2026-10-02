@@ -28,7 +28,6 @@ function(formula, data = parent.frame(), ..., subset,
     horizontal <- FALSE
     if ("horizontal" %in% names(dots)) horizontal <- dots[["horizontal"]]
     response <- attr(attr(mf, "terms"), "response")
-    if (is.null(response) || length(response) == 0L) response <- 0L
     if (response) {
 	varnames <- names(mf)
 	y <- mf[[response]]

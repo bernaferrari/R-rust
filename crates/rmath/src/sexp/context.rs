@@ -207,6 +207,10 @@ pub unsafe fn Rf_begincontext_in(
         callfun: closure,
         closure,
         promiseargs,
+        srcref: crate::sexp::attrib_core::getAttrib(
+            call,
+            crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+        ),
         ..RCNTXT::new()
     }));
 

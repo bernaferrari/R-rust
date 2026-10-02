@@ -640,25 +640,25 @@ fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 {
     // use), then UTC.
     let mut file = match File::open(name_to_use) {
         Ok(f) => f,
-        Err(_) if name.is_some() => {
-            // Explicit named zone: fall back to the platform zoneinfo
-            // database (/usr/share/zoneinfo on macOS/Linux). The unnamed
-            // wall-clock default keeps the embedded engine's UTC
-            // semantics instead of adopting the host zone.
-            let system_candidate = format!("/usr/share/zoneinfo/{}", name_stripped);
-            match File::open(&system_candidate) {
-                Ok(f) => f,
-                Err(_) => {
-                    rf_warning(&format!("unknown timezone '{}'", sname));
+        Err(_) => {
+            let candidates = [
+                format!("/usr/share/zoneinfo/{name_stripped}"),
+                format!("/var/db/timezone/zoneinfo/{name_stripped}"),
+            ];
+            let mut opened = None;
+            for candidate in &candidates {
+                if let Ok(f) = File::open(candidate) {
+                    opened = Some(f);
+                    break;
+                }
+            }
+            match opened {
+                Some(f) => f,
+                None => {
+                    rf_warning(&format!("unknown timezone '{sname}'"));
                     return -1;
                 }
             }
-        }
-        // Unnamed (wall-clock) loads keep the previous behavior: warn and
-        // fail upward so the caller falls back to gmtload.
-        Err(_) => {
-            rf_warning(&format!("unknown timezone '{}'", sname));
-            return -1;
         }
     };
 
@@ -2163,23 +2163,13 @@ fn r_tzset_impl(g: &mut TzGlobals) {
     }
 
     if name.is_empty() {
-        // Fast but wrong -- user wants UTC
-        g.lclmem.leapcnt = 0;
-        g.lclmem.timecnt = 0;
-        g.lclmem.typecnt = 0;
-        g.lclmem.charcnt = 0;
-        g.lclmem.goback = 0;
-        g.lclmem.goahead = 0;
-        g.lclmem.ttis[0].tt_isdst = 0;
-        g.lclmem.ttis[0].tt_gmtoff = 0;
-        g.lclmem.ttis[0].tt_abbrind = 0;
-        g.lclmem.ttis[0].tt_ttisstd = 0;
-        g.lclmem.ttis[0].tt_ttisgmt = 0;
-        let gmt_bytes = b"GMT";
-        g.lclmem.chars[..gmt_bytes.len()].copy_from_slice(gmt_bytes);
-        g.lclmem.chars[gmt_bytes.len()] = 0;
-        g.lclmem.defaulttype = 0;
-    } else if tzload(Some(&name), &mut g.lclmem, true) != 0 {
+        // Missing tz is the session zone, not UTC. An explicit "UTC" stays
+        // on the named path below.
+        g.lcl_is_set = 0;
+        r_tzsetwall(g);
+        return;
+    }
+    if tzload(Some(&name), &mut g.lclmem, true) != 0 {
         // tzload failed, try other methods
         if !name.starts_with(':') && tzparse(&name, &mut g.lclmem, false) == 0 {
             // tzparse succeeded, keep result

@@ -2708,6 +2708,13 @@ pub unsafe fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
+        let x = if TYPEOF(x) == SEXPTYPE::VECSXP
+            && crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+        {
+            crate::mainutils::datetime::convert_posixlt_to_posixct(x, "UTC")
+        } else {
+            x
+        };
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _r = protect(result);

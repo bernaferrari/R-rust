@@ -181,17 +181,138 @@ fn verify_gc_invariants_in(instance: *mut instance::RInstance) {
 // ---------------------------------------------------------------------------
 
 // Simplified mark: no per-GC HashSet<usize> "traceable" snapshot of all actives, no hash lookup
-// on every edge. Arena nodes record the visit in a per-cycle epoch so torture
-// sweeps do not clear a header bit on every young node. Persistent nodes keep
-// the header mark bit. Sweep walks the occupancy bitmap (or, for torture, only
-// the old generation) to find unmarked nodes.
+// on every edge. We rely on the mark bit in sxpinfo for "visited this collection" (as review
+// suggested) + null guards + reachability from roots. This eliminates two HashSet allocations
+// per GC and hashing cost on every pointer edge during marking. Sweep still walks actives
+// (necessary) to find unmarked for free.
 // Protected "force" marking uses the traced path (now default behavior).
+const EDGE_PNAME: u32 = 1 << 0;
+const EDGE_SYM_VALUE: u32 = 1 << 1;
+const EDGE_INTERNAL: u32 = 1 << 2;
+const EDGE_CAR: u32 = 1 << 3;
+const EDGE_CDR: u32 = 1 << 4;
+const EDGE_TAG: u32 = 1 << 5;
+const EDGE_FORMALS: u32 = 1 << 6;
+const EDGE_BODY: u32 = 1 << 7;
+const EDGE_CLOENV: u32 = 1 << 8;
+const EDGE_FRAME: u32 = 1 << 9;
+const EDGE_ENCLOS: u32 = 1 << 10;
+const EDGE_HASHTAB: u32 = 1 << 11;
+const EDGE_PROM_VALUE: u32 = 1 << 12;
+const EDGE_PROM_EXPR: u32 = 1 << 13;
+const EDGE_PROM_ENV: u32 = 1 << 14;
+const EDGE_EXT_TAG: u32 = 1 << 15;
+const EDGE_EXT_PROT: u32 = 1 << 16;
+const EDGE_ATTRIB: u32 = 1 << 17;
+const EDGE_VECTOR: u32 = 1 << 18;
+
+/// Which pointer slots a node owns.
+///
+/// Mark and update both use this mask. Mark passes `follow_weak_key = false`
+/// so a weak reference's key stays unmarked; update passes `true` so a live
+/// key is still rewritten when its node is forwarded.
+fn child_mask(type_code: i32, follow_weak_key: bool) -> u32 {
+    let vector = if vector_payload_has_sexp_refs(SEXPTYPE(type_code)) {
+        EDGE_VECTOR
+    } else {
+        0
+    };
+    let body = match type_code {
+        1 => EDGE_PNAME | EDGE_SYM_VALUE | EDGE_INTERNAL,
+        2 | 6 | 17 => EDGE_CAR | EDGE_CDR | EDGE_TAG,
+        3 => EDGE_FORMALS | EDGE_BODY | EDGE_CLOENV,
+        4 => EDGE_FRAME | EDGE_ENCLOS | EDGE_HASHTAB,
+        5 => EDGE_PROM_VALUE | EDGE_PROM_EXPR | EDGE_PROM_ENV,
+        22 => EDGE_EXT_TAG | EDGE_EXT_PROT,
+        23 => EDGE_CDR | EDGE_TAG | if follow_weak_key { EDGE_CAR } else { 0 },
+        _ => 0,
+    };
+    body | EDGE_ATTRIB | vector
+}
+
+unsafe fn each_child(obj: SEXP, follow_weak_key: bool, mut visit: impl FnMut(&mut SEXP)) {
+    unsafe {
+        let mask = child_mask((*obj).sxpinfo.type_of().0, follow_weak_key);
+        if mask & EDGE_PNAME != 0 {
+            visit(&mut (*obj).data.symsxp.pname);
+        }
+        if mask & EDGE_SYM_VALUE != 0 {
+            visit(&mut (*obj).data.symsxp.value);
+        }
+        if mask & EDGE_INTERNAL != 0 {
+            visit(&mut (*obj).data.symsxp.internal);
+        }
+        if mask & EDGE_CAR != 0 {
+            visit(&mut (*obj).data.listsxp.carval);
+        }
+        if mask & EDGE_CDR != 0 {
+            visit(&mut (*obj).data.listsxp.cdrval);
+        }
+        if mask & EDGE_TAG != 0 {
+            visit(&mut (*obj).data.listsxp.tagval);
+        }
+        if mask & EDGE_FORMALS != 0 {
+            visit(&mut (*obj).data.closxp.formals);
+        }
+        if mask & EDGE_BODY != 0 {
+            visit(&mut (*obj).data.closxp.body);
+        }
+        if mask & EDGE_CLOENV != 0 {
+            visit(&mut (*obj).data.closxp.env);
+        }
+        if mask & EDGE_FRAME != 0 {
+            visit(&mut (*obj).data.envsxp.frame);
+        }
+        if mask & EDGE_ENCLOS != 0 {
+            visit(&mut (*obj).data.envsxp.enclos);
+        }
+        if mask & EDGE_HASHTAB != 0 {
+            visit(&mut (*obj).data.envsxp.hashtab);
+        }
+        if mask & EDGE_PROM_VALUE != 0 {
+            visit(&mut (*obj).data.promsxp.value);
+        }
+        if mask & EDGE_PROM_EXPR != 0 {
+            visit(&mut (*obj).data.promsxp.expr);
+        }
+        if mask & EDGE_PROM_ENV != 0 {
+            visit(&mut (*obj).data.promsxp.env);
+        }
+        if mask & EDGE_EXT_TAG != 0 {
+            let mut tag = (*obj).data.extptr[1] as SEXP;
+            visit(&mut tag);
+            (*obj).data.extptr[1] = tag as *mut std::ffi::c_void;
+        }
+        if mask & EDGE_EXT_PROT != 0 {
+            let mut prot = (*obj).data.extptr[2] as SEXP;
+            visit(&mut prot);
+            (*obj).data.extptr[2] = prot as *mut std::ffi::c_void;
+        }
+        if mask & EDGE_VECTOR != 0 {
+            let len = (*obj).vecsxp_length();
+            let data = (*obj).gengc_next_node as *mut SEXP;
+            if !data.is_null() && len > 0 {
+                for i in 0..len as usize {
+                    visit(&mut *data.add(i));
+                }
+            }
+        }
+        if mask & EDGE_ATTRIB != 0 {
+            visit(&mut (*obj).attrib);
+        }
+    }
+}
+
 #[inline(always)]
 fn mark_reachable(obj: SEXP) {
     if obj.is_null() {
         return;
     }
     mark_reachable_traced(obj);
+}
+
+thread_local! {
+    static MARK_WHERE: std::cell::Cell<&'static str> = const { std::cell::Cell::new("unlabeled") };
 }
 
 #[inline(always)]
@@ -210,6 +331,30 @@ fn mark_reachable_traced(obj: SEXP) {
         // protected across allocating calls, every traced slot is a real SEXP,
         // so keep only a debug tripwire that surfaces regressions loudly
         // instead of dereferencing (or silently skipping) garbage.
+        if (obj as usize) < 0x1_0000 {
+            let where_ = MARK_WHERE.with(|w| w.get());
+            let mut buf = [0u8; 96];
+            let msg = b"BAD SEXP ";
+            buf[..msg.len()].copy_from_slice(msg);
+            let mut n = msg.len();
+            let addr = obj as usize;
+            for i in (0..16).rev() {
+                let nib = ((addr >> (i * 4)) & 0xf) as u8;
+                buf[n] = b"0123456789abcdef"[nib as usize];
+                n += 1;
+            }
+            let tail = b" while marking ";
+            buf[n..n + tail.len()].copy_from_slice(tail);
+            n += tail.len();
+            let name = where_.as_bytes();
+            let take = name.len().min(buf.len() - n - 1);
+            buf[n..n + take].copy_from_slice(&name[..take]);
+            n += take;
+            buf[n] = b'\n';
+            n += 1;
+            let _ = std::io::Write::write_all(&mut std::io::stderr(), &buf[..n]);
+            std::process::abort();
+        }
         debug_assert!(
             obj.addr() >= 0x1_0000 && obj.is_aligned(),
             "mark_reachable_traced on implausible SEXP pointer {:#x}",
@@ -229,59 +374,8 @@ fn mark_reachable_traced(obj: SEXP) {
                 }
                 super::memory::GcTouch::NewlyMarked => {}
             }
-
-            let t = (*obj).sxpinfo.type_of();
-            match t {
-                SEXPTYPE::SYMSXP => {
-                    pending.push((*obj).data.symsxp.pname);
-                    pending.push((*obj).data.symsxp.value);
-                    pending.push((*obj).data.symsxp.internal);
-                }
-                // DOTSXP (...) chains are cons cells with the same listsxp
-                // layout; skipping them left spliced `...` arguments untraced.
-                SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
-                    pending.push((*obj).data.listsxp.carval);
-                    pending.push((*obj).data.listsxp.cdrval);
-                    pending.push((*obj).data.listsxp.tagval);
-                }
-                SEXPTYPE::CLOSXP => {
-                    pending.push((*obj).data.closxp.formals);
-                    pending.push((*obj).data.closxp.body);
-                    pending.push((*obj).data.closxp.env);
-                }
-                SEXPTYPE::ENVSXP => {
-                    pending.push((*obj).data.envsxp.frame);
-                    pending.push((*obj).data.envsxp.enclos);
-                    pending.push((*obj).data.envsxp.hashtab);
-                }
-                SEXPTYPE::PROMSXP => {
-                    pending.push((*obj).data.promsxp.value);
-                    pending.push((*obj).data.promsxp.expr);
-                    pending.push((*obj).data.promsxp.env);
-                }
-                SEXPTYPE::EXTPTRSXP => {
-                    let extptr = (*obj).data.extptr;
-                    pending.push(extptr[1] as SEXP);
-                    pending.push(extptr[2] as SEXP);
-                }
-                SEXPTYPE::WEAKREFSXP => {
-                    pending.push((*obj).data.listsxp.cdrval);
-                    pending.push((*obj).data.listsxp.tagval);
-                }
-                _ => {}
-            }
-
-            if vector_payload_has_sexp_refs(t) {
-                let len = (*obj).vecsxp_length();
-                let data = (*obj).gengc_next_node as *mut SEXP;
-                if !data.is_null() && len > 0 {
-                    for i in 0..len as usize {
-                        pending.push(*data.add(i));
-                    }
-                }
-            }
-
-            pending.push((*obj).attrib);
+            // Weak keys stay unmarked. DOTSXP shares the listsxp layout.
+            each_child(obj, false, |slot| pending.push(*slot));
         }
     }
 }
@@ -314,6 +408,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         // root slots hold null; `mark_reachable_traced` null-guards before
         // dereferencing, so vacant entries are skipped without a filter.
         {
+            MARK_WHERE.with(|w| w.set("legacy_protect"));
             (*instance).legacy_protect.with_entries(|entries| {
                 for &obj in entries.iter() {
                     mark_reachable_traced(obj);
@@ -321,6 +416,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             });
         }
         {
+            MARK_WHERE.with(|w| w.set("root_table"));
             (*instance).root_table.with_entries(|entries| {
                 for &obj in entries.iter() {
                     mark_reachable_traced(obj);
@@ -328,15 +424,18 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             });
         }
         {
+            MARK_WHERE.with(|w| w.set("preserve_stack"));
             let stack = (*instance).preserve_stack.borrow();
             for &obj in stack.iter() {
                 mark_reachable_traced(obj);
             }
         }
+            MARK_WHERE.with(|w| w.set("context"));
         for ctxt in &(*instance).context_stack {
             mark_context_roots(&*ctxt.get());
         }
 
+            MARK_WHERE.with(|w| w.set("error_state"));
         mark_reachable((*instance).error_state.warnings);
         mark_reachable((*instance).error_state.handler_stack);
         mark_reachable((*instance).error_state.global_calling_handlers);
@@ -349,6 +448,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             mark_reachable(call);
         }
 
+        MARK_WHERE.with(|w| w.set("eval_state"));
         mark_reachable((*instance).eval_state.current_expr);
         mark_reachable((*instance).eval_state.parse_error_file);
         mark_reachable((*instance).eval_state.exec_token);
@@ -365,6 +465,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             .bc_stack
             .visit_roots(|obj| mark_reachable(*obj));
 
+        MARK_WHERE.with(|w| w.set("symbols"));
         for &obj in (*instance).symbols.values() {
             mark_reachable(obj);
         }
@@ -379,6 +480,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         }
         mark_reachable((*instance).bind_state.blank_string);
 
+        MARK_WHERE.with(|w| w.set("options"));
         for &obj in (*instance).options.values() {
             mark_reachable(obj);
         }
@@ -393,6 +495,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             mark_reachable(methods);
         }
         mark_reachable((*instance).objects_state.deferred_default_object);
+        MARK_WHERE.with(|w| w.set("env_hash"));
         for (&env, table) in &(*instance).env_hash_tables {
             mark_reachable(env as SEXP);
             for (&symbol, &value) in table {
@@ -737,62 +840,8 @@ fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<usize, SEXP>) {
         return;
     }
     unsafe {
-        let t = (*obj).sxpinfo.type_of();
-        match t {
-            SEXPTYPE::SYMSXP => {
-                update_field(&mut (*obj).data.symsxp.pname, old_to_new);
-                update_field(&mut (*obj).data.symsxp.value, old_to_new);
-                update_field(&mut (*obj).data.symsxp.internal, old_to_new);
-            }
-            // DOTSXP (...) chains share the listsxp layout; keep sweep-time
-            // redirection consistent with mark_reachable_traced above.
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
-                update_field(&mut (*obj).data.listsxp.carval, old_to_new);
-                update_field(&mut (*obj).data.listsxp.cdrval, old_to_new);
-                update_field(&mut (*obj).data.listsxp.tagval, old_to_new);
-            }
-            SEXPTYPE::CLOSXP => {
-                update_field(&mut (*obj).data.closxp.formals, old_to_new);
-                update_field(&mut (*obj).data.closxp.body, old_to_new);
-                update_field(&mut (*obj).data.closxp.env, old_to_new);
-            }
-            SEXPTYPE::ENVSXP => {
-                update_field(&mut (*obj).data.envsxp.frame, old_to_new);
-                update_field(&mut (*obj).data.envsxp.enclos, old_to_new);
-                update_field(&mut (*obj).data.envsxp.hashtab, old_to_new);
-            }
-            SEXPTYPE::PROMSXP => {
-                update_field(&mut (*obj).data.promsxp.value, old_to_new);
-                update_field(&mut (*obj).data.promsxp.expr, old_to_new);
-                update_field(&mut (*obj).data.promsxp.env, old_to_new);
-            }
-            SEXPTYPE::EXTPTRSXP => {
-                let tag = (*obj).data.extptr[1] as SEXP;
-                let prot = (*obj).data.extptr[2] as SEXP;
-                (*obj).data.extptr[1] = old_to_new.get(&(tag as usize)).copied().unwrap_or(tag)
-                    as *mut std::ffi::c_void;
-                (*obj).data.extptr[2] = old_to_new.get(&(prot as usize)).copied().unwrap_or(prot)
-                    as *mut std::ffi::c_void;
-            }
-            SEXPTYPE::WEAKREFSXP => {
-                update_field(&mut (*obj).data.listsxp.carval, old_to_new);
-                update_field(&mut (*obj).data.listsxp.cdrval, old_to_new);
-                update_field(&mut (*obj).data.listsxp.tagval, old_to_new);
-            }
-            _ => {}
-        }
-
-        if vector_payload_has_sexp_refs(t) {
-            let len = (*obj).vecsxp_length();
-            let data = (*obj).gengc_next_node as *mut SEXP;
-            if !data.is_null() && len > 0 {
-                for i in 0..len as usize {
-                    update_field(&mut *data.add(i), old_to_new);
-                }
-            }
-        }
-
-        update_field(&mut (*obj).attrib, old_to_new);
+        // Update follows the weak key; mark does not.
+        each_child(obj, true, |slot| update_field(slot, old_to_new));
     }
 }
 
@@ -3531,5 +3580,92 @@ mod tests {
             maybe_collect_at_eval_safe_point();
             assert_eq!(RUNS.load(Ordering::SeqCst), 1);
         });
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::{
+        EDGE_ATTRIB, EDGE_CAR, EDGE_CDR, EDGE_PNAME, EDGE_VECTOR, child_mask,
+    };
+
+    #[kani::proof]
+    fn child_mask_matches_roles() {
+        let type_code: i32 = kani::any();
+        kani::assume((0..=32).contains(&type_code));
+        let follow_weak_key: bool = kani::any();
+        let mask = child_mask(type_code, follow_weak_key);
+        assert_ne!(mask & EDGE_ATTRIB, 0);
+        let vector = matches!(type_code, 16 | 19 | 20 | 21);
+        assert_eq!(mask & EDGE_VECTOR != 0, vector);
+        if type_code == 23 {
+            assert_eq!(mask & EDGE_CAR != 0, follow_weak_key);
+            assert_ne!(mask & EDGE_CDR, 0);
+        }
+        if type_code == 1 {
+            assert_ne!(mask & EDGE_PNAME, 0);
+            assert_eq!(mask & EDGE_CAR, 0);
+        }
+        if type_code == 2 || type_code == 6 || type_code == 17 {
+            assert_ne!(mask & EDGE_CAR, 0);
+        }
+        kani::cover(type_code == 23 && !follow_weak_key, "weak key unmarked");
+        kani::cover(type_code == 23 && follow_weak_key, "weak key forwarded");
+        kani::cover(vector, "vector payload");
+    }
+
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn tiny_mark_is_the_reachable_set() {
+        let mut child = [[4u8; 3]; 4];
+        let mut index = 0usize;
+        while index < 4 {
+            let mut slot = 0usize;
+            while slot < 3 {
+                let next: u8 = kani::any();
+                kani::assume(next <= 4);
+                child[index][slot] = next;
+                slot += 1;
+            }
+            index += 1;
+        }
+        let root: u8 = kani::any();
+        kani::assume(root < 4);
+        let mut seen = [false; 4];
+        let mut stack = [0u8; 4];
+        let mut sp = 1usize;
+        stack[0] = root;
+        seen[root as usize] = true;
+        while sp > 0 {
+            sp -= 1;
+            let node = stack[sp] as usize;
+            let mut slot = 0usize;
+            while slot < 3 {
+                let next = child[node][slot];
+                if next < 4 && !seen[next as usize] {
+                    seen[next as usize] = true;
+                    stack[sp] = next;
+                    sp += 1;
+                }
+                slot += 1;
+            }
+        }
+        index = 0;
+        while index < 4 {
+            if seen[index] {
+                let mut slot = 0usize;
+                while slot < 3 {
+                    let next = child[index][slot];
+                    if next < 4 {
+                        assert!(seen[next as usize]);
+                    }
+                    slot += 1;
+                }
+            }
+            index += 1;
+        }
+        assert!(seen[root as usize]);
+        kani::cover(seen[0] && seen[1] && seen[2] && seen[3], "all reachable");
+        kani::cover(seen[root as usize] && !seen[((root as usize) + 1) % 4], "partial");
     }
 }

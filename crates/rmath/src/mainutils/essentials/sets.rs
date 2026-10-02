@@ -255,6 +255,7 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && kt != SEXPTYPE::REALSXP
             && kt != SEXPTYPE::CPLXSXP
             && kt != SEXPTYPE::STRSXP
+            && kt != SEXPTYPE::RAWSXP
         {
             base_error("unimplemented type in 'order'".to_string());
         }
@@ -380,7 +381,7 @@ fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
 
 fn reject_unorderable(x: SEXP) {
     let t = unsafe { TYPEOF(x) };
-    if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP || t == SEXPTYPE::RAWSXP {
+    if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
         std::panic::panic_any(crate::sexp::context::RError {
             message: "unimplemented type in 'order'".to_string(),
         });
@@ -2280,6 +2281,7 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
             Real,
             Str,
             Cplx,
+            Raw,
         }
         let kind = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             Kind::Int
@@ -2289,14 +2291,15 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
             Kind::Str
         } else if t == SEXPTYPE::CPLXSXP {
             Kind::Cplx
+        } else if t == SEXPTYPE::RAWSXP {
+            Kind::Raw
         } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "'x' must be atomic".to_string(),
             });
         } else {
-            let name = if t == SEXPTYPE::RAWSXP { "raw" } else { "unknown" };
             std::panic::panic_any(crate::sexp::context::RError {
-                message: format!("unimplemented type '{name}' in 'orderVector1'"),
+                message: "unimplemented type 'unknown' in 'orderVector1'".to_string(),
             });
         };
         let is_na = |i: usize| -> bool {
@@ -2308,6 +2311,7 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
                     let z = *crate::sexp::accessors::COMPLEX(x).add(i);
                     ISNAN(z.r) || ISNAN(z.i)
                 }
+                Kind::Raw => false,
             }
         };
         let cmp = |a: usize, b: usize| -> std::cmp::Ordering {
@@ -2330,6 +2334,7 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
                                 .unwrap_or(std::cmp::Ordering::Equal),
                         )
                 }
+                Kind::Raw => (*RAW(x).add(a)).cmp(&*RAW(x).add(b)),
             };
             if decreasing { ord.reverse() } else { ord }
         };
@@ -2368,6 +2373,7 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
                     *crate::sexp::accessors::COMPLEX(values).add(j) =
                         *crate::sexp::accessors::COMPLEX(x).add(i);
                 }
+                Kind::Raw => *RAW(values).add(j) = *RAW(x).add(i),
             }
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
@@ -2437,8 +2443,6 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let partial = arg_by_name_or_position(args, &["partial"], usize::MAX);
         let keep_names = partial.is_null() || partial == R_NilValue();
-
-
         let t = TYPEOF(x);
         let n = XLENGTH(x);
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
@@ -2535,6 +2539,7 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             copy_sorted_names(x, result, &order, keep_names);
             restore_datetime_or_difftime_class(x, result);
+
             result
         } else if t == SEXPTYPE::STRSXP {
             let mut vals: Vec<SEXP> = Vec::with_capacity(n as usize);
@@ -2575,6 +2580,35 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
             restore_datetime_or_difftime_class(x, result);
+            result
+        } else if t == SEXPTYPE::RAWSXP {
+            let mut vals: Vec<u8> = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                vals.push(*RAW(x).add(i as usize));
+            }
+            vals.sort_unstable();
+            if decreasing {
+                vals.reverse();
+            }
+            let result = Rf_allocVector3(t, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _result_guard = protect(result);
+            for (i, byte) in vals.iter().enumerate() {
+                *RAW(result).add(i) = *byte;
+            }
+            let class = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            );
+            if !class.is_null() && class != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    class,
+                );
+            }
             result
         } else {
             let result = Rf_allocVector3(t, n);

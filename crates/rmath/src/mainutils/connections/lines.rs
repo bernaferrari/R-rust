@@ -348,6 +348,19 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
             r_error("cannot write to this connection");
         }
 
+        if matches!(&conn.kind, ConnKind::TextConnection) {
+            for j in 0..text_len {
+                let mut chunk = string_elt(text, j);
+                chunk.push_str(&sep_str);
+                write_bytes_to_conn(conn, chunk.as_bytes());
+            }
+            drop(table);
+            if let Some(guard) = auto_guard.as_mut() {
+                guard.close();
+            }
+            return R_NilValue();
+        }
+
         match &conn.kind {
             ConnKind::BrowserFile => {
                 for j in 0..text_len {
@@ -396,16 +409,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
                     }
                 }
             }
-            ConnKind::TextConnection => {
-                {
-                    let mut lines = conn.text_lines.borrow_mut();
-                    for j in 0..text_len {
-                        let line = string_elt(text, j);
-                        lines.push(line);
-                    }
-                }
-                conn.assign_text_output();
-            }
+            ConnKind::TextConnection => {}
             ConnKind::Pipe => {
                 if let Some(ref mut child) = conn.child
                     && let Some(ref mut stdin) = child.stdin

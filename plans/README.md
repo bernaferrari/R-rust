@@ -57,12 +57,14 @@ Keep compatibility work on the majority of engineering time. Verification owns t
 - **Turning verification on by switching `panic = abort`.** Production Wasm and the session boundary require unwind. Proofs cover explicit `Result` or pure functions. Unwind is tested, not proved, until Kani supports it.
 - **Replacing the non-moving collector, enabling ALTREP, or splitting `rmath` into new crates as part of this effort.** Closed decisions. ALTREP stays off (`scripts/check_altrep_disabled.sh`). A detached `kani/` package is allowed only if plan 001 cannot invoke Kani without editing the workspace toolchain pin.
 
-## Later work, not scheduled here
+## Later work
 
-1. Shared `pc` advance used by both `validate_gnu_bytecode_stream` and `eval_gnu_adapter`, then a proof that every GNU opcode arm advances by `GNU_BC_OPERAND_WIDTHS`. Do not prove the validator's stack-effect model equivalent to the executor: `Ok(false)` is an intentional "not in the bounded adapter" result.
-2. One `children(...)` function used by both mark and update in `gengc.rs`, then a bounded mark proof on a tiny graph. Root census and write barriers stay tests.
-3. Pure workspace-size helpers for QR/SVD/LOESS admission only, after the four plans above are green.
-4. A verification ledger page generated from `cargo kani list`, with separate statuses: full machine domain, bounded, inductive contract, dynamic test, not established.
+The four scheduled plans are done. The follow-ons below are in the tree; the ledger is `plans/kani-ledger.md`.
+
+1. Shared `pc` advance: `gnu_next_pc`, used by the framing validator, the bounded adapter, and `eval_gnu_adapter`. `Ok(false)` from the adapter remains "not in the bounded adapter".
+2. `child_mask` / `each_child` drive both mark and update. Mark does not follow a weak key. The Kani mark proof is a 4-node graph, not the live collector.
+3. `qr_scratch_bytes`, `svd_scratch_bytes`, and `loess_workspace_bytes` are the admission helpers.
+4. Harness list: `plans/kani-ledger.md`.
 
 ## Commands every executor inherits
 

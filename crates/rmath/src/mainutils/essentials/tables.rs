@@ -1829,6 +1829,12 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             explicit_factor_levels_optional(levels_arg)
         };
         apply_factor_exclude(&mut levels, args);
+        if let Some(dup) = duplicated_explicit_level(&levels) {
+            crate::mainutils::errors::errorcall_str(
+                _call,
+                &format!("duplicated level [{dup}] in factor"),
+            );
+        }
 
 
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
@@ -1874,6 +1880,18 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         result
 
     }
+}
+
+fn duplicated_explicit_level(levels: &[Option<String>]) -> Option<usize> {
+    let mut seen = std::collections::BTreeSet::new();
+    for (i, level) in levels.iter().enumerate() {
+        if let Some(text) = level {
+            if !seen.insert(text.clone()) {
+                return Some(i + 1);
+            }
+        }
+    }
+    None
 }
 
 fn collect_default_factor_levels(x: SEXP, n: R_xlen_t) -> Vec<Option<String>> {

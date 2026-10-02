@@ -313,9 +313,10 @@ pub(crate) unsafe fn INCREMENT_NAMED(x: SEXP) {
 
 /// Check if an object is growable (has truelength > length).
 #[inline]
-pub(crate) unsafe fn IS_GROWABLE(_x: SEXP) -> bool {
-    // Simplified: always false since we don't fully implement truelength yet.
-    false
+pub(crate) unsafe fn IS_GROWABLE(x: SEXP) -> bool {
+    unsafe {
+        !x.is_null() && ((*x).sxpinfo.gp() & (1u16 << 5)) != 0 && XTRUELENGTH(x) > XLENGTH(x)
+    }
 }
 
 /// Set the growable bit on an object.
@@ -343,8 +344,11 @@ pub(crate) unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
 #[inline]
 pub(crate) unsafe fn XTRUELENGTH(x: SEXP) -> R_xlen_t {
     unsafe {
-        // Simplified: return XLENGTH
-        XLENGTH(x)
+        if x.is_null() {
+            0
+        } else {
+            (*x).data.vecsxp.truelength
+        }
     }
 }
 

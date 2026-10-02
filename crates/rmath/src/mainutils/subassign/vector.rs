@@ -60,6 +60,11 @@ pub(crate) unsafe fn getNames(x: SEXP) -> SEXP {
 pub(crate) unsafe fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
     unsafe {
         let len = XLENGTH(x);
+        if super::support::IS_GROWABLE(x) && newlen <= super::support::XTRUELENGTH(x) {
+            SET_STDVEC_LENGTH(x, newlen);
+            crate::sexp::accessors::SET_ATTRIB(x, R_NilValue());
+            return x;
+        }
         let newtruelen: R_xlen_t;
         if newlen > len {
             let expanded_nlen = (newlen as f64) * 1.05;

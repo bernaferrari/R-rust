@@ -15,10 +15,10 @@ function (x, formula = NULL, ...)
     }
     else if(ncol(x) == 1) {
         x1 <- x[[1L]]
-        if(class(x1)[1L] %in% c("integer", "numeric"))# is.numeric(.) TRUE for 'ts'
+        if(length(class(x1)) && class(x1)[1L] %in% c("integer", "numeric")) {# is.numeric(.) TRUE for 'ts'
             ## the special case: *not* using plot() method
             stripchart(x1, ...)
-        else plot(x1, ...) # factor, ts, complex ...
+        } else plot(x1, ...) # factor, ts, complex ...
     } else if(ncol(x) == 2) {
         plot2(x, ...)
     } else {

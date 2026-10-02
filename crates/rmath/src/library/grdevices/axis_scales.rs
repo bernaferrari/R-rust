@@ -187,10 +187,23 @@ fn g_axis_pars(min: &mut f64, max: &mut f64, n: &mut c_int, logflag: bool) {
 
     if logflag {
         *max = (*max).min(308.0);
+        if *min > *max {
+            *min = *max;
+        }
         *min = (*min).max(-307.0);
-        *min = 10_f64.powf(*min);
-        *max = 10_f64.powf(*max);
-        gl_pretty(min, max, n);
+        if *max < *min {
+            *max = *min;
+        }
+        if (*max - *min).abs() == 0.0 {
+            let eps = 0.005 * (max_original - min_original);
+            *min = 10_f64.powf(min_original + eps);
+            *max = 10_f64.powf(max_original - eps);
+            *n = 1;
+        } else {
+            *min = 10_f64.powf(*min);
+            *max = 10_f64.powf(*max);
+            gl_pretty(min, max, n);
+        }
     } else {
         unsafe { crate::mainutils::engine::GEPretty(min, max, n) };
     }

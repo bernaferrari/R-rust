@@ -62,7 +62,8 @@ pub(super) unsafe fn targets(
                 }
                 result.insert(pc, successors.into_iter().collect());
             }
-            pc += 1 + super::bytecode::GNU_BC_OPERAND_WIDTHS[op as usize] as usize;
+            pc = super::bytecode::gnu_next_pc(pc, op, code.len())
+                .map_err(|_| "GNU SWITCH opcode is truncated".to_string())?;
         }
         Ok(result)
     }

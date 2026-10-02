@@ -4756,6 +4756,30 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         0,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
+    FunTabEntry::new(
+        b"growconst\0",
+        None,
+        0,
+        11,
+        1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
+        b"putconst\0",
+        None,
+        0,
+        11,
+        3,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
+        b"getconst\0",
+        None,
+        0,
+        11,
+        2,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
     // Sentinel
     FunTabEntry::new(
         NULL_NAME,
@@ -5313,6 +5337,9 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
         "bcVersion" => Some(crate::eval::compiler::do_bcversion),
+        "growconst" => Some(crate::eval::compiler::do_growconst),
+        "putconst" => Some(crate::eval::compiler::do_putconst),
+        "getconst" => Some(crate::eval::compiler::do_getconst),
         "format" => Some(crate::mainutils::essentials::do_format),
         "readDCF" => Some(crate::mainutils::dcf::do_readDCF),
         "compareNumericVersion" => Some(crate::mainutils::dcf::do_compareNumericVersion),

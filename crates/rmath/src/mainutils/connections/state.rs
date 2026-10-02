@@ -99,8 +99,9 @@ pub struct RConn {
     pub text_var: Option<String>,
     /// Environment that receives `text_var` updates. Null when unused.
     pub text_env: SEXP,
-    /// True when the last write did not end in `\n` (GNU partial-line buffer).
     pub text_incomplete: bool,
+    /// Complete lines already stored in the bound STRSXP.
+    pub text_published: usize,
 
 
     /// Child process (for pipe connections).
@@ -139,6 +140,7 @@ impl RConn {
             text_pos: 0,
             text_lines: RefCell::new(Vec::new()),
             text_incomplete: false,
+            text_published: 0,
 
             child: None,
             file: None,
@@ -149,7 +151,7 @@ impl RConn {
     }
 
     /// GNU write-mode textConnection: assign captured lines to `object`.
-    pub unsafe fn assign_text_output(&self) {
+    pub unsafe fn assign_text_output(&mut self) {
         unsafe {
             let Some(name) = self.text_var.as_deref() else {
                 return;
@@ -160,22 +162,32 @@ impl RConn {
             let Ok(cname) = CString::new(name) else {
                 return;
             };
+            let published = self.text_published;
+            let incomplete = self.text_incomplete;
             let lines = self.text_lines.borrow();
-            let n = lines.len() as c_int;
-            let ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
+            let complete = lines.len() - usize::from(incomplete && !lines.is_empty());
+            let sym = crate::sexp::symbol::Rf_install(cname.as_ptr());
+            let old = crate::sexp::envir::R_findVarInFrame(self.text_env, sym);
+            let reuse = TYPEOF(old) == SEXPTYPE::STRSXP
+                && XLENGTH(old) as usize == published
+                && published <= complete;
+            let ans = if reuse {
+                crate::mainutils::builtin::xlengthgets(old, complete as R_xlen_t)
+            } else {
+                Rf_allocVector(SEXPTYPE::STRSXP, complete as c_int)
+            };
             if ans.is_null() {
                 return;
             }
             let _ans = protect(ans);
-            for (i, line) in lines.iter().enumerate() {
+            let start = if reuse { published } else { 0 };
+            for (i, line) in lines.iter().take(complete).enumerate().skip(start) {
                 let ch = Rf_mkChar(CString::new(line.as_str()).unwrap_or_default().as_ptr());
                 SET_STRING_ELT(ans, i as R_xlen_t, ch);
             }
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(cname.as_ptr()),
-                ans,
-                self.text_env,
-            );
+            drop(lines);
+            crate::sexp::envir::defineVar(sym, ans, self.text_env);
+            self.text_published = complete;
         }
     }
 
@@ -693,8 +705,12 @@ fn append_text_connection_write(conn: &mut RConn, bytes: &[u8]) {
     if !pieces.is_empty() {
         conn.text_incomplete = !ends_with_nl;
     }
-    unsafe {
-        conn.assign_text_output();
+    // Rebuilding the STRSXP on every partial chunk is quadratic. Complete
+    // lines are published here; close() assigns any trailing fragment.
+    if ends_with_nl {
+        unsafe {
+            conn.assign_text_output();
+        }
     }
 }
 

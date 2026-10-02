@@ -523,8 +523,9 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
             }
             SEXPTYPE::CLOSXP => {
                 t = with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
-                SET_FORMALS(t, FORMALS(s));
-                SET_BODY(t, BODY(s));
+                let _guard = crate::sexp::protect::protect(t);
+                SET_FORMALS(t, duplicate1(FORMALS(s), deep));
+                SET_BODY(t, duplicate1(BODY(s), deep));
                 SET_CLOENV(t, CLOENV(s));
                 DUPLICATE_ATTRIB(t, s, deep);
                 if NOJIT(s) != 0 {

@@ -19,6 +19,47 @@
 mod diagnostics;
 mod surface;
 
+/// Byte estimate for LOESS workspaces. `None` means the product overflowed.
+pub(crate) fn loess_workspace_bytes(
+    n: usize,
+    d: usize,
+    queries: usize,
+    interpolate: bool,
+) -> Option<usize> {
+    let vertices = if interpolate {
+        n.max(200).checked_add(32)?
+    } else {
+        0
+    };
+    let rows = n
+        .checked_mul(4)?
+        .checked_add(queries.checked_mul(2)?)?
+        .checked_add(vertices.checked_mul(d.checked_add(1)?)?)?
+        .checked_add(256)?;
+    n.checked_mul(rows)?
+        .checked_add(queries.checked_mul(16)?)?
+        .checked_mul(8)
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::loess_workspace_bytes;
+
+    #[kani::proof]
+    fn loess_workspace_rejects_overflow() {
+        let n: usize = kani::any();
+        let d: usize = kani::any();
+        let queries: usize = kani::any();
+        let interpolate: bool = kani::any();
+        kani::assume(n <= 3 && d <= 2 && queries <= 3);
+        let got = loess_workspace_bytes(n, d, queries, interpolate);
+        assert!(got.is_some());
+        assert!(loess_workspace_bytes(usize::MAX, 1, 1, false).is_none());
+        kani::cover(interpolate, "interpolate");
+        kani::cover(!interpolate && n == 0, "empty");
+    }
+}
+
 /// Per-operation limits and cancellation; never retained in serialized models.
 pub(crate) struct Execution<'a> {
     workspace_limit: usize,
@@ -46,21 +87,7 @@ impl<'a> Execution<'a> {
         // interpolation coefficients, local SVD scratch and KD-cell storage.
         // A split can add up to 2^(d+1) vertices beyond the tree's stopping bound.
         // This bounds numerical workspaces, not the host's total process memory.
-        let bytes = (|| {
-            let vertices = if interpolate {
-                n.max(200).checked_add(32)?
-            } else {
-                0
-            };
-            let rows = n
-                .checked_mul(4)?
-                .checked_add(queries.checked_mul(2)?)?
-                .checked_add(vertices.checked_mul(d.checked_add(1)?)?)?
-                .checked_add(256)?;
-            n.checked_mul(rows)?
-                .checked_add(queries.checked_mul(16)?)?
-                .checked_mul(8)
-        })();
+        let bytes = loess_workspace_bytes(n, d, queries, interpolate);
         if bytes.is_none_or(|bytes| bytes > self.workspace_limit) {
             return Err(format!(
                 "LOESS workspace limit exceeded ({} MiB); reduce observations or prediction rows",
