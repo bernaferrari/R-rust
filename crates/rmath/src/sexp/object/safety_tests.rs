@@ -89,6 +89,90 @@ fn checked_graph_writes_reject_foreign_owner() {
 }
 
 #[test]
+fn checked_graph_writes_remember_original_owner_and_retain_unrooted_young_child() {
+    for kind in [SEXPTYPE::VECSXP, SEXPTYPE::EXPRSXP, SEXPTYPE::STRSXP] {
+        let left = RSession::new_for_gc_tests();
+        let parent_ptr = alloc(&left, kind, 1);
+        let parent = left.sexp(parent_ptr).unwrap();
+        full_gc(&left); // Promote the parent before allocating its child.
+        let child_ptr = if kind == SEXPTYPE::STRSXP {
+            left.with_active_in(|owner| unsafe {
+                crate::sexp::memory::with_arena_in(owner, |arena| arena.alloc_charsxp(b"kept"))
+            })
+        } else {
+            alloc(&left, SEXPTYPE::INTSXP, 1)
+        };
+        let child = left.sexp(child_ptr).unwrap();
+        let right = RSession::new_for_gc_tests(); // A different owner is active.
+        let mut mutation = SexpMut::try_from_checked(parent).unwrap();
+        if kind == SEXPTYPE::STRSXP {
+            mutation.try_set_string_elt(0, child).unwrap();
+        } else {
+            mutation.try_set_vector_elt(0, child).unwrap();
+        }
+        drop(mutation); // Both nodes now have no checked leases.
+        right.with_active_in(|owner| unsafe {
+            assert_eq!((*owner).gc_state.remembered_set.len(), 0);
+        });
+        left.with_active_in(|owner| unsafe {
+            assert!((*owner).gc_state.remembered_set.iter().any(|ptr| ptr == parent_ptr));
+            left.owner_token().unwrap().minor_gc().unwrap();
+            // Check membership before wrapping or reading a possibly swept node.
+            assert!((*owner).arena.contains(child_ptr));
+            let child = left.sexp(child_ptr).unwrap();
+            if kind == SEXPTYPE::STRSXP {
+                assert_eq!(child.try_as_string().unwrap(), "kept");
+            } else {
+                assert_eq!(child.integer_elt(0), Some(0));
+            }
+        });
+    }
+}
+
+#[test]
+fn checked_graph_write_barrier_failure_leaves_graph_and_membership_unchanged() {
+    let session = RSession::new_for_gc_tests();
+    let parent = session.sexp(alloc(&session, SEXPTYPE::VECSXP, 1)).unwrap();
+    full_gc(&session);
+    let child_ptr = alloc(&session, SEXPTYPE::INTSXP, 1);
+    let child = session.sexp(child_ptr).unwrap();
+    session.with_active_in(|owner| unsafe {
+        (*owner).gc_state.remembered_set.fail_next_reservation_for_test();
+    });
+    let mut mutation = SexpMut::try_from_checked(parent).unwrap();
+    assert!(matches!(mutation.try_set_vector_elt(0, child.clone()),
+        Err(super::SexpError::AllocationFailed { object: "GC write barrier" })));
+    let parent = mutation.freeze();
+    assert!(parent.vector_elt(0).unwrap().is_nil());
+    session.with_active_in(|owner| unsafe {
+        assert_eq!((*owner).gc_state.remembered_set.len(), 0);
+    });
+    // Retrying the same valid write succeeds after the injected failure.
+    let mut mutation = SexpMut::try_from_checked(parent).unwrap();
+    mutation.try_set_vector_elt(0, child).unwrap();
+    assert_eq!(mutation.freeze().vector_elt(0).unwrap().integer_elt(0), Some(0));
+}
+
+#[test]
+fn checked_compact_mutation_materializes_in_original_owner_and_restores_active_session() {
+    let left = RSession::new_for_gc_tests();
+    let ptr = left.with_active(|| unsafe { crate::sexp::altseq::compact_int_seq(10, 2, 3) });
+    let value = left.sexp(ptr).unwrap();
+    let right = RSession::new_for_gc_tests();
+    let right_owner = right.with_active_in(|owner| unsafe {
+        (*owner).arena.set_budget(crate::sexp::memory::ArenaBudget::new(1, 0));
+        owner
+    });
+    let mut mutation = SexpMut::try_from_checked(value).unwrap();
+    mutation.try_set_integer_elt(1, 99).unwrap();
+    assert_eq!(crate::sexp::instance::current_instance_ptr(), Some(right_owner));
+    drop(right); // The original session must own the expanded payload.
+    let value = mutation.freeze();
+    full_gc(&left);
+    assert_eq!(value.iter_integer().collect::<Vec<_>>(), vec![10, 99, 14]);
+}
+
+#[test]
 fn typed_builders_retain_and_reject_foreign_inputs() {
     let session = RSession::new_for_gc_tests();
     let ptr = alloc(&session, SEXPTYPE::INTSXP, 1);

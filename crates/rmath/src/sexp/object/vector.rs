@@ -401,6 +401,7 @@ impl<'a> Sexp<'a> {
             .try_typed_data_mut::<SEXP>(SEXPTYPE::STRSXP, "string vector")
             .clone()?;
         let i = self.try_index(i)?;
+        self.remember_child(&v)?;
         unsafe {
             *data.add(i) = v.as_raw();
         }
@@ -438,6 +439,7 @@ impl<'a> Sexp<'a> {
         self.check_child_owner(&v)?;
         let data = self.clone().try_vector_sexp_data_mut().clone()?;
         let i = self.try_index(i)?;
+        self.remember_child(&v)?;
         unsafe {
             *data.add(i) = v.as_raw();
         }
