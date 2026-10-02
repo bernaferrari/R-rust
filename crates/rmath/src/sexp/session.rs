@@ -1719,19 +1719,7 @@ impl RSession {
 /// Classify by address, then return the singleton's own pointer provenance.
 /// A caller's forged raw pointer is never used to access the sentinel.
 pub(crate) fn immutable_singleton_projection(ptr: SEXP) -> Option<SEXP> {
-    unsafe {
-        [
-            R_NilValue(),
-            R_UnboundValue(),
-            R_MissingArg(),
-            R_RestartToken(),
-            super::globals::R_NaString(),
-            super::globals::R_True(),
-            super::globals::R_False(),
-        ]
-        .into_iter()
-        .find(|singleton| std::ptr::eq(*singleton, ptr))
-    }
+    super::globals::immutable_singleton_projection(ptr)
 }
 
 pub(crate) fn is_immutable_singleton(ptr: SEXP) -> bool {

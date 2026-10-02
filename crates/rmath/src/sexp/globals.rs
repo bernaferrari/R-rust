@@ -6,121 +6,28 @@
 //! everywhere. Mutable runtime environments are session-owned and reached
 //! through the active `RInstance`, not through process-global fallback slots.
 
-use std::ptr;
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicPtr, Ordering};
 
-use super::ffi::{FALSE, SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo, TRUE};
+use super::ffi::SEXP;
+#[path = "singletons.rs"]
+mod singletons;
 use super::instance::{RInstance, with_required_current_instance};
 
 // ---------------------------------------------------------------------------
-// Sentinel singletons (published once, preserving pointer provenance)
-// OnceLock publishes each initialized allocation. AtomicPtr retains its
-// provenance without asserting Send/Sync for the mutable object type. Relaxed
-// loads are sufficient: these pointer slots are never changed after publication.
+// Immutable sentinel projections. The process owns their stable Rust cells.
 // ---------------------------------------------------------------------------
 
-/// R_NilValue: the global nil/NULL object.
-static NIL_VALUE: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
-
-/// R_UnboundValue: sentinel for unbound symbols in environments.
-static UNBOUND_VALUE: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
-
-/// R_MissingArg: sentinel for missing function arguments.
-static MISSING_ARG: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
-
-/// R_RestartToken: sentinel for restart tokens.
-static RESTART_TOKEN: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
-
-// ---------------------------------------------------------------------------
-// Initialization
-// ---------------------------------------------------------------------------
-
-fn init_nil() -> SEXP {
-    NIL_VALUE
-        .get_or_init(|| {
-            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
-                sxpinfo: SxpInfo::new(SEXPTYPE::NILSXP),
-                attrib: ptr::null_mut(),
-                gengc_next_node: ptr::null_mut(),
-                gengc_prev_node: ptr::null_mut(),
-                data: SexprecData::default(),
-            })))
-        })
-        .load(Ordering::Relaxed)
+pub(crate) fn immutable_singleton_projection(pointer: SEXP) -> Option<SEXP> {
+    singletons::canonical_projection(pointer)
 }
-
-fn init_unbound() -> SEXP {
-    UNBOUND_VALUE
-        .get_or_init(|| {
-            let mut info = SxpInfo::new(SEXPTYPE::SYMSXP);
-            info.set_mark(true);
-            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
-                sxpinfo: info,
-                attrib: ptr::null_mut(),
-                gengc_next_node: ptr::null_mut(),
-                gengc_prev_node: ptr::null_mut(),
-                data: SexprecData::default(),
-            })))
-        })
-        .load(Ordering::Relaxed)
-}
-
-fn init_missing() -> SEXP {
-    MISSING_ARG
-        .get_or_init(|| {
-            let mut info = SxpInfo::new(SEXPTYPE::SYMSXP);
-            info.set_mark(true);
-            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
-                sxpinfo: info,
-                attrib: ptr::null_mut(),
-                gengc_next_node: ptr::null_mut(),
-                gengc_prev_node: ptr::null_mut(),
-                data: SexprecData::default(),
-            })))
-        })
-        .load(Ordering::Relaxed)
-}
-
-fn init_restart() -> SEXP {
-    RESTART_TOKEN
-        .get_or_init(|| {
-            let mut info = SxpInfo::new(SEXPTYPE::SPECIALSXP);
-            info.set_mark(true);
-            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
-                sxpinfo: info,
-                attrib: ptr::null_mut(),
-                gengc_next_node: ptr::null_mut(),
-                gengc_prev_node: ptr::null_mut(),
-                data: SexprecData::default(),
-            })))
-        })
-        .load(Ordering::Relaxed)
-}
-
-// ---------------------------------------------------------------------------
-// Accessor functions for global singletons
-// ---------------------------------------------------------------------------
 
 /// Get a pointer to R_NilValue.
-pub unsafe fn R_NilValue() -> SEXP {
-    init_nil()
-}
-
+pub unsafe fn R_NilValue() -> SEXP { singletons::nil() }
 /// Get a pointer to R_UnboundValue.
-pub unsafe fn R_UnboundValue() -> SEXP {
-    init_unbound()
-}
-
+pub unsafe fn R_UnboundValue() -> SEXP { singletons::unbound() }
 /// Get a pointer to R_MissingArg.
-pub unsafe fn R_MissingArg() -> SEXP {
-    init_missing()
-}
-
+pub unsafe fn R_MissingArg() -> SEXP { singletons::missing() }
 /// Get a pointer to R_RestartToken.
-pub unsafe fn R_RestartToken() -> SEXP {
-    init_restart()
-}
+pub unsafe fn R_RestartToken() -> SEXP { singletons::restart() }
 
 // ---------------------------------------------------------------------------
 // Global environment accessor functions
@@ -301,71 +208,12 @@ pub unsafe fn R_BraceSymbol_fn() -> SEXP {
 // R_True and R_False logical singletons
 // ---------------------------------------------------------------------------
 
-/// R_True: the logical TRUE singleton (scalar LGLSXP with value 1).
-static R_TRUE: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
-
-/// R_False: the logical FALSE singleton (scalar LGLSXP with value 0).
-static R_FALSE: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
-
-/// Build a persistent scalar LGLSXP singleton with a readable payload.
-///
-/// Vector data lives in a separate allocation referenced through
-/// `gengc_next_node` ([`crate::sexp::accessors::DATAPTR`]); the node alone is
-/// not enough. Without the data word, `LOGICAL_ELT` falls back to
-/// `NA_LOGICAL` and direct `LOGICAL(x)` reads would dereference null. Both
-/// the node and the 1-element buffer are intentionally leaked, like every
-/// other process-global sentinel here (see `persistent_mkChar` for the same
-/// pattern for CHARSXP).
-fn init_persistent_logical(value: i32) -> AtomicPtr<SexprecCore> {
-    let mut node = SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1);
-    node.sxpinfo.set_scalar(true);
-    let data = Box::into_raw(Box::new(value));
-    node.gengc_next_node = data as *mut SexprecCore;
-    AtomicPtr::new(Box::into_raw(Box::new(node)))
-}
-
-/// Get a pointer to R_True (logical scalar TRUE).
-pub unsafe fn R_True() -> SEXP {
-    R_TRUE
-        .get_or_init(|| init_persistent_logical(TRUE))
-        .load(Ordering::Relaxed)
-}
-
-/// Get a pointer to R_False (logical scalar FALSE).
-pub unsafe fn R_False() -> SEXP {
-    R_FALSE
-        .get_or_init(|| init_persistent_logical(FALSE))
-        .load(Ordering::Relaxed)
-}
-
-// ---------------------------------------------------------------------------
-// NA_STRING sentinel
-// ---------------------------------------------------------------------------
-
-/// R_NaString: the NA_STRING sentinel (a special CHARSXP with NA bit in gp).
-static NA_STRING_PTR: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
-
-/// Get a pointer to R's NA_STRING — a CHARSXP sentinel representing NA.
-///
-/// In R, `NA_character_` is a STRSXP of length 1 whose sole element is this
-/// sentinel. The sentinel itself has type CHARSXP and the NA bit set in its
-/// gp field.
-pub unsafe fn R_NaString() -> SEXP {
-    NA_STRING_PTR
-        .get_or_init(|| {
-            let mut info = SxpInfo::new(SEXPTYPE::CHARSXP);
-            // Set gp=1 to mark as NA (R's convention for NA_STRING)
-            info.set_gp(1);
-            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
-                sxpinfo: info,
-                attrib: ptr::null_mut(),
-                gengc_next_node: ptr::null_mut(),
-                gengc_prev_node: ptr::null_mut(),
-                data: SexprecData::default(),
-            })))
-        })
-        .load(Ordering::Relaxed)
-}
+/// Get a pointer to the immutable logical TRUE scalar.
+pub unsafe fn R_True() -> SEXP { singletons::logical(true) }
+/// Get a pointer to the immutable logical FALSE scalar.
+pub unsafe fn R_False() -> SEXP { singletons::logical(false) }
+/// Get a pointer to the immutable NA_STRING character sentinel.
+pub unsafe fn R_NaString() -> SEXP { singletons::na_string() }
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -376,6 +224,60 @@ mod tests {
     use super::super::ffi::*;
     use super::super::instance::{RInstance, current_instance_ptr, replace_current_instance};
     use super::*;
+
+    #[test]
+    fn shared_singletons_reject_legacy_mutation() {
+        use crate::sexp::accessors::*;
+        unsafe {
+            for node in [R_NilValue(), R_UnboundValue(), R_MissingArg(), R_RestartToken(), R_NaString(), R_True(), R_False()] {
+                let flags = (*node).sxpinfo;
+                let attributes = (*node).attrib;
+                let data = (*node).gengc_next_node;
+                let body = (*node).data.extptr;
+                SET_NAMED(node, 0);
+                SET_OBJECT(node, 1);
+                SET_S4_OBJECT(node);
+                UNSET_S4_OBJECT(node);
+                SETLEVELS(node, 3);
+                SET_MISSING(node, 1);
+                SET_SCALAR(node, 0);
+                SET_ALTREP(node, 1);
+                SET_MARK(node, 0);
+                mark_charsxp_encoding(node, "UTF-8");
+                SET_ATTRIB(node, R_True());
+                SET_TRUELENGTH(node, 99);
+                SETCAR(node, R_True());
+                SETCDR(node, R_True());
+                SETTAG(node, R_True());
+                SET_PRINTNAME(node, R_True());
+                SET_SYMVALUE(node, R_True());
+                SET_INTERNAL(node, R_True());
+                SET_FORMALS(node, R_True());
+                SET_BODY(node, R_True());
+                SET_CLOENV(node, R_True());
+                SET_PRVALUE(node, R_True());
+                SET_PRCODE(node, R_True());
+                SET_PRENV(node, R_True());
+                SET_PRIMOFFSET(node, 99);
+                SET_DATAPTR(node, std::ptr::null_mut());
+                SET_LOGICAL_ELT(node, 0, 99);
+                SET_INTEGER_ELT(node, 0, 99);
+                SET_REAL_ELT(node, 0, 99.0);
+                SET_COMPLEX_ELT(node, 0, Rcomplex { r: 99.0, i: 99.0 });
+                SET_RAW_ELT(node, 0, 99);
+                SET_STRING_ELT(node, 0, R_NaString());
+                SET_VECTOR_ELT(node, 0, R_True());
+                assert_eq!((*node).sxpinfo.type_and_flags, flags.type_and_flags);
+                assert_eq!((*node).sxpinfo.rcount, flags.rcount);
+                assert_eq!((*node).attrib, attributes);
+                assert_eq!((*node).gengc_next_node, data);
+                assert_eq!((*node).data.extptr, body);
+                assert_eq!(NAMED(node), 2);
+            }
+            assert_eq!(LOGICAL_ELT(R_True(), 0), 1);
+            assert_eq!(LOGICAL_ELT(R_False(), 0), 0);
+        }
+    }
 
     #[test]
     fn singleton_storage_preserves_provenance() {

@@ -92,8 +92,13 @@ use super::ffi::{SEXP, SEXPTYPE};
 use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
-    push_protect_in, update_preserve_stack_refs_in, update_protect_stack_refs_in,
+    RootValue, push_protect_in, update_preserve_stack_refs_in, update_protect_stack_refs_in,
 };
+
+#[path = "gc_trace.rs"]
+mod gc_trace;
+#[path = "gc_trace_bridge.rs"]
+mod gc_trace_bridge;
 
 /// Generations for object aging.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -218,12 +223,8 @@ fn verify_gc_invariants_in(instance: *mut instance::RInstance) {
 // Root tracing
 // ---------------------------------------------------------------------------
 
-// Simplified mark: no per-GC HashSet<usize> "traceable" snapshot of all actives, no hash lookup
-// on every edge. We rely on the mark bit in sxpinfo for "visited this collection" (as review
-// suggested) + null guards + reachability from roots. This eliminates two HashSet allocations
-// per GC and hashing cost on every pointer edge during marking. Sweep still walks actives
-// (necessary) to find unmarked for free.
-// Protected "force" marking uses the traced path (now default behavior).
+// Checked allocation tokens and collection epochs replace mutable header
+// marks. Raw projection reads remain confined to the snapshot bridge.
 const EDGE_PNAME: u32 = 1 << 0;
 const EDGE_SYM_VALUE: u32 = 1 << 1;
 const EDGE_INTERNAL: u32 = 1 << 2;
@@ -355,65 +356,30 @@ thread_local! {
 
 #[inline(always)]
 fn mark_reachable_traced(obj: SEXP) {
-    // R object graph depth must not consume the Rust call stack.
-    let mut pending = vec![obj];
-    while let Some(obj) = pending.pop() {
-        if obj.is_null() {
-            continue;
-        }
-        // A reachable SEXP is always pointer-aligned and lives far above the
-        // null page. This used to be a silent skip that masked real heap
-        // corruption: slots holding small integer sentinels or recycled native
-        // pointers after the collector wrongly swept live bindings. With
-        // persistent roots re-traced every cycle and raw stack references
-        // protected across allocating calls, every traced slot is a real SEXP,
-        // so keep only a debug tripwire that surfaces regressions loudly
-        // instead of dereferencing (or silently skipping) garbage.
-        if (obj as usize) < 0x1_0000 {
-            let where_ = MARK_WHERE.with(|w| w.get());
-            let mut buf = [0u8; 96];
-            let msg = b"BAD SEXP ";
-            buf[..msg.len()].copy_from_slice(msg);
-            let mut n = msg.len();
-            let addr = obj as usize;
-            for i in (0..16).rev() {
-                let nib = ((addr >> (i * 4)) & 0xf) as u8;
-                buf[n] = b"0123456789abcdef"[nib as usize];
-                n += 1;
-            }
-            let tail = b" while marking ";
-            buf[n..n + tail.len()].copy_from_slice(tail);
-            n += tail.len();
-            let name = where_.as_bytes();
-            let take = name.len().min(buf.len() - n - 1);
-            buf[n..n + take].copy_from_slice(&name[..take]);
-            n += take;
-            buf[n] = b'\n';
-            n += 1;
-            let _ = std::io::Write::write_all(&mut std::io::stderr(), &buf[..n]);
-            std::process::abort();
-        }
-        debug_assert!(
-            obj.addr() >= 0x1_0000 && obj.is_aligned(),
-            "mark_reachable_traced on implausible SEXP pointer {:#x}",
-            obj as usize
-        );
+    let mut pending = gc_trace::TraceWorklist::new(gc_trace::TraceScope::active());
+    trace_result(pending.enqueue(obj));
+    drain_trace_worklist(pending);
+}
 
-        unsafe {
-            match super::memory::gc_touch(obj) {
-                super::memory::GcTouch::AlreadyMarked => continue,
-                super::memory::GcTouch::OutsideArena => {
-                    // Persistent nodes are not in a slab. Their header mark bit
-                    // is still the visited flag (cleared at cycle start).
-                    if (*obj).sxpinfo.mark() {
-                        continue;
-                    }
-                    (*obj).sxpinfo.set_mark(true);
-                }
-                super::memory::GcTouch::NewlyMarked => {}
-            }
-            // Weak keys stay unmarked. DOTSXP shares the listsxp layout.
-            each_child(obj, false, |slot| pending.push(*slot));
+fn trace_result<T>(result: Result<T, gc_trace::TraceError>) -> T {
+    result.unwrap_or_else(|error| {
+        let where_ = MARK_WHERE.with(|label| label.get());
+        panic!("invalid GC graph while marking {where_}: {error:?}");
+    })
+}
+
+fn drain_trace_worklist(mut pending: gc_trace::TraceWorklist) {
+    // Graph depth consumes owned tasks, never the Rust call stack. Each task
+    // retains an exact generation and canonical Cell projection until read.
+    while let Some(node) = trace_result(pending.next_marked()) {
+        // SAFETY: GC is quiescent and the owner remains live through marking.
+        // Published payloads retain their native span invariants. The bridge
+        // revalidates the token, copies edges, and lends no mutable fields.
+        let children = trace_result(unsafe {
+            gc_trace_bridge::snapshot_children(&node, pending.context())
+        });
+        for child in children.into_edges() {
+            trace_result(pending.enqueue(child));
         }
     }
 }
@@ -446,10 +412,9 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             mark_reachable(node);
         }
 
-        // The collector explicitly scans BOTH protection storages: the
-        // legacy C-port stack and the generational root table. Tombstoned
-        // root slots hold null; `mark_reachable_traced` null-guards before
-        // dereferencing, so vacant entries are skipped without a filter.
+        // Scan both protection storages. The generational root table lends
+        // only an owned snapshot, retaining each root's original allocation
+        // identity rather than reinterpreting a reused address as a new root.
         {
             MARK_WHERE.with(|w| w.set("legacy_protect"));
             (*instance).legacy_protect.with_entries(|entries| {
@@ -460,11 +425,22 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         }
         {
             MARK_WHERE.with(|w| w.set("root_table"));
-            (*instance).root_table.with_entries(|entries| {
-                for &obj in entries.iter() {
-                    mark_reachable_traced(obj);
+            let roots = (*instance).root_table.checked_entries_snapshot();
+            let mut pending = gc_trace::TraceWorklist::new(gc_trace::TraceScope::active());
+            for root in roots {
+                match root {
+                    RootValue::Checked {
+                        projection,
+                        allocation,
+                    } => {
+                        trace_result(pending.enqueue_checked(projection, allocation));
+                    }
+                    RootValue::Static { projection } => {
+                        trace_result(pending.enqueue(projection));
+                    }
                 }
-            });
+            }
+            drain_trace_worklist(pending);
         }
         {
             MARK_WHERE.with(|w| w.set("preserve_stack"));
@@ -1144,20 +1120,17 @@ where
         }
 
         (*instance).gc_state.in_progress = true;
-        verify_gc_invariants_in(instance);
-        // Sweep only visits arena nodes, so persistent nodes keep whatever mark
-        // the previous cycle left on them. Clear those marks before marking so
-        // every cycle re-traces the persistent roots (environment frames,
-        // interned symbol pnames, raw cons cells); a stale mark would make
-        // `mark_reachable_traced` short-circuit and sweep bindings that are
-        // still reachable, leaving dangling frame chains behind.
-        clear_persistent_node_marks_in(instance);
-        // Arena nodes use a cycle counter instead of the header mark bit, so
-        // this collection does not have to clear a bit on every young node.
-        // Persistent nodes still use the header bit cleared above.
-        super::memory::begin_gc_epoch();
-
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| collect(instance)));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            verify_gc_invariants_in(instance);
+            // Managed and permanent headers share epoch metadata; immutable
+            // process singletons are recognized without marking their bytes.
+            super::memory::begin_gc_epoch();
+            let _trace_scope = gc_trace::TraceScope::enter(gc_trace::TraceContext::new(
+                (*instance).arena.heap_identity(),
+                super::memory::current_gc_epoch(),
+            ));
+            collect(instance)
+        }));
         (*instance).gc_state.in_progress = false;
 
         match result {
@@ -1175,38 +1148,6 @@ where
             // was already reset above, so a panic caught higher up does not leave
             // GC permanently disabled.
             Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-}
-
-/// Clear trace marks on nodes this instance owns outside the arena.
-///
-/// The mark bit doubles as the per-cycle "visited" flag, but sweep only
-/// resets it for arena nodes. Persistent nodes (the empty/base/global
-/// environment sentinels in `env_nodes`, interned symbols in
-/// `symbol_nodes`, and out-of-arena cons cells in `raw_cons`) therefore
-/// survived earlier cycles with the bit still set, and every later cycle
-/// skipped tracing them. The process-global sentinels (`R_NilValue`,
-/// `R_UnboundValue`, `R_MissingArg`, `R_RestartToken`) are deliberately not
-/// touched: they are pre-marked to pin, and none of them traces children.
-fn clear_persistent_node_marks_in(instance: *mut instance::RInstance) {
-    unsafe {
-        for &node in &(*instance).env_nodes {
-            unsafe {
-                (*node).sxpinfo.set_mark(false);
-            }
-        }
-        for &node in &(*instance).symbol_nodes {
-            unsafe {
-                (*node).sxpinfo.set_mark(false);
-            }
-        }
-        for &node in &(*instance).raw_cons {
-            unsafe {
-                if !node.is_null() {
-                    (*node).sxpinfo.set_mark(false);
-                }
-            }
         }
     }
 }
@@ -2134,7 +2075,14 @@ mod tests {
         }
 
         left.legacy_protect.push(old, "test");
-        left.root_table.claim(old, "test");
+        let (projection, allocation) = super::super::memory::checked_projection(old).unwrap();
+        left.root_table.claim(
+            RootValue::Checked {
+                projection,
+                allocation,
+            },
+            "test",
+        );
         left.preserve_stack.borrow_mut().push(old);
         left.gc_state.remembered_set.add(old);
         right.legacy_protect.push(right_obj, "test");
@@ -2981,6 +2929,35 @@ mod tests {
 
         let after_ptr = unsafe { *((*vec).gengc_next_node as *mut SEXP) };
         assert_eq!(after_ptr, replacement);
+    }
+
+    #[test]
+    fn checked_gc_rejects_unknown_child_before_dereference_and_restores_scope() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            // SAFETY: the fixture owns the active session. The malformed edge
+            // is never dereferenced; it must fail allocation lookup first.
+            let (node, _root) = unsafe {
+                with_arena(|arena| {
+                    let node = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    (*node).data.listsxp.carval = std::ptr::without_provenance_mut(0x1_0000);
+                    let root = crate::sexp::protect::protect(node);
+                    (node, root)
+                })
+            };
+            let failure = std::panic::catch_unwind(full_gc)
+                .expect_err("unknown graph edge must fail before header access");
+            let message = failure.downcast_ref::<String>().expect("GC failure message");
+            assert!(message.contains("UnownedProjection"), "{message}");
+            // SAFETY: the failed mark cycle performs no sweeping; the root
+            // still owns this header. Restore its valid edge before retrying.
+            unsafe {
+                (*node).data.listsxp.carval = crate::sexp::globals::R_NilValue();
+            }
+            full_gc();
+            // SAFETY: the restored collection scope retains this live root.
+            assert!(unsafe { with_arena(|arena| arena.contains(node)) });
+        });
     }
 
     #[test]

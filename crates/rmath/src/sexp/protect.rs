@@ -69,12 +69,16 @@
 //! their generation tags) so the physical Vec stays contiguous; interior
 //! frees stay tombstoned beneath live entries.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::marker::PhantomData;
 
 use super::ffi::SEXP;
 use super::instance::{RInstance, with_required_current_instance};
 use super::object::{Sexp, SexpOwner};
+
+#[path = "root_storage.rs"]
+mod root_storage;
+use root_storage::{RootStorage, SlotId, StorageError};
 
 /// Error returned when a safe protection API receives a handle whose owner was
 /// not validated.
@@ -83,6 +87,10 @@ pub enum ProtectError {
     UnownedHandle { api: &'static str, owner: SexpOwner },
     ForeignOwner,
     StaleSlot,
+    StaleAllocation,
+    Allocation,
+    GenerationExhausted,
+    OwnerUnavailable,
 }
 
 impl std::fmt::Display for ProtectError {
@@ -90,6 +98,10 @@ impl std::fmt::Display for ProtectError {
         match self {
             Self::ForeignOwner => f.write_str("root replacement belongs to a different owner"),
             Self::StaleSlot => f.write_str("root slot has been released or reused"),
+            Self::StaleAllocation => f.write_str("root allocation has been reclaimed or reused"),
+            Self::Allocation => f.write_str("protection storage allocation failed"),
+            Self::GenerationExhausted => f.write_str("root generation exhausted"),
+            Self::OwnerUnavailable => f.write_str("root owner has been destroyed"),
             ProtectError::UnownedHandle { api, owner } => {
                 write!(f, "{api}: SEXP handle is not owner-scoped ({owner:?})")
             }
@@ -188,284 +200,209 @@ impl LegacyProtectionStack {
         // P2: the RefCell read borrow (and the &[SEXP] handed to f) covers
         // the legacy stack buffer only; callers mark/update SEXP objects
         // elsewhere, never this Vec's allocation.
-        let entries = self.entries.borrow();
+        let entries = self.entries.borrow().clone();
         f(&entries)
     }
 
-    /// Rewrite every entry through `update_fn` (non-moving GC sweep).
-    pub(crate) fn update_refs(&self, update_fn: &mut impl FnMut(SEXP) -> SEXP) {
-        // P2: as with_entries; the sweep's update_fn writes SEXP objects
-        // elsewhere, never this Vec's allocation.
+    fn entries_snapshot(&self) -> Vec<SEXP> {
+        self.entries.borrow().clone()
+    }
+    fn replace_if_current(&self, index: usize, expected: SEXP, replacement: SEXP) {
         let mut entries = self.entries.borrow_mut();
-        for slot in entries.iter_mut() {
-            *slot = update_fn(*slot);
+        if entries.get(index) == Some(&expected) {
+            entries[index] = replacement;
         }
     }
 }
 
-/// The Rust root table: stable, generational slots for Rust-side handles.
-///
-/// Slots are claimed by [`RootTable::claim`] (returning a slot id + a fresh
-/// generation) and released BY SLOT in any order via [`RootTable::release`]:
-/// release tombstones the entry in place (null pointer + bumped generation)
-/// and recycles the index through a free list, so surviving slots keep their
-/// indices across arbitrary drop orders. A release whose recorded generation
-/// no longer matches the live entry (slot already released, recycled, or cut
-/// away by a scope unwind) is a no-op — a stale handle can never evict the
-/// current owner. NOTHING count-based ever truncates this table: legacy
-/// `Rf_unprotect(n)` operates on the [`LegacyProtectionStack`] only.
+/// A root retains the exact allocation generation, independently of its native
+/// address. Shared process singletons have a separate immutable policy.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum RootValue {
+    Checked {
+        projection: SEXP,
+        allocation: super::heap::CheckedNode,
+    },
+    Static {
+        projection: SEXP,
+    },
+}
+
+impl RootValue {
+    fn is_live(&self) -> bool {
+        match self {
+            Self::Checked { allocation, .. } => allocation.is_live(),
+            Self::Static { .. } => true,
+        }
+    }
+
+    fn projection(&self) -> Option<SEXP> {
+        if !self.is_live() {
+            return None;
+        }
+        Some(match self {
+            Self::Checked { projection, .. } | Self::Static { projection } => *projection,
+        })
+    }
+
+    fn canonical(self) -> Result<Self, ProtectError> {
+        match self {
+            Self::Checked {
+                projection,
+                allocation,
+            } => {
+                if !allocation.is_live() {
+                    return Err(ProtectError::StaleAllocation);
+                }
+                let (projection, current) = super::memory::checked_projection(projection)
+                    .ok_or(ProtectError::StaleAllocation)?;
+                if current != allocation {
+                    return Err(ProtectError::StaleAllocation);
+                }
+                Ok(Self::Checked {
+                    projection,
+                    allocation,
+                })
+            }
+            Self::Static { projection } => {
+                let projection = super::session::immutable_singleton_projection(projection)
+                    .ok_or(ProtectError::ForeignOwner)?;
+                Ok(Self::Static { projection })
+            }
+        }
+    }
+
+    /// The raw owner is a live scoped native boundary. No input header is read.
+    unsafe fn from_owner(inst: *mut RInstance, input: SEXP) -> Result<Self, ProtectError> {
+        if let Some(projection) = super::session::immutable_singleton_projection(input) {
+            return Ok(Self::Static { projection });
+        }
+        let projection =
+            unsafe { (*inst).canonical_projection(input) }.ok_or(ProtectError::ForeignOwner)?;
+        let allocation =
+            unsafe { (*inst).node_token(projection) }.ok_or(ProtectError::StaleAllocation)?;
+        Self::Checked {
+            projection,
+            allocation,
+        }
+        .canonical()
+    }
+}
+
+/// The single canonical Rust root store. Lease identity and allocation identity
+/// are distinct: recycling either a root slot or a heap address cannot revive an
+/// older lease. Native projections are copied only from live checked entries.
 #[derive(Default)]
 pub(crate) struct RootTable {
-    entries: RefCell<Vec<SEXP>>,
-    /// Generation tag for each entry, kept parallel to `entries`.
-    generations: RefCell<Vec<u64>>,
-    /// Monotonic source of slot generations.
-    next_generation: Cell<u64>,
-    /// Vacant entry indices available for reuse.
-    free_list: RefCell<Vec<usize>>,
-    /// Managed `(index, generation)` identities. A `Vec` keeps this
-    /// deterministic: `HashSet` would seed a process RNG on first insert,
-    /// which the verifier cannot model and the table does not need.
-    managed: RefCell<Vec<(usize, u64)>>,
+    storage: RefCell<RootStorage<RootValue>>,
 }
 
 impl RootTable {
     pub(crate) fn new() -> Self {
-        Self {
-            entries: RefCell::new(Vec::new()),
-            generations: RefCell::new(Vec::new()),
-            next_generation: Cell::new(0),
-            free_list: RefCell::new(Vec::new()),
-            managed: RefCell::default(),
-        }
+        Self::default()
     }
-
     pub(crate) fn checkpoint(&self) -> u64 {
-        self.next_generation.get()
+        self.storage.borrow().checkpoint()
     }
-
-    fn managed_contains(&self, index: usize, generation: u64) -> bool {
-        self.managed
-            .borrow()
-            .iter()
-            .any(|&pair| pair == (index, generation))
-    }
-
-    fn managed_insert(&self, index: usize, generation: u64) {
-        let mut managed = self.managed.borrow_mut();
-        if !managed.contains(&(index, generation)) {
-            managed.push((index, generation));
-        }
-    }
-
-    fn managed_remove(&self, index: usize, generation: u64) {
-        self.managed
-            .borrow_mut()
-            .retain(|pair| *pair != (index, generation));
-    }
-
     fn retain_managed(&self, slot: ProtectionSlot) {
-        if let Some(index) = slot.index {
-            self.managed_insert(index, slot.generation);
+        if let Some(slot) = slot.storage_id() {
+            self.storage.borrow_mut().retain_managed(slot);
         }
     }
-
-    /// Clean up scope-owned raw roots, including reused interior slots.
-    /// Lifetime-bound Rust guards retain their roots until their own Drop.
     pub(crate) fn restore(&self, checkpoint: u64) {
-        let slots: Vec<_> = self
-            .generations
-            .borrow()
-            .iter()
-            .copied()
-            .enumerate()
-            .filter(|&(i, g)| g >= checkpoint && !self.managed_contains(i, g))
-            .map(|(i, g)| ProtectionSlot::from_stack_index(i, g))
-            .collect();
-        for slot in slots {
-            self.release(slot);
-        }
+        self.storage.borrow_mut().restore(checkpoint);
     }
-
-    /// Reserve the next slot generation before any other table write.
-    ///
-    /// On `Err` the counter is unchanged. Callers panic with
-    /// `root generation exhausted` before mutating entries, generations,
-    /// the free list, or managed identities. A later allocation failure
-    /// may skip the reserved value; that is preferable to publishing an
-    /// entry under the previous generation.
-    pub(crate) fn try_reserve_generation(&self) -> Result<u64, ()> {
-        let generation = self.next_generation.get();
-        let next = generation.checked_add(1).ok_or(())?;
-        self.next_generation.set(next);
-        Ok(generation)
-    }
-
     #[cfg(any(test, kani))]
     pub(crate) fn set_next_generation_for_test(&self, value: u64) {
-        self.next_generation.set(value);
+        self.storage
+            .borrow_mut()
+            .set_next_generation_for_test(value);
     }
-
-    /// Claim a slot for `s`, reusing a tombstoned index when one is free.
-    /// Returns the index now holding `s` and the fresh generation recorded
-    /// for it.
-    pub(crate) fn claim(&self, s: SEXP, api: &str) -> (usize, u64) {
-        // P2: strictly-local RefCell access. `reserve_slot_or_fail` may
-        // allocate (try_reserve) and panic, but neither reenters the
-        // interpreter nor touches the instance through another raw path.
-        // The generation is reserved first so exhaustion panics before
-        // any entry, free-list, or generation-log write.
-        let generation = self
-            .try_reserve_generation()
-            .expect("root generation exhausted");
-        if let Some(index) = self.free_list.borrow_mut().pop() {
-            let mut entries = self.entries.borrow_mut();
-            let mut generations = self.generations.borrow_mut();
-            if index < entries.len() && index < generations.len() {
-                entries[index] = s;
-                generations[index] = generation;
-                return (index, generation);
-            }
-            // Stale free-list entry (truncated away without pruning):
-            // discard it and fall through to a fresh push.
-        }
-        let mut entries = self.entries.borrow_mut();
-        reserve_slot_or_fail(&mut entries, api);
-        entries.push(s);
-        let index = entries.len() - 1;
-        let mut generations = self.generations.borrow_mut();
-        debug_assert_eq!(
-            generations.len(),
-            index,
-            "root generation log must stay parallel to the root table"
-        );
-        if generations.len() < index {
-            generations.resize(index, generation);
-        }
-        generations.push(generation);
-        (index, generation)
+    fn try_claim(&self, value: RootValue, managed: bool) -> Result<ProtectionSlot, ProtectError> {
+        let value = value.canonical()?;
+        let id = self
+            .storage
+            .borrow_mut()
+            .try_claim(value, managed)
+            .map_err(|error| match error {
+                StorageError::Allocation => ProtectError::Allocation,
+                StorageError::GenerationExhausted => ProtectError::GenerationExhausted,
+            })?;
+        Ok(ProtectionSlot::from_stack_index(id.index, id.generation))
     }
-
-    /// Release the slot `slot` refers to, if it still carries the generation
-    /// the handle recorded. Tombstones the entry in place and queues the
-    /// index for reuse; freed tail slots collapse off the table so the
-    /// physical Vec stays contiguous (interior frees stay tombstoned beneath
-    /// live entries). A stale release (index already freed, stolen by a
-    /// scope unwind, or whose generation moved on) is a no-op — dropping two
-    /// guards that disagree on the entry must not evict the live owner.
+    pub(crate) fn claim(&self, value: RootValue, api: &str) -> (usize, u64) {
+        let slot = self
+            .try_claim(value, false)
+            .unwrap_or_else(|error| panic!("{api}: {error}"));
+        (slot.index.expect("claimed root slot"), slot.generation)
+    }
     pub(crate) fn release(&self, slot: ProtectionSlot) {
-        let Some(index) = slot.index else {
-            return;
-        };
-        // P2: strictly-local RefCell access; no ambient write intervenes.
-        {
-            let entries = self.entries.borrow();
-            if index >= entries.len() {
-                return;
-            }
-            let generations = self.generations.borrow();
-            if index >= generations.len() || generations[index] != slot.generation {
-                return;
-            }
-        }
-        // Stale releases return above and must not consume a generation.
-        // Exhaustion panics before the occupant or managed set changes.
-        let generation = self
-            .try_reserve_generation()
-            .expect("root generation exhausted");
-        let mut entries = self.entries.borrow_mut();
-        if index >= entries.len() {
-            return;
-        }
-        let mut generations = self.generations.borrow_mut();
-        if index >= generations.len() || generations[index] != slot.generation {
-            return;
-        }
-        self.managed_remove(index, slot.generation);
-        entries[index] = std::ptr::null_mut();
-        generations[index] = generation;
-        let mut free = self.free_list.borrow_mut();
-        if !free.contains(&index) {
-            free.push(index);
-        }
-        while entries.len() > 0 && entries[entries.len() - 1].is_null() {
-            let tail = entries.len() - 1;
-            if let Some(pos) = free.iter().position(|&i| i == tail) {
-                free.swap_remove(pos);
-                entries.pop();
-                generations.pop();
-            } else {
-                break;
-            }
+        if let Some(id) = slot.storage_id() {
+            self.storage.borrow_mut().release(id);
         }
     }
-
-    /// Replace the value held by `slot`'s entry, if the entry still exists.
-    /// Used by the write barrier (`R_Reprotect` / `reprotect_sexp`).
-    pub(crate) fn reprotect(&self, slot: ProtectionSlot, s: SEXP) {
-        let Some(index) = slot.index else {
-            return;
-        };
-        // P2: strictly-local RefCell write; no ambient write intervenes.
-        let mut entries = self.entries.borrow_mut();
-        if index < entries.len() && self.generations.borrow().get(index) == Some(&slot.generation) {
-            entries[index] = s;
+    fn reprotect(&self, slot: ProtectionSlot, value: RootValue) -> Result<(), ProtectError> {
+        let value = value.canonical()?;
+        let id = slot.storage_id().ok_or(ProtectError::StaleSlot)?;
+        let mut storage = self.storage.borrow_mut();
+        if !storage.get(id).is_some_and(RootValue::is_live) {
+            return Err(ProtectError::StaleSlot);
         }
+        storage.replace(id, value);
+        Ok(())
     }
-
-    /// The generation currently recorded for `slot`'s index, or `None` when
-    /// the entry is gone.
     pub(crate) fn generation_at(&self, slot: ProtectionSlot) -> Option<u64> {
         let index = slot.index?;
-        // P2: strictly-local RefCell read; no ambient write intervenes.
-        let generations = self.generations.borrow();
-        generations.get(index).copied()
+        let storage = self.storage.borrow();
+        let (id, value) = storage.at(index)?;
+        value.is_live().then_some(id.generation)
     }
-
-    /// Number of entries in the table (including interior tombstones; freed
-    /// tails collapse). This is the root-table bookkeeping depth, NOT
-    /// `R_ProtectCount`.
     pub(crate) fn len(&self) -> usize {
-        // P2: strictly-local RefCell read; no ambient write intervenes.
-        self.entries.borrow().len()
+        self.storage.borrow().len()
     }
-
-    /// Unwind to a recorded depth (session `ProtectScope` teardown): cut
-    /// every entry at/above `depth`, drop the parallel generations, and drop
-    /// free-list indices that no longer name entries.
     pub(crate) fn truncate(&self, depth: usize) {
-        // P2: strictly-local RefCell access; no ambient write intervenes.
-        self.entries.borrow_mut().truncate(depth);
-        self.generations.borrow_mut().truncate(depth);
-        self.free_list.borrow_mut().retain(|&index| index < depth);
-        self.managed
-            .borrow_mut()
-            .retain(|&(index, _)| index < depth);
+        self.storage.borrow_mut().truncate(depth);
     }
-
-    /// Bulk reset (instance/test harness teardown).
     pub(crate) fn clear(&self) {
-        // P2: strictly-local RefCell access; no ambient write intervenes.
-        self.entries.borrow_mut().clear();
-        self.generations.borrow_mut().clear();
-        self.free_list.borrow_mut().clear();
-        self.managed.borrow_mut().clear();
+        self.storage.borrow_mut().clear();
     }
-
-    /// Run `f` over every entry in index order. Tombstoned slots hold null;
-    /// callers null-guard before dereferencing.
-    pub(crate) fn with_entries<R>(&self, f: impl FnOnce(&[SEXP]) -> R) -> R {
-        // P2: as LegacyProtectionStack::with_entries.
-        let entries = self.entries.borrow();
+    pub(crate) fn checked_entries_snapshot(&self) -> Vec<RootValue> {
+        self.storage
+            .borrow()
+            .entries()
+            .filter_map(|(_, value)| value.is_live().then(|| value.clone()))
+            .collect()
+    }
+    pub(crate) fn with_checked_entries<R>(&self, f: impl FnOnce(&[RootValue]) -> R) -> R {
+        let entries = self.checked_entries_snapshot();
         f(&entries)
     }
-
-    /// Rewrite every entry through `update_fn` (non-moving GC sweep).
-    pub(crate) fn update_refs(&self, update_fn: &mut impl FnMut(SEXP) -> SEXP) {
-        // P2: as LegacyProtectionStack::update_refs.
-        let mut entries = self.entries.borrow_mut();
-        for slot in entries.iter_mut() {
-            *slot = update_fn(*slot);
+    fn entries_snapshot(&self) -> Vec<SEXP> {
+        let storage = self.storage.borrow();
+        (0..storage.len())
+            .map(|index| {
+                storage
+                    .at(index)
+                    .and_then(|(_, value)| value.projection())
+                    .unwrap_or(std::ptr::null_mut())
+            })
+            .collect()
+    }
+    pub(crate) fn with_entries<R>(&self, f: impl FnOnce(&[SEXP]) -> R) -> R {
+        let entries = self.entries_snapshot();
+        f(&entries)
+    }
+    fn updates_snapshot(&self) -> Vec<(SlotId, RootValue)> {
+        self.storage
+            .borrow()
+            .entries()
+            .map(|(slot, value)| (slot, value.clone()))
+            .collect()
+    }
+    fn replace_if_current(&self, slot: SlotId, expected: &RootValue, value: RootValue) {
+        let mut storage = self.storage.borrow_mut();
+        if storage.get(slot) == Some(expected) {
+            storage.replace(slot, value);
         }
     }
 }
@@ -509,12 +446,27 @@ type Confined<'a> = PhantomData<(&'a (), *mut ())>;
 /// separately: root-slot releases check the slot's generation
 /// ([`RootTable::release`]) so a guard whose entry was already recycled or
 /// unwound is a no-op instead of evicting the live owner.
-#[derive(Clone, Copy)]
-struct GuardOwner(std::ptr::NonNull<RInstance>);
+#[derive(Clone)]
+struct GuardOwner {
+    pointer: std::ptr::NonNull<RInstance>,
+    liveness: super::instance::InstanceLiveness,
+}
+impl GuardOwner {
+    /// Capture a weak lifetime witness while this native owner is live.
+    unsafe fn new(pointer: *mut RInstance) -> Self {
+        Self {
+            pointer: std::ptr::NonNull::new(pointer).expect("live guard owner"),
+            liveness: unsafe { super::instance::instance_liveness(pointer) },
+        }
+    }
+    fn is_live(&self) -> bool {
+        self.liveness.is_live()
+    }
+}
 
-fn with_guard_owner<R>(owner: GuardOwner, f: impl FnOnce(*mut RInstance) -> R) -> R {
-    // SAFETY: see the function docs; the owner outlives the guard.
-    unsafe { f(owner.0.as_ptr()) }
+fn with_guard_owner<R>(owner: &GuardOwner, f: impl FnOnce(*mut RInstance) -> R) -> R {
+    assert!(owner.is_live(), "root owner has been destroyed");
+    f(owner.pointer.as_ptr())
 }
 
 /// How a [`ProtectGuard`] releases its protection at drop.
@@ -560,7 +512,7 @@ pub struct ProtectGuard<'a> {
 
 impl Drop for ProtectGuard<'_> {
     fn drop(&mut self) {
-        let Some(owner) = self.owner else {
+        let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) else {
             return;
         };
         match self.release {
@@ -591,19 +543,26 @@ pub fn protect_sexp<'a>(value: Sexp<'a>) -> ProtectGuard<'a> {
 pub fn try_protect_sexp<'a>(value: Sexp<'a>) -> Result<ProtectGuard<'a>, ProtectError> {
     ensure_owner_scoped(value.clone(), "protect_sexp")?;
     let owner = session_owner_handle(&value);
+    let slot = try_claim_value(&value, owner.as_ref())?;
     Ok(ProtectGuard {
         owner,
-        release: GuardRelease::RootSlot(owner.map_or_else(ProtectionSlot::inactive, |owner| {
-            with_guard_owner(owner, |inst| {
-                let slot = protect_raw_with_slot_in(inst, value.as_raw(), "protect_sexp");
-                unsafe {
-                    (*inst).root_table.retain_managed(slot);
-                }
-                slot
-            })
-        })),
+        release: GuardRelease::RootSlot(slot),
         _confined: PhantomData,
     })
+}
+
+fn try_claim_value(
+    value: &Sexp<'_>,
+    owner: Option<&GuardOwner>,
+) -> Result<ProtectionSlot, ProtectError> {
+    let Some(owner) = owner else {
+        return Ok(ProtectionSlot::inactive());
+    };
+    if !owner.is_live() {
+        return Err(ProtectError::OwnerUnavailable);
+    }
+    let raw = value.clone().as_raw();
+    with_guard_owner(owner, |inst| try_protect_raw_with_slot_in(inst, raw, true))
 }
 
 /// Protect a raw SEXP and return an RAII guard.
@@ -628,9 +587,7 @@ fn protect_raw(s: SEXP) -> ProtectGuard<'static> {
         // SAFETY: guard creation requires an active instance; `inst` is it.
         let slot = unsafe { protect_raw_with_slot_in(inst, s, "protect") };
         ProtectGuard {
-            owner: Some(GuardOwner(
-                std::ptr::NonNull::new(inst).expect("active instance"),
-            )),
+            owner: Some(unsafe { GuardOwner::new(inst) }),
             release: GuardRelease::RootSlot(slot),
             _confined: PhantomData,
         }
@@ -648,8 +605,8 @@ pub(crate) fn protect_n(n: usize) -> ProtectGuard<'static> {
         owner: if n == 0 {
             None
         } else {
-            Some(with_required_current_instance(|inst| {
-                GuardOwner(std::ptr::NonNull::new(inst).expect("active instance"))
+            Some(with_required_current_instance(|inst| unsafe {
+                GuardOwner::new(inst)
             }))
         },
         release: GuardRelease::LegacyCount(n),
@@ -781,6 +738,13 @@ impl ProtectionSlot {
         }
     }
 
+    fn storage_id(self) -> Option<SlotId> {
+        Some(SlotId {
+            index: self.index?,
+            generation: self.generation,
+        })
+    }
+
     fn from_stack_index(index: usize, generation: u64) -> Self {
         Self {
             index: Some(index),
@@ -831,13 +795,20 @@ fn protect_raw_with_slot(s: SEXP, api: &str) -> ProtectionSlot {
 
 /// Claim a generational root-table slot for `s` on `inst`.
 fn protect_raw_with_slot_in(inst: *mut RInstance, s: SEXP, api: &str) -> ProtectionSlot {
+    try_protect_raw_with_slot_in(inst, s, false).unwrap_or_else(|error| panic!("{api}: {error}"))
+}
+
+fn try_protect_raw_with_slot_in(
+    inst: *mut RInstance,
+    s: SEXP,
+    managed: bool,
+) -> Result<ProtectionSlot, ProtectError> {
     if s.is_null() {
-        return ProtectionSlot::inactive();
+        return Ok(ProtectionSlot::inactive());
     }
-    // SAFETY: `inst` is a live instance pointer from the caller; the RefCell
-    // access is strictly local.
-    let (index, generation) = unsafe { (*inst).root_table.claim(s, api) };
-    ProtectionSlot::from_stack_index(index, generation)
+    // SAFETY: all callers retain the live native owner for this local access.
+    let value = unsafe { RootValue::from_owner(inst, s) }?;
+    unsafe { (*inst).root_table.try_claim(value, managed) }
 }
 
 fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
@@ -847,7 +818,11 @@ fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
 fn reprotect_slot_in(inst: *mut RInstance, slot: ProtectionSlot, s: SEXP) {
     // P2: strictly-local RefCell write; no ambient write intervenes.
     // SAFETY: `inst` is a live instance pointer from the caller.
-    unsafe { (*inst).root_table.reprotect(slot, s) };
+    if !slot.is_active() {
+        return;
+    }
+    let value = unsafe { RootValue::from_owner(inst, s) }.expect("invalid root replacement");
+    let _ = unsafe { (*inst).root_table.reprotect(slot, value) };
 }
 
 fn release_protect_slot(slot: ProtectionSlot) {
@@ -894,16 +869,19 @@ impl<'a> IndexedProtectGuard<'a> {
     /// instance (see [`with_guard_owner`]). Inactive slots (null-SEXP
     /// protections) trivially match — there is no entry to go stale.
     fn slot_generation_is(&self, expected: u64) -> bool {
-        match self.owner {
-            Some(owner) if self.slot.is_active() => with_guard_owner(owner, |inst| {
-                protect_slot_generation_in(inst, self.slot) == Some(expected)
-            }),
+        match self.owner.as_ref() {
+            Some(owner) if self.slot.is_active() => {
+                owner.is_live()
+                    && with_guard_owner(owner, |inst| {
+                        protect_slot_generation_in(inst, self.slot) == Some(expected)
+                    })
+            }
             _ => true,
         }
     }
 
     pub(crate) unsafe fn reprotect_raw(&mut self, value: SEXP) {
-        if let Some(owner) = self.owner {
+        if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
             // SAFETY: See ProtectGuard::drop.
             with_guard_owner(owner, |inst| reprotect_slot_in(inst, self.slot, value));
         }
@@ -930,7 +908,7 @@ impl<'a> IndexedProtectGuard<'a> {
 
 impl Drop for IndexedProtectGuard<'_> {
     fn drop(&mut self) {
-        if let Some(owner) = self.owner {
+        if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
             // SAFETY: See ProtectGuard::drop.
             with_guard_owner(owner, |inst| release_protect_slot_in(inst, self.slot));
         }
@@ -1022,7 +1000,7 @@ impl<'a> RootedSexp<'a> {
     /// out-of-order drop) and the slot handed out again. Checked reads via
     /// [`get`](RootedSexp::get) report the mismatch as `None`.
     pub fn is_stale(&self) -> bool {
-        !self.guard.slot_generation_is(self.expected_generation)
+        !self.value.is_live() || !self.guard.slot_generation_is(self.expected_generation)
     }
 
     /// The underlying protection slot, for callers that need to reprotect
@@ -1071,21 +1049,10 @@ pub fn try_protect_sexp_with_index<'a>(
 ) -> Result<IndexedProtectGuard<'a>, ProtectError> {
     ensure_owner_scoped(value.clone(), "protect_sexp_with_index")?;
     let owner = session_owner_handle(&value);
+    let slot = try_claim_value(&value, owner.as_ref())?;
     Ok(IndexedProtectGuard {
         owner,
-        slot: owner.map_or_else(ProtectionSlot::inactive, |owner| {
-            with_guard_owner(owner, |inst| {
-                let slot = protect_raw_with_slot_in(
-                    inst,
-                    value.clone().as_raw(),
-                    "protect_sexp_with_index",
-                );
-                unsafe {
-                    (*inst).root_table.retain_managed(slot);
-                }
-                slot
-            })
-        }),
+        slot,
         value_owner: value.owner(),
         _confined: PhantomData,
     })
@@ -1106,9 +1073,7 @@ pub(crate) unsafe fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtec
     }
 
     with_required_current_instance(|inst| IndexedProtectGuard {
-        owner: Some(GuardOwner(
-            std::ptr::NonNull::new(inst).expect("active instance"),
-        )),
+        owner: Some(unsafe { GuardOwner::new(inst) }),
         slot: protect_raw_with_slot_in(inst, s, api),
         value_owner: SexpOwner::Unknown,
         _confined: PhantomData,
@@ -1160,14 +1125,19 @@ pub(crate) unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
 // ---------------------------------------------------------------------------
 
 fn push_preserve_in(inst: *mut RInstance, s: SEXP) {
+    try_push_preserve_in(inst, s).unwrap_or_else(|error| panic!("preserve: {error}"));
+}
+
+fn try_push_preserve_in(inst: *mut RInstance, s: SEXP) -> Result<(), ProtectError> {
     if !s.is_null() {
         // P2: strictly-local RefCell access; see
         // LegacyProtectionStack::push on try_reserve.
         // SAFETY: `inst` is a live instance pointer from the caller.
         let mut stack = unsafe { (*inst).preserve_stack.borrow_mut() };
-        reserve_slot_or_fail(&mut stack, "preserve");
+        stack.try_reserve(1).map_err(|_| ProtectError::Allocation)?;
         stack.push(s);
     }
+    Ok(())
 }
 
 fn push_preserve(s: SEXP) {
@@ -1202,7 +1172,7 @@ pub struct PreserveGuard<'a> {
 
 impl Drop for PreserveGuard<'_> {
     fn drop(&mut self) {
-        if let Some(owner) = self.owner {
+        if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
             // SAFETY: See ProtectGuard::drop.
             with_guard_owner(owner, |inst| release_preserved_in(inst, self.value));
         }
@@ -1228,8 +1198,11 @@ pub fn try_preserve_sexp<'a>(value: Sexp<'a>) -> Result<PreserveGuard<'a>, Prote
     }
 
     let owner = session_owner_handle(&value);
-    if let Some(owner) = owner {
-        with_guard_owner(owner, |inst| push_preserve_in(inst, raw));
+    if let Some(owner) = owner.as_ref() {
+        if !owner.is_live() {
+            return Err(ProtectError::OwnerUnavailable);
+        }
+        with_guard_owner(owner, |inst| try_push_preserve_in(inst, raw))?;
     }
     Ok(PreserveGuard {
         owner,
@@ -1258,12 +1231,17 @@ pub(crate) unsafe fn R_ReleaseObject(s: SEXP) {
 // instance, independently of the ambient thread-local session.
 fn session_owner_handle(value: &Sexp<'_>) -> Option<GuardOwner> {
     match value.owner() {
-        SexpOwner::Session(_) => value.session_owner_ptr.map(GuardOwner),
+        SexpOwner::Session(_) => value
+            .session_owner_ptr
+            .map(|pointer| unsafe { GuardOwner::new(pointer.as_ptr()) }),
         _ => None,
     }
 }
 
 fn ensure_owner_scoped(value: Sexp<'_>, api: &'static str) -> Result<(), ProtectError> {
+    if !value.is_live() {
+        return Err(ProtectError::StaleAllocation);
+    }
     if value.clone().is_owner_scoped() {
         Ok(())
     } else {
@@ -1293,15 +1271,10 @@ pub(crate) fn with_protected_objects_in<F, R>(inst: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&[SEXP], &[SEXP]) -> R,
 {
-    // P2: the RefCell read borrows (and the &[SEXP] pairs handed to f) cover
-    // the two stack buffers only; GC marking writes SEXP headers elsewhere,
-    // never these Vecs' allocations.
-    // SAFETY: `inst` is a live instance pointer from the caller.
-    unsafe {
-        (*inst)
-            .legacy_protect
-            .with_entries(|legacy| (*inst).root_table.with_entries(|roots| f(legacy, roots)))
-    }
+    // All owner and storage borrows end before the supplied code runs.
+    let legacy = unsafe { (*inst).legacy_protect.entries_snapshot() };
+    let roots = unsafe { (*inst).root_table.entries_snapshot() };
+    f(&legacy, &roots)
 }
 
 /// Update all protection entries — legacy stack AND root table — using the
@@ -1318,12 +1291,44 @@ pub(crate) fn update_protect_stack_refs_in<F>(inst: *mut RInstance, mut update_f
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    // P2: the RefCell write borrows cover the two stack buffers only; the
-    // sweep's update_fn writes SEXP objects elsewhere.
-    // SAFETY: `inst` is a live instance pointer from the caller.
-    unsafe {
-        (*inst).legacy_protect.update_refs(&mut update_fn);
-        (*inst).root_table.update_refs(&mut update_fn);
+    // Snapshot native projections and checked identities before callbacks.
+    // A callback may remove roots or destroy this owner; neither resurrects an
+    // old lease nor permits a subsequent dereference of the destroyed owner.
+    let liveness = unsafe { super::instance::instance_liveness(inst) };
+    let legacy = unsafe { (*inst).legacy_protect.entries_snapshot() };
+    let roots = unsafe { (*inst).root_table.updates_snapshot() };
+    for (index, expected) in legacy.into_iter().enumerate() {
+        if !liveness.is_live() {
+            return;
+        }
+        let replacement = update_fn(expected);
+        if !liveness.is_live() {
+            return;
+        }
+        unsafe {
+            (*inst)
+                .legacy_protect
+                .replace_if_current(index, expected, replacement);
+        }
+    }
+    for (slot, expected) in roots {
+        if !liveness.is_live() {
+            return;
+        }
+        let Some(projection) = expected.projection() else {
+            continue;
+        };
+        let replacement = update_fn(projection);
+        if !liveness.is_live() {
+            return;
+        }
+        let replacement = unsafe { RootValue::from_owner(inst, replacement) }
+            .expect("root update returned an invalid owner projection");
+        unsafe {
+            (*inst)
+                .root_table
+                .replace_if_current(slot, &expected, replacement);
+        }
     }
 }
 
@@ -1340,11 +1345,20 @@ pub(crate) fn update_preserve_stack_refs_in<F>(inst: *mut RInstance, mut update_
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    // P2: as update_protect_stack_refs_in.
-    // SAFETY: `inst` is a live instance pointer from the caller.
-    let mut stack = unsafe { (*inst).preserve_stack.borrow_mut() };
-    for slot in stack.iter_mut() {
-        *slot = update_fn(*slot);
+    let liveness = unsafe { super::instance::instance_liveness(inst) };
+    let snapshot = unsafe { (*inst).preserve_stack.borrow().clone() };
+    for (index, expected) in snapshot.into_iter().enumerate() {
+        if !liveness.is_live() {
+            return;
+        }
+        let replacement = update_fn(expected);
+        if !liveness.is_live() {
+            return;
+        }
+        let mut stack = unsafe { (*inst).preserve_stack.borrow_mut() };
+        if stack.get(index) == Some(&expected) {
+            stack[index] = replacement;
+        }
     }
 }
 
@@ -1363,7 +1377,7 @@ where
 {
     // P2: as with_protected_objects_in.
     // SAFETY: `inst` is a live instance pointer from the caller.
-    let stack = unsafe { (*inst).preserve_stack.borrow() };
+    let stack = unsafe { (*inst).preserve_stack.borrow().clone() };
     f(&stack)
 }
 
@@ -1388,7 +1402,7 @@ mod tests {
     fn test_protect_unprotect() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            let fake = 0x1 as SEXP;
+            let fake = token(0x1);
             let result = protect_raw_pointer(fake);
             assert_eq!(result, fake);
             assert_eq!(R_ProtectCount(), 1);
@@ -1410,9 +1424,9 @@ mod tests {
     fn test_protect_multiple() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            let a = 0x1 as SEXP;
-            let b = 0x2 as SEXP;
-            let c = 0x3 as SEXP;
+            let a = token(0x1);
+            let b = token(0x2);
+            let c = token(0x3);
             protect_raw_pointer(a);
             protect_raw_pointer(b);
             protect_raw_pointer(c);
@@ -1428,8 +1442,8 @@ mod tests {
     fn test_unprotect_ptr() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            let a = 0x1 as SEXP;
-            let b = 0x2 as SEXP;
+            let a = token(0x1);
+            let b = token(0x2);
             protect_raw_pointer(a);
             protect_raw_pointer(b);
             assert_eq!(R_ProtectCount(), 2);
@@ -1462,7 +1476,7 @@ mod tests {
     fn test_unprotect_exceeds_stack() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            protect_raw_pointer(0x1 as SEXP);
+            protect_raw_pointer(token(0x1));
             unprotect_count(5);
             assert_eq!(R_ProtectCount(), 0);
         });
@@ -1474,9 +1488,9 @@ mod tests {
         session.with_protected(|| {
             let depth_before = R_ProtectCount();
             unsafe {
-                protect_raw_pointer(0x1 as SEXP);
-                protect_raw_pointer(0x2 as SEXP);
-                protect_raw_pointer(0x3 as SEXP);
+                protect_raw_pointer(token(0x1));
+                protect_raw_pointer(token(0x2));
+                protect_raw_pointer(token(0x3));
             }
             let _guard = protect_n(3);
             assert_eq!(R_ProtectCount(), depth_before + 3);
@@ -1493,11 +1507,11 @@ mod tests {
 
         unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            protect_raw_pointer(0x1 as SEXP)
+            protect_raw_pointer(token(0x1))
         };
         unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            protect_raw_pointer(0x2 as SEXP)
+            protect_raw_pointer(token(0x2))
         };
         let guard = protect_n(2);
         assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 2);
@@ -1518,8 +1532,8 @@ mod tests {
     fn test_with_protected_objects() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            protect_raw_pointer(0x1 as SEXP);
-            protect_raw_pointer(0x2 as SEXP);
+            protect_raw_pointer(token(0x1));
+            protect_raw_pointer(token(0x2));
             with_protected_objects(|legacy, roots| {
                 assert_eq!(legacy.len(), 2);
                 assert!(roots.is_empty());
@@ -1532,18 +1546,12 @@ mod tests {
     fn test_update_protect_stack_refs() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            protect_raw_pointer(0x1 as SEXP);
-            protect_raw_pointer(0x2 as SEXP);
-            update_protect_stack_refs(|ptr| {
-                if ptr as usize == 0x1 {
-                    0x100 as SEXP
-                } else {
-                    ptr
-                }
-            });
+            protect_raw_pointer(token(0x1));
+            protect_raw_pointer(token(0x2));
+            update_protect_stack_refs(|ptr| if ptr == token(0x1) { token(0x100) } else { ptr });
             with_protected_objects(|legacy, _| {
-                assert_eq!(legacy[0] as usize, 0x100);
-                assert_eq!(legacy[1] as usize, 0x2);
+                assert_eq!(legacy[0], token(0x100));
+                assert_eq!(legacy[1], token(0x2));
             });
             unprotect_count(2);
         });
@@ -1713,7 +1721,9 @@ mod tests {
             with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
             guard.reprotect_sexp(second.clone());
             with_protected_objects(|_, roots| {
-                assert_eq!(roots, &[
+                assert_eq!(
+                    roots,
+                    &[
                         first.clone().as_raw(),
                         second.clone().as_raw(),
                         second.clone().as_raw()
@@ -1745,13 +1755,13 @@ mod tests {
         let left_ptr = current_instance_ptr().expect("left should be installed");
         let guard = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            protect(0x1 as SEXP)
+            protect(token(0x1))
         };
         // As above: inspect through the installed pointer, never a fresh
         // borrow of the local, while the guard is live.
         with_protected_objects_in(left_ptr, |legacy, roots| {
             assert!(legacy.is_empty());
-            assert_eq!(roots, &[0x1 as SEXP]);
+            assert_eq!(roots, &[token(0x1)]);
         });
         with_protected_objects_in(addr_of_mut!(right), |legacy, roots| {
             assert!(legacy.is_empty());
@@ -1787,11 +1797,11 @@ mod tests {
 
         let mut guard = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            protect_with_index_raw(0x1 as SEXP, "test")
+            protect_with_index_raw(token(0x1), "test")
         };
         with_protected_objects_in(left_ptr, |legacy, roots| {
             assert!(legacy.is_empty());
-            assert_eq!(roots, &[0x1 as SEXP]);
+            assert_eq!(roots, &[token(0x1)]);
         });
 
         unsafe {
@@ -1799,11 +1809,11 @@ mod tests {
         }
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            guard.reprotect_raw(0x2 as SEXP)
+            guard.reprotect_raw(token(0x2))
         });
         with_protected_objects_in(left_ptr, |legacy, roots| {
             assert!(legacy.is_empty());
-            assert_eq!(roots, &[0x2 as SEXP])
+            assert_eq!(roots, &[token(0x2)])
         });
         with_protected_objects_in(addr_of_mut!(right), |legacy, roots| {
             assert!(legacy.is_empty());
@@ -1824,7 +1834,7 @@ mod tests {
     fn test_protect_with_index() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            let fake = 0x1 as SEXP;
+            let fake = token(0x1);
             let idx = R_ProtectWithIndex(fake);
             assert!(!idx.is_null());
             // The shim claims a generational root-table slot: the legacy
@@ -1852,8 +1862,8 @@ mod tests {
     fn test_reprotect() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            let a = 0x1 as SEXP;
-            let b = 0x2 as SEXP;
+            let a = token(0x1);
+            let b = token(0x2);
             let idx = R_ProtectWithIndex(a);
             R_Reprotect(b, idx);
             with_protected_objects(|_, roots| assert_eq!(roots[0], b));
@@ -1864,7 +1874,7 @@ mod tests {
     fn test_reprotect_null_index() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            R_Reprotect(0x1 as SEXP, ptr::null_mut());
+            R_Reprotect(token(0x1), ptr::null_mut());
         });
     }
 
@@ -1882,7 +1892,7 @@ mod tests {
     fn test_preserve_release() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            let fake = 0x1 as SEXP;
+            let fake = token(0x1);
             R_PreserveObject(fake);
             with_preserved_objects(|objects| assert_eq!(objects.len(), 1));
             R_ReleaseObject(fake);
@@ -1918,8 +1928,9 @@ mod tests {
         // ambient re-acquisition `preserve_sexp` performs (Stacked Borrows).
         let left_ptr = current_instance_ptr().expect("left should be installed");
         let raw = unsafe { (*left_ptr).arena.alloc_node(SEXPTYPE::INTSXP) };
-        let value =
-            unsafe { crate::sexp::owner::OwnerToken::from_raw(left_ptr) }.sexp(raw).expect("left object should wrap");
+        let value = unsafe { crate::sexp::owner::OwnerToken::from_raw(left_ptr) }
+            .sexp(raw)
+            .expect("left object should wrap");
 
         let guard = preserve_sexp(value);
         with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
@@ -1947,13 +1958,13 @@ mod tests {
     fn test_slot_generations_differ_across_release_and_reuse() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
-            let first = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0x1 as SEXP, "test") };
+            let first = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(token(0x1), "test") };
             let first_slot = first.slot();
             assert!(first_slot.is_active());
             drop(first);
 
             // The same index is handed out again with a fresh generation.
-            let second = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0x2 as SEXP, "test") };
+            let second = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(token(0x2), "test") };
             let second_slot = second.slot();
             assert_ne!(first_slot.generation(), second_slot.generation());
 
@@ -2108,7 +2119,7 @@ mod tests {
     fn test_slot_reuse_rejects_old_token() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
-            let first = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0x1 as SEXP, "test") };
+            let first = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(token(0x1), "test") };
             let stale_token = first.slot();
             assert!(stale_token.is_active());
             assert!(!stale_token.is_stale());
@@ -2116,7 +2127,7 @@ mod tests {
             assert!(stale_token.is_stale());
 
             // The freed index is handed out again with a fresh generation.
-            let second = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0x2 as SEXP, "test") };
+            let second = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(token(0x2), "test") };
             let live_token = second.slot();
             assert!(live_token.is_active());
             assert_ne!(stale_token.generation(), live_token.generation());
@@ -2149,8 +2160,8 @@ mod tests {
 
             // Legacy pushes and count-based pops interleave with live roots.
             unsafe {
-                protect_raw_pointer(0xA as SEXP);
-                protect_raw_pointer(0xB as SEXP);
+                protect_raw_pointer(token(0xA));
+                protect_raw_pointer(token(0xB));
             }
             assert_eq!(R_ProtectCount(), 2);
             unprotect_count(2);
@@ -2178,24 +2189,24 @@ mod tests {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| {
             unsafe {
-                protect_raw_pointer(0x1 as SEXP);
-                protect_raw_pointer(0x2 as SEXP);
-                protect_raw_pointer(0x3 as SEXP);
+                protect_raw_pointer(token(0x1));
+                protect_raw_pointer(token(0x2));
+                protect_raw_pointer(token(0x3));
             }
             assert_eq!(R_ProtectCount(), 3);
 
             // Claim and release roots (in any order) around the live legacy
             // entries: the legacy stack must not shift.
-            let a = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0xA1 as SEXP) };
-            let b = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(0xA2 as SEXP, "test") };
+            let a = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(token(0xA1)) };
+            let b = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect_with_index_raw(token(0xA2), "test") };
             drop(a);
             with_protected_objects(|legacy, _| {
-                assert_eq!(legacy, &[0x1 as SEXP, 0x2 as SEXP, 0x3 as SEXP]);
+                assert_eq!(legacy, &[token(0x1), token(0x2), token(0x3)]);
             });
             drop(b);
             assert_eq!(R_ProtectCount(), 3);
             with_protected_objects(|legacy, roots| {
-                assert_eq!(legacy, &[0x1 as SEXP, 0x2 as SEXP, 0x3 as SEXP]);
+                assert_eq!(legacy, &[token(0x1), token(0x2), token(0x3)]);
                 assert!(roots.iter().all(|&p| p.is_null()) || roots.is_empty());
             });
 
@@ -2216,8 +2227,8 @@ mod tests {
         let right = RSession::new_for_gc_tests();
 
         let left_root = left.with_active(|| RootedSexp::root(left.global_env().unwrap()));
-        let left_guard = left.with_active(|| unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x10 as SEXP) });
-        let right_guard = right.with_active(|| unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x20 as SEXP) });
+        let left_guard = left.with_active(|| unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(token(0x10)) });
+        let right_guard = right.with_active(|| unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(token(0x20)) });
 
         left.with_active(|| {
             with_protected_objects(|legacy, roots| {
@@ -2228,7 +2239,7 @@ mod tests {
         right.with_active(|| {
             with_protected_objects(|legacy, roots| {
                 assert!(legacy.is_empty());
-                assert_eq!(roots, &[0x20 as SEXP]); // right_guard only
+                assert_eq!(roots, &[token(0x20)]); // right_guard only
             })
         });
 
@@ -2247,18 +2258,18 @@ mod tests {
     fn test_update_protect_stack_refs_covers_both_storages() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            protect_raw_pointer(0x1 as SEXP);
-            let _root = protect_with_index_raw(0x2 as SEXP, "test");
+            protect_raw_pointer(token(0x1));
+            let _root = protect_with_index_raw(token(0x2), "test");
             update_protect_stack_refs(|ptr| {
-                if ptr as usize == 0x1 || ptr as usize == 0x2 {
-                    0x100 as SEXP
+                if ptr == token(0x1) || ptr == token(0x2) {
+                    token(0x100)
                 } else {
                     ptr
                 }
             });
             with_protected_objects(|legacy, roots| {
-                assert_eq!(legacy[0] as usize, 0x100);
-                assert_eq!(roots[0] as usize, 0x100);
+                assert_eq!(legacy[0], token(0x100));
+                assert_eq!(roots[0], token(0x100));
             });
             unprotect_count(1);
         });
@@ -2268,12 +2279,12 @@ mod tests {
     fn test_update_preserve_stack_refs() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            R_PreserveObject(0x1 as SEXP);
-            update_preserve_stack_refs(|ptr| 0x200 as SEXP);
+            R_PreserveObject(token(0x1));
+            update_preserve_stack_refs(|ptr| token(0x200));
             with_preserved_objects(|objects| {
-                assert_eq!(objects[0] as usize, 0x200);
+                assert_eq!(objects[0], token(0x200));
             });
-            R_ReleaseObject(0x200 as SEXP);
+            R_ReleaseObject(token(0x200));
         });
     }
 
@@ -2281,13 +2292,13 @@ mod tests {
     fn test_with_preserved_objects() {
         let session = RSession::new_for_gc_tests();
         session.with_protected(|| unsafe {
-            R_PreserveObject(0x1 as SEXP);
-            R_PreserveObject(0x2 as SEXP);
+            R_PreserveObject(token(0x1));
+            R_PreserveObject(token(0x2));
             with_preserved_objects(|objects| {
                 assert_eq!(objects.len(), 2);
             });
-            R_ReleaseObject(0x1 as SEXP);
-            R_ReleaseObject(0x2 as SEXP);
+            R_ReleaseObject(token(0x1));
+            R_ReleaseObject(token(0x2));
         });
     }
     #[test]
@@ -2319,7 +2330,8 @@ mod tests {
         reprotect_slot(old.slot(), session.global_env().unwrap().as_raw());
         let base = session.base_env().unwrap().as_raw();
         with_protected_objects(|_, roots| {
-            assert_eq!(roots
+            assert_eq!(
+                roots
                     .iter()
                     .copied()
                     .filter(|p| !p.is_null())
@@ -2340,120 +2352,98 @@ mod tests {
         assert!(root.get().unwrap().is_environment());
     }
 
+    // These are actual process-owned native objects, not fabricated addresses.
     fn token(n: usize) -> SEXP {
-        std::ptr::without_provenance_mut(n.max(1))
+        unsafe {
+            match n % 7 {
+                0 => super::super::globals::R_NilValue(),
+                1 => super::super::globals::R_UnboundValue(),
+                2 => super::super::globals::R_MissingArg(),
+                3 => super::super::globals::R_RestartToken(),
+                4 => super::super::globals::R_NaString(),
+                5 => super::super::globals::R_True(),
+                _ => super::super::globals::R_False(),
+            }
+        }
     }
 
     #[test]
-    fn claim_at_generation_max_panics_without_mutating() {
-        let table = RootTable::new();
-        let (index, generation) = table.claim(token(8), "test");
-        table.set_next_generation_for_test(u64::MAX);
-        let before_len = table.len();
-        let before_gen = table.generation_at(ProtectionSlot::from_stack_index(index, generation));
-        let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            table.claim(token(9), "test");
-        }));
-        let payload = err.expect_err("generation exhaustion must panic");
-        let message = payload
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .unwrap_or("");
-        assert!(message.contains("root generation exhausted"), "{message}");
-        assert_eq!(table.len(), before_len);
-        assert_eq!(
-            table.generation_at(ProtectionSlot::from_stack_index(index, generation)),
-            before_gen
-        );
-        assert!(table.free_list.borrow().is_empty());
-    }
-
-    #[test]
-    fn release_at_generation_max_panics_without_mutating() {
-        let table = RootTable::new();
-        let (index, generation) = table.claim(token(8), "test");
-        let slot = ProtectionSlot::from_stack_index(index, generation);
-        table.set_next_generation_for_test(u64::MAX);
-        let before = table.with_entries(|entries| entries.to_vec());
-        let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            table.release(slot);
-        }));
-        let payload = err.expect_err("generation exhaustion must panic");
-        let message = payload
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .unwrap_or("");
-        assert!(message.contains("root generation exhausted"), "{message}");
-        assert_eq!(table.with_entries(|entries| entries.to_vec()), before);
-        assert_eq!(table.generation_at(slot), Some(generation));
-        assert!(table.free_list.borrow().is_empty());
+    fn exhausted_safe_claim_returns_error_without_mutating_existing_roots() {
+        let session = RSession::new_for_gc_tests();
+        let value = session.global_env().unwrap();
+        let owner = value.session_owner_ptr.unwrap().as_ptr();
+        let before = unsafe { (*owner).root_table.entries_snapshot() };
+        unsafe {
+            (*owner).root_table.set_next_generation_for_test(u64::MAX);
+        }
+        assert!(matches!(
+            try_protect_sexp(value.clone()),
+            Err(ProtectError::GenerationExhausted)
+        ));
+        assert!(matches!(
+            try_protect_sexp_with_index(value.clone()),
+            Err(ProtectError::GenerationExhausted)
+        ));
+        assert!(matches!(
+            RootedSexp::try_root(value.clone()),
+            Err(ProtectError::GenerationExhausted)
+        ));
+        assert_eq!(unsafe { (*owner).root_table.entries_snapshot() }, before);
+        drop(value); // Even at generation exhaustion, root cleanup cannot panic.
+        assert_eq!(unsafe { (*owner).root_table.len() }, 0);
     }
 }
 
 #[cfg(kani)]
 mod root_table_kani {
-    use super::{LegacyProtectionStack, ProtectionSlot, RootTable};
-
-    fn token(n: usize) -> super::SEXP {
-        std::ptr::without_provenance_mut(n.max(1))
-    }
+    use super::root_storage::{RootStorage, StorageError};
 
     #[kani::proof]
     fn root_table_exhaustion_is_atomic() {
-        let table = RootTable::new();
+        let mut table = RootStorage::default();
         table.set_next_generation_for_test(u64::MAX);
-        assert!(table.try_reserve_generation().is_err());
-        assert_eq!(table.next_generation.get(), u64::MAX);
+        assert_eq!(
+            table.try_claim(1u8, false),
+            Err(StorageError::GenerationExhausted)
+        );
+        assert_eq!(table.checkpoint(), u64::MAX);
         assert_eq!(table.len(), 0);
-        assert!(table.free_list.borrow().is_empty());
     }
 
-    /// A full symbolic operation trace is too large for the solver. These
-    /// harnesses each cover one transition the trace was meant to include.
     #[kani::proof]
-    #[kani::unwind(3)]
+    #[kani::unwind(4)]
     fn root_table_ops_preserve_invariant() {
-        let table = RootTable::new();
-        let (index, generation) = table.claim(token(1), "kani");
-        let live = ProtectionSlot::from_stack_index(index, generation);
-        table.release(live);
-        let (reused, next_gen) = table.claim(token(2), "kani");
-        assert_eq!(reused, index);
-        let stale = ProtectionSlot::from_stack_index(index, generation);
-        table.release(stale);
-        assert_eq!(table.generation_at(ProtectionSlot::from_stack_index(reused, next_gen)), Some(next_gen));
-        assert_eq!(table.entries.borrow().len(), table.generations.borrow().len());
-        kani::cover(true, "reuse");
-        kani::cover(true, "stale release");
+        let mut table = RootStorage::default();
+        let old = table.try_claim(1u8, false).unwrap();
+        table.release(old);
+        let live = table.try_claim(2u8, false).unwrap();
+        assert_eq!(old.index, live.index);
+        assert_ne!(old.generation, live.generation);
+        assert!(!table.release(old));
+        assert_eq!(table.get(live), Some(&2));
     }
 
     #[kani::proof]
-    #[kani::unwind(3)]
+    #[kani::unwind(4)]
     fn root_table_restore_keeps_managed() {
-        let table = RootTable::new();
+        let mut table = RootStorage::default();
         let checkpoint = table.checkpoint();
-        let (raw_index, raw_gen) = table.claim(token(1), "kani");
-        let (kept_index, kept_gen) = table.claim(token(2), "kani");
-        let kept = ProtectionSlot::from_stack_index(kept_index, kept_gen);
-        table.retain_managed(kept);
+        let raw = table.try_claim(1u8, false).unwrap();
+        let managed = table.try_claim(2u8, true).unwrap();
         table.restore(checkpoint);
-        assert_ne!(table.generation_at(ProtectionSlot::from_stack_index(raw_index, raw_gen)), Some(raw_gen));
-        assert_eq!(table.generation_at(kept), Some(kept_gen));
-        kani::cover(true, "managed survived");
-        kani::cover(true, "unmanaged cleared");
+        assert_eq!(table.get(raw), None);
+        assert_eq!(table.get(managed), Some(&2));
     }
 
     #[kani::proof]
-    #[kani::unwind(3)]
+    #[kani::unwind(4)]
     fn root_table_legacy_stack_is_disjoint() {
-        let table = RootTable::new();
-        let legacy = LegacyProtectionStack::new();
-        let _ = table.claim(token(1), "kani");
-        let before_len = table.len();
-        let before_gen = table.next_generation.get();
-        legacy.push(token(3), "kani");
-        legacy.pop_count(1);
-        assert_eq!(table.len(), before_len);
-        assert_eq!(table.next_generation.get(), before_gen);
+        let mut table = RootStorage::default();
+        let mut legacy = Vec::new();
+        let _ = table.try_claim(1u8, false).unwrap();
+        let before = (table.len(), table.checkpoint());
+        legacy.push(2u8);
+        legacy.pop();
+        assert_eq!((table.len(), table.checkpoint()), before);
     }
 }

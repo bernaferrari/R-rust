@@ -32,6 +32,7 @@ pub(crate) mod memory_ext;
 pub(crate) mod numeric;
 pub mod object;
 pub mod output;
+pub(crate) mod payload;
 pub(crate) mod owner;
 pub mod protect;
 pub mod session;

@@ -87,6 +87,9 @@ unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
 /// Set the S4 object flag.
 #[inline]
 unsafe fn SET_S4_OBJECT(x: SEXP) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             let gp = (*x).sxpinfo.gp() | S4_OBJECT_MASK;
@@ -98,6 +101,9 @@ unsafe fn SET_S4_OBJECT(x: SEXP) {
 /// Unset the S4 object flag.
 #[inline]
 unsafe fn UNSET_S4_OBJECT(x: SEXP) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             let gp = (*x).sxpinfo.gp() & !S4_OBJECT_MASK;
@@ -131,6 +137,9 @@ unsafe fn MAYBEJIT(x: SEXP) -> c_int {
 /// Set the NOJIT gp bit.
 #[inline]
 unsafe fn SET_NOJIT(x: SEXP) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             let gp = (*x).sxpinfo.gp() | NOJIT_MASK;
@@ -142,6 +151,9 @@ unsafe fn SET_NOJIT(x: SEXP) {
 /// Set the MAYBEJIT gp bit.
 #[inline]
 unsafe fn SET_MAYBEJIT(x: SEXP) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             let gp = (*x).sxpinfo.gp() | MAYBEJIT_MASK;
@@ -164,6 +176,9 @@ unsafe fn RTRACE(x: SEXP) -> c_int {
 /// Set or clear the RTRACE bit (`sxpinfo.trace`, bit 26).
 #[inline]
 unsafe fn SET_RTRACE(x: SEXP, v: c_int) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             (*x).sxpinfo.set_trace(v != 0);
@@ -240,6 +255,9 @@ unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, s: SEXP) -> ! {
 /// Set the DDVAL flag on a symbol.
 #[inline]
 unsafe fn SET_DDVAL(x: SEXP, v: c_int) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             let gp = if v != 0 {

@@ -34,6 +34,7 @@ const _: () = assert!(NODE_PAGE_SIZE % 64 == 0);
 use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData};
 use super::heap::{CheckedNode, HeapIdentity, NodeId, NodePage, NodeProjection, PageMetadata};
 use super::object::Sexp;
+use super::payload::{OwnedPayload, PayloadError};
 
 /// Byte size of one node for checking legacy projection address ranges.
 const NODE_BYTES: usize = std::mem::size_of::<SexprecCore>();
@@ -134,8 +135,8 @@ fn note_buffer_allocation_attempt() {
     BUFFER_ALLOCATION_ATTEMPTS.with(|count| count.set(count.get() + 1));
 }
 
-/// Own a raw buffer until it is transferred to an arena or transient stack.
-/// This also releases an unpublished payload if node allocation unwinds.
+/// Own an arbitrary-layout transient workspace. Vector and character storage
+/// use typed [`OwnedPayload`] ownership instead of native raw allocations.
 pub(crate) struct OwnedBuffer {
     ptr: std::ptr::NonNull<u8>,
     layout: Layout,
@@ -156,11 +157,6 @@ impl OwnedBuffer {
         self.ptr.as_ptr()
     }
 
-    fn into_raw(self) -> (*mut u8, Layout) {
-        let parts = (self.ptr.as_ptr(), self.layout);
-        std::mem::forget(self);
-        parts
-    }
 }
 
 impl Drop for OwnedBuffer {
@@ -169,10 +165,20 @@ impl Drop for OwnedBuffer {
     }
 }
 
+fn zeroed_vector_payload(kind: SEXPTYPE, length: R_xlen_t) -> Result<OwnedPayload, ArenaError> {
+    #[cfg(test)]
+    if length > 0 { note_buffer_allocation_attempt(); }
+    OwnedPayload::zeroed_vector(kind, length).map_err(|error| match error {
+        PayloadError::Allocation => ArenaError::OutOfMemory,
+        PayloadError::InvalidLength => ArenaError::InvalidLength,
+        PayloadError::InvalidVectorType => ArenaError::InvalidVectorType { sexptype: kind },
+    })
+}
+
 /// One native allocation shared by a checked number of live vector headers.
 /// The arena owns the allocation; dropping its final header lease drops it.
 struct SharedBuffer {
-    allocation: OwnedBuffer,
+    allocation: OwnedPayload,
     headers: std::num::NonZeroUsize,
 }
 
@@ -557,6 +563,12 @@ impl RArena {
     where
         F: FnOnce() -> SexprecCore,
     {
+        while let Some(pointer) = self.free_list.pop() {
+            let Some((page, slot)) = self.reusable_slot(pointer) else { continue; };
+            let ptr = self.node_pages[page].storage.replace_inactive(slot, ctor())
+                .expect("reusable arena slot");
+            return self.register_new_node(ptr);
+        }
         if self.slab_offset >= NODE_PAGE_SIZE {
             self.alloc_new_page();
         }
@@ -640,23 +652,19 @@ impl RArena {
         }
     }
 
-    #[inline(always)]
-    fn reuse_free_node(&mut self, sexptype: SEXPTYPE) -> Option<SEXP> {
-        while let Some(pointer) = self.free_list.pop() {
-            let Some((meta, slot)) = find_slab_slot(pointer) else {
-                continue;
-            };
-            if !meta.belongs_to(&self.heap_identity) || !meta.reusable(slot) {
-                continue;
-            }
-            let ptr = self.node_pages[meta.page()]
-                .storage
-                .replace_inactive(slot, SexprecCore::new(sexptype))
-                .expect("reusable arena slot");
-            self.track_node_active(ptr);
-            return Some(ptr);
+    fn reusable_slot(&self, pointer: SEXP) -> Option<(usize, usize)> {
+        let (metadata, slot) = find_slab_slot(pointer)?;
+        let page = self.node_pages.get(metadata.page())?;
+        (Rc::ptr_eq(&page.meta, &metadata) && metadata.reusable(slot))
+            .then_some((metadata.page(), slot))
+    }
+
+    fn fresh_header_bytes(&self) -> usize {
+        if self.free_list.iter().rev().any(|&pointer| self.reusable_slot(pointer).is_some()) {
+            0
+        } else {
+            NODE_BYTES
         }
-        None
     }
 
     fn register_new_node(&mut self, ptr: SEXP) -> SEXP {
@@ -690,18 +698,14 @@ impl RArena {
         )
     }
 
-    fn register_data_buffer(&mut self, ptr: *mut u8, layout: Layout) {
+    fn register_data_buffer(&mut self, allocation: OwnedPayload) {
+        let ptr = allocation.as_ptr();
         assert!(
             !self.data_bufs.contains_key(&ptr),
             "buffer ownership transferred twice"
         );
-        self.add_accounted_bytes(layout.size());
-        // SAFETY: private callers transfer a newly allocated, unpublished
-        // payload with its original layout. The map now owns its deallocation.
-        let allocation = OwnedBuffer {
-            ptr: std::ptr::NonNull::new(ptr).expect("nonempty buffer"),
-            layout,
-        };
+        assert!(!ptr.is_null(), "nonempty buffer ownership");
+        self.add_accounted_bytes(allocation.layout().size());
         self.data_bufs.insert(
             ptr,
             SharedBuffer {
@@ -712,11 +716,11 @@ impl RArena {
     }
 
     /// Move a lend-time reservation into the registered buffer map.
-    fn commit_reserved_data_buffer(&mut self, ptr: *mut u8, layout: Layout) {
-        let size = layout.size();
+    fn commit_reserved_data_buffer(&mut self, allocation: OwnedPayload) {
+        let size = allocation.layout().size();
         let pending = self.pending_data_bytes.get();
         self.pending_data_bytes.set(pending.saturating_sub(size));
-        self.register_data_buffer(ptr, layout);
+        self.register_data_buffer(allocation);
     }
 
     fn add_accounted_bytes(&mut self, bytes: usize) {
@@ -747,15 +751,13 @@ impl RArena {
         });
     }
 
-    /// Account for a buffer allocated outside this arena.
-    ///
-    /// Returns false when the byte budget cannot hold `layout`, leaving the
-    /// map unchanged. The caller still owns `ptr` in that case.
-    fn adopt_data_buffer(&mut self, ptr: *mut u8, layout: Layout) -> bool {
-        if ptr.is_null() || layout.size() == 0 || !self.can_grow_bytes_by(layout.size()) {
+    /// Move initialized payload ownership into the arena. A rejected payload
+    /// is dropped without publishing its pointer or changing accounting.
+    fn adopt_data_buffer(&mut self, allocation: OwnedPayload) -> bool {
+        if allocation.as_ptr().is_null() || !self.can_grow_bytes_by(allocation.layout().size()) {
             return false;
         }
-        self.register_data_buffer(ptr, layout);
+        self.register_data_buffer(allocation);
         true
     }
 
@@ -780,8 +782,8 @@ impl RArena {
             .data_bufs
             .remove(&ptr)
             .expect("registered final buffer owner");
-        self.sub_accounted_bytes(buffer.allocation.layout.size());
-        // OwnedBuffer::drop is the only native release boundary.
+        self.sub_accounted_bytes(buffer.allocation.layout().size());
+        // Dropping the typed owner releases its final shared allocation.
         drop(buffer);
     }
 
@@ -823,7 +825,7 @@ impl RArena {
             .data_bufs
             .get_mut(&(src.payload as *mut u8))
             .ok_or_else(error)?;
-        if buffer.allocation.layout.size() < bytes {
+        if buffer.allocation.layout().size() < bytes {
             return Err(error());
         }
         buffer.headers = buffer.headers.checked_add(1).ok_or_else(error)?;
@@ -849,10 +851,10 @@ impl RArena {
                 .is_some_and(|total| total <= self.budget.max_bytes)
     }
 
-    fn can_allocate_new_node_with_payload(&self, bytes: usize) -> bool {
+    fn can_allocate_node_with_payload(&self, bytes: usize) -> bool {
         self.can_activate_node()
             && bytes
-                .checked_add(std::mem::size_of::<SexprecCore>())
+                .checked_add(self.fresh_header_bytes())
                 .is_some_and(|total| self.can_grow_bytes_by(total))
     }
 
@@ -869,18 +871,11 @@ impl RArena {
             return ptr::null_mut();
         }
 
-        if let Some(ptr) = self.reuse_free_node(sexptype) {
-            return ptr;
-        }
-
         if self.growth_warrants_gc() {
             self.alloc_gc_collect_requested = true;
-            if let Some(ptr) = self.reuse_free_node(sexptype) {
-                return ptr;
-            }
         }
 
-        if !self.can_grow_bytes_by(std::mem::size_of::<SexprecCore>()) {
+        if !self.can_allocate_node_with_payload(0) {
             return ptr::null_mut();
         }
 
@@ -914,12 +909,12 @@ impl RArena {
 
         let total_bytes = layout.size();
 
-        if !self.can_allocate_new_node_with_payload(total_bytes) {
+        if !self.can_allocate_node_with_payload(total_bytes) {
             return ptr::null_mut();
         }
 
         let data = if total_bytes > 0 {
-            let Some(data) = OwnedBuffer::zeroed(layout) else {
+            let Ok(data) = zeroed_vector_payload(sexptype, length) else {
                 return ptr::null_mut();
             };
             Some(data)
@@ -930,11 +925,11 @@ impl RArena {
         let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
 
         if let Some(data) = data {
-            let (data_ptr, layout) = data.into_raw();
+            let data_ptr = data.as_ptr();
+            self.register_data_buffer(data);
             unsafe {
                 (*node_ptr).gengc_next_node = data_ptr as SEXP;
             }
-            self.register_data_buffer(data_ptr, layout);
         }
 
         node_ptr
@@ -973,7 +968,7 @@ impl RArena {
 
         let data_bytes = layout.size();
         let total_increase = data_bytes
-            .checked_add(std::mem::size_of::<SexprecCore>())
+            .checked_add(self.fresh_header_bytes())
             .ok_or(ArenaError::InvalidLength)?;
 
         // Check byte budget
@@ -1001,7 +996,7 @@ impl RArena {
         }
 
         let data = if data_bytes > 0 {
-            Some(OwnedBuffer::zeroed(layout).ok_or(ArenaError::OutOfMemory)?)
+            Some(zeroed_vector_payload(sexptype, length)?)
         } else {
             None
         };
@@ -1009,11 +1004,11 @@ impl RArena {
         let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
 
         if let Some(data) = data {
-            let (data_ptr, layout) = data.into_raw();
+            let data_ptr = data.as_ptr();
+            self.register_data_buffer(data);
             unsafe {
                 (*node_ptr).gengc_next_node = data_ptr as SEXP;
             }
-            self.register_data_buffer(data_ptr, layout);
         }
 
         Ok(node_ptr)
@@ -1040,23 +1035,16 @@ impl RArena {
             Some(n) => n,
             None => return ptr::null_mut(),
         };
-        if !self.can_allocate_new_node_with_payload(total_bytes) {
+        if !self.can_allocate_node_with_payload(total_bytes) {
             return ptr::null_mut();
         }
 
-        let layout = match Layout::from_size_align(total_bytes, 1) {
-            Ok(l) => l,
-            Err(_) => return ptr::null_mut(),
-        };
-        let Some(data) = OwnedBuffer::zeroed(layout) else {
+        #[cfg(test)]
+        note_buffer_allocation_attempt();
+        let Ok(data) = OwnedPayload::characters(s) else {
             return ptr::null_mut();
         };
         let data_ptr = data.as_ptr();
-
-        unsafe {
-            std::ptr::copy_nonoverlapping(s.as_ptr(), data_ptr, s.len());
-            *data_ptr.add(s.len()) = 0;
-        }
 
         // CHARSXP shares the vector header prefix. Initialize true length as
         // well: writing only charsxp_truelen leaves that accessor uninitialized.
@@ -1080,12 +1068,11 @@ impl RArena {
             c
         });
 
+        self.register_data_buffer(data);
         unsafe {
             (*node_ptr).gengc_next_node = data_ptr as SEXP;
         }
 
-        let (data_ptr, layout) = data.into_raw();
-        self.register_data_buffer(data_ptr, layout);
         node_ptr
     }
 
@@ -1173,7 +1160,7 @@ impl RArena {
     /// Payload pointers and graph children are valid and owned by this arena
     /// or immutable storage; transferring the core must not duplicate payload ownership.
     pub(crate) unsafe fn add_node(&mut self, node: Box<SexprecCore>) -> SEXP {
-        if !self.can_allocate_new_node_with_payload(0) {
+        if !self.can_allocate_node_with_payload(0) {
             return ptr::null_mut();
         }
 
@@ -1362,7 +1349,7 @@ impl RArena {
         debug_assert!({
             for (&ptr, buffer) in &self.data_bufs {
                 if !ptr.is_null() {
-                    debug_assert!(buffer.allocation.layout.size() > 0);
+                    debug_assert!(buffer.allocation.layout().size() > 0);
                 }
             }
             for &free_ptr in &self.free_list {

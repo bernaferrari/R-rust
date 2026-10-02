@@ -223,6 +223,9 @@ pub(crate) unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
 /// Set the S4 bit on an object.
 #[inline]
 pub(crate) unsafe fn SET_S4_OBJECT(x: SEXP) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             let s4_mask: u16 = 1 << 4;
@@ -235,6 +238,9 @@ pub(crate) unsafe fn SET_S4_OBJECT(x: SEXP) {
 /// Unset the S4 bit on an object.
 #[inline]
 pub(crate) unsafe fn UNSET_S4_OBJECT(x: SEXP) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             let s4_mask: u16 = 1 << 4;
@@ -273,7 +279,7 @@ pub(crate) unsafe fn MAYBE_REFERENCED(x: SEXP) -> bool {
 pub(crate) unsafe fn MARK_NOT_MUTABLE(x: SEXP) {
     unsafe {
         if !x.is_null() {
-            (*x).sxpinfo.set_named(2);
+            crate::sexp::accessors::SET_NAMED(x, 2);
         }
     }
 }
@@ -281,9 +287,12 @@ pub(crate) unsafe fn MARK_NOT_MUTABLE(x: SEXP) {
 /// Set NAMED to 0 (setter-clear).
 #[inline]
 pub(crate) unsafe fn SETTER_CLEAR_NAMED(x: SEXP) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
-            (*x).sxpinfo.set_named(0);
+            crate::sexp::accessors::SET_NAMED(x, 0);
         }
     }
 }
@@ -293,7 +302,7 @@ pub(crate) unsafe fn SETTER_CLEAR_NAMED(x: SEXP) {
 pub(crate) unsafe fn RAISE_NAMED(x: SEXP, v: c_int) {
     unsafe {
         if !x.is_null() && (v as u8) > (*x).sxpinfo.named() {
-            (*x).sxpinfo.set_named(v as u8);
+            crate::sexp::accessors::SET_NAMED(x, v);
         }
     }
 }
@@ -305,7 +314,7 @@ pub(crate) unsafe fn INCREMENT_NAMED(x: SEXP) {
         if !x.is_null() {
             let n = (*x).sxpinfo.named();
             if n < 2 {
-                (*x).sxpinfo.set_named(n + 1);
+                crate::sexp::accessors::SET_NAMED(x, i32::from(n + 1));
             }
         }
     }
@@ -322,6 +331,9 @@ pub(crate) unsafe fn IS_GROWABLE(x: SEXP) -> bool {
 /// Set the growable bit on an object.
 #[inline]
 pub(crate) unsafe fn SET_GROWABLE_BIT(x: SEXP) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             let gp = (*x).sxpinfo.gp();
@@ -333,6 +345,9 @@ pub(crate) unsafe fn SET_GROWABLE_BIT(x: SEXP) {
 /// Set true length of a vector.
 #[inline]
 pub(crate) unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             (*x).data.vecsxp.truelength = v as R_xlen_t;
@@ -355,6 +370,9 @@ pub(crate) unsafe fn XTRUELENGTH(x: SEXP) -> R_xlen_t {
 /// SETCADR: set the CAR of the CDR.
 #[inline]
 pub(crate) unsafe fn SETCADR(x: SEXP, v: SEXP) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         SETCAR(CDR(x), v);
     }
@@ -363,6 +381,9 @@ pub(crate) unsafe fn SETCADR(x: SEXP, v: SEXP) {
 /// SET_TYPEOF: set the type of an SEXP.
 #[inline]
 pub(crate) unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         (*x).sxpinfo.set_type(SEXPTYPE(v));
     }
@@ -371,6 +392,9 @@ pub(crate) unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
 /// Set the standard vector length (not marking as immutable).
 #[inline]
 pub(crate) unsafe fn SET_STDVEC_LENGTH(x: SEXP, v: R_xlen_t) {
+    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
+        return;
+    }
     unsafe {
         if !x.is_null() {
             (*x).data.vecsxp.length = v;
@@ -383,7 +407,31 @@ pub(crate) unsafe fn SET_STDVEC_LENGTH(x: SEXP, v: R_xlen_t) {
 pub(crate) unsafe fn ENSURE_NAMEDMAX(x: SEXP) {
     unsafe {
         if !x.is_null() {
-            (*x).sxpinfo.set_named(2);
+            crate::sexp::accessors::SET_NAMED(x, 2);
+        }
+    }
+}
+
+#[cfg(test)]
+mod singleton_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_named_helpers_preserve_shared_singletons() {
+        unsafe {
+            for node in [R_NilValue(), crate::sexp::globals::R_True(), crate::sexp::globals::R_False()] {
+                MARK_NOT_MUTABLE(node);
+                SETTER_CLEAR_NAMED(node);
+                ENSURE_NAMEDMAX(node);
+                RAISE_NAMED(node, 1);
+                INCREMENT_NAMED(node);
+                SET_TYPEOF(node, SEXPTYPE::REALSXP.0);
+                SET_STDVEC_LENGTH(node, 99);
+                assert_eq!(crate::sexp::accessors::NAMED(node), 2);
+            }
+            assert_eq!(crate::sexp::accessors::TYPEOF(R_NilValue()), SEXPTYPE::NILSXP);
+            assert_eq!(crate::sexp::accessors::LOGICAL_ELT(crate::sexp::globals::R_True(), 0), 1);
+            assert_eq!(crate::sexp::accessors::XLENGTH(crate::sexp::globals::R_True()), 1);
         }
     }
 }
