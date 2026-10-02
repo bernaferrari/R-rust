@@ -221,7 +221,9 @@ fn test_altrep_compact_realseq() {
 fn test_altrep_new_altrep_data_roundtrip() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
-        let class_sym = Rf_ScalarInteger(42);
+        unsafe extern "C" fn length(_x: SEXP) -> i64 { 1 }
+        let class_sym = crate::mainutils::altrep::R_make_altinteger_class(c"roundtrip".as_ptr(), c"test".as_ptr(), std::ptr::null_mut());
+        crate::mainutils::altrep::R_set_altrep_length_method(class_sym, Some(length));
         let data1 = Rf_ScalarInteger(100);
         let data2 = Rf_ScalarReal(3.14);
         let altrep = crate::mainutils::altrep::R_new_altrep(class_sym, data1, data2);

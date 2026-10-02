@@ -150,6 +150,11 @@ pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
             // clears the ALT bit before it writes the attribute slot. If the
             // buffer was not committed, the formula stays at the head.
             if ALTREP(x) != 0 {
+                #[cfg(feature = "altrep")]
+                if super::altrep::materialize_raw(x).unwrap_or_else(|e| super::context::r_error(&e.to_string())) {
+                    // The buffer now owns the values, so metadata can be removed.
+                    (*x).sxpinfo.set_alt(false);
+                }
                 super::altseq::materialize(x);
             }
             let uncommitted = ALTREP(x) != 0
@@ -757,6 +762,8 @@ pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
         let t = (*x).sxpinfo.type_of();
         if t.is_vector_type() || t == SEXPTYPE::CHARSXP {
             if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
+                #[cfg(feature = "altrep")]
+                super::altrep::materialize_raw(x).unwrap_or_else(|e| super::context::r_error(&e.to_string()));
                 super::altseq::materialize(x);
                 // Ported callers expect usable storage or an R error. A
                 // nonempty lazy vector must never yield a null data pointer.
@@ -993,6 +1000,11 @@ mod element_slot_kani {
 /// Get the i-th element of a STRSXP (a CHARSXP).
 pub unsafe fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
+        #[cfg(feature = "altrep")]
+        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
+            if let super::altrep::AltrepElement::String(v) = value.unwrap_or_else(|e| super::context::r_error(&e.to_string())) { return v.as_raw(); }
+            super::context::r_error("ALTREP element type mismatch");
+        }
         if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
@@ -1014,6 +1026,11 @@ pub unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 /// Get the i-th element of a SEXP array, including internal bytecode payloads.
 pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
+        #[cfg(feature = "altrep")]
+        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
+            if let super::altrep::AltrepElement::List(v) = value.unwrap_or_else(|e| super::context::r_error(&e.to_string())) { return v.as_raw(); }
+            super::context::r_error("ALTREP element type mismatch");
+        }
         if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
@@ -1039,6 +1056,11 @@ pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 /// Get the i-th logical value.
 pub unsafe fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
+        #[cfg(feature = "altrep")]
+        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
+            if let super::altrep::AltrepElement::Logical(v) = value.unwrap_or_else(|e| super::context::r_error(&e.to_string())) { return v; }
+            super::context::r_error("ALTREP element type mismatch");
+        }
         if !is_valid_sexp_ptr(x) {
             return NA_INTEGER;
         }
@@ -1069,6 +1091,11 @@ pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
 /// `checked_element_slot`. The safe object path is `Sexp::try_integer_elt`.
 pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
+        #[cfg(feature = "altrep")]
+        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
+            if let super::altrep::AltrepElement::Integer(v) | super::altrep::AltrepElement::Logical(v) = value.unwrap_or_else(|e| super::context::r_error(&e.to_string())) { return v; }
+            super::context::r_error("ALTREP element type mismatch");
+        }
         if !is_valid_sexp_ptr(x) {
             return NA_INTEGER;
         }
@@ -1100,6 +1127,11 @@ pub unsafe fn SET_INTEGER_ELT(x: SEXP, i: c_int, v: c_int) {
 }
 pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
     unsafe {
+        #[cfg(feature = "altrep")]
+        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
+            if let super::altrep::AltrepElement::Real(v) = value.unwrap_or_else(|e| super::context::r_error(&e.to_string())) { return v; }
+            super::context::r_error("ALTREP element type mismatch");
+        }
         if !is_valid_sexp_ptr(x) {
             return NA_REAL;
         }
@@ -1131,6 +1163,11 @@ pub unsafe fn SET_REAL_ELT(x: SEXP, i: c_int, v: c_double) {
 /// Get the i-th complex value.
 pub unsafe fn COMPLEX_ELT(x: SEXP, i: c_int) -> Rcomplex {
     unsafe {
+        #[cfg(feature = "altrep")]
+        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
+            if let super::altrep::AltrepElement::Complex(v) = value.unwrap_or_else(|e| super::context::r_error(&e.to_string())) { return v; }
+            super::context::r_error("ALTREP element type mismatch");
+        }
         if !is_valid_sexp_ptr(x) || COMPLEX(x).is_null() {
             return Rcomplex {
                 r: NA_REAL,
@@ -1153,6 +1190,11 @@ pub unsafe fn SET_COMPLEX_ELT(x: SEXP, i: c_int, v: Rcomplex) {
 /// Get the i-th raw byte value.
 pub unsafe fn RAW_ELT(x: SEXP, i: c_int) -> super::ffi::Rbyte {
     unsafe {
+        #[cfg(feature = "altrep")]
+        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
+            if let super::altrep::AltrepElement::Raw(v) = value.unwrap_or_else(|e| super::context::r_error(&e.to_string())) { return v; }
+            super::context::r_error("ALTREP element type mismatch");
+        }
         if !is_valid_sexp_ptr(x) || RAW(x).is_null() {
             return 0;
         }

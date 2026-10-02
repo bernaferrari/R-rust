@@ -1234,6 +1234,15 @@ pub unsafe fn WriteItemInternal(
 ) {
     unsafe {
         let _item_guard = protect(s);
+        #[cfg(feature = "altrep")]
+        {
+            let object = crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| error(&e.to_string()));
+            if crate::sexp::altrep::metadata(&object).is_some() {
+                let copy = crate::sexp::altrep::materialized_copy(&object).unwrap_or_else(|e| error(&e.to_string()));
+                WriteItemInternal(copy.clone().as_raw(), ref_table, writer);
+                return;
+            }
+        }
         let persistent = writer_persistent_name(s, writer);
         if persistent != R_NilValue() {
             let _persistent_guard = protect(persistent);

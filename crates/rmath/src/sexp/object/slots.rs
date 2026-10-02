@@ -606,7 +606,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_data_ptr(self) -> SexpResult<*mut c_void> {
         if self.typeof_().is_vector_type() || self.typeof_() == SEXPTYPE::CHARSXP {
-            self.materialize_compact_payload();
+            self.materialize_compact_payload()?;
             let ptr = self.header().payload as *mut c_void;
             if ptr.is_null() {
                 Err(SexpError::MissingData {

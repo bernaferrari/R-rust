@@ -378,7 +378,7 @@ pub struct RInstance {
     pub(crate) dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState,
     /// Per-instance ALTREP class-method registry.
     #[cfg(feature = "altrep")]
-    pub(crate) altrep_state: crate::mainutils::altrep::AltrepRuntimeState,
+    pub(crate) altrep_state: crate::sexp::altrep::AltrepRuntimeState,
     /// Per-instance serialization lazy-load cache and read-depth state.
     pub(crate) serialize_state: crate::mainutils::serialize::SerializeRuntimeState,
     /// Per-instance LAPACK module dispatcher.
@@ -599,7 +599,7 @@ impl RInstance {
             objects_state: crate::mainutils::objects::ObjectsRuntimeState::default(),
             dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState::default(),
             #[cfg(feature = "altrep")]
-            altrep_state: crate::mainutils::altrep::AltrepRuntimeState::default(),
+            altrep_state: crate::sexp::altrep::AltrepRuntimeState::default(),
             serialize_state: crate::mainutils::serialize::SerializeRuntimeState::default(),
             lapack_state: crate::mainutils::lapack::LapackRuntimeState::default(),
             #[cfg(not(target_arch = "wasm32"))]
