@@ -66,6 +66,7 @@ impl CaptureFrame {
                 crate::mainutils::connections::connection_write_bytes(connection, msg.as_bytes());
                 return !split;
             }
+            let previous_len = buffer.len();
             append_bounded(
                 buffer,
                 msg,
@@ -74,7 +75,9 @@ impl CaptureFrame {
                 &mut self.truncated,
             );
             if let Some(interleaved) = &mut self.interleaved {
-                interleaved.push_str(msg);
+                // Mirror exactly the admitted prefix, including UTF-8 truncation.
+                // Copying the original message here would bypass this frame's cap.
+                interleaved.push_str(&buffer[previous_len..]);
             }
             return !split;
 
@@ -4176,6 +4179,23 @@ mod tests {
         let outer = state.stop();
         assert_eq!(outer.stdout, "abcd");
         assert!(outer.truncated);
+    }
+
+    #[test]
+    fn test_bounded_capture_also_bounds_chronological_output() {
+        let mut state = OutputCaptureState::default();
+        state.set_max_bytes(Some(5));
+        state.start();
+        state.capture_stdout("abc");
+        state.capture_stderr("déf");
+        for _ in 0..100 {
+            state.capture_stdout("é");
+        }
+        let output = state.stop();
+        assert_eq!(output.stdout, "abc");
+        assert_eq!(output.stderr, "d");
+        assert_eq!(output.interleaved, "abcd");
+        assert!(output.truncated);
     }
 
     #[test]
