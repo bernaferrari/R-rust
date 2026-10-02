@@ -12,7 +12,7 @@ use std::{
     ptr,
     sync::{
         OnceLock,
-        atomic::{AtomicI32, AtomicPtr, AtomicU8, AtomicU16, AtomicU32},
+        atomic::{AtomicI32, AtomicPtr, AtomicU8, AtomicU16, AtomicU32, Ordering},
     },
 };
 
@@ -91,6 +91,28 @@ impl Singleton {
     fn projection(&self) -> SEXP {
         ptr::from_ref(self).cast_mut().cast()
     }
+    fn snapshot(&self) -> SexprecCore {
+        let sxpinfo = SxpInfo {
+            type_and_flags: self.info.flags.load(Ordering::Relaxed),
+            rcount: self.info.count.load(Ordering::Relaxed),
+            _pad: self.info.pad.load(Ordering::Relaxed),
+            _pad2: self.info.pad2.load(Ordering::Relaxed),
+        };
+        let kind = sxpinfo.type_of();
+        let data = if kind == SEXPTYPE::CHARSXP || kind.is_vector_type() {
+            let length = i64::from(kind == SEXPTYPE::LGLSXP);
+            SexprecData { vecsxp: Vecsxp { length, truelength: length } }
+        } else {
+            SexprecData::default()
+        };
+        SexprecCore {
+            sxpinfo,
+            attrib: self.attrib.load(Ordering::Relaxed),
+            gengc_next_node: self.next.load(Ordering::Relaxed),
+            gengc_prev_node: self.previous.load(Ordering::Relaxed),
+            data,
+        }
+    }
 }
 
 static NIL: OnceLock<Singleton> = OnceLock::new();
@@ -140,11 +162,18 @@ pub(super) fn na_string() -> SEXP {
 /// Address comparison never reads the candidate and never initializes a new
 /// singleton. Return the owner's pointer, preserving its actual provenance.
 pub(super) fn canonical_projection(candidate: SEXP) -> Option<SEXP> {
+    find(candidate).map(Singleton::projection)
+}
+
+pub(super) fn snapshot(candidate: SEXP) -> Option<SexprecCore> {
+    find(candidate).map(Singleton::snapshot)
+}
+
+fn find(candidate: SEXP) -> Option<&'static Singleton> {
     [
         &NIL, &UNBOUND, &MISSING, &RESTART, &TRUE, &FALSE, &NA_STRING,
     ]
     .into_iter()
     .filter_map(OnceLock::get)
-    .map(Singleton::projection)
-    .find(|pointer| ptr::eq(*pointer, candidate))
+    .find(|singleton| ptr::eq(singleton.projection(), candidate))
 }

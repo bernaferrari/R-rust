@@ -20,6 +20,10 @@ pub(crate) fn immutable_singleton_projection(pointer: SEXP) -> Option<SEXP> {
     singletons::canonical_projection(pointer)
 }
 
+pub(crate) fn immutable_singleton_snapshot(pointer: SEXP) -> Option<super::ffi::SexprecCore> {
+    singletons::snapshot(pointer)
+}
+
 /// Get a pointer to R_NilValue.
 pub unsafe fn R_NilValue() -> SEXP { singletons::nil() }
 /// Get a pointer to R_UnboundValue.
@@ -234,6 +238,16 @@ mod tests {
                 let attributes = (*node).attrib;
                 let data = (*node).gengc_next_node;
                 let body = (*node).data.extptr;
+                let snapshot = immutable_singleton_snapshot(node).unwrap();
+                assert_eq!(snapshot.sxpinfo.type_and_flags, flags.type_and_flags);
+                assert_eq!(snapshot.attrib, attributes);
+                assert_eq!(snapshot.gengc_next_node, data);
+                // Safe Rust snapshots must agree with the exported native
+                // shape, including the scalar logical's vector lengths.
+                if flags.type_of() == SEXPTYPE::LGLSXP || flags.type_of() == SEXPTYPE::CHARSXP {
+                    assert_eq!(snapshot.data.vecsxp.length, (*node).data.vecsxp.length);
+                    assert_eq!(snapshot.data.vecsxp.truelength, (*node).data.vecsxp.truelength);
+                }
                 SET_NAMED(node, 0);
                 SET_OBJECT(node, 1);
                 SET_S4_OBJECT(node);

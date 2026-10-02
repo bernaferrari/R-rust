@@ -19,7 +19,7 @@
 //! stack, remembered-set edges). Dropping roots because "there is no GC" is
 //! use-after-free — do not treat this module as GC-free.
 
-use std::alloc::{Layout, dealloc};
+use std::alloc::Layout;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ptr::{self};
@@ -135,32 +135,29 @@ fn note_buffer_allocation_attempt() {
     BUFFER_ALLOCATION_ATTEMPTS.with(|count| count.set(count.get() + 1));
 }
 
-/// Own an arbitrary-layout transient workspace. Vector and character storage
-/// use typed [`OwnedPayload`] ownership instead of native raw allocations.
+/// Own initialized transient bytes with the requested layout and at least
+/// eight-byte alignment. R_alloc is the verified consumer of this facade.
 pub(crate) struct OwnedBuffer {
-    ptr: std::ptr::NonNull<u8>,
+    allocation: OwnedPayload,
     layout: Layout,
 }
 
 impl OwnedBuffer {
     pub(crate) fn zeroed(layout: Layout) -> Option<Self> {
-        if layout.size() == 0 {
+        if layout.size() == 0 || layout.align() > 8 {
             return None;
         }
         #[cfg(test)]
         note_buffer_allocation_attempt();
-        let ptr = std::ptr::NonNull::new(unsafe { std::alloc::alloc_zeroed(layout) })?;
-        Some(Self { ptr, layout })
+        let allocation = OwnedPayload::zeroed_bytes(layout.size()).ok()?;
+        Some(Self { allocation, layout })
     }
 
     pub(crate) fn as_ptr(&self) -> *mut u8 {
-        self.ptr.as_ptr()
+        self.allocation.as_ptr()
     }
-}
-
-impl Drop for OwnedBuffer {
-    fn drop(&mut self) {
-        unsafe { dealloc(self.ptr.as_ptr(), self.layout) };
+    pub(crate) fn layout(&self) -> Layout {
+        self.layout
     }
 }
 
@@ -258,7 +255,7 @@ pub(crate) struct NodePageRegistration {
 }
 impl Drop for NodePageRegistration {
     fn drop(&mut self) {
-        SLAB_META.with(|map| {
+        let _ = SLAB_META.try_with(|map| {
             let mut map = map.borrow_mut();
             if map
                 .get(&self.base)
@@ -267,7 +264,7 @@ impl Drop for NodePageRegistration {
                 map.remove(&self.base);
             }
         });
-        SLAB_CACHE.with(|cache| {
+        let _ = SLAB_CACHE.try_with(|cache| {
             let mut cache = cache.borrow_mut();
             if cache
                 .as_ref()
@@ -300,23 +297,29 @@ fn find_slab_entry(pointer: SEXP) -> Option<(SlabMetadata, usize)> {
         return None;
     }
     let address = pointer as usize;
-    let cached = SLAB_CACHE.with(|cache| {
-        cache
-            .borrow()
-            .as_ref()
-            .and_then(|entry| entry.slot(address).map(|slot| (entry.clone(), slot)))
-    });
+    let cached = SLAB_CACHE
+        .try_with(|cache| {
+            cache
+                .borrow()
+                .as_ref()
+                .and_then(|entry| entry.slot(address).map(|slot| (entry.clone(), slot)))
+        })
+        .ok()
+        .flatten();
     if cached.is_some() {
         return cached;
     }
-    let entry = SLAB_META.with(|map| {
-        map.borrow()
-            .range(..=address)
-            .next_back()
-            .map(|(_, entry)| entry.clone())
-    })?;
+    let entry = SLAB_META
+        .try_with(|map| {
+            map.borrow()
+                .range(..=address)
+                .next_back()
+                .map(|(_, entry)| entry.clone())
+        })
+        .ok()
+        .flatten()?;
     let slot = entry.slot(address)?;
-    SLAB_CACHE.with(|cache| {
+    let _ = SLAB_CACHE.try_with(|cache| {
         *cache.borrow_mut() = Some(entry.clone());
     });
     Some((entry, slot))
@@ -341,6 +344,17 @@ pub(crate) fn checked_node(pointer: SEXP) -> Option<CheckedNode> {
 pub(crate) fn checked_projection(pointer: SEXP) -> Option<(SEXP, CheckedNode)> {
     let (entry, slot) = find_slab_entry(pointer)?;
     entry.projection.resolve_slot(slot)
+}
+
+/// Copy the canonical header through its Cell only if the caller's original
+/// allocation identity still belongs to this exact directory slot. An
+/// address reused by another generation never refreshes the expected ID.
+pub(crate) fn checked_snapshot(pointer: SEXP, expected: &CheckedNode) -> Option<SexprecCore> {
+    let (entry, slot) = find_slab_entry(pointer)?;
+    if expected.id().slot() != slot {
+        return None;
+    }
+    entry.projection.copy_live(expected.id())
 }
 
 /// Result of testing one pointer against the current GC epoch.
@@ -637,11 +651,14 @@ impl RArena {
             debug_assert!(ptr.is_null(), "active node is not in a slab page");
             return;
         };
-        // SAFETY: the original per-cell projection names this initialized
-        // header; copy its age without forming a header reference.
-        let old = unsafe { (*ptr).sxpinfo.gcgen() == 1 };
-        meta.activate(slot, old)
+        let id = meta
+            .activate(slot, false)
             .expect("inactive nonretired arena node");
+        let header = self.node_pages[meta.page()]
+            .storage
+            .copy_live(&id)
+            .expect("initialized owned arena node");
+        meta.set_old(slot, header.sxpinfo.gcgen() == 1);
     }
 
     fn track_node_freed(&mut self, ptr: SEXP) {
@@ -1831,6 +1848,119 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn typed_scratch_storage_preserves_requested_layout_and_views_after_owner_moves() {
+        for alignment in [1, 2, 4, 8] {
+            let layout = std::alloc::Layout::from_size_align(17 * 8, alignment).unwrap();
+            let buffer = super::OwnedBuffer::zeroed(layout).unwrap();
+            let pointer = buffer.as_ptr();
+            assert_eq!(pointer as usize % 8, 0);
+            assert_eq!(buffer.layout(), layout);
+            let mut owners = vec![buffer];
+            owners.reserve(64);
+            // SAFETY: scratch storage is initialized, at least eight-byte
+            // aligned and owns the complete seventeen-u64 region. No byte or
+            // typed view overlaps this temporary mutable view.
+            unsafe {
+                let values = std::slice::from_raw_parts_mut(pointer.cast::<u64>(), 17);
+                assert!(values.iter().all(|value| *value == 0));
+                for (index, value) in values.iter_mut().enumerate() {
+                    *value = index as u64 + 1;
+                }
+                assert_eq!(values[16], 17);
+            }
+            assert_eq!(owners[0].layout().size(), 136);
+        }
+        let before = super::buffer_allocation_attempts();
+        assert!(
+            super::OwnedBuffer::zeroed(std::alloc::Layout::from_size_align(0, 8).unwrap())
+                .is_none()
+        );
+        assert!(
+            super::OwnedBuffer::zeroed(std::alloc::Layout::from_size_align(16, 16).unwrap())
+                .is_none()
+        );
+        assert_eq!(super::buffer_allocation_attempts(), before);
+    }
+
+    #[test]
+    fn user_tls_owned_arena_survives_directory_shutdown_order() {
+        struct LateArena {
+            arena: super::RArena,
+            pointer: super::SEXP,
+            token: super::CheckedNode,
+        }
+        impl Drop for LateArena {
+            fn drop(&mut self) {
+                assert!(self.token.is_live());
+                assert_eq!(self.arena.node_count(), 1);
+                // The owning page is still live, but the already-destroyed
+                // directory must return no projection instead of panicking.
+                assert!(super::checked_projection(self.pointer).is_none());
+                assert!(super::checked_snapshot(self.pointer, &self.token).is_none());
+            }
+        }
+        thread_local! {
+            static USER_ARENA: std::cell::RefCell<Option<LateArena>> = const { std::cell::RefCell::new(None) };
+        }
+        std::thread::spawn(|| {
+            // Initialize the user's TLS destructor before the runtime's
+            // directory TLS. The directory then shuts down first.
+            USER_ARENA.with(|slot| {
+                let mut arena = super::RArena::new();
+                let pointer = arena.alloc_node(super::SEXPTYPE::INTSXP);
+                assert!(super::checked_node(pointer).is_some());
+                let token = arena.node_token(pointer).unwrap();
+                *slot.borrow_mut() = Some(LateArena {
+                    arena,
+                    pointer,
+                    token,
+                });
+            });
+        })
+        .join()
+        .expect("owned arena cleanup must tolerate destroyed directory TLS");
+    }
+
+    #[test]
+    fn owned_header_snapshots_reject_stale_foreign_and_wrong_slot_tokens() {
+        let mut arena = super::RArena::new();
+        let first = arena.alloc_node(super::SEXPTYPE::INTSXP);
+        let second = arena.alloc_node(super::SEXPTYPE::REALSXP);
+        let first_id = arena.node_token(first).unwrap();
+        let second_id = arena.node_token(second).unwrap();
+        let input = std::ptr::without_provenance_mut::<super::SexprecCore>(first.addr());
+        assert_eq!(
+            super::checked_snapshot(input, &first_id)
+                .unwrap()
+                .sxpinfo
+                .type_of(),
+            super::SEXPTYPE::INTSXP
+        );
+        assert!(super::checked_snapshot(input, &second_id).is_none());
+        let mut foreign = super::RArena::new();
+        let other = foreign.alloc_node(super::SEXPTYPE::INTSXP);
+        assert!(super::checked_snapshot(input, &foreign.node_token(other).unwrap()).is_none());
+        // SAFETY: first has no reachable edge or payload loan. The snapshot
+        // and expected metadata lease do not borrow its header storage.
+        unsafe {
+            arena.free_node(first);
+        }
+        let replacement = arena.alloc_node(super::SEXPTYPE::SYMSXP);
+        assert_eq!(replacement, first);
+        assert!(super::checked_snapshot(input, &first_id).is_none());
+        let current = arena.node_token(replacement).unwrap();
+        assert_eq!(
+            super::checked_snapshot(input, &current)
+                .unwrap()
+                .sxpinfo
+                .type_of(),
+            super::SEXPTYPE::SYMSXP
+        );
+        drop(arena);
+        assert!(super::checked_snapshot(input, &current).is_none());
+    }
+
     #[test]
     fn prepared_payload_unwind_restores_ownership_and_budget_before_publication() {
         let session = super::super::session::RSession::new_for_gc_tests();

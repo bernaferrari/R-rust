@@ -1,9 +1,8 @@
 //! Owned copy of one node header.
 //!
-//! A safe collector handle (`gc::Gc`, `gc_arena::Gc`) does not give callers
-//! the allocator's raw pointer. This runtime does not move live nodes, but it
-//! does mutate them through raw pointers. [`Sexp::header`] copies the `Copy`
-//! fields out in one read so no `&SexprecCore` escapes that read.
+//! Checked handles copy their owning Cell after allocation validation. Only
+//! foreign native views retain an unsafe physical-header read. No header loan
+//! escapes either operation.
 
 use std::os::raw::{c_double, c_int, c_void};
 
@@ -82,7 +81,17 @@ impl<'a> Sexp<'a> {
     pub(crate) fn header(&self) -> HeaderSnap {
         self.ensure_live()
             .expect("SEXP allocation has been reclaimed");
-        read_header(self.ptr)
+        let core = if let Some(node) = &self.node {
+            crate::sexp::memory::checked_snapshot(self.ptr, node)
+                .expect("SEXP allocation has been reclaimed")
+        } else if let Some(core) = crate::sexp::globals::immutable_singleton_snapshot(self.ptr) {
+            core
+        } else {
+            // Only unsafe legacy factories can produce an unregistered view.
+            // Their caller retains the original liveness/rooting contract.
+            return read_legacy_header(self.ptr);
+        };
+        snapshot_header(core)
     }
 
     /// Copy the header of a pointer just loaded from a live node in this graph.
@@ -98,14 +107,7 @@ impl<'a> Sexp<'a> {
             if let Some(canonical) = crate::sexp::session::immutable_singleton_projection(ptr) {
                 canonical
             } else {
-                let canonical = if let Some(owner) = self.session_owner_ptr {
-                    // This handle retains the session lifetime; derive the
-                    // child projection from its owned cell before reading.
-                    unsafe { (*owner.as_ptr()).canonical_projection(ptr) }?
-                } else {
-                    crate::sexp::memory::checked_projection(ptr)?.0
-                };
-                let node = crate::sexp::memory::checked_node(canonical)?;
+                let (canonical, node) = crate::sexp::memory::checked_projection(ptr)?;
                 if !parent_node.same_heap(&node) {
                     return None;
                 }
@@ -114,7 +116,15 @@ impl<'a> Sexp<'a> {
         } else {
             ptr
         };
-        Some(read_header(ptr))
+        if let Some(core) = crate::sexp::globals::immutable_singleton_snapshot(ptr) {
+            Some(snapshot_header(core))
+        } else if let Some((canonical, node)) = crate::sexp::memory::checked_projection(ptr) {
+            crate::sexp::memory::checked_snapshot(canonical, &node).map(snapshot_header)
+        } else if self.node.is_none() && self.owner == super::SexpOwner::Unknown {
+            Some(read_legacy_header(ptr))
+        } else {
+            None
+        }
     }
 }
 
@@ -159,39 +169,51 @@ fn stores_vecsxp(ty: SEXPTYPE) -> bool {
     ty == SEXPTYPE::CHARSXP || ty.is_vector_type()
 }
 
-fn read_header(ptr: SEXP) -> HeaderSnap {
-    // SAFETY: `ptr` addresses a live node. Each loaded field is `Copy`. The
-    // union arm follows the type tag copied first. No reference is returned,
-    // and this read does not call back into R.
-    unsafe {
-        let sxpinfo = std::ptr::addr_of!((*ptr).sxpinfo).read();
-        let attrib = std::ptr::addr_of!((*ptr).attrib).read();
-        let payload = std::ptr::addr_of!((*ptr).gengc_next_node).read();
-        let ty = sxpinfo.type_of();
-        let body = if stores_vecsxp(ty) {
-            NodeBody::Vector(std::ptr::addr_of!((*ptr).data.vecsxp).read())
+fn read_legacy_header(ptr: SEXP) -> HeaderSnap {
+    // Prefer owned snapshots even for a legacy wrapper. Only foreign native
+    // memory uses the factory's explicit unsafe liveness contract.
+    if let Some(core) = crate::sexp::globals::immutable_singleton_snapshot(ptr) {
+        return snapshot_header(core);
+    }
+    if let Some((canonical, node)) = crate::sexp::memory::checked_projection(ptr) {
+        if let Some(core) = crate::sexp::memory::checked_snapshot(canonical, &node) {
+            return snapshot_header(core);
+        }
+    }
+    // SAFETY: an unsafe legacy factory promised a live initialized header.
+    snapshot_header(unsafe { ptr.read() })
+}
+
+fn snapshot_header(core: SexprecCore) -> HeaderSnap {
+    let sxpinfo = core.sxpinfo;
+    let ty = sxpinfo.type_of();
+    // SAFETY: interpret only the arm selected by the owned header's type tag.
+    // Physical copying and allocation validation happen in safe Rust first.
+    let body = unsafe {
+        if stores_vecsxp(ty) {
+            NodeBody::Vector(core.data.vecsxp)
         } else if ty.is_list_type() {
-            NodeBody::List(std::ptr::addr_of!((*ptr).data.listsxp).read())
+            NodeBody::List(core.data.listsxp)
         } else if ty == SEXPTYPE::SYMSXP {
-            NodeBody::Symbol(std::ptr::addr_of!((*ptr).data.symsxp).read())
+            NodeBody::Symbol(core.data.symsxp)
         } else if ty == SEXPTYPE::CLOSXP {
-            NodeBody::Closure(std::ptr::addr_of!((*ptr).data.closxp).read())
+            NodeBody::Closure(core.data.closxp)
         } else if ty == SEXPTYPE::ENVSXP {
-            NodeBody::Environment(std::ptr::addr_of!((*ptr).data.envsxp).read())
+            NodeBody::Environment(core.data.envsxp)
         } else if ty == SEXPTYPE::PROMSXP {
-            NodeBody::Promise(std::ptr::addr_of!((*ptr).data.promsxp).read())
+            NodeBody::Promise(core.data.promsxp)
         } else if ty == SEXPTYPE::SPECIALSXP || ty == SEXPTYPE::BUILTINSXP {
-            NodeBody::Primitive(std::ptr::addr_of!((*ptr).data.primsxp).read())
+            NodeBody::Primitive(core.data.primsxp)
         } else if ty == SEXPTYPE::EXTPTRSXP {
-            NodeBody::ExtPtr(std::ptr::addr_of!((*ptr).data.extptr).read())
+            NodeBody::ExtPtr(core.data.extptr)
         } else {
             NodeBody::Other
-        };
-        HeaderSnap {
-            sxpinfo,
-            attrib,
-            payload,
-            body,
         }
+    };
+    HeaderSnap {
+        sxpinfo,
+        attrib: core.attrib,
+        payload: core.gengc_next_node,
+        body,
     }
 }

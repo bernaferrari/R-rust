@@ -360,7 +360,7 @@ pub struct RInstance {
     /// legacy ops. See `protect::RootTable`.
     pub(crate) root_table: super::protect::RootTable,
     /// The permanent preserve stack for this instance.
-    pub(crate) preserve_stack: RefCell<Vec<SEXP>>,
+    pub(crate) preserve_stack: super::protect::PreservedRoots,
     /// Per-instance execution context stack.
     #[allow(clippy::vec_box)]
     pub(crate) base_wrappers: std::cell::RefCell<std::collections::HashMap<&'static str, SEXP>>,
@@ -593,7 +593,7 @@ impl RInstance {
             initialized: false,
             legacy_protect: super::protect::LegacyProtectionStack::new(),
             root_table: super::protect::RootTable::new(),
-            preserve_stack: RefCell::new(Vec::new()),
+            preserve_stack: super::protect::PreservedRoots::new(),
             base_wrappers: RefCell::default(),
             context_stack: Vec::new(),
             in_error: false,

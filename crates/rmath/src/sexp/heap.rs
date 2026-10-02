@@ -340,6 +340,15 @@ impl<T> NodeProjection<T> {
         Some((pointer, token))
     }
 }
+impl<T: Copy> NodeProjection<T> {
+    pub(crate) fn copy_live(&self, id: &NodeId) -> Option<T> {
+        if !self.metadata.validates(id) {
+            return None;
+        }
+        let values = self.values.upgrade()?;
+        values.get(id.slot).map(Cell::get)
+    }
+}
 impl<T> Drop for NodePage<T> {
     fn drop(&mut self) {
         self.metadata.invalidate_all();
@@ -387,6 +396,13 @@ impl<T> NodePage<T> {
             .then(|| self.values[id.slot].as_ptr())
     }
 }
+impl<T: Copy> NodePage<T> {
+    pub(crate) fn copy_live(&self, id: &NodeId) -> Option<T> {
+        self.metadata
+            .validates(id)
+            .then(|| self.values[id.slot].get())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -400,10 +416,12 @@ mod tests {
         let token = page.token(0).unwrap();
         let projection = page.projection();
         assert!(projection.resolve_slot(0).is_some());
+        assert_eq!(projection.copy_live(token.id()), Some(9));
         assert!(token.is_live());
         drop(page);
         assert!(!token.is_live());
         assert!(projection.resolve_slot(0).is_none());
+        assert_eq!(projection.copy_live(token.id()), None);
         assert!(!metadata.reusable(0));
         assert!(!metadata.reusable(1));
         assert_eq!(metadata.activate(1, false), Err(HeapError::RetiredSlot));
@@ -420,6 +438,8 @@ mod tests {
         assert!(first.token(0).unwrap().same_heap(&second.token(0).unwrap()));
         assert_eq!(first.resolve(&second_id), None);
         assert_eq!(second.resolve(&first_id), None);
+        assert_eq!(first.copy_live(&second_id), None);
+        assert_eq!(first.projection().copy_live(&second_id), None);
     }
 
     #[test]
@@ -429,13 +449,20 @@ mod tests {
         let pointer = page.replace_inactive(0, 7).unwrap();
         let old = page.metadata.activate(0, false).unwrap();
         assert_eq!(page.resolve(&old), Some(pointer));
+        assert_eq!(page.copy_live(&old), Some(7));
+        let projection = page.projection();
+        assert_eq!(projection.copy_live(&old), Some(7));
         assert!(page.metadata.release(&old));
         assert_eq!(page.resolve(&old), None);
+        assert_eq!(page.copy_live(&old), None);
+        assert_eq!(projection.copy_live(&old), None);
         assert_eq!(page.replace_inactive(0, 11).unwrap(), pointer);
         let new = page.metadata.activate(0, false).unwrap();
         assert_ne!(old, new);
         assert_eq!(page.resolve(&old), None);
         assert_eq!(page.resolve(&new), Some(pointer));
+        assert_eq!(page.copy_live(&new), Some(11));
+        assert_eq!(projection.copy_live(&new), Some(11));
         assert_eq!(page.token(0).unwrap().mark(17), Some(false));
         assert_eq!(page.token(0).unwrap().mark(17), Some(true));
         let stale = CheckedNode {
@@ -448,6 +475,8 @@ mod tests {
         foreign.replace_inactive(0, 3).unwrap();
         let foreign_id = foreign.metadata.activate(0, false).unwrap();
         assert_eq!(page.resolve(&foreign_id), None);
+        assert_eq!(page.copy_live(&foreign_id), None);
+        assert_eq!(projection.copy_live(&foreign_id), None);
     }
     #[test]
     fn generation_exhaustion_retires_storage_without_aliasing_old_ids() {

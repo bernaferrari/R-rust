@@ -3,7 +3,7 @@
 //! alone. Metadata leases do not retain the physical header allocation.
 
 use crate::sexp::{
-    ffi::SEXP,
+    ffi::{SEXP, SexprecCore},
     heap::{CheckedNode, HeapIdentity},
     memory,
     session::immutable_singleton_projection,
@@ -60,10 +60,16 @@ impl TraceNode {
         Ok(())
     }
 
-    /// The projection bridge revalidates immediately before copying a header.
-    pub(super) fn projection(&self, context: &TraceContext) -> Result<SEXP, TraceError> {
+    /// Copy the owning Cell only after validating the original allocation.
+    /// No header loan or caller-supplied pointer is used to read storage.
+    pub(super) fn snapshot(&self, context: &TraceContext) -> Result<SexprecCore, TraceError> {
         self.validate(context)?;
-        Ok(self.projection)
+        memory::checked_snapshot(self.projection, &self.token)
+            .ok_or(TraceError::ProjectionMismatch(self.projection as usize))
+    }
+
+    pub(super) fn address(&self) -> usize {
+        self.projection as usize
     }
 }
 

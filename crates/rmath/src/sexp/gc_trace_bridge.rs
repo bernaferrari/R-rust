@@ -26,17 +26,13 @@ pub(super) unsafe fn snapshot_children(
     node: &TraceNode,
     context: &TraceContext,
 ) -> Result<ChildSnapshot, TraceError> {
-    let projection = node.projection(context)?;
-    // SAFETY: the generation and owner were checked immediately above. Copy
-    // fields through the stable Cell projection without forming a node loan.
-    let (info, attrib, data, payload) = unsafe {
-        (
-            (*projection).sxpinfo,
-            (*projection).attrib,
-            (*projection).data,
-            (*projection).gengc_next_node,
-        )
-    };
+    let header = node.snapshot(context)?;
+    let (info, attrib, data, payload) = (
+        header.sxpinfo,
+        header.attrib,
+        header.data,
+        header.gengc_next_node,
+    );
     let mut fixed = [
         attrib,
         std::ptr::null_mut(),
@@ -88,7 +84,7 @@ pub(super) unsafe fn snapshot_children(
         let length = usize::try_from(length)
             .ok()
             .filter(|length| *length <= isize::MAX as usize / std::mem::size_of::<SEXP>())
-            .ok_or(TraceError::InvalidPayload(projection as usize))?;
+            .ok_or(TraceError::InvalidPayload(node.address()))?;
         if !payload.is_null() {
             vector.reserve(length);
             let pointers = payload.cast::<SEXP>();

@@ -30,6 +30,10 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
 
+#[cfg(test)]
+#[path = "memory_finalizer_batch_tests.rs"]
+mod finalizer_batch_tests;
+
 unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
@@ -42,6 +46,7 @@ unsafe fn error(msg: &str) -> ! {
 
 pub type R_CFinalizer_t = unsafe extern "C" fn(*mut c_void);
 
+#[derive(Clone)]
 pub(crate) enum PendingFinalizer {
     C {
         obj: SEXP,
@@ -663,35 +668,105 @@ pub unsafe fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, _onexit: c_in
     }
 }
 
+/// Reset only the original owner's running flag, even if a finalizer switches
+/// the ambient owner, unwinds, or destroys its session. The observer does not
+/// keep the instance allocation alive.
+struct FinalizerRunGuard {
+    owner: *mut crate::sexp::instance::RInstance,
+    liveness: crate::sexp::instance::InstanceLiveness,
+}
+
+impl Drop for FinalizerRunGuard {
+    fn drop(&mut self) {
+        if self.liveness.is_live() {
+            // SAFETY: the exact captured owner remains alive on this thread;
+            // no instance/state borrow is held across a finalizer callback.
+            unsafe { (*self.owner).memory_state.running_finalizers = false };
+        }
+    }
+}
+
 pub unsafe fn R_RunPendingFinalizers() {
-    let finalizers = with_memory_state(|state| {
-        if state.running_finalizers || state.pending_finalizers.is_empty() {
-            Vec::new()
-        } else {
+    let owner = crate::sexp::instance::with_required_current_instance(|owner| owner);
+    // SAFETY: the ambient owner is live on entry. Retain only its weak teardown
+    // observer; callbacks may destroy the original session.
+    let liveness = unsafe { crate::sexp::instance::instance_liveness(owner) };
+    let mut finalizers = with_memory_state(|state| {
+        if state.running_finalizers {
+            return Vec::new();
+        }
+        // Keep originals GC-visible until every execution root is claimed.
+        // Snapshot allocation failure also leaves the queue and flag intact.
+        let ready: Vec<_> = state
+            .pending_finalizers
+            .iter()
+            .filter(|finalizer| finalizer.is_ready())
+            .cloned()
+            .collect();
+        if !ready.is_empty() {
             state.running_finalizers = true;
-            let mut ready = Vec::new();
-            let mut waiting = Vec::new();
-            for finalizer in std::mem::take(&mut state.pending_finalizers) {
-                if finalizer.is_ready() {
-                    ready.push(finalizer);
-                } else {
-                    waiting.push(finalizer);
+        }
+        ready
+    });
+    if finalizers.is_empty() {
+        return;
+    }
+    let run = FinalizerRunGuard { owner, liveness };
+    // SAFETY: root claims cannot invoke R callbacks. The owner remains live
+    // throughout this preparation, and all field borrows end before dispatch.
+    let _batch_roots = unsafe {
+        crate::sexp::session::with_instance_active(owner, || {
+            let mut roots = Vec::new();
+            for finalizer in &mut finalizers {
+                let object = canonical_finalizer_value(owner, finalizer.obj());
+                *finalizer.obj_mut() = object;
+                roots.push(crate::sexp::protect::protect(object));
+                if let Some(function) = finalizer.fun_mut() {
+                    *function = canonical_finalizer_value(owner, *function);
+                    roots.push(crate::sexp::protect::protect(*function));
                 }
             }
-            state.pending_finalizers = waiting;
-            ready
-        }
-    });
+            // A failed claim unwinds the partial roots and running guard while
+            // retaining the complete original queue for a later retry.
+            (*owner)
+                .memory_state
+                .pending_finalizers
+                .retain(|finalizer| !finalizer.is_ready());
+            roots
+        })
+    };
 
     for finalizer in finalizers {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            run_pending_finalizer(finalizer);
-        }));
+        if !run.liveness.is_live() {
+            break;
+        }
+        // SAFETY: validate teardown before every activation. The activation
+        // guard and root guards also check teardown before restoring/releasing.
+        unsafe {
+            crate::sexp::session::with_instance_active(owner, || {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    run_pending_finalizer(finalizer);
+                }));
+            });
+        }
     }
+}
 
-    with_memory_state(|state| {
-        state.running_finalizers = false;
-    });
+/// Recover the owning projection instead of dereferencing caller provenance.
+/// # Safety
+/// `owner` must remain live throughout this callback-free preparation.
+unsafe fn canonical_finalizer_value(
+    owner: *mut crate::sexp::instance::RInstance,
+    value: SEXP,
+) -> SEXP {
+    if value.is_null() {
+        return value;
+    }
+    if let Some(singleton) = crate::sexp::session::immutable_singleton_projection(value) {
+        return singleton;
+    }
+    unsafe { (*owner).canonical_projection(value) }
+        .expect("finalizer requires a live allocation owned by its original session")
 }
 
 unsafe fn run_pending_finalizer(finalizer: PendingFinalizer) {
@@ -704,7 +779,21 @@ unsafe fn run_pending_finalizer(finalizer: PendingFinalizer) {
             }
             PendingFinalizer::R { obj, fun, .. } => {
                 if !obj.is_null() && !fun.is_null() && fun != R_NilValue() {
-                    let call = Rf_lang2(fun, obj);
+                    // Publish the complete call graph and its root before the
+                    // allocation lend ends and deferred torture GC can run.
+                    // Separate Rf_cons lends would expose an unrooted tail.
+                    let (call, _call_root) = crate::sexp::memory::with_arena(|arena| {
+                        let tail = arena.cons(obj, R_NilValue(), R_NilValue());
+                        if tail.is_null() {
+                            error("could not allocate finalizer arguments");
+                        }
+                        let call = arena.cons(fun, tail, R_NilValue());
+                        if call.is_null() {
+                            error("could not allocate finalizer call");
+                        }
+                        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        (call, crate::sexp::protect::protect(call))
+                    });
                     let _ = crate::eval::eval::Rf_eval(call, R_GlobalEnv());
                 }
             }
@@ -969,14 +1058,11 @@ pub unsafe fn R_SetPPSize(_size: u64) {
 }
 
 unsafe fn current_vector_heap_size() -> u64 {
-    unsafe {
-    crate::sexp::memory::with_arena(|arena| arena.total_bytes_allocated() as u64)
-}
+    unsafe { crate::sexp::memory::with_arena(|arena| arena.total_bytes_allocated() as u64) }
 }
 
 unsafe fn current_node_heap_size() -> u64 {
-    unsafe {
-    crate::sexp::memory::with_arena(|arena| arena.node_count() as u64) }
+    unsafe { crate::sexp::memory::with_arena(|arena| arena.node_count() as u64) }
 }
 
 // ---------------------------------------------------------------------------

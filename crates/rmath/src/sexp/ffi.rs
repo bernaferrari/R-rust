@@ -429,6 +429,7 @@ impl Default for SexprecData {
 /// actual element data is stored in a separate allocation referenced
 /// by the arena allocator.
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct SexprecCore {
     pub sxpinfo: SxpInfo,
     pub attrib: *mut SexprecCore,

@@ -10,7 +10,7 @@
 //! # Two storages, two disciplines
 //!
 //! * **[`LegacyProtectionStack`]** — the C-port stack: a strict LIFO
-//!   `Vec<SEXP>` for translated `Rf_protect` / `Rf_unprotect` /
+//!   ordered, checked allocations for translated `Rf_protect` / `Rf_unprotect` /
 //!   `UNPROTECT_PTR` / `R_ProtectCount` code ([`protect_raw_pointer`],
 //!   [`unprotect_count`], [`unprotect_ptr`], [`protect_n`]). Release is
 //!   COUNT-BASED: `Rf_unprotect(n)` truncates the top `n` entries and later
@@ -79,6 +79,9 @@ use super::object::{Sexp, SexpOwner};
 #[path = "root_storage.rs"]
 mod root_storage;
 use root_storage::{RootStorage, SlotId, StorageError};
+#[path = "root_sequence.rs"]
+mod root_sequence;
+use root_sequence::{RootSequence, SequenceLease};
 
 /// Error returned when a safe protection API receives a handle whose owner was
 /// not validated.
@@ -134,84 +137,156 @@ impl std::error::Error for ProtectError {}
 /// handles that need arbitrary drop order must use the [`RootTable`] APIs
 /// instead — the two storages never alias, so a legacy `unprotect` can never
 /// truncate a root slot and a root release can never shift legacy entries.
+/// The common canonical occupants of ordered native root channels.
 #[derive(Default)]
-pub(crate) struct LegacyProtectionStack {
-    entries: RefCell<Vec<SEXP>>,
+struct NativeRoots {
+    entries: RefCell<RootSequence<RootValue>>,
 }
-
-impl LegacyProtectionStack {
-    pub(crate) fn new() -> Self {
-        Self {
-            entries: RefCell::new(Vec::new()),
-        }
-    }
-
-    /// Number of entries currently on the stack (`R_ProtectCount`).
-    pub(crate) fn len(&self) -> usize {
-        // P2: strictly-local RefCell read; no ambient write intervenes.
+impl NativeRoots {
+    fn len(&self) -> usize {
         self.entries.borrow().len()
     }
-
-    /// Push `s` on the top of the stack.
-    pub(crate) fn push(&self, s: SEXP, api: &str) {
-        // P2: strictly-local RefCell access. `try_reserve` may allocate and
-        // panic, but neither reenters the interpreter nor touches the
-        // instance through another raw path.
-        let mut entries = self.entries.borrow_mut();
-        reserve_slot_or_fail(&mut entries, api);
-        entries.push(s);
+    fn try_push(&self, value: RootValue) -> Result<SequenceLease, ProtectError> {
+        let value = value.canonical()?;
+        self.entries
+            .borrow_mut()
+            .try_push(value)
+            .map_err(storage_error)
     }
-
-    /// Truncate the top `n` entries (`Rf_unprotect(n)`). Popping at least
-    /// the whole stack clears it.
-    pub(crate) fn pop_count(&self, n: usize) {
-        if n == 0 {
-            return;
-        }
-        // P2: strictly-local RefCell access; no ambient write intervenes.
-        let mut entries = self.entries.borrow_mut();
-        let keep = entries.len().saturating_sub(n);
-        entries.truncate(keep);
-    }
-
-    /// Remove the topmost entry equal to `s` (`UNPROTECT_PTR`).
-    pub(crate) fn remove_topmost(&self, s: SEXP) {
-        // P2: strictly-local RefCell access; no ambient write intervenes.
-        let mut entries = self.entries.borrow_mut();
-        if let Some(pos) = entries.iter().rposition(|&x| x == s) {
-            entries.remove(pos);
-        }
-    }
-
-    /// Unwind to a recorded depth (session `ProtectScope` teardown).
-    pub(crate) fn truncate(&self, depth: usize) {
-        // P2: strictly-local RefCell access; no ambient write intervenes.
-        self.entries.borrow_mut().truncate(depth);
-    }
-
-    /// Bulk reset (instance/test harness teardown).
-    pub(crate) fn clear(&self) {
-        // P2: strictly-local RefCell access; no ambient write intervenes.
+    fn clear(&self) {
         self.entries.borrow_mut().clear();
     }
+    fn checked_entries_snapshot(&self) -> Vec<RootValue> {
+        self.entries
+            .borrow()
+            .entries()
+            .filter(|(_, value)| value.is_live())
+            .map(|(_, value)| value.clone())
+            .collect()
+    }
+    fn entries_snapshot(&self) -> Vec<SEXP> {
+        self.entries
+            .borrow()
+            .entries()
+            .map(|(_, value)| value.projection().unwrap_or(std::ptr::null_mut()))
+            .collect()
+    }
+    fn updates_snapshot(&self) -> Vec<(SequenceLease, RootValue)> {
+        self.entries
+            .borrow()
+            .entries()
+            .map(|(lease, value)| (lease, value.clone()))
+            .collect()
+    }
+    fn replace_if_current(&self, lease: SequenceLease, expected: &RootValue, value: RootValue) {
+        self.entries
+            .borrow_mut()
+            .replace_if_current(lease, expected, value);
+    }
+}
+fn storage_error(error: StorageError) -> ProtectError {
+    match error {
+        StorageError::Allocation => ProtectError::Allocation,
+        StorageError::GenerationExhausted => ProtectError::GenerationExhausted,
+    }
+}
 
-    /// Run `f` over the live entries in push order.
+#[derive(Default)]
+pub(crate) struct LegacyProtectionStack {
+    roots: NativeRoots,
+}
+impl LegacyProtectionStack {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+    pub(crate) fn len(&self) -> usize {
+        self.roots.len()
+    }
+    pub(crate) fn push(&self, value: RootValue, api: &str) {
+        self.roots
+            .try_push(value)
+            .unwrap_or_else(|error| panic!("{api}: {error}"));
+    }
+    pub(crate) fn pop_count(&self, count: usize) {
+        self.roots.entries.borrow_mut().pop_count(count);
+    }
+    pub(crate) fn truncate(&self, depth: usize) {
+        self.roots.entries.borrow_mut().truncate(depth);
+    }
+    fn remove_topmost(&self, value: &RootValue) {
+        self.roots.entries.borrow_mut().remove_last(value);
+    }
+    pub(crate) fn clear(&self) {
+        self.roots.clear();
+    }
+    pub(crate) fn checked_entries_snapshot(&self) -> Vec<RootValue> {
+        self.roots.checked_entries_snapshot()
+    }
+    fn entries_snapshot(&self) -> Vec<SEXP> {
+        self.roots.entries_snapshot()
+    }
+    fn updates_snapshot(&self) -> Vec<(SequenceLease, RootValue)> {
+        self.roots.updates_snapshot()
+    }
+    fn replace_if_current(
+        &self,
+        lease: SequenceLease,
+        expected: &RootValue,
+        replacement: RootValue,
+    ) {
+        self.roots.replace_if_current(lease, expected, replacement);
+    }
     pub(crate) fn with_entries<R>(&self, f: impl FnOnce(&[SEXP]) -> R) -> R {
-        // P2: the RefCell read borrow (and the &[SEXP] handed to f) covers
-        // the legacy stack buffer only; callers mark/update SEXP objects
-        // elsewhere, never this Vec's allocation.
-        let entries = self.entries.borrow().clone();
+        let entries = self.entries_snapshot();
         f(&entries)
     }
+}
 
-    fn entries_snapshot(&self) -> Vec<SEXP> {
-        self.entries.borrow().clone()
+/// Preserved objects keep native first-match release semantics; Rust guards
+/// release the precise lease they installed, independently of duplicate values.
+#[derive(Default)]
+pub(crate) struct PreservedRoots {
+    roots: NativeRoots,
+}
+impl PreservedRoots {
+    pub(crate) fn new() -> Self {
+        Self::default()
     }
-    fn replace_if_current(&self, index: usize, expected: SEXP, replacement: SEXP) {
-        let mut entries = self.entries.borrow_mut();
-        if entries.get(index) == Some(&expected) {
-            entries[index] = replacement;
-        }
+    fn try_push(&self, value: RootValue) -> Result<SequenceLease, ProtectError> {
+        self.roots.try_push(value)
+    }
+    fn remove_first(&self, value: &RootValue) {
+        self.roots.entries.borrow_mut().remove_first(value);
+    }
+    fn remove_lease(&self, lease: SequenceLease) {
+        self.roots.entries.borrow_mut().remove_lease(lease);
+    }
+    pub(crate) fn clear(&self) {
+        self.roots.clear();
+    }
+    pub(crate) fn is_empty(&self) -> bool {
+        self.roots.entries.borrow().is_empty()
+    }
+    pub(crate) fn checked_entries_snapshot(&self) -> Vec<RootValue> {
+        self.roots.checked_entries_snapshot()
+    }
+    pub(crate) fn entries_snapshot(&self) -> Vec<SEXP> {
+        self.roots.entries_snapshot()
+    }
+    fn updates_snapshot(&self) -> Vec<(SequenceLease, RootValue)> {
+        self.roots.updates_snapshot()
+    }
+    fn replace_if_current(
+        &self,
+        lease: SequenceLease,
+        expected: &RootValue,
+        replacement: RootValue,
+    ) {
+        self.roots.replace_if_current(lease, expected, replacement);
+    }
+    #[cfg(test)]
+    pub(crate) fn push_for_test(&self, value: RootValue) {
+        self.try_push(value).unwrap();
     }
 }
 
@@ -273,7 +348,10 @@ impl RootValue {
     }
 
     /// The raw owner is a live scoped native boundary. No input header is read.
-    unsafe fn from_owner(inst: *mut RInstance, input: SEXP) -> Result<Self, ProtectError> {
+    pub(crate) unsafe fn from_owner(
+        inst: *mut RInstance,
+        input: SEXP,
+    ) -> Result<Self, ProtectError> {
         if let Some(projection) = super::session::immutable_singleton_projection(input) {
             return Ok(Self::Static { projection });
         }
@@ -324,10 +402,7 @@ impl RootTable {
             .storage
             .borrow_mut()
             .try_claim(value, managed)
-            .map_err(|error| match error {
-                StorageError::Allocation => ProtectError::Allocation,
-                StorageError::GenerationExhausted => ProtectError::GenerationExhausted,
-            })?;
+            .map_err(storage_error)?;
         Ok(ProtectionSlot::from_stack_index(id.index, id.generation))
     }
     pub(crate) fn claim(&self, value: RootValue, api: &str) -> (usize, u64) {
@@ -401,12 +476,6 @@ impl RootTable {
         if storage.get(slot) == Some(expected) {
             storage.replace(slot, value);
         }
-    }
-}
-
-fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
-    if stack.try_reserve(1).is_err() {
-        panic!("{api}: protection stack allocation failed");
     }
 }
 
@@ -624,7 +693,8 @@ pub(crate) fn push_protect_in(inst: *mut RInstance, s: SEXP) {
     if !s.is_null() {
         // SAFETY: `inst` is a live instance pointer from the caller; the
         // RefCell access is strictly local.
-        unsafe { (*inst).legacy_protect.push(s, "protect") };
+        let value = unsafe { RootValue::from_owner(inst, s) }.expect("invalid protection owner");
+        unsafe { (*inst).legacy_protect.push(value, "protect") };
     }
 }
 
@@ -667,7 +737,8 @@ pub(crate) fn unprotect_ptr_in(inst: *mut RInstance, s: SEXP) {
     }
     // SAFETY: `inst` is a live instance pointer from the caller; the RefCell
     // access is strictly local.
-    unsafe { (*inst).legacy_protect.remove_topmost(s) };
+    let value = unsafe { RootValue::from_owner(inst, s) }.expect("invalid unprotect owner");
+    unsafe { (*inst).legacy_protect.remove_topmost(&value) };
 }
 
 /// Get the current LEGACY protection stack depth.
@@ -1120,16 +1191,15 @@ fn push_preserve_in(inst: *mut RInstance, s: SEXP) {
     try_push_preserve_in(inst, s).unwrap_or_else(|error| panic!("preserve: {error}"));
 }
 
-fn try_push_preserve_in(inst: *mut RInstance, s: SEXP) -> Result<(), ProtectError> {
-    if !s.is_null() {
-        // P2: strictly-local RefCell access; see
-        // LegacyProtectionStack::push on try_reserve.
-        // SAFETY: `inst` is a live instance pointer from the caller.
-        let mut stack = unsafe { (*inst).preserve_stack.borrow_mut() };
-        stack.try_reserve(1).map_err(|_| ProtectError::Allocation)?;
-        stack.push(s);
+fn try_push_preserve_in(
+    inst: *mut RInstance,
+    s: SEXP,
+) -> Result<Option<SequenceLease>, ProtectError> {
+    if s.is_null() {
+        return Ok(None);
     }
-    Ok(())
+    let value = unsafe { RootValue::from_owner(inst, s) }?;
+    unsafe { (*inst).preserve_stack.try_push(value) }.map(Some)
 }
 
 fn push_preserve(s: SEXP) {
@@ -1140,11 +1210,9 @@ pub(crate) fn release_preserved_in(inst: *mut RInstance, s: SEXP) {
     if s.is_null() {
         return;
     }
-    // P2: strictly-local RefCell access; no ambient write intervenes.
-    // SAFETY: `inst` is a live instance pointer from the caller.
-    let mut stack = unsafe { (*inst).preserve_stack.borrow_mut() };
-    if let Some(pos) = stack.iter().position(|&x| x == s) {
-        stack.remove(pos);
+    let value = unsafe { RootValue::from_owner(inst, s) }.expect("invalid preserve release owner");
+    unsafe {
+        (*inst).preserve_stack.remove_first(&value);
     }
 }
 
@@ -1158,7 +1226,7 @@ fn release_preserved(s: SEXP) {
 /// Like every protection guard it is `!Send + !Sync` ([`Confined`]).
 pub struct PreserveGuard<'a> {
     owner: Option<GuardOwner>,
-    value: SEXP,
+    lease: Option<SequenceLease>,
     _confined: Confined<'a>,
 }
 
@@ -1166,7 +1234,11 @@ impl Drop for PreserveGuard<'_> {
     fn drop(&mut self) {
         if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
             // SAFETY: See ProtectGuard::drop.
-            with_guard_owner(owner, |inst| release_preserved_in(inst, self.value));
+            if let Some(lease) = self.lease {
+                with_guard_owner(owner, |inst| unsafe {
+                    (*inst).preserve_stack.remove_lease(lease);
+                });
+            }
         }
     }
 }
@@ -1181,24 +1253,18 @@ pub fn preserve_sexp<'a>(value: Sexp<'a>) -> PreserveGuard<'a> {
 pub fn try_preserve_sexp<'a>(value: Sexp<'a>) -> Result<PreserveGuard<'a>, ProtectError> {
     ensure_owner_scoped(value.clone(), "preserve_sexp")?;
     let raw = value.clone().as_raw();
-    if raw.is_null() {
-        return Ok(PreserveGuard {
-            owner: None,
-            value: raw,
-            _confined: PhantomData,
-        });
-    }
-
     let owner = session_owner_handle(&value);
-    if let Some(owner) = owner.as_ref() {
+    let lease = if let Some(owner) = owner.as_ref() {
         if !owner.is_live() {
             return Err(ProtectError::OwnerUnavailable);
         }
-        with_guard_owner(owner, |inst| try_push_preserve_in(inst, raw))?;
-    }
+        with_guard_owner(owner, |inst| try_push_preserve_in(inst, raw))?
+    } else {
+        None
+    };
     Ok(PreserveGuard {
         owner,
-        value: raw,
+        lease,
         _confined: PhantomData,
     })
 }
@@ -1288,20 +1354,25 @@ where
     // A callback may remove roots or destroy this owner; neither resurrects an
     // old lease nor permits a subsequent dereference of the destroyed owner.
     let liveness = unsafe { super::instance::instance_liveness(inst) };
-    let legacy = unsafe { (*inst).legacy_protect.entries_snapshot() };
+    let legacy = unsafe { (*inst).legacy_protect.updates_snapshot() };
     let roots = unsafe { (*inst).root_table.updates_snapshot() };
-    for (index, expected) in legacy.into_iter().enumerate() {
+    for (lease, expected) in legacy {
         if !liveness.is_live() {
             return;
         }
-        let replacement = update_fn(expected);
+        let Some(projection) = expected.projection() else {
+            continue;
+        };
+        let replacement = update_fn(projection);
         if !liveness.is_live() {
             return;
         }
+        let replacement = unsafe { RootValue::from_owner(inst, replacement) }
+            .expect("legacy root update returned an invalid owner projection");
         unsafe {
             (*inst)
                 .legacy_protect
-                .replace_if_current(index, expected, replacement);
+                .replace_if_current(lease, &expected, replacement);
         }
     }
     for (slot, expected) in roots {
@@ -1339,18 +1410,24 @@ where
     F: FnMut(SEXP) -> SEXP,
 {
     let liveness = unsafe { super::instance::instance_liveness(inst) };
-    let snapshot = unsafe { (*inst).preserve_stack.borrow().clone() };
-    for (index, expected) in snapshot.into_iter().enumerate() {
+    let snapshot = unsafe { (*inst).preserve_stack.updates_snapshot() };
+    for (lease, expected) in snapshot {
         if !liveness.is_live() {
             return;
         }
-        let replacement = update_fn(expected);
+        let Some(projection) = expected.projection() else {
+            continue;
+        };
+        let replacement = update_fn(projection);
         if !liveness.is_live() {
             return;
         }
-        let mut stack = unsafe { (*inst).preserve_stack.borrow_mut() };
-        if stack.get(index) == Some(&expected) {
-            stack[index] = replacement;
+        let replacement = unsafe { RootValue::from_owner(inst, replacement) }
+            .expect("preserved root update returned an invalid owner projection");
+        unsafe {
+            (*inst)
+                .preserve_stack
+                .replace_if_current(lease, &expected, replacement);
         }
     }
 }
@@ -1370,7 +1447,7 @@ where
 {
     // P2: as with_protected_objects_in.
     // SAFETY: `inst` is a live instance pointer from the caller.
-    let stack = unsafe { (*inst).preserve_stack.borrow().clone() };
+    let stack = unsafe { (*inst).preserve_stack.entries_snapshot() };
     f(&stack)
 }
 
@@ -2397,6 +2474,123 @@ mod tests {
     }
 
     #[test]
+    fn stale_native_roots_cannot_pin_a_reused_header_address() {
+        use super::super::heap::{HeapIdentity, NodePage};
+        let page = NodePage::try_new(HeapIdentity::new(), 0, 1, || {
+            super::super::ffi::SexprecCore::new(SEXPTYPE::INTSXP)
+        })
+        .unwrap();
+        let metadata = page.metadata();
+        metadata.activate(0, false).unwrap();
+        let _registration = super::super::memory::register_node_page(&page);
+        let projection = page.raw_slot(0).unwrap();
+        let allocation = page.token(0).unwrap();
+        let value = RootValue::Checked {
+            projection,
+            allocation: allocation.clone(),
+        };
+        let legacy = LegacyProtectionStack::new();
+        let preserved = PreservedRoots::new();
+        legacy.push(value.clone(), "fixture");
+        let lease = preserved.try_push(value.clone()).unwrap();
+        assert!(metadata.release(allocation.id()));
+        page.replace_inactive(0, super::super::ffi::SexprecCore::new(SEXPTYPE::REALSXP))
+            .unwrap();
+        metadata.activate(0, false).unwrap();
+        assert_eq!(page.raw_slot(0), Some(projection));
+        assert_ne!(page.token(0).unwrap(), allocation);
+        assert!(legacy.checked_entries_snapshot().is_empty());
+        assert!(preserved.checked_entries_snapshot().is_empty());
+        assert_eq!(legacy.entries_snapshot(), [ptr::null_mut()]);
+        assert_eq!(preserved.entries_snapshot(), [ptr::null_mut()]);
+        assert_eq!(
+            preserved.try_push(value),
+            Err(ProtectError::StaleAllocation)
+        );
+        legacy.pop_count(1);
+        preserved.remove_lease(lease);
+        assert_eq!(legacy.len(), 0);
+        assert!(preserved.is_empty());
+    }
+
+    #[test]
+    fn native_root_updates_do_not_overwrite_same_value_reentry() {
+        let session = RSession::new_for_gc_tests();
+        unsafe {
+            protect_raw_pointer(token(1));
+        }
+        update_protect_stack_refs(|_| {
+            unsafe {
+                unprotect_count(1);
+                protect_raw_pointer(token(1));
+            }
+            token(2)
+        });
+        with_protected_objects(|legacy, roots| {
+            assert_eq!(legacy, &[token(1)]);
+            assert!(roots.is_empty());
+        });
+        unsafe {
+            unprotect_count(1);
+            R_PreserveObject(token(1));
+        }
+        update_preserve_stack_refs(|_| {
+            unsafe {
+                R_ReleaseObject(token(1));
+                R_PreserveObject(token(1));
+            }
+            token(2)
+        });
+        with_preserved_objects(|roots| assert_eq!(roots, &[token(1)]));
+        unsafe {
+            R_ReleaseObject(token(1));
+        }
+        drop(session);
+    }
+
+    #[test]
+    fn preserved_guards_release_their_own_duplicate_lease() {
+        let session = RSession::new_for_gc_tests();
+        let value = session.global_env().unwrap();
+        let first = preserve_sexp(value.clone());
+        let second = preserve_sexp(value.clone());
+        unsafe {
+            R_ReleaseObject(value.clone().as_raw());
+        }
+        drop(first);
+        with_preserved_objects(|roots| assert_eq!(roots, &[value.clone().as_raw()]));
+        drop(second);
+        with_preserved_objects(|roots| assert!(roots.is_empty()));
+    }
+
+    #[test]
+    fn exhausted_safe_preserve_leaves_roots_and_cleanup_intact() {
+        let session = RSession::new_for_gc_tests();
+        let value = session.global_env().unwrap();
+        let guard = preserve_sexp(value.clone());
+        let pointer = session.owner_token().unwrap().as_ptr();
+        let before = unsafe { (*pointer).preserve_stack.entries_snapshot() };
+        unsafe {
+            (*pointer)
+                .preserve_stack
+                .roots
+                .entries
+                .borrow_mut()
+                .set_next_lease_for_test(u64::MAX);
+        }
+        assert!(matches!(
+            try_preserve_sexp(value),
+            Err(ProtectError::GenerationExhausted)
+        ));
+        assert_eq!(
+            unsafe { (*pointer).preserve_stack.entries_snapshot() },
+            before
+        );
+        drop(guard);
+        with_preserved_objects(|roots| assert!(roots.is_empty()));
+    }
+
+    #[test]
     fn root_claim_recovers_owned_provenance_from_address_only_input() {
         use super::super::heap::{HeapIdentity, NodePage};
         let page = NodePage::try_new(HeapIdentity::new(), 0, 1, || {
@@ -2460,10 +2654,11 @@ mod tests {
                 protect_raw_pointer(token(3));
             }
             let counted = protect_n(1);
-            push_preserve(token(4));
+            let preserve_lease =
+                try_push_preserve_in(session.owner_token().unwrap().as_ptr(), token(4)).unwrap();
             let preserved = PreserveGuard {
                 owner: Some(unsafe { GuardOwner::new(session.owner_token().unwrap().as_ptr()) }),
-                value: token(4),
+                lease: preserve_lease,
                 _confined: PhantomData,
             };
             super::super::gengc::register_gc_callback(Box::new(move |_| {

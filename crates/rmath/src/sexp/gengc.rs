@@ -401,6 +401,21 @@ fn mark_context_roots(ctxt: &super::context::RCNTXT) {
     mark_reachable(ctxt.srcref);
 }
 #[inline(always)]
+fn mark_checked_root_snapshot(roots: Vec<RootValue>) {
+    let mut pending = gc_trace::TraceWorklist::new(gc_trace::TraceScope::active());
+    for root in roots {
+        match root {
+            RootValue::Checked { projection, allocation } => {
+                trace_result(pending.enqueue_checked(projection, allocation));
+            }
+            RootValue::Static { projection } => {
+                trace_result(pending.enqueue(projection));
+            }
+        }
+    }
+    drain_trace_worklist(pending);
+}
+
 fn mark_instance_roots(instance: *mut instance::RInstance) {
     unsafe {
         mark_reachable((*instance).empty_env);
@@ -412,43 +427,14 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             mark_reachable(node);
         }
 
-        // Scan both protection storages. The generational root table lends
-        // only an owned snapshot, retaining each root's original allocation
-        // identity rather than reinterpreting a reused address as a new root.
-        {
-            MARK_WHERE.with(|w| w.set("legacy_protect"));
-            (*instance).legacy_protect.with_entries(|entries| {
-                for &obj in entries.iter() {
-                    mark_reachable_traced(obj);
-                }
-            });
-        }
-        {
-            MARK_WHERE.with(|w| w.set("root_table"));
-            let roots = (*instance).root_table.checked_entries_snapshot();
-            let mut pending = gc_trace::TraceWorklist::new(gc_trace::TraceScope::active());
-            for root in roots {
-                match root {
-                    RootValue::Checked {
-                        projection,
-                        allocation,
-                    } => {
-                        trace_result(pending.enqueue_checked(projection, allocation));
-                    }
-                    RootValue::Static { projection } => {
-                        trace_result(pending.enqueue(projection));
-                    }
-                }
-            }
-            drain_trace_worklist(pending);
-        }
-        {
-            MARK_WHERE.with(|w| w.set("preserve_stack"));
-            let stack = (*instance).preserve_stack.borrow();
-            for &obj in stack.iter() {
-                mark_reachable_traced(obj);
-            }
-        }
+        // Every native and Rust protection channel carries original checked
+        // allocation identities; raw address reuse never creates a new root.
+        MARK_WHERE.with(|w| w.set("legacy_protect"));
+        mark_checked_root_snapshot((*instance).legacy_protect.checked_entries_snapshot());
+        MARK_WHERE.with(|w| w.set("root_table"));
+        mark_checked_root_snapshot((*instance).root_table.checked_entries_snapshot());
+        MARK_WHERE.with(|w| w.set("preserve_stack"));
+        mark_checked_root_snapshot((*instance).preserve_stack.checked_entries_snapshot());
             MARK_WHERE.with(|w| w.set("context"));
         for ctxt in &(*instance).context_stack {
             mark_context_roots(&*ctxt.get());
@@ -1890,7 +1876,7 @@ mod tests {
             // protection storages go back to empty.
             (*instance).legacy_protect.clear();
             (*instance).root_table.clear();
-            (*instance).preserve_stack.borrow_mut().clear();
+            (*instance).preserve_stack.clear();
             (*instance).base_wrappers.borrow_mut().clear();
             (*instance).package_namespace_cache.clear();
             (*instance).unwrap_methods_ns = nil;
@@ -2011,7 +1997,7 @@ mod tests {
             })
         });
         instance::with_required_current_instance(|inst| unsafe {
-            assert!((*inst).preserve_stack.borrow().is_empty());
+            assert!((*inst).preserve_stack.is_empty());
             assert!((*inst).base_wrappers.borrow().is_empty());
             assert!((*inst).package_namespace_cache.is_empty());
             assert_eq!((*inst).persistent_nodes.len(), 3);
@@ -2074,7 +2060,9 @@ mod tests {
             (*right_obj).sxpinfo.set_gcgen(Generation::Old as u8);
         }
 
-        left.legacy_protect.push(old, "test");
+        let old_root = unsafe { RootValue::from_owner(std::ptr::addr_of_mut!(left), old) }.unwrap();
+        let right_root = unsafe { RootValue::from_owner(std::ptr::addr_of_mut!(right), right_obj) }.unwrap();
+        left.legacy_protect.push(old_root.clone(), "test");
         let (projection, allocation) = super::super::memory::checked_projection(old).unwrap();
         left.root_table.claim(
             RootValue::Checked {
@@ -2083,10 +2071,10 @@ mod tests {
             },
             "test",
         );
-        left.preserve_stack.borrow_mut().push(old);
+        left.preserve_stack.push_for_test(old_root);
         left.gc_state.remembered_set.add(old);
-        right.legacy_protect.push(right_obj, "test");
-        right.preserve_stack.borrow_mut().push(right_obj);
+        right.legacy_protect.push(right_root.clone(), "test");
+        right.preserve_stack.push_for_test(right_root);
         right.gc_state.remembered_set.add(right_obj);
 
         update_protect_stack_in(&mut left, &old_to_new);
@@ -2097,14 +2085,14 @@ mod tests {
             .with_entries(|entries| assert_eq!(entries[0], new));
         left.root_table
             .with_entries(|entries| assert_eq!(entries[0], new));
-        assert_eq!(left.preserve_stack.borrow().last().copied(), Some(new));
+        assert_eq!(left.preserve_stack.entries_snapshot().last().copied(), Some(new));
         assert!(left.gc_state.remembered_set.iter().any(|obj| obj == new));
         assert!(!left.gc_state.remembered_set.iter().any(|obj| obj == old));
 
         right
             .legacy_protect
             .with_entries(|entries| assert_eq!(entries[0], right_obj));
-        assert_eq!(right.preserve_stack.borrow().last().copied(), Some(right_obj));
+        assert_eq!(right.preserve_stack.entries_snapshot().last().copied(), Some(right_obj));
         assert!(
             right
                 .gc_state

@@ -81,6 +81,17 @@ fn logical_layout(elements: usize, element_size: usize) -> Result<Layout, Payloa
 }
 
 impl OwnedPayload {
+    /// Generic scratch storage remains byte-typed and initialized. Consumers
+    /// interpret its bytes through their own audited size/alignment contract.
+    pub(crate) fn zeroed_bytes(bytes: usize) -> Result<Self, PayloadError> {
+        let layout = logical_layout(bytes, 1)?;
+        Ok(Self {
+            storage: Storage::Bytes(chunks(bytes, || 0)?),
+            length: bytes,
+            layout,
+        })
+    }
+
     pub(crate) fn zeroed_vector(kind: SEXPTYPE, length: R_xlen_t) -> Result<Self, PayloadError> {
         let length = usize::try_from(length).map_err(|_| PayloadError::InvalidLength)?;
         let (storage, layout) = match kind {
