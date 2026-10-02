@@ -4197,6 +4197,30 @@ mod tests {
     }
 
     #[test]
+    fn test_bounded_capture_stays_bounded_under_long_mixed_unicode_output() {
+        for limit in 0..=32 {
+            let mut state = OutputCaptureState::default();
+            state.set_max_bytes(Some(limit));
+            state.start();
+            for index in 0..4096 {
+                let message = ["", "a", "é", "🙂", "mixed Ω output"][index % 5];
+                if index % 2 == 0 {
+                    state.capture_stdout(message);
+                } else {
+                    state.capture_stderr(message);
+                }
+                let frame = &state.current;
+                let stream_bytes = frame.stdout.as_ref().unwrap().len() + frame.stderr.as_ref().unwrap().len();
+                assert!(stream_bytes <= limit);
+                assert_eq!(frame.interleaved.as_ref().unwrap().len(), stream_bytes);
+            }
+            let output = state.stop();
+            assert!(output.truncated);
+            assert!(output.interleaved.len() <= limit);
+        }
+    }
+
+    #[test]
     fn test_bounded_capture_respects_utf8_boundaries() {
         let mut state = OutputCaptureState::default();
         state.set_max_bytes(Some(5));

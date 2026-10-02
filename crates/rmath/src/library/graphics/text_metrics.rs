@@ -9,25 +9,165 @@ pub(super) unsafe fn measure(_args: SEXP, _height: bool) -> SEXP {
 }
 
 #[cfg(feature = "renderplot-device")]
-fn par_numbers(name: &str) -> Vec<f64> {
+fn positive_par_number(name: &str) -> f64 {
     use super::par::{ParValue, parameter};
-    match parameter(name) {
-        ParValue::Real(values) => values,
-        ParValue::Integer(values) | ParValue::Logical(values) => {
-            values.into_iter().map(f64::from).collect()
+    let value = match parameter(name) {
+        ParValue::Real(values) if values.len() == 1 => values[0],
+        ParValue::Integer(values) | ParValue::Logical(values) if values.len() == 1 => {
+            f64::from(values[0])
         }
-        _ => vec![],
+        _ => base_error(format!("invalid '{name}' graphics parameter")),
+    };
+    if !value.is_finite() || value <= 0. {
+        base_error(format!("invalid '{name}' graphics parameter"));
+    }
+    value
+}
+
+/// Decode owned font parameters before borrowing a drawing target.
+///
+/// # Safety
+/// R arguments must be live and rooted in the active session for coercion.
+#[cfg(feature = "renderplot-device")]
+pub(crate) unsafe fn text_parameters(
+    cex: SEXP,
+    font: SEXP,
+    extras: SEXP,
+) -> (r_graphics_engine::PlotParameters, f64) {
+    use crate::mainutils::coerce::asReal;
+    unsafe {
+        let base_scale = positive_par_number("cex");
+        let scale = if cex == crate::sexp::globals::R_NilValue() {
+            base_scale
+        } else {
+            asReal(cex) * base_scale
+        };
+        font_parameters(scale, font, extras)
+    }
+}
+
+/// Decode drawing parameters, using GNU text's fallback for invalid numeric cex.
+///
+/// # Safety
+/// The argument pairlist and its children must be live and rooted in the active session.
+#[cfg(feature = "renderplot-device")]
+pub(crate) unsafe fn drawing_parameters(args: SEXP) -> r_graphics_engine::PlotParameters {
+    use crate::mainutils::{coerce::asReal, essentials::arg_by_name_or_position};
+    use crate::sexp::{accessors::*, ffi::SEXPTYPE, globals::R_NilValue};
+    unsafe {
+        let cex = arg_by_name_or_position(args, &["cex"], usize::MAX);
+        let factor = if cex == R_NilValue() {
+            1.
+        } else {
+            if !matches!(
+                SEXPTYPE(TYPEOF(cex)),
+                SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+            ) {
+                base_error("invalid 'cex' argument");
+            }
+            let value = asReal(cex);
+            if value.is_finite() && value > 0. {
+                value
+            } else {
+                1.
+            }
+        };
+        let font = arg_by_name_or_position(args, &["font"], usize::MAX);
+        font_parameters(factor * positive_par_number("cex"), font, args).0
+    }
+}
+
+#[cfg(feature = "renderplot-device")]
+unsafe fn font_parameters(
+    scale: f64,
+    font: SEXP,
+    extras: SEXP,
+) -> (r_graphics_engine::PlotParameters, f64) {
+    use crate::mainutils::coerce::{asInteger, coerceVector};
+    use crate::sexp::{accessors::*, ffi::SEXPTYPE, globals::R_NilValue, protect::protect};
+    use r_graphics_engine::{FontFace, PlotParameters};
+    unsafe {
+        let nil = R_NilValue();
+        if !scale.is_finite() || scale <= 0. {
+            base_error("invalid 'cex' value");
+        }
+        let requested_font = if font == nil {
+            crate::sexp::ffi::NA_INTEGER
+        } else {
+            asInteger(font)
+        };
+        let font = if requested_font == crate::sexp::ffi::NA_INTEGER {
+            positive_par_number("font") as i32
+        } else {
+            requested_font
+        };
+        let face = match font {
+            1 => FontFace::Plain,
+            2 => FontFace::Bold,
+            3 => FontFace::Italic,
+            4 => FontFace::BoldItalic,
+            _ => base_error("unsupported font for portable string metrics"),
+        };
+        let mut family_arg = None;
+        let mut cell = extras;
+        while !cell.is_null() && cell != nil {
+            match crate::mainutils::essentials::tag_name(cell).as_deref() {
+                Some("family") => family_arg = Some(CAR(cell)),
+                Some("vfont") if CAR(cell) != nil => {
+                    base_error("Hershey fonts are not supported by the portable device")
+                }
+                _ => {}
+            }
+            cell = CDR(cell);
+        }
+        let family = if let Some(family_arg) = family_arg {
+            let value = coerceVector(family_arg, SEXPTYPE::STRSXP.0);
+            let _value = protect(value);
+            if XLENGTH(value) != 1 {
+                base_error("invalid 'family' graphics parameter");
+            }
+            if STRING_ELT(value, 0) == crate::sexp::globals::R_NaString() {
+                String::new()
+            } else {
+                crate::mainutils::essentials::elt_to_string(value, 0)
+            }
+        } else {
+            match super::par::parameter("family") {
+                super::par::ParValue::String(value) => value,
+                _ => base_error("invalid 'family' graphics parameter"),
+            }
+        };
+        if !matches!(family.as_str(), "" | "sans" | "DejaVu Sans") {
+            base_error("unsupported font family for portable string metrics");
+        }
+        let size = positive_par_number("ps") * scale;
+        let font_size = size as f32;
+        if !font_size.is_finite() || font_size <= 0. {
+            base_error("font size is outside the portable renderer range");
+        }
+        let line_height = positive_par_number("lheight") * size * 1.2;
+        if !line_height.is_finite() {
+            base_error("graphics line height overflow");
+        }
+        (
+            PlotParameters {
+                font_size,
+                font_face: face,
+                dpi: 72.,
+                ..Default::default()
+            },
+            line_height,
+        )
     }
 }
 
 #[cfg(feature = "renderplot-device")]
 pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
     use crate::mainutils::{
-        coerce::{asInteger, asReal, coerceVector},
+        coerce::{asInteger, coerceVector},
         plotmath::Label,
     };
     use crate::sexp::{accessors::*, ffi::SEXPTYPE, globals::R_NilValue, protect::protect};
-    use r_graphics_engine::{FontFace, PlotParameters};
     unsafe {
         let nil = R_NilValue();
         let mut cell = CDR(args);
@@ -47,49 +187,7 @@ pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
         if vfont != nil {
             base_error("Hershey font metrics are not supported by the portable device");
         }
-        let scale = if cex == nil {
-            par_numbers("cex")[0]
-        } else {
-            asReal(cex)
-        };
-        if !scale.is_finite() || scale <= 0. {
-            base_error("invalid 'cex' value");
-        }
-        let face = match if font == nil {
-            par_numbers("font")[0] as i32
-        } else {
-            asInteger(font)
-        } {
-            1 => FontFace::Plain,
-            2 => FontFace::Bold,
-            3 => FontFace::Italic,
-            4 => FontFace::BoldItalic,
-            _ => base_error("unsupported font for portable string metrics"),
-        };
-        let family_arg =
-            crate::mainutils::essentials::arg_by_name_or_position(cell, &["family"], usize::MAX);
-        let family = if family_arg == nil {
-            match super::par::parameter("family") {
-                super::par::ParValue::String(value) => value,
-                _ => String::new(),
-            }
-        } else {
-            crate::mainutils::essentials::elt_to_string(family_arg, 0)
-        };
-        if !matches!(family.as_str(), "" | "sans" | "DejaVu Sans") {
-            base_error("unsupported font family for portable string metrics");
-        }
-        let size = par_numbers("ps")[0] * scale;
-        if !size.is_finite() || size > f32::MAX as f64 {
-            base_error("invalid 'cex' value");
-        }
-        let params = PlotParameters {
-            font_size: size as f32,
-            font_face: face,
-            dpi: 72.,
-            ..Default::default()
-        };
-        let line_height = par_numbers("lheight")[0] * size * 1.2;
+        let (params, line_height) = text_parameters(cex, font, cell);
         let strings = if matches!(
             SEXPTYPE(TYPEOF(input)),
             SEXPTYPE::LANGSXP | SEXPTYPE::SYMSXP | SEXPTYPE::EXPRSXP
@@ -229,6 +327,128 @@ mod tests {
     }
 
     #[test]
+    fn graphics_string_metrics_preserve_base_scale_and_missing_font() {
+        let widths = measure(
+            "w<-strwidth('WWW',units='inches');par(cex=2);c(w,strwidth('WWW',units='inches'),strwidth('WWW',units='inches',cex=1),strwidth('WWW',units='inches',cex=2))",
+        );
+        for (index, multiplier) in [(1, 2.), (2, 2.), (3, 4.)] {
+            assert!((widths[index] / widths[0] - multiplier).abs() < 1e-6);
+        }
+        let widths = measure(
+            "par(font=2);c(strwidth('WWW',units='inches'),strwidth('WWW',units='inches',font=NA_integer_))",
+        );
+        assert_eq!(widths[0], widths[1]);
+        let widths = measure(
+            "c(strwidth('WWW',units='inches'),strwidth('WWW',units='inches',family=NA_character_))",
+        );
+        assert_eq!(widths[0], widths[1]);
+    }
+
+    #[test]
+    fn graphics_string_metrics_reject_malformed_parameter_state() {
+        let mut session = RSession::new_without_default_packages();
+        let mut scene = r_graphics_engine::Scene::new(640, 480);
+        for parameter in ["ps", "cex", "font", "lheight"] {
+            for value in ["numeric(0)", "'bad'", "NA_real_", "0", "-1", "c(1,2)"] {
+                let error = session.eval_script_with_output_capture_then_renderplot(
+                    &format!("par(ps=12,cex=1,font=1,lheight=1);plot.new();par({parameter}={value});strwidth('x',units='inches')"),
+                    &mut scene,
+                    |value, _, _| value.unwrap_err().message,
+                );
+                assert!(
+                    error.contains(&format!("invalid '{parameter}' graphics parameter")),
+                    "{parameter}={value}: {error}"
+                );
+            }
+        }
+        let (value, _, _) =
+            session.eval_code_with_output_capture("par(ps=12,cex=1,font=1,lheight=1);1L+1L");
+        unsafe {
+            // SAFETY: no R reentry occurs while reading the live session result.
+            assert_eq!(value.unwrap().integer_elt(0), Some(2));
+        }
+    }
+
+    #[test]
+    fn graphics_string_metrics_agree_with_drawn_font_parameters() {
+        let mut session = RSession::new_without_default_packages();
+        let mut scene = r_graphics_engine::Scene::new(640, 480);
+        let width = session.eval_script_with_output_capture_then_renderplot(
+            "plot.new();par(ps=18,cex=2,font=2);text(.5,.5,'WWW',cex=1.5);strwidth('WWW',units='inches',cex=1.5)",
+            &mut scene,
+            |value, _, _| unsafe {
+                // SAFETY: the callback's result is live and no R reentry occurs.
+                value.unwrap().real_elt(0).unwrap()
+            },
+        );
+        let params = scene
+            .operations()
+            .iter()
+            .find_map(|operation| match operation {
+                r_graphics_engine::DrawOperation::Text { text, params, .. } if text == "WWW" => {
+                    Some(params)
+                }
+                _ => None,
+            })
+            .expect("text must be drawn");
+        assert_eq!(params.font_face, r_graphics_engine::FontFace::Bold);
+        assert_eq!(params.font_size, 54.);
+        use r_graphics_engine::DrawTarget;
+        assert!((f64::from(scene.measure_text("WWW", params).width) - width * 72.).abs() < 1e-5);
+    }
+
+    #[test]
+    fn graphics_string_metrics_survive_gc_torture_and_restore_parameters() {
+        let expression = "c(strwidth(c('i','WWW'),units='inches'),strheight(expression(frac(x,2)),units='inches'))";
+        let baseline = measure(expression);
+        let tortured = measure(&format!(
+            "gctorture2(20);w<-{expression};gctorture(FALSE);w"
+        ));
+        assert_eq!(baseline, tortured);
+        assert_eq!(
+            measure(
+                "before<-par('font');strwidth('WWW',units='inches',font=2);c(as.double(before),as.double(par('font')))"
+            ),
+            vec![1., 1.]
+        );
+    }
+
+    #[test]
+    fn graphics_string_metrics_drawing_normalizes_cex_separately() {
+        let mut session = RSession::new_without_default_packages();
+        let mut scene = r_graphics_engine::Scene::new(640, 480);
+        for cex in ["0", "-1", "NA_real_", "numeric(0)", "NULL"] {
+            session.eval_script_with_output_capture_then_renderplot(
+                &format!("plot.new();par(cex=2);text(.5,.5,'fallback',cex={cex})"),
+                &mut scene,
+                |value, _, _| {
+                    value.unwrap();
+                },
+            );
+            let params = scene
+                .operations()
+                .iter()
+                .rev()
+                .find_map(|operation| match operation {
+                    r_graphics_engine::DrawOperation::Text { text, params, .. }
+                        if text == "fallback" =>
+                    {
+                        Some(params)
+                    }
+                    _ => None,
+                })
+                .expect("text must be drawn");
+            assert_eq!(params.font_size, 24., "cex={cex}");
+        }
+        let error = session.eval_script_with_output_capture_then_renderplot(
+            "plot.new();text(.5,.5,'bad',cex='2')",
+            &mut scene,
+            |value, _, _| value.unwrap_err().message,
+        );
+        assert!(error.contains("invalid 'cex' argument"), "{error}");
+    }
+
+    #[test]
     fn graphics_string_metrics_handle_units_empty_na_and_registered_routes() {
         let widths = measure(
             "c(strwidth('WWW',units='inches'),.External.graphics('C_strWidth','WWW',3L,NULL,NULL,NULL))",
@@ -267,8 +487,13 @@ mod tests {
         for code in [
             "strwidth('x',units='bad')",
             "strwidth('x',cex=0)",
+            "strwidth('x',cex=1e-100)",
+            "strheight('x',cex=1e100)",
             "strwidth('x',font=5)",
             "strwidth('x',family='serif')",
+            "strwidth('x',family=character())",
+            "strwidth('x',family=c('sans','sans'))",
+            "strwidth('x',family=NULL)",
             "strwidth('x',vfont=c('serif','plain'))",
         ] {
             let error = session.eval_script_with_output_capture_then_renderplot(

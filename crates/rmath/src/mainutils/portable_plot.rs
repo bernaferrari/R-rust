@@ -239,7 +239,12 @@ unsafe fn colors(x: SEXP, default: Color) -> Vec<Color> {
             .collect()
     }
 }
-unsafe fn style(args: SEXP) -> Style {
+unsafe fn point_size(args: SEXP) -> f32 {
+    unsafe {
+        scalar(args, "cex", par_numbers("cex").first().copied().unwrap_or(1.)) as f32 * 3.
+    }
+}
+unsafe fn style(args: SEXP, size: f32) -> Style {
     unsafe {
         let foreground = colors(arg(args, "col"), par_color("fg", Color::BLACK));
         let background = colors(arg(args, "bg"), par_color("bg", transparent()));
@@ -280,12 +285,6 @@ unsafe fn style(args: SEXP) -> Style {
             "lwd",
             par_numbers("lwd").first().copied().unwrap_or(1.),
         ) as f32;
-        let size = scalar(
-            args,
-            "cex",
-            par_numbers("cex").first().copied().unwrap_or(1.),
-        ) as f32
-            * 3.;
         if width < 0. || size < 0. {
             base_error("invalid line width or point size");
         }
@@ -1623,7 +1622,7 @@ fn invisible() -> SEXP {
 pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
     unsafe {
         let (x, y) = xy(args);
-        let style = style(args);
+        let style = style(args, point_size(args));
         let kind = label(args, "type").unwrap_or_else(|| "p".into());
         if !["p", "l", "b", "c", "o", "h", "s", "S", "n"].contains(&kind.as_str()) {
             base_error("invalid plot type");
@@ -1680,7 +1679,9 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             return invisible();
         }
         let c = current();
-        let style = style(args);
+        // Text has GNU's own cex normalization and does not use point radii.
+        let size = if matches!(name, "text" | "text.default") { 3. } else { point_size(args) };
+        let style = style(args, size);
         match name {
             "lines" | "lines.default" | "points" | "points.default" => {
                 let (x, y) = xy(args);
@@ -1861,19 +1862,17 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                     return invisible();
                 }
                 let angle = scalar(args, "srt", 0.) as f32;
+                let mut text_params = crate::library::graphics::text_metrics::drawing_parameters(args);
+                text_params.text_angle = angle;
+                text_params.text_anchor = TextAnchor::Middle;
                 let target = &mut *renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 for i in 0..x.len().max(y.len()) {
+                    text_params.text_color = style.color(i);
                     text[i % text.len()].draw(
                         target,
                         c.map(x[i % x.len()], y[i % y.len()]),
-                        &PlotParameters {
-                            font_size: style.size * 4.,
-                            text_color: style.color(i),
-                            text_angle: angle,
-                            text_anchor: TextAnchor::Middle,
-                            ..Default::default()
-                        },
+                        &text_params,
                     );
                 }
                 target.set_clip(None);

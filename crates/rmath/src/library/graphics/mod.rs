@@ -8,7 +8,7 @@ mod par_common;
 pub(crate) mod plot;
 pub(crate) mod plot3d;
 pub(crate) mod stem;
-mod text_metrics;
+pub(crate) mod text_metrics;
 #[allow(dead_code)]
 pub(crate) mod xspline;
 use crate::sexp::ffi::SEXP;

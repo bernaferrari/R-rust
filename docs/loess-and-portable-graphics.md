@@ -55,6 +55,13 @@ stubs, Hershey fonts and unsupported font families return errors rather than
 inventing dimensions. These are portable-device metrics, not GNU PDF Helvetica
 or arbitrary-font typography parity.
 
+Ordinary scalar `text()` drawing shares its checked point size, font face,
+family and base `cex` multiplier with string measurement. Numeric drawing
+`cex` values that are missing or nonpositive fall back to the base scale,
+matching GNU R; string measurement rejects invalid scales. Malformed stored
+font parameters and sizes outside the renderer's floating-point range return
+recoverable errors. Per-label `cex`/font vector recycling remains unsupported.
+
 The additional numeric `hist`, vector/matrix `barplot`, and numeric/list `boxplot`
 methods return statistical objects as well as drawing through the portable
 primitives. Explicit unsupported options report errors, including hatch fills,
