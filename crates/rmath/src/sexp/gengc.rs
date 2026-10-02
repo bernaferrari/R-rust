@@ -1540,17 +1540,7 @@ fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
             }
         }
 
-        if !to_free.is_empty() {
-            let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
-            let keep_alive =
-                crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
-                    &mut (*instance).memory_state,
-                    &unreachable,
-                );
-            if !keep_alive.is_empty() {
-                to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
-            }
-        }
+        promoted_count += retain_newly_ready_finalizer_graph(instance, &mut to_free, true);
 
         if !to_free.is_empty() {
             let nil = unsafe { crate::sexp::globals::R_NilValue() };
@@ -1567,6 +1557,54 @@ fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
         (*instance).gc_state.remembered_set.clear();
 
         (promoted_count, freed_count)
+    }
+}
+
+/// Newly ready finalizers become roots during this collection, after the
+/// initial mark pass. Trace their complete graph before deciding what to free.
+/// Keys alone are insufficient: a child can have been queued for sweeping too.
+fn retain_newly_ready_finalizer_graph(
+    instance: *mut instance::RInstance,
+    to_free: &mut Vec<SEXP>,
+    promote_young: bool,
+) -> usize {
+    if to_free.is_empty() {
+        return 0;
+    }
+    unsafe {
+        let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
+        let keys = crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
+            &mut (*instance).memory_state,
+            &unreachable,
+        );
+        if keys.is_empty() {
+            return 0;
+        }
+        // Copy original pointers, preserving provenance and ending the memory
+        // state borrow before recursive traversal touches the owning graph.
+        let ready_roots: Vec<SEXP> = (*instance)
+            .memory_state
+            .pending_finalizers
+            .iter()
+            .filter(|finalizer| finalizer.is_ready())
+            .map(|finalizer| finalizer.obj())
+            .collect();
+        for root in ready_roots {
+            mark_reachable(root);
+        }
+        let mut promoted = 0;
+        to_free.retain(|obj| {
+            if !super::memory::arena_node_marked(*obj) {
+                return true;
+            }
+            if promote_young && (**obj).sxpinfo.gcgen() == Generation::Young as u8 {
+                (**obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                promoted += 1;
+            }
+            (**obj).sxpinfo.set_mark(false);
+            false
+        });
+        promoted
     }
 }
 
@@ -1644,17 +1682,7 @@ fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize
         }
 
         let mut freed_set: HashSet<usize> = HashSet::new();
-        if !to_free.is_empty() {
-            let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
-            let keep_alive =
-                crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
-                    &mut (*instance).memory_state,
-                    &unreachable,
-                );
-            if !keep_alive.is_empty() {
-                to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
-            }
-        }
+        retain_newly_ready_finalizer_graph(instance, &mut to_free, false);
 
         if !to_free.is_empty() {
             freed_set = to_free.iter().map(|&obj| obj as usize).collect();
@@ -1723,17 +1751,7 @@ fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
             }
         }
 
-        if !to_free.is_empty() {
-            let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
-            let keep_alive =
-                crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
-                    &mut (*instance).memory_state,
-                    &unreachable,
-                );
-            if !keep_alive.is_empty() {
-                to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
-            }
-        }
+        promoted_count += retain_newly_ready_finalizer_graph(instance, &mut to_free, true);
 
         if !to_free.is_empty() {
             let nil = unsafe { crate::sexp::globals::R_NilValue() };
@@ -3726,3 +3744,7 @@ mod kani_proofs {
 #[cfg(test)]
 #[path = "gc_notification_tests.rs"]
 mod notification_tests;
+
+#[cfg(test)]
+#[path = "gc_finalizer_graph_tests.rs"]
+mod finalizer_graph_tests;
