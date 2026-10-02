@@ -185,12 +185,22 @@ collection after lease release, and an injected insertion failure.
 ### Miri evidence
 
 The nightly object gate runs `--lib sexp::object::` with strict provenance and
-isolation enabled. Local evidence for this refinement is 68 passing object
+isolation enabled. The earlier ownership refinement recorded 68 passing object
 tests plus two passing checked-mutation tests under the same flags. These cover
 managed lease cleanup, child and iterator liveness, foreign-owner rejection,
 GC between incremental pairlist appends, and collection deferral during an
 arena lend. A separate strict-provenance collector stress gate exercises 64
 protected vectors through 20 real collections and slab reuse.
+
+The allocation hardening on 2026-10-02 recorded 74 passing object tests and a
+separate later compact-owner regression, five transient-allocation tests, GNU
+pairlist construction, and GraphApp allocator/image checks under strict
+provenance. Vector admission and GraphApp allocation checks also passed under
+Miri on i686. The integrated native checkout passed 156 focused cases; its
+full-base-runtime object fixture was excluded from this focused run because
+of expensive debug initialization. The Wasm embedding build, Clippy and the
+app-facing safe-API audit passed. These are scoped regressions, not a full GNU
+R compatibility or interpreter safety certification.
 
 Leak checking is disabled for these gates because persistent runtime objects
 are deliberately retained. Full base-library and default-package heap stress
