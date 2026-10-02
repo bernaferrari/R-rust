@@ -16,10 +16,12 @@
 //!   Rprintf, Rvprintf, REvprintf, REvprintf_internal,
 //!   Rcons_vprintf, VectorIndex
 
+use std::cell::RefCell;
 use std::ffi::CStr;
 use std::io::Write as IoWrite;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
+use std::rc::Rc;
 
 use crate::sexp::accessors::{
     CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF,
@@ -32,6 +34,31 @@ use crate::sexp::ffi::{
 use crate::mainutils::format::{
     formatComplex, formatInteger, formatLogical, formatReal, formatString,
 };
+
+// ---------------------------------------------------------------------------
+// Optional console sink
+//
+// `eprint!` during `cargo test` is taken by the harness before it reaches
+// fd 2. Printers call [`console_emit`] so a test can keep those bytes.
+// With no sink installed this is `eprint!`.
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    static CONSOLE_SINK: RefCell<Option<Rc<RefCell<String>>>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn set_console_sink(sink: Option<Rc<RefCell<String>>>) {
+    CONSOLE_SINK.with(|slot| *slot.borrow_mut() = sink);
+}
+
+pub(crate) fn console_emit(args: std::fmt::Arguments<'_>) {
+    let sink = CONSOLE_SINK.with(|slot| slot.borrow().clone());
+    if let Some(buf) = sink {
+        let _ = std::fmt::Write::write_fmt(&mut *buf.borrow_mut(), args);
+    } else {
+        std::eprint!("{args}");
+    }
+}
 
 // ---------------------------------------------------------------------------
 // R_print global state

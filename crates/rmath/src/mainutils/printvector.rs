@@ -12,8 +12,11 @@ use std::ptr;
 
 use crate::mainutils::format::{
     formatComplex, formatComplexS, formatInteger, formatIntegerS, formatLogicalS, formatRaw,
-    formatRawS, formatReal, formatRealS, formatString, formatStringS,
+    formatRawS, formatReal, formatRealS, formatString, formatStringS, integer_field_width,
+    real_field,
 };
+use crate::sexp::altseq::CompactSeq;
+use crate::sexp::object::Sexp;
 use crate::mainutils::printutils::{
     EncodeComplex, EncodeInteger, EncodeLogical, EncodeRaw, EncodeReal0,
     EncodeString as encode_string, Rprt_adj,
@@ -125,7 +128,7 @@ pub const Rprt_adj_left: c_int = 0;
 /// Print formatted output to stderr (Rprintf equivalent).
 macro_rules! Rprintf {
     ($($arg:tt)*) => {
-        eprint!($($arg)*)
+        crate::mainutils::printutils::console_emit(format_args!($($arg)*))
     };
 }
 
@@ -577,8 +580,68 @@ unsafe fn printRawVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 
 unsafe fn printRealVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
     unsafe {
+        if n > 0 && n <= c_int::MAX as R_xlen_t {
+            if let Some(seq) = unexpanded_real(x) {
+                print_unexpanded_real_vector(seq, n, indx);
+                return;
+            }
+        }
         let px = REAL(x);
         printRealVector(px, n, indx);
+    }
+}
+
+fn unexpanded_real(x: SEXP) -> Option<CompactSeq> {
+    // SAFETY: null yields `None`. The caller holds a live node. No allocation.
+    let sx = unsafe { Sexp::from_raw(x) }?;
+    sx.compact_seq()
+        .filter(|seq| seq.payload_is_null() && seq.is_real())
+}
+
+fn unexpanded_int(x: SEXP) -> Option<CompactSeq> {
+    let sx = unsafe { Sexp::from_raw(x) }?;
+    sx.compact_seq()
+        .filter(|seq| seq.payload_is_null() && seq.is_int())
+}
+
+/// Same layout as [`printRealVector`], reading the formula instead of a buffer.
+unsafe fn print_unexpanded_real_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int) {
+    unsafe {
+        warn_illegal_outdec();
+        let rp = get_R_PrintData();
+        let mut labwidth: c_int = 0;
+        let mut width: c_int = 0;
+
+        if indx != 0 {
+            labwidth = index_width_xlen(n) + 2;
+            vector_index(1, labwidth);
+            width = labwidth;
+        } else {
+            width = 0;
+        }
+
+        let fmt = real_field(n, 0, |i| seq.real_or_na(i));
+        let w = fmt.w + rp.gap;
+
+        let outdec = b".\0".as_ptr() as *const c_char;
+
+        for i in 0..n {
+            let xi = seq.real_or_na(i);
+            if i > 0 && width + w > rp.width {
+                Rprintf!("\n");
+                if indx != 0 {
+                    vector_index(i + 1, labwidth);
+                    width = labwidth;
+                } else {
+                    width = 0;
+                }
+            }
+            let enc = EncodeReal0(xi, w, fmt.d, fmt.e, outdec);
+            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            Rprintf!("{}", s);
+            width += w;
+        }
+        Rprintf!("\n");
     }
 }
 
@@ -588,8 +651,52 @@ unsafe fn printRealVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 
 unsafe fn printIntegerVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
     unsafe {
+        if n > 0 && n <= c_int::MAX as R_xlen_t {
+            if let Some(seq) = unexpanded_int(x) {
+                print_unexpanded_integer_vector(seq, n, indx);
+                return;
+            }
+        }
         let px = INTEGER(x);
         printIntegerVector(px, n, indx);
+    }
+}
+
+/// Same layout as [`printIntegerVector`], reading the formula instead of a buffer.
+unsafe fn print_unexpanded_integer_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int) {
+    unsafe {
+        let rp = get_R_PrintData();
+        let mut labwidth: c_int = 0;
+        let mut width: c_int = 0;
+
+        if indx != 0 {
+            labwidth = index_width_xlen(n) + 2;
+            vector_index(1, labwidth);
+            width = labwidth;
+        } else {
+            width = 0;
+        }
+
+        let mut w = integer_field_width(n, |i| seq.int_or_na(i));
+        w += rp.gap;
+
+        for i in 0..n {
+            let xi = seq.int_or_na(i);
+            if i > 0 && width + w > rp.width {
+                Rprintf!("\n");
+                if indx != 0 {
+                    vector_index(i + 1, labwidth);
+                    width = labwidth;
+                } else {
+                    width = 0;
+                }
+            }
+            let enc = EncodeInteger(xi, w);
+            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            Rprintf!("{}", s);
+            width += w;
+        }
+        Rprintf!("\n");
     }
 }
 

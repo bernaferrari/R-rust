@@ -8,21 +8,23 @@
 //! edge it already traces. Nothing in the node is a Rust pointer.
 //!
 //! Element reads compute `origin + i * step` while the buffer is absent.
-//! `INTEGER_ELT`, `REAL_ELT`, and `Sexp::try_integer_elt` / `try_real_elt`
-//! share that formula, so arithmetic and formatting stay lazy. `DATAPTR`,
-//! `INTEGER`, `REAL`, and any safe pointer or element write allocate a normal
-//! arena buffer, fill it, clear the ALT bit, and drop the formula cell. After
-//! that the object is a plain vector.
+//! [`Sexp::try_integer_elt`] / [`Sexp::try_real_elt`](crate::sexp::object::Sexp::try_real_elt)
+//! and the vector and matrix printers share that formula, copied out through
+//! the safe handle, so arithmetic and formatting stay lazy. `DATAPTR`,
+//! `INTEGER`, `REAL`, and any pointer or element write allocate a normal arena
+//! buffer, fill it, clear the ALT bit, and drop the formula cell. After that
+//! the object is a plain vector.
 
 use std::cell::Cell;
 use std::ffi::CStr;
 use std::os::raw::{c_double, c_int};
 
 use super::accessors::{
-    ALTREP, ATTRIB, CAR, CDR, CHAR, PRINTNAME, SET_ALTREP, SETCDR, TAG, TYPEOF,
+    ALTREP, ATTRIB, CDR, CHAR, PRINTNAME, SET_ALTREP, SETCDR, TAG, TYPEOF,
 };
-use super::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use super::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use super::memory::{self, with_arena};
+use super::object::{LeadingScalars, NodeBody, Sexp, copy_leading_scalars};
 
 pub(crate) const ALTSEQ_TAG_NAME: &CStr = c".InternalAltSeq";
 
@@ -36,13 +38,14 @@ pub(crate) enum LazyRead<T> {
 }
 
 thread_local! {
-    static MATERIALIZING: Cell<usize> = const { Cell::new(0) };
+    /// Address of the sequence currently being expanded. Zero means idle.
+    static MATERIALIZE_ADDR: Cell<usize> = const { Cell::new(0) };
 }
 
 struct RestoreMaterializing(usize);
 impl Drop for RestoreMaterializing {
     fn drop(&mut self) {
-        MATERIALIZING.with(|open| open.set(self.0));
+        MATERIALIZE_ADDR.with(|open| open.set(self.0));
     }
 }
 
@@ -164,33 +167,145 @@ unsafe fn compact_seq(kind: SEXPTYPE, n: usize, formula: Formula) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn lazy_int_elt(x: SEXP, i: R_xlen_t) -> LazyRead<c_int> {
-    unsafe {
-        let Formula::Int { from, step } = (match read_formula(x) {
-            Some(formula) => formula,
-            None => return LazyRead::Absent,
-        }) else {
+/// Owned copy of a compact sequence. Field arithmetic does not borrow the node.
+#[derive(Clone, Copy)]
+pub(crate) struct CompactSeq {
+    formula: Formula,
+    len: R_xlen_t,
+    payload_null: bool,
+}
+
+impl CompactSeq {
+    #[inline]
+    pub(crate) fn payload_is_null(self) -> bool {
+        self.payload_null
+    }
+
+    #[inline]
+    pub(crate) fn is_int(self) -> bool {
+        matches!(self.formula, Formula::Int { .. })
+    }
+
+    #[inline]
+    pub(crate) fn is_real(self) -> bool {
+        matches!(self.formula, Formula::Real { .. })
+    }
+
+    pub(crate) fn int_or_na(self, i: R_xlen_t) -> c_int {
+        match self.read_int(i) {
+            LazyRead::Ready(value) => value,
+            LazyRead::OutOfRange | LazyRead::Absent => NA_INTEGER,
+        }
+    }
+
+    pub(crate) fn real_or_na(self, i: R_xlen_t) -> c_double {
+        match self.read_real(i) {
+            LazyRead::Ready(value) => value,
+            LazyRead::OutOfRange | LazyRead::Absent => NA_REAL,
+        }
+    }
+
+    fn read_int(self, i: R_xlen_t) -> LazyRead<c_int> {
+        let Formula::Int { from, step } = self.formula else {
             return LazyRead::Absent;
         };
-        if !index_in_range(x, i) {
+        if i < 0 || i >= self.len {
             return LazyRead::OutOfRange;
         }
         LazyRead::Ready(Formula::Int { from, step }.int_at(i))
     }
-}
 
-pub(crate) unsafe fn lazy_real_elt(x: SEXP, i: R_xlen_t) -> LazyRead<c_double> {
-    unsafe {
-        let Formula::Real { from, step } = (match read_formula(x) {
-            Some(formula) => formula,
-            None => return LazyRead::Absent,
-        }) else {
+    fn read_real(self, i: R_xlen_t) -> LazyRead<c_double> {
+        let Formula::Real { from, step } = self.formula else {
             return LazyRead::Absent;
         };
-        if !index_in_range(x, i) {
+        if i < 0 || i >= self.len {
             return LazyRead::OutOfRange;
         }
         LazyRead::Ready(Formula::Real { from, step }.real_at(i))
+    }
+}
+
+impl Sexp<'_> {
+    /// Copy the formula when this node is still a compact int or real sequence.
+    ///
+    /// The walk copies headers and the two scalars. It does not allocate, protect,
+    /// or expand the payload.
+    pub(crate) fn compact_seq(&self) -> Option<CompactSeq> {
+        let header = self.header();
+        if !header.sxpinfo.alt() {
+            return None;
+        }
+        let kind = header.sxpinfo.type_of();
+        if kind != SEXPTYPE::INTSXP && kind != SEXPTYPE::REALSXP {
+            return None;
+        }
+        let NodeBody::Vector(vec) = header.body else {
+            return None;
+        };
+        let cell = self.copied_header(header.attrib)?;
+        if cell.sxpinfo.type_of() != SEXPTYPE::LISTSXP {
+            return None;
+        }
+        let NodeBody::List(list) = cell.body else {
+            return None;
+        };
+        let tag = self.copied_header(list.tagval)?;
+        if tag.sxpinfo.type_of() != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let NodeBody::Symbol(sym) = tag.body else {
+            return None;
+        };
+        let pname = self.copied_header(sym.pname)?;
+        if !pname.char_eq(ALTSEQ_TAG_NAME.to_bytes()) {
+            return None;
+        }
+        let info = self.copied_header(list.carval)?;
+        if info.sxpinfo.type_of() != kind {
+            return None;
+        }
+        let formula = match copy_leading_scalars(info) {
+            Some(LeadingScalars::Int(from, step)) if kind == SEXPTYPE::INTSXP => {
+                Formula::Int { from, step }
+            }
+            Some(LeadingScalars::Real(from, step)) if kind == SEXPTYPE::REALSXP => {
+                Formula::Real { from, step }
+            }
+            _ => return None,
+        };
+        Some(CompactSeq {
+            formula,
+            len: vec.length,
+            payload_null: header.payload.is_null(),
+        })
+    }
+
+    /// Formula element. `require_unexpanded` matches the C accessors, which
+    /// ignore a formula once a buffer pointer is present and read that buffer.
+    pub(crate) fn read_compact_int(&self, i: R_xlen_t, require_unexpanded: bool) -> LazyRead<c_int> {
+        let Some(seq) = self.compact_seq() else {
+            return LazyRead::Absent;
+        };
+        if require_unexpanded && !seq.payload_null {
+            return LazyRead::Absent;
+        }
+        seq.read_int(i)
+    }
+
+    /// Formula element. See [`Self::read_compact_int`].
+    pub(crate) fn read_compact_real(
+        &self,
+        i: R_xlen_t,
+        require_unexpanded: bool,
+    ) -> LazyRead<c_double> {
+        let Some(seq) = self.compact_seq() else {
+            return LazyRead::Absent;
+        };
+        if require_unexpanded && !seq.payload_null {
+            return LazyRead::Absent;
+        }
+        seq.read_real(i)
     }
 }
 
@@ -205,7 +320,7 @@ pub(crate) unsafe fn materialize(x: SEXP) {
             return;
         }
         let key = x as usize;
-        if MATERIALIZING.with(|open| open.get()) == key {
+        if MATERIALIZE_ADDR.with(|open| open.get()) == key {
             return;
         }
         if !(*x).gengc_next_node.is_null() {
@@ -224,7 +339,7 @@ pub(crate) unsafe fn materialize(x: SEXP) {
         if n < 0 {
             return;
         }
-        let prev = MATERIALIZING.with(|open| open.replace(key));
+        let prev = MATERIALIZE_ADDR.with(|open| open.replace(key));
         let _restore = RestoreMaterializing(prev);
         let _root = super::protect::protect(x);
         if (*x).gengc_next_node.is_null() && n > 0 {
@@ -308,53 +423,8 @@ fn is_list(cell: SEXP) -> bool {
     unsafe { !cell.is_null() && TYPEOF(cell) == SEXPTYPE::LISTSXP }
 }
 
-unsafe fn index_in_range(x: SEXP, i: R_xlen_t) -> bool {
-    unsafe { i >= 0 && i < (*x).vecsxp_length() }
-}
-
 unsafe fn read_formula(x: SEXP) -> Option<Formula> {
-    unsafe {
-        if x.is_null() || ALTREP(x) == 0 {
-            return None;
-        }
-        let kind = (*x).sxpinfo.type_of();
-        if kind != SEXPTYPE::INTSXP && kind != SEXPTYPE::REALSXP {
-            return None;
-        }
-        let cell = ATTRIB(x);
-        if !is_list(cell) || !is_formula_tag(TAG(cell)) {
-            return None;
-        }
-        let info = CAR(cell);
-        if info.is_null() || (*info).gengc_next_node.is_null() {
-            return None;
-        }
-        match kind {
-            SEXPTYPE::INTSXP if TYPEOF(info) == SEXPTYPE::INTSXP && (*info).vecsxp_length() >= 2 => {
-                let p = (*info).gengc_next_node as *const c_int;
-                if (p as usize) % std::mem::align_of::<c_int>() != 0 {
-                    return None;
-                }
-                Some(Formula::Int {
-                    from: *p,
-                    step: *p.add(1),
-                })
-            }
-            SEXPTYPE::REALSXP
-                if TYPEOF(info) == SEXPTYPE::REALSXP && (*info).vecsxp_length() >= 2 =>
-            {
-                let p = (*info).gengc_next_node as *const c_double;
-                if (p as usize) % std::mem::align_of::<c_double>() != 0 {
-                    return None;
-                }
-                Some(Formula::Real {
-                    from: *p,
-                    step: *p.add(1),
-                })
-            }
-            _ => None,
-        }
-    }
+    unsafe { Sexp::from_raw(x) }.and_then(|sx| sx.compact_seq().map(|seq| seq.formula))
 }
 
 unsafe fn fill(ptr: *mut u8, formula: &Formula, n: usize) {

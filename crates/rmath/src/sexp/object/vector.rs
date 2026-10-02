@@ -41,7 +41,7 @@ impl<'a> Sexp<'a> {
     /// access still goes through [`Self::try_typed_data`] and expands them.
     #[inline]
     pub fn try_integer_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
-        match unsafe { crate::sexp::altseq::lazy_int_elt(self.ptr, i) } {
+        match self.read_compact_int(i, false) {
             crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
             crate::sexp::altseq::LazyRead::OutOfRange => {
                 return Err(SexpError::OutOfBounds {
@@ -53,7 +53,9 @@ impl<'a> Sexp<'a> {
         }
         let data = self.try_typed_data::<c_int>(SEXPTYPE::INTSXP, "integer vector")?;
         let i = self.try_index(i)?;
-        Ok(unsafe { *data.add(i) })
+        // SAFETY: `try_typed_data` returned the live buffer and `i` is in range.
+        // The element is copied; no payload reference is returned.
+        Ok(unsafe { data.add(i).read() })
     }
 
     /// Get the i-th real (double) value with bounds checking.
@@ -71,7 +73,7 @@ impl<'a> Sexp<'a> {
     /// Compact sequences answer here, before any buffer allocation.
     #[inline]
     pub fn try_real_elt(&self, i: R_xlen_t) -> SexpResult<c_double> {
-        match unsafe { crate::sexp::altseq::lazy_real_elt(self.ptr, i) } {
+        match self.read_compact_real(i, false) {
             crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
             crate::sexp::altseq::LazyRead::OutOfRange => {
                 return Err(SexpError::OutOfBounds {
@@ -83,7 +85,9 @@ impl<'a> Sexp<'a> {
         }
         let data = self.try_typed_data::<c_double>(SEXPTYPE::REALSXP, "real vector")?;
         let i = self.try_index(i)?;
-        Ok(unsafe { *data.add(i) })
+        // SAFETY: `try_typed_data` returned the live buffer and `i` is in range.
+        // The element is copied; no payload reference is returned.
+        Ok(unsafe { data.add(i).read() })
     }
 
     /// Get the i-th raw byte with bounds checking.

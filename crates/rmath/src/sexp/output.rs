@@ -943,34 +943,86 @@ fn gnu_row_index_label(row: usize, nrow: usize) -> String {
     format!("{:>rlabw$}", format!("[{},]", row + 1))
 }
 
+fn real_index(index: usize) -> Option<R_xlen_t> {
+    R_xlen_t::try_from(index).ok()
+}
+
 fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
+    use crate::mainutils::format::{formatReal, real_field};
+    use crate::mainutils::printutils::EncodeReal;
+    use crate::sexp::accessors::REAL;
+    use crate::sexp::ffi::NA_REAL;
+
+    let seq = x
+        .compact_seq()
+        .filter(|seq| seq.payload_is_null() && seq.is_real());
+    if let Some(seq) = seq {
+        let mut col_fmt = Vec::with_capacity(ncol);
+        for c in 0..ncol {
+            let start = c * nrow;
+            let fmt = real_field(nrow as R_xlen_t, 0, |i| {
+                real_index(start + i as usize)
+                    .map(|index| seq.real_or_na(index))
+                    .unwrap_or(NA_REAL)
+            });
+            col_fmt.push(fmt);
+        }
+        return format_matrix_with(x, nrow, ncol, |r, c| {
+            let fmt = col_fmt[c];
+            let val = real_index(r + c * nrow)
+                .map(|index| seq.real_or_na(index))
+                .unwrap_or(NA_REAL);
+            // SAFETY: EncodeReal writes a session print buffer, not an R node.
+            let encoded = unsafe { EncodeReal(val, fmt.w, fmt.d, fmt.e, b'.' as _) };
+            if encoded.is_null() {
+                String::new()
+            } else {
+                unsafe { std::ffi::CStr::from_ptr(encoded) }
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        });
+    }
+
     unsafe {
-        use crate::mainutils::format::formatReal;
-        use crate::mainutils::printutils::EncodeReal;
-        use crate::sexp::accessors::REAL;
-        let data = REAL(x.clone().as_raw());
+        let raw = x.clone().as_raw();
+        let data = REAL(raw);
         let mut col_fmt = Vec::with_capacity(ncol);
         for c in 0..ncol {
             let mut w = 0;
             let mut d = 0;
             let mut e = 0;
-            formatReal(
-                data.add(c * nrow),
-                nrow as R_xlen_t,
-                &mut w,
-                &mut d,
-                &mut e,
-                0,
-            );
+            if data.is_null() {
+                let fmt = real_field(nrow as R_xlen_t, 0, |_| NA_REAL);
+                w = fmt.w;
+                d = fmt.d;
+                e = fmt.e;
+            } else {
+                formatReal(
+                    data.add(c * nrow),
+                    nrow as R_xlen_t,
+                    &mut w,
+                    &mut d,
+                    &mut e,
+                    0,
+                );
+            }
             col_fmt.push((w, d, e));
         }
         format_matrix_with(x, nrow, ncol, |r, c| {
             let (w, d, e) = col_fmt[c];
-            let encoded = EncodeReal(*data.add(r + c * nrow), w, d, e, b'.' as _);
+            let val = if data.is_null() {
+                NA_REAL
+            } else {
+                // SAFETY: `data` is the live real buffer. A null buffer took the other branch.
+                unsafe { *data.add(r + c * nrow) }
+            };
+            // SAFETY: EncodeReal writes a session print buffer, not an R node.
+            let encoded = unsafe { EncodeReal(val, w, d, e, b'.' as _) };
             if encoded.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(encoded)
+                unsafe { std::ffi::CStr::from_ptr(encoded) }
                     .to_string_lossy()
                     .into_owned()
             }

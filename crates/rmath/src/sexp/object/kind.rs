@@ -1,3 +1,4 @@
+use super::header::NodeBody;
 use super::Sexp;
 #[cfg(test)]
 use super::{SexpResult, SexpView};
@@ -79,7 +80,7 @@ impl<'a> Sexp<'a> {
     /// Get the type of this SEXP.
     #[inline]
     pub fn typeof_(&self) -> SEXPTYPE {
-        unsafe { (*self.ptr).sxpinfo.type_of() }
+        self.header().sxpinfo.type_of()
     }
 
     /// Get the length of a vector SEXP.
@@ -87,10 +88,10 @@ impl<'a> Sexp<'a> {
     /// Returns 0 for non-vector types.
     #[inline]
     pub fn len(&self) -> R_xlen_t {
-        if self.typeof_().is_vector_type() {
-            unsafe { (*self.ptr).vecsxp_length() }
-        } else {
-            0
+        let header = self.header();
+        match header.body {
+            NodeBody::Vector(vec) if header.sxpinfo.type_of().is_vector_type() => vec.length,
+            _ => 0,
         }
     }
 

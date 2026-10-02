@@ -13,6 +13,8 @@
 use std::os::raw::{c_double, c_int, c_void};
 
 use crate::sexp::accessors::{COMPLEX, INTEGER, LOGICAL, REAL, STRING_ELT};
+use crate::sexp::altseq::CompactSeq;
+use crate::sexp::object::Sexp;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP};
 
 // ---------------------------------------------------------------------------
@@ -513,71 +515,125 @@ pub unsafe fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
+    let width = if x.is_null() || n <= 0 {
+        1
+    } else {
+        integer_field_width(n, |i| unsafe { *x.add(i as usize) })
+    };
     unsafe {
-        if x.is_null() || n <= 0 {
-            if !fieldwidth.is_null() {
-                *fieldwidth = 1;
-            }
-            return;
-        }
-        let mut xmin = c_int::MAX;
-        let mut xmax = c_int::MIN;
-        let mut naflag = false;
-
-        for i in 0..n {
-            let xi = *x.add(i as usize);
-            if xi == NA_INTEGER {
-                naflag = true;
-            } else {
-                if xi < xmin {
-                    xmin = xi;
-                }
-                if xi > xmax {
-                    xmax = xi;
-                }
-            }
-        }
-
-        // FORMATINT_RETLOGIC:
-        if naflag {
-            *fieldwidth = current_R_print().na_width;
-        } else {
-            *fieldwidth = 1;
-        }
-
-        if xmin < 0 {
-            let l = IndexWidth(-xmin) + 1; // +1 for sign
-            if l > *fieldwidth {
-                *fieldwidth = l;
-            }
-        }
-        if xmax > 0 {
-            let l = IndexWidth(xmax);
-            if l > *fieldwidth {
-                *fieldwidth = l;
-            }
+        if !fieldwidth.is_null() {
+            *fieldwidth = width;
         }
     }
 }
 
+/// Field width of `n` integers produced by `elt`.
+///
+/// A null pointer passed to [`formatInteger`] still means "no values" and
+/// stays width 1. A compact sequence passes its formula here and never a buffer.
+pub(crate) fn integer_field_width(n: R_xlen_t, mut elt: impl FnMut(R_xlen_t) -> c_int) -> c_int {
+    if n <= 0 {
+        return 1;
+    }
+    let mut xmin = c_int::MAX;
+    let mut xmax = c_int::MIN;
+    let mut naflag = false;
+
+    for i in 0..n {
+        let xi = elt(i);
+        if xi == NA_INTEGER {
+            naflag = true;
+        } else {
+            if xi < xmin {
+                xmin = xi;
+            }
+            if xi > xmax {
+                xmax = xi;
+            }
+        }
+    }
+
+    // FORMATINT_RETLOGIC:
+    let mut fieldwidth = if naflag {
+        current_R_print().na_width
+    } else {
+        1
+    };
+
+    if xmin < 0 {
+        let l = unsafe { IndexWidth(-xmin) } + 1; // +1 for sign
+        if l > fieldwidth {
+            fieldwidth = l;
+        }
+    }
+    if xmax > 0 {
+        let l = unsafe { IndexWidth(xmax) };
+        if l > fieldwidth {
+            fieldwidth = l;
+        }
+    }
+    fieldwidth
+}
+
+fn unexpanded_int(x: SEXP) -> Option<CompactSeq> {
+    // SAFETY: null yields `None`. A non-null `x` is a live node from a printer
+    // or formatter that already holds it. Wrapping does not allocate.
+    let sx = unsafe { Sexp::from_raw(x) }?;
+    sx.compact_seq()
+        .filter(|seq| seq.payload_is_null() && seq.is_int())
+}
+
+fn unexpanded_real(x: SEXP) -> Option<CompactSeq> {
+    // SAFETY: same contract as [`unexpanded_int`].
+    let sx = unsafe { Sexp::from_raw(x) }?;
+    sx.compact_seq()
+        .filter(|seq| seq.payload_is_null() && seq.is_real())
+}
+
+fn buffered_real_field(x: SEXP, n: R_xlen_t, nsmall: c_int) -> RealField {
+    let mut tmpw = 0;
+    let mut tmpd = 0;
+    let mut tmpe = 0;
+    unsafe {
+        formatReal(REAL(x), n, &mut tmpw, &mut tmpd, &mut tmpe, nsmall);
+    }
+    RealField {
+        w: tmpw,
+        d: tmpd,
+        e: tmpe,
+    }
+}
+
 // ---------------------------------------------------------------------------
-// formatIntegerS  -- SEXP variant using INTEGER accessor
+// formatIntegerS  -- SEXP variant
 //
-// Ported from C: the C version uses ALTREP fast-paths (INTEGER_IS_SORTED,
-// ALTINTEGER_MIN/MAX). We use the simpler direct path via INTEGER().
+// A compact sequence is measured from its formula. INTEGER() would allocate
+// the payload, or return null when the budget refuses.
 // ---------------------------------------------------------------------------
 
 pub unsafe fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
-    unsafe {
-        *fieldwidth = 1;
-        if x.is_null() || n == 0 {
-            return;
+    let width = if x.is_null() || n == 0 {
+        1
+    } else if n > 0 && n <= c_int::MAX as R_xlen_t {
+        if let Some(seq) = unexpanded_int(x) {
+            integer_field_width(n, |i| seq.int_or_na(i)).max(1)
+        } else {
+            let mut tmpfw = 1;
+            unsafe {
+                formatInteger(INTEGER(x), n, &mut tmpfw);
+            }
+            tmpfw.max(1)
         }
-        let px = INTEGER(x);
+    } else {
         let mut tmpfw = 1;
-        formatInteger(px, n, &mut tmpfw);
-        if tmpfw > *fieldwidth {
-            *fieldwidth = tmpfw;
+        unsafe {
+            formatInteger(INTEGER(x), n, &mut tmpfw);
+        }
+        tmpfw.max(1)
+    };
+    unsafe {
+        if !fieldwidth.is_null() {
+            *fieldwidth = width;
         }
     }
 }
@@ -607,143 +663,168 @@ pub unsafe fn formatReal(
     e: *mut c_int,
     nsmall: c_int,
 ) {
+    let fmt = if x.is_null() || n <= 0 {
+        RealField { w: 0, d: 0, e: 0 }
+    } else {
+        real_field(n, nsmall, |i| unsafe { *x.add(i as usize) })
+    };
     unsafe {
-        if x.is_null() || n <= 0 {
-            if !w.is_null() {
-                *w = 0;
-            }
-            if !d.is_null() {
-                *d = 0;
-            }
-            if !e.is_null() {
-                *e = 0;
-            }
-            return;
+        if !w.is_null() {
+            *w = fmt.w;
         }
-        let mut naflag = false;
-        let mut nanflag = false;
-        let mut posinf = false;
-        let mut neginf = false;
-        let mut neg = 0;
-
-        let mut mnl = c_int::MAX;
-        let mut mxl: c_int = c_int::MIN;
-        let mut rgt: c_int = c_int::MIN;
-        let mut mxsl: c_int = c_int::MIN;
-        let mut mxns: c_int = c_int::MIN;
-
-        let na_width = current_R_print().na_width;
-
-        for i in 0..n {
-            let xi = *x.add(i as usize);
-            if !xi.is_finite() {
-                if xi.is_nan() {
-                    // Distinguish NA from NaN: R's NA has a specific bit pattern.
-                    if xi.to_bits() == R_NA_BIT_PATTERN {
-                        naflag = true;
-                    } else {
-                        nanflag = true;
-                    }
-                } else if xi > 0.0 {
-                    posinf = true;
-                } else {
-                    neginf = true;
-                }
-            } else {
-                let mut neg_i: c_int = 0;
-                let mut kpower: c_int = 0;
-                let mut nsig: c_int = 0;
-                let mut roundingwidens: bool = false;
-
-                format_scientific(&xi, &mut neg_i, &mut kpower, &mut nsig, &mut roundingwidens);
-
-                let mut left = kpower + 1;
-                if roundingwidens {
-                    left -= 1;
-                }
-
-                let sleft = neg_i + if left <= 0 { 1 } else { left }; // >= 1
-                let right = nsig - left; // #{digits} right of '.'
-                if neg_i != 0 {
-                    neg = 1;
-                }
-
-                // Infinite precision "F" Format:
-                if right > rgt {
-                    rgt = right;
-                }
-                if left > mxl {
-                    mxl = left;
-                }
-                if left < mnl {
-                    mnl = left;
-                }
-                if sleft > mxsl {
-                    mxsl = sleft;
-                }
-                if nsig > mxns {
-                    mxns = nsig;
-                }
-            }
+        if !d.is_null() {
+            *d = fmt.d;
         }
-
-        // F vs E format decision
-        if current_R_print().digits == 0 {
-            rgt = 0;
-        }
-        if mxl < 0 {
-            mxsl = 1 + neg; // we use %#w.dg, so have leading zero
-        }
-
-        if rgt < 0 {
-            rgt = 0;
-        }
-        let mut wF = mxsl + rgt + if rgt != 0 { 1 } else { 0 }; // width for F format
-
-        // "E" exponential format
-        *e = if mxl > 100 || mnl <= -99 { 2 } else { 1 }; // 3-digit exponent?
-        if mxns != c_int::MIN {
-            *d = mxns - 1;
-            *w = neg + if *d > 0 { 1 } else { 0 } + *d + 4 + *e; // width for E format
-            if wF <= *w + current_R_print().scipen {
-                // Fixpoint if it needs less space
-                *e = 0;
-                let nsmall_i = nsmall as c_int;
-                if nsmall_i > rgt {
-                    rgt = nsmall_i;
-                    wF = mxsl + rgt + if rgt != 0 { 1 } else { 0 };
-                }
-                *d = rgt;
-                *w = wF;
-            }
-        } else {
-            // all x[i] are non-finite
-            *w = 0;
-            *d = 0;
-            *e = 0;
-        }
-
-        if naflag && *w < na_width {
-            *w = na_width;
-        }
-        if nanflag && *w < 3 {
-            *w = 3;
-        }
-        if posinf && *w < 3 {
-            *w = 3;
-        }
-        if neginf && *w < 4 {
-            *w = 4;
+        if !e.is_null() {
+            *e = fmt.e;
         }
     }
 }
 
+/// Format parameters for `n` doubles produced by `elt`.
+///
+/// [`formatReal`] keeps a null pointer as an empty span. A compact sequence
+/// passes its formula here and never a buffer.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RealField {
+    pub w: c_int,
+    pub d: c_int,
+    pub e: c_int,
+}
+
+pub(crate) fn real_field(
+    n: R_xlen_t,
+    nsmall: c_int,
+    mut elt: impl FnMut(R_xlen_t) -> c_double,
+) -> RealField {
+    if n <= 0 {
+        return RealField { w: 0, d: 0, e: 0 };
+    }
+    let mut naflag = false;
+    let mut nanflag = false;
+    let mut posinf = false;
+    let mut neginf = false;
+    let mut neg = 0;
+
+    let mut mnl = c_int::MAX;
+    let mut mxl: c_int = c_int::MIN;
+    let mut rgt: c_int = c_int::MIN;
+    let mut mxsl: c_int = c_int::MIN;
+    let mut mxns: c_int = c_int::MIN;
+
+    let na_width = current_R_print().na_width;
+
+    for i in 0..n {
+        let xi = elt(i);
+        if !xi.is_finite() {
+            if xi.is_nan() {
+                // Distinguish NA from NaN: R's NA has a specific bit pattern.
+                if xi.to_bits() == R_NA_BIT_PATTERN {
+                    naflag = true;
+                } else {
+                    nanflag = true;
+                }
+            } else if xi > 0.0 {
+                posinf = true;
+            } else {
+                neginf = true;
+            }
+        } else {
+            let mut neg_i: c_int = 0;
+            let mut kpower: c_int = 0;
+            let mut nsig: c_int = 0;
+            let mut roundingwidens: bool = false;
+
+            unsafe {
+                format_scientific(&xi, &mut neg_i, &mut kpower, &mut nsig, &mut roundingwidens);
+            }
+
+            let mut left = kpower + 1;
+            if roundingwidens {
+                left -= 1;
+            }
+
+            let sleft = neg_i + if left <= 0 { 1 } else { left }; // >= 1
+            let right = nsig - left; // #{digits} right of '.'
+            if neg_i != 0 {
+                neg = 1;
+            }
+
+            // Infinite precision "F" Format:
+            if right > rgt {
+                rgt = right;
+            }
+            if left > mxl {
+                mxl = left;
+            }
+            if left < mnl {
+                mnl = left;
+            }
+            if sleft > mxsl {
+                mxsl = sleft;
+            }
+            if nsig > mxns {
+                mxns = nsig;
+            }
+        }
+    }
+
+    // F vs E format decision
+    if current_R_print().digits == 0 {
+        rgt = 0;
+    }
+    if mxl < 0 {
+        mxsl = 1 + neg; // we use %#w.dg, so have leading zero
+    }
+
+    if rgt < 0 {
+        rgt = 0;
+    }
+    let mut wF = mxsl + rgt + if rgt != 0 { 1 } else { 0 }; // width for F format
+
+    // "E" exponential format
+    let mut e = if mxl > 100 || mnl <= -99 { 2 } else { 1 }; // 3-digit exponent?
+    let (mut w, d) = if mxns != c_int::MIN {
+        let mut d = mxns - 1;
+        let mut w = neg + if d > 0 { 1 } else { 0 } + d + 4 + e; // width for E format
+        if wF <= w + current_R_print().scipen {
+            // Fixpoint if it needs less space
+            e = 0;
+            let nsmall_i = nsmall as c_int;
+            if nsmall_i > rgt {
+                rgt = nsmall_i;
+                wF = mxsl + rgt + if rgt != 0 { 1 } else { 0 };
+            }
+            d = rgt;
+            w = wF;
+        }
+        (w, d)
+    } else {
+        // all x[i] are non-finite
+        e = 0;
+        (0, 0)
+    };
+
+    if naflag && w < na_width {
+        w = na_width;
+    }
+    if nanflag && w < 3 {
+        w = 3;
+    }
+    if posinf && w < 3 {
+        w = 3;
+    }
+    if neginf && w < 4 {
+        w = 4;
+    }
+    RealField { w, d, e }
+}
+
 // ---------------------------------------------------------------------------
-// formatRealS  -- SEXP variant using REAL accessor
+// formatRealS  -- SEXP variant
 //
-// Ported from C: uses REAL() to get the data pointer, then delegates
-// to formatReal. The C version uses ITERATE_BY_REGION_PARTIAL for
-// ALTREP support; we use the direct accessor path.
+// A compact sequence is measured from its formula. REAL() would allocate
+// the payload, or return null when the budget refuses.
 // ---------------------------------------------------------------------------
 
 pub unsafe fn formatRealS(
@@ -767,19 +848,23 @@ pub unsafe fn formatRealS(
         if x.is_null() || n == 0 {
             return;
         }
-        let px = REAL(x);
-        let mut tmpw: c_int = 0;
-        let mut tmpd: c_int = 0;
-        let mut tmpe: c_int = 0;
-        formatReal(px, n, &mut tmpw, &mut tmpd, &mut tmpe, nsmall);
-        if tmpw > *w {
-            *w = tmpw;
+        let fmt = if n > 0 && n <= c_int::MAX as R_xlen_t {
+            if let Some(seq) = unexpanded_real(x) {
+                real_field(n, nsmall, |i| seq.real_or_na(i))
+            } else {
+                buffered_real_field(x, n, nsmall)
+            }
+        } else {
+            buffered_real_field(x, n, nsmall)
+        };
+        if !w.is_null() && fmt.w > *w {
+            *w = fmt.w;
         }
-        if *d == 0 && tmpd != 0 {
-            *d = tmpd;
+        if !d.is_null() && *d == 0 && fmt.d != 0 {
+            *d = fmt.d;
         }
-        if tmpe > *e {
-            *e = tmpe;
+        if !e.is_null() && fmt.e > *e {
+            *e = fmt.e;
         }
     }
 }

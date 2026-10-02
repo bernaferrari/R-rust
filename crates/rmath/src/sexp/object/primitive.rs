@@ -1,6 +1,7 @@
 use std::os::raw::c_int;
 
-use super::{Sexp, SexpResult};
+use super::header::NodeBody;
+use super::{Sexp, SexpError, SexpResult};
 use crate::sexp::ffi::SEXPTYPE;
 
 impl<'a> Sexp<'a> {
@@ -22,19 +23,20 @@ impl<'a> Sexp<'a> {
     }
 
     pub fn primoffset(&self) -> Option<c_int> {
-        if self.is_primitive() {
-            Some(unsafe { (*self.ptr).data.primsxp.offset })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Primitive(slot) => Some(slot.offset),
+            _ => None,
         }
     }
 
     /// Get the primitive table index with typed error reporting.
     pub fn try_primoffset(&self) -> SexpResult<c_int> {
-        self.expect_any_type(
-            "special or builtin primitive",
-            &[SEXPTYPE::SPECIALSXP, SEXPTYPE::BUILTINSXP],
-        )?;
-        Ok(unsafe { (*self.ptr).data.primsxp.offset })
+        match self.header().body {
+            NodeBody::Primitive(slot) => Ok(slot.offset),
+            _ => Err(SexpError::TypeMismatch {
+                expected: "special or builtin primitive",
+                actual: self.typeof_(),
+            }),
+        }
     }
 }

@@ -7,16 +7,35 @@
 //! Provides printMatrix() and printArray() for displaying R matrices and arrays.
 //! Also provides format*Matrix() functions for determining column widths.
 
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
 use crate::mainutils::printvector::GetMatrixDimnames;
 use crate::sexp::accessors::{
     COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF, VECTOR_ELT,
 };
+use crate::sexp::altseq::CompactSeq;
 use crate::sexp::ffi::R_xlen_t;
-use crate::sexp::ffi::{R_IsNA, SEXP};
+use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_IsNA, SEXP};
+use crate::sexp::object::Sexp;
 use crate::sexp::globals::R_NilValue;
+
+// `eprint!` during `cargo test` never reaches fd 2. These shadows keep the
+// call sites unchanged and let a test install [`printutils::console_emit`].
+macro_rules! eprint {
+    ($($arg:tt)*) => {
+        crate::mainutils::printutils::console_emit(format_args!($($arg)*))
+    };
+}
+macro_rules! eprintln {
+    () => {
+        crate::mainutils::printutils::console_emit(format_args!("\n"))
+    };
+    ($($arg:tt)*) => {{
+        crate::mainutils::printutils::console_emit(format_args!($($arg)*));
+        crate::mainutils::printutils::console_emit(format_args!("\n"));
+    }};
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -66,7 +85,8 @@ unsafe fn get_R_print_full() -> MutPtr<R_PrintData> {
 // ---------------------------------------------------------------------------
 
 use crate::mainutils::format::{
-    formatComplex, formatInteger, formatLogical, formatRaw, formatReal,
+    formatComplex, formatInteger, formatLogical, formatRaw, formatReal, integer_field_width,
+    real_field, RealField,
 };
 use crate::mainutils::printutils::IndexWidth_xlen as IndexWidth;
 use crate::mainutils::printutils::{
@@ -459,6 +479,90 @@ unsafe fn print_logical_matrix(
 }
 
 // ---------------------------------------------------------------------------
+// Compact sequences have no element buffer. The formula is an owned copy.
+// A null data pointer is NA; it is never offset.
+// ---------------------------------------------------------------------------
+
+fn unexpanded_int(x: SEXP) -> Option<CompactSeq> {
+    // SAFETY: null yields `None`. The printer holds a live node. No allocation.
+    let sx = unsafe { Sexp::from_raw(x) }?;
+    sx.compact_seq()
+        .filter(|seq| seq.payload_is_null() && seq.is_int())
+}
+
+fn unexpanded_real(x: SEXP) -> Option<CompactSeq> {
+    let sx = unsafe { Sexp::from_raw(x) }?;
+    sx.compact_seq()
+        .filter(|seq| seq.payload_is_null() && seq.is_real())
+}
+
+fn int_width_at(seq: Option<CompactSeq>, data: *mut c_int, start: c_int, n: R_xlen_t) -> c_int {
+    if let Some(seq) = seq {
+        return integer_field_width(n, |i| seq.int_or_na(i + start as R_xlen_t));
+    }
+    if data.is_null() {
+        return integer_field_width(n, |_| NA_INTEGER);
+    }
+    let mut fw = 0;
+    // SAFETY: `data` is the live integer buffer and `start` is its column origin.
+    unsafe {
+        formatInteger(data.offset(start as isize), n, &mut fw);
+    }
+    fw
+}
+
+fn int_at(seq: Option<CompactSeq>, data: *mut c_int, index: c_int) -> c_int {
+    if let Some(seq) = seq {
+        return seq.int_or_na(index as R_xlen_t);
+    }
+    if data.is_null() || index < 0 {
+        return NA_INTEGER;
+    }
+    // SAFETY: `data` is the live integer buffer and `index` is in range.
+    unsafe { *data.offset(index as isize) }
+}
+
+fn real_format_at(
+    seq: Option<CompactSeq>,
+    data: *mut c_double,
+    start: c_int,
+    n: R_xlen_t,
+) -> RealField {
+    if let Some(seq) = seq {
+        return real_field(n, 0, |i| seq.real_or_na(i + start as R_xlen_t));
+    }
+    if data.is_null() {
+        return real_field(n, 0, |_| NA_REAL);
+    }
+    let mut w = 0;
+    let mut d = 0;
+    let mut e = 0;
+    // SAFETY: `data` is the live real buffer and `start` is its column origin.
+    unsafe {
+        formatReal(
+            data.offset(start as isize),
+            n,
+            &mut w,
+            &mut d,
+            &mut e,
+            0,
+        );
+    }
+    RealField { w, d, e }
+}
+
+fn real_at(seq: Option<CompactSeq>, data: *mut c_double, index: c_int) -> c_double {
+    if let Some(seq) = seq {
+        return seq.real_or_na(index as R_xlen_t);
+    }
+    if data.is_null() || index < 0 {
+        return NA_REAL;
+    }
+    // SAFETY: `data` is the live real buffer and `index` is in range.
+    unsafe { *data.offset(index as isize) }
+}
+
+// ---------------------------------------------------------------------------
 // print_integer_matrix
 // ---------------------------------------------------------------------------
 
@@ -483,13 +587,17 @@ unsafe fn print_integer_matrix(
         let mut w = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let x = INTEGER(sx).offset(offset as isize);
+        let seq = unexpanded_int(sx);
+        let data = if seq.is_some() {
+            ptr::null_mut()
+        } else {
+            INTEGER(sx)
+        };
 
         for j in 0..c as usize {
             if print_ij {
-                let col_ptr = x.offset((j as c_int * r) as isize);
-                let mut fw: c_int = 0;
-                formatInteger(col_ptr, r as R_xlen_t, &mut fw);
+                let col = j as c_int;
+                let fw = int_width_at(seq, data, offset + col * r, r as R_xlen_t);
                 w[j] = fw;
             } else {
                 w[j] = 0;
@@ -539,7 +647,7 @@ unsafe fn print_integer_matrix(
                     MatrixRowLabel(rl, i as c_int, rlabw, lbloff);
                     if print_ij {
                         for j in jmin..jmax {
-                            let val = *x.offset((j as c_int * r + i as c_int) as isize);
+                            let val = int_at(seq, data, offset + j as c_int * r + i as c_int);
                             let s = EncodeInteger(val, w[j]);
                             let cstr = std::ffi::CStr::from_ptr(s);
                             eprint!("{}", cstr.to_str().unwrap_or(""));
@@ -580,13 +688,21 @@ unsafe fn print_real_matrix(
         let mut e = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let x = REAL(sx).offset(offset as isize);
+        let seq = unexpanded_real(sx);
+        let data = if seq.is_some() {
+            ptr::null_mut()
+        } else {
+            REAL(sx)
+        };
         let dec_ptr = &OUT_DEC as *const c_char;
 
         for j in 0..c as usize {
             if print_ij {
-                let col_ptr = x.offset((j as c_int * r) as isize);
-                formatReal(col_ptr, r as R_xlen_t, &mut w[j], &mut d[j], &mut e[j], 0);
+                let col = j as c_int;
+                let fmt = real_format_at(seq, data, offset + col * r, r as R_xlen_t);
+                w[j] = fmt.w;
+                d[j] = fmt.d;
+                e[j] = fmt.e;
             } else {
                 w[j] = 0;
             }
@@ -635,7 +751,7 @@ unsafe fn print_real_matrix(
                     MatrixRowLabel(rl, i as c_int, rlabw, lbloff);
                     if print_ij {
                         for j in jmin..jmax {
-                            let val = *x.offset((j as c_int * r + i as c_int) as isize);
+                            let val = real_at(seq, data, offset + j as c_int * r + i as c_int);
                             let s = EncodeReal0(val, w[j], d[j], e[j], dec_ptr);
                             let cstr = std::ffi::CStr::from_ptr(s);
                             eprint!("{}", cstr.to_str().unwrap_or(""));
@@ -1314,13 +1430,21 @@ pub unsafe fn formatIntegerMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
         let nc = if n > 0 { len as i64 / n } else { 0 };
         let r = n as c_int;
 
-        let data = INTEGER(x);
+        let seq = if n > 0 && n <= c_int::MAX as R_xlen_t {
+            unexpanded_int(x)
+        } else {
+            None
+        };
+        let data = if seq.is_some() {
+            ptr::null_mut()
+        } else {
+            INTEGER(x)
+        };
         let mut max_w: c_int = 0;
 
         for j in 0..nc as usize {
-            let mut fw: c_int = 0;
-            let col_ptr = data.offset((j as c_int * r) as isize);
-            formatInteger(col_ptr, n, &mut fw);
+            let col = j as c_int;
+            let fw = int_width_at(seq, data, col * r, n);
             if fw > max_w {
                 max_w = fw;
             }
@@ -1345,21 +1469,27 @@ pub unsafe fn formatRealMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int, d: *mut c_in
         let nc = if n > 0 { len as i64 / n } else { 0 };
         let r = n as c_int;
 
-        let data = REAL(x);
+        let seq = if n > 0 && n <= c_int::MAX as R_xlen_t {
+            unexpanded_real(x)
+        } else {
+            None
+        };
+        let data = if seq.is_some() {
+            ptr::null_mut()
+        } else {
+            REAL(x)
+        };
         let mut max_w: c_int = 0;
         let mut best_d: c_int = 0;
         let mut best_e: c_int = 0;
 
         for j in 0..nc as usize {
-            let mut fw: c_int = 0;
-            let mut fd: c_int = 0;
-            let mut fe: c_int = 0;
-            let col_ptr = data.offset((j as c_int * r) as isize);
-            formatReal(col_ptr, n, &mut fw, &mut fd, &mut fe, 0);
-            if fw > max_w {
-                max_w = fw;
-                best_d = fd;
-                best_e = fe;
+            let col = j as c_int;
+            let fmt = real_format_at(seq, data, col * r, n);
+            if fmt.w > max_w {
+                max_w = fmt.w;
+                best_d = fmt.d;
+                best_e = fmt.e;
             }
         }
 

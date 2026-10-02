@@ -838,6 +838,10 @@ fn altseq_names_on_a_lazy_colon_do_not_expose_the_formula() {
             "formula leaked into print: {}",
             printed.stdout
         );
+        assert!(
+            (*seq).gengc_next_node.is_null(),
+            "printing allocated the payload"
+        );
     }
 }
 
@@ -1038,6 +1042,232 @@ fn altseq_all_equal_matches_a_plain_vector() {
             ptr::null_mut(),
         );
         assert_eq!(ans, crate::sexp::globals::R_True());
+    }
+}
+
+#[test]
+fn altseq_printing_reads_the_formula_without_a_buffer() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let lazy_i = seq_colon(1.0, 12.0, ptr::null_mut());
+        let plain_i = make_int_vec(&(1..=12).map(|v| v as c_int).collect::<Vec<_>>());
+        let lazy_r = seq_colon(1.5, 4.5, ptr::null_mut());
+        let plain_r = make_real_vec(&[1.5, 2.5, 3.5, 4.5]);
+        let neg = seq_colon(-100.0, -90.0, ptr::null_mut());
+        root_global("alt_print_lazy_i", lazy_i);
+        root_global("alt_print_plain_i", plain_i);
+        root_global("alt_print_lazy_r", lazy_r);
+        root_global("alt_print_plain_r", plain_r);
+        root_global("alt_print_neg", neg);
+        let dim_li = set_matrix_dim(lazy_i, 3, 4);
+        let dim_pi = set_matrix_dim(plain_i, 3, 4);
+        let dim_lr = set_matrix_dim(lazy_r, 4, 1);
+        let dim_pr = set_matrix_dim(plain_r, 4, 1);
+        root_global("alt_print_dim_li", dim_li);
+        root_global("alt_print_dim_pi", dim_pi);
+        root_global("alt_print_dim_lr", dim_lr);
+        root_global("alt_print_dim_pr", dim_pr);
+
+        let mut wi_l = 0;
+        let mut wi_p = 0;
+        crate::mainutils::printarray::formatIntegerMatrix(lazy_i, 3, &mut wi_l);
+        crate::mainutils::printarray::formatIntegerMatrix(plain_i, 3, &mut wi_p);
+        assert_eq!(wi_l, 2);
+        assert_eq!(wi_l, wi_p);
+        assert!(still_lazy(lazy_i));
+
+        let mut neg_w = 0;
+        crate::mainutils::format::formatIntegerS(neg, XLENGTH(neg), &mut neg_w);
+        assert_eq!(neg_w, 4);
+        assert!(still_lazy(neg));
+
+        let (mut wr_l, mut dr_l, mut er_l) = (0, 0, 0);
+        let (mut wr_p, mut dr_p, mut er_p) = (0, 0, 0);
+        crate::mainutils::printarray::formatRealMatrix(
+            lazy_r, 4, &mut wr_l, &mut dr_l, &mut er_l,
+        );
+        crate::mainutils::printarray::formatRealMatrix(
+            plain_r, 4, &mut wr_p, &mut dr_p, &mut er_p,
+        );
+        assert_eq!((wr_l, dr_l, er_l), (wr_p, dr_p, er_p));
+        assert!(wr_l > 0);
+        assert!(still_lazy(lazy_r));
+
+        let nil = R_NilValue();
+        let matrix_i_lazy = capture_stderr(|| unsafe {
+            crate::mainutils::printarray::printMatrix(
+                lazy_i,
+                0,
+                dim_li,
+                1,
+                0,
+                nil,
+                nil,
+                ptr::null(),
+                ptr::null(),
+            );
+        });
+        let matrix_i_plain = capture_stderr(|| unsafe {
+            crate::mainutils::printarray::printMatrix(
+                plain_i,
+                0,
+                dim_pi,
+                1,
+                0,
+                nil,
+                nil,
+                ptr::null(),
+                ptr::null(),
+            );
+        });
+        assert_eq!(matrix_i_lazy, matrix_i_plain);
+        assert!(
+            matrix_i_lazy.contains("[3,]") && matrix_i_lazy.contains("12"),
+            "integer matrix print: {matrix_i_lazy}"
+        );
+        assert!(still_lazy(lazy_i));
+
+        let matrix_r_lazy = capture_stderr(|| unsafe {
+            crate::mainutils::printarray::printMatrix(
+                lazy_r,
+                0,
+                dim_lr,
+                1,
+                0,
+                nil,
+                nil,
+                ptr::null(),
+                ptr::null(),
+            );
+        });
+        let matrix_r_plain = capture_stderr(|| unsafe {
+            crate::mainutils::printarray::printMatrix(
+                plain_r,
+                0,
+                dim_pr,
+                1,
+                0,
+                nil,
+                nil,
+                ptr::null(),
+                ptr::null(),
+            );
+        });
+        assert_eq!(matrix_r_lazy, matrix_r_plain);
+        assert!(
+            matrix_r_lazy.contains("1.5") && matrix_r_lazy.contains("4.5"),
+            "real matrix print: {matrix_r_lazy}"
+        );
+        assert!(still_lazy(lazy_r));
+
+        let vector_lazy = capture_stderr(|| unsafe {
+            crate::mainutils::printvector::printVector(lazy_i, 1, 1);
+        });
+        let vector_plain = capture_stderr(|| unsafe {
+            crate::mainutils::printvector::printVector(plain_i, 1, 1);
+        });
+        assert_eq!(vector_lazy, vector_plain);
+        assert!(vector_lazy.contains("[1]") && vector_lazy.contains("12"));
+        assert!(still_lazy(lazy_i));
+
+        crate::sexp::output::start_capture();
+        crate::sexp::output::Rf_PrintValue(lazy_r);
+        let shown_lazy = crate::sexp::output::stop_capture();
+        crate::sexp::output::start_capture();
+        crate::sexp::output::Rf_PrintValue(plain_r);
+        let shown_plain = crate::sexp::output::stop_capture();
+        assert_eq!(shown_lazy.stdout, shown_plain.stdout);
+        assert!(
+            shown_lazy.stdout.contains("1.5") && shown_lazy.stdout.contains("4.5"),
+            "captured real matrix: {}",
+            shown_lazy.stdout
+        );
+        assert!(!shown_lazy.stdout.contains(".InternalAltSeq"));
+        assert!(still_lazy(lazy_r));
+
+        crate::sexp::memory::with_arena(|arena| {
+            arena.set_budget(crate::sexp::memory::ArenaBudget::new(1, 0));
+        });
+        let under_budget = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let mut w = 0;
+            crate::mainutils::format::formatIntegerS(neg, XLENGTH(neg), &mut w);
+            assert_eq!(w, 4);
+            assert!(still_lazy(neg));
+            let mut wi = 0;
+            crate::mainutils::printarray::formatIntegerMatrix(lazy_i, 3, &mut wi);
+            assert_eq!(wi, 2);
+            assert!(still_lazy(lazy_i));
+            let (mut wr, mut dr, mut er) = (0, 0, 0);
+            crate::mainutils::format::formatRealS(
+                lazy_r,
+                XLENGTH(lazy_r),
+                &mut wr,
+                &mut dr,
+                &mut er,
+                0,
+            );
+            assert_eq!((wr, dr, er), (wr_l, dr_l, er_l));
+            assert!(still_lazy(lazy_r));
+            let again = capture_stderr(|| unsafe {
+                crate::mainutils::printarray::printMatrix(
+                    lazy_i,
+                    0,
+                    dim_li,
+                    1,
+                    0,
+                    nil,
+                    nil,
+                    ptr::null(),
+                    ptr::null(),
+                );
+            });
+            assert_eq!(again, matrix_i_plain);
+            assert!(still_lazy(lazy_i));
+            assert_eq!(crate::sexp::accessors::INTEGER_ELT(lazy_i, 0), 1);
+            assert_eq!(crate::sexp::accessors::INTEGER_ELT(lazy_i, 11), 12);
+            crate::sexp::output::start_capture();
+            crate::sexp::output::Rf_PrintValue(lazy_r);
+            let shown = crate::sexp::output::stop_capture();
+            assert_eq!(shown.stdout, shown_plain.stdout);
+            assert!(still_lazy(lazy_r));
+        }));
+        crate::sexp::memory::with_arena(|arena| {
+            arena.set_budget(crate::sexp::memory::ArenaBudget::unlimited());
+        });
+        if let Err(payload) = under_budget {
+            let message = payload
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.clone())
+                .unwrap_or_else(|| "print under a refused budget panicked".to_string());
+            panic!("{message}");
+        }
+    }
+}
+
+fn still_lazy(value: SEXP) -> bool {
+    unsafe {
+        crate::sexp::accessors::ALTREP(value) == 1 && (*value).gengc_next_node.is_null()
+    }
+}
+
+unsafe fn set_matrix_dim(x: SEXP, nrow: c_int, ncol: c_int) -> SEXP {
+    unsafe {
+        let dim = Rf_allocVector(INTSXP_VAL, 2);
+        *INTEGER(dim).add(0) = nrow;
+        *INTEGER(dim).add(1) = ncol;
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        dim
+    }
+}
+
+fn capture_stderr(f: impl FnOnce()) -> String {
+    let buf = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+    crate::mainutils::printutils::set_console_sink(Some(std::rc::Rc::clone(&buf)));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    crate::mainutils::printutils::set_console_sink(None);
+    match result {
+        Ok(()) => buf.borrow().clone(),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 

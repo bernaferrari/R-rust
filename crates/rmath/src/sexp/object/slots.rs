@@ -1,5 +1,6 @@
 use std::os::raw::c_void;
 
+use super::header::NodeBody;
 use super::{Sexp, SexpError, SexpResult};
 use crate::sexp::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 
@@ -12,18 +13,19 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a closure or the formals are null.
     #[inline]
     pub fn formals(&self) -> Option<Sexp<'a>> {
-        if self.is_closure() {
-            self.optional_child(unsafe { (*self.ptr).data.closxp.formals })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Closure(slot) => self.optional_child(slot.formals),
+            _ => None,
         }
     }
 
     /// Get the formal parameters of a closure with typed error reporting.
     #[inline]
     pub fn try_formals(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::CLOSXP, "closure")?;
-        self.checked_child(unsafe { (*self.ptr).data.closxp.formals })
+        match self.header().body {
+            NodeBody::Closure(slot) => self.checked_child(slot.formals),
+            _ => self.closure_mismatch(),
+        }
     }
 
     /// Get the body of a closure.
@@ -31,18 +33,19 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a closure or the body is null.
     #[inline]
     pub fn body(&self) -> Option<Sexp<'a>> {
-        if self.is_closure() {
-            self.optional_child(unsafe { (*self.ptr).data.closxp.body })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Closure(slot) => self.optional_child(slot.body),
+            _ => None,
         }
     }
 
     /// Get the body of a closure with typed error reporting.
     #[inline]
     pub fn try_body(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::CLOSXP, "closure")?;
-        self.checked_child(unsafe { (*self.ptr).data.closxp.body })
+        match self.header().body {
+            NodeBody::Closure(slot) => self.checked_child(slot.body),
+            _ => self.closure_mismatch(),
+        }
     }
 
     /// Get the environment of a closure.
@@ -50,18 +53,26 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a closure or the environment is null.
     #[inline]
     pub fn cloenv(&self) -> Option<Sexp<'a>> {
-        if self.is_closure() {
-            self.optional_child(unsafe { (*self.ptr).data.closxp.env })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Closure(slot) => self.optional_child(slot.env),
+            _ => None,
         }
     }
 
     /// Get the environment of a closure with typed error reporting.
     #[inline]
     pub fn try_cloenv(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::CLOSXP, "closure")?;
-        self.checked_child(unsafe { (*self.ptr).data.closxp.env })
+        match self.header().body {
+            NodeBody::Closure(slot) => self.checked_child(slot.env),
+            _ => self.closure_mismatch(),
+        }
+    }
+
+    fn closure_mismatch(&self) -> SexpResult<Sexp<'a>> {
+        Err(SexpError::TypeMismatch {
+            expected: "closure",
+            actual: self.typeof_(),
+        })
     }
 
     // --- Environment accessors ---
@@ -71,18 +82,19 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not an environment or the frame is null.
     #[inline]
     pub fn frame(&self) -> Option<Sexp<'a>> {
-        if self.is_environment() {
-            self.optional_child(unsafe { (*self.ptr).data.envsxp.frame })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Environment(slot) => self.optional_child(slot.frame),
+            _ => None,
         }
     }
 
     /// Get the frame of an environment with typed error reporting.
     #[inline]
     pub fn try_frame(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::ENVSXP, "environment")?;
-        self.checked_child(unsafe { (*self.ptr).data.envsxp.frame })
+        match self.header().body {
+            NodeBody::Environment(slot) => self.checked_child(slot.frame),
+            _ => self.environment_mismatch(),
+        }
     }
 
     /// Get the enclosing (parent) environment.
@@ -90,18 +102,19 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not an environment or the enclosing env is null.
     #[inline]
     pub fn enclos(&self) -> Option<Sexp<'a>> {
-        if self.is_environment() {
-            self.optional_child(unsafe { (*self.ptr).data.envsxp.enclos })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Environment(slot) => self.optional_child(slot.enclos),
+            _ => None,
         }
     }
 
     /// Get the enclosing environment with typed error reporting.
     #[inline]
     pub fn try_enclos(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::ENVSXP, "environment")?;
-        self.checked_child(unsafe { (*self.ptr).data.envsxp.enclos })
+        match self.header().body {
+            NodeBody::Environment(slot) => self.checked_child(slot.enclos),
+            _ => self.environment_mismatch(),
+        }
     }
 
     /// Get the hash table of an environment.
@@ -109,18 +122,26 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not an environment or the hashtab is null.
     #[inline]
     pub fn hashtab(&self) -> Option<Sexp<'a>> {
-        if self.is_environment() {
-            self.optional_child(unsafe { (*self.ptr).data.envsxp.hashtab })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Environment(slot) => self.optional_child(slot.hashtab),
+            _ => None,
         }
     }
 
     /// Get the hash table of an environment with typed error reporting.
     #[inline]
     pub fn try_hashtab(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::ENVSXP, "environment")?;
-        self.checked_child(unsafe { (*self.ptr).data.envsxp.hashtab })
+        match self.header().body {
+            NodeBody::Environment(slot) => self.checked_child(slot.hashtab),
+            _ => self.environment_mismatch(),
+        }
+    }
+
+    fn environment_mismatch(&self) -> SexpResult<Sexp<'a>> {
+        Err(SexpError::TypeMismatch {
+            expected: "environment",
+            actual: self.typeof_(),
+        })
     }
 
     // --- Promise accessors ---
@@ -130,18 +151,19 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a promise or the value is null.
     #[inline]
     pub fn prvalue(&self) -> Option<Sexp<'a>> {
-        if self.typeof_() == SEXPTYPE::PROMSXP {
-            self.optional_child(unsafe { (*self.ptr).data.promsxp.value })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Promise(slot) => self.optional_child(slot.value),
+            _ => None,
         }
     }
 
     /// Get the value of a promise with typed error reporting.
     #[inline]
     pub fn try_prvalue(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::PROMSXP, "promise")?;
-        self.checked_child(unsafe { (*self.ptr).data.promsxp.value })
+        match self.header().body {
+            NodeBody::Promise(slot) => self.checked_child(slot.value),
+            _ => self.promise_mismatch(),
+        }
     }
 
     /// Get the code/expression of a promise.
@@ -149,18 +171,19 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a promise or the code is null.
     #[inline]
     pub fn prcode(&self) -> Option<Sexp<'a>> {
-        if self.typeof_() == SEXPTYPE::PROMSXP {
-            self.optional_child(unsafe { (*self.ptr).data.promsxp.expr })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Promise(slot) => self.optional_child(slot.expr),
+            _ => None,
         }
     }
 
     /// Get the code/expression of a promise with typed error reporting.
     #[inline]
     pub fn try_prcode(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::PROMSXP, "promise")?;
-        self.checked_child(unsafe { (*self.ptr).data.promsxp.expr })
+        match self.header().body {
+            NodeBody::Promise(slot) => self.checked_child(slot.expr),
+            _ => self.promise_mismatch(),
+        }
     }
 
     /// Get the environment of a promise.
@@ -168,18 +191,26 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a promise or the environment is null.
     #[inline]
     pub fn prenv(&self) -> Option<Sexp<'a>> {
-        if self.typeof_() == SEXPTYPE::PROMSXP {
-            self.optional_child(unsafe { (*self.ptr).data.promsxp.env })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Promise(slot) => self.optional_child(slot.env),
+            _ => None,
         }
     }
 
     /// Get the environment of a promise with typed error reporting.
     #[inline]
     pub fn try_prenv(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::PROMSXP, "promise")?;
-        self.checked_child(unsafe { (*self.ptr).data.promsxp.env })
+        match self.header().body {
+            NodeBody::Promise(slot) => self.checked_child(slot.env),
+            _ => self.promise_mismatch(),
+        }
+    }
+
+    fn promise_mismatch(&self) -> SexpResult<Sexp<'a>> {
+        Err(SexpError::TypeMismatch {
+            expected: "promise",
+            actual: self.typeof_(),
+        })
     }
 
     // --- Symbol accessors ---
@@ -189,18 +220,19 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a symbol or the value is null.
     #[inline]
     pub fn symvalue(&self) -> Option<Sexp<'a>> {
-        if self.typeof_() == SEXPTYPE::SYMSXP {
-            self.optional_child(unsafe { (*self.ptr).data.symsxp.internal })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Symbol(slot) => self.optional_child(slot.internal),
+            _ => None,
         }
     }
 
     /// Get the value of a symbol binding with typed error reporting.
     #[inline]
     pub fn try_symvalue(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::SYMSXP, "symbol")?;
-        self.checked_child(unsafe { (*self.ptr).data.symsxp.internal })
+        match self.header().body {
+            NodeBody::Symbol(slot) => self.checked_child(slot.internal),
+            _ => self.symbol_mismatch(),
+        }
     }
 
     /// Get the print name of a symbol.
@@ -208,18 +240,26 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a symbol or the print name is null.
     #[inline]
     pub fn printname(&self) -> Option<Sexp<'a>> {
-        if self.typeof_() == SEXPTYPE::SYMSXP {
-            self.optional_child(unsafe { (*self.ptr).data.symsxp.pname })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::Symbol(slot) => self.optional_child(slot.pname),
+            _ => None,
         }
     }
 
     /// Get the print name of a symbol with typed error reporting.
     #[inline]
     pub fn try_printname(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::SYMSXP, "symbol")?;
-        self.checked_child(unsafe { (*self.ptr).data.symsxp.pname })
+        match self.header().body {
+            NodeBody::Symbol(slot) => self.checked_child(slot.pname),
+            _ => self.symbol_mismatch(),
+        }
+    }
+
+    fn symbol_mismatch(&self) -> SexpResult<Sexp<'a>> {
+        Err(SexpError::TypeMismatch {
+            expected: "symbol",
+            actual: self.typeof_(),
+        })
     }
 
     // --- Attribute access ---
@@ -229,13 +269,13 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if there are no attributes.
     #[inline]
     pub fn attrib(&self) -> Option<Sexp<'a>> {
-        self.optional_child(unsafe { (*self.ptr).attrib })
+        self.optional_child(self.header().attrib)
     }
 
     /// Get the attributes of this SEXP, returning `NULL` when there are none.
     #[inline]
     pub fn try_attrib(&self) -> SexpResult<Sexp<'a>> {
-        self.checked_child(unsafe { (*self.ptr).attrib })
+        self.checked_child(self.header().attrib)
     }
 
     /// Check if this object has the OBJECT flag set (has a class attribute).
@@ -243,7 +283,7 @@ impl<'a> Sexp<'a> {
     /// S3 and S4 objects have this flag set, triggering method dispatch.
     #[inline]
     pub fn is_object(&self) -> bool {
-        unsafe { (*self.ptr).sxpinfo.obj() }
+        self.header().sxpinfo.obj()
     }
 
     // --- CHARSXP accessors ---
@@ -254,17 +294,48 @@ impl<'a> Sexp<'a> {
     }
 
     pub fn char_len(&self) -> Option<R_xlen_t> {
-        if self.is_charsxp() {
-            Some(unsafe { (*self.ptr).data.charsxp_truelen })
-        } else {
-            None
+        let header = self.header();
+        if header.sxpinfo.type_of() != SEXPTYPE::CHARSXP {
+            return None;
+        }
+        match header.body {
+            NodeBody::Vector(vec) => Some(vec.length),
+            _ => None,
         }
     }
 
     /// Return the CHARSXP byte length with typed error reporting.
     pub fn try_char_len(&self) -> SexpResult<R_xlen_t> {
-        self.expect_type(SEXPTYPE::CHARSXP, "character scalar")?;
-        Ok(unsafe { (*self.ptr).data.charsxp_truelen })
+        self.char_len().ok_or_else(|| SexpError::TypeMismatch {
+            expected: "character scalar",
+            actual: self.typeof_(),
+        })
+    }
+
+    /// Compare CHARSXP bytes without retaining a borrow of the payload.
+    pub(crate) fn try_char_eq(&self, expected: &[u8]) -> SexpResult<bool> {
+        let header = self.header();
+        if header.sxpinfo.type_of() != SEXPTYPE::CHARSXP {
+            return Err(SexpError::TypeMismatch {
+                expected: "character scalar",
+                actual: header.sxpinfo.type_of(),
+            });
+        }
+        let NodeBody::Vector(vec) = header.body else {
+            return Err(SexpError::TypeMismatch {
+                expected: "character scalar",
+                actual: header.sxpinfo.type_of(),
+            });
+        };
+        if vec.length == 0 {
+            return Ok(expected.is_empty());
+        }
+        if vec.length < 0 || header.payload.is_null() {
+            return Err(SexpError::MissingData {
+                sexptype: SEXPTYPE::CHARSXP,
+            });
+        }
+        Ok(header.char_eq(expected))
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -284,17 +355,35 @@ impl<'a> Sexp<'a> {
     /// Retain this handle and exclude all mutation of the borrowed payload
     /// until the returned reference dies. Do not execute R while it is borrowed.
     pub(super) unsafe fn try_as_bytes(&self) -> SexpResult<&'_ [u8]> {
-        self.expect_type(SEXPTYPE::CHARSXP, "character scalar")?;
-        let len = unsafe { (*self.ptr).data.charsxp_truelen } as usize;
-        let data = unsafe { (*self.ptr).gengc_next_node as *const u8 };
-        if len == 0 {
+        let header = self.header();
+        if header.sxpinfo.type_of() != SEXPTYPE::CHARSXP {
+            return Err(SexpError::TypeMismatch {
+                expected: "character scalar",
+                actual: header.sxpinfo.type_of(),
+            });
+        }
+        let NodeBody::Vector(vec) = header.body else {
+            return Err(SexpError::TypeMismatch {
+                expected: "character scalar",
+                actual: header.sxpinfo.type_of(),
+            });
+        };
+        if vec.length == 0 {
             return Ok(&[]);
         }
+        let Ok(len) = usize::try_from(vec.length) else {
+            return Err(SexpError::MissingData {
+                sexptype: SEXPTYPE::CHARSXP,
+            });
+        };
+        let data = header.payload as *const u8;
         if data.is_null() {
             return Err(SexpError::MissingData {
                 sexptype: SEXPTYPE::CHARSXP,
             });
         }
+        // SAFETY: caller retains the handle and excludes payload mutation for
+        // the returned borrow. The length is the CHARSXP byte count.
         Ok(unsafe { std::slice::from_raw_parts(data, len) })
     }
 
@@ -415,10 +504,9 @@ impl<'a> Sexp<'a> {
     }
 
     pub fn extptr_ptr(&self) -> Option<*mut c_void> {
-        if self.is_extptr() {
-            Some(unsafe { (*self.ptr).data.extptr[0] })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::ExtPtr(slot) => Some(slot[0]),
+            _ => None,
         }
     }
 
@@ -426,36 +514,49 @@ impl<'a> Sexp<'a> {
     ///
     /// A null external pointer payload is a valid R value and is returned as-is.
     pub fn try_extptr_ptr(&self) -> SexpResult<*mut c_void> {
-        self.expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")?;
-        Ok(unsafe { (*self.ptr).data.extptr[0] })
+        match self.header().body {
+            NodeBody::ExtPtr(slot) => Ok(slot[0]),
+            _ => Err(SexpError::TypeMismatch {
+                expected: "external pointer",
+                actual: self.typeof_(),
+            }),
+        }
     }
 
     pub fn extptr_tag(&self) -> Option<Sexp<'a>> {
-        if self.is_extptr() {
-            self.optional_child(unsafe { (*self.ptr).data.extptr[1] as SEXP })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::ExtPtr(slot) => self.optional_child(slot[1] as SEXP),
+            _ => None,
         }
     }
 
     /// Get the external pointer tag with typed error reporting.
     pub fn try_extptr_tag(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")?;
-        self.checked_child(unsafe { (*self.ptr).data.extptr[1] as SEXP })
+        match self.header().body {
+            NodeBody::ExtPtr(slot) => self.checked_child(slot[1] as SEXP),
+            _ => Err(SexpError::TypeMismatch {
+                expected: "external pointer",
+                actual: self.typeof_(),
+            }),
+        }
     }
 
     pub fn extprot(&self) -> Option<Sexp<'a>> {
-        if self.is_extptr() {
-            self.optional_child(unsafe { (*self.ptr).data.extptr[2] as SEXP })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::ExtPtr(slot) => self.optional_child(slot[2] as SEXP),
+            _ => None,
         }
     }
 
     /// Get the external pointer protected value with typed error reporting.
     pub fn try_extprot(&self) -> SexpResult<Sexp<'a>> {
-        self.expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")?;
-        self.checked_child(unsafe { (*self.ptr).data.extptr[2] as SEXP })
+        match self.header().body {
+            NodeBody::ExtPtr(slot) => self.checked_child(slot[2] as SEXP),
+            _ => Err(SexpError::TypeMismatch {
+                expected: "external pointer",
+                actual: self.typeof_(),
+            }),
+        }
     }
 
     // --- Weak reference (WEAKREFSXP) ---
@@ -506,7 +607,7 @@ impl<'a> Sexp<'a> {
     pub fn try_data_ptr(self) -> SexpResult<*mut c_void> {
         if self.typeof_().is_vector_type() || self.typeof_() == SEXPTYPE::CHARSXP {
             self.materialize_compact_payload();
-            let ptr = unsafe { (*self.ptr).gengc_next_node as *mut c_void };
+            let ptr = self.header().payload as *mut c_void;
             if ptr.is_null() {
                 Err(SexpError::MissingData {
                     sexptype: self.typeof_(),

@@ -4,7 +4,8 @@
 //! This module is the safe, Rust-facing layer over raw R `SEXP` pointers. It
 //! keeps R's object categories recognizable while adding lifetime tracking,
 //! checked accessors, copied elements, owned projections, and
-//! pairlist iteration.
+//! pairlist iteration. Header reads copy the node's `Copy` fields out once;
+//! callers do not hold `&SexprecCore` across a later allocation.
 //!
 //! # Design
 //!
@@ -32,6 +33,7 @@
 //! or [`to_owned_value`](Sexp::to_owned_value). Payload loans are private to this module.
 
 mod error;
+mod header;
 mod kind;
 mod mut_ref;
 mod owned;
@@ -56,6 +58,7 @@ use view::SexpView;
 
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use super::globals::R_NilValue;
+pub(crate) use header::{LeadingScalars, NodeBody, copy_leading_scalars};
 use value::sexptype_name;
 
 /// Provenance for a `Sexp` handle.
@@ -386,10 +389,11 @@ impl<'a> Sexp<'a> {
     ///
     /// Single-element readers use the formula instead and never call this.
     fn materialize_compact_payload(&self) {
-        unsafe {
-            if super::accessors::ALTREP(self.ptr) != 0 && (*self.ptr).gengc_next_node.is_null() {
-                super::altseq::materialize(self.ptr);
-            }
+        let header = self.header();
+        if header.sxpinfo.alt() && header.payload.is_null() {
+            // SAFETY: this handle names the live node. `materialize` writes
+            // the payload; the header copy above has already ended.
+            unsafe { super::altseq::materialize(self.ptr) }
         }
     }
 
@@ -400,7 +404,7 @@ impl<'a> Sexp<'a> {
     ) -> SexpResult<*const T> {
         self.expect_type(expected, expected_name)?;
         self.materialize_compact_payload();
-        let data = unsafe { (*self.ptr).gengc_next_node as *const T };
+        let data = self.header().payload as *const T;
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })
         } else {
@@ -451,7 +455,7 @@ impl<'a> Sexp<'a> {
     ) -> SexpResult<*mut T> {
         self.expect_type(expected, expected_name)?;
         self.materialize_compact_payload();
-        let data = unsafe { (*self.ptr).gengc_next_node as *mut T };
+        let data = self.header().payload as *mut T;
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })
         } else {
@@ -506,7 +510,7 @@ impl<'a> Sexp<'a> {
                 actual: self.typeof_(),
             });
         }
-        let data = unsafe { (*self.ptr).gengc_next_node as *const SEXP };
+        let data = self.header().payload as *const SEXP;
         if data.is_null() {
             Err(SexpError::MissingData {
                 sexptype: self.typeof_(),
@@ -529,7 +533,7 @@ impl<'a> Sexp<'a> {
                 actual: self.typeof_(),
             });
         }
-        let data = unsafe { (*self.ptr).gengc_next_node as *mut SEXP };
+        let data = self.header().payload as *mut SEXP;
         if data.is_null() {
             Err(SexpError::MissingData {
                 sexptype: self.typeof_(),
@@ -594,18 +598,6 @@ impl<'a> Sexp<'a> {
         }
     }
 
-    #[inline]
-    fn try_pairlist(&self) -> SexpResult<()> {
-        if self.is_pairlist() {
-            Ok(())
-        } else {
-            Err(SexpError::TypeMismatch {
-                expected: "pairlist or language object",
-                actual: self.typeof_(),
-            })
-        }
-    }
-
     /// Convert to a boolean value.
     ///
     /// Returns true for non-NULL values, or the actual boolean/logical value
@@ -658,18 +650,19 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a pairlist or the CAR is null.
     #[inline]
     pub fn car(&self) -> Option<Sexp<'a>> {
-        if self.is_pairlist() {
-            self.optional_child(unsafe { (*self.ptr).data.listsxp.carval })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::List(cell) => self.optional_child(cell.carval),
+            _ => None,
         }
     }
 
     /// Get the CAR with typed error reporting.
     #[inline]
     pub fn try_car(&self) -> SexpResult<Sexp<'a>> {
-        self.try_pairlist()?;
-        self.checked_child(unsafe { (*self.ptr).data.listsxp.carval })
+        match self.header().body {
+            NodeBody::List(cell) => self.checked_child(cell.carval),
+            _ => self.pairlist_mismatch(),
+        }
     }
 
     /// Get the CDR (next cell) of a pairlist element.
@@ -677,18 +670,19 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a pairlist or the CDR is null.
     #[inline]
     pub fn cdr(&self) -> Option<Sexp<'a>> {
-        if self.is_pairlist() {
-            self.optional_child(unsafe { (*self.ptr).data.listsxp.cdrval })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::List(cell) => self.optional_child(cell.cdrval),
+            _ => None,
         }
     }
 
     /// Get the CDR with typed error reporting.
     #[inline]
     pub fn try_cdr(&self) -> SexpResult<Sexp<'a>> {
-        self.try_pairlist()?;
-        self.checked_child(unsafe { (*self.ptr).data.listsxp.cdrval })
+        match self.header().body {
+            NodeBody::List(cell) => self.checked_child(cell.cdrval),
+            _ => self.pairlist_mismatch(),
+        }
     }
 
     /// Get the TAG (name) of a pairlist element.
@@ -696,18 +690,26 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a pairlist or the TAG is null.
     #[inline]
     pub fn tag(&self) -> Option<Sexp<'a>> {
-        if self.is_pairlist() {
-            self.optional_child(unsafe { (*self.ptr).data.listsxp.tagval })
-        } else {
-            None
+        match self.header().body {
+            NodeBody::List(cell) => self.optional_child(cell.tagval),
+            _ => None,
         }
     }
 
     /// Get the TAG with typed error reporting.
     #[inline]
     pub fn try_tag(&self) -> SexpResult<Sexp<'a>> {
-        self.try_pairlist()?;
-        self.checked_child(unsafe { (*self.ptr).data.listsxp.tagval })
+        match self.header().body {
+            NodeBody::List(cell) => self.checked_child(cell.tagval),
+            _ => self.pairlist_mismatch(),
+        }
+    }
+
+    fn pairlist_mismatch(&self) -> SexpResult<Sexp<'a>> {
+        Err(SexpError::TypeMismatch {
+            expected: "pairlist or language object",
+            actual: self.typeof_(),
+        })
     }
 
     /// Return the next pairlist cell, or `None` at the end of the chain.
@@ -767,8 +769,7 @@ impl<'a> Sexp<'a> {
         }
 
         let printname = tag.try_printname()?;
-        // SAFETY: compare immediately, without allocation or R reentry.
-        Ok(unsafe { printname.try_as_bytes() }? == name)
+        printname.try_char_eq(name)
     }
 }
 

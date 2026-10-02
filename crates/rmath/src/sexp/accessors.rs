@@ -1063,8 +1063,9 @@ pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
             return NA_INTEGER;
         }
         // Resolve a compact sequence before `INTEGER`, which materializes.
-        if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
-            match super::altseq::lazy_int_elt(x, i as R_xlen_t) {
+        // One handle at this FFI edge; the formula walk itself is safe.
+        if let Some(sx) = super::object::Sexp::from_raw(x) {
+            match sx.read_compact_int(i as R_xlen_t, true) {
                 super::altseq::LazyRead::Ready(value) => return value,
                 super::altseq::LazyRead::OutOfRange => return NA_INTEGER,
                 super::altseq::LazyRead::Absent => {}
@@ -1092,8 +1093,8 @@ pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
         if !is_valid_sexp_ptr(x) {
             return NA_REAL;
         }
-        if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
-            match super::altseq::lazy_real_elt(x, i as R_xlen_t) {
+        if let Some(sx) = super::object::Sexp::from_raw(x) {
+            match sx.read_compact_real(i as R_xlen_t, true) {
                 super::altseq::LazyRead::Ready(value) => return value,
                 super::altseq::LazyRead::OutOfRange => return NA_REAL,
                 super::altseq::LazyRead::Absent => {}
