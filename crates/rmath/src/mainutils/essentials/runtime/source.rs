@@ -60,7 +60,6 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 parsed.deparse_opts,
                 parsed.max_deparse_length,
             );
-
         }
         let file_arg = parsed.file.unwrap_or(R_NilValue());
         if file_arg.is_null() || file_arg == R_NilValue() {
@@ -118,10 +117,8 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }
         }
-
     }
 }
-
 
 /// GNU `withAutoprint(exprs)` — `source(exprs=..., echo=TRUE, print.eval=TRUE)`
 /// in the calling environment. The argument is substituted, not evaluated twice.
@@ -148,10 +145,8 @@ pub unsafe fn do_with_autoprint(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
                 | crate::mainutils::deparse::SHOWATTRIBUTES,
             usize::MAX,
         )
-
     }
 }
-
 
 struct SourceCallArgs {
     file: Option<SEXP>,
@@ -168,8 +163,6 @@ struct SourceCallArgs {
     /// GNU `source(max.deparse.length=)` default 150.
     max_deparse_length: usize,
 }
-
-
 
 fn source_call_args(args: SEXP) -> SourceCallArgs {
     unsafe {
@@ -261,8 +254,6 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
     }
 }
 
-
-
 fn with_autoprint_args(args: SEXP) -> (SEXP, bool, bool) {
     unsafe {
         let mut expr = R_MissingArg();
@@ -309,7 +300,6 @@ fn option_keep_source() -> bool {
     }
 }
 
-
 fn option_string(name: &str, default: &str) -> String {
     unsafe {
         let cname = CString::new(name).unwrap_or_default();
@@ -318,11 +308,7 @@ fn option_string(name: &str, default: &str) -> String {
             default.to_string()
         } else {
             let s = elt_to_string(opt, 0);
-            if s.is_empty() {
-                default.to_string()
-            } else {
-                s
-            }
+            if s.is_empty() { default.to_string() } else { s }
         }
     }
 }
@@ -362,10 +348,7 @@ unsafe fn brace_or_single_expressions(expr: SEXP) -> SEXP {
             }
             return out;
         }
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP
-            && CAR(expr) == crate::sexp::symbol::R_BraceSymbol()
-        {
-
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP && CAR(expr) == crate::sexp::symbol::R_BraceSymbol() {
             let mut n = 0;
             let mut cell = CDR(expr);
             while !cell.is_null() && cell != R_NilValue() {
@@ -513,9 +496,6 @@ unsafe fn echo_source_expression(
     }
 }
 
-
-
-
 unsafe fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
@@ -531,7 +511,6 @@ unsafe fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
         result
     }
 }
-
 
 /// R's `sys.source(file, envir, ...)` — source an R file into a specific environment.
 pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -556,7 +535,12 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(content) => {
-                let _ = eval_source_text_with_name(&content, target_env, &file_path, option_keep_source());
+                let _ = eval_source_text_with_name(
+                    &content,
+                    target_env,
+                    &file_path,
+                    option_keep_source(),
+                );
                 crate::sexp::globals::set_R_Visible(FALSE);
                 R_NilValue()
             }
@@ -630,13 +614,14 @@ unsafe fn eval_source_text_with_options(
                 }
             }
             return with_visible_result(result, last_visible);
-
         }
         // GNU source() echo with keep.source: original file text via spans
         // (comments, spacing, skip.echo header).
 
+        let parser_factory = crate::eval::parser::active_factory();
         let spans = crate::sexp::memory::with_arena(|arena| {
-            let mut parser = crate::eval::parser::Parser::new(content, arena);
+            let mut parser =
+                crate::eval::parser::Parser::new(content, arena, parser_factory.clone());
             parser.set_keep_srcrefs(true);
             parser
                 .parse_top_level_with_spans()
@@ -652,13 +637,15 @@ unsafe fn eval_source_text_with_options(
             spans.len() as i64,
         );
         let _vg = protect(vec_sexp);
-        for (i, &(e, _, _)) in spans.iter().enumerate() {
-            crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
+        for (i, (e, _, _)) in spans.iter().enumerate() {
+            crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e.clone().as_raw());
         }
         let mut lastshown: i32 = 0;
         let mut result = R_NilValue();
         let mut last_visible = FALSE;
-        for (i, &(expr, start, end)) in spans.iter().enumerate() {
+        for (i, (expression, start, end)) in spans.iter().enumerate() {
+            let expr = expression.clone().as_raw();
+            let (start, end) = (*start, *end);
 
             if expr.is_null() || expr == R_NilValue() {
                 continue;
@@ -707,7 +694,6 @@ unsafe fn eval_source_text_with_options(
             );
         }
         with_visible_result(result, last_visible)
-
     }
 }
 
@@ -763,7 +749,6 @@ fn echo_original_lines(
     }
 }
 
-
 unsafe fn eval_source_text_with_name(
     content: &str,
     env: SEXP,
@@ -773,8 +758,10 @@ unsafe fn eval_source_text_with_name(
     unsafe {
         let keep_source = keep_source || option_keep_source();
         if keep_source {
+            let parser_factory = crate::eval::parser::active_factory();
             let spans = crate::sexp::memory::with_arena(|arena| {
-                let mut parser = crate::eval::parser::Parser::new(content, arena);
+                let mut parser =
+                    crate::eval::parser::Parser::new(content, arena, parser_factory.clone());
                 parser.set_keep_srcrefs(true);
                 parser
                     .parse_top_level_with_spans()
@@ -783,7 +770,7 @@ unsafe fn eval_source_text_with_name(
             let mut result = R_NilValue();
             let mut last_visible = FALSE;
             if let Ok(spans) = spans {
-                let exprs: Vec<SEXP> = spans.iter().map(|&(e, _, _)| e).collect();
+                let exprs: Vec<SEXP> = spans.iter().map(|(e, _, _)| e.clone().as_raw()).collect();
                 let vec_sexp = crate::sexp::constructors::Rf_allocVector3(
                     crate::sexp::ffi::SEXPTYPE::EXPRSXP,
                     exprs.len() as i64,
@@ -793,9 +780,16 @@ unsafe fn eval_source_text_with_name(
                     crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
                 }
                 crate::mainutils::srcref::attach_srcrefs_with_spans(
-                    &spans, content, filename, vec_sexp,
+                    &spans
+                        .iter()
+                        .map(|(e, start, end)| (e.clone().as_raw(), *start, *end))
+                        .collect::<Vec<_>>(),
+                    content,
+                    filename,
+                    vec_sexp,
                 );
-                for (i, &(expr, _, _)) in spans.iter().enumerate() {
+                for (i, (expression, _, _)) in spans.iter().enumerate() {
+                    let expr = expression.clone().as_raw();
                     let _ = i;
                     if expr.is_null() || expr == R_NilValue() {
                         continue;
@@ -875,14 +869,8 @@ pub unsafe fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(fun) = utils_example_closure() {
-            let result = crate::eval::closure::applyClosure(
-                call,
-                fun,
-                args,
-                rho,
-                R_NilValue(),
-                TRUE,
-            );
+            let result =
+                crate::eval::closure::applyClosure(call, fun, args, rho, R_NilValue(), TRUE);
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return result;
         }
@@ -940,13 +928,10 @@ unsafe fn topic_name_from_arg(topic_arg: SEXP) -> String {
                 if pname.is_null() {
                     String::new()
                 } else {
-                    CStr::from_ptr(CHAR(pname))
-                        .to_string_lossy()
-                        .into_owned()
+                    CStr::from_ptr(CHAR(pname)).to_string_lossy().into_owned()
                 }
             }
             _ => elt_to_string(topic_arg, 0),
         }
     }
 }
-

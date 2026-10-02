@@ -14,9 +14,9 @@ use crate::mainutils::essentials::*;
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT,
-    LENGTH, LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_NAMED, SET_OBJECT,
-    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
-    XLENGTH,
+    LENGTH, LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_NAMED,
+    SET_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF,
+    VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -166,7 +166,6 @@ pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             None
         };
 
-
         // eval.c do_eval(): language/symbol/bytecode values evaluate in
         // `envir`; expression vectors evaluate element-wise returning the
         // last value; any other value is returned unchanged (Rf_eval no
@@ -202,8 +201,6 @@ pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         expr
     }
 }
-
-
 
 /// R's `substitute(expr, env)` — substitute symbols in expression.
 pub unsafe fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -319,8 +316,10 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Parse with byte spans and attach srcrefs + srcfile (keep.source).
 pub(crate) unsafe fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
     unsafe {
+        let parser_factory = crate::eval::parser::active_factory();
         let spans = crate::sexp::memory::with_arena(|arena| {
-            let mut parser = crate::eval::parser::Parser::new(content, arena);
+            let mut parser =
+                crate::eval::parser::Parser::new(content, arena, parser_factory.clone());
             parser.set_keep_srcrefs(true);
             parser
                 .parse_top_level_with_spans()
@@ -328,7 +327,7 @@ pub(crate) unsafe fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
         });
         match spans {
             Ok(spans) => {
-                let exprs: Vec<SEXP> = spans.iter().map(|&(e, _, _)| e).collect();
+                let exprs: Vec<SEXP> = spans.iter().map(|(e, _, _)| e.clone().as_raw()).collect();
                 let vec_sexp = crate::sexp::constructors::Rf_allocVector3(
                     SEXPTYPE::EXPRSXP,
                     exprs.len() as i64,
@@ -338,7 +337,13 @@ pub(crate) unsafe fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
                     crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
                 }
                 crate::mainutils::srcref::attach_srcrefs_with_spans(
-                    &spans, content, filename, vec_sexp,
+                    &spans
+                        .iter()
+                        .map(|(e, start, end)| (e.clone().as_raw(), *start, *end))
+                        .collect::<Vec<_>>(),
+                    content,
+                    filename,
+                    vec_sexp,
                 );
                 vec_sexp
             }
@@ -356,8 +361,9 @@ unsafe fn parse_source_strings(source: &[String]) -> SEXP {
 
 pub(crate) unsafe fn parse_source_expression_vector(source: &str) -> SEXP {
     unsafe {
+        let parser_factory = crate::eval::parser::active_factory();
         let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions_strict(source, arena)
+            crate::eval::parser::parse_expressions_strict(source, arena, parser_factory.clone())
                 .map_err(|err| err.to_string())
         })
         .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
@@ -367,8 +373,8 @@ pub(crate) unsafe fn parse_source_expression_vector(source: &str) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        for (i, value) in parsed.into_iter().enumerate() {
-            SET_VECTOR_ELT(result, i as R_xlen_t, value);
+        for (i, value) in parsed.iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, value.clone().as_raw());
         }
         result
     }
@@ -433,11 +439,8 @@ unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
                         );
                     }
                     let nm1 = Rf_ScalarReal(n - 1.0);
-                    let pow = crate::sexp::constructors::Rf_lang3(
-                        Rf_install(c"^".as_ptr()),
-                        base,
-                        nm1,
-                    );
+                    let pow =
+                        crate::sexp::constructors::Rf_lang3(Rf_install(c"^".as_ptr()), base, nm1);
                     return crate::sexp::constructors::Rf_lang3(
                         Rf_install(c"*".as_ptr()),
                         n_s,
@@ -725,13 +728,9 @@ pub unsafe fn do_deriv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _et = protect(e_txt);
         let d_txt = crate::mainutils::deparse::deparse1line(d, false);
         let _dt = protect(d_txt);
-        let e_s = CStr::from_ptr(CHAR(STRING_ELT(e_txt, 0)))
-            .to_string_lossy();
-        let d_s = CStr::from_ptr(CHAR(STRING_ELT(d_txt, 0)))
-            .to_string_lossy();
-        let src = format!(
-            "{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; .value }}"
-        );
+        let e_s = CStr::from_ptr(CHAR(STRING_ELT(e_txt, 0))).to_string_lossy();
+        let d_s = CStr::from_ptr(CHAR(STRING_ELT(d_txt, 0))).to_string_lossy();
+        let src = format!("{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; .value }}");
         parse_source_expression_vector(&src)
     }
 }
@@ -773,6 +772,3 @@ pub unsafe fn do_deriv3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         parse_source_expression_vector(&src)
     }
 }
-
-
-

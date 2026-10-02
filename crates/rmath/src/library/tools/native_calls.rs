@@ -8,7 +8,6 @@ use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::symbol::Rf_install;
 
-
 use crate::unix::dynload::DL_FUNC;
 
 use super::text::{delim_match, doTabExpand, nonASCII, splitString};
@@ -32,12 +31,7 @@ const TOOLS_CALL_NAMES: &[&str] = &[
     "C_parseLatex",
 ];
 
-unsafe extern "C-unwind" fn c_parse_latex(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+unsafe extern "C-unwind" fn c_parse_latex(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let arg = crate::sexp::accessors::CAR(crate::sexp::accessors::CDR(args));
         let mut text = if TYPEOF(arg) == SEXPTYPE::STRSXP {
@@ -75,11 +69,7 @@ unsafe extern "C-unwind" fn c_parse_latex(
             crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
         );
         let tag = crate::sexp::symbol::Rf_install(c"latex_tag".as_ptr());
-        crate::sexp::attrib_core::setAttrib(
-            elt,
-            tag,
-            Rf_mkString(c"TEXT".as_ptr()),
-        );
+        crate::sexp::attrib_core::setAttrib(elt, tag, Rf_mkString(c"TEXT".as_ptr()));
         let out = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         let _out = crate::sexp::protect::protect(out);
         crate::sexp::accessors::SET_VECTOR_ELT(out, 0, elt);
@@ -156,9 +146,7 @@ fn as_dl<T>(f: T) -> DL_FUNC {
 pub fn lookup(name: &str) -> DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "doTabExpand" => {
-            as_dl(c_do_tab_expand as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
+        "doTabExpand" => as_dl(c_do_tab_expand as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "nonASCII" => as_dl(c_non_ascii as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
         "delim_match" => as_dl(c_delim_match as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
         "splitString" => as_dl(c_split_string as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
@@ -167,110 +155,279 @@ pub fn lookup(name: &str) -> DL_FUNC {
                 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
         ),
         "deparseRd" => as_dl(c_deparse_rd as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "parseLatex" => as_dl(
-            c_parse_latex as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
+        "parseLatex" => {
+            as_dl(c_parse_latex as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        }
         _ => None,
-}
+    }
 }
 
 pub fn lookup_c(name: &str) -> DL_FUNC {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
         "Renctest" => as_dl(c_renctest as unsafe extern "C" fn(*mut std::ffi::c_void)),
-        "kmns" => as_dl(crate::library::stats::kmeans::c_kmns as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void,
-        )),
-        "eureka" => as_dl(crate::library::stats::burg::c_eureka as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-        )),
-        "multi_yw" => as_dl(crate::library::stats::mar::c_multi_yw as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void,
-        )),
-        "kmeans_Lloyd" => as_dl(crate::library::stats::kmeans::c_kmeans_lloyd as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void,
-        )),
-        "kmeans_MacQueen" => as_dl(crate::library::stats::kmeans::c_kmeans_macqueen as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void,
-        )),
-        "hclust" => as_dl(crate::library::stats::hclust_f::c_hclust as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void,
-        )),
+        "kmns" => as_dl(
+            crate::library::stats::kmeans::c_kmns
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
+        "eureka" => as_dl(
+            crate::library::stats::burg::c_eureka
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
+        "multi_yw" => as_dl(
+            crate::library::stats::mar::c_multi_yw
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
+        "kmeans_Lloyd" => as_dl(
+            crate::library::stats::kmeans::c_kmeans_lloyd
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
+        "kmeans_MacQueen" => as_dl(
+            crate::library::stats::kmeans::c_kmeans_macqueen
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
+        "hclust" => as_dl(
+            crate::library::stats::hclust_f::c_hclust
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
 
-        "rbart" => as_dl(crate::library::stats::sbart::c_rbart as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-        )),
-        "bvalus" => as_dl(crate::library::stats::sbart::c_bvalus as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-        )),
-        "hcass2" => as_dl(crate::library::stats::hclust_f::c_hcass2 as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void,
-        )),
+        "rbart" => as_dl(
+            crate::library::stats::sbart::c_rbart
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
+        "bvalus" => as_dl(
+            crate::library::stats::sbart::c_bvalus
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
+        "hcass2" => as_dl(
+            crate::library::stats::hclust_f::c_hcass2
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
         "loess_raw" => {
             let f: unsafe extern "C" fn(
-                *mut c_double, *mut c_double, *mut c_double, *mut c_double,
-                *mut c_int, *mut c_int, *mut c_double, *mut c_int,
-                *mut c_int, *mut c_int, *mut c_int, *mut c_double,
-                *mut *mut c_char, *mut c_double, *mut c_int, *mut c_int,
-                *mut c_double, *mut c_double, *mut c_double, *mut c_double,
-                *mut c_double, *mut c_double, *mut c_double, *mut c_int,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_int,
+                *mut c_int,
+                *mut c_double,
+                *mut c_int,
+                *mut c_int,
+                *mut c_int,
+                *mut c_int,
+                *mut c_double,
+                *mut *mut c_char,
+                *mut c_double,
+                *mut c_int,
+                *mut c_int,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_int,
             ) = crate::library::stats::loessc::loess_raw;
             as_dl(f)
         }
         "loess_dfit" => {
             let f: unsafe extern "C" fn(
-                *mut c_double, *mut c_double, *mut c_double, *mut c_double,
-                *mut c_double, *mut c_int, *mut c_int, *mut c_int,
-                *mut c_int, *mut c_int, *mut c_int, *mut c_int,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_int,
+                *mut c_int,
+                *mut c_int,
+                *mut c_int,
+                *mut c_int,
+                *mut c_int,
+                *mut c_int,
                 *mut c_double,
             ) = crate::library::stats::loessc::loess_dfit;
             as_dl(f)
         }
         "loess_ifit" => {
             let f: unsafe extern "C" fn(
-                *mut c_int, *mut c_int, *mut c_double, *mut c_double,
-                *mut c_double, *mut c_int, *mut c_double, *mut c_double,
+                *mut c_int,
+                *mut c_int,
+                *mut c_double,
+                *mut c_double,
+                *mut c_double,
+                *mut c_int,
+                *mut c_double,
+                *mut c_double,
             ) = crate::library::stats::loessc::loess_ifit;
             as_dl(f)
         }
-        "loess_ise" => as_dl(crate::library::stats::loessc::c_loess_ise as unsafe extern "C" fn(
-            *mut c_double, *mut c_double, *mut c_double, *mut c_double,
-            *mut c_double, *mut c_int, *mut c_int, *mut c_int,
-            *mut c_int, *mut c_double, *mut c_int, *mut c_int,
-            *mut c_int, *mut c_double, *mut c_double,
-        )),
-        "loess_dfitse" => as_dl(crate::library::stats::loessc::c_loess_dfitse as unsafe extern "C" fn(
-            *mut c_double, *mut c_double, *mut c_double, *mut c_double,
-            *mut c_double, *mut c_int, *mut c_double, *mut c_int,
-            *mut c_int, *mut c_int, *mut c_int, *mut c_int,
-            *mut c_int, *mut c_int, *mut c_double, *mut c_double,
-        )),
-        "lowesw" => as_dl(crate::library::stats::loessc::c_lowesw as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-        )),
-        "lowesp" => as_dl(crate::library::stats::loessc::c_lowesp as unsafe extern "C" fn(
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-            *mut std::ffi::c_void, *mut std::ffi::c_void, *mut std::ffi::c_void,
-        )),
+        "loess_ise" => as_dl(
+            crate::library::stats::loessc::c_loess_ise
+                as unsafe extern "C" fn(
+                    *mut c_double,
+                    *mut c_double,
+                    *mut c_double,
+                    *mut c_double,
+                    *mut c_double,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_double,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_double,
+                    *mut c_double,
+                ),
+        ),
+        "loess_dfitse" => as_dl(
+            crate::library::stats::loessc::c_loess_dfitse
+                as unsafe extern "C" fn(
+                    *mut c_double,
+                    *mut c_double,
+                    *mut c_double,
+                    *mut c_double,
+                    *mut c_double,
+                    *mut c_int,
+                    *mut c_double,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_int,
+                    *mut c_double,
+                    *mut c_double,
+                ),
+        ),
+        "lowesw" => as_dl(
+            crate::library::stats::loessc::c_lowesw
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
+        "lowesp" => as_dl(
+            crate::library::stats::loessc::c_lowesp
+                as unsafe extern "C" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                ),
+        ),
         _ => None,
     }
 }
@@ -290,24 +447,23 @@ pub unsafe fn install_tools_call_symbols(env: SEXP) {
 
 unsafe fn eval_tools_source(env: SEXP, source: &str) {
     unsafe {
+        let parser_factory = crate::eval::parser::active_factory();
         let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(source, arena)
+            crate::eval::parser::parse_expressions(source, arena, parser_factory.clone())
         });
         crate::eval::parser::flush_literal_warnings();
         let Ok(exprs) = parsed else {
             return;
         };
-        for expr in exprs {
-            let _ = crate::eval::eval::Rf_eval(expr, env);
+        for expr in &exprs {
+            let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), env);
         }
     }
 }
 pub unsafe fn install_tools_assert_closures(env: SEXP) {
     unsafe {
-        let already = crate::sexp::envir::R_findVarInFrame(
-            env,
-            Rf_install(c"assertError".as_ptr()),
-        );
+        let already =
+            crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"assertError".as_ptr()));
         if already == crate::sexp::globals::R_UnboundValue()
             || crate::sexp::accessors::TYPEOF(already) != crate::sexp::ffi::SEXPTYPE::CLOSXP
         {
@@ -327,5 +483,3 @@ pub unsafe fn install_tools_assert_closures(env: SEXP) {
         );
     }
 }
-
-

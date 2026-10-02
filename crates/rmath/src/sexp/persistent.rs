@@ -4,10 +4,14 @@
 
 use crate::sexp::{
     ffi::{SEXP, SEXPTYPE, SexprecCore, SexprecData, Vecsxp},
-    heap::{CheckedNode, HeapError, HeapIdentity, NodePage},
+    heap::{CheckedNode, HeapBackingOwners, HeapError, HeapIdentity, NodePage},
     memory::{NodePageRegistration, register_node_page},
 };
-use std::{cell::Cell, collections::HashMap, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
 
 enum PersistentPayload {
     Bytes(Rc<[Cell<u8>]>),
@@ -43,17 +47,29 @@ struct PersistentAllocation {
     _payload: Option<PersistentPayload>,
 }
 
+/// The single physical owner of permanent headers and their payloads.
+/// Automatic values retain this same store through the heap backing bag.
+pub(crate) struct PersistentBacking {
+    nodes: RefCell<HashMap<usize, PersistentAllocation>>,
+}
+
 pub(crate) struct PersistentHeap {
     identity: HeapIdentity,
     next_page: usize,
-    nodes: HashMap<usize, PersistentAllocation>,
+    backing: Rc<PersistentBacking>,
+    _owners: Rc<HeapBackingOwners>,
 }
 impl PersistentHeap {
     pub(crate) fn new(identity: HeapIdentity) -> Self {
+        let backing = Rc::new(PersistentBacking {
+            nodes: RefCell::new(HashMap::new()),
+        });
+        let owners = identity.retain_persistent(backing.clone());
         Self {
             identity,
             next_page: 0,
-            nodes: HashMap::new(),
+            backing,
+            _owners: owners,
         }
     }
     fn allocate(
@@ -61,7 +77,9 @@ impl PersistentHeap {
         header: SexprecCore,
         payload: Option<PersistentPayload>,
     ) -> Result<SEXP, HeapError> {
-        self.nodes
+        self.backing
+            .nodes
+            .borrow_mut()
             .try_reserve(1)
             .map_err(|_| HeapError::Allocation)?;
         let next_page = self.next_page.checked_add(1).ok_or(HeapError::Allocation)?;
@@ -74,7 +92,7 @@ impl PersistentHeap {
         page.metadata().activate(0, true)?;
         let pointer = page.raw_slot(0).ok_or(HeapError::InvalidSlot)?;
         let registration = register_node_page(&page);
-        self.nodes.insert(
+        self.backing.nodes.borrow_mut().insert(
             pointer as usize,
             PersistentAllocation {
                 _registration: registration,
@@ -145,12 +163,18 @@ impl PersistentHeap {
         )
     }
     pub(crate) fn token(&self, pointer: SEXP) -> Option<CheckedNode> {
-        self.nodes.get(&(pointer as usize))?.header.token(0)
+        self.backing
+            .nodes
+            .borrow()
+            .get(&(pointer as usize))?
+            .header
+            .token(0)
     }
     /// Recover the allocation's own cell projection, rather than trusting the
     /// provenance of an address supplied by a native caller.
     pub(crate) fn canonical_projection(&self, pointer: SEXP) -> Option<SEXP> {
-        let allocation = self.nodes.get(&(pointer as usize))?;
+        let nodes = self.backing.nodes.borrow();
+        let allocation = nodes.get(&(pointer as usize))?;
         allocation.header.token(0)?;
         allocation.header.raw_slot(0)
     }
@@ -158,22 +182,67 @@ impl PersistentHeap {
         self.token(pointer).is_some()
     }
     pub(crate) fn remove(&mut self, pointer: SEXP) -> bool {
-        self.nodes.remove(&(pointer as usize)).is_some()
+        self.backing
+            .nodes
+            .borrow_mut()
+            .remove(&(pointer as usize))
+            .is_some()
     }
-    pub(crate) fn projections(&self) -> impl Iterator<Item = SEXP> + '_ {
-        self.nodes
+    pub(crate) fn projections(&self) -> impl Iterator<Item = SEXP> {
+        // Release the store loan before tracing can allocate or reenter.
+        self.backing
+            .nodes
+            .borrow()
             .values()
             .filter_map(|owned| owned.header.raw_slot(0))
+            .collect::<Vec<_>>()
+            .into_iter()
     }
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
-        self.nodes.len()
+        self.backing.nodes.borrow().len()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn automatic_lease_retains_permanent_storage_and_releases_it_on_last_drop() {
+        let mut heap = PersistentHeap::new(HeapIdentity::new());
+        let pointer = heap.allocate_chars(b"owned permanent bytes").unwrap();
+        let token = heap.token(pointer).unwrap();
+        let lease = token.root_lease().unwrap();
+        let backing = Rc::downgrade(&heap.backing);
+        drop(heap);
+        assert!(token.is_live());
+        assert!(backing.upgrade().is_some());
+        assert!(crate::sexp::memory::checked_projection(pointer).is_some());
+        drop(lease);
+        assert!(backing.upgrade().is_none());
+        assert!(!token.is_live());
+        assert!(crate::sexp::memory::checked_projection(pointer).is_none());
+    }
+
+    #[test]
+    fn existing_lease_retains_later_stores_in_the_same_heap_domain() {
+        let identity = HeapIdentity::new();
+        let mut first = PersistentHeap::new(identity.clone());
+        let pointer = first.allocate_integer(7, false).unwrap();
+        let lease = first.token(pointer).unwrap().root_lease().unwrap();
+        let mut later = PersistentHeap::new(identity);
+        let later_pointer = later.allocate_chars(b"later").unwrap();
+        let later_token = later.token(later_pointer).unwrap();
+        let backing = Rc::downgrade(&later.backing);
+        drop(first);
+        drop(later);
+        assert!(later_token.is_live());
+        assert!(backing.upgrade().is_some());
+        drop(lease);
+        assert!(backing.upgrade().is_none());
+        assert!(!later_token.is_live());
+    }
+
     #[test]
     fn persistent_tokens_share_heap_and_expire_when_storage_is_removed() {
         let identity = HeapIdentity::new();
@@ -195,6 +264,9 @@ mod tests {
             .unwrap();
         assert_ne!(token, left.token(next).unwrap());
         drop(right);
+        // Another facade retains the entire shared physical heap domain.
+        assert!(other.is_live());
+        drop(left);
         assert!(!other.is_live());
     }
 }

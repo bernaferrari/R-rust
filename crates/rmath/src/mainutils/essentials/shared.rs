@@ -8,7 +8,6 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
 
-
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
@@ -31,11 +30,9 @@ use crate::sexp::symbol::Rf_install;
 
 use super::*;
 
-
 thread_local! {
     static CACHING_ATTACHED_S4: Cell<bool> = const { Cell::new(false) };
 }
-
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum DatetimeVectorClass {
@@ -113,7 +110,9 @@ pub unsafe fn do_cache_class(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             });
         }
         let class = CAR(args);
-        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP
+        if class.is_null()
+            || class == R_NilValue()
+            || TYPEOF(class) != SEXPTYPE::STRSXP
             || XLENGTH(class) < 1
         {
             std::panic::panic_any(RError {
@@ -154,9 +153,7 @@ pub unsafe fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let x = CAR(args);
 
-        if sexp_has_class(x, "Date")
-            || sexp_has_class(x, "POSIXct")
-            || sexp_has_class(x, "POSIXt")
+        if sexp_has_class(x, "Date") || sexp_has_class(x, "POSIXct") || sexp_has_class(x, "POSIXt")
         {
             return do_xtfrm_Date(call, op, args, rho);
         }
@@ -231,12 +228,8 @@ pub unsafe fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if crate::eval::attrib_core::isObject(object) != 0
             && crate::mainutils::coerce::IS_S4_OBJECT(object) == crate::sexp::ffi::FALSE
         {
-            let fixed = crate::mainutils::subset::fixSubset3Args(
-                call,
-                args,
-                rho,
-                std::ptr::null_mut(),
-            );
+            let fixed =
+                crate::mainutils::subset::fixSubset3Args(call, args, rho, std::ptr::null_mut());
             let _fixed = protect(fixed);
             SETCAR(
                 fixed,
@@ -287,7 +280,6 @@ pub unsafe fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         crate::mainutils::essentials::s4::R_do_slot(object, nlist)
     }
 }
-
 
 pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -413,7 +405,6 @@ unsafe fn copy_vector_element(src: SEXP, from: i64, dst: SEXP, to: i64) {
     }
 }
 
-
 pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
@@ -476,8 +467,7 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             let call_name = CAR(CDR(CDR(_call)));
             let call_value = CAR(CDR(CDR(CDR(_call))));
             if !call_name.is_null()
-                && (TYPEOF(call_name) == SEXPTYPE::SYMSXP
-                    || TYPEOF(call_name) == SEXPTYPE::STRSXP)
+                && (TYPEOF(call_name) == SEXPTYPE::SYMSXP || TYPEOF(call_name) == SEXPTYPE::STRSXP)
             {
                 name_arg = call_name;
             }
@@ -535,8 +525,6 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             return crate::mainutils::subassign::R_subassign3_dflt(_call, object, nlist, value);
         }
 
-
-
         // `$<-.data.frame` recycles a length-1 atomic value to the
         // frame's row count (`df$f <- factor("", levels=lv)` gives an
         // n-row column). Plain lists keep the value as-is.
@@ -568,12 +556,8 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                 if !name.is_null() && CStr::from_ptr(CHAR(name)).to_string_lossy() == field {
                     let old_n = crate::mainutils::subassign::posixlt_obs_length(object);
                     SET_VECTOR_ELT(object, i, value);
-                    crate::mainutils::subassign::mark_posixlt_dollar_balanced(
-                        object, value, old_n,
-                    );
+                    crate::mainutils::subassign::mark_posixlt_dollar_balanced(object, value, old_n);
                     return object;
-
-
                 }
             }
         }
@@ -598,15 +582,9 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             SET_STRING_ELT(out_names, i, name);
         }
 
-        let value = if sexp_has_class(object, "data.frame")
-            && !sexp_has_class(value, "AsIs")
-        {
+        let value = if sexp_has_class(object, "data.frame") && !sexp_has_class(value, "AsIs") {
             let stripped = crate::mainutils::duplicate::duplicate(value);
-            crate::sexp::attrib_core::setAttrib(
-                stripped,
-                names_sym,
-                R_NilValue(),
-            );
+            crate::sexp::attrib_core::setAttrib(stripped, names_sym, R_NilValue());
             stripped
         } else {
             value
@@ -690,8 +668,6 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             crate::mainutils::subassign::posixlt_obs_length(object),
         );
         out
-
-
     }
 }
 
@@ -888,9 +864,6 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
         if package == "base" {
             return Ok(crate::sexp::envir::R_BaseNamespace());
         }
-
-
-
 
         #[cfg(feature = "renderplot-device")]
         if package == "grid" {
@@ -1129,7 +1102,6 @@ unsafe fn attached_package_env(package: &str) -> Option<SEXP> {
     }
 }
 
-
 pub(crate) unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), String> {
     let mut loading = Vec::<String>::new();
     unsafe { load_pure_r_package_recursive(package, package_dir, &mut loading) }
@@ -1153,14 +1125,12 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
                 package
             ));
         }
-        if package_needs_compilation(&description)? && !is_builtin_package_dependency(package)
-        {
+        if package_needs_compilation(&description)? && !is_builtin_package_dependency(package) {
             return Err(format!(
                 "package '{}' declares NeedsCompilation: yes; this pure-R Android runtime does not load compiled package code",
                 package
             ));
         }
-
 
         loading_packages.push(package.to_string());
         let result = (|| {
@@ -1179,9 +1149,6 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
                 bind_methods_base_primitives(package_env);
                 purge_missing_arg_placeholders(package_env);
                 retarget_methods_generics(package_env);
-
-
-
             }
             attach_package_env(attach_env);
             if package == "utils" {
@@ -1193,13 +1160,7 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
                 retarget_envref_object_parent(package_env);
             }
 
-
-
-
-
-
             Ok(())
-
         })();
         loading_packages.pop();
         result
@@ -1380,12 +1341,9 @@ pub(crate) fn is_builtin_package_dependency(package: &str) -> bool {
             | "tcltk"
             | "tools"
             | "utils"
-
-
     )
 }
 pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
-
     unsafe {
         for name in [
             "standardGeneric",
@@ -1400,7 +1358,6 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
             "list2env",
             "as.environment",
         ] {
-
             let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
             let value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
             let kind = TYPEOF(value);
@@ -1443,12 +1400,6 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         crate::library::methods::methods_list_dispatch::R_set_method_dispatch(on);
         crate::library::methods::methods_list_dispatch::R_initMethodDispatch(ns);
 
-
-
-
-
-
-
         let attach = Rf_ScalarLogical(TRUE);
         let _attach = protect(attach);
         eval_methods_ns_fun(ns, c"cacheMetaData", where_env, Some(attach));
@@ -1472,7 +1423,6 @@ NULL"
     }
 }
 
-
 /// GNU `library()`/`attach()`: `methods:::cacheMetaData(env, TRUE)`.
 /// GNU bytecode for cacheMetaData GETFUN/CALL-loops on a package attach
 /// env; run the stored source for that one call and restore BODY after.
@@ -1484,10 +1434,8 @@ pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
         let Some(methods_ns) = cached_namespace_by_name("methods") else {
             return;
         };
-        let mut fun = crate::sexp::envir::R_findVarInFrame(
-            methods_ns,
-            Rf_install(c"cacheMetaData".as_ptr()),
-        );
+        let mut fun =
+            crate::sexp::envir::R_findVarInFrame(methods_ns, Rf_install(c"cacheMetaData".as_ptr()));
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return;
         }
@@ -1519,10 +1467,6 @@ pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
     }
 }
 
-
-
-
-
 /// GNU `.initImplicitGenerics` ends with `registerImplicitGenerics(where)`.
 /// The table entry is package `"stats"`; `implicitGeneric` only finds it
 /// when `environment(toeplitz)` is the stats namespace (not base).
@@ -1540,18 +1484,17 @@ unsafe fn register_implicit_generics_table(ns: SEXP) {
              }\n\
              }";
 
-
-
+        let parser_factory = crate::eval::parser::active_factory();
         let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(src, arena)
+            crate::eval::parser::parse_expressions(src, arena, parser_factory.clone())
         });
         crate::eval::parser::flush_literal_warnings();
         let Ok(exprs) = parsed else {
             return;
         };
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            for expr in exprs {
-                let _ = crate::eval::eval::Rf_eval(expr, ns);
+            for expr in &exprs {
+                let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), ns);
             }
         }));
     }
@@ -1632,27 +1575,21 @@ for (sig in c("matrix", "array")) {
 }
 }
 "#;
+        let parser_factory = crate::eval::parser::active_factory();
         let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(src, arena)
+            crate::eval::parser::parse_expressions(src, arena, parser_factory.clone())
         });
         crate::eval::parser::flush_literal_warnings();
         let Ok(exprs) = parsed else {
             return;
         };
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            for expr in exprs {
-                let _ = crate::eval::eval::Rf_eval(expr, ns);
+            for expr in &exprs {
+                let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), ns);
             }
         }));
     }
 }
-
-
-
-
-
-
-
 
 unsafe fn eval_methods_ns_fun(
     ns: SEXP,
@@ -1683,9 +1620,6 @@ unsafe fn eval_methods_ns_fun(
     }
 }
 
-
-
-
 unsafe fn purge_missing_arg_placeholders(env: SEXP) {
     unsafe {
         let missing = crate::sexp::globals::R_MissingArg();
@@ -1700,8 +1634,8 @@ unsafe fn purge_missing_arg_placeholders(env: SEXP) {
                 continue;
             }
             let kind = TYPEOF(value);
-            let empty_symbol = kind == SEXPTYPE::SYMSXP
-                && symbol_name(value).is_none_or(|n| n.is_empty());
+            let empty_symbol =
+                kind == SEXPTYPE::SYMSXP && symbol_name(value).is_none_or(|n| n.is_empty());
             let shadows_base = kind == SEXPTYPE::SYMSXP
                 && (crate::eval::builtin::has_builtin_handler(&name)
                     || crate::eval::primitive::fun_tab_index_by_name(&name).is_some());
@@ -1717,11 +1651,6 @@ unsafe fn purge_missing_arg_placeholders(env: SEXP) {
         }
     }
 }
-
-
-
-
-
 
 unsafe fn retarget_methods_generics(ns: SEXP) {
     unsafe {
@@ -1762,7 +1691,6 @@ unsafe fn retarget_methods_generics(ns: SEXP) {
     }
 }
 
-
 unsafe fn env_chain_contains(mut env: SEXP, target: SEXP) -> bool {
     unsafe {
         for _ in 0..64 {
@@ -1794,15 +1722,15 @@ unsafe fn retarget_envref_object_parent(ns: SEXP) {
         {
             return;
         }
-        let ref_methods = crate::eval::attrib_core::getAttrib(
-            class_def,
-            Rf_install(c"refMethods".as_ptr()),
-        );
+        let ref_methods =
+            crate::eval::attrib_core::getAttrib(class_def, Rf_install(c"refMethods".as_ptr()));
         if TYPEOF(ref_methods) != SEXPTYPE::ENVSXP {
             return;
         }
-        let object_parent =
-            crate::sexp::envir::R_findVarInFrame(ref_methods, Rf_install(c".objectParent".as_ptr()));
+        let object_parent = crate::sexp::envir::R_findVarInFrame(
+            ref_methods,
+            Rf_install(c".objectParent".as_ptr()),
+        );
         if object_parent.is_null()
             || object_parent == crate::sexp::globals::R_UnboundValue()
             || TYPEOF(object_parent) != SEXPTYPE::ENVSXP
@@ -1815,24 +1743,12 @@ unsafe fn retarget_envref_object_parent(ns: SEXP) {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /// GNU `utils:::.onLoad` sets `options(str = strOptions())`.
 unsafe fn install_utils_str_option(env: SEXP) {
     unsafe {
         let src = crate::sexp::constructors::Rf_mkString(
-            b"if (is.null(getOption(\"str\"))) options(str = strOptions())\0".as_ptr() as *const std::os::raw::c_char,
+            b"if (is.null(getOption(\"str\"))) options(str = strOptions())\0".as_ptr()
+                as *const std::os::raw::c_char,
         );
         let _src = crate::sexp::protect::protect(src);
         let mut status = 0i32;
@@ -1921,16 +1837,13 @@ pub(crate) unsafe fn load_package_namespace(
                 let directives = read_namespace_directives(package_dir).ok().flatten();
                 return Ok((env, directives));
             }
-            return Err(format!(
-                "cyclic namespace load while loading '{package}'"
-            ));
+            return Err(format!("cyclic namespace load while loading '{package}'"));
         }
         if let Some(env) = cached_package_namespace(package, package_dir) {
             if package == "methods" {
                 crate::library::methods::native_calls::install_methods_call_symbols(env);
                 retarget_methods_generics(env);
             }
-
 
             if package == "tools" {
                 crate::library::tools::native_calls::install_tools_call_symbols(env);
@@ -1945,7 +1858,6 @@ pub(crate) unsafe fn load_package_namespace(
             }
             if package == "utils" {
                 crate::library::utils::install_utils_call_symbols(env);
-
             }
             if package == "grDevices" {
                 crate::library::grdevices::install_call_symbols(env);
@@ -2024,7 +1936,6 @@ pub(crate) unsafe fn load_package_namespace(
             retarget_envref_object_parent(package_env);
         }
 
-
         if package == "stats" {
             crate::library::stats::random::install_stats_call_symbols(package_env);
         }
@@ -2038,7 +1949,6 @@ pub(crate) unsafe fn load_package_namespace(
         }
         if package == "utils" {
             crate::library::utils::install_utils_call_symbols(package_env);
-
         }
         if package == "grDevices" {
             crate::library::grdevices::install_call_symbols(package_env);
@@ -2051,8 +1961,6 @@ pub(crate) unsafe fn load_package_namespace(
             crate::library::graphics::install_call_symbols(package_env);
         }
         ensure_namespace_info(package, package_dir, package_env, namespace.as_ref());
-
-
 
         Ok((package_env, namespace))
     }
@@ -2103,8 +2011,6 @@ pub(crate) fn cached_namespace_by_name(package: &str) -> Option<SEXP> {
             .map(|(_, env)| *env)
     })
 }
-
-
 
 pub(crate) fn package_arg_values(package_arg: SEXP) -> Vec<String> {
     unsafe {
@@ -2189,9 +2095,7 @@ pub(crate) unsafe fn load_package_data_set(
                     std::ffi::CString::new(topic).unwrap_or_default().as_ptr(),
                 );
                 let value = crate::sexp::envir::R_findVarInFrame(scratch, sym);
-                if !value.is_null()
-                    && value != crate::sexp::globals::R_UnboundValue()
-                {
+                if !value.is_null() && value != crate::sexp::globals::R_UnboundValue() {
                     crate::sexp::envir::defineVar(sym, value, target_env);
                     return Ok(true);
                 }
@@ -2220,12 +2124,12 @@ pub(crate) unsafe fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<()
     unsafe {
         let code = std::fs::read_to_string(file)
             .map_err(|err| format!("could not read {}: {err}", file.display()))?;
+        let parser_factory = crate::eval::parser::active_factory();
         let expr = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse(&code, arena).map_err(|err| err.to_string())
+            crate::eval::parser::parse(&code, arena, parser_factory.clone())
+                .map_err(|err| err.to_string())
         })?;
-        let expr = if expr.is_null() { R_NilValue() } else { expr };
-        let _guard = crate::sexp::protect::protect(expr);
-        let _ = crate::eval::eval::Rf_eval(expr, env);
+        let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), env);
         Ok(())
     }
 }
@@ -2288,7 +2192,8 @@ unsafe fn record_s3_method_row(package_env: SEXP, generic: &str, class: &str, me
         let old_n = if old.is_null() || TYPEOF(old) != SEXPTYPE::STRSXP {
             0
         } else {
-            let dim = crate::sexp::attrib_core::getAttrib(old, crate::sexp::attrib_core::R_DimSymbol());
+            let dim =
+                crate::sexp::attrib_core::getAttrib(old, crate::sexp::attrib_core::R_DimSymbol());
             if dim.is_null() || XLENGTH(dim) < 1 {
                 0
             } else {
@@ -2319,11 +2224,14 @@ unsafe fn record_s3_method_row(package_env: SEXP, generic: &str, class: &str, me
         put(0, generic);
         put(1, class);
         put(2, method);
-        SET_STRING_ELT(methods, old_n + 3 * new_n, crate::sexp::globals::R_NaString());
+        SET_STRING_ELT(
+            methods,
+            old_n + 3 * new_n,
+            crate::sexp::globals::R_NaString(),
+        );
         crate::sexp::envir::defineVar(sym, methods, info);
     }
 }
-
 
 /// GNU `makeNamespace` + `namespaceExport`: `.__NAMESPACE__.` holds
 /// `exports` so `.isExported` / `.minimalName` / `show()` work.
@@ -2363,9 +2271,7 @@ unsafe fn ensure_namespace_info(
             };
             let symbol = Rf_install(cname.as_ptr());
             let value = crate::sexp::envir::R_findVarInFrame(package_env, symbol);
-            if value.is_null()
-                || value == crate::sexp::globals::R_UnboundValue()
-            {
+            if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
                 continue;
             }
             crate::sexp::envir::defineVar(symbol, value, exports);
@@ -2407,15 +2313,15 @@ unsafe fn ensure_namespace_info(
         crate::sexp::envir::defineVar(Rf_install(c"spec".as_ptr()), spec, info);
         ensure_s3methods_slot(info);
 
-
         let path = Rf_mkString(
-            CString::new(package_dir.to_string_lossy().as_ref()).unwrap_or_default().as_ptr(),
+            CString::new(package_dir.to_string_lossy().as_ref())
+                .unwrap_or_default()
+                .as_ptr(),
         );
         crate::sexp::envir::defineVar(Rf_install(c"path".as_ptr()), path, info);
         crate::sexp::envir::defineVar(info_sym, info, package_env);
     }
 }
-
 
 pub(crate) fn reject_unsupported_internal_data(
     package: &str,
@@ -2616,7 +2522,6 @@ pub(crate) unsafe fn lazy_lazy_load_package_db(
             crate::sexp::envir::defineVar(Rf_install(c"refs".as_ptr()), refs_env, hook);
         }
 
-
         let names = crate::sexp::attrib_core::getAttrib(
             variables,
             crate::sexp::attrib_core::R_NamesSymbol(),
@@ -2647,11 +2552,7 @@ pub(crate) unsafe fn lazy_lazy_load_package_db(
             fetch_sym,
             Rf_cons(
                 R_NilValue(),
-                Rf_cons(
-                    datafile,
-                    Rf_cons(compressed, Rf_cons(hook, R_NilValue())),
-
-                ),
+                Rf_cons(datafile, Rf_cons(compressed, Rf_cons(hook, R_NilValue()))),
             ),
         );
         if !template.is_null() {
@@ -2982,7 +2883,6 @@ unsafe fn bind_cached_builtin_imports(
     }
 }
 
-
 pub(crate) unsafe fn apply_namespace_imports(
     package: &str,
     package_env: SEXP,
@@ -3114,7 +3014,6 @@ unsafe fn namespace_imports_env(package_env: SEXP) -> SEXP {
     }
 }
 
-
 pub(crate) unsafe fn make_package_attach_env(
     package: &str,
     namespace: Option<&NamespaceDirectives>,
@@ -3137,7 +3036,6 @@ unsafe fn make_package_attach_env_inner(
     package_env: SEXP,
     skip_missing: bool,
 ) -> Result<SEXP, String> {
-
     unsafe {
         let Some(directives) = namespace else {
             return Ok(package_env);
@@ -3186,9 +3084,6 @@ unsafe fn make_package_attach_env_inner(
             }
         }
 
-
-
-
         // Crayon-style dynamic exports: top-level package code may
         // `assign(name, value, envir = asNamespace("pkg"))` AFTER the
         // files are sourced (its `sapply(names(builtin_styles), ...)`
@@ -3228,13 +3123,9 @@ unsafe fn make_package_attach_env_inner(
             bind_methods_base_primitives(package_env);
             purge_missing_arg_placeholders(package_env);
             retarget_methods_generics(package_env);
-
-
-
         }
         if missing.is_empty() {
             Ok(attach_env)
-
         } else {
             Err(format!(
                 "package '{}' has undefined exports: {}",
@@ -3282,7 +3173,9 @@ pub(crate) unsafe fn namespace_exports_contains(
 ) -> bool {
     unsafe {
         let Some(directives) = cached_namespace_directives(package_dir) else {
-            return frame_binding_names(package_env, false).iter().any(|n| n == name);
+            return frame_binding_names(package_env, false)
+                .iter()
+                .any(|n| n == name);
         };
         if directives.exports.iter().any(|export| export == name) {
             return true;
@@ -3321,8 +3214,6 @@ pub(crate) fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
                     push_unique(&mut directives.exports, format!(".__C__{name}"));
                 }
             }
-
-
 
             "exportPattern" => {
                 if let Some(pattern) = split_namespace_args(&args)
@@ -3461,10 +3352,8 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                         define_s3_method(defenv, local_generic, &method.class, method_value)?;
                     }
                 }
-                let base_fdef = crate::sexp::envir::findFun(
-                    generic_sym,
-                    crate::sexp::globals::R_BaseEnv(),
-                );
+                let base_fdef =
+                    crate::sexp::envir::findFun(generic_sym, crate::sexp::globals::R_BaseEnv());
                 if TYPEOF(base_fdef) == SEXPTYPE::BUILTINSXP
                     || TYPEOF(base_fdef) == SEXPTYPE::SPECIALSXP
                 {
@@ -3476,8 +3365,6 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                     )?;
                 }
             }
-
-
         }
         Ok(())
     }
@@ -3702,10 +3589,10 @@ unsafe fn namespace_info_export_names(package_env: SEXP) -> Vec<String> {
     }
 }
 
-
 unsafe fn export_env_binding_names(info: SEXP) -> Vec<String> {
     unsafe {
-        let mut exports = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"exports".as_ptr()));
+        let mut exports =
+            crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"exports".as_ptr()));
         if TYPEOF(exports) == SEXPTYPE::PROMSXP {
             exports = crate::sexp::envir::forcePromise(exports);
         }
@@ -3718,7 +3605,6 @@ unsafe fn export_env_binding_names(info: SEXP) -> Vec<String> {
         frame_binding_names(exports, true)
     }
 }
-
 
 pub(crate) unsafe fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
     unsafe {
@@ -3870,10 +3756,6 @@ unsafe fn export_s4_metadata_to_package_env(namespace: SEXP, attach_env: SEXP) {
     }
 }
 
-
-
-
-
 pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
     unsafe {
         let global = crate::sexp::globals::R_GlobalEnv();
@@ -3890,7 +3772,6 @@ pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
                 && ns != crate::sexp::globals::R_UnboundValue()
                 && TYPEOF(ns) == SEXPTYPE::ENVSXP
             {
-
                 export_s4_metadata_to_package_env(ns, package_env);
             } else if let Some(ns) = cached_namespace_by_name("methods") {
                 export_s4_metadata_to_package_env(ns, package_env);
@@ -3908,7 +3789,6 @@ pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
     }
 }
 
-
 unsafe fn attached_search_name(package_env: SEXP) -> Option<String> {
     unsafe {
         let name = crate::sexp::attrib_core::getAttrib(package_env, name_symbol());
@@ -3922,8 +3802,6 @@ unsafe fn attached_search_name(package_env: SEXP) -> Option<String> {
         CStr::from_ptr(raw).to_str().ok().map(str::to_string)
     }
 }
-
-
 
 /// Try to find a demo file for a topic.
 pub(crate) fn find_package_demo(topic: &str) -> String {
@@ -4414,7 +4292,6 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
                 format!("{}", v)
             }
         } else if t == SEXPTYPE::INTSXP {
-
             let v = *INTEGER(x).add(idx as usize);
             if v == NA_INTEGER {
                 "NA".to_string()
@@ -4454,7 +4331,8 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
                 "NA".to_string()
             } else {
                 let bytes = crate::sexp::accessors::charsxp_as_utf8(charsxp);
-                String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+                String::from_utf8(bytes)
+                    .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
             }
         } else if t == SEXPTYPE::SYMSXP {
             let pname = crate::sexp::accessors::PRINTNAME(x);
@@ -4534,7 +4412,6 @@ pub(crate) unsafe fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
         } else {
             Some(CStr::from_ptr(CHAR(charsxp)).to_string_lossy().into_owned())
         }
-
     }
 }
 
@@ -4559,8 +4436,6 @@ pub(crate) fn cat_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         }
     }
 }
-
-
 
 pub(crate) fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
@@ -4612,17 +4487,21 @@ pub(crate) fn parse_iso_date_days(text: &str) -> Option<f64> {
         return Some(f64::NAN);
     }
     // GNU accepts '/' when it is the only separator.
-    let sep = if text.contains('/') && !text.contains('-') { '/' } else { '-' };
+    let sep = if text.contains('/') && !text.contains('-') {
+        '/'
+    } else {
+        '-'
+    };
     let mut parts = text.split(sep);
     let year = parts.next()?.parse::<i64>().ok()?;
     let month = parts.next()?.parse::<i64>().ok()?;
     let day_tok = parts.next()?;
-    let (day_digits, rest) = day_tok.split_once(char::is_whitespace).unwrap_or((day_tok, ""));
+    let (day_digits, rest) = day_tok
+        .split_once(char::is_whitespace)
+        .unwrap_or((day_tok, ""));
     let day = day_digits.parse::<i64>().ok()?;
     let rest = rest.trim();
-    if !rest.is_empty()
-        && rest.split(':').any(|piece| piece.parse::<u32>().is_err())
-    {
+    if !rest.is_empty() && rest.split(':').any(|piece| piece.parse::<u32>().is_err()) {
         return None;
     }
     if parts.next().is_some()
@@ -4648,7 +4527,6 @@ pub(crate) fn date_days_to_iso(days: f64) -> Option<String> {
     let (year, month, day) = date_days_to_civil(days)?;
     Some(format!("{year:04}-{month:02}-{day:02}"))
 }
-
 
 pub(crate) fn date_days_to_civil(days: f64) -> Option<(i64, i64, i64)> {
     if days.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !days.is_finite() {
@@ -4691,7 +4569,6 @@ pub(crate) fn parse_iso_datetime_seconds(text: &str) -> Option<f64> {
     }
     Some(days * 86_400.0 + (hour * 3_600 + minute * 60 + second) as f64)
 }
-
 
 pub(crate) fn posix_seconds_to_iso(seconds: f64, include_tz: bool) -> Option<String> {
     posix_seconds_to_iso_with_time(seconds, include_tz, false)

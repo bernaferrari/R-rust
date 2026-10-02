@@ -860,10 +860,7 @@ unsafe fn label_box(item: SEXP, index: usize, style: &Gp) -> (f64, f64) {
             if XLENGTH(item) == 0 {
                 return (0., 0.);
             }
-            crate::mainutils::plotmath::labels(VECTOR_ELT(
-                item,
-                (index as i64) % XLENGTH(item),
-            ))
+            crate::mainutils::plotmath::labels(VECTOR_ELT(item, (index as i64) % XLENGTH(item)))
         } else {
             crate::mainutils::plotmath::labels(item)
         };
@@ -1413,13 +1410,11 @@ fn path_match(path: &str, so_far: Option<&str>, strict: bool) -> bool {
         path.to_string()
     };
     let expression = fancy_regex::Regex::new(&pattern).unwrap_or_else(|_| {
-        base_error(format!(
-            "invalid viewport path regular expression '{path}'"
-        ))
+        base_error(format!("invalid viewport path regular expression '{path}'"))
     });
-    expression
-        .is_match(so_far)
-        .unwrap_or_else(|_| base_error(format!("invalid viewport path regular expression '{path}'")))
+    expression.is_match(so_far).unwrap_or_else(|_| {
+        base_error(format!("invalid viewport path regular expression '{path}'"))
+    })
 }
 
 fn find_name(
@@ -1443,7 +1438,9 @@ fn find_name(
     if strict {
         return None;
     }
-    children.into_iter().find_map(|child| find_name(state, child, name, strict, depth + 1))
+    children
+        .into_iter()
+        .find_map(|child| find_name(state, child, name, strict, depth + 1))
 }
 
 fn find_vppath(
@@ -1636,14 +1633,7 @@ fn append_listing(
     } else {
         // An omitted grob does not add an indent level. Its viewport path still prints.
         for child in &grob.children {
-            append_listing(
-                child,
-                content_depth,
-                full_names,
-                viewports,
-                false,
-                out,
-            );
+            append_listing(child, content_depth, full_names, viewports, false, out);
         }
     }
     if down || viewport {
@@ -1861,7 +1851,9 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         .children
                         .iter()
                         .copied()
-                        .filter(|&child| state.nodes[child].frame.name.as_deref() != Some(name.as_str()))
+                        .filter(|&child| {
+                            state.nodes[child].frame.name.as_deref() != Some(name.as_str())
+                        })
                         .collect();
                     replaced = keep.len() != state.nodes[parent_id].children.len();
                     state.nodes[parent_id].children = keep;
@@ -2008,12 +2000,8 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             "record.push" => state.display_list.push(DlEntry::Push {
                 name: string(data, ""),
             }),
-            "record.pop" => state.display_list.push(DlEntry::Pop {
-                n: num(data, 1.),
-            }),
-            "record.up" => state.display_list.push(DlEntry::Up {
-                n: num(data, 1.),
-            }),
+            "record.pop" => state.display_list.push(DlEntry::Pop { n: num(data, 1.) }),
+            "record.up" => state.display_list.push(DlEntry::Up { n: num(data, 1.) }),
             "record.down" => {
                 let path = string(data, "");
                 for part in path.split("::").filter(|part| !part.is_empty()) {
@@ -2027,7 +2015,13 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let viewports = logical_flag(field(data, "viewports"), false);
                 let grobs = logical_flag(field(data, "grobs"), true);
                 let mut lines = Vec::new();
-                append_display_list(&state.display_list, full_names, viewports, grobs, &mut lines);
+                append_display_list(
+                    &state.display_list,
+                    full_names,
+                    viewports,
+                    grobs,
+                    &mut lines,
+                );
                 returned = strings(&lines);
             }
             "ls.grob" => {
@@ -2674,12 +2668,12 @@ unsafe fn new_grid_environment() -> SEXP {
             let symbol_name = std::ffi::CString::new(*name).expect("static grid export");
             let symbol = Rf_install(symbol_name.as_ptr());
             let value = if let Some(source) = grid_closure_source(name) {
+                let parser_factory = crate::eval::parser::active_factory();
                 let parsed = crate::sexp::memory::with_arena(|arena| {
-                    crate::eval::parser::parse(source, arena)
+                    crate::eval::parser::parse(source, arena, parser_factory.clone())
                 })
                 .expect("checked-in grid function must parse");
-                let _parsed = protect(parsed);
-                crate::eval::eval::Rf_eval(parsed, env)
+                crate::eval::eval::Rf_eval(parsed.clone().as_raw(), env)
             } else {
                 crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP)
             };
@@ -2709,9 +2703,9 @@ fn grid_closure_source(name: &str) -> Option<&'static str> {
 pub(crate) unsafe fn namespace() -> SEXP {
     unsafe {
         let cached = with_required_current_instance(|p| {
-            (*p).package_namespace_cache.get("grid").and_then(|(dir, env)| {
-                (dir.as_os_str() == "<builtin:grid>").then_some(*env)
-            })
+            (*p).package_namespace_cache
+                .get("grid")
+                .and_then(|(dir, env)| (dir.as_os_str() == "<builtin:grid>").then_some(*env))
         });
         if let Some(env) = cached {
             return env;

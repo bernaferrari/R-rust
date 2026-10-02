@@ -127,8 +127,9 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // shared by the `file=` path below.
 unsafe fn parse_content_to_exprs(content: &str) -> SEXP {
     unsafe {
+        let parser_factory = crate::eval::parser::active_factory();
         let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions_strict(content, arena)
+            crate::eval::parser::parse_expressions_strict(content, arena, parser_factory.clone())
                 .map_err(|err| err.to_string())
         });
         match parsed {
@@ -138,8 +139,8 @@ unsafe fn parse_content_to_exprs(content: &str) -> SEXP {
                     return R_NilValue();
                 }
                 let _result_guard = protect(result);
-                for (i, expr) in exprs.into_iter().enumerate() {
-                    SET_VECTOR_ELT(result, i as R_xlen_t, expr);
+                for (i, expr) in exprs.iter().enumerate() {
+                    SET_VECTOR_ELT(result, i as R_xlen_t, expr.clone().as_raw());
                 }
                 result
             }
@@ -250,12 +251,7 @@ fn parse_failure(message: impl Into<String>) -> ! {
     let message = message.into();
     let (line, col) = parse_input_loc(&message);
     unsafe {
-        store_parse_error(
-            &message,
-            1,
-            col.max(1),
-            R_GetParseErrorFile(),
-        );
+        store_parse_error(&message, 1, col.max(1), R_GetParseErrorFile());
         let c_msg = std::ffi::CString::new(message.as_str()).unwrap_or_default();
         let cond = crate::mainutils::errors::R_makeErrorCondition(
             R_NilValue(),

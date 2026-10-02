@@ -307,7 +307,6 @@ fn deparse_lines(expr: SEXP) -> Vec<String> {
     }
 }
 
-
 /// R's `dget(file)` — read, parse, and evaluate a dumped expression.
 pub unsafe fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -324,14 +323,16 @@ pub unsafe fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 message: format!("cannot read dump file '{}': {err}", path),
             })
         });
+        let parser_factory = crate::eval::parser::active_factory();
         let expr = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse(&code, arena).map_err(|err| err.to_string())
+            crate::eval::parser::parse(&code, arena, parser_factory.clone())
+                .map_err(|err| err.to_string())
         })
         .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
-        if expr.is_null() || expr == R_NilValue() {
+        if expr.clone().as_raw() == R_NilValue() {
             R_NilValue()
         } else {
-            crate::eval::eval::Rf_eval(expr, rho)
+            crate::eval::eval::Rf_eval(expr.clone().as_raw(), rho)
         }
     }
 }
@@ -348,7 +349,8 @@ pub unsafe fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let mut on = false;
             while !cell.is_null() && cell != R_NilValue() {
                 let tag = TAG(cell);
-                let named = !tag.is_null() && tag != R_NilValue()
+                let named = !tag.is_null()
+                    && tag != R_NilValue()
                     && symbol_name(tag).as_deref() == Some("splice");
                 if named || (tag.is_null() || tag == R_NilValue()) {
                     let v = crate::eval::eval::Rf_eval(CAR(cell), rho);
@@ -403,7 +405,10 @@ unsafe fn bquote_walk(expr: SEXP, rho: SEXP, splice: bool) -> SEXP {
                         tail = cell;
                     }
                 } else {
-                    while !elt.is_null() && elt != R_NilValue() && (TYPEOF(elt) == SEXPTYPE::LISTSXP || TYPEOF(elt) == SEXPTYPE::LANGSXP) {
+                    while !elt.is_null()
+                        && elt != R_NilValue()
+                        && (TYPEOF(elt) == SEXPTYPE::LISTSXP || TYPEOF(elt) == SEXPTYPE::LANGSXP)
+                    {
                         let cell = Rf_cons(CAR(elt), R_NilValue());
                         if head == R_NilValue() {
                             head = cell;

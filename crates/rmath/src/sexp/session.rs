@@ -48,10 +48,10 @@ use super::instance::{
     RInstance, clear_current_instance_if, replace_current_instance, set_current_instance,
 };
 use super::memory::{ArenaBudget, RArena};
-use super::object::Sexp;
+use super::object::{SessionNodeFactory, Sexp};
 #[cfg(test)]
 use super::protect::R_ProtectCount;
-use super::protect::RootedSexp;
+#[cfg(test)]
 use super::protect::protect;
 use rmath_nmath::rng::{detach_rng, install_rng};
 use rmath_nmath::{MathState, RngState, detach_state, install_state};
@@ -551,6 +551,7 @@ impl RSession {
             return session;
         }
         session.with_active(|| unsafe {
+            let factory = SessionNodeFactory::new(session.owner_token().expect("active session"));
             // GNU defaultPackages: datasets, utils, grDevices, graphics,
             // stats, methods. library() inserts at pos 2, so attach in
             // that order and stats sits just under .GlobalEnv.
@@ -572,11 +573,12 @@ impl RSession {
                 crate::eval::parser::parse_expressions(
                     "library(grDevices); library(graphics); detach(\"package:stats\"); library(stats)",
                     arena,
+                    factory.clone(),
                 )
             }) {
                 for expr in exprs {
                     let _ = crate::eval::eval::Rf_eval(
-                        expr,
+                        expr.clone().as_raw(),
                         crate::sexp::globals::R_GlobalEnv(),
                     );
                 }
@@ -585,11 +587,12 @@ impl RSession {
                 crate::eval::parser::parse_expressions(
                     "{ if (\"package:stats\" %in% search()) { assign(\"reorder\", get(\"reorder\", baseenv()), envir = as.environment(\"package:stats\")); if (bindingIsLocked(\"xtabs\", as.environment(\"package:stats\"))) unlockBinding(\"xtabs\", as.environment(\"package:stats\")); assign(\"xtabs\", get(\"xtabs\", baseenv()), envir = as.environment(\"package:stats\")) }; f <- get(\"diff.ts\", baseenv()); for (env in list(baseenv(), get(\".BaseNamespaceEnv\", baseenv()), asNamespace(\"stats\"), as.environment(\"package:stats\"))) { tab <- tryCatch(get(\".__S3MethodsTable__.\", env), error = function(e) NULL); if (!is.null(tab) && exists(\"diff.ts\", tab, inherits = FALSE)) { if (bindingIsLocked(\"diff.ts\", tab)) unlockBinding(\"diff.ts\", tab); assign(\"diff.ts\", f, tab) }; if (exists(\"diff.ts\", env, inherits = FALSE)) { if (bindingIsLocked(\"diff.ts\", env)) unlockBinding(\"diff.ts\", env); assign(\"diff.ts\", f, env) } } }",
                     arena,
+                    factory.clone(),
                 )
             }) {
-                if let Some(expr) = exprs.first().copied() {
+                if let Some(expr) = exprs.first() {
                     let _ = crate::eval::eval::Rf_eval(
-                        expr,
+                        expr.clone().as_raw(),
                         crate::sexp::globals::R_GlobalEnv(),
                     );
                 }
@@ -973,6 +976,7 @@ impl RSession {
 
         let expressions = {
             let _guard = self.activate();
+            let factory = SessionNodeFactory::new(self.owner_token().expect("active session"));
             let keep_source = unsafe {
                 let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
                     c"keep.source".as_ptr(),
@@ -982,7 +986,7 @@ impl RSession {
             let spans = unsafe {
                 /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */
                 super::memory::with_arena_in(self.instance, |arena| {
-                    let mut parser = crate::eval::parser::Parser::new(code, arena);
+                    let mut parser = crate::eval::parser::Parser::new(code, arena, factory);
                     // GNU Rscript keeps `keep.source` false, so function bodies
                     // have no srcref. `setGeneric` uses `identical(body, substitute(...))`.
                     parser.set_keep_srcrefs(keep_source);
@@ -1002,20 +1006,26 @@ impl RSession {
                     });
                 }
             };
-            let exprs: Vec<SEXP> = spans.iter().map(|&(e, _, _)| e).collect();
+            let raw_spans: Vec<_> = spans.iter()
+                .map(|(expr, start, end)| (expr.clone().as_raw(), *start, *end))
+                .collect();
+            let exprs: Vec<_> = spans.into_iter().map(|(expr, _, _)| expr).collect();
             let vec_sexp = unsafe {
                 crate::sexp::constructors::Rf_allocVector3(
                     crate::sexp::ffi::SEXPTYPE::EXPRSXP,
                     exprs.len() as i64,
                 )
             };
+            let vec_sexp = self.sexp(vec_sexp).expect("session expression vector");
             unsafe {
-                for (i, &e) in exprs.iter().enumerate() {
-                    crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
+                for (i, expr) in exprs.iter().enumerate() {
+                    crate::sexp::accessors::SET_VECTOR_ELT(
+                        vec_sexp.clone().as_raw(), i as i64, expr.clone().as_raw(),
+                    );
                 }
                 if keep_source {
                     crate::mainutils::srcref::attach_srcrefs_with_spans(
-                        &spans, code, "<text>", vec_sexp,
+                        &raw_spans, code, "<text>", vec_sexp.clone().as_raw(),
                     );
                 }
             }
@@ -1027,22 +1037,8 @@ impl RSession {
             // Stale error-buffer renders from a previous script must not be
             // trusted by this script's top-level error renderer.
             crate::mainutils::errors::clear_last_rendered_message();
-            // The not-yet-evaluated statements are reachable only from the
-            // local Vec while later statements run; the quiescent GC below
-            // (or a gc() inside a statement) would otherwise free them.
-            // Upstream R preserves the parsed expression list across the
-            // top-level eval loop; these guards are its UNPROTECT at the end
-            // of the script.
-            let expression_guards: Vec<_> = expressions
-                .iter()
-                .copied()
-                .map(|expr| unsafe { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ protect(expr_or_nil(expr)) })
-                .collect();
-            for expr in &expressions {
-                unsafe {
-                    crate::sexp::protect::R_ReleaseObject(expr_or_nil(*expr));
-                }
-            }
+            // Every statement owns its automatic allocation lease for the
+            // entire loop, including collection and notification callbacks.
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
             let last_index = expressions.len().saturating_sub(1);
@@ -1050,23 +1046,14 @@ impl RSession {
             // expression; the 1-based loop index is the port's location for
             // show.error.locations rendering.
             let _toplevel_no_guard = ToplevelExprNoGuard;
-            for (index, &raw_expr) in expressions.iter().enumerate() {
-                let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
-                    Ok(expr) => expr,
-                    Err(err) => {
-                        result = Err(err);
-                        break;
-                    }
-                };
+            for (index, expr) in expressions.iter().enumerate() {
+                let raw_expr = expr.clone().as_raw();
                 crate::mainutils::errors::set_toplevel_expr_no(index + 1);
-                result = self.eval_sexp(expr);
+                result = self.eval_sexp(expr.clone());
                 if let Ok(value) = result.as_ref() {
                     remember_last_value(value.clone().as_raw());
                 }
                 crate::eval::parser::flush_parsed_expr_warnings(index);
-                let _expr_guard = result.as_ref().ok().map(|value| {
-                    RootedSexp::try_root(value.clone()).ok()
-                });
                 let visible_flag = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
                 // main.c REPL loop: upstream auto-prints EVERY visible
                 // top-level expression (PrintValueEnv), not just the final
@@ -1118,12 +1105,6 @@ impl RSession {
                     crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
                 }
             }
-            let _result_guard = result.as_ref().ok().map(|value| {
-                // Immortals (R_NilValue & friends) are static and
-                // need no rooting; rooting them panics with
-                // UnownedHandle (empty scripts surface NULL here).
-                RootedSexp::try_root(value.clone()).ok()
-            });
             // SAFETY: activation owns the live instance. No field borrow
             // survives collection or finalizer reentry.
             unsafe {
@@ -1159,9 +1140,10 @@ impl RSession {
         let expressions = {
             let _guard = self.activate();
             // SAFETY: this active session scopes parsing to its arena; no R callback runs.
+            let factory = SessionNodeFactory::new(self.owner_token().expect("active session"));
             unsafe {
                 super::memory::with_arena_in(self.instance, |arena| {
-                    crate::eval::parser::parse_expressions(code, arena)
+                    crate::eval::parser::parse_expressions(code, arena, factory)
                 })
             }
         };
@@ -1198,43 +1180,20 @@ impl RSession {
             let _backend_guard =
                 RenderPlotBackendGuard::install(self.instance_ptr(), &mut forwarding);
             self.inst().output_capture.borrow_mut().start();
-            // Same preservation of the remaining parsed statements as the
-            // plain script loop above.
-            let expression_guards: Vec<_> = expressions
-                .iter()
-                .copied()
-                .map(|expr| unsafe { protect(expr_or_nil(expr)) })
-                .collect();
-            for expr in &expressions {
-                unsafe {
-                    crate::sexp::protect::R_ReleaseObject(expr_or_nil(*expr));
-                }
-            }
+            // Remaining parsed statements retain their automatic leases.
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
             let last_index = expressions.len().saturating_sub(1);
             // Same per-expression location as the plain script loop above.
             let _toplevel_no_guard = ToplevelExprNoGuard;
-            for (index, &raw_expr) in expressions.iter().enumerate() {
-                let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
-                    Ok(expr) => expr,
-                    Err(err) => {
-                        result = Err(err);
-                        break;
-                    }
-                };
+            for (index, expr) in expressions.iter().enumerate() {
+                let raw_expr = expr.clone().as_raw();
                 crate::mainutils::errors::set_toplevel_expr_no(index + 1);
-                result = self.eval_sexp(expr);
+                result = self.eval_sexp(expr.clone());
                 if let Ok(value) = result.as_ref() {
                     remember_last_value(value.clone().as_raw());
                 }
                 crate::eval::parser::flush_parsed_expr_warnings(index);
-                let _expr_guard = result.as_ref().ok().map(|value| {
-                    // Immortals (R_NilValue & friends) are static and
-                    // need no rooting; rooting them panics with
-                    // UnownedHandle (empty scripts surface NULL here).
-                    RootedSexp::try_root(value.clone()).ok()
-                });
                 // Same per-expression auto-print as the plain script loop
                 // above: every visible non-final top-level statement renders
                 // into the captured stream, preserving print()/auto-print
@@ -1284,12 +1243,6 @@ impl RSession {
                     crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
                 }
             }
-            let _result_guard = result.as_ref().ok().map(|value| {
-                // Immortals (R_NilValue & friends) are static and
-                // need no rooting; rooting them panics with
-                // UnownedHandle (empty scripts surface NULL here).
-                RootedSexp::try_root(value.clone()).ok()
-            });
             // SAFETY: activation owns the live instance. No field borrow
             // survives collection or finalizer reentry.
             unsafe {
@@ -1319,17 +1272,18 @@ impl RSession {
             );
         }
 
-        let raw_expr = {
+        let expr = {
             let _guard = self.activate();
+            let factory = SessionNodeFactory::new(self.owner_token().expect("active session"));
             unsafe {
                 /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */
                 super::memory::with_arena_in(self.instance, |arena| {
-                    crate::eval::parser::parse(code, arena)
+                    crate::eval::parser::parse(code, arena, factory)
                 })
             }
         };
-        let raw_expr = match raw_expr {
-            Ok(expr) => expr_or_nil(expr),
+        let expr = match expr {
+            Ok(expr) => expr,
             Err(err) => {
                 // Same scoped mapping as the script paths above.
                 let message = err.to_string();
@@ -1342,12 +1296,6 @@ impl RSession {
                 });
             }
         };
-        let expr = match self.owned_sexp(raw_expr, "parsed expression") {
-            Ok(expr) => expr,
-            Err(err) => {
-                return f(Err(err), super::output::RCapturedOutput::default(), false);
-            }
-        };
         self.with_active(|| {
             self.inst().output_capture.borrow_mut().start();
             // Single-chunk eval: the parsed expression is script position
@@ -1355,12 +1303,6 @@ impl RSession {
             let _toplevel_no_guard = ToplevelExprNoGuard;
             crate::mainutils::errors::set_toplevel_expr_no(1);
             let result = self.eval_sexp(expr);
-            let _result_guard = result.as_ref().ok().map(|value| {
-                // Immortals (R_NilValue & friends) are static and
-                // need no rooting; rooting them panics with
-                // UnownedHandle (empty scripts surface NULL here).
-                RootedSexp::try_root(value.clone()).ok()
-            });
             // SAFETY: activation owns the live instance. No field borrow
             // survives collection or finalizer reentry.
             unsafe {
@@ -1813,6 +1755,35 @@ mod tests {
             unsafe { super::super::protect::unprotect_count(1); }
             drop(fresh);
         }
+    }
+
+    #[test]
+    fn owned_parsed_script_survives_deferred_and_reentrant_collection() {
+        let mut session = RSession::new_for_gc_tests();
+        let notifications = Rc::new(std::cell::Cell::new(0));
+        let observed = notifications.clone();
+        super::super::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            // Parse results already own leases before the arena lend finishes.
+            super::super::gengc::full_gc();
+        }));
+        unsafe { (*session.instance).gc_state.gc_pending = true; }
+        let (result, _, _) = session.eval_script_with_output_capture("7L; 11L; 19L");
+        let result = result.expect("every parsed statement remains alive");
+        assert_eq!(result.integer_elt(0), Some(19));
+        assert!(notifications.get() > 0);
+        super::super::gengc::full_gc();
+        assert_eq!(result.integer_elt(0), Some(19));
+    }
+
+    #[test]
+    fn owned_parsed_single_expression_survives_result_mapping_collection() {
+        let mut session = RSession::new_for_gc_tests();
+        session.eval_code_with_output_capture_then("23L", |result, _, _| {
+            let result = result.expect("owned parse result");
+            super::super::gengc::full_gc();
+            assert_eq!(result.integer_elt(0), Some(23));
+        });
     }
 
     #[test]

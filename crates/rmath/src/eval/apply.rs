@@ -4,12 +4,9 @@ use std::os::raw::c_int;
 
 use crate::sexp::accessors::{CAR, CDR, CHAR, CLOENV, FORMALS, PRINTNAME, TAG, TYPEOF};
 
-
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 
-
-use crate::sexp::memory::RArena;
 use crate::sexp::memory_ext::vmaxget;
 use crate::sexp::object::Sexp;
 
@@ -303,14 +300,12 @@ pub(crate) fn apply_builtin_values_safe<'a>(
     )
 }
 
-
 fn apply_unevaluated_builtin<'a>(
     frame: PrimitiveCall<'a>,
     op_name: &str,
 ) -> Option<(SEXP, VisibilityRestore)> {
     let builtin = super::builtin::unevaluated_builtin_handler(op_name)?;
     unsafe {
-
         check_prototype_first_arg(
             op_name,
             frame.args.clone().as_raw(),
@@ -337,7 +332,6 @@ fn apply_unevaluated_builtin<'a>(
     Some((result, restore))
 }
 
-
 fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_args: SEXP) -> SEXP {
     let fun = frame.fun;
     let call = frame.call;
@@ -356,7 +350,6 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
         }
         return result;
     }
-
 
     // Try S3/S4 dispatch for primitive names that are not handled directly.
     if let Some(s3_result) = try_s3_dispatch(
@@ -419,8 +412,6 @@ unsafe fn check_prototype_first_arg(op_name: &str, evaled_args: SEXP, call: SEXP
     }
 }
 
-
-
 unsafe fn first_prototype_formal(op_name: &str) -> Option<Option<String>> {
     unsafe {
         let base = crate::sexp::globals::R_BaseEnv();
@@ -479,8 +470,6 @@ unsafe fn first_prototype_formal(op_name: &str) -> Option<Option<String>> {
         None
     }
 }
-
-
 
 // ---------------------------------------------------------------------------
 // S3 Dispatch — method dispatch based on class attribute
@@ -653,9 +642,11 @@ fn do_source_impl(file_path: &str, rho: SEXP) -> Result<SEXP, String> {
             .map_err(|e| format!("cannot open file '{}': {}", file_path, e))?;
 
         // Parse the file contents
-        let mut arena = RArena::new();
-        let parsed = super::parser::parse(&content, &mut arena)
-            .map_err(|e| format!("parse error in '{}': {}", file_path, e))?;
+        let factory = super::parser::active_factory();
+        let parsed_owner =
+            crate::sexp::memory::with_arena(|arena| super::parser::parse(&content, arena, factory))
+                .map_err(|e| format!("parse error in '{}': {}", file_path, e))?;
+        let parsed = parsed_owner.clone().as_raw();
 
         // Evaluate each expression in the parsed program
         // The parser returns a pairlist of expressions (or a single expression)
@@ -692,7 +683,7 @@ fn do_source_impl(file_path: &str, rho: SEXP) -> Result<SEXP, String> {
         }
 
         // Single expression or non-block
-        let sexp_expr = Sexp::from_raw_unchecked(parsed);
+        let sexp_expr = parsed_owner;
         let result =
             eval_safe(sexp_expr, env).map_err(|e| format!("error in '{}': {}", file_path, e))?;
 
@@ -708,6 +699,16 @@ mod tests {
     use crate::sexp::session::RSession;
     use crate::sexp::symbol::Rf_install;
 
+    fn parse_source<'session>(
+        session: &'session RSession,
+        source: &str,
+    ) -> Result<Sexp<'session>, parser::ParseError> {
+        let factory = crate::sexp::object::SessionNodeFactory::new(session.owner_token().unwrap());
+        session.with_active_in(|owner| unsafe {
+            crate::sexp::memory::with_arena_in(owner, |arena| parser::parse(source, arena, factory))
+        })
+    }
+
     #[test]
     fn unknown_builtin_reports_error_instead_of_null() {
         let _session = RSession::new();
@@ -719,11 +720,10 @@ mod tests {
             );
             defineVar(sym, prim, crate::eval::runtime::global_env());
 
-            let mut arena = RArena::new();
-            let expr = parser::parse("not_ported_builtin()", &mut arena).expect("parse call");
+            let expr = parse_source(&_session, "not_ported_builtin()").expect("parse call");
             let env = Sexp::from_raw_unchecked(crate::eval::runtime::global_env());
-            let err = eval_safe(Sexp::from_raw_unchecked(expr), env)
-                .expect_err("unknown builtin should not evaluate to NULL");
+            let err =
+                eval_safe(expr, env).expect_err("unknown builtin should not evaluate to NULL");
 
             assert!(err.contains("builtin function 'not_ported_builtin' is not implemented"));
         }
@@ -733,19 +733,17 @@ mod tests {
     fn aliased_special_dispatches_through_bound_value() {
         let _session = RSession::new();
         unsafe {
-            let mut arena = RArena::new();
             let env = Sexp::from_raw_unchecked(crate::eval::runtime::global_env());
 
             // h <- `[` binds the subset primitive under an unrelated name;
             // h(x, 2) must dispatch on that bound value (upstream dispatches
             // the primitive's funtab entry), not on the call-head name.
-            let binding = parser::parse("h <- `[`", &mut arena).expect("parse alias binding");
-            eval_safe(Sexp::from_raw_unchecked(binding), env.clone()).expect("bind alias");
+            let binding = parse_source(&_session, "h <- `[`").expect("parse alias binding");
+            eval_safe(binding, env.clone()).expect("bind alias");
 
             let call =
-                parser::parse("h(c(10, 20, 30), 2)", &mut arena).expect("parse aliased call");
-            let result = eval_safe(Sexp::from_raw_unchecked(call), env)
-                .expect("aliased subset call dispatches");
+                parse_source(&_session, "h(c(10, 20, 30), 2)").expect("parse aliased call");
+            let result = eval_safe(call, env).expect("aliased subset call dispatches");
 
             assert_eq!(*crate::sexp::accessors::REAL(result.as_raw()), 20.0);
         }

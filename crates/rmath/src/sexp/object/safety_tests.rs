@@ -1,4 +1,4 @@
-use super::{Sexp, SexpMut, SexpValue, pairlist::PairlistBuilder};
+use super::{Sexp, SexpError, SexpMut, SexpValue, pairlist::PairlistBuilder};
 use crate::sexp::{ffi::SEXPTYPE, memory::RArena, session::RSession};
 
 fn alloc(session: &RSession, kind: SEXPTYPE, len: i32) -> crate::sexp::ffi::SEXP {
@@ -490,4 +490,42 @@ fn checked_factories_recover_owned_provenance_from_address_only_inputs() {
     let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
     let address_only = std::ptr::without_provenance_mut::<SexprecCore>(ptr.addr());
     assert_eq!(arena.sexp(address_only).unwrap().integer_elt(0), Some(0));
+}
+
+#[test]
+fn node_factory_roots_during_arena_lend_without_borrowing_its_owner() {
+    let session = RSession::new_for_gc_tests();
+    let factory = super::SessionNodeFactory::new(session.owner_token().unwrap());
+    let value = session.with_active_in(|owner| unsafe {
+        // The factory was captured before this exclusive field lend. Its
+        // wrapping path must use metadata alone, including under Miri.
+        crate::sexp::memory::with_arena_in(owner, |arena| {
+            factory
+                .wrap(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
+                .unwrap()
+        })
+    });
+    full_gc(&session);
+    assert_eq!(value.integer_elt(1), Some(0));
+    let original = value.node.clone().unwrap();
+    drop(value);
+    full_gc(&session);
+    assert!(!original.is_live());
+}
+
+#[test]
+fn node_factory_rejects_foreign_and_unregistered_addresses() {
+    let left = RSession::new_for_gc_tests();
+    let right = RSession::new_for_gc_tests();
+    let factory = super::SessionNodeFactory::new(left.owner_token().unwrap());
+    let foreign = alloc(&right, SEXPTYPE::INTSXP, 1);
+    assert!(matches!(
+        factory.wrap(foreign),
+        Err(SexpError::UnownedPointer { .. })
+    ));
+    assert!(matches!(
+        factory.wrap(std::ptr::dangling_mut()),
+        Err(SexpError::UnownedPointer { .. })
+    ));
+    assert!(factory.wrap(Sexp::nil().as_raw()).unwrap().is_nil());
 }

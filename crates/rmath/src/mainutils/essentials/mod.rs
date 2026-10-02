@@ -41,7 +41,6 @@ mod tables;
 #[cfg(test)]
 mod tests;
 mod vectors;
-pub(crate) use sets::collate_str;
 pub use self::conditions::*;
 pub use self::functional::*;
 pub use self::io::*;
@@ -56,6 +55,7 @@ pub use self::shared::*;
 pub use self::strings::*;
 pub use self::tables::*;
 pub use self::vectors::*;
+pub(crate) use sets::collate_str;
 
 // ---------------------------------------------------------------------------
 // Core vector/scalar helpers live in `essentials_basic`.
@@ -94,9 +94,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // not be pre-evaluated, so empty subscript slots (`m[,1]`) reach
             // the subset handlers' keep-missing argument evaluation.
             let kind = match name {
-                "quote" | "substitute" | "[" | "[[" | "system.time" | "capture.output" | "missing" | "rep" => {
-                    SEXPTYPE::SPECIALSXP
-                }
+                "quote" | "substitute" | "[" | "[[" | "system.time" | "capture.output"
+                | "missing" | "rep" => SEXPTYPE::SPECIALSXP,
                 _ => SEXPTYPE::BUILTINSXP,
             };
 
@@ -220,12 +219,16 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         SET_FRAME(env, chain);
         // GNU base defines Recall as a closure. Its wrapper frame carries
         // the new promises to .Internal(Recall) while retaining caller identity.
+        let parser_factory = crate::eval::parser::active_factory();
         let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse("function(...) .Internal(Recall(...))", arena)
+            crate::eval::parser::parse(
+                "function(...) .Internal(Recall(...))",
+                arena,
+                parser_factory.clone(),
+            )
         })
         .expect("base Recall wrapper parses");
-        let _parsed = protect(parsed);
-        let recall = crate::eval::eval::Rf_eval(parsed, env);
+        let recall = crate::eval::eval::Rf_eval(parsed.clone().as_raw(), env);
         let _recall = protect(recall);
         crate::sexp::envir::defineVar(Rf_install(c"Recall".as_ptr()), recall, env);
     }

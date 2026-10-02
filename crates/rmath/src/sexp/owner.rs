@@ -37,6 +37,20 @@ impl<'session> OwnerToken<'session> {
         self.pointer.as_ptr()
     }
 
+    /// Capture immutable allocation-domain and availability capabilities before
+    /// lending the arena. Later node wrapping needs no instance field access.
+    pub(crate) fn node_factory(self) -> super::object::SessionNodeFactory<'session> {
+        // SAFETY: the token's lifetime retains the physical owner. This short
+        // field access ends before the factory can be used inside an arena lend.
+        let (heap, availability) = unsafe {
+            (
+                (*self.as_ptr()).heap_identity.clone(),
+                super::instance::instance_liveness(self.as_ptr()),
+            )
+        };
+        super::object::SessionNodeFactory::from_snapshot(self, heap, availability)
+    }
+
     /// Validate and root a pointer in this owner, even if another is active.
     pub(crate) fn sexp(self, pointer: SEXP) -> SexpResult<Sexp<'session>> {
         Sexp::from_owner_raw(pointer, self)

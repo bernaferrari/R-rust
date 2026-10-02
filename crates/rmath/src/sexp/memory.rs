@@ -32,7 +32,9 @@ const NODE_PAGE_SIZE: usize = 4096;
 const _: () = assert!(NODE_PAGE_SIZE % 64 == 0);
 
 use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData};
-use super::heap::{CheckedNode, HeapIdentity, NodeId, NodePage, NodeProjection, PageMetadata};
+use super::heap::{
+    CheckedNode, HeapBackingOwners, HeapIdentity, NodeId, NodePage, NodeProjection, PageMetadata,
+};
 use super::object::Sexp;
 use super::payload::{OwnedPayload, PayloadError};
 
@@ -225,6 +227,14 @@ struct SlabPage {
     storage: NodePage<SexprecCore>,
     meta: Rc<PageMetadata>,
     _registration: NodePageRegistration,
+}
+
+/// Canonical physical storage shared by the allocator facade and owning
+/// values. The RefCell loans cover only local storage operations; callbacks
+/// and deferred collection always run after those loans have ended.
+pub(crate) struct ArenaBacking {
+    node_pages: RefCell<Vec<SlabPage>>,
+    data_bufs: RefCell<HashMap<*mut u8, SharedBuffer>>,
 }
 
 #[derive(Clone)]
@@ -458,72 +468,52 @@ pub(crate) fn note_slab_generation(ptr: SEXP, generation: u8) {
     meta.set_old(slot, generation == 1);
 }
 
-/// Live or old-generation nodes in slab order. Full words collapse to a
-/// pointer walk; zero words are skipped. `gctorture(TRUE)` used to hash every
-/// slot on every allocation.
-pub(crate) struct SlotIter<'a> {
-    pages: &'a [SlabPage],
-    old_only: bool,
-    page: usize,
-    slot: usize,
-    slot_end: usize,
+/// A page transaction keeps dense original generations and eligibility bits.
+/// It owns projections and the physical backing, without a RefCell loan.
+struct PageSnapshot {
+    projection: NodeProjection<SexprecCore>,
+    eligible: Box<[u64]>,
+    generations: Box<[u64]>,
 }
 
-impl Iterator for SlotIter<'_> {
+/// Live nodes as they existed when iteration began. Collection enumeration
+/// runs without semantic callbacks, but this iterator also rejects any slot
+/// freed or reused before it is consumed. Snapshot metadata uses eight bytes
+/// per slot instead of a full allocation token per live node.
+pub(crate) struct SlotIter {
+    pages: Vec<PageSnapshot>,
+    _backing_owners: Rc<HeapBackingOwners>,
+    page: usize,
+    word: usize,
+    bits: u64,
+}
+
+impl Iterator for SlotIter {
     type Item = SEXP;
 
-    #[inline(always)]
     fn next(&mut self) -> Option<SEXP> {
-        if self.slot < self.slot_end {
-            let ptr = self.pages[self.page]
-                .storage
-                .raw_slot(self.slot)
-                .expect("live page slot");
-            self.slot += 1;
-            return Some(ptr);
-        }
-        self.slow_next()
-    }
-}
-
-impl SlotIter<'_> {
-    #[inline(never)]
-    fn slow_next(&mut self) -> Option<SEXP> {
-        if !self.arm_next_run() {
-            return None;
-        }
-        let ptr = self.pages[self.page]
-            .storage
-            .raw_slot(self.slot)
-            .expect("live page slot");
-        self.slot += 1;
-        Some(ptr)
-    }
-
-    fn arm_next_run(&mut self) -> bool {
-        let page_count = self.pages.len();
-        let mut page = self.page;
-        let mut slot = self.slot;
-        while page < page_count {
-            if slot >= NODE_PAGE_SIZE {
-                page += 1;
-                slot = 0;
+        loop {
+            let page = self.pages.get(self.page)?;
+            if self.bits != 0 {
+                let bit = self.bits.trailing_zeros() as usize;
+                self.bits &= self.bits - 1;
+                let slot = (self.word - 1) * 64 + bit;
+                if let Some((pointer, _allocation)) = page
+                    .projection
+                    .resolve_generation(slot, page.generations[slot])
+                {
+                    return Some(pointer);
+                }
                 continue;
             }
-            let meta = &self.pages[page].meta;
-            if let Some((start, end)) = meta.next_run(self.old_only, slot) {
-                self.page = page;
-                self.slot = start;
-                self.slot_end = end;
-                return true;
+            if let Some(bits) = page.eligible.get(self.word) {
+                self.bits = *bits;
+                self.word += 1;
+            } else {
+                self.page += 1;
+                self.word = 0;
             }
-            page += 1;
-            slot = 0;
         }
-        self.page = page;
-        self.slot = 0;
-        self.slot_end = 0;
-        false
     }
 }
 
@@ -531,19 +521,17 @@ impl SlotIter<'_> {
 ///
 /// Allocates SexprecCore nodes and their associated vector data.
 /// Collection retires individual allocation identities and reuses their slots.
-/// Dropping the arena releases its owned pages and payloads.
+/// Owning values retain these pages and payloads after the facade drops.
 pub struct RArena {
     /// Owned pages of interior cells keep legacy header projections stable.
     /// Node identities and collector metadata are independent of raw headers.
-    node_pages: Vec<SlabPage>,
+    backing: Rc<ArenaBacking>,
+    _backing_owners: Rc<HeapBackingOwners>,
     heap_identity: HeapIdentity,
     /// Current page index for allocation (last page usually).
     slab_page: usize,
     /// Current offset within the slab_page (0 .. NODE_PAGE_SIZE).
     slab_offset: usize,
-    /// All allocated data buffers. HashMap for O(1) lookup/remove (was Vec + linear .position).
-    /// Key: data ptr; value: owned allocation and live header lease count.
-    data_bufs: HashMap<*mut u8, SharedBuffer>,
     /// Free list of reclaimed SEXP pointers available for reuse.
     free_list: Vec<SEXP>,
     /// O(1) membership for active node pointers.
@@ -578,19 +566,20 @@ impl RArena {
     fn alloc_new_page(&mut self) {
         let storage = NodePage::try_new(
             self.heap_identity.clone(),
-            self.node_pages.len(),
+            self.backing.node_pages.borrow().len(),
             NODE_PAGE_SIZE,
             || SexprecCore::new(SEXPTYPE::NILSXP),
         )
         .expect("arena node page allocation failed");
         let meta = storage.metadata();
         let registration = register_node_page(&storage);
-        self.node_pages.push(SlabPage {
+        let mut pages = self.backing.node_pages.borrow_mut();
+        pages.push(SlabPage {
             storage,
             meta,
             _registration: registration,
         });
-        self.slab_page = self.node_pages.len() - 1;
+        self.slab_page = pages.len() - 1;
         self.slab_offset = 0;
     }
 
@@ -606,7 +595,7 @@ impl RArena {
             let Some((page, slot)) = self.reusable_slot(pointer) else {
                 continue;
             };
-            let ptr = self.node_pages[page]
+            let ptr = self.backing.node_pages.borrow()[page]
                 .storage
                 .replace_inactive(slot, ctor())
                 .expect("reusable arena slot");
@@ -615,7 +604,7 @@ impl RArena {
         if self.slab_offset >= NODE_PAGE_SIZE {
             self.alloc_new_page();
         }
-        let ptr = self.node_pages[self.slab_page]
+        let ptr = self.backing.node_pages.borrow()[self.slab_page]
             .storage
             .replace_inactive(self.slab_offset, ctor())
             .expect("fresh inactive arena slot");
@@ -642,12 +631,17 @@ impl RArena {
     }
 
     fn with_budget_and_identity(budget: ArenaBudget, heap_identity: HeapIdentity) -> Self {
+        let backing = Rc::new(ArenaBacking {
+            node_pages: RefCell::new(Vec::new()),
+            data_bufs: RefCell::new(HashMap::new()),
+        });
+        let backing_owners = heap_identity.retain_arena(backing.clone());
         let mut a = RArena {
-            node_pages: Vec::new(),
+            backing,
+            _backing_owners: backing_owners,
             heap_identity,
             slab_page: 0,
             slab_offset: NODE_PAGE_SIZE,
-            data_bufs: HashMap::new(),
             free_list: Vec::new(),
             active_addrs: HashSet::new(),
             free_addrs: HashSet::new(),
@@ -678,7 +672,7 @@ impl RArena {
         let id = meta
             .activate(slot, false)
             .expect("inactive nonretired arena node");
-        let header = self.node_pages[meta.page()]
+        let header = self.backing.node_pages.borrow()[meta.page()]
             .storage
             .copy_live(&id)
             .expect("initialized owned arena node");
@@ -702,7 +696,8 @@ impl RArena {
 
     fn reusable_slot(&self, pointer: SEXP) -> Option<(usize, usize)> {
         let (metadata, slot) = find_slab_slot(pointer)?;
-        let page = self.node_pages.get(metadata.page())?;
+        let pages = self.backing.node_pages.borrow();
+        let page = pages.get(metadata.page())?;
         (Rc::ptr_eq(&page.meta, &metadata) && metadata.reusable(slot))
             .then_some((metadata.page(), slot))
     }
@@ -754,12 +749,12 @@ impl RArena {
     fn register_data_buffer(&mut self, allocation: OwnedPayload) {
         let ptr = allocation.as_ptr();
         assert!(
-            !self.data_bufs.contains_key(&ptr),
+            !self.backing.data_bufs.borrow().contains_key(&ptr),
             "buffer ownership transferred twice"
         );
         assert!(!ptr.is_null(), "nonempty buffer ownership");
         self.add_accounted_bytes(allocation.layout().size());
-        self.data_bufs.insert(
+        self.backing.data_bufs.borrow_mut().insert(
             ptr,
             SharedBuffer {
                 allocation,
@@ -812,21 +807,21 @@ impl RArena {
     }
 
     fn tracks_data_buffer(&self, ptr: *mut u8) -> bool {
-        !ptr.is_null() && self.data_bufs.contains_key(&ptr)
+        !ptr.is_null() && self.backing.data_bufs.borrow().contains_key(&ptr)
     }
 
     fn release_data_buffer(&mut self, ptr: *mut u8) {
-        let Some(buffer) = self.data_bufs.get_mut(&ptr) else {
-            return;
+        let buffer = {
+            let mut buffers = self.backing.data_bufs.borrow_mut();
+            let Some(buffer) = buffers.get_mut(&ptr) else {
+                return;
+            };
+            if let Some(remaining) = std::num::NonZeroUsize::new(buffer.headers.get() - 1) {
+                buffer.headers = remaining;
+                return;
+            }
+            buffers.remove(&ptr).expect("registered final buffer owner")
         };
-        if let Some(remaining) = std::num::NonZeroUsize::new(buffer.headers.get() - 1) {
-            buffer.headers = remaining;
-            return;
-        }
-        let buffer = self
-            .data_bufs
-            .remove(&ptr)
-            .expect("registered final buffer owner");
         self.sub_accounted_bytes(buffer.allocation.layout().size());
         // Dropping the typed owner releases its final shared allocation.
         drop(buffer);
@@ -866,14 +861,16 @@ impl RArena {
         if bytes == 0 {
             return Ok(());
         }
-        let buffer = self
-            .data_bufs
-            .get_mut(&(src.payload as *mut u8))
-            .ok_or_else(error)?;
-        if buffer.allocation.layout().size() < bytes {
-            return Err(error());
+        {
+            let mut buffers = self.backing.data_bufs.borrow_mut();
+            let buffer = buffers
+                .get_mut(&(src.payload as *mut u8))
+                .ok_or_else(error)?;
+            if buffer.allocation.layout().size() < bytes {
+                return Err(error());
+            }
+            buffer.headers = buffer.headers.checked_add(1).ok_or_else(error)?;
         }
-        buffer.headers = buffer.headers.checked_add(1).ok_or_else(error)?;
         // SAFETY: both rooted headers have matching shape and a tracked buffer
         // with a newly installed ownership lease; no payload loans are present.
         unsafe {
@@ -1267,7 +1264,12 @@ impl RArena {
 
     /// Resolve an unforgeable identity only while its exact allocation lives.
     pub(crate) fn resolve_node(&self, id: &NodeId) -> Option<SEXP> {
-        self.node_pages.get(id.page())?.storage.resolve(id)
+        self.backing
+            .node_pages
+            .borrow()
+            .get(id.page())?
+            .storage
+            .resolve(id)
     }
 
     /// Wrap an active arena-owned pointer in a safe `Sexp`.
@@ -1283,14 +1285,16 @@ impl RArena {
         }
     }
 
-    /// Iterate over all arena nodes (across slab pages).
+    /// Iterate over initialized arena headers, including reusable slots.
+    /// Only a local storage loan is used to capture these projections.
     pub(crate) fn nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
-        self.node_pages
+        let pointers: Vec<SEXP> = self
+            .backing
+            .node_pages
+            .borrow()
             .iter()
             .enumerate()
-            .flat_map(move |(page_idx, page)| {
-                // Allocation fills pages sequentially: only the current page
-                // can be partially occupied.
+            .flat_map(|(page_idx, page)| {
                 let used = if page_idx == self.slab_page {
                     self.slab_offset
                 } else {
@@ -1298,29 +1302,41 @@ impl RArena {
                 };
                 (0..used).map(move |i| page.storage.raw_slot(i).expect("allocated page slot"))
             })
+            .collect();
+        pointers.into_iter()
     }
 
-    /// Live nodes in slab order, skipping free-list holes.
-    pub(crate) fn active_nodes(&self) -> SlotIter<'_> {
+    /// Live nodes in slab order, using exact original generations.
+    pub(crate) fn active_nodes(&self) -> SlotIter {
         self.slot_iter(false)
     }
 
-    /// Old-generation nodes in slab order.
-    ///
-    /// Torture collections reclaim only this set. Young nodes stay live until a
-    /// safe-point collection, so walking them on every `gctorture(TRUE)`
-    /// allocation dominated long runs.
-    pub(crate) fn old_nodes(&self) -> SlotIter<'_> {
+    /// Old-generation nodes in slab order, using exact original generations.
+    pub(crate) fn old_nodes(&self) -> SlotIter {
         self.slot_iter(true)
     }
 
-    fn slot_iter(&self, old_only: bool) -> SlotIter<'_> {
+    fn slot_iter(&self, old_only: bool) -> SlotIter {
+        let pages = self
+            .backing
+            .node_pages
+            .borrow()
+            .iter()
+            .map(|page| {
+                let (eligible, generations) = page.meta.snapshot_eligible(old_only);
+                PageSnapshot {
+                    projection: page.storage.projection(),
+                    eligible,
+                    generations,
+                }
+            })
+            .collect();
         SlotIter {
-            pages: &self.node_pages,
-            old_only,
+            pages,
+            _backing_owners: self._backing_owners.clone(),
             page: 0,
-            slot: 0,
-            slot_end: 0,
+            word: 0,
+            bits: 0,
         }
     }
 
@@ -1392,7 +1408,7 @@ impl RArena {
     /// Verify arena invariants (debug only).
     fn verify_invariants(&self) {
         debug_assert!({
-            for (&ptr, buffer) in &self.data_bufs {
+            for (&ptr, buffer) in &*self.backing.data_bufs.borrow() {
                 if !ptr.is_null() {
                     debug_assert!(buffer.allocation.layout().size() > 0);
                 }
@@ -1950,10 +1966,126 @@ mod tests {
         assert!(super::automatic_roots(&identity).is_empty());
         let retained_metadata = arena_token.root_lease().unwrap();
         drop(arena);
-        assert!(!arena_token.is_live());
-        assert!(super::automatic_roots(&identity).is_empty());
+        drop(permanent);
+        assert!(arena_token.is_live());
+        assert_eq!(
+            super::automatic_roots(&identity),
+            [(arena_node, arena_token.clone())]
+        );
         drop(retained_metadata);
+        assert!(!arena_token.is_live());
+        assert!(!permanent_token.is_live());
+        assert!(super::automatic_roots(&identity).is_empty());
         drop(foreign_lease);
+    }
+
+    #[test]
+    fn automatic_value_retains_canonical_vector_and_later_character_payloads() {
+        let mut arena = super::RArena::new();
+        let vector = arena.alloc_vector(super::SEXPTYPE::REALSXP, 2);
+        let vector_token = arena.node_token(vector).unwrap();
+        let value = vector_token.root_lease().unwrap();
+        // SAFETY: this fixture owns the live initialized real payload and no
+        // payload reference or callback overlaps either raw write.
+        unsafe {
+            let elements = (*vector).gengc_next_node.cast::<f64>();
+            elements.write(12.5);
+            elements.add(1).write(-7.0);
+        }
+        let chars = arena.alloc_charsxp(b"allocated after the value");
+        let chars_token = arena.node_token(chars).unwrap();
+        let physical_owner = std::rc::Rc::downgrade(&arena.backing);
+        drop(arena);
+        assert!(physical_owner.upgrade().is_some());
+        assert!(vector_token.is_live());
+        assert!(chars_token.is_live());
+        let vector_header = super::checked_snapshot(vector, &vector_token).unwrap();
+        let chars_header = super::checked_snapshot(chars, &chars_token).unwrap();
+        // SAFETY: the automatic value retains the original canonical backing
+        // and both typed payloads; reads copy values without returning loans.
+        unsafe {
+            let elements = vector_header.gengc_next_node.cast::<f64>();
+            assert_eq!(elements.read(), 12.5);
+            assert_eq!(elements.add(1).read(), -7.0);
+            assert_eq!(
+                std::slice::from_raw_parts(chars_header.gengc_next_node.cast::<u8>(), 25),
+                b"allocated after the value"
+            );
+        }
+        drop(value);
+        assert!(physical_owner.upgrade().is_none());
+        assert!(!vector_token.is_live());
+        assert!(!chars_token.is_live());
+    }
+
+    #[test]
+    fn existing_value_retains_later_backing_and_its_graph_children_without_cycles() {
+        let mut original = super::RArena::new();
+        let identity = original.heap_identity();
+        let parent = original.alloc_node(super::SEXPTYPE::LISTSXP);
+        let parent_token = original.node_token(parent).unwrap();
+        let value = parent_token.root_lease().unwrap();
+        let mut later = super::RArena::fresh_with_identity(identity.clone());
+        let child = later.alloc_charsxp(b"future store child");
+        let child_token = later.node_token(child).unwrap();
+        // SAFETY: both initialized nodes belong to this same heap domain;
+        // this fixture installs the nonowning edge before facade teardown.
+        unsafe {
+            (*parent).data.listsxp.carval = child;
+        }
+        let original_owner = std::rc::Rc::downgrade(&original.backing);
+        let later_owner = std::rc::Rc::downgrade(&later.backing);
+        drop(original);
+        drop(later);
+        assert!(parent_token.is_live());
+        assert!(child_token.is_live());
+        assert!(original_owner.upgrade().is_some());
+        assert!(later_owner.upgrade().is_some());
+        assert_eq!(
+            super::automatic_roots(&identity),
+            [(parent, parent_token.clone())]
+        );
+        let header = super::checked_snapshot(parent, &parent_token).unwrap();
+        // SAFETY: the parent header type is LISTSXP and the retained child
+        // projection is precisely the one installed above.
+        assert_eq!(unsafe { header.data.listsxp.carval }, child);
+        drop(value);
+        assert!(original_owner.upgrade().is_none());
+        assert!(later_owner.upgrade().is_none());
+        assert!(!parent_token.is_live());
+        assert!(!child_token.is_live());
+        assert!(super::automatic_roots(&identity).is_empty());
+    }
+
+    #[test]
+    fn arena_iterator_rejects_reused_generations_without_holding_storage_loans() {
+        let mut arena = super::RArena::new();
+        let first = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+        let discarded = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+        let first_token = arena.node_token(first).unwrap();
+        let discarded_token = arena.node_token(discarded).unwrap();
+        let mut nodes = arena.active_nodes();
+        assert!(arena.backing.node_pages.try_borrow_mut().is_ok());
+        // SAFETY: discarded is unreachable and no payload/header loan lives.
+        unsafe {
+            arena.free_node(discarded);
+        }
+        let replacement = arena.alloc_node(super::SEXPTYPE::REALSXP);
+        assert_eq!(replacement, discarded);
+        assert!(!discarded_token.is_live());
+        let replacement_token = arena.node_token(replacement).unwrap();
+        let fresh = arena.alloc_node(super::SEXPTYPE::ENVSXP);
+        let fresh_token = arena.node_token(fresh).unwrap();
+        let physical_owner = std::rc::Rc::downgrade(&arena.backing);
+        drop(arena);
+        assert!(first_token.is_live());
+        assert_eq!(nodes.next(), Some(first));
+        assert_eq!(nodes.next(), None);
+        drop(nodes);
+        assert!(physical_owner.upgrade().is_none());
+        assert!(!first_token.is_live());
+        assert!(!replacement_token.is_live());
+        assert!(!fresh_token.is_live());
     }
 
     #[test]
@@ -2253,7 +2385,7 @@ mod tests {
                         assert_eq!(arena.total_bytes_allocated, before);
                         assert_eq!(arena.transient_bytes.get(), 0);
                         assert_eq!(arena.pending_data_bytes.get(), 0);
-                        assert!(arena.data_bufs.is_empty());
+                        assert!(arena.backing.data_bufs.borrow().is_empty());
                     });
                 } else {
                     initialize();
@@ -2300,7 +2432,7 @@ mod tests {
             assert_eq!((*replacement).sxpinfo.type_of(), super::SEXPTYPE::REALSXP);
             super::with_arena(|arena| {
                 assert_eq!(arena.pending_data_bytes.get(), 0);
-                assert!(arena.data_bufs.is_empty());
+                assert!(arena.backing.data_bufs.borrow().is_empty());
                 assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES);
             });
         });
@@ -2411,7 +2543,7 @@ mod tests {
         let boxed = Box::new(super::SexprecCore::new(super::SEXPTYPE::SYMSXP));
         assert_eq!(unsafe { arena.add_node(boxed) }, first);
         assert_eq!(arena.node_count(), 1);
-        assert_eq!(arena.node_pages.len(), 1);
+        assert_eq!(arena.backing.node_pages.borrow().len(), 1);
         assert_eq!(arena.slab_offset, 1);
     }
 

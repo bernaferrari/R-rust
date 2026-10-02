@@ -34,11 +34,12 @@ pub(crate) unsafe fn apply_in_environment(
             (*inst).base_wrappers.borrow().get(name).copied()
         });
         let fun = cached.unwrap_or_else(|| {
-            let parsed =
-                crate::sexp::memory::with_arena(|arena| crate::eval::parser::parse(source, arena))
-                    .expect("checked-in base wrapper must parse");
-            let _parsed = protect(parsed);
-            let fun = crate::eval::eval::Rf_eval(parsed, environment);
+            let parser_factory = crate::eval::parser::active_factory();
+            let parsed = crate::sexp::memory::with_arena(|arena| {
+                crate::eval::parser::parse(source, arena, parser_factory.clone())
+            })
+            .expect("checked-in base wrapper must parse");
+            let fun = crate::eval::eval::Rf_eval(parsed.clone().as_raw(), environment);
             let _fun = protect(fun);
             crate::sexp::protect::R_PreserveObject(fun);
             with_required_current_instance(|inst| {

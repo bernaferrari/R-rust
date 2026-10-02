@@ -33,6 +33,7 @@
 //! or [`to_owned_value`](Sexp::to_owned_value). Payload loans are private to this module.
 
 mod error;
+mod factory;
 mod header;
 mod kind;
 mod mut_ref;
@@ -48,6 +49,7 @@ mod vector;
 mod view;
 
 pub use error::{SexpError, SexpResult};
+pub(crate) use factory::SessionNodeFactory;
 pub(crate) use kind::{raw_is_atomic_vector, raw_is_vector};
 pub use mut_ref::SexpMut;
 pub(crate) use pairlist::PairlistBuilder;

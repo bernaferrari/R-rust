@@ -6,19 +6,92 @@
 //! IDs never keep a dead node alive and cannot select a reused or foreign slot.
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     hash::{Hash, Hasher},
     rc::{Rc, Weak},
 };
 
-#[derive(Clone, Debug)]
-pub(crate) struct HeapIdentity(Rc<()>);
+/// The shared domain retains physical storage through one ownership bag.
+/// Only the weak link lives here: pages contain this identity themselves.
+struct HeapState {
+    backing: RefCell<Weak<HeapBackingOwners>>,
+}
+
+/// Closed physical owners of the existing canonical pages and payloads.
+/// This bag contains no copied headers or alternative node authority.
+enum PhysicalBacking {
+    Arena(Rc<super::memory::ArenaBacking>),
+    Persistent(Rc<super::instance::persistent::PersistentBacking>),
+}
+impl std::fmt::Debug for PhysicalBacking {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Arena(store) => f.debug_tuple("Arena").field(&Rc::as_ptr(store)).finish(),
+            Self::Persistent(store) => f
+                .debug_tuple("Persistent")
+                .field(&Rc::as_ptr(store))
+                .finish(),
+        }
+    }
+}
+
+/// Facades and automatic values share this bag, so values also retain any
+/// physical stores subsequently added to their heap domain. Stores contain
+/// only a HeapIdentity with a weak bag link, never a strong link back here.
+pub(crate) struct HeapBackingOwners {
+    stores: RefCell<Vec<PhysicalBacking>>,
+}
+impl std::fmt::Debug for HeapBackingOwners {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HeapBackingOwners")
+            .field("stores", &self.stores.borrow())
+            .finish()
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct HeapIdentity(Rc<HeapState>);
+impl std::fmt::Debug for HeapIdentity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("HeapIdentity")
+            .field(&Rc::as_ptr(&self.0))
+            .finish()
+    }
+}
 impl HeapIdentity {
     pub(crate) fn new() -> Self {
-        Self(Rc::new(()))
+        Self(Rc::new(HeapState {
+            backing: RefCell::new(Weak::new()),
+        }))
     }
     fn same(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
+    }
+    fn retained_backing(&self) -> Option<Rc<HeapBackingOwners>> {
+        self.0.backing.borrow().upgrade()
+    }
+    fn retain(&self, store: PhysicalBacking) -> Rc<HeapBackingOwners> {
+        let owners = self.retained_backing().unwrap_or_else(|| {
+            let owners = Rc::new(HeapBackingOwners {
+                stores: RefCell::new(Vec::new()),
+            });
+            *self.0.backing.borrow_mut() = Rc::downgrade(&owners);
+            owners
+        });
+        owners.stores.borrow_mut().push(store);
+        owners
+    }
+    pub(crate) fn retain_arena(
+        &self,
+        backing: Rc<super::memory::ArenaBacking>,
+    ) -> Rc<HeapBackingOwners> {
+        self.retain(PhysicalBacking::Arena(backing))
+    }
+    pub(crate) fn retain_persistent(
+        &self,
+        backing: Rc<super::instance::persistent::PersistentBacking>,
+    ) -> Rc<HeapBackingOwners> {
+        self.retain(PhysicalBacking::Persistent(backing))
     }
 }
 
@@ -101,6 +174,7 @@ impl CheckedNode {
         self.metadata.acquire_root(&self.id)?;
         Some(Rc::new(NodeRootLease {
             allocation: self.clone(),
+            _backing: self.id.heap.retained_backing(),
         }))
     }
     pub(crate) fn root_count(&self) -> usize {
@@ -119,6 +193,7 @@ impl Eq for CheckedNode {}
 #[derive(Debug)]
 pub(crate) struct NodeRootLease {
     allocation: CheckedNode,
+    _backing: Option<Rc<HeapBackingOwners>>,
 }
 impl NodeRootLease {
     pub(crate) fn allocation(&self) -> &CheckedNode {
@@ -316,22 +391,45 @@ impl PageMetadata {
     /// Enumerate current rooted IDs using the root bitmap, avoiding a scan
     /// over every unrooted slot on each allocation-time collection.
     pub(crate) fn rooted_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.rooted.iter().enumerate().flat_map(move |(index, word)| {
-            let mut bits = word.get();
-            std::iter::from_fn(move || {
-                while bits != 0 {
-                    let bit = bits.trailing_zeros() as usize;
-                    bits &= bits - 1;
-                    let slot = index * 64 + bit;
-                    if let Some(id) = self.current_id(slot) {
-                        if self.root_count(&id) > 0 {
-                            return Some(id);
+        self.rooted
+            .iter()
+            .enumerate()
+            .flat_map(move |(index, word)| {
+                let mut bits = word.get();
+                std::iter::from_fn(move || {
+                    while bits != 0 {
+                        let bit = bits.trailing_zeros() as usize;
+                        bits &= bits - 1;
+                        let slot = index * 64 + bit;
+                        if let Some(id) = self.current_id(slot) {
+                            if self.root_count(&id) > 0 {
+                                return Some(id);
+                            }
                         }
                     }
-                }
-                None
+                    None
+                })
             })
-        })
+    }
+    /// Dense original generations for an iterator transaction. Inactive or
+    /// ineligible slots are zero; rootless generation metadata is not a lease.
+    /// Snapshotting releases all canonical storage loans before iteration.
+    pub(crate) fn snapshot_eligible(&self, old_only: bool) -> (Box<[u64]>, Box<[u64]>) {
+        let words = if old_only { &self.old } else { &self.live };
+        let bitmap: Box<[u64]> = words.iter().map(Cell::get).collect();
+        let generations = self
+            .generations
+            .iter()
+            .enumerate()
+            .map(|(slot, value)| {
+                if self.is_live(slot) && bitmap[slot >> 6] & (1 << (slot & 63)) != 0 {
+                    value.get()
+                } else {
+                    0
+                }
+            })
+            .collect();
+        (bitmap, generations)
     }
     /// Invalidate the current identity before its storage is made reusable.
     /// Generation exhaustion permanently retires the slot instead of wrapping.
@@ -440,6 +538,24 @@ impl<T> NodeProjection<T> {
         let values = self.values.upgrade()?;
         let pointer = values.get(slot)?.as_ptr();
         Some((pointer, token))
+    }
+    /// Project only the allocation generation captured by an iterator.
+    /// Never refresh an original identity from a reused slot's address.
+    pub(crate) fn resolve_generation(
+        &self,
+        slot: usize,
+        generation: u64,
+    ) -> Option<(*mut T, CheckedNode)> {
+        let id = NodeId {
+            heap: self.metadata.heap.clone(),
+            page: self.metadata.page,
+            page_identity: self.metadata.identity.clone(),
+            slot,
+            generation,
+        };
+        let token = CheckedNode::new(self.metadata.clone(), id)?;
+        let values = self.values.upgrade()?;
+        Some((values.get(slot)?.as_ptr(), token))
     }
 }
 impl<T: Copy> NodeProjection<T> {

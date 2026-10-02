@@ -15,6 +15,7 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::object::{SessionNodeFactory, Sexp};
 use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
@@ -156,7 +157,11 @@ pub unsafe fn R_ParseVectorBuffer(
             set_parse_status(status, PARSE_ERROR);
             return Rf_allocVector(SEXPTYPE::EXPRSXP, 0);
         };
-        match parse_source_list(std::iter::once(Ok(source)), n) {
+        match parse_source_list(
+            std::iter::once(Ok(source)),
+            n,
+            crate::eval::parser::active_factory(),
+        ) {
             Ok(exprs) => {
                 set_parse_status(status, PARSE_OK);
                 exprs_to_exprsxp(exprs)
@@ -177,7 +182,7 @@ unsafe fn set_parse_status(status: *mut c_int, value: c_int) {
     }
 }
 
-unsafe fn parse_vector(text: SEXP, n: c_int) -> Result<Vec<SEXP>, String> {
+unsafe fn parse_vector<'session>(text: SEXP, n: c_int) -> Result<Vec<Sexp<'session>>, String> {
     unsafe {
         if text.is_null() || text == R_NilValue() {
             return Ok(Vec::new());
@@ -196,11 +201,15 @@ unsafe fn parse_vector(text: SEXP, n: c_int) -> Result<Vec<SEXP>, String> {
             }
         });
 
-        parse_source_list(sources, n)
+        parse_source_list(sources, n, crate::eval::parser::active_factory())
     }
 }
 
-fn parse_source_list<I>(sources: I, n: c_int) -> Result<Vec<SEXP>, String>
+fn parse_source_list<'session, I>(
+    sources: I,
+    n: c_int,
+    factory: SessionNodeFactory<'session>,
+) -> Result<Vec<Sexp<'session>>, String>
 where
     I: Iterator<Item = Result<String, String>>,
 {
@@ -221,10 +230,12 @@ where
     }
 
     crate::mainutils::source::remember_parse_context(&combined);
-    let mut exprs = with_required_current_instance(|instance| unsafe {
-        crate::eval::parser::parse_expressions(&combined, &mut (*instance).arena)
-            .map_err(|err| err.to_string())
-    })?;
+    let mut exprs = unsafe {
+        crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse_expressions(&combined, arena, factory)
+                .map_err(|err| err.to_string())
+        })
+    }?;
     crate::eval::parser::flush_literal_warnings();
     if let Some(limit) = limit {
         exprs.truncate(limit);
@@ -232,21 +243,24 @@ where
     Ok(exprs)
 }
 
-fn parse_one_source(source: &str) -> Result<SEXP, String> {
+unsafe fn parse_one_source<'session>(source: &str) -> Result<Sexp<'session>, String> {
     crate::mainutils::source::remember_parse_context(source);
-    let parsed = with_required_current_instance(|instance| unsafe {
-        crate::eval::parser::parse(source, &mut (*instance).arena).map_err(|err| err.to_string())
-    });
+    let factory = unsafe { crate::eval::parser::active_factory() };
+    let parsed = unsafe {
+        crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse(source, arena, factory).map_err(|err| err.to_string())
+        })
+    };
     crate::eval::parser::flush_literal_warnings();
     parsed
 }
 
-unsafe fn exprs_to_exprsxp(exprs: Vec<SEXP>) -> SEXP {
+unsafe fn exprs_to_exprsxp(exprs: Vec<Sexp<'_>>) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, exprs.len() as R_xlen_t);
         let _result_guard = protect(result);
-        for (i, expr) in exprs.into_iter().enumerate() {
-            SET_VECTOR_ELT(result, i as R_xlen_t, expr);
+        for (i, expr) in exprs.iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, expr.clone().as_raw());
         }
         result
     }
@@ -260,7 +274,7 @@ unsafe fn parse_eval_source(source: &str, envir: SEXP) -> SEXP {
         } else {
             envir
         };
-        crate::eval::eval::Rf_eval(expr, rho)
+        crate::eval::eval::Rf_eval(expr.clone().as_raw(), rho)
     }
 }
 

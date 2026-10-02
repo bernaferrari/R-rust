@@ -23,6 +23,18 @@ fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
     }
 }
 
+fn parse_source<'session>(
+    session: &'session crate::sexp::session::RSession,
+    source: &str,
+) -> Result<Sexp<'session>, crate::eval::parser::ParseError> {
+    let factory = crate::sexp::object::SessionNodeFactory::new(session.owner_token().unwrap());
+    session.with_active_in(|owner| unsafe {
+        crate::sexp::memory::with_arena_in(owner, |arena| {
+            crate::eval::parser::parse(source, arena, factory)
+        })
+    })
+}
+
 fn make_test_env() -> SEXP {
     unsafe {
         let env = crate::sexp::memory_ext::allocSExp(SEXPTYPE::ENVSXP);
@@ -221,8 +233,14 @@ fn test_altrep_compact_realseq() {
 fn test_altrep_new_altrep_data_roundtrip() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
-        unsafe extern "C" fn length(_x: SEXP) -> i64 { 1 }
-        let class_sym = crate::mainutils::altrep::R_make_altinteger_class(c"roundtrip".as_ptr(), c"test".as_ptr(), std::ptr::null_mut());
+        unsafe extern "C" fn length(_x: SEXP) -> i64 {
+            1
+        }
+        let class_sym = crate::mainutils::altrep::R_make_altinteger_class(
+            c"roundtrip".as_ptr(),
+            c"test".as_ptr(),
+            std::ptr::null_mut(),
+        );
         crate::mainutils::altrep::R_set_altrep_length_method(class_sym, Some(length));
         let data1 = Rf_ScalarInteger(100);
         let data2 = Rf_ScalarReal(3.14);
@@ -427,7 +445,10 @@ fn trycatch_result_survives_finally_collection() {
         "#,
     );
     assert_eq!(is_error, 0);
-    assert_eq!(value_ok, 1, "handler withVisible value survived finally gc()");
+    assert_eq!(
+        value_ok, 1,
+        "handler withVisible value survived finally gc()"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -748,19 +769,17 @@ fn test_session_eval_parsed_exprs() {
 fn test_eval_arithmetic_direct() {
     let _session = crate::sexp::session::RSession::new();
     use crate::eval::eval::eval_safe;
-    use crate::eval::parser;
     use crate::sexp::init;
 
     unsafe {
         init::initialize_r();
     }
 
-    let mut arena = crate::sexp::memory::RArena::new();
-    let expr = must(parser::parse("1 + 2", &mut arena));
+    let expr = must(parse_source(&_session, "1 + 2"));
 
     let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
-    let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
+    let e = expr.clone();
 
     let result = unsafe {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -780,7 +799,6 @@ fn test_eval_arithmetic_direct() {
 fn test_eval_abs_debug() {
     let _session = crate::sexp::session::RSession::new();
     use crate::eval::eval::eval_safe;
-    use crate::eval::parser;
     use crate::sexp::accessors::{CAR, CDR, TYPEOF};
     use crate::sexp::init;
 
@@ -788,15 +806,15 @@ fn test_eval_abs_debug() {
         init::initialize_r();
     }
 
-    let mut arena = crate::sexp::memory::RArena::new();
     let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
 
-    let expr = must(parser::parse("abs(-5)", &mut arena));
-    eprintln!("expr ptr={:p}", expr);
-    eprintln!("top type={}", unsafe { TYPEOF(expr) });
-    eprintln!("car type={}", unsafe { TYPEOF(CAR(expr)) });
-    let args = unsafe { CDR(expr) };
+    let expr = must(parse_source(&_session, "abs(-5)"));
+    let raw_expr = expr.clone().as_raw();
+    eprintln!("raw_expr ptr={:p}", raw_expr);
+    eprintln!("top type={}", unsafe { TYPEOF(raw_expr) });
+    eprintln!("car type={}", unsafe { TYPEOF(CAR(raw_expr)) });
+    let args = unsafe { CDR(raw_expr) };
     eprintln!("args type={}", unsafe { TYPEOF(args) });
     let arg1 = unsafe { CAR(args) };
     eprintln!("arg1 type={}", unsafe { TYPEOF(arg1) });
@@ -807,7 +825,7 @@ fn test_eval_abs_debug() {
         eprintln!("inner_arg1 type={}", unsafe { TYPEOF(inner_arg1) });
     }
 
-    let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
+    let e = expr.clone();
     let result = unsafe {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
         eval_safe(e, env.clone())
@@ -819,7 +837,7 @@ fn test_eval_abs_debug() {
             .map(|v| format!("{:?} len={}", v.clone().typeof_(), v.clone().len()))
     );
 
-    let inner_expr = unsafe { CAR(CDR(expr)) };
+    let inner_expr = unsafe { CAR(CDR(raw_expr)) };
     eprintln!("inner_expr type={}", unsafe { TYPEOF(inner_expr) });
     let inner_e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(inner_expr) };
     let inner_result = unsafe {
@@ -845,14 +863,12 @@ fn test_eval_abs_debug() {
 fn test_eval_math_builtins() {
     let _session = crate::sexp::session::RSession::new();
     use crate::eval::eval::eval_safe;
-    use crate::eval::parser;
     use crate::sexp::init;
 
     unsafe {
         init::initialize_r();
     }
 
-    let mut arena = crate::sexp::memory::RArena::new();
     let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
 
@@ -874,8 +890,8 @@ fn test_eval_math_builtins() {
     ];
 
     for (code, expected) in cases {
-        let expr = must(parser::parse(code, &mut arena));
-        let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
+        let expr = must(parse_source(&_session, code));
+        let e = expr.clone();
         let result = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             eval_safe(e, env.clone())
@@ -905,19 +921,17 @@ fn test_eval_math_builtins() {
 fn test_eval_length_builtin() {
     let _session = crate::sexp::session::RSession::new();
     use crate::eval::eval::eval_safe;
-    use crate::eval::parser;
     use crate::sexp::init;
 
     unsafe {
         init::initialize_r();
     }
 
-    let mut arena = crate::sexp::memory::RArena::new();
     let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
 
-    let expr = must(parser::parse("length(42)", &mut arena));
-    let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
+    let expr = must(parse_source(&_session, "length(42)"));
+    let e = expr.clone();
     let result = must(unsafe {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
         eval_safe(e, env)

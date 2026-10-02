@@ -4,7 +4,7 @@
 //! environment chain itself is owned by `RInstance`; there is intentionally no
 //! process-global fallback interpreter.
 
-use super::accessors::{CDR, SETCAR, SETTAG, SET_SYMVALUE, SYMVALUE, TYPEOF};
+use super::accessors::{CDR, SET_SYMVALUE, SETCAR, SETTAG, SYMVALUE, TYPEOF};
 
 use super::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang3, Rf_lang4, Rf_mkString,
@@ -95,8 +95,6 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
         crate::mainutils::options::InitOptions();
         initialize_base_functions(base_env);
         initialize_primitive_metadata_in(base_env);
-
-
     }
 }
 
@@ -137,7 +135,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
         // Installed after as.list so parse/eval can see the generic.
 
-
         // GNU: as.list <- function(x, ...) UseMethod("as.list")
         // The builtin stays as as.list.default; as.list.function is a
         // separate method so as.list(sum) is list(NULL) and as.list(as.list)
@@ -160,16 +157,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
 
         // GNU formals.R. sys.call() forced as as.list's argument names this
         // frame, so a missing tag stays the missing symbol (rport-qc8ct).
-        eval_base_binding(
-            base_env,
-            "alist",
-            "function(...) as.list(sys.call())[-1L]",
-        );
-        eval_base_binding(
-            base_env,
-            "strwidth",
-            include_str!("gnu_strwidth.R"),
-        );
+        eval_base_binding(base_env, "alist", "function(...) as.list(sys.call())[-1L]");
+        eval_base_binding(base_env, "strwidth", include_str!("gnu_strwidth.R"));
         eval_base_binding(
             base_env,
             "as.graphicsAnnot",
@@ -202,16 +191,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  rep(\"#000000\", n)\n\
              }",
         );
-        eval_base_binding(
-            base_env,
-            "mosaicplot",
-            "function(x, ...) NULL",
-        );
-        eval_base_binding(
-            base_env,
-            "dir",
-            "function(...) list.files(...)",
-        );
+        eval_base_binding(base_env, "mosaicplot", "function(x, ...) NULL");
+        eval_base_binding(base_env, "dir", "function(...) list.files(...)");
         eval_base_binding(
             base_env,
             "[.simple.list",
@@ -291,20 +272,13 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
 }"#,
         );
 
-
-
-
         // GNU pairlist.R: closures over .Internal(as.vector(..., "pairlist")).
         eval_base_binding(
             base_env,
             "as.pairlist",
             "function(x) .Internal(as.vector(x, \"pairlist\"))",
         );
-        eval_base_binding(
-            base_env,
-            "pairlist",
-            "function(...) as.pairlist(list(...))",
-        );
+        eval_base_binding(base_env, "pairlist", "function(...) as.pairlist(list(...))");
         // GNU as.R / unlist.R / New-Internal.R: these are closures, not
         // primitives. methods::.BasicFunsList still lists them so setMethod
         // can wrap the closure (primitives.R extraS4).
@@ -390,7 +364,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              else warning(msg, domain = NA, call. = FALSE)\n\
              }",
         );
-        eval_base_binding(base_env, "split", "function(x, f, drop = FALSE, ...) UseMethod(\"split\")");
+        eval_base_binding(
+            base_env,
+            "split",
+            "function(x, f, drop = FALSE, ...) UseMethod(\"split\")",
+        );
         eval_base_binding(
             base_env,
             "split.default",
@@ -431,7 +409,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
         eval_base_binding(base_env, "unsplit", include_str!("gnu_unsplit.R"));
-        eval_base_binding(base_env, "stripchart", "function(x, ...) UseMethod(\"stripchart\")");
+        eval_base_binding(
+            base_env,
+            "stripchart",
+            "function(x, ...) UseMethod(\"stripchart\")",
+        );
         eval_base_binding(
             base_env,
             "stripchart.default",
@@ -452,7 +434,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
         eval_base_binding(base_env, "tapply", include_str!("gnu_tapply.R"));
-        eval_base_binding(base_env, "is.data.frame", "function(x) inherits(x, \"data.frame\")");
+        eval_base_binding(
+            base_env,
+            "is.data.frame",
+            "function(x) inherits(x, \"data.frame\")",
+        );
         eval_base_binding(
             base_env,
             ".set_row_names",
@@ -654,11 +640,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              x\n\
              }",
         );
-        eval_base_binding(
-            base_env,
-            ".rowNamesDF<-",
-            include_str!("gnu_rowNamesDF.R"),
-        );
+        eval_base_binding(base_env, ".rowNamesDF<-", include_str!("gnu_rowNamesDF.R"));
         eval_base_binding(
             base_env,
             "as.data.frame.matrix",
@@ -740,7 +722,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         // GNU duplicated.R / factor.R: closures, not primitives.
         eval_base_binding(base_env, "is.factor", "function(x) inherits(x, \"factor\")");
-        eval_base_binding(base_env, "is.ordered", "function(x) inherits(x, \"ordered\")");
+        eval_base_binding(
+            base_env,
+            "is.ordered",
+            "function(x) inherits(x, \"ordered\")",
+        );
         eval_base_binding(
             base_env,
             "unique",
@@ -838,7 +824,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
         eval_base_binding(base_env, "levels", "function(x) UseMethod(\"levels\")");
-        eval_base_binding(base_env, "levels.default", "function(x) attr(x, \"levels\")");
+        eval_base_binding(
+            base_env,
+            "levels.default",
+            "function(x) attr(x, \"levels\")",
+        );
         eval_base_binding(base_env, "nlevels", "function(x) length(levels(x))");
         eval_base_binding(
             base_env,
@@ -915,10 +905,26 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "replace",
             "function(x, list, values) { x[list] <- values; x }",
         );
-        eval_base_binding(base_env, "asS4", "function(object, flag = TRUE, complete = TRUE) .Internal(setS4Object(object, flag, complete))");
-        eval_base_binding(base_env, "asS3", "function(object, flag = TRUE, complete = TRUE) .Internal(setS4Object(object, !as.logical(flag), complete))");
-        eval_base_binding(base_env, "enquote", "function(cl) as.call(list(quote(base::quote), cl))");
-        eval_base_binding(base_env, "exists", "function (x, where = -1, envir = if (missing(frame)) as.environment(where) else sys.frame(frame), frame, mode = \"any\", inherits = TRUE) .Internal(exists(x, envir, mode, inherits))");
+        eval_base_binding(
+            base_env,
+            "asS4",
+            "function(object, flag = TRUE, complete = TRUE) .Internal(setS4Object(object, flag, complete))",
+        );
+        eval_base_binding(
+            base_env,
+            "asS3",
+            "function(object, flag = TRUE, complete = TRUE) .Internal(setS4Object(object, !as.logical(flag), complete))",
+        );
+        eval_base_binding(
+            base_env,
+            "enquote",
+            "function(cl) as.call(list(quote(base::quote), cl))",
+        );
+        eval_base_binding(
+            base_env,
+            "exists",
+            "function (x, where = -1, envir = if (missing(frame)) as.environment(where) else sys.frame(frame), frame, mode = \"any\", inherits = TRUE) .Internal(exists(x, envir, mode, inherits))",
+        );
         eval_base_binding(
             base_env,
             ".knownS3Generics",
@@ -963,8 +969,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "sys.parent",
             "function(n = 1L) .Internal(sys.parent(n))",
         );
-        eval_base_binding(base_env, "sys.parents", "function() .Internal(sys.parents())");
-        eval_base_binding(base_env, "sys.on.exit", "function() .Internal(sys.on.exit())");
+        eval_base_binding(
+            base_env,
+            "sys.parents",
+            "function() .Internal(sys.parents())",
+        );
+        eval_base_binding(
+            base_env,
+            "sys.on.exit",
+            "function() .Internal(sys.on.exit())",
+        );
         eval_base_binding(
             base_env,
             "sys.status",
@@ -980,7 +994,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "which.max", include_str!("gnu_which_max.R"));
         eval_base_binding(base_env, "stopifnot", include_str!("gnu_stopifnot.R"));
         eval_base_binding(base_env, "append", include_str!("gnu_append.R"));
-        eval_base_binding(base_env, "Sys.setLanguage", include_str!("gnu_set_language.R"));
+        eval_base_binding(
+            base_env,
+            "Sys.setLanguage",
+            include_str!("gnu_set_language.R"),
+        );
         eval_base_binding(
             base_env,
             "getElement",
@@ -1014,11 +1032,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              obj\n\
              }",
         );
-        eval_base_binding(
-            base_env,
-            "%||%",
-            "function(x, y) if (is.null(x)) y else x",
-        );
+        eval_base_binding(base_env, "%||%", "function(x, y) if (is.null(x)) y else x");
         eval_base_binding(
             base_env,
             "structure",
@@ -1042,10 +1056,18 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Data\n\
              }",
         );
-        eval_base_binding(base_env, "mostattributes<-", include_str!("gnu_mostattributes.R"));
+        eval_base_binding(
+            base_env,
+            "mostattributes<-",
+            include_str!("gnu_mostattributes.R"),
+        );
         eval_base_binding(base_env, "format.pval", include_str!("gnu_format_pval.R"));
         eval_base_binding(base_env, "format", "function(x, ...) UseMethod(\"format\")");
-        eval_base_binding(base_env, "format.default", include_str!("gnu_format_default.R"));
+        eval_base_binding(
+            base_env,
+            "format.default",
+            include_str!("gnu_format_default.R"),
+        );
         eval_base_binding(base_env, "prettyNum", include_str!("gnu_prettyNum.R"));
         eval_base_binding(
             base_env,
@@ -1107,29 +1129,17 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                 x\n\
             }",
         );
-        eval_base_binding(
-            base_env,
-            "diff",
-            "function(x, ...) UseMethod(\"diff\")",
-        );
-        eval_base_binding(
-            base_env,
-            "diff.default",
-            include_str!("gnu_diff_default.R"),
-        );
-        eval_base_binding(
-            base_env,
-            "curve",
-            include_str!("gnu_curve.R"),
-        );
-        eval_base_binding(
-            base_env,
-            "proportions",
-            include_str!("gnu_proportions.R"),
-        );
+        eval_base_binding(base_env, "diff", "function(x, ...) UseMethod(\"diff\")");
+        eval_base_binding(base_env, "diff.default", include_str!("gnu_diff_default.R"));
+        eval_base_binding(base_env, "curve", include_str!("gnu_curve.R"));
+        eval_base_binding(base_env, "proportions", include_str!("gnu_proportions.R"));
         eval_base_binding(base_env, "prop.table", "proportions");
         eval_base_binding(base_env, "C_PDF", "\"C_PDF\"");
-        eval_base_binding(base_env, "pdf", "function(file = \"Rplots.pdf\", ...) .External(C_PDF, file)");
+        eval_base_binding(
+            base_env,
+            "pdf",
+            "function(file = \"Rplots.pdf\", ...) .External(C_PDF, file)",
+        );
         eval_base_binding(base_env, "dev.off", "function(...) 1L");
         eval_base_binding(base_env, "postscript", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "legend", "function(...) invisible(NULL)");
@@ -1139,7 +1149,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "as.null", "function(x) NULL");
         eval_base_binding(base_env, "mtext", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "duplicated", include_str!("gnu_duplicated.R"));
-        eval_base_binding(base_env, "duplicated.default", include_str!("gnu_duplicated_default.R"));
+        eval_base_binding(
+            base_env,
+            "duplicated.default",
+            include_str!("gnu_duplicated_default.R"),
+        );
         eval_base_binding(
             base_env,
             "duplicated.data.frame",
@@ -1171,11 +1185,19 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "apropos", include_str!("gnu_apropos.R"));
         eval_base_binding(base_env, "persp", "function(...) invisible(NULL)");
-        eval_base_binding(base_env, "heat.colors", "function(n, ...) rep(\"#FF0000\", n)");
+        eval_base_binding(
+            base_env,
+            "heat.colors",
+            "function(n, ...) rep(\"#FF0000\", n)",
+        );
         eval_base_binding(base_env, "rainbow", "function(n, ...) rep(\"#FF0000\", n)");
         eval_base_binding(base_env, "plot.formula", include_str!("gnu_plot_formula.R"));
         eval_base_binding(base_env, "sunflowerplot", "function(...) invisible(NULL)");
-        eval_base_binding(base_env, "plot.data.frame", include_str!("gnu_plot_data_frame.R"));
+        eval_base_binding(
+            base_env,
+            "plot.data.frame",
+            include_str!("gnu_plot_data_frame.R"),
+        );
         eval_base_binding(base_env, "colorRamp", include_str!("gnu_color_ramp.R"));
         eval_base_binding(
             base_env,
@@ -1194,7 +1216,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             include_str!("gnu_subset_data_frame.R"),
         );
         eval_base_binding(base_env, "relist", include_str!("gnu_relist.R"));
-        eval_base_binding(base_env, "relist.default", include_str!("gnu_relist_default.R"));
+        eval_base_binding(
+            base_env,
+            "relist.default",
+            include_str!("gnu_relist_default.R"),
+        );
         eval_base_binding(base_env, "relist.list", include_str!("gnu_relist_list.R"));
         eval_base_binding(base_env, "outer", include_str!("gnu_outer.R"));
         eval_base_binding(base_env, "%o%", "function(X, Y) outer(X, Y)");
@@ -1211,13 +1237,13 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "getAnywhere", include_str!("gnu_getAnywhere.R"));
         eval_base_binding(base_env, "prompt", include_str!("gnu_prompt.R"));
         eval_base_binding(base_env, "shQuote", include_str!("gnu_shquote.R"));
+        eval_base_binding(base_env, "?", "{ `?` <- function(e1, e2) NULL; `?` }");
+        eval_base_binding(base_env, "help", "{ help <- function(...) NULL; help }");
         eval_base_binding(
             base_env,
-            "?",
-            "{ `?` <- function(e1, e2) NULL; `?` }",
+            "prompt.default",
+            include_str!("gnu_prompt_default.R"),
         );
-        eval_base_binding(base_env, "help", "{ help <- function(...) NULL; help }");
-        eval_base_binding(base_env, "prompt.default", include_str!("gnu_prompt_default.R"));
         eval_base_binding(
             base_env,
             "deparse1",
@@ -1225,13 +1251,21 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "srcfile", include_str!("gnu_srcfile.R"));
         eval_base_binding(base_env, "R.home", include_str!("gnu_r_home.R"));
-        eval_base_binding(base_env, "as.expression", "function(x, ...) UseMethod(\"as.expression\")");
+        eval_base_binding(
+            base_env,
+            "as.expression",
+            "function(x, ...) UseMethod(\"as.expression\")",
+        );
         eval_base_binding(
             base_env,
             "as.expression.default",
             "function(x, ...) .Internal(as.vector(x, \"expression\"))",
         );
-        eval_base_binding(base_env, "labels", "function(object, ...) UseMethod(\"labels\")");
+        eval_base_binding(
+            base_env,
+            "labels",
+            "function(object, ...) UseMethod(\"labels\")",
+        );
         eval_base_binding(
             base_env,
             "labels.default",
@@ -1246,7 +1280,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              if (how == \"unlist\") unlist(res, recursive = TRUE) else res\n\
              }",
         );
-        eval_base_binding(base_env, "within", "function(data, expr, ...) UseMethod(\"within\")");
+        eval_base_binding(
+            base_env,
+            "within",
+            "function(data, expr, ...) UseMethod(\"within\")",
+        );
         eval_base_binding(
             base_env,
             "within.data.frame",
@@ -1283,7 +1321,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "reorder",
             "function(x, ...) if (inherits(x, \"dendrogram\")) .rport_reorder_dendrogram(x, ..1) else .rport_reorder_default(x, ..1)",
         );
-        eval_base_binding(base_env, "as.hclust", "function(x, ...) UseMethod(\"as.hclust\")");
+        eval_base_binding(
+            base_env,
+            "as.hclust",
+            "function(x, ...) UseMethod(\"as.hclust\")",
+        );
         eval_base_binding(
             base_env,
             "as.hclust.default",
@@ -1294,21 +1336,33 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "tar", include_str!("gnu_tar.R"));
         eval_base_binding(base_env, "kronecker", include_str!("gnu_kronecker.R"));
+        eval_base_binding(base_env, "ps.options", "function(...) list(onefile = TRUE)");
+        eval_base_binding(base_env, "match.fun", include_str!("gnu_match_fun.R"));
         eval_base_binding(
             base_env,
-            "ps.options",
-            "function(...) list(onefile = TRUE)",
+            "summaryRprof",
+            include_str!("gnu_summary_rprof.R"),
         );
-        eval_base_binding(base_env, "match.fun", include_str!("gnu_match_fun.R"));
-        eval_base_binding(base_env, "summaryRprof", include_str!("gnu_summary_rprof.R"));
-        eval_base_binding(base_env, "subset.matrix", include_str!("gnu_subset_matrix.R"));
+        eval_base_binding(
+            base_env,
+            "subset.matrix",
+            include_str!("gnu_subset_matrix.R"),
+        );
         eval_base_binding(base_env, "kappa", include_str!("gnu_kappa.R"));
-        eval_base_binding(base_env, "kappa.default", include_str!("gnu_kappa_default.R"));
+        eval_base_binding(
+            base_env,
+            "kappa.default",
+            include_str!("gnu_kappa_default.R"),
+        );
         eval_base_binding(base_env, "kappa.lm", include_str!("gnu_kappa_lm.R"));
         eval_base_binding(base_env, "kappa.qr", include_str!("gnu_kappa_qr.R"));
         eval_base_binding(base_env, ".kappa_tri", include_str!("gnu_kappa_tri.R"));
         eval_base_binding(base_env, "merge", include_str!("gnu_merge.R"));
-        eval_base_binding(base_env, "merge.default", include_str!("gnu_merge_default.R"));
+        eval_base_binding(
+            base_env,
+            "merge.default",
+            include_str!("gnu_merge_default.R"),
+        );
         eval_base_binding(
             base_env,
             "merge.data.frame",
@@ -1319,11 +1373,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "maintainer",
             "function(pkg) { force(pkg); desc <- try(packageDescription(pkg), silent = TRUE); if (is.list(desc)) gsub(\"\\n\", \" \", desc$Maintainer, fixed = TRUE) else NA_character_ }",
         );
-        eval_base_binding(
-            base_env,
-            "graphics.off",
-            "function() invisible()",
-        );
+        eval_base_binding(base_env, "graphics.off", "function() invisible()");
         eval_base_binding(
             base_env,
             "dev.interactive",
@@ -1344,7 +1394,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "all.equal",
             "function(target, current, ...) UseMethod(\"all.equal\")",
         );
-        eval_base_binding(base_env, "attr.all.equal", include_str!("gnu_attr_all_equal.R"));
+        eval_base_binding(
+            base_env,
+            "attr.all.equal",
+            include_str!("gnu_attr_all_equal.R"),
+        );
         eval_base_binding(
             base_env,
             "count.fields",
@@ -1406,9 +1460,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "srcfilecopy", include_str!("gnu_srcfilecopy.R"));
 
-    eval_base_binding(base_env, ".traceback", include_str!("gnu_dot_traceback.R"));
-    eval_base_binding(base_env, "traceback", include_str!("gnu_traceback.R"));
-    eval_base_binding(base_env, "get_all_vars", include_str!("gnu_get_all_vars.R"));
+        eval_base_binding(base_env, ".traceback", include_str!("gnu_dot_traceback.R"));
+        eval_base_binding(base_env, "traceback", include_str!("gnu_traceback.R"));
+        eval_base_binding(base_env, "get_all_vars", include_str!("gnu_get_all_vars.R"));
         eval_base_binding(base_env, "poly", include_str!("gnu_poly.R"));
         eval_base_binding(base_env, "polym", include_str!("gnu_polym.R"));
         eval_base_binding(base_env, "predict.poly", include_str!("gnu_predict_poly.R"));
@@ -1574,7 +1628,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              x\n\
              }",
         );
-        eval_base_binding(base_env, "row.names", "function(x) UseMethod(\"row.names\")");
+        eval_base_binding(
+            base_env,
+            "row.names",
+            "function(x) UseMethod(\"row.names\")",
+        );
         eval_base_binding(
             base_env,
             "row.names.data.frame",
@@ -1614,7 +1672,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "chkDots", include_str!("gnu_chkDots.R"));
         eval_base_binding(base_env, "seq.default", include_str!("gnu_seq_default.R"));
         eval_base_binding(base_env, "units", "function(x) UseMethod(\"units\")");
-        eval_base_binding(base_env, "units<-", "function(x, value) UseMethod(\"units<-\")");
+        eval_base_binding(
+            base_env,
+            "units<-",
+            "function(x, value) UseMethod(\"units<-\")",
+        );
         eval_base_binding(
             base_env,
             "substring<-",
@@ -1693,13 +1755,41 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(base_env, "path.package", include_str!("gnu_path_package.R"));
         eval_base_binding(base_env, "Negate", include_str!("gnu_negate.R"));
-        eval_base_binding(base_env, "summary.default", include_str!("gnu_summary_default.R"));
-        eval_base_binding(base_env, "format.summaryDefault", include_str!("gnu_format_summary.R"));
-        eval_base_binding(base_env, "print.summaryDefault", include_str!("gnu_print_summary.R"));
-        eval_base_binding(base_env, "summary.difftime", include_str!("gnu_summary_difftime.R"));
-        eval_base_binding(base_env, "duplicated.warnings", include_str!("gnu_duplicated_warnings.R"));
-        eval_base_binding(base_env, "unique.warnings", include_str!("gnu_unique_warnings.R"));
-        eval_base_binding(base_env, "isS3stdGeneric", include_str!("gnu_isS3stdGeneric.R"));
+        eval_base_binding(
+            base_env,
+            "summary.default",
+            include_str!("gnu_summary_default.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "format.summaryDefault",
+            include_str!("gnu_format_summary.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "print.summaryDefault",
+            include_str!("gnu_print_summary.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "summary.difftime",
+            include_str!("gnu_summary_difftime.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "duplicated.warnings",
+            include_str!("gnu_duplicated_warnings.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "unique.warnings",
+            include_str!("gnu_unique_warnings.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "isS3stdGeneric",
+            include_str!("gnu_isS3stdGeneric.R"),
+        );
         eval_base_binding(base_env, "isS3method", include_str!("gnu_isS3method.R"));
         eval_base_binding(base_env, "Reduce", include_str!("gnu_reduce.R"));
         eval_base_binding(base_env, "axTicks", include_str!("gnu_axTicks.R"));
@@ -1707,7 +1797,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "bxp", include_str!("gnu_bxp.R"));
         eval_base_binding(base_env, "reformulate", include_str!("gnu_reformulate.R"));
         eval_base_binding(base_env, ".Deprecated", include_str!("gnu_deprecated.R"));
-        eval_base_binding(base_env, "simpleMessage", include_str!("gnu_simple_message.R"));
+        eval_base_binding(
+            base_env,
+            "simpleMessage",
+            include_str!("gnu_simple_message.R"),
+        );
         eval_base_binding(base_env, "getHook", include_str!("gnu_userhooks.R"));
         eval_base_binding(base_env, "grepRaw", include_str!("gnu_grepRaw.R"));
         eval_base_binding(base_env, "symnum", include_str!("gnu_symnum.R"));
@@ -1811,8 +1905,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "length<-.POSIXlt",
             include_str!("gnu_lengthgets_POSIXlt.R"),
         );
-        eval_base_binding(base_env, "print.POSIXct", include_str!("gnu_print_POSIXt.R"));
-        eval_base_binding(base_env, "print.POSIXlt", include_str!("gnu_print_POSIXt.R"));
+        eval_base_binding(
+            base_env,
+            "print.POSIXct",
+            include_str!("gnu_print_POSIXt.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "print.POSIXlt",
+            include_str!("gnu_print_POSIXt.R"),
+        );
         eval_base_binding(
             base_env,
             ".valid.factor",
@@ -1885,12 +1987,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  lines(lowess(x[ok], y[ok], f = span, iter = iter), col = col.smooth, ...)\n\
              }",
         );
-        eval_base_binding(
-            base_env,
-            "strheight",
-            include_str!("gnu_strheight.R"),
-        );
-
+        eval_base_binding(base_env, "strheight", include_str!("gnu_strheight.R"));
 
         eval_base_binding(
             base_env,
@@ -1935,8 +2032,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "simplify2array",
             include_str!("../mainutils/base_wrappers/simplify2array.R"),
         );
-
-
 
         // GNU sample.R: closures over .Internal(sample)/sample2, not primitives.
         // setMethod("sample", ...) needs a function skeleton (rport-2gpp.2).
@@ -2028,7 +2123,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             let fun = crate::sexp::envir::R_findVarInFrame(base_env, sym);
             let _ = crate::eval::bc_compile::compile_closure(fun);
         }
-        eval_base_binding(base_env, "is.na<-", "function(x, value) UseMethod(\"is.na<-\")");
+        eval_base_binding(
+            base_env,
+            "is.na<-",
+            "function(x, value) UseMethod(\"is.na<-\")",
+        );
         eval_base_binding(
             base_env,
             "is.na<-.default",
@@ -2038,13 +2137,29 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "is.table", "function(x) inherits(x, \"table\")");
         eval_base_binding(base_env, "as.table", include_str!("gnu_as_table.R"));
         eval_base_binding(base_env, "table", include_str!("gnu_table.R"));
-        eval_base_binding(base_env, "conformToProto", include_str!("gnu_conform_to_proto.R"));
+        eval_base_binding(
+            base_env,
+            "conformToProto",
+            include_str!("gnu_conform_to_proto.R"),
+        );
         eval_base_binding(base_env, "strcapture", include_str!("gnu_strcapture.R"));
         eval_base_binding(base_env, "xtabs", include_str!("gnu_xtabs.R"));
-        eval_base_binding(base_env, "as.table.default", include_str!("gnu_as_table_default.R"));
+        eval_base_binding(
+            base_env,
+            "as.table.default",
+            include_str!("gnu_as_table_default.R"),
+        );
         eval_base_binding(base_env, "as.array", include_str!("gnu_as_array.R"));
-        eval_base_binding(base_env, "as.array.default", include_str!("gnu_as_array_default.R"));
-        eval_base_binding(base_env, "provideDimnames", include_str!("gnu_provide_dimnames.R"));
+        eval_base_binding(
+            base_env,
+            "as.array.default",
+            include_str!("gnu_as_array_default.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "provideDimnames",
+            include_str!("gnu_provide_dimnames.R"),
+        );
         eval_base_binding(base_env, "kmeans", include_str!("gnu_kmeans.R"));
 
         // GNU utils/R/sourceutils.R: getSrcref for rematched S4 methods
@@ -2095,15 +2210,14 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
 
-
-
-
-
-
         // GNU print.R: print is UseMethod, not a primitive. setMethod("print")
         // uses the closure as the generic skeleton (rport-2gpp.2.3).
         eval_base_binding(base_env, "print", "function(x, ...) UseMethod(\"print\")");
-        eval_base_binding(base_env, "summary", "function(object, ...) UseMethod(\"summary\")");
+        eval_base_binding(
+            base_env,
+            "summary",
+            "function(object, ...) UseMethod(\"summary\")",
+        );
         eval_base_binding(
             base_env,
             "summary.factor",
@@ -2205,11 +2319,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
         eval_base_binding(base_env, "diff.ts", include_str!("gnu_diff_ts.R"));
-        eval_base_binding(
-            base_env,
-            "mean",
-            "function(x, ...) UseMethod(\"mean\")",
-        );
+        eval_base_binding(base_env, "mean", "function(x, ...) UseMethod(\"mean\")");
         eval_base_binding(
             base_env,
             "mean.default",
@@ -2254,8 +2364,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
 
-
-
         eval_base_binding(
             base_env,
             "print.default",
@@ -2285,9 +2393,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(..., deparse.level = 1) .Internal(rbind(deparse.level, ...))",
         );
 
-
-
-
         eval_base_binding(
             base_env,
             "formals",
@@ -2306,16 +2411,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Internal(body(fun))\n\
              }",
         );
-        eval_base_binding(
-            base_env,
-            "Sys.info",
-            "function() .Internal(Sys.info())",
-        );
-        eval_base_binding(
-            base_env,
-            "formalArgs",
-            "function(def) names(formals(def))",
-        );
+        eval_base_binding(base_env, "Sys.info", "function() .Internal(Sys.info())");
+        eval_base_binding(base_env, "formalArgs", "function(def) names(formals(def))");
 
         // GNU formals.R: replacement functions are closures, not primitives.
         eval_base_binding(
@@ -2346,8 +2443,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  envir)\n\
              }",
         );
-
-
 
         // GNU apply.R: n-d arrays, empty-extent MARGIN, and FUN=NULL collapse.
         eval_base_binding(base_env, "apply", include_str!("gnu_apply.R"));
@@ -2570,8 +2665,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .rport_toeplitz(x, r, symmetric)",
         );
 
-
-
         eval_base_binding(
             base_env,
             "trace",
@@ -2630,13 +2723,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              }",
         );
 
-
-
-
-
-
-
-
         eval_base_binding(
             base_env,
             "matrix",
@@ -2645,11 +2731,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              matrix_impl(data, nrow, ncol, byrow, dimnames)\n\
              }",
         );
-
-
-
-
-
 
         // `identical` is an ordinary base closure in GNU R, not the internal
         // primitive itself. Keeping that wrapper matters for argument
@@ -2808,8 +2889,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(x, table) match(x, table, nomatch = 0L) == 0L",
         );
 
-
-
         // GNU datetime.R constructors: class + tzone/units only.
         eval_base_binding(
             base_env,
@@ -2821,11 +2900,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             ".difftime",
             "function(xx, units, cl = \"difftime\") { class(xx) <- cl; attr(xx, \"units\") <- units; xx }",
         );
-        eval_base_binding(
-            base_env,
-            "names.POSIXlt",
-            "function(x) names(x$year)",
-        );
+        eval_base_binding(base_env, "names.POSIXlt", "function(x) names(x$year)");
         eval_base_binding(
             base_env,
             "length.POSIXlt",
@@ -2874,10 +2949,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             for (i, sec) in LEAP.iter().enumerate() {
                 *crate::sexp::accessors::REAL(leap).add(i) = *sec;
             }
-            let klass = crate::sexp::constructors::Rf_allocVector3(
-                crate::sexp::ffi::SEXPTYPE::STRSXP,
-                2,
-            );
+            let klass =
+                crate::sexp::constructors::Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::STRSXP, 2);
             let _k = super::protect::protect(klass);
             crate::sexp::accessors::SET_STRING_ELT(
                 klass,
@@ -2921,7 +2994,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // and eval-etc's withVisible(withAutoprint({...})) match stock.
         eval_base_binding(
             base_env,
-
             "withAutoprint",
             r#"function(exprs, evaluated = FALSE, local = parent.frame(),
                           print. = TRUE, echo = TRUE, max.deparse.length = Inf,
@@ -2946,15 +3018,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
            deparseCtrl = deparseCtrl, skip.echo = skip.echo, ...)
 }"#,
         );
-
-
-
-
-
-
-
-
-
 
         // GNU base/R/zzz.R: these names share one primitive, so S4 methods
         // set on `as.numeric` / `is.symbol` dispatch from the alias too.
@@ -3004,11 +3067,11 @@ unsafe fn retarget_base_closure_envs(base_env: SEXP) {
     }
 }
 
-
 unsafe fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
     unsafe {
+        let parser_factory = crate::eval::parser::active_factory();
         let parsed = super::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(source, arena)
+            crate::eval::parser::parse_expressions(source, arena, parser_factory.clone())
         });
         crate::eval::parser::flush_literal_warnings();
         let Ok(exprs) = parsed else {
@@ -3017,7 +3080,7 @@ unsafe fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
         if exprs.len() != 1 {
             return;
         }
-        let value = crate::eval::eval::Rf_eval(exprs[0], base_env);
+        let value = crate::eval::eval::Rf_eval(exprs[0].clone().as_raw(), base_env);
         let _v = super::protect::protect(value);
         let symbol = Rf_install_in_current(name);
         defineVar(symbol, value, base_env);
@@ -3025,8 +3088,6 @@ unsafe fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
         // Deparse uses SYMVALUE to distinguish primitives (PP_FUNCALL,
         // inlist++) from closures (plain call, no inlist++).
         SET_SYMVALUE(symbol, value);
-
-
     }
 }
 
@@ -3091,7 +3152,6 @@ unsafe fn initialize_special_environment_bindings(base_env: SEXP) {
         );
     }
 }
-
 
 #[derive(Clone, Copy)]
 enum FormalDefault {
@@ -3235,7 +3295,6 @@ const NON_GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto("enc2native", X, false),
     proto("enc2utf8", X, false),
     proto("environment<-", &[arg("fun"), arg("value")], false),
-
     proto("expression", DOTS, false),
     proto("forceAndCall", &[arg("n"), arg("FUN"), arg("...")], false),
     proto("gc.time", &[arg_default("on", FormalDefault::True)], false),
@@ -3524,10 +3583,6 @@ pub fn is_accounted_primitive_name(name: &str) -> bool {
 pub fn is_internal_generic_name(name: &str) -> bool {
     GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
 }
-
-
-
-
 
 unsafe fn formals_from_specs(specs: &[FormalSpec]) -> SEXP {
     unsafe {
@@ -3891,8 +3946,6 @@ mod tests {
             Some(TRUE)
         );
     }
-
-
 
     #[test]
     fn test_initialize_installs_machine_constants() {

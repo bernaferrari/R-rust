@@ -83,7 +83,6 @@ use std::{
     cell::Cell,
     collections::{HashMap, HashSet},
     rc::Rc,
-    sync::Arc,
 };
 #[cfg(test)]
 use std::ptr;
@@ -143,16 +142,19 @@ fn record_collection_in(state: &mut GcState, promoted: usize, freed: usize) {
 // GC Callback Hooks
 // ---------------------------------------------------------------------------
 
-/// Callback type for GC event notifications.
-pub type GcCallback = Box<dyn Fn(&GcStats) + Send + Sync>;
-type GcCallbackLease = Arc<dyn Fn(&GcStats) + Send + Sync>;
+/// Event callbacks run on their owning session's thread. They may capture
+/// ordinary thread-confined state, including checked values and Rc cells.
+pub type GcCallback = Box<dyn Fn(&GcStats)>;
+// Notification snapshots own shared leases; no state borrow spans callback
+// reentry or owner teardown, and no cross-thread dispatch is possible.
+type GcCallbackLease = Rc<dyn Fn(&GcStats)>;
 
 /// Register a callback to be invoked after each outer GC notification cycle.
 /// Callbacks may collect or register callbacks. New registrations participate
 /// in the next notification; nested collections update statistics without
 /// recursively notifying the same callbacks.
 pub fn register_gc_callback(cb: GcCallback) {
-    with_gc_state(|state| state.callbacks.push(Arc::from(cb)));
+    with_gc_state(|state| state.callbacks.push(Rc::from(cb)));
 }
 
 struct NotificationGuard(Rc<Cell<bool>>);

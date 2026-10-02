@@ -80,13 +80,13 @@ unsafe extern "C-unwind" fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate
     unsafe { io::countfields(args) }
 }
 
-unsafe extern "C-unwind" fn c_tzcode_type(
-    _args: crate::sexp::ffi::SEXP,
-) -> crate::sexp::ffi::SEXP {
+unsafe extern "C-unwind" fn c_tzcode_type(_args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { stubs::tzcode_type() }
 }
 
-unsafe extern "C-unwind" fn c_readtablehead(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+unsafe extern "C-unwind" fn c_readtablehead(
+    args: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
     unsafe { io::readtablehead(args) }
 }
 unsafe extern "C-unwind" fn c_octsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
@@ -167,17 +167,19 @@ pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
         {
             return;
         }
+        let parser_factory = crate::eval::parser::active_factory();
         let parsed = crate::sexp::memory::with_arena(|arena| {
             crate::eval::parser::parse_expressions(
                 "RweaveLatexRuncode <- makeRweaveLatexCodeRunner()",
                 arena,
+                parser_factory,
             )
         });
         crate::eval::parser::flush_literal_warnings();
         if let Ok(exprs) = parsed {
-            for expr in exprs {
+            for expr in &exprs {
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                    crate::eval::eval::Rf_eval(expr, env)
+                    crate::eval::eval::Rf_eval(expr.clone().as_raw(), env)
                 }));
             }
         }

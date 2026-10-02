@@ -53,7 +53,6 @@ fn result_from_sexp(sexp: Sexp<'_>) -> RResult {
         stdout: String::new(),
         stderr: String::new(),
     }
-
 }
 
 fn auto_print_error(payload: &(dyn std::any::Any + Send)) -> Option<String> {
@@ -161,9 +160,6 @@ fn result_from_eval(
         stdout,
         stderr,
     }
-
-
-
 }
 
 fn error_result(message: impl Into<String>) -> RResult {
@@ -175,7 +171,6 @@ fn error_result(message: impl Into<String>) -> RResult {
         stderr: String::new(),
     }
     .with_error_output()
-
 }
 
 /// Top-level eval failure: keep the captured output — it already contains the
@@ -333,7 +328,6 @@ impl RSession {
                 libc::setlocale(libc::LC_ALL, c"".as_ptr());
                 libc::setlocale(libc::LC_NUMERIC, c"C".as_ptr());
             }
-
         });
     }
 
@@ -410,14 +404,20 @@ impl RSession {
     /// (interactive hosts show a continuation prompt). `Err` is reserved for
     /// session-level failure.
     pub fn is_syntax_complete(&mut self, code: &str) -> Result<bool, String> {
-        self.core
-            .with_arena(
-                |arena| match crate::eval::parser::parse_expressions(code, arena) {
+        let owner = self
+            .core
+            .owner_token()
+            .ok_or_else(|| "session closed".to_string())?;
+        let factory = crate::sexp::object::SessionNodeFactory::new(owner);
+        self.core.with_active_in(|instance| unsafe {
+            // SAFETY: the session retains the owner; only the arena is lent.
+            crate::sexp::memory::with_arena_in(instance, |arena| {
+                match crate::eval::parser::parse_expressions(code, arena, factory) {
                     Err(e) if e.0 == "unexpected end of input" => Ok(false),
                     Ok(_) | Err(_) => Ok(true),
-                },
-            )
-            .unwrap_or_else(|| Err("session closed".to_string()))
+                }
+            })
+        })
     }
 
     /// Configure app-private runtime paths for Android embedding.
@@ -639,7 +639,6 @@ pub struct RResult {
     /// Rscript stderr — warnings and REprintf.
     pub stderr: String,
 }
-
 
 fn saturating_usize(value: u64) -> usize {
     usize::try_from(value).unwrap_or(usize::MAX)
@@ -991,7 +990,6 @@ stop("after-echo")
         );
     }
 
-
     #[test]
     fn eval_script_stdout_ends_with_newline_like_rscript() {
         let mut session = RSession::new();
@@ -1003,7 +1001,6 @@ stop("after-echo")
         );
         assert!(result.stdout.contains("[1] 2"));
     }
-
 
     #[test]
     fn eval_script_concatenates_cat_without_newline_onto_next_print() {
@@ -1467,46 +1464,55 @@ stop("after-echo")
         let _session = crate::sexp::session::RSession::new();
         let mut arena = crate::sexp::memory::RArena::new();
         let vector = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)) }.expect("vector");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
-            .clone()
-            .try_set_integer_elt(0, 1) }
-            .expect("set integer");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ vector
-            .clone()
-            .try_set_integer_elt(1, 2) }
-            .expect("set integer");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            vector.clone().try_set_integer_elt(0, 1)
+        }
+        .expect("set integer");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            vector.clone().try_set_integer_elt(1, 2)
+        }
+        .expect("set integer");
 
         let names = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)) }.expect("names");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
-            .clone()
-            .try_set_string_elt(0, Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("name")) }
-            .expect("set name");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ names
-            .clone()
-            .try_set_string_elt(1, Sexp::from_raw(arena.alloc_charsxp(b"b")).expect("name")) }
-            .expect("set name");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            names
+                .clone()
+                .try_set_string_elt(0, Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("name"))
+        }
+        .expect("set name");
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            names
+                .clone()
+                .try_set_string_elt(1, Sexp::from_raw(arena.alloc_charsxp(b"b")).expect("name"))
+        }
+        .expect("set name");
 
         let class = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)) }.expect("class");
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ class
-            .clone()
-            .try_set_string_elt(
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            class.clone().try_set_string_elt(
                 0,
                 Sexp::from_raw(arena.alloc_charsxp(b"foo")).expect("class"),
-            ) }
-            .expect("set class");
+            )
+        }
+        .expect("set class");
 
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
         let class_cell = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             arena.cons(class.as_raw(), nil, unsafe {
-            crate::sexp::symbol::Rf_install(c"class".as_ptr())
-        })
+                crate::sexp::symbol::Rf_install(c"class".as_ptr())
+            })
         };
         let names_cell = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             arena.cons(names.as_raw(), class_cell, unsafe {
-            crate::sexp::symbol::Rf_install(c"names".as_ptr())
-        })
+                crate::sexp::symbol::Rf_install(c"names".as_ptr())
+            })
         };
         unsafe { crate::sexp::accessors::SET_ATTRIB(vector.clone().as_raw(), names_cell) };
 
@@ -1538,20 +1544,24 @@ stop("after-echo")
 
         let mut arena = crate::sexp::memory::RArena::new();
         let complex = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)) }.unwrap();
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
-            .clone()
-            .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 }) }
-            .unwrap();
-        unsafe { /* SAFETY: fixture has no outstanding payload borrows. */ complex
-            .clone()
-            .try_set_complex_elt(
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            complex
+                .clone()
+                .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 })
+        }
+        .unwrap();
+        unsafe {
+            /* SAFETY: fixture has no outstanding payload borrows. */
+            complex.clone().try_set_complex_elt(
                 1,
                 crate::sexp::Rcomplex {
                     r: crate::sexp::NA_REAL,
                     i: 0.0,
                 },
-            ) }
-            .unwrap();
+            )
+        }
+        .unwrap();
 
         assert_eq!(
             RValue::from_sexp(complex),
@@ -1693,7 +1703,10 @@ stop("after-echo")
         let mut session = RSession::new();
 
         let visible = session.eval("withVisible(1)");
-        assert_eq!(visible.output.trim_end(), "$value\n[1] 1\n\n$visible\n[1] TRUE");
+        assert_eq!(
+            visible.output.trim_end(),
+            "$value\n[1] 1\n\n$visible\n[1] TRUE"
+        );
 
         let RValue::Attributed { value, metadata } = visible.typed else {
             panic!("expected attributed withVisible result");
@@ -1708,7 +1721,10 @@ stop("after-echo")
         );
 
         let invisible = session.eval("withVisible(invisible(1))");
-        assert_eq!(invisible.output.trim_end(), "$value\n[1] 1\n\n$visible\n[1] FALSE");
+        assert_eq!(
+            invisible.output.trim_end(),
+            "$value\n[1] 1\n\n$visible\n[1] FALSE"
+        );
 
         let RValue::Attributed { value, metadata } = invisible.typed else {
             panic!("expected attributed withVisible result");
@@ -1743,7 +1759,6 @@ stop("after-echo")
         let stopped = session.eval("stop(\"boom\")");
         assert!(matches!(stopped.typed, RValue::Error(_)));
         assert_eq!(stopped.output.trim_end(), "Error: boom");
-
 
         let warned = session.eval("warning(\"careful\"); 1");
         assert_eq!(warned.output, "Warning message:\ncareful \n[1] 1");
@@ -1988,8 +2003,6 @@ stop("after-echo")
             single.output.trim_end(),
             "Error in is.single(1) : type \"single\" unimplemented in R"
         );
-
-
     }
 
     #[test]
@@ -2594,7 +2607,6 @@ stop("after-echo")
         let mut session = RSession::new();
         let result = session.eval("lapply(c(1, 2), function(x) x + 1)");
         assert_eq!(result.output.trim_end(), "[[1]]\n[1] 2\n\n[[2]]\n[1] 3");
-
     }
 
     #[test]
@@ -2835,7 +2847,6 @@ stop("after-echo")
             matches!(&unknown_slot.typed, RValue::Error(message) if message.contains("nope")),
             "{unknown_slot:?}"
         );
-
     }
 
     #[test]
