@@ -45,6 +45,16 @@ text. The licensed, bundled DejaVu Sans font family supplies the same text and m
 glyphs on native and Wasm without filesystem access. Explicit custom font bytes
 can override the CPU renderer font.
 
+`strwidth` and `strheight` measure the active portable renderer's fonts, including
+the plain, bold, italic and bold-italic faces, `cex`, mathematical expressions,
+multiline strings, and user/figure/inch units. Missing character labels have
+zero extent; empty strings have zero width and the font's ascent as height,
+matching GNU R. Plot dimensions reported by `par` follow the active
+canvas and panel. Metrics require an active portable device; legacy PDF device
+stubs, Hershey fonts and unsupported font families return errors rather than
+inventing dimensions. These are portable-device metrics, not GNU PDF Helvetica
+or arbitrary-font typography parity.
+
 The additional numeric `hist`, vector/matrix `barplot`, and numeric/list `boxplot`
 methods return statistical objects as well as drawing through the portable
 primitives. Explicit unsupported options report errors, including hatch fills,

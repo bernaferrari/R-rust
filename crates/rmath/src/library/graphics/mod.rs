@@ -8,6 +8,7 @@ mod par_common;
 pub(crate) mod plot;
 pub(crate) mod plot3d;
 pub(crate) mod stem;
+mod text_metrics;
 #[allow(dead_code)]
 pub(crate) mod xspline;
 use crate::sexp::ffi::SEXP;
@@ -166,30 +167,11 @@ unsafe extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_bin_count(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
     unsafe { stem::C_BinCount(x, breaks, right, lowest) }
 }
-unsafe extern "C-unwind" fn c_str_metric(args: SEXP) -> SEXP {
-    unsafe {
-        let mut cell = crate::sexp::accessors::CDR(args);
-        let mut labels = crate::sexp::globals::R_NilValue();
-        while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
-            let value = crate::sexp::accessors::CAR(cell);
-            if crate::sexp::accessors::TYPEOF(value) == crate::sexp::ffi::SEXPTYPE::STRSXP {
-                labels = value;
-                break;
-            }
-            cell = crate::sexp::accessors::CDR(cell);
-        }
-        let n = if labels.is_null() || labels == crate::sexp::globals::R_NilValue() {
-            0
-        } else {
-            crate::sexp::accessors::XLENGTH(labels)
-        };
-        let out = crate::sexp::constructors::Rf_allocVector(crate::sexp::ffi::SEXPTYPE::REALSXP, n as i32,
-        );
-        for i in 0..n {
-            *crate::sexp::accessors::REAL(out).add(i as usize) = 1.0;
-        }
-        out
-    }
+unsafe extern "C-unwind" fn c_str_width(args: SEXP) -> SEXP {
+    unsafe { text_metrics::measure(args, false) }
+}
+unsafe extern "C-unwind" fn c_str_height(args: SEXP) -> SEXP {
+    unsafe { text_metrics::measure(args, true) }
 }
 unsafe extern "C-unwind" fn c_contour_def() -> SEXP {
     unsafe { plot3d::C_contourDef() }
@@ -249,7 +231,8 @@ pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
         "plot_window" => Some(unsafe { std::mem::transmute(c_plot_window as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
         "axis" => Some(unsafe { std::mem::transmute(c_axis as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
         "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "box" | "segments" | "rect" | "polygon" | "abline" => Some(unsafe { std::mem::transmute(c_plot_xy as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
-        "strWidth" | "strHeight" => Some(unsafe { std::mem::transmute(c_str_metric as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
+        "strWidth" => Some(unsafe { std::mem::transmute(c_str_width as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
+        "strHeight" => Some(unsafe { std::mem::transmute(c_str_height as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
         "BinCount" => Some(unsafe {
             std::mem::transmute(
                 c_bin_count as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
