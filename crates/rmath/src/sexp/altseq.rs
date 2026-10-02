@@ -356,6 +356,10 @@ fn unexpanded(x: SEXP) -> Option<CompactSeq> {
 /// A buffer allocated while an arena lend is active is queued and registered
 /// when that lend ends, before deferred collection. See
 /// [`memory::attach_zeroed_data_buffer`].
+///
+/// # Safety
+/// `x` is a live node owned by the active instance, with no overlapping Rust
+/// payload borrow. The caller keeps it rooted while using its returned storage.
 pub(crate) unsafe fn materialize(x: SEXP) {
     unsafe {
         if x.is_null() || ALTREP(x) == 0 {
@@ -377,20 +381,19 @@ pub(crate) unsafe fn materialize(x: SEXP) {
         let Some(formula) = read_formula(x) else {
             return;
         };
-        let n = (*x).vecsxp_length();
-        if n < 0 {
+        let Ok(n) = usize::try_from((*x).vecsxp_length()) else {
             return;
-        }
+        };
         let prev = MATERIALIZE_ADDR.with(|open| open.replace(key));
         let _restore = RestoreMaterializing(prev);
         let _root = super::protect::protect(x);
         if (*x).gengc_next_node.is_null() && n > 0 {
             let elem = memory::sexp_elem_size((*x).sxpinfo.type_of());
-            if let Some(bytes) = (n as usize).checked_mul(elem)
+            if let Some(bytes) = n.checked_mul(elem)
                 && bytes > 0
                 && !memory::attach_zeroed_data_buffer(x, bytes).is_null()
             {
-                fill((*x).gengc_next_node as *mut u8, &formula, n as usize);
+                fill((*x).gengc_next_node as *mut u8, &formula, n);
             }
         }
         let committed = !(*x).gengc_next_node.is_null() && !memory::vector_payload_is_pending(x);
@@ -505,3 +508,6 @@ unsafe fn finish(x: SEXP) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 
 use crate::mainutils::identical::{R_IsNA, R_compute_identical};
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL,
+    ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW,
     REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_mkString};
@@ -469,24 +469,16 @@ unsafe fn numeric_components(value: SEXP, index: usize) -> Numeric {
                 (value as f64, 0.0)
             }
             t if t == SEXPTYPE::INTSXP => {
-                let ptr = INTEGER(value);
-                let value = if ptr.is_null() {
-                    INTEGER_ELT(value, index as c_int)
-                } else {
-                    *ptr.add(index)
-                };
+                // Element access computes compact values without requesting
+                // a full buffer (and works for ordinary vectors as well).
+                let value = INTEGER_ELT(value, index as c_int);
                 if value == NA_INTEGER {
                     return Numeric::Missing;
                 }
                 (value as f64, 0.0)
             }
             t if t == SEXPTYPE::REALSXP => {
-                let ptr = REAL(value);
-                if ptr.is_null() {
-                    (REAL_ELT(value, index as c_int), 0.0)
-                } else {
-                    (*ptr.add(index), 0.0)
-                }
+                (REAL_ELT(value, index as c_int), 0.0)
             },
             t if t == SEXPTYPE::CPLXSXP => {
                 let value = *COMPLEX(value).add(index);

@@ -1749,6 +1749,7 @@ pub unsafe fn formatRawMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ptr;
 
     #[test]
     fn decimal_separator_is_terminated_for_real_encoding() {
@@ -1757,8 +1758,6 @@ mod tests {
         let separator = unsafe { std::ffi::CStr::from_ptr(dec_ptr) };
         assert_eq!(separator.to_bytes(), b".");
     }
-
-    use std::ptr;
 
     #[test]
     fn test_print_matrix_null() {

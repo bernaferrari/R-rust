@@ -726,9 +726,12 @@ fn altseq_compact_real_colon_matches_plain_reals() {
             crate::mainutils::identical::R_compute_identical(seq, plain, 0),
             1
         );
-        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        // Equality can read the formula without expanding the vector.
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).gengc_next_node.is_null());
         crate::sexp::gengc::full_gc();
         assert!((*REAL(seq).add(2) - 3.5).abs() < 1e-10);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
     }
 }
 
@@ -982,8 +985,10 @@ fn altseq_failed_allocation_keeps_the_formula() {
 
         // A refused buffer is never published, including inside the lend.
         crate::sexp::memory::with_arena(|_arena| unsafe {
-            let data = INTEGER(lent);
-            assert!(data.is_null());
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _ = INTEGER(lent);
+            })).expect_err("nonempty compact payload access must raise an R error");
+            assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
             assert_eq!(crate::sexp::accessors::ALTREP(lent), 1);
             assert!((*lent).gengc_next_node.is_null());
             assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 0), 1);

@@ -170,6 +170,22 @@ original owner, with an activation guard that restores the ambient instance,
 RNG and math state. The owner keeps its budget and payload after another
 session is destroyed.
 
+Compact payload expansion reserves its complete byte cost before allocation
+or zero-fill, including when a foreign arena lend is nested inside its owner.
+Unpublished buffers have an RAII owner and bookkeeping capacity is reserved
+before pointer publication. Failure leaves the formula intact: checked writes
+return a typed error, while raw `DATAPTR`/`INTEGER`/`REAL` requests for nonempty
+vectors raise `RError` before translated callers can dereference null. Numeric
+comparison reads compact elements without requesting expansion. Empty
+vectors retain their existing pointer convention. Expansion converts logical
+lengths with `usize::try_from` to reject 32-bit truncation.
+
+The separate experimental `altrep` Cargo feature stays off by default. Its
+class/payload layout, callback aliasing and GC ownership need a redesign before
+production use. Default compact integer/real sequences use ordinary traced R
+metadata and remain available without it. Nightly gates cover compact
+allocation and recovery on native and i686 Miri.
+
 GraphApp buffers reject size overflow before allocating or reallocating and
 align their payloads for object pointers, including platforms where C long is
 narrower than a pointer. Failed growth retains the existing buffer. Image
