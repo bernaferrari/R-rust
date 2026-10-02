@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! Built-in classes and checked compact-vector constructors.
 use super::*;
 
@@ -11,11 +12,7 @@ pub(crate) fn builtin_sequence<'s>(
         _ => return Err(failure("sequence vector type")),
     };
     let symbol = CString::new(format!(".AltrepClass.{name}")).unwrap();
-    let raw = unsafe {
-        with_instance_active(owner.as_ptr(), || {
-            super::super::symbol::Rf_install(symbol.as_ptr())
-        })
-    };
+    let raw = storage::intern(owner, &symbol)?.as_raw();
     if lookup(owner, raw).is_some() {
         return class_handle(owner, raw);
     }
@@ -65,7 +62,7 @@ impl AltrepClass for SequenceClass {
         true
     }
     fn length(&self, c: &AltrepContext<'_>) -> SexpResult<i64> {
-        let state = c.data1();
+        let state = c.data1()?;
         if state.len() != 3 {
             return Err(failure("sequence state must contain three scalars"));
         }
@@ -90,7 +87,7 @@ impl AltrepClass for SequenceClass {
         Ok(length as i64)
     }
     fn element<'s>(&self, c: &AltrepContext<'s>, i: i64) -> SexpResult<AltrepElement<'s>> {
-        let state = c.data1();
+        let state = c.data1()?;
         let value = state.try_real_elt(1)? + i as f64 * state.try_real_elt(2)?;
         match self.0 {
             SEXPTYPE::INTSXP
@@ -117,16 +114,16 @@ impl AltrepClass for DeferredClass {
         self.0
     }
     fn length(&self, c: &AltrepContext<'_>) -> SexpResult<i64> {
-        let len = c.data1().try_vector_elt(2)?.try_real_elt(0)?;
+        let len = c.data1()?.try_vector_elt(2)?.try_real_elt(0)?;
         if !len.is_finite() || len < 0.0 || len > (1_u64 << 52) as f64 || len.fract() != 0.0 {
             return Err(failure("invalid deferred vector length"));
         }
         Ok(len as i64)
     }
     fn element<'s>(&self, c: &AltrepContext<'s>, i: i64) -> SexpResult<AltrepElement<'s>> {
-        let cached = c.data2();
+        let cached = c.data2()?;
         let cached = if cached.typeof_() == SEXPTYPE::NILSXP {
-            let data = c.data1();
+            let data = c.data1()?;
             let result = c.eval(data.try_vector_elt(0)?, data.try_vector_elt(1)?)?;
             if result.typeof_() != self.0 || result.len() != c.object().len() {
                 return Err(failure("deferred result type or length mismatch"));
@@ -158,12 +155,7 @@ impl RSession {
             }
         }
         let owner = self.owner_token().ok_or(SexpError::OwnerNotActive)?;
-        let raw = unsafe {
-            with_instance_active(owner.as_ptr(), || {
-                super::super::altseq::compact_int_seq(origin, step, length)
-            })
-        };
-        owner.sexp(raw)
+        bridge::compact_integer_sequence(owner, origin, step, length)
     }
     pub fn compact_real_sequence(
         &self,
@@ -172,12 +164,7 @@ impl RSession {
         length: usize,
     ) -> SexpResult<Sexp<'_>> {
         let owner = self.owner_token().ok_or(SexpError::OwnerNotActive)?;
-        let raw = unsafe {
-            with_instance_active(owner.as_ptr(), || {
-                super::super::altseq::compact_real_seq(origin, step, length)
-            })
-        };
-        owner.sexp(raw)
+        bridge::compact_real_sequence(owner, origin, step, length)
     }
 }
 
@@ -189,16 +176,17 @@ impl AltrepClass for RepeatClass {
         self.0
     }
     fn length(&self, c: &AltrepContext<'_>) -> SexpResult<R_xlen_t> {
-        if c.data1.len() != 1 || c.data1.typeof_() != self.0 {
+        let scalar = c.data1()?;
+        if scalar.len() != 1 || scalar.typeof_() != self.0 {
             return Err(failure("ALTREP repeat scalar"));
         }
-        let len = c.data2.try_real_elt(0)?;
+        let len = c.data2()?.try_real_elt(0)?;
         if !len.is_finite() || len < 0.0 || len.fract() != 0.0 || len >= i64::MAX as f64 {
             return Err(failure("ALTREP repeat length"));
         }
         Ok(len as i64)
     }
     fn element<'s>(&self, c: &AltrepContext<'s>, _: R_xlen_t) -> SexpResult<AltrepElement<'s>> {
-        dense_element(&c.data1, 0)
+        dense_element(&c.data1()?, 0)
     }
 }

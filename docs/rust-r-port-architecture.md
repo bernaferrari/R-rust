@@ -200,7 +200,22 @@ expanded values; borrowed string access expands before returning a loan so its
 parent actually traces the child. Native pointer-element reads retain returned
 children in a sparse, traced cache. Repeat and deferred classes use traced data;
 deferred evaluation validates and roots a result before caching it. Class type
-and logical length are immutable after construction.
+and cache policy are sampled once at registration under the original owner;
+changing provider state cannot change the registered representation. Logical
+length is assigned by a consuming construction handle and stays immutable.
+
+The Rust dispatch module rejects `unsafe` code, and built-in class providers
+forbid it. `altrep/registry.rs` owns one class record including optional native
+methods and Rust callback guards. `altrep/storage.rs` owns typed metadata fields,
+traced edges and buffer publication; only a pending instance can set length.
+`altrep/bridge.rs` adapts rooted handles to translated R execution and documents
+the contracts for raw callers. These private modules contain the audited unsafe
+operations; providers receive no mutable interpreter or payload references.
+Context data reads return checked, independently rooted handles to current
+metadata, so a cache write is visible during the same callback and throughout
+bulk expansion. They propagate root-allocation failure with `SexpResult`;
+providers use `context.data1()?` and `context.data2()?`. This changes the opt-in
+Rust provider interface from the earlier snapshot getters.
 
 Serialization falls back to dense values with public attributes, and ordinary
 duplication excludes internal class metadata. Native Length/Elt, duplicate,

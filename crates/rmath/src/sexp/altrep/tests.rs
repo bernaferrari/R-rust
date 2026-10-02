@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 use super::*;
 use crate::sexp::{accessors::*, memory::ArenaBudget};
 use std::cell::Cell;
@@ -11,7 +12,7 @@ impl AltrepClass for Numbers {
         SEXPTYPE::REALSXP
     }
     fn length(&self, c: &AltrepContext<'_>) -> SexpResult<i64> {
-        Ok(c.data2().try_integer_elt(0)? as i64)
+        Ok(c.data2()?.try_integer_elt(0)? as i64)
     }
     fn element<'s>(&self, c: &AltrepContext<'s>, i: i64) -> SexpResult<AltrepElement<'s>> {
         if self.collect {
@@ -30,7 +31,7 @@ impl AltrepClass for Numbers {
             _ => (),
         }
         Ok(AltrepElement::Real(
-            c.data1().try_real_elt(0)? + i as f64 * 0.5,
+            c.data1()?.try_real_elt(0)? + i as f64 * 0.5,
         ))
     }
 }
@@ -420,7 +421,7 @@ fn deferred_evaluation_caches_a_rooted_result() {
         .build()
         .unwrap();
     assert_eq!(x.real_elt(0), Some(32.0));
-    let cache = metadata(&x).unwrap().vector_elt(2).unwrap();
+    let cache = Metadata::load(&x).unwrap().data2().unwrap();
     assert_eq!(cache.real_elt(0), Some(32.0));
     s.gc();
     assert_eq!(x.real_elt(0), Some(32.0));
@@ -459,10 +460,14 @@ fn native_pointer_elements_are_retained_without_bulk_expansion() {
         .expect("native result must remain retained by parent");
     assert_eq!(child.as_string().as_deref(), Some("value-1"));
     assert!(!is_materialized(&x));
-    let cache_head = metadata(&x).unwrap().vector_elt(4).unwrap();
+    let cache_head = Metadata::load(&x).unwrap().native_children().unwrap();
     let again = s.with_active(|| unsafe { STRING_ELT(x.clone().as_raw(), 1) });
     assert_eq!(
-        metadata(&x).unwrap().vector_elt(4).unwrap().as_raw(),
+        Metadata::load(&x)
+            .unwrap()
+            .native_children()
+            .unwrap()
+            .as_raw(),
         cache_head.as_raw()
     );
     assert_eq!(
@@ -579,13 +584,7 @@ fn serialization_cycle_fails_cleanly_and_resets_rust_operation_guard() {
             .downcast_ref::<crate::sexp::context::RError>()
             .is_some()
     );
-    assert!(unsafe {
-        (*s.owner_token().unwrap().as_ptr())
-            .altrep_state
-            .active
-            .borrow()
-            .is_empty()
-    });
+    assert!(registry::operations_are_idle(s.owner_token().unwrap()));
     let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         s.with_active(|| unsafe { crate::mainutils::duplicate::Rf_duplicate(x.clone().as_raw()) })
     }))
@@ -595,13 +594,7 @@ fn serialization_cycle_fails_cleanly_and_resets_rust_operation_guard() {
             .downcast_ref::<crate::sexp::context::RError>()
             .is_some()
     );
-    assert!(unsafe {
-        (*s.owner_token().unwrap().as_ptr())
-            .altrep_state
-            .active
-            .borrow()
-            .is_empty()
-    });
+    assert!(registry::operations_are_idle(s.owner_token().unwrap()));
     force_materialization(&x).unwrap();
     s.gc();
     assert_eq!(x.vector_elt(0).unwrap().as_raw(), x.clone().as_raw());
@@ -663,4 +656,165 @@ fn native_duplicate_inspect_and_coerce_restore_original_owner() {
             Some(expected_owner)
         );
     });
+}
+
+struct MutableConfiguration {
+    kind: Rc<Cell<SEXPTYPE>>,
+    cache: Rc<Cell<bool>>,
+    kind_calls: Rc<Cell<usize>>,
+    cache_calls: Rc<Cell<usize>>,
+}
+impl AltrepClass for MutableConfiguration {
+    fn vector_type(&self) -> SEXPTYPE {
+        self.kind_calls.set(self.kind_calls.get() + 1);
+        self.kind.get()
+    }
+    fn cache_in_data2(&self) -> bool {
+        self.cache_calls.set(self.cache_calls.get() + 1);
+        self.cache.get()
+    }
+    fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+        Ok(2)
+    }
+    fn element<'s>(&self, _: &AltrepContext<'s>, i: i64) -> SexpResult<AltrepElement<'s>> {
+        Ok(AltrepElement::Real(10.0 + i as f64))
+    }
+}
+
+#[test]
+fn registered_configuration_is_immutable_after_provider_state_changes() {
+    let s = RSession::new_for_gc_tests();
+    let kind = Rc::new(Cell::new(SEXPTYPE::REALSXP));
+    let cache = Rc::new(Cell::new(true));
+    let kind_calls = Rc::new(Cell::new(0));
+    let cache_calls = Rc::new(Cell::new(0));
+    let class = s
+        .register_altrep_class(
+            "fixed-configuration",
+            MutableConfiguration {
+                kind: kind.clone(),
+                cache: cache.clone(),
+                kind_calls: kind_calls.clone(),
+                cache_calls: cache_calls.clone(),
+            },
+        )
+        .unwrap();
+    kind.set(SEXPTYPE::INTSXP);
+    cache.set(false);
+    let first = AltrepBuilder::new(class.clone()).build().unwrap();
+    let second = AltrepBuilder::new(class).build().unwrap();
+    assert_eq!(first.typeof_(), SEXPTYPE::REALSXP);
+    assert_eq!(first.try_real_elt(1).unwrap(), 11.0);
+    force_materialization(&first).unwrap();
+    s.gc();
+    assert_eq!(
+        Metadata::load(&first)
+            .unwrap()
+            .data2()
+            .unwrap()
+            .try_real_elt(1)
+            .unwrap(),
+        11.0
+    );
+    assert_eq!(second.try_real_elt(0).unwrap(), 10.0);
+    assert_eq!(kind_calls.get(), 1);
+    assert_eq!(cache_calls.get(), 1);
+}
+
+struct RegistrationReentry {
+    expected_owner: usize,
+}
+impl AltrepClass for RegistrationReentry {
+    fn vector_type(&self) -> SEXPTYPE {
+        assert_eq!(
+            crate::sexp::instance::current_instance_ptr().unwrap() as usize,
+            self.expected_owner
+        );
+        let other = RSession::new_for_gc_tests();
+        other.gc();
+        drop(other);
+        SEXPTYPE::REALSXP
+    }
+    fn cache_in_data2(&self) -> bool {
+        assert_eq!(
+            crate::sexp::instance::current_instance_ptr().unwrap() as usize,
+            self.expected_owner
+        );
+        let other = RSession::new_for_gc_tests();
+        drop(other);
+        false
+    }
+    fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+        Ok(1)
+    }
+    fn element<'s>(&self, _: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+        Ok(AltrepElement::Real(42.0))
+    }
+}
+#[test]
+fn registered_configuration_callbacks_restore_the_original_owner() {
+    let s = RSession::new_for_gc_tests();
+    let expected_owner = s.owner_token().unwrap().as_ptr() as usize;
+    let class = s
+        .register_altrep_class(
+            "configuration-reentry",
+            RegistrationReentry { expected_owner },
+        )
+        .unwrap();
+    assert_eq!(
+        crate::sexp::instance::current_instance_ptr().unwrap() as usize,
+        expected_owner
+    );
+    let x = AltrepBuilder::new(class).build().unwrap();
+    s.gc();
+    assert_eq!(x.try_real_elt(0).unwrap(), 42.0);
+}
+
+struct CacheOnRead {
+    evaluations: Rc<Cell<usize>>,
+}
+impl AltrepClass for CacheOnRead {
+    fn vector_type(&self) -> SEXPTYPE {
+        SEXPTYPE::REALSXP
+    }
+    fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+        Ok(2)
+    }
+    fn element<'s>(&self, c: &AltrepContext<'s>, index: i64) -> SexpResult<AltrepElement<'s>> {
+        let cached = c.data2()?;
+        let cached = if cached.is_nil() {
+            self.evaluations.set(self.evaluations.get() + 1);
+            let mut result = SexpMut::try_from_checked(c.alloc_vector(SEXPTYPE::REALSXP, 2)?)?;
+            for i in 0..2 {
+                result.try_set_real_elt(i, self.evaluations.get() as f64)?;
+            }
+            let result = result.freeze();
+            c.set_data2(result.clone())?;
+            assert_eq!(c.data2()?.as_raw(), result.clone().as_raw());
+            result
+        } else {
+            cached
+        };
+        c.gc()?;
+        Ok(AltrepElement::Real(cached.try_real_elt(index)?))
+    }
+}
+#[test]
+fn cache_writes_are_visible_to_later_callbacks_during_one_expansion() {
+    let s = RSession::new_for_gc_tests();
+    let evaluations = Rc::new(Cell::new(0));
+    let class = s
+        .register_altrep_class(
+            "live-cache",
+            CacheOnRead {
+                evaluations: evaluations.clone(),
+            },
+        )
+        .unwrap();
+    let x = AltrepBuilder::new(class).build().unwrap();
+    force_materialization(&x).unwrap();
+    s.gc();
+    assert_eq!(evaluations.get(), 1);
+    assert_eq!(x.try_real_elt(0).unwrap(), 1.0);
+    assert_eq!(x.try_real_elt(1).unwrap(), 1.0);
 }

@@ -28,40 +28,31 @@ fn missing(what: &'static str) -> SexpError {
 /// Inputs must be live and rooted in the active owner. Exclude payload
 /// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_data1(x: SEXP) -> SEXP {
-    unsafe { data(x, 1) }
+    let object = fail(unsafe { altrep::rooted_raw(x) });
+    fail(altrep::data1(&object)).as_raw()
 }
 /// # Safety
 /// Inputs must be live and rooted in the active owner. Exclude payload
 /// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_data2(x: SEXP) -> SEXP {
-    unsafe { data(x, 2) }
-}
-unsafe fn data(x: SEXP, i: i64) -> SEXP {
     let object = fail(unsafe { altrep::rooted_raw(x) });
-    let metadata = altrep::metadata(&object).unwrap_or_else(|| {
-        crate::sexp::context::r_error("object has no extension ALTREP metadata")
-    });
-    fail(metadata.try_vector_elt(i)).as_raw()
+    fail(altrep::data2(&object)).as_raw()
 }
 /// # Safety
 /// Inputs must be live and rooted in the active owner. Exclude payload
 /// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_set_altrep_data1(x: SEXP, v: SEXP) {
-    unsafe { set_data(x, v, 1) }
+    let object = fail(unsafe { altrep::rooted_raw(x) });
+    let value = fail(unsafe { altrep::rooted_raw(v) });
+    fail(altrep::set_data1(&object, value));
 }
 /// # Safety
 /// Inputs must be live and rooted in the active owner. Exclude payload
 /// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_set_altrep_data2(x: SEXP, v: SEXP) {
-    unsafe { set_data(x, v, 2) }
-}
-unsafe fn set_data(x: SEXP, v: SEXP, i: i64) {
     let object = fail(unsafe { altrep::rooted_raw(x) });
-    let metadata = altrep::metadata(&object).unwrap_or_else(|| {
-        crate::sexp::context::r_error("object has no extension ALTREP metadata")
-    });
-    let child = fail(unsafe { altrep::rooted_raw(v) });
-    fail(fail(SexpMut::try_from_checked(metadata)).try_set_vector_elt(i, child));
+    let value = fail(unsafe { altrep::rooted_raw(v) });
+    fail(altrep::set_data2(&object, value));
 }
 /// # Safety
 /// Inputs must be live and rooted in the active owner. Exclude payload
@@ -365,27 +356,15 @@ unsafe fn native_methods(x: SEXP) -> Option<Rc<RefCell<NativeMethods>>> {
         return None;
     }
     let object = unsafe { altrep::rooted_raw(x) }.ok()?;
-    let class = altrep::altrep_class(&object)?.as_raw();
-    let current = crate::sexp::instance::current_instance_ptr()?;
-    unsafe {
-        (*current)
-            .altrep_state
-            .native
-            .get(&(class as usize))
-            .cloned()
-    }
+    altrep::native_methods(&object)
 }
 unsafe fn methods(class: SEXP) -> Rc<RefCell<NativeMethods>> {
-    let _root = fail(unsafe { altrep::rooted_raw(class) });
+    let root = fail(unsafe { altrep::rooted_raw(class) });
     let current = crate::sexp::instance::current_instance_ptr().expect("active owner");
-    unsafe {
-        (*current)
-            .altrep_state
-            .native
-            .get(&(class as usize))
-            .cloned()
-    }
-    .unwrap_or_else(|| crate::sexp::context::r_error("unregistered native ALTREP class"))
+    let owner = unsafe { OwnerToken::from_raw(current) };
+    let handle = fail(altrep::class_handle(owner, root.as_raw()));
+    altrep::native_methods_for_class(&handle)
+        .unwrap_or_else(|| crate::sexp::context::r_error("unregistered native ALTREP class"))
 }
 unsafe fn make_class(name: *const c_char, package: *const c_char, kind: SEXPTYPE) -> SEXP {
     let name = unsafe { CStr::from_ptr(name) }.to_string_lossy();
@@ -394,22 +373,16 @@ unsafe fn make_class(name: *const c_char, package: *const c_char, kind: SEXPTYPE
         OwnerToken::from_raw(crate::sexp::instance::current_instance_ptr().expect("active owner"))
     };
     let methods = Rc::new(RefCell::new(NativeMethods::default()));
-    let handle = fail(altrep::register(
+    let handle = fail(altrep::register_native(
         owner,
         &format!("{package}::{name}"),
         Rc::new(NativeClass {
             kind,
             methods: methods.clone(),
         }),
+        methods,
     ));
-    let descriptor = handle.descriptor().as_raw();
-    unsafe {
-        (*owner.as_ptr())
-            .altrep_state
-            .native
-            .insert(descriptor as usize, methods);
-    }
-    descriptor
+    handle.descriptor().as_raw()
 }
 macro_rules! class_constructor {
     ($name:ident, $kind:ident) => {
