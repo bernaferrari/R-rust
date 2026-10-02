@@ -36,6 +36,28 @@ unsafe fn require_allocation(value: SEXP) -> SEXP {
 
 unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
     unsafe {
+        // GNU allocVector also accepts pairlists/calls, but those need a
+        // chain of nodes rather than a vector header with integer lengths in
+        // pointer slots. Keep this compatibility dispatch outside RArena's
+        // vector-only safe constructors.
+        if length < 0 {
+            super::context::r_error("negative length vectors are not allowed");
+        }
+        if sexptype == SEXPTYPE::NILSXP {
+            return R_NilValue();
+        }
+        if sexptype == SEXPTYPE::LISTSXP || sexptype == SEXPTYPE::LANGSXP {
+            let n = c_int::try_from(length)
+                .unwrap_or_else(|_| super::context::r_error("invalid length for pairlist"));
+            let list = memory::with_arena(|arena| {
+                let list = arena.alloc_list_chain(n);
+                if n > 0 && !list.is_null() && sexptype == SEXPTYPE::LANGSXP {
+                    (*list).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
+                list
+            });
+            return if n == 0 { list } else { require_allocation(list) };
+        }
         require_allocation(memory::with_arena(|arena| {
         arena.alloc_vector(sexptype, length)
     }))
@@ -472,6 +494,31 @@ pub unsafe fn Rf_isEnvironment(x: SEXP) -> c_int {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn vector_compatibility_constructor_allocates_real_pairlist_headers() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            for kind in [SEXPTYPE::LISTSXP, SEXPTYPE::LANGSXP] {
+                assert_eq!(Rf_allocVector3(kind, 0), R_NilValue());
+                let value = Rf_allocVector3(kind, 3);
+                assert_eq!((*value).sxpinfo.type_of(), kind);
+                let mut cell = value;
+                for _ in 0..3 {
+                    assert!(!cell.is_null());
+                    assert_ne!(cell, R_NilValue());
+                    assert!((*cell).data.listsxp.carval.is_null());
+                    cell = (*cell).data.listsxp.cdrval;
+                }
+                assert_eq!(cell, R_NilValue());
+            }
+            assert_eq!(Rf_allocVector3(SEXPTYPE::NILSXP, 3), R_NilValue());
+            for (kind, length) in [(SEXPTYPE::LISTSXP, i64::MAX), (SEXPTYPE::REALSXP, -1)] {
+                let error = std::panic::catch_unwind(|| Rf_allocVector3(kind, length)).unwrap_err();
+                assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
+            }
+        });
+    }
+
     use super::super::ffi::*;
     use super::*;
     use crate::sexp::session::RSession;

@@ -84,6 +84,8 @@ pub enum ArenaError {
     NodeBudgetExceeded { limit: usize, requested: usize },
     /// Invalid vector length (negative or overflow).
     InvalidLength,
+    /// The type requires a different header or a dedicated constructor.
+    InvalidVectorType { sexptype: SEXPTYPE },
 }
 
 impl std::fmt::Display for ArenaError {
@@ -103,11 +105,60 @@ impl std::fmt::Display for ArenaError {
                 )
             }
             ArenaError::InvalidLength => write!(f, "invalid vector length"),
+            ArenaError::InvalidVectorType { sexptype } => {
+                write!(f, "invalid vector type: {}", sexptype.as_c_int())
+            }
         }
     }
 }
 
 impl std::error::Error for ArenaError {}
+
+/// Validate the union header, platform-sized length and full payload layout
+/// before either allocator changes accounting or allocates memory.
+fn vector_layout(sexptype: SEXPTYPE, length: R_xlen_t) -> Result<Layout, ArenaError> {
+    let elem_size = sexp_elem_size(sexptype);
+    if elem_size == 0 {
+        return Err(ArenaError::InvalidVectorType { sexptype });
+    }
+    let length = usize::try_from(length).map_err(|_| ArenaError::InvalidLength)?;
+    let bytes = length.checked_mul(elem_size).ok_or(ArenaError::InvalidLength)?;
+    Layout::from_size_align(bytes, std::mem::align_of::<u64>())
+        .map_err(|_| ArenaError::InvalidLength)
+}
+
+/// Own a raw buffer until it is transferred to an arena or transient stack.
+/// This also releases an unpublished payload if node allocation unwinds.
+pub(crate) struct OwnedBuffer {
+    ptr: std::ptr::NonNull<u8>,
+    layout: Layout,
+}
+
+impl OwnedBuffer {
+    pub(crate) fn zeroed(layout: Layout) -> Option<Self> {
+        if layout.size() == 0 {
+            return None;
+        }
+        let ptr = std::ptr::NonNull::new(unsafe { std::alloc::alloc_zeroed(layout) })?;
+        Some(Self { ptr, layout })
+    }
+
+    pub(crate) fn as_ptr(&self) -> *mut u8 {
+        self.ptr.as_ptr()
+    }
+
+    fn into_raw(self) -> (*mut u8, Layout) {
+        let parts = (self.ptr.as_ptr(), self.layout);
+        std::mem::forget(self);
+        parts
+    }
+}
+
+impl Drop for OwnedBuffer {
+    fn drop(&mut self) {
+        unsafe { dealloc(self.ptr.as_ptr(), self.layout) };
+    }
+}
 
 /// Budget for arena allocations to prevent unbounded growth.
 ///
@@ -695,20 +746,13 @@ impl RArena {
     /// including an R error or cancellation unwind. The allocation itself is
     /// owned by the caller; this only accounts for its peak workspace.
     pub(crate) fn try_reserve_transient(&mut self, bytes: usize) -> Option<TransientReservation> {
-        let total = self
-            .total_bytes_allocated
-            .checked_add(self.transient_bytes.get())?
-            .checked_add(self.pending_data_bytes.get())?
-            .checked_add(bytes)?;
-        if self.budget.max_bytes != 0 && total > self.budget.max_bytes {
-            return None;
-        }
-        self.transient_bytes
-            .set(self.transient_bytes.get().checked_add(bytes)?);
-        Some(TransientReservation {
-            counter: Rc::clone(&self.transient_bytes),
+        TransientReservation::new(
+            self.budget.max_bytes,
+            self.total_bytes_allocated,
+            self.pending_data_bytes.get(),
+            &self.transient_bytes,
             bytes,
-        })
+        )
     }
 
     fn register_data_buffer(&mut self, ptr: *mut u8, layout: Layout) {
@@ -839,9 +883,9 @@ impl RArena {
     /// Returns null if allocation fails (OOM safety).
     #[inline(always)]
     pub(crate) fn alloc_vector(&mut self, sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
-        if length < 0 {
+        let Ok(layout) = vector_layout(sexptype, length) else {
             return ptr::null_mut();
-        }
+        };
 
         self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
 
@@ -849,36 +893,25 @@ impl RArena {
             self.alloc_gc_collect_requested = true;
         }
 
-        let elem_size = sexp_elem_size(sexptype);
-        let total_bytes = match (length as usize).checked_mul(elem_size) {
-            Some(n) => n,
-            None => return ptr::null_mut(),
-        };
+        let total_bytes = layout.size();
 
         if !self.can_allocate_new_node_with_payload(total_bytes) {
             return ptr::null_mut();
         }
 
         let data = if total_bytes > 0 {
-            let layout = match Layout::from_size_align(total_bytes, std::mem::align_of::<u64>()) {
-                Ok(l) => l,
-                Err(_) => return ptr::null_mut(),
-            };
-            let data_ptr = unsafe { alloc(layout) };
-            if data_ptr.is_null() {
+            let Some(data) = OwnedBuffer::zeroed(layout) else {
                 return ptr::null_mut();
-            }
-            unsafe {
-                std::ptr::write_bytes(data_ptr, 0, total_bytes);
-            }
-            Some((data_ptr, layout))
+            };
+            Some(data)
         } else {
             None
         };
 
         let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
 
-        if let Some((data_ptr, layout)) = data {
+        if let Some(data) = data {
+            let (data_ptr, layout) = data.into_raw();
             unsafe {
                 (*node_ptr).gengc_next_node = data_ptr as SEXP;
             }
@@ -904,9 +937,7 @@ impl RArena {
         sexptype: SEXPTYPE,
         length: R_xlen_t,
     ) -> Result<SEXP, ArenaError> {
-        if length < 0 {
-            return Err(ArenaError::InvalidLength);
-        }
+        let layout = vector_layout(sexptype, length)?;
 
         self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
 
@@ -921,11 +952,7 @@ impl RArena {
             }
         }
 
-        let elem_size = sexp_elem_size(sexptype);
-        let data_bytes = match (length as usize).checked_mul(elem_size) {
-            Some(n) => n,
-            None => return Err(ArenaError::InvalidLength),
-        };
+        let data_bytes = layout.size();
         let total_increase = data_bytes
             .checked_add(std::mem::size_of::<SexprecCore>())
             .ok_or(ArenaError::InvalidLength)?;
@@ -956,25 +983,15 @@ impl RArena {
 
 
         let data = if data_bytes > 0 {
-            let layout = match Layout::from_size_align(data_bytes, std::mem::align_of::<u64>()) {
-                Ok(l) => l,
-                Err(_) => return Err(ArenaError::OutOfMemory),
-            };
-            let data_ptr = unsafe { alloc(layout) };
-            if data_ptr.is_null() {
-                return Err(ArenaError::OutOfMemory);
-            }
-            unsafe {
-                std::ptr::write_bytes(data_ptr, 0, data_bytes);
-            }
-            Some((data_ptr, layout))
+            Some(OwnedBuffer::zeroed(layout).ok_or(ArenaError::OutOfMemory)?)
         } else {
             None
         };
 
         let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
 
-        if let Some((data_ptr, layout)) = data {
+        if let Some(data) = data {
+            let (data_ptr, layout) = data.into_raw();
             unsafe {
                 (*node_ptr).gengc_next_node = data_ptr as SEXP;
             }
@@ -1327,6 +1344,24 @@ pub(crate) struct TransientReservation {
     bytes: usize,
 }
 
+impl TransientReservation {
+    fn new(
+        max_bytes: usize,
+        accounted: usize,
+        pending: usize,
+        counter: &Rc<Cell<usize>>,
+        bytes: usize,
+    ) -> Option<Self> {
+        let reserved = counter.get().checked_add(bytes)?;
+        let total = accounted.checked_add(pending)?.checked_add(reserved)?;
+        if max_bytes != 0 && total > max_bytes {
+            return None;
+        }
+        counter.set(reserved);
+        Some(Self { counter: Rc::clone(counter), bytes })
+    }
+}
+
 impl Drop for TransientReservation {
     fn drop(&mut self) {
         // The shared counter can outlive or move independently of the arena.
@@ -1399,6 +1434,7 @@ struct PendingDataBuffer {
 }
 
 struct LendLedger {
+    instance: usize,
     max_bytes: usize,
     total: Cell<usize>,
     transient: Rc<Cell<usize>>,
@@ -1415,6 +1451,7 @@ fn install_lend_ledger(inst: *mut super::instance::RInstance) {
     let ledger = unsafe {
         let arena = &(*inst).arena;
         LendLedger {
+            instance: inst as usize,
             max_bytes: arena.budget.max_bytes,
             total: Cell::new(arena.total_bytes_allocated),
             transient: Rc::clone(&arena.transient_bytes),
@@ -1422,6 +1459,33 @@ fn install_lend_ledger(inst: *mut super::instance::RInstance) {
         }
     };
     LEND_LEDGER.with(|slot| slot.borrow_mut().push(ledger));
+}
+
+/// Reserve transient bytes without borrowing an already-lent arena again.
+///
+/// # Safety
+/// `inst` is a live owner. Any outstanding arena borrow is registered by
+/// `with_arena_in`; no other instance field borrow overlaps this operation.
+pub(crate) unsafe fn reserve_transient_in(
+    inst: *mut super::instance::RInstance,
+    bytes: usize,
+) -> Option<TransientReservation> {
+    if is_arena_lent(inst) {
+        LEND_LEDGER.with(|slot| {
+            let ledgers = slot.borrow();
+            let ledger = ledgers.iter().rev().find(|ledger| ledger.instance == inst as usize)?;
+            TransientReservation::new(
+                ledger.max_bytes,
+                ledger.total.get(),
+                ledger.pending.get(),
+                &ledger.transient,
+                bytes,
+            )
+        })
+    } else {
+        // Strictly local accounting: no evaluation, allocation hooks or GC.
+        unsafe { (*inst).arena.try_reserve_transient(bytes) }
+    }
 }
 
 fn note_lend_budget(max_bytes: usize) {
@@ -1699,6 +1763,64 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn vector_allocation_validates_platform_length_and_layout_without_consuming_budget() {
+        let mut arena = super::RArena::new();
+        let before = (arena.node_count(), arena.total_bytes_allocated);
+        for kind in [super::SEXPTYPE::RAWSXP, super::SEXPTYPE::REALSXP] {
+            for length in [-1, i64::MAX] {
+                assert!(arena.alloc_vector_sexp(kind, length).is_none());
+                assert!(matches!(arena.alloc_vector_checked_sexp(kind, length),
+                    Err(super::ArenaError::InvalidLength)));
+                assert_eq!((arena.node_count(), arena.total_bytes_allocated), before);
+            }
+        }
+        #[cfg(target_pointer_width = "32")]
+        for length in [1_i64 << 32, (1_i64 << 32) + 1] {
+            assert!(arena.alloc_vector_sexp(super::SEXPTYPE::RAWSXP, length).is_none());
+            assert!(matches!(arena.alloc_vector_checked_sexp(super::SEXPTYPE::RAWSXP, length),
+                Err(super::ArenaError::InvalidLength)));
+            assert_eq!((arena.node_count(), arena.total_bytes_allocated), before);
+        }
+    }
+
+    #[test]
+    fn vector_allocation_preserves_all_supported_types_and_zero_lengths() {
+        let mut arena = super::RArena::new();
+        for tag in 0..=31 {
+            let kind = super::SEXPTYPE::from(tag);
+            if super::sexp_elem_size(kind) == 0 { continue; }
+            for length in [0, 1, 8] {
+                for checked in [false, true] {
+                    let value = if checked {
+                        arena.alloc_vector_checked_sexp(kind, length).unwrap()
+                    } else {
+                        arena.alloc_vector_sexp(kind, length).unwrap()
+                    };
+                    assert_eq!(value.typeof_(), kind);
+                    assert_eq!(value.len(), length);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn vector_allocation_rejects_incompatible_headers_without_consuming_budget() {
+        let mut arena = super::RArena::new();
+        let before = (arena.node_count(), arena.total_bytes_allocated);
+        for tag in -1..=100 {
+            let kind = super::SEXPTYPE::from(tag);
+            if super::sexp_elem_size(kind) != 0 {
+                continue;
+            }
+            for length in [0, 1, 8] {
+                assert!(arena.alloc_vector_sexp(kind, length).is_none(), "tag {tag}");
+                assert!(arena.alloc_vector_checked_sexp(kind, length).is_err(), "tag {tag}");
+                assert_eq!((arena.node_count(), arena.total_bytes_allocated), before);
+            }
+        }
+    }
+
     #[test]
     fn transient_reservations_share_limits_and_release_without_arena_borrows() {
         let mut arena = super::RArena::with_budget(super::ArenaBudget::new(1024, 0));
