@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn clipboard_roundtrips_text() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
             let text = CString::new("hello").unwrap();
             assert_eq!(copystringtoclipboard(text.as_ptr()), 5);

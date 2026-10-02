@@ -393,7 +393,15 @@ impl<'a> Sexp<'a> {
         if header.sxpinfo.alt() && header.payload.is_null() {
             // SAFETY: this handle names the live node. `materialize` writes
             // the payload; the header copy above has already ended.
-            unsafe { super::altseq::materialize(self.ptr) }
+            unsafe {
+                if let Some(owner) = self.session_owner_ptr {
+                    crate::sexp::session::with_instance_active(owner.as_ptr(), || {
+                        super::altseq::materialize(self.ptr)
+                    });
+                } else {
+                    super::altseq::materialize(self.ptr);
+                }
+            }
         }
     }
 
@@ -571,6 +579,23 @@ impl<'a> Sexp<'a> {
                 address: ptr as usize,
             })
         }
+    }
+
+    /// Retain a new graph edge in the checked handle's original session.
+    /// Standalone arenas have no generational collector or ambient owner.
+    fn remember_child(&self, child: &Sexp<'_>) -> SexpResult<()> {
+        if let Some(owner) = self.session_owner_ptr {
+            // SAFETY: the handles retain the owner and both live nodes;
+            // check_child_owner precedes this strictly-local state update.
+            if !unsafe { crate::sexp::gengc::write_barrier_in(owner.as_ptr(), self.ptr, child.ptr) } {
+                return Err(SexpError::AllocationFailed { object: "GC write barrier" });
+            }
+        } else if self.owner == SexpOwner::Unknown {
+            // Legacy raw mutation requires the caller's active owner/rooting
+            // contract. No Rust payload reference survives this local call.
+            crate::sexp::gengc::write_barrier(self.ptr, child.ptr);
+        }
+        Ok(())
     }
 
     fn optional_child(&self, ptr: SEXP) -> Option<Sexp<'a>> {

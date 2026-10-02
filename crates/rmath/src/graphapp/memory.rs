@@ -15,35 +15,43 @@ use std::ptr;
 #[derive(Clone, Copy)]
 struct MemHeader {
     size: c_long,
+    // C long is only 32 bits on Win64; payloads contain 64-bit pointers.
+    _alignment: [usize; 0],
 }
 
 const HEADER_SIZE: usize = std::mem::size_of::<MemHeader>();
-
-/// Align size to 4-byte boundary.
-fn align4(size: c_long) -> c_long {
-    ((size + 4) >> 2) << 2
-}
 
 unsafe fn header_for_data(data: *mut u8) -> *mut MemHeader {
     unsafe { data.sub(HEADER_SIZE) as *mut MemHeader }
 }
 
 fn layout_for_data_size(size: c_long) -> Option<Layout> {
-    let datasize = align4(size) as usize;
-    Layout::from_size_align(HEADER_SIZE + datasize, std::mem::align_of::<MemHeader>()).ok()
+    let size = usize::try_from(size).ok()?;
+    // Preserve GraphApp's extra word of padding, with checked arithmetic.
+    let datasize = size.checked_add(4)? & !3;
+    Layout::from_size_align(
+        HEADER_SIZE.checked_add(datasize)?,
+        std::mem::align_of::<MemHeader>(),
+    )
+    .ok()
+}
+
+/// Allocate a platform-sized byte count without truncating it to C long.
+pub unsafe fn memalloc_bytes(size: usize) -> *mut u8 {
+    let Ok(size) = c_long::try_from(size) else {
+        return ptr::null_mut();
+    };
+    unsafe { memalloc(size) }
 }
 
 /// Allocate zeroed memory of the given size.
 /// Returns a pointer to the usable memory area (after the header).
 pub unsafe fn memalloc(size: c_long) -> *mut u8 {
     unsafe {
-        let datasize = align4(size) as usize;
-        let total = HEADER_SIZE + datasize;
-
-        let layout = match Layout::from_size_align(total, std::mem::align_of::<MemHeader>()) {
-            Ok(l) => l,
-            Err(_) => return ptr::null_mut(),
+        let Some(layout) = layout_for_data_size(size) else {
+            return ptr::null_mut();
         };
+        let datasize = layout.size() - HEADER_SIZE;
 
         let block = alloc(layout);
         if block.is_null() {
@@ -78,19 +86,17 @@ pub unsafe fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
 
         let block = header_for_data(a) as *mut u8;
         let old_size = (*(block as *const MemHeader)).size;
-        let oldsize = if old_size > 0 {
-            align4(old_size) as usize
-        } else {
-            0
+        let Some(old_layout) = layout_for_data_size(old_size) else {
+            return ptr::null_mut();
         };
-        let newsize = align4(new_size) as usize;
+        let Some(new_layout) = layout_for_data_size(new_size) else {
+            return ptr::null_mut();
+        };
+        let oldsize = old_layout.size() - HEADER_SIZE;
+        let newsize = new_layout.size() - HEADER_SIZE;
 
         if newsize != oldsize {
-            let old_layout = match layout_for_data_size(old_size) {
-                Some(layout) => layout,
-                None => return ptr::null_mut(),
-            };
-            let new_total = HEADER_SIZE + newsize;
+            let new_total = new_layout.size();
             let new_block = realloc(block, old_layout, new_total);
             if new_block.is_null() {
                 return ptr::null_mut();
@@ -146,32 +152,14 @@ pub unsafe fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
             return memalloc(extra);
         }
 
-        let block = header_for_data(a) as *mut u8;
-        let size = (*(block as *const MemHeader)).size;
-        let oldsize = if size > 0 { align4(size) as usize } else { 0 };
-        let newsize = align4(size + extra) as usize;
-
-        if newsize != oldsize {
-            let old_layout = match layout_for_data_size(size) {
-                Some(layout) => layout,
-                None => return ptr::null_mut(),
-            };
-            let new_total = HEADER_SIZE + newsize;
-            let new_block = realloc(block, old_layout, new_total);
-            if new_block.is_null() {
-                return ptr::null_mut();
-            }
-
-            let data = new_block.add(HEADER_SIZE);
-            if newsize > oldsize {
-                ptr::write_bytes(data.add(oldsize), 0, newsize - oldsize);
-            }
-            (*(new_block as *mut MemHeader)).size = size + extra;
-            return data;
+        if extra < 0 {
+            return ptr::null_mut();
         }
-
-        (*(block as *mut MemHeader)).size = size + extra;
-        a
+        let size = memlength(a);
+        let Some(new_size) = size.checked_add(extra) else {
+            return ptr::null_mut();
+        };
+        memrealloc(a, new_size)
     }
 }
 
@@ -182,8 +170,81 @@ pub unsafe fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
         let extra = memlength(b);
         let result = memexpand(a, extra);
         if !result.is_null() && !b.is_null() {
-            ptr::copy_nonoverlapping(b, result.add(size as usize), extra as usize);
+            let source = if a == b { result } else { b };
+            ptr::copy_nonoverlapping(source, result.add(size as usize), extra as usize);
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn graphapp_memory_aligns_object_payloads_after_allocation_and_growth() {
+        use super::super::types::{ObjInfo, drawstruct, imagedata};
+        let required_alignment = std::mem::align_of::<ObjInfo>()
+            .max(std::mem::align_of::<drawstruct>())
+            .max(std::mem::align_of::<imagedata>());
+        assert!(std::mem::align_of::<MemHeader>() >= required_alignment);
+        assert_eq!(HEADER_SIZE % required_alignment, 0);
+        unsafe {
+            for size in [0, 1, 8, 128] {
+                let data = memalloc(size);
+                assert!(!data.is_null());
+                assert_eq!(data.addr() % required_alignment, 0);
+                let grown = memrealloc(data, 256);
+                assert!(!grown.is_null());
+                assert_eq!(grown.addr() % required_alignment, 0);
+                memfree(grown);
+            }
+        }
+    }
+
+    #[test]
+    fn graphapp_memory_rejects_bad_sizes_without_losing_existing_storage() {
+        unsafe {
+            assert!(memalloc(-1).is_null());
+            assert!(memalloc(c_long::MAX).is_null());
+            let data = memalloc(8);
+            assert!(!data.is_null());
+            *data = 42;
+            assert!(memrealloc(data, c_long::MAX).is_null());
+            assert!(memexpand(data, c_long::MAX).is_null());
+            assert!(memexpand(data, -1).is_null());
+            assert_eq!(memlength(data), 8);
+            assert_eq!(*data, 42);
+            memfree(data);
+        }
+    }
+
+    #[test]
+    fn graphapp_memory_growth_preserves_bytes_and_zeroes_new_storage() {
+        unsafe {
+            let data = memalloc(8);
+            assert!(!data.is_null());
+            std::ptr::write_bytes(data, 42, 8);
+            let data = memexpand(data, 8);
+            assert!(!data.is_null());
+            assert_eq!(memlength(data), 16);
+            assert_eq!(std::slice::from_raw_parts(data, 8), &[42; 8]);
+            assert_eq!(std::slice::from_raw_parts(data.add(8), 8), &[0; 8]);
+            memfree(data);
+        }
+    }
+
+    #[test]
+    fn graphapp_memory_self_join_survives_reallocation() {
+        unsafe {
+            let data = memalloc(8);
+            assert!(!data.is_null());
+            std::ptr::write_bytes(data, 42, 8);
+            let joined = memjoin(data, data);
+            assert!(!joined.is_null());
+            assert_eq!(memlength(joined), 16);
+            assert_eq!(std::slice::from_raw_parts(joined, 16), &[42; 16]);
+            memfree(joined);
+        }
     }
 }

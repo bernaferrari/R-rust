@@ -419,7 +419,7 @@ pub fn R_EnsureFDLimit(desired: c_int) -> c_int {
             }
 
             let cur = rlim.rlim_cur as c_int;
-            let desired_usize = desired as u64;
+            let desired_usize = desired as libc::rlim_t;
 
             if rlim.rlim_cur == libc::RLIM_INFINITY || rlim.rlim_cur >= desired_usize {
                 return desired;

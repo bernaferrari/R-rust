@@ -34,7 +34,7 @@ pub fn decrement_active_windows() {
 
 unsafe fn alloc_drawstate(dest: drawing) -> drawstate {
     unsafe {
-        let state = memory::memalloc(std::mem::size_of::<drawstruct>() as i64) as drawstate;
+        let state = memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
         if state.is_null() {
             return ptr::null_mut();
         }

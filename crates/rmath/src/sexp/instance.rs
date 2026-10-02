@@ -33,7 +33,6 @@
 //! translated tests may still explicitly install an instance while the port is
 //! moving toward fully explicit session parameters.
 
-use std::alloc::{Layout, dealloc};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::os::raw::{c_char, c_int};
@@ -544,7 +543,7 @@ pub struct RInstance {
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
-    pub(crate) vmax: Vec<(*mut u8, Layout)>,
+    pub(crate) vmax: Vec<super::memory_ext::TransientAllocation>,
 }
 
 impl RInstance {
@@ -815,13 +814,7 @@ impl Drop for RInstance {
                 }
             }
         }
-        for (ptr, layout) in self.vmax.drain(..) {
-            if !ptr.is_null() && layout.size() > 0 {
-                unsafe {
-                    dealloc(ptr, layout);
-                }
-            }
-        }
+        self.vmax.clear();
         if self.eval_state.profiling.profile_outfile >= 0 {
             // Native only: on wasm32 the profiling stubs never open an
             // output file, so there is nothing to close.

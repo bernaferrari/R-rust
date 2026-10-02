@@ -19,7 +19,7 @@ pub unsafe fn init_objects() {
         if !with_graphapp_runtime(|runtime| runtime.objects.base_object).is_null() {
             return;
         }
-        let obj = memory::memalloc(std::mem::size_of::<ObjInfo>() as i64) as object;
+        let obj = memory::memalloc_bytes(std::mem::size_of::<ObjInfo>()) as object;
         if obj.is_null() {
             return;
         }
@@ -118,7 +118,7 @@ pub unsafe fn decrease_refcount(obj: object) {
         }
 
         // Add to deletion list
-        let new_node = memory::memalloc(std::mem::size_of::<DelNode>() as i64) as *mut DelNode;
+        let new_node = memory::memalloc_bytes(std::mem::size_of::<DelNode>()) as *mut DelNode;
         if new_node.is_null() {
             return;
         }
@@ -268,7 +268,7 @@ pub unsafe fn deletion_traversal() {
 /// Create and return a new object with a refcount of 1.
 pub unsafe fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> object {
     unsafe {
-        let obj = memory::memalloc(std::mem::size_of::<ObjInfo>() as i64) as object;
+        let obj = memory::memalloc_bytes(std::mem::size_of::<ObjInfo>()) as object;
         if obj.is_null() {
             return ptr::null_mut();
         }
@@ -280,7 +280,7 @@ pub unsafe fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> ob
         (*obj).bg = Transparent;
 
         if (kind & ControlObject) != 0 {
-            let call = memory::memalloc(std::mem::size_of::<callinfo>() as i64) as *mut callinfo;
+            let call = memory::memalloc_bytes(std::mem::size_of::<callinfo>()) as *mut callinfo;
             if call.is_null() {
                 memory::memfree(obj as *mut u8);
                 return ptr::null_mut();

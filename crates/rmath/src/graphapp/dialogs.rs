@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn ask_change_directory_is_denied_without_host_mutation_capability() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let before = env::current_dir().expect("current directory");
         let changed = change_dir_if_allowed(Path::new("/"));
         let after = env::current_dir().expect("current directory");
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn message_box_records_status_text() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
             let text = CString::new("hello").unwrap_or_else(|e| panic!("{e}"));
             myMessageBox(ptr::null_mut(), text.as_ptr(), 7);

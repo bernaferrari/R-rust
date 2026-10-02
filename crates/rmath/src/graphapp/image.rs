@@ -20,7 +20,7 @@ fn normalized_rgb(pixel: rgb) -> rgb {
     }
 }
 
-fn palette_sort_key(pixel: rgb) -> (u8, u64, u64, u64, u64) {
+fn palette_sort_key(pixel: rgb) -> (u8, rgb, rgb, rgb, rgb) {
     if pixel == Transparent {
         return (1, 0, 0, 0, 0);
     }
@@ -87,26 +87,34 @@ pub unsafe fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
             return ptr::null_mut();
         }
 
-        let img = memory::memalloc(std::mem::size_of::<imagedata>() as i64) as image;
-        if img.is_null() {
+        let Ok(width_size) = usize::try_from(width) else {
+            return ptr::null_mut();
+        };
+        let Ok(height_size) = usize::try_from(height) else {
+            return ptr::null_mut();
+        };
+        let Some(bytes) = width_size.checked_mul(height_size).and_then(|pixels| {
+            pixels.checked_mul(if depth == 8 {
+                1
+            } else {
+                std::mem::size_of::<rgb>()
+            })
+        }) else {
+            return ptr::null_mut();
+        };
+        let pixels = memory::memalloc_bytes(bytes);
+        if pixels.is_null() {
             return ptr::null_mut();
         }
-        ptr::write_bytes(img as *mut u8, 0, std::mem::size_of::<imagedata>());
-
+        let img = memory::memalloc_bytes(std::mem::size_of::<imagedata>()) as image;
+        if img.is_null() {
+            memory::memfree(pixels);
+            return ptr::null_mut();
+        }
         (*img).width = width;
         (*img).height = height;
-
-        if depth == 8 {
-            (*img).depth = 8;
-            let pixels = memory::memalloc((width * height) as i64);
-            (*img).pixels = pixels;
-        } else {
-            (*img).depth = 32;
-            let pixels = memory::memalloc(
-                (width as i64 * height as i64 * std::mem::size_of::<rgb>() as i64) as i64,
-            );
-            (*img).pixels = pixels;
-        }
+        (*img).depth = depth;
+        (*img).pixels = pixels;
 
         img
     }
@@ -193,20 +201,23 @@ pub unsafe fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
         if img.is_null() {
             return;
         }
-        if !(*img).cmap.is_null() {
-            memory::memfree((*img).cmap as *mut u8);
-        }
-        (*img).cmapsize = cmapsize;
-        if cmapsize > 0 && !cmap.is_null() {
-            let new_cmap = memory::memalloc((cmapsize as usize * std::mem::size_of::<rgb>()) as i64)
-                as *mut rgb;
-            if !new_cmap.is_null() {
-                ptr::copy_nonoverlapping(cmap, new_cmap, cmapsize as usize);
-                (*img).cmap = new_cmap;
+        let new_cmap = if cmapsize > 0 && !cmap.is_null() {
+            let Some(bytes) = (cmapsize as usize).checked_mul(std::mem::size_of::<rgb>()) else {
+                return;
+            };
+            let replacement = memory::memalloc_bytes(bytes) as *mut rgb;
+            if replacement.is_null() {
+                return;
             }
+            ptr::copy_nonoverlapping(cmap, replacement, cmapsize as usize);
+            replacement
         } else {
-            (*img).cmap = ptr::null_mut();
-        }
+            ptr::null_mut()
+        };
+        // Publish only after copying: callers may pass the current palette.
+        memory::memfree((*img).cmap as *mut u8);
+        (*img).cmap = new_cmap;
+        (*img).cmapsize = if new_cmap.is_null() { 0 } else { cmapsize };
     }
 }
 
@@ -488,6 +499,53 @@ pub unsafe fn has_transparent_pixels(img: image) -> c_int {
                 }
             }
             0
+        }
+    }
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    #[test]
+    fn graphapp_image_rejects_invalid_dimensions_and_preserves_pixel_storage() {
+        unsafe {
+            assert!(newimage(-1, 1, 8).is_null());
+            assert!(newimage(1, -1, 32).is_null());
+            assert!(newimage(c_int::MAX, c_int::MAX, 32).is_null());
+            for depth in [8, 32] {
+                let img = newimage(2, 3, depth);
+                assert!(!img.is_null());
+                assert!(!(*img).pixels.is_null());
+                let bytes = 6 * if depth == 8 {
+                    1
+                } else {
+                    std::mem::size_of::<rgb>()
+                };
+                assert_eq!(
+                    std::slice::from_raw_parts((*img).pixels, bytes),
+                    vec![0; bytes]
+                );
+                delimage(img);
+            }
+        }
+    }
+
+    #[test]
+    fn graphapp_image_can_replace_its_palette_from_the_current_palette() {
+        unsafe {
+            let img = newimage(2, 2, 8);
+            assert!(!img.is_null());
+            let mut colors = [rgb_make(1, 2, 3), rgb_make(4, 5, 6)];
+            setpalette(img, 2, colors.as_mut_ptr());
+            let old = (*img).cmap;
+            assert!(!old.is_null());
+            setpalette(img, 2, old);
+            assert_eq!(std::slice::from_raw_parts((*img).cmap, 2), colors);
+            setpalette(img, 0, ptr::null_mut());
+            assert!((*img).cmap.is_null());
+            assert_eq!((*img).cmapsize, 0);
+            delimage(img);
         }
     }
 }

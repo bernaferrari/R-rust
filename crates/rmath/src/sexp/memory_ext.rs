@@ -10,7 +10,7 @@
 //! - allocSExp, allocFormalsList, etc.
 //! - R_alloc/vmaxget/vmaxset (transient memory from C stack)
 
-use std::alloc::{Layout, alloc, dealloc};
+use std::alloc::Layout;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
@@ -298,16 +298,23 @@ pub unsafe fn allocLang(n: c_int) -> SEXP {
 // R_alloc / vmaxget / vmaxset — transient memory (C stack-like)
 // ---------------------------------------------------------------------------
 
+/// A transient buffer and its original owner's byte reservation are released
+/// together, including when an instance is destroyed during an unwind.
+pub(crate) struct TransientAllocation {
+    buffer: memory::OwnedBuffer,
+    _reservation: memory::TransientReservation,
+}
+
 fn with_vmax<F, R>(f: F) -> R
 where
-    F: FnOnce(&mut Vec<(*mut u8, Layout)>) -> R,
+    F: FnOnce(&mut Vec<TransientAllocation>) -> R,
 {
     super::instance::with_required_current_instance(|instance| with_vmax_in(instance, f))
 }
 
 fn with_vmax_in<F, R>(instance: *mut RInstance, f: F) -> R
 where
-    F: FnOnce(&mut Vec<(*mut u8, Layout)>) -> R,
+    F: FnOnce(&mut Vec<TransientAllocation>) -> R,
 {
     // P1: the `&mut` field lend is held only across strictly-local Vec
     // operations (push/len/drain + dealloc) that never reenter the
@@ -320,34 +327,48 @@ where
 /// This is the equivalent of R's `R_alloc()` which allocates on the C stack.
 /// In Rust, the active session owns a transient allocation buffer that's freed
 /// on vmaxset().
-pub(crate) unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
-    super::instance::with_required_current_instance(|instance| unsafe {
-        R_alloc_in(instance, _size, nelem)
-    })
+pub(crate) unsafe fn R_alloc(size: usize, nelem: usize) -> *mut c_void {
+    let ptr = super::instance::with_required_current_instance(|instance| unsafe {
+        R_alloc_in(instance, size, nelem)
+    });
+    // Ported callers rely on R_alloc returning usable storage or raising an
+    // R error. Returning null on a nonempty request invites unchecked writes.
+    if ptr.is_null() && size != 0 && nelem != 0 {
+        super::context::r_error("cannot allocate transient memory: size, memory budget or allocation failure");
+    }
+    ptr
 }
 
 pub(crate) unsafe fn R_alloc_in(
     instance: *mut RInstance,
-    _size: usize,
+    size: usize,
     nelem: usize,
 ) -> *mut c_void {
     unsafe {
-        let total = _size.checked_mul(nelem).unwrap_or(0);
+        let Some(total) = size.checked_mul(nelem) else {
+            return ptr::null_mut();
+        };
         if total == 0 {
             return ptr::null_mut();
         }
-        let layout =
-            Layout::from_size_align(total, std::mem::align_of::<u64>()).unwrap_or_else(|_| {
-                Layout::from_size_align(total, 1).unwrap_or_else(|_| Layout::new::<u8>())
-            });
-        let ptr = alloc(layout);
-        if ptr.is_null() {
+        let Ok(layout) = Layout::from_size_align(total, std::mem::align_of::<u64>()) else {
+            return ptr::null_mut();
+        };
+        // Reserve the bookkeeping slot before allocating any raw storage.
+        if !with_vmax_in(instance, |vmax| vmax.try_reserve(1).is_ok()) {
             return ptr::null_mut();
         }
-        // Zero-initialize
-        std::ptr::write_bytes(ptr, 0, total);
-        with_vmax_in(instance, |vmax| vmax.push((ptr, layout)));
-        ptr as *mut c_void
+        let Some(reservation) = memory::reserve_transient_in(instance, total) else {
+            return ptr::null_mut();
+        };
+        let Some(buffer) = memory::OwnedBuffer::zeroed(layout) else {
+            return ptr::null_mut();
+        };
+        let ptr = buffer.as_ptr();
+        with_vmax_in(instance, |vmax| {
+            vmax.push(TransientAllocation { buffer, _reservation: reservation });
+        });
+        ptr.cast()
     }
 }
 
@@ -359,7 +380,8 @@ pub unsafe fn vmaxget() -> *mut c_void {
 }
 
 pub(crate) fn vmaxget_in(instance: *mut RInstance) -> *mut c_void {
-    with_vmax_in(instance, |vmax| vmax.len() as *mut c_void)
+    // This is an opaque index, never an address to dereference.
+    with_vmax_in(instance, |vmax| ptr::without_provenance_mut(vmax.len()))
 }
 
 /// Reset transient allocations to the given watermark.
@@ -372,16 +394,10 @@ pub unsafe fn vmaxset(value: *mut c_void) {
 }
 
 pub(crate) unsafe fn vmaxset_in(instance: *mut RInstance, value: *mut c_void) {
-    let mark = value as usize;
+    let mark = value.addr();
     with_vmax_in(instance, |vmax| {
         let drain_start = mark.min(vmax.len());
-        for (ptr, layout) in vmax.drain(drain_start..) {
-            if !ptr.is_null() && layout.size() > 0 {
-                unsafe {
-                    dealloc(ptr, layout);
-                }
-            }
-        }
+        vmax.truncate(drain_start);
     });
 }
 
@@ -419,6 +435,106 @@ mod tests {
     use crate::sexp::session::RSession;
 
     use super::*;
+
+    #[test]
+    fn transient_allocation_rejects_unrepresentable_layout() {
+        let mut owner = RInstance::new_for_gc_tests();
+        unsafe {
+            assert!(R_alloc_in(addr_of_mut!(owner), 1, isize::MAX as usize + 1).is_null());
+            assert!(R_alloc_in(addr_of_mut!(owner), usize::MAX, 2).is_null());
+            assert!(R_alloc_in(addr_of_mut!(owner), 0, usize::MAX).is_null());
+            assert_eq!(vmax_len_in(addr_of_mut!(owner)), 0);
+        }
+    }
+
+    #[test]
+    fn transient_allocations_are_zeroed_aligned_and_isolated_during_nested_lends() {
+        let mut left = RInstance::new_for_gc_tests();
+        let mut right = RInstance::new_for_gc_tests();
+        let node_bytes = std::mem::size_of::<SexprecCore>();
+        left.arena.set_budget(memory::ArenaBudget::new(node_bytes + 32, 0));
+        right.arena.set_budget(memory::ArenaBudget::new(4, 0));
+        unsafe {
+            let left_ptr = addr_of_mut!(left);
+            let right_ptr = addr_of_mut!(right);
+            memory::with_arena_in(left_ptr, |left_arena| {
+                memory::with_arena_in(right_ptr, |_right_arena| {
+                    assert!(!left_arena.alloc_node(SEXPTYPE::LISTSXP).is_null());
+                    left_arena.set_budget(memory::ArenaBudget::new(node_bytes + 16, 0));
+                    // This must find the outer owner's ledger, not the top one.
+                    let buffer = R_alloc_in(left_ptr, 8, 2).cast::<u64>();
+                    assert!(!buffer.is_null());
+                    assert_eq!(*buffer, 0);
+                    assert_eq!(*buffer.add(1), 0);
+                    *buffer.add(1) = 42;
+                    assert_eq!(*buffer.add(1), 42);
+                    assert!(R_alloc_in(left_ptr, 1, 1).is_null());
+                    assert!(R_alloc_in(right_ptr, 1, 5).is_null());
+                    assert!(!R_alloc_in(right_ptr, 1, 4).is_null());
+                });
+                assert!(left_arena.try_reserve_transient(1).is_none());
+                vmaxset_in(left_ptr, ptr::null_mut());
+                assert!(left_arena.try_reserve_transient(16).is_some());
+            });
+            assert_eq!(vmax_len_in(left_ptr), 0);
+            assert_eq!(vmax_len_in(right_ptr), 1);
+            vmaxset_in(right_ptr, ptr::null_mut());
+            assert!(right.arena.try_reserve_transient(4).is_some());
+        }
+    }
+
+    #[test]
+    fn transient_allocation_failure_raises_r_error_and_session_recovers() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            (*instance).arena.set_budget(memory::ArenaBudget::new(8, 0));
+            for (size, count) in [(1, 9), (usize::MAX, 2), (1, isize::MAX as usize + 1)] {
+                let error = std::panic::catch_unwind(|| R_alloc(size, count)).unwrap_err();
+                assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
+                assert_eq!(vmax_len_in(instance), 0);
+                assert!((*instance).arena.try_reserve_transient(8).is_some());
+            }
+            assert!(!R_alloc(1, 8).is_null());
+            vmaxset_in(instance, ptr::null_mut());
+            assert!((*instance).arena.try_reserve_transient(8).is_some());
+        });
+    }
+
+    #[test]
+    fn transient_allocation_teardown_releases_original_reservation_on_unwind() {
+        let result = std::panic::catch_unwind(|| {
+            let mut owner = RInstance::new_for_gc_tests();
+            owner.arena.set_budget(memory::ArenaBudget::new(8, 0));
+            unsafe {
+                assert!(!R_alloc_in(addr_of_mut!(owner), 1, 8).is_null());
+                assert!(owner.arena.try_reserve_transient(1).is_none());
+            }
+            // Drop the owner after moving it while its transient buffers live.
+            let _moved = Box::new(owner);
+            panic!("fixture unwind");
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn transient_allocations_share_arena_budget_and_release_at_watermark() {
+        let mut owner = RInstance::new_for_gc_tests();
+        owner.arena.set_budget(memory::ArenaBudget::new(16, 0));
+        unsafe {
+            let instance = addr_of_mut!(owner);
+            let first = R_alloc_in(instance, 1, 8);
+            assert!(!first.is_null());
+            let mark = vmaxget_in(instance);
+            assert!(!R_alloc_in(instance, 2, 4).is_null());
+            assert!(R_alloc_in(instance, 1, 1).is_null());
+            assert!(!owner.arena.try_reserve_transient(1).is_some());
+            vmaxset_in(instance, mark);
+            assert!(owner.arena.try_reserve_transient(8).is_some());
+            assert!(!owner.arena.try_reserve_transient(9).is_some());
+            vmaxset_in(instance, ptr::null_mut());
+            assert!(owner.arena.try_reserve_transient(16).is_some());
+        }
+    }
 
     #[test]
     fn test_new_environment() {

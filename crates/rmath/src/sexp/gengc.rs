@@ -462,30 +462,54 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
 pub struct RememberedSet {
     entries: Vec<SEXP>,
     members: HashSet<usize>,
+    #[cfg(test)]
+    fail_next_reservation: bool,
 }
 
 impl RememberedSet {
     #[inline]
     pub fn add(&mut self, obj: SEXP) {
+        if !self.try_add(obj) {
+            // Legacy raw setters may already have published the pointer.
+            // Continuing after a missing barrier could leave dangling edges;
+            // these infallible callers follow Rust's fatal OOM contract.
+            std::alloc::handle_alloc_error(std::alloc::Layout::new::<SEXP>());
+        }
+    }
+
+    /// Record an edge before publishing it. On failure, membership and
+    /// entries remain unchanged so the caller can reject the write.
+    #[inline]
+    pub(crate) fn try_add(&mut self, obj: SEXP) -> bool {
         if obj.is_null() {
-            return;
+            return true;
         }
         unsafe {
             if (*obj).sxpinfo.gcgen() == 0 {
-                return;
+                return true;
             }
         }
         let addr = obj as usize;
         if self.members.contains(&addr) {
-            return;
+            return true;
+        }
+        #[cfg(test)]
+        if std::mem::take(&mut self.fail_next_reservation) {
+            return false;
         }
         // Reserve both collections before mutating either, so an allocation
         // failure cannot leave entries and membership out of sync.
         if self.entries.try_reserve(1).is_err() || self.members.try_reserve(1).is_err() {
-            return;
+            return false;
         }
         self.entries.push(obj);
         self.members.insert(addr);
+        true
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_next_reservation_for_test(&mut self) {
+        self.fail_next_reservation = true;
     }
 
     pub fn clear(&mut self) {
@@ -592,6 +616,32 @@ pub fn write_barrier(parent: SEXP, child: SEXP) {
             with_gc_state(|state| {
                 state.remembered_set.add(parent);
             });
+        }
+    }
+}
+
+/// Record an old-to-young edge in the original owner's remembered set.
+/// Does not activate a session, collect, or call the evaluator.
+///
+/// # Safety
+/// `instance` is live; parent and child are live nodes owned by that instance
+/// or immutable storage. No borrow of its GC state overlaps this operation.
+#[inline]
+pub(crate) unsafe fn write_barrier_in(
+    instance: *mut instance::RInstance,
+    parent: SEXP,
+    child: SEXP,
+) -> bool {
+    if parent.is_null() || child.is_null() {
+        return true;
+    }
+    unsafe {
+        if (*parent).sxpinfo.gcgen() == Generation::Old as u8
+            && (*child).sxpinfo.gcgen() == Generation::Young as u8
+        {
+            with_gc_state_in(instance, |state| state.remembered_set.try_add(parent))
+        } else {
+            true
         }
     }
 }

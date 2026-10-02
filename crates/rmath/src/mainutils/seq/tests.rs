@@ -1336,14 +1336,17 @@ fn altseq_long_integer_colon_stays_lazy() {
 
         // Two columns of 2^31. The second column starts at 2^31, past
         // c_int::MAX, and contains NA plus the widest negative integer.
-        let matrix = crate::sexp::altseq::compact_int_seq(0, 1, 1usize << 32);
-        root_global("alt_int_matrix_width", matrix);
-        assert_eq!(XLENGTH(matrix), 1i64 << 32);
-        assert!(still_lazy(matrix));
-        let mut matrix_w = 0;
-        crate::mainutils::printarray::formatIntegerMatrix(matrix, 1i64 << 31, &mut matrix_w);
-        assert_eq!(matrix_w, 11);
-        assert!(still_lazy(matrix));
+        #[cfg(target_pointer_width = "64")]
+        {
+            let matrix = crate::sexp::altseq::compact_int_seq(0, 1, 1usize << 32);
+            root_global("alt_int_matrix_width", matrix);
+            assert_eq!(XLENGTH(matrix), 1i64 << 32);
+            assert!(still_lazy(matrix));
+            let mut matrix_w = 0;
+            crate::mainutils::printarray::formatIntegerMatrix(matrix, 1i64 << 31, &mut matrix_w);
+            assert_eq!(matrix_w, 11);
+            assert!(still_lazy(matrix));
+        }
     }
 }
 

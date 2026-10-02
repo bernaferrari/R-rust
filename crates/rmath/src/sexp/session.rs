@@ -258,6 +258,44 @@ struct CurrentInstanceGuard {
     previous_state: Option<*mut rmath_nmath::MathState>,
 }
 
+impl CurrentInstanceGuard {
+    unsafe fn new(instance: *mut RInstance) -> Self {
+        let previous = unsafe { replace_current_instance(Some(instance)) };
+        // Scope the nmath RNG to this session for the duration of the
+        // activation, mirroring the instance swap above: session-owned
+        // streams must not leak across concurrently-live sessions.
+        let previous_rng = unsafe {
+            rmath_nmath::rng::swap_rng(Some(
+                &mut (*instance).rng_state as *mut rmath_nmath::RngState,
+            ))
+        };
+        // Scope the nmath sampler state (rgamma/beta/... caches) the same
+        // way; without this a detached session's sampler state resets on
+        // every access and stateful algorithms like rgamma's GD loop fail.
+        let previous_state = unsafe {
+            rmath_nmath::state::replace_state(
+                &mut (*instance).math_state as *mut rmath_nmath::MathState,
+            )
+        };
+        CurrentInstanceGuard {
+            previous,
+            previous_rng,
+            previous_state,
+        }
+    }
+}
+
+/// Scope a translated operation to its explicit owner and restore instance,
+/// RNG and numerical state on every exit, including an R error unwind.
+///
+/// # Safety
+/// The owner remains live; no whole-instance or payload borrow may overlap
+/// reentry inside the closure.
+pub(crate) unsafe fn with_instance_active<T>(instance: *mut RInstance, f: impl FnOnce() -> T) -> T {
+    let _guard = unsafe { CurrentInstanceGuard::new(instance) };
+    f()
+}
+
 impl Drop for CurrentInstanceGuard {
     fn drop(&mut self) {
         unsafe {
@@ -599,28 +637,8 @@ impl RSession {
     }
 
     fn activate(&self) -> CurrentInstanceGuard {
-        let previous = unsafe { replace_current_instance(Some(self.instance_ptr())) };
-        // Scope the nmath RNG to this session for the duration of the
-        // activation, mirroring the instance swap above: session-owned
-        // streams must not leak across concurrently-live sessions.
-        let previous_rng = unsafe {
-            rmath_nmath::rng::swap_rng(Some(
-                &mut (*self.instance_ptr()).rng_state as *mut rmath_nmath::RngState,
-            ))
-        };
-        // Scope the nmath sampler state (rgamma/beta/... caches) the same
-        // way; without this a detached session's sampler state resets on
-        // every access and stateful algorithms like rgamma's GD loop fail.
-        let previous_state = unsafe {
-            rmath_nmath::state::replace_state(
-                &mut (*self.instance_ptr()).math_state as *mut rmath_nmath::MathState,
-            )
-        };
-        CurrentInstanceGuard {
-            previous,
-            previous_rng,
-            previous_state,
-        }
+        // SAFETY: the session retains the owner for the guard's lifetime.
+        unsafe { CurrentInstanceGuard::new(self.instance_ptr()) }
     }
 
     pub fn enable_browser_files(&mut self) {

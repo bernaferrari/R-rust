@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn status_updates_current_window_buffer() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
             let mut window = Box::new(mem::zeroed::<ObjInfo>());
             let window_ptr = &mut *window as *mut ObjInfo;
