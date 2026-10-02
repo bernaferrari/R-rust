@@ -1230,33 +1230,8 @@ unsafe fn gnu_math1_real_result(result: SEXP) -> SEXP {
     }
 }
 
-fn expr_mentions_symbol(expr: SEXP, name: &str) -> bool {
-    unsafe {
-        if expr.is_null() || expr == R_NilValue() {
-            return false;
-        }
-        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            let pn = crate::sexp::accessors::PRINTNAME(expr);
-            if pn.is_null() {
-                return false;
-            }
-            let text = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pn)).to_string_lossy();
-            return text == name;
-        }
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP || TYPEOF(expr) == SEXPTYPE::LISTSXP {
-            expr_mentions_symbol(CAR(expr), name) || expr_mentions_symbol(CDR(expr), name)
-        } else {
-            false
-        }
-    }
-}
-
 unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let source = BCODE_EXPR(body);
-        if expr_mentions_symbol(source, "C_modelframe") {
-            return crate::eval::eval::Rf_eval(source, rho);
-        }
         let code_vec = VECTOR_ELT(body, 0);
         let consts = BCODE_CONSTS(body);
         if code_vec.is_null() || TYPEOF(code_vec) != SEXPTYPE::INTSXP {
@@ -4145,6 +4120,29 @@ mod tests {
     use super::*;
     use crate::sexp::accessors::SET_VECTOR_ELT;
     use crate::sexp::globals::R_BaseEnv;
+
+    #[test]
+    fn gnu_source_marker_does_not_override_compiled_instructions() {
+        let mut session = crate::sexp::session::RSession::new_without_default_packages();
+        let fixture =
+            include_bytes!("../../../r-embed/tests/fixtures/gnu-bytecode-source-marker/branch.rds");
+        let words: [i32; 14] = [12, 17, 4, 20, 2, 3, 3, 11, 16, 4, 1, 16, 5, 1];
+        let encoded: Vec<_> = words.iter().flat_map(|word| word.to_be_bytes()).collect();
+        let offset = fixture
+            .windows(encoded.len())
+            .position(|bytes| bytes == encoded)
+            .unwrap();
+        let mut bytes = fixture.to_vec();
+        bytes[offset + 9 * 4..offset + 10 * 4].copy_from_slice(&5_i32.to_be_bytes());
+        let raw = bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(",");
+        let (value, _, _) = session
+            .eval_code_with_output_capture(&format!("f<-unserialize(as.raw(c({raw})));f(TRUE)"));
+        let value = value.unwrap();
+        unsafe {
+            // SAFETY: the evaluation result is live and no R reentry occurs while reading.
+            assert_eq!(value.integer_elt(0), Some(42));
+        }
+    }
 
     fn assert_r_error(action: impl FnOnce()) -> RError {
         let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
