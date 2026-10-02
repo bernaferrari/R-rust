@@ -140,6 +140,48 @@ a live mutable lend; quiescent session processing services the pending request.
 No whole-instance Rust borrow may survive R reentry (the P1/P2 rules in
 `sexp/instance.rs`). The collector preserves object addresses.
 
+### Allocation admission and graph writes
+
+Vector factories validate the type's union layout, convert the length with
+`usize::try_from`, and validate the complete allocation layout before changing
+the arena. Non-vector headers require their dedicated constructors; the GNU
+compatibility bridge dispatches `LISTSXP` and `LANGSXP` to real node chains.
+Unpublished vector and character payloads have RAII owners until the arena
+adopts them.
+
+`R_alloc` buffers retain both their raw allocation and a reservation against
+their original session's byte budget. Watermark resets and instance teardown
+drop both together. Nonempty allocation failures raise `RError` before ported
+callers can write through a null pointer. Reservations during an arena lend
+use that owner's ledger without borrowing the arena again, including when
+another owner's lend is nested inside it. Watermarks encode opaque indices
+with provenance-free pointers and are never dereferenced.
+
+Checked string, generic and expression vector writes record old-to-young
+edges in the handle's original session even when a different session is
+active. Bounds/type/ownership checks and the fallible remembered-set insertion
+precede publication. If insertion fails, the graph is unchanged and the setter
+returns an allocation error. Standalone arenas have no generational collector.
+Legacy raw setters have an infallible barrier contract; a failed insertion is
+fatal OOM because some callers have already published their edge.
+
+Checked compact-sequence mutations materialize the backing buffer in the
+original owner, with an activation guard that restores the ambient instance,
+RNG and math state. The owner keeps its budget and payload after another
+session is destroyed.
+
+GraphApp buffers reject size overflow before allocating or reallocating and
+align their payloads for object pointers, including platforms where C long is
+narrower than a pointer. Failed growth retains the existing buffer. Image
+construction admits the complete pixel size, and palette replacement copies
+before releasing the old buffer so an aliased source remains valid.
+
+These budgets account for object data and admitted workspaces, not total
+process RSS or every renderer/library allocation. The allocation nightly gate
+also exercises vector admission on a 32-bit target to prevent long-length
+truncation regressions. The object gate covers owner-specific barriers,
+collection after lease release, and an injected insertion failure.
+
 ### Miri evidence
 
 The nightly object gate runs `--lib sexp::object::` with strict provenance and

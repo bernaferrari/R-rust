@@ -296,7 +296,7 @@ pub fn setcliprect(r: rect) {
 /// Copy the current draw state.
 pub unsafe fn copydrawstate() -> drawstate {
     unsafe {
-        let ds = super::memory::memalloc(std::mem::size_of::<drawstruct>() as i64) as drawstate;
+        let ds = super::memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
         if !ds.is_null() {
             *ds = with_graphapp_runtime(|runtime| runtime.current_drawstate.clone());
         }

@@ -32,6 +32,28 @@ jobs:
           MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-strict-provenance
         run: "cargo +nightly miri test -p rmath --lib sexp::object::"
 
+  miri-memory-allocations:
+    name: Miri (allocation admission and transient ownership)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      - name: Reject invalid layouts and retain transient owner accounting
+        env:
+          MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-strict-provenance
+        run: |
+          cargo +nightly miri test -p rmath --lib transient_alloc
+          cargo +nightly miri test -p rmath --lib vector_allocation_
+          cargo +nightly miri test -p rmath --lib vector_compatibility_constructor
+          cargo +nightly miri test -p rmath --lib graphapp_memory_
+          cargo +nightly miri test -p rmath --lib graphapp_image_
+          cargo +nightly miri test -p rmath --lib --target i686-unknown-linux-gnu vector_allocation_
+          cargo +nightly miri test -p rmath --lib --target i686-unknown-linux-gnu graphapp_memory_
+
   miri-modules:
     name: Miri (session-constructing modules)
     runs-on: ubuntu-latest

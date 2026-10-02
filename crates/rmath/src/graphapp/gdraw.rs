@@ -101,9 +101,9 @@ fn blend_channel(dst: c_int, src: c_int, alpha: c_int) -> c_int {
 fn blend_rgb(dst: rgb, src: rgb, alpha: c_int) -> rgb {
     let alpha = alpha.clamp(0, 255);
     rgb_make(
-        blend_channel(getred(dst) as c_int, getred(src) as c_int, alpha) as u64,
-        blend_channel(getgreen(dst) as c_int, getgreen(src) as c_int, alpha) as u64,
-        blend_channel(getblue(dst) as c_int, getblue(src) as c_int, alpha) as u64,
+        blend_channel(getred(dst) as c_int, getred(src) as c_int, alpha) as rgb,
+        blend_channel(getgreen(dst) as c_int, getgreen(src) as c_int, alpha) as rgb,
+        blend_channel(getblue(dst) as c_int, getblue(src) as c_int, alpha) as rgb,
     )
 }
 
@@ -467,16 +467,16 @@ fn read_image_pixel(img: image, x: c_int, y: c_int) -> Option<rgb> {
             let offset = index.checked_mul(4)?;
             let pixels = (*img).pixels.add(offset);
             Some(rgb_make(
-                *pixels as u64,
-                *pixels.add(1) as u64,
-                *pixels.add(2) as u64,
+                *pixels as rgb,
+                *pixels.add(1) as rgb,
+                *pixels.add(2) as rgb,
             ))
         } else if depth >= 8 {
             let value = *(*img).pixels.add(index) as usize;
             if !(*img).cmap.is_null() && value < (*img).cmapsize.max(0) as usize {
                 Some(*(*img).cmap.add(value))
             } else {
-                Some(rgb_make(value as u64, value as u64, value as u64))
+                Some(rgb_make(value as rgb, value as rgb, value as rgb))
             }
         } else {
             None
@@ -958,7 +958,7 @@ mod tests {
 
     #[test]
     fn clip_rect_and_pixels_are_tracked_per_drawing() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let drawing = 1usize as drawing;
         unsafe {
             gsetcliprect(
@@ -981,7 +981,7 @@ mod tests {
 
     #[test]
     fn bitblt_and_scroll_move_pixels() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let src = 2usize as drawing;
         let dst = 3usize as drawing;
         unsafe {
@@ -1024,7 +1024,7 @@ mod tests {
 
     #[test]
     fn font_metrics_and_text_width_are_coherent() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let face = CString::new("Mono").unwrap_or_else(|e| panic!("{e}"));
         let text = CString::new("abcd").unwrap_or_else(|e| panic!("{e}"));
         unsafe {

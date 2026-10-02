@@ -1049,12 +1049,16 @@ pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                         let path = crate::sexp::accessors::CHAR(elt);
                         let whole = secs.trunc() as i64;
                         let nsec = ((secs - whole as f64) * 1e9) as i64;
-                        let ts = libc::timespec {
-                            tv_sec: whole,
-                            tv_nsec: nsec,
-                        };
-                        let times_buf = [ts, ts];
-                        libc::utimensat(libc::AT_FDCWD, path, times_buf.as_ptr(), 0) == 0
+                        if let (Ok(tv_sec), Ok(tv_nsec)) = (
+                            libc::time_t::try_from(whole),
+                            std::os::raw::c_long::try_from(nsec),
+                        ) {
+                            let ts = libc::timespec { tv_sec, tv_nsec };
+                            let times_buf = [ts, ts];
+                            libc::utimensat(libc::AT_FDCWD, path, times_buf.as_ptr(), 0) == 0
+                        } else {
+                            false
+                        }
                     }
                 }
             };
@@ -2281,7 +2285,11 @@ pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 let path = c.to_str().unwrap_or("");
                 // platform.c rejects an expanded path that does not fit in
                 // `dir[R_PATH_MAX]` before strcpy. R_PATH_MAX is PATH_MAX.
-                if path.len() > (libc::PATH_MAX as usize) - 1 {
+                #[cfg(not(target_arch = "wasm32"))]
+                let path_max = libc::PATH_MAX as usize;
+                #[cfg(target_arch = "wasm32")]
+                let path_max = 4096;
+                if path.len() >= path_max {
                     crate::sexp::context::r_error("invalid 'path' argument");
                 }
                 let result = if do_recursive {

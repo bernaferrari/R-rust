@@ -39,7 +39,7 @@ fn list_length(list: *const *const c_char) -> c_int {
 }
 
 unsafe fn alloc_drawstate(dest: drawing) -> drawstate {
-    let state = unsafe { memory::memalloc(std::mem::size_of::<drawstruct>() as i64) as drawstate };
+    let state = unsafe { memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate };
     if state.is_null() {
         return ptr::null_mut();
     }

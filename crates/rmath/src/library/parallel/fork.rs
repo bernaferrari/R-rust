@@ -1051,7 +1051,7 @@ pub unsafe fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
                 // Re-set tv as it may get updated by select
                 // Note: R_wait_usec is a global; we treat it as 0 (no external wait)
                 if timeout > 0.0 {
-                    tv.tv_sec = remains as i64;
+                    tv.tv_sec = remains as libc::time_t;
                     tv.tv_usec = ((remains - (remains as i64) as c_double) * 1_000_000.0)
                         as libc::suseconds_t;
                 } else {
@@ -1193,7 +1193,7 @@ pub unsafe fn mc_read_children(sTimeout: SEXP) -> SEXP {
             if tov < 0.0 {
                 tvp = ptr::null_mut();
             } else {
-                tv.tv_sec = tov as i64;
+                tv.tv_sec = tov as libc::time_t;
                 tv.tv_usec = ((tov - (tov as i64) as c_double) * 1_000_000.0) as libc::suseconds_t;
             }
         }

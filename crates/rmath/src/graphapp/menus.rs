@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn popup_creation_installs_dispatchable_items() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         MENU_CALLS.with(|calls| calls.set(0));
         unsafe {
             objects::init_objects();
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn menu_keys_run_adjust_then_action() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         MENU_CALLS.with(|calls| calls.set(0));
         ADJUST_CALLS.with(|calls| calls.set(0));
         unsafe {
