@@ -1862,12 +1862,13 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                     return invisible();
                 }
                 let angle = scalar(args, "srt", 0.) as f32;
-                let mut text_params = crate::library::graphics::text_metrics::drawing_parameters(args);
-                text_params.text_angle = angle;
-                text_params.text_anchor = TextAnchor::Middle;
+                let count = x.len().max(y.len());
+                let parameters = crate::library::graphics::text_metrics::drawing_parameters(args, count);
                 let target = &mut *renderer();
                 target.set_clip(Some(clip_rect(c, args)));
-                for i in 0..x.len().max(y.len()) {
+                for (i, mut text_params) in parameters.into_iter().enumerate() {
+                    text_params.text_angle = angle;
+                    text_params.text_anchor = TextAnchor::Middle;
                     text_params.text_color = style.color(i);
                     text[i % text.len()].draw(
                         target,

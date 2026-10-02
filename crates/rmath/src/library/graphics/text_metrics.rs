@@ -42,6 +42,10 @@ pub(crate) unsafe fn text_parameters(
         } else {
             asReal(cex) * base_scale
         };
+        let font = font_codes(font, 1)
+            .first()
+            .copied()
+            .unwrap_or(crate::sexp::ffi::NA_INTEGER);
         font_parameters(scale, font, extras)
     }
 }
@@ -51,39 +55,106 @@ pub(crate) unsafe fn text_parameters(
 /// # Safety
 /// The argument pairlist and its children must be live and rooted in the active session.
 #[cfg(feature = "renderplot-device")]
-pub(crate) unsafe fn drawing_parameters(args: SEXP) -> r_graphics_engine::PlotParameters {
-    use crate::mainutils::{coerce::asReal, essentials::arg_by_name_or_position};
-    use crate::sexp::{accessors::*, ffi::SEXPTYPE, globals::R_NilValue};
+pub(crate) unsafe fn drawing_parameters(
+    args: SEXP,
+    count: usize,
+) -> Vec<r_graphics_engine::PlotParameters> {
+    use crate::mainutils::essentials::arg_by_name_or_position;
     unsafe {
         let cex = arg_by_name_or_position(args, &["cex"], usize::MAX);
-        let factor = if cex == R_NilValue() {
-            1.
-        } else {
-            if !matches!(
-                SEXPTYPE(TYPEOF(cex)),
-                SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
-            ) {
-                base_error("invalid 'cex' argument");
-            }
-            let value = asReal(cex);
-            if value.is_finite() && value > 0. {
-                value
+        let scales = numeric_prefix(cex, "cex", count);
+        let font = arg_by_name_or_position(args, &["font"], usize::MAX);
+        let fonts = font_codes(font, count);
+        let base_scale = positive_par_number("cex");
+        let mut parameters = Vec::new();
+        parameters
+            .try_reserve_exact(count)
+            .unwrap_or_else(|_| base_error("cannot reserve text drawing parameters"));
+        for index in 0..count {
+            let scale = if scales.is_empty() {
+                1.
+            } else {
+                scales[index % scales.len()]
+            };
+            let scale = if scale.is_finite() && scale > 0. {
+                scale
             } else {
                 1.
+            };
+            let font = if fonts.is_empty() {
+                crate::sexp::ffi::NA_INTEGER
+            } else {
+                fonts[index % fonts.len()]
+            };
+            parameters.push(font_parameters(scale * base_scale, font, args).0);
+        }
+        parameters
+    }
+}
+
+// Copy only values that drawing can use. Checked element reads also keep
+// compact sequences lazy when a tiny plot receives a very large argument.
+#[cfg(feature = "renderplot-device")]
+unsafe fn numeric_prefix(value: SEXP, name: &str, limit: usize) -> Vec<f64> {
+    use crate::sexp::{accessors::*, ffi::SEXPTYPE, object::Sexp};
+    unsafe {
+        let count = usize::try_from(XLENGTH(value))
+            .unwrap_or_else(|_| base_error("graphics argument is too long"));
+        if count == 0 {
+            return vec![];
+        }
+        let kind = SEXPTYPE(TYPEOF(value));
+        if !matches!(
+            kind,
+            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+        ) {
+            base_error(format!("invalid '{name}' argument"));
+        }
+        // SAFETY: the caller roots numeric arguments in the active session.
+        let value =
+            Sexp::from_raw(value).unwrap_or_else(|| base_error("invalid graphics argument"));
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(count.min(limit))
+            .unwrap_or_else(|_| base_error("cannot reserve text argument values"));
+        for index in 0..count.min(limit) {
+            // This index is below the original nonnegative R_xlen_t length.
+            let index = index as i64;
+            let element = match kind {
+                SEXPTYPE::REALSXP => value.real_elt(index),
+                SEXPTYPE::INTSXP => value.integer_elt(index).map(f64::from),
+                _ => value.logical_elt(index).map(f64::from),
             }
-        };
-        let font = arg_by_name_or_position(args, &["font"], usize::MAX);
-        font_parameters(factor * positive_par_number("cex"), font, args).0
+            .unwrap_or_else(|| base_error("cannot read graphics argument element"));
+            values.push(element);
+        }
+        values
+    }
+}
+
+#[cfg(feature = "renderplot-device")]
+unsafe fn font_codes(font: SEXP, limit: usize) -> Vec<i32> {
+    unsafe {
+        numeric_prefix(font, "font", limit)
+            .into_iter()
+            .map(|value| {
+                if value.is_finite() && (1. ..6.).contains(&value) {
+                    value as i32
+                } else {
+                    crate::sexp::ffi::NA_INTEGER
+                }
+            })
+            .collect()
     }
 }
 
 #[cfg(feature = "renderplot-device")]
 unsafe fn font_parameters(
     scale: f64,
-    font: SEXP,
+    requested_font: i32,
     extras: SEXP,
 ) -> (r_graphics_engine::PlotParameters, f64) {
-    use crate::mainutils::coerce::{asInteger, coerceVector};
+    use crate::mainutils::coerce::coerceVector;
     use crate::sexp::{accessors::*, ffi::SEXPTYPE, globals::R_NilValue, protect::protect};
     use r_graphics_engine::{FontFace, PlotParameters};
     unsafe {
@@ -91,11 +162,6 @@ unsafe fn font_parameters(
         if !scale.is_finite() || scale <= 0. {
             base_error("invalid 'cex' value");
         }
-        let requested_font = if font == nil {
-            crate::sexp::ffi::NA_INTEGER
-        } else {
-            asInteger(font)
-        };
         let font = if requested_font == crate::sexp::ffi::NA_INTEGER {
             positive_par_number("font") as i32
         } else {
@@ -370,6 +436,14 @@ mod tests {
     }
 
     #[test]
+    fn graphics_string_metrics_out_of_range_fonts_use_current_font() {
+        let widths = measure(
+            "par(font=2);c(strwidth('WWW',units='inches'),strwidth('WWW',units='inches',font=0),strwidth('WWW',units='inches',font=6))",
+        );
+        assert_eq!(widths, vec![widths[0]; 3]);
+    }
+
+    #[test]
     fn graphics_string_metrics_agree_with_drawn_font_parameters() {
         let mut session = RSession::new_without_default_packages();
         let mut scene = r_graphics_engine::Scene::new(640, 480);
@@ -398,6 +472,32 @@ mod tests {
     }
 
     #[test]
+    fn graphics_string_metrics_drawing_recycles_label_fonts_and_scales() {
+        let mut session = RSession::new_without_default_packages();
+        let mut scene = r_graphics_engine::Scene::new(640, 480);
+        session.eval_script_with_output_capture_then_renderplot(
+            "plot.new();par(ps=18,cex=2);text(c(.2,.4,.6,.8),rep(.5,4),c('one','two','three','four'),cex=c(1,2,0),font=1:2)",
+            &mut scene,
+            |value, _, _| { value.unwrap(); },
+        );
+        let parameters: Vec<_> = scene
+            .operations()
+            .iter()
+            .filter_map(|operation| match operation {
+                r_graphics_engine::DrawOperation::Text { params, .. } => {
+                    Some((params.font_size, params.font_face))
+                }
+                _ => None,
+            })
+            .collect();
+        use r_graphics_engine::FontFace::{Bold, Plain};
+        assert_eq!(
+            parameters,
+            vec![(36., Plain), (72., Bold), (36., Plain), (36., Bold)]
+        );
+    }
+
+    #[test]
     fn graphics_string_metrics_survive_gc_torture_and_restore_parameters() {
         let expression = "c(strwidth(c('i','WWW'),units='inches'),strheight(expression(frac(x,2)),units='inches'))";
         let baseline = measure(expression);
@@ -414,10 +514,36 @@ mod tests {
     }
 
     #[test]
+    fn graphics_string_metrics_drawing_reads_only_used_compact_values() {
+        let mut session = RSession::new_without_default_packages();
+        let mut scene = r_graphics_engine::Scene::new(640, 480);
+        session.eval_script_with_output_capture_then_renderplot(
+            "plot.new();text(c(.2,.4,.6,.8),rep(.5,4),c('one','two','three','four'),cex=1:1000000000,font=1:1000000000)",
+            &mut scene,
+            |value, _, _| { value.unwrap(); },
+        );
+        let parameters: Vec<_> = scene
+            .operations()
+            .iter()
+            .filter_map(|operation| match operation {
+                r_graphics_engine::DrawOperation::Text { params, .. } => {
+                    Some((params.font_size, params.font_face))
+                }
+                _ => None,
+            })
+            .collect();
+        use r_graphics_engine::FontFace::{Bold, BoldItalic, Italic, Plain};
+        assert_eq!(
+            parameters,
+            vec![(12., Plain), (24., Bold), (36., Italic), (48., BoldItalic)]
+        );
+    }
+
+    #[test]
     fn graphics_string_metrics_drawing_normalizes_cex_separately() {
         let mut session = RSession::new_without_default_packages();
         let mut scene = r_graphics_engine::Scene::new(640, 480);
-        for cex in ["0", "-1", "NA_real_", "numeric(0)", "NULL"] {
+        for cex in ["0", "-1", "NA_real_", "numeric(0)", "character(0)", "NULL"] {
             session.eval_script_with_output_capture_then_renderplot(
                 &format!("plot.new();par(cex=2);text(.5,.5,'fallback',cex={cex})"),
                 &mut scene,
@@ -490,6 +616,7 @@ mod tests {
             "strwidth('x',cex=1e-100)",
             "strheight('x',cex=1e100)",
             "strwidth('x',font=5)",
+            "strwidth('x',font='2')",
             "strwidth('x',family='serif')",
             "strwidth('x',family=character())",
             "strwidth('x',family=c('sans','sans'))",
