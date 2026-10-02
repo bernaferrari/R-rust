@@ -20,6 +20,10 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 pub unsafe fn R_compact_intrange(from: R_xlen_t, to: R_xlen_t) -> SEXP {
     unsafe {
         let n = (if from <= to { to - from } else { from - to } + 1) as c_int;
+        if n > 1 {
+            let step: c_int = if from <= to { 1 } else { -1 };
+            return crate::sexp::altseq::compact_int_seq(from as c_int, step, n as usize);
+        }
         let ans = Rf_allocVector(INTSXP_VAL, n);
         if !ans.is_null() && n > 0 {
             let data = INTEGER(ans);

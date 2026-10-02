@@ -582,3 +582,474 @@ fn test_check1arg_partial_match_warning() {
         );
     }
 }
+
+fn root_global(name: &str, value: SEXP) {
+    let c_name = std::ffi::CString::new(name).unwrap();
+    unsafe {
+        let sym = crate::sexp::symbol::Rf_install(c_name.as_ptr());
+        crate::sexp::envir::defineVar(sym, value, crate::sexp::globals::R_GlobalEnv());
+    }
+}
+
+unsafe fn attribute_list(value: SEXP) -> SEXP {
+    unsafe {
+        let args = Rf_cons(value, R_NilValue());
+        crate::mainutils::essentials::do_attributes(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            args,
+            ptr::null_mut(),
+        )
+    }
+}
+
+fn attribute_name(shown: SEXP) -> String {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(
+            shown,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let chars = crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(names, 0));
+        std::ffi::CStr::from_ptr(chars)
+            .to_str()
+            .unwrap_or("")
+            .to_string()
+    }
+}
+
+#[test]
+fn altseq_compact_integer_colon_stays_lazy_through_gc_and_hides_its_formula() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(1.0, 5.0, ptr::null_mut());
+        root_global("alt_lazy_int", seq);
+        assert_eq!(TYPEOF(seq), INTSXP_VAL);
+        assert_eq!(XLENGTH(seq), 5);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).gengc_next_node.is_null());
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 0), 1);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 4), 5);
+        assert_eq!(
+            crate::sexp::accessors::INTEGER_ELT(seq, 5),
+            crate::sexp::ffi::NA_INTEGER
+        );
+        assert_eq!(
+            crate::sexp::accessors::INTEGER_ELT(seq, -1),
+            crate::sexp::ffi::NA_INTEGER
+        );
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).gengc_next_node.is_null());
+        crate::sexp::gengc::full_gc();
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 2), 3);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).gengc_next_node.is_null());
+        let shown = attribute_list(seq);
+        assert!(shown.is_null() || shown == R_NilValue());
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+
+        let down = seq_colon(5.0, 1.0, ptr::null_mut());
+        root_global("alt_lazy_down", down);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(down, 0), 5);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(down, 4), 1);
+        assert_eq!(crate::sexp::accessors::ALTREP(down), 1);
+    }
+}
+
+#[test]
+fn altseq_compact_integer_colon_matches_a_plain_vector() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(1.0, 5.0, ptr::null_mut());
+        let plain = make_int_vec(&[1, 2, 3, 4, 5]);
+        root_global("alt_ident_seq", seq);
+        root_global("alt_ident_plain", plain);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert_eq!(
+            crate::mainutils::identical::R_compute_identical(seq, plain, 0),
+            1
+        );
+        assert_eq!(*INTEGER(seq).add(4), 5);
+        crate::sexp::gengc::full_gc();
+        assert_eq!(*INTEGER(seq).add(0), 1);
+        assert_eq!(*INTEGER(plain).add(4), 5);
+    }
+}
+
+#[test]
+fn altseq_materializing_integer_colon_registers_a_buffer_that_survives_gc() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(1.0, 5.0, ptr::null_mut());
+        root_global("alt_materialize", seq);
+        assert!(!crate::sexp::memory::vector_payload_is_tracked(seq));
+        let data = INTEGER(seq);
+        assert_eq!(*data.add(0), 1);
+        assert_eq!(*data.add(4), 5);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
+        let shown = attribute_list(seq);
+        assert!(shown.is_null() || shown == R_NilValue());
+        crate::sexp::gengc::full_gc();
+        assert_eq!(*INTEGER(seq).add(3), 4);
+        assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
+    }
+}
+
+#[test]
+fn altseq_compact_real_colon_matches_plain_reals() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(1.5, 3.5, ptr::null_mut());
+        root_global("alt_real", seq);
+        assert_eq!(TYPEOF(seq), REALSXP_VAL);
+        assert_eq!(XLENGTH(seq), 3);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((crate::sexp::accessors::REAL_ELT(seq, 0) - 1.5).abs() < 1e-10);
+        assert!((crate::sexp::accessors::REAL_ELT(seq, 1) - 2.5).abs() < 1e-10);
+        assert!((crate::sexp::accessors::REAL_ELT(seq, 2) - 3.5).abs() < 1e-10);
+        assert_eq!(
+            crate::sexp::accessors::REAL_ELT(seq, 3).to_bits(),
+            crate::sexp::ffi::NA_REAL.to_bits()
+        );
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).gengc_next_node.is_null());
+
+        let down = seq_colon(3.5, 1.5, ptr::null_mut());
+        root_global("alt_real_down", down);
+        assert!((crate::sexp::accessors::REAL_ELT(down, 0) - 3.5).abs() < 1e-10);
+        assert!((crate::sexp::accessors::REAL_ELT(down, 2) - 1.5).abs() < 1e-10);
+        assert_eq!(crate::sexp::accessors::ALTREP(down), 1);
+
+        let plain = make_real_vec(&[1.5, 2.5, 3.5]);
+        root_global("alt_real_plain", plain);
+        assert_eq!(
+            crate::mainutils::identical::R_compute_identical(seq, plain, 0),
+            1
+        );
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        crate::sexp::gengc::full_gc();
+        assert!((*REAL(seq).add(2) - 3.5).abs() < 1e-10);
+    }
+}
+
+#[test]
+fn altseq_length_one_colon_is_a_plain_vector() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(3.0, 3.0, ptr::null_mut());
+        assert_eq!(LENGTH(seq), 1);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        assert_eq!(*INTEGER(seq), 3);
+        assert!(!(*seq).gengc_next_node.is_null());
+    }
+}
+
+#[test]
+fn altseq_dataptr_during_arena_lend_registers_the_buffer() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(1.0, 4.0, ptr::null_mut());
+        root_global("alt_lend", seq);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        crate::sexp::memory::with_arena(|_arena| unsafe {
+            let data = INTEGER(seq);
+            assert_eq!(*data.add(3), 4);
+            assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
+        });
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
+        crate::sexp::gengc::full_gc();
+        assert_eq!(*INTEGER(seq).add(3), 4);
+    }
+}
+
+#[test]
+fn altseq_million_step_integer_colon_does_not_allocate_its_payload() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(1.0, 1_000_000.0, ptr::null_mut());
+        root_global("alt_million", seq);
+        assert_eq!(XLENGTH(seq), 1_000_000);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).gengc_next_node.is_null());
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 0), 1);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 999_999), 1_000_000);
+        let view = crate::sexp::Sexp::from_raw(seq).unwrap();
+        assert_eq!(view.integer_elt(0), Some(1));
+        assert_eq!(view.integer_elt(999_999), Some(1_000_000));
+        assert!((*seq).gengc_next_node.is_null());
+        assert!(!crate::sexp::memory::vector_payload_is_tracked(seq));
+        crate::sexp::gengc::full_gc();
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 999_999), 1_000_000);
+        assert!((*seq).gengc_next_node.is_null());
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+    }
+}
+
+#[test]
+fn altseq_duplicate_of_a_lazy_colon_copies_the_values() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(1.0, 5.0, ptr::null_mut());
+        root_global("alt_dup_src", seq);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        let copy = crate::mainutils::duplicate::duplicate(seq);
+        root_global("alt_dup_copy", copy);
+        assert_eq!(crate::sexp::accessors::ALTREP(copy), 0);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(copy, 0), 1);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(copy, 4), 5);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        crate::sexp::gengc::full_gc();
+        assert_eq!(*INTEGER(copy).add(2), 3);
+        assert_eq!(*INTEGER(seq).add(4), 5);
+    }
+}
+
+#[test]
+fn altseq_names_on_a_lazy_colon_do_not_expose_the_formula() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(1.0, 5.0, ptr::null_mut());
+        root_global("alt_names", seq);
+        let foo = Rf_ScalarInteger(7);
+        let sym = crate::sexp::symbol::Rf_install(c"foo".as_ptr());
+        crate::sexp::attrib_core::setAttrib(seq, sym, foo);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 4), 5);
+        assert!((*seq).gengc_next_node.is_null());
+        let shown = attribute_list(seq);
+        assert_eq!(XLENGTH(shown), 1);
+        assert_eq!(attribute_name(shown), "foo");
+        assert_eq!(
+            crate::sexp::accessors::INTEGER_ELT(crate::sexp::accessors::VECTOR_ELT(shown, 0), 0),
+            7
+        );
+
+        crate::sexp::output::start_capture();
+        crate::sexp::output::Rf_PrintValue(seq);
+        let printed = crate::sexp::output::stop_capture();
+        assert!(
+            printed.stdout.contains("[1]"),
+            "print should show the sequence, got {}",
+            printed.stdout
+        );
+        assert!(
+            !printed.stdout.contains(".InternalAltSeq"),
+            "formula leaked into print: {}",
+            printed.stdout
+        );
+    }
+}
+
+#[test]
+fn altseq_replacing_attributes_materializes_and_keeps_values() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(2.0, 4.0, ptr::null_mut());
+        root_global("alt_clear_attr", seq);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        crate::sexp::accessors::SET_ATTRIB(seq, R_NilValue());
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 0), 2);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 2), 4);
+        let shown = attribute_list(seq);
+        assert!(shown.is_null() || shown == R_NilValue());
+        assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
+        crate::sexp::gengc::full_gc();
+        assert_eq!(*INTEGER(seq).add(1), 3);
+    }
+}
+
+#[test]
+fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let seq = seq_colon(1.0, 5.0, ptr::null_mut());
+        root_global("alt_arith", seq);
+        let view = crate::sexp::Sexp::from_raw(seq).unwrap();
+        assert_eq!(view.integer_elt(0), Some(1));
+        assert_eq!(view.integer_elt(4), Some(5));
+        assert!(view.try_integer_elt(5).is_err());
+        assert!(view.try_integer_elt(-1).is_err());
+        assert!((*seq).gengc_next_node.is_null());
+
+        let nums = crate::sexp::numeric::NumericVector::from_raw(seq).unwrap();
+        assert_eq!(nums.clone().real_at(0), 1.0);
+        assert_eq!(nums.real_at(4), 5.0);
+        assert!((*seq).gengc_next_node.is_null());
+
+        let one = Rf_ScalarInteger(1);
+        root_global("alt_arith_one", one);
+        let sum = crate::eval::arithmetic::real_binary("+", seq, one);
+        root_global("alt_arith_sum", sum);
+        assert_eq!(XLENGTH(sum), 5);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(sum, 0), 2);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(sum, 4), 6);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).gengc_next_node.is_null());
+        assert!(!formula_tag_present(sum));
+
+        let real = seq_colon(1.5, 3.5, ptr::null_mut());
+        root_global("alt_arith_real", real);
+        let real_view = crate::sexp::Sexp::from_raw(real).unwrap();
+        assert_eq!(real_view.real_elt(0), Some(1.5));
+        assert_eq!(real_view.real_elt(2), Some(3.5));
+        assert!(real_view.try_real_elt(3).is_err());
+        let real_sum = crate::eval::arithmetic::real_binary("+", real, one);
+        root_global("alt_arith_real_sum", real_sum);
+        assert_eq!(crate::sexp::accessors::REAL_ELT(real_sum, 0), 2.5);
+        assert_eq!(crate::sexp::accessors::REAL_ELT(real_sum, 2), 4.5);
+        assert_eq!(crate::sexp::accessors::ALTREP(real), 1);
+        assert!((*real).gengc_next_node.is_null());
+        assert!(!formula_tag_present(real_sum));
+
+        let dim = Rf_allocVector(INTSXP_VAL, 2);
+        root_global("alt_arith_dim", dim);
+        *INTEGER(dim).add(0) = 5;
+        *INTEGER(dim).add(1) = 1;
+        crate::sexp::attrib_core::setAttrib(seq, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).gengc_next_node.is_null());
+        crate::sexp::output::start_capture();
+        crate::sexp::output::Rf_PrintValue(seq);
+        let printed = crate::sexp::output::stop_capture();
+        assert!(
+            printed.stdout.contains("[5,]") && !printed.stdout.contains("no data buffer"),
+            "matrix print should show the sequence, got {}",
+            printed.stdout
+        );
+        assert!(
+            !printed.stdout.contains(".InternalAltSeq"),
+            "formula leaked into matrix print: {}",
+            printed.stdout
+        );
+        assert!((*seq).gengc_next_node.is_null());
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+
+        let plain = make_int_vec(&[8, 9]);
+        root_global("alt_arith_plain", plain);
+        let plain_view = crate::sexp::Sexp::from_raw(plain).unwrap();
+        assert_eq!(plain_view.integer_elt(1), Some(9));
+
+        let edited = seq_colon(1.0, 3.0, ptr::null_mut());
+        root_global("alt_arith_edit", edited);
+        let edited_view = crate::sexp::Sexp::from_raw(edited).unwrap();
+        let mut edited_mut = crate::sexp::SexpMut::from_owned(edited_view);
+        assert!(edited_mut.try_set_integer_elt(1, 9).is_ok());
+        assert_eq!(crate::sexp::accessors::ALTREP(edited), 0);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(edited, 0), 1);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(edited, 1), 9);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(edited, 2), 3);
+
+        let payload = view.try_data_ptr().unwrap();
+        assert!(!payload.is_null());
+        assert_eq!(*(payload as *const c_int), 1);
+        assert_eq!(*(payload.cast::<c_int>().add(4)), 5);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
+    }
+}
+
+#[test]
+fn altseq_failed_allocation_keeps_the_formula() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let cleared = seq_colon(1.0, 16.0, ptr::null_mut());
+        root_global("alt_budget_clear", cleared);
+        let lent = seq_colon(1.0, 8.0, ptr::null_mut());
+        root_global("alt_budget_lent", lent);
+        let same_a = seq_colon(1.0, 4.0, ptr::null_mut());
+        let same_b = seq_colon(1.0, 4.0, ptr::null_mut());
+        root_global("alt_budget_same_a", same_a);
+        root_global("alt_budget_same_b", same_b);
+        // Built before the tight budget: cons cells themselves need a node.
+        let eq_args = Rf_cons(same_a, Rf_cons(same_b, R_NilValue()));
+        root_global("alt_budget_eq_args", eq_args);
+        crate::sexp::memory::with_arena(|arena| {
+            arena.set_budget(crate::sexp::memory::ArenaBudget::new(1, 0));
+        });
+
+        crate::sexp::accessors::SET_ATTRIB(cleared, R_NilValue());
+        assert_eq!(crate::sexp::accessors::ALTREP(cleared), 1);
+        assert!((*cleared).gengc_next_node.is_null());
+        assert!(formula_tag_present(cleared));
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(cleared, 0), 1);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(cleared, 15), 16);
+
+        // A refused buffer is never published, including inside the lend.
+        crate::sexp::memory::with_arena(|_arena| unsafe {
+            let data = INTEGER(lent);
+            assert!(data.is_null());
+            assert_eq!(crate::sexp::accessors::ALTREP(lent), 1);
+            assert!((*lent).gengc_next_node.is_null());
+            assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 0), 1);
+            assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 7), 8);
+            assert!(!crate::sexp::memory::vector_payload_is_tracked(lent));
+        });
+        assert_eq!(crate::sexp::accessors::ALTREP(lent), 1);
+        assert!((*lent).gengc_next_node.is_null());
+        assert!(formula_tag_present(lent));
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 0), 1);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 7), 8);
+        assert!(!crate::sexp::memory::vector_payload_is_tracked(lent));
+
+        assert_eq!(
+            crate::mainutils::identical::R_compute_identical(same_a, same_b, 0),
+            1
+        );
+        assert_eq!(
+            crate::mainutils::identical::R_compute_identical(same_a, lent, 0),
+            0
+        );
+        assert_eq!(
+            crate::mainutils::all_equal::do_all_equal(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                eq_args,
+                ptr::null_mut(),
+            ),
+            crate::sexp::globals::R_True()
+        );
+        assert_eq!(crate::sexp::accessors::ALTREP(same_a), 1);
+        assert!((*same_a).gengc_next_node.is_null());
+        assert!((*same_b).gengc_next_node.is_null());
+
+        crate::sexp::memory::with_arena(|arena| {
+            arena.set_budget(crate::sexp::memory::ArenaBudget::unlimited());
+        });
+        let shown = attribute_list(cleared);
+        assert!(shown.is_null() || shown == R_NilValue());
+    }
+}
+
+#[test]
+fn altseq_all_equal_matches_a_plain_vector() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let lazy = seq_colon(1.0, 5.0, ptr::null_mut());
+        let plain = make_int_vec(&[1, 2, 3, 4, 5]);
+        root_global("alt_all_eq_lazy", lazy);
+        root_global("alt_all_eq_plain", plain);
+        let args = Rf_cons(lazy, Rf_cons(plain, R_NilValue()));
+        let ans = crate::mainutils::all_equal::do_all_equal(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            args,
+            ptr::null_mut(),
+        );
+        assert_eq!(ans, crate::sexp::globals::R_True());
+    }
+}
+
+fn formula_tag_present(value: SEXP) -> bool {
+    unsafe {
+        let mut cell = crate::sexp::accessors::ATTRIB(value);
+        while !cell.is_null() && cell != R_NilValue() {
+            if crate::sexp::altseq::is_formula_tag(crate::sexp::accessors::TAG(cell)) {
+                return true;
+            }
+            cell = crate::sexp::accessors::CDR(cell);
+        }
+        false
+    }
+}

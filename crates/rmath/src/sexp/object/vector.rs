@@ -27,16 +27,30 @@ impl<'a> Sexp<'a> {
 
     /// Get the i-th integer value with bounds checking.
     ///
+    /// A compact sequence is computed from its formula and stays unallocated.
     /// Returns `None` if this is not an integer vector, the index is out of
-    /// bounds, or the data pointer is null.
+    /// bounds, or a plain vector has no data pointer.
     #[inline]
     pub fn integer_elt(&self, i: R_xlen_t) -> Option<c_int> {
         self.try_integer_elt(i).ok()
     }
 
     /// Get the i-th integer value with typed error reporting.
+    ///
+    /// Compact sequences answer here, before any buffer allocation. Pointer
+    /// access still goes through [`Self::try_typed_data`] and expands them.
     #[inline]
     pub fn try_integer_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
+        match unsafe { crate::sexp::altseq::lazy_int_elt(self.ptr, i) } {
+            crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
+            crate::sexp::altseq::LazyRead::OutOfRange => {
+                return Err(SexpError::OutOfBounds {
+                    index: i,
+                    len: self.len(),
+                });
+            }
+            crate::sexp::altseq::LazyRead::Absent => {}
+        }
         let data = self.try_typed_data::<c_int>(SEXPTYPE::INTSXP, "integer vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
@@ -44,16 +58,29 @@ impl<'a> Sexp<'a> {
 
     /// Get the i-th real (double) value with bounds checking.
     ///
+    /// A compact sequence is computed from its formula and stays unallocated.
     /// Returns `None` if this is not a real vector, the index is out of bounds,
-    /// or the data pointer is null.
+    /// or a plain vector has no data pointer.
     #[inline]
     pub fn real_elt(&self, i: R_xlen_t) -> Option<c_double> {
         self.try_real_elt(i).ok()
     }
 
     /// Get the i-th real value with typed error reporting.
+    ///
+    /// Compact sequences answer here, before any buffer allocation.
     #[inline]
     pub fn try_real_elt(&self, i: R_xlen_t) -> SexpResult<c_double> {
+        match unsafe { crate::sexp::altseq::lazy_real_elt(self.ptr, i) } {
+            crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
+            crate::sexp::altseq::LazyRead::OutOfRange => {
+                return Err(SexpError::OutOfBounds {
+                    index: i,
+                    len: self.len(),
+                });
+            }
+            crate::sexp::altseq::LazyRead::Absent => {}
+        }
         let data = self.try_typed_data::<c_double>(SEXPTYPE::REALSXP, "real vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })

@@ -382,12 +382,24 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
+    /// Expand a compact sequence before a pointer or element write.
+    ///
+    /// Single-element readers use the formula instead and never call this.
+    fn materialize_compact_payload(&self) {
+        unsafe {
+            if super::accessors::ALTREP(self.ptr) != 0 && (*self.ptr).gengc_next_node.is_null() {
+                super::altseq::materialize(self.ptr);
+            }
+        }
+    }
+
     fn try_typed_data<T>(
         &self,
         expected: SEXPTYPE,
         expected_name: &'static str,
     ) -> SexpResult<*const T> {
         self.expect_type(expected, expected_name)?;
+        self.materialize_compact_payload();
         let data = unsafe { (*self.ptr).gengc_next_node as *const T };
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })
@@ -438,6 +450,7 @@ impl<'a> Sexp<'a> {
         expected_name: &'static str,
     ) -> SexpResult<*mut T> {
         self.expect_type(expected, expected_name)?;
+        self.materialize_compact_payload();
         let data = unsafe { (*self.ptr).gengc_next_node as *mut T };
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })

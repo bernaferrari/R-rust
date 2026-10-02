@@ -500,9 +500,12 @@ impl<'a> Sexp<'a> {
     }
 
     /// Get the raw data pointer for vector-like objects with typed errors.
+    ///
+    /// A compact sequence is expanded first, matching `DATAPTR`.
     #[inline]
     pub fn try_data_ptr(self) -> SexpResult<*mut c_void> {
         if self.typeof_().is_vector_type() || self.typeof_() == SEXPTYPE::CHARSXP {
+            self.materialize_compact_payload();
             let ptr = unsafe { (*self.ptr).gengc_next_node as *mut c_void };
             if ptr.is_null() {
                 Err(SexpError::MissingData {

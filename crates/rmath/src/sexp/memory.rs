@@ -512,6 +512,10 @@ pub struct RArena {
     /// Bytes reserved by temporary native workspaces which live outside the
     /// arena (for example, a numerical transform's scratch Vecs).
     transient_bytes: Rc<Cell<usize>>,
+    /// Bytes promised to compact-sequence payloads queued during an arena
+    /// lend and not yet in `data_bufs`. Shared so that promise can be made
+    /// without borrowing the arena a second time.
+    pending_data_bytes: Rc<Cell<usize>>,
     /// Deferred alloc-time GC hook state (see `with_arena_in`): arena
     /// methods cannot touch instance state without aliasing the live
     /// borrow, so hooks record their firings here instead.
@@ -572,7 +576,7 @@ impl RArena {
         let ptr: SEXP = unsafe { self.node_pages[self.slab_page].base.add(self.slab_offset) };
         unsafe { std::ptr::write(ptr, ctor()) };
         self.slab_offset += 1;
-        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
+        self.add_accounted_bytes(std::mem::size_of::<SexprecCore>());
         self.register_new_node(ptr)
     }
 
@@ -588,6 +592,7 @@ impl RArena {
             free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
             transient_bytes: Rc::new(Cell::new(0)),
+            pending_data_bytes: Rc::new(Cell::new(0)),
             alloc_gc_torture_ticks: 0,
             alloc_gc_collect_requested: false,
             nodes_at_last_gc: 0,
@@ -611,6 +616,7 @@ impl RArena {
             free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
             transient_bytes: Rc::new(Cell::new(0)),
+            pending_data_bytes: Rc::new(Cell::new(0)),
             alloc_gc_torture_ticks: 0,
             alloc_gc_collect_requested: false,
             nodes_at_last_gc: 0,
@@ -680,6 +686,7 @@ impl RArena {
     /// Set a new budget. Does not retroactively reject existing allocations.
     pub fn set_budget(&mut self, budget: ArenaBudget) {
         self.budget = budget;
+        note_lend_budget(budget.max_bytes);
     }
 
     /// Reserve native scratch space against this session's byte budget.
@@ -691,6 +698,7 @@ impl RArena {
         let total = self
             .total_bytes_allocated
             .checked_add(self.transient_bytes.get())?
+            .checked_add(self.pending_data_bytes.get())?
             .checked_add(bytes)?;
         if self.budget.max_bytes != 0 && total > self.budget.max_bytes {
             return None;
@@ -704,13 +712,59 @@ impl RArena {
     }
 
     fn register_data_buffer(&mut self, ptr: *mut u8, layout: Layout) {
-        self.total_bytes_allocated += layout.size();
+        self.add_accounted_bytes(layout.size());
         self.data_bufs.insert(ptr, layout);
+    }
+
+    /// Move a lend-time reservation into the registered buffer map.
+    fn commit_reserved_data_buffer(&mut self, ptr: *mut u8, layout: Layout) {
+        let size = layout.size();
+        let pending = self.pending_data_bytes.get();
+        self.pending_data_bytes.set(pending.saturating_sub(size));
+        self.register_data_buffer(ptr, layout);
+    }
+
+    fn add_accounted_bytes(&mut self, bytes: usize) {
+        self.total_bytes_allocated = self.total_bytes_allocated.saturating_add(bytes);
+        LEND_LEDGER.with(|slot| {
+            if let Some(ledger) = slot.borrow().last() {
+                ledger
+                    .total
+                    .set(ledger.total.get().saturating_add(bytes));
+            }
+        });
+    }
+
+    fn sub_accounted_bytes(&mut self, bytes: usize) {
+        self.total_bytes_allocated = self.total_bytes_allocated.saturating_sub(bytes);
+        LEND_LEDGER.with(|slot| {
+            if let Some(ledger) = slot.borrow().last() {
+                ledger
+                    .total
+                    .set(ledger.total.get().saturating_sub(bytes));
+            }
+        });
+    }
+
+    /// Account for a buffer allocated outside this arena.
+    ///
+    /// Returns false when the byte budget cannot hold `layout`, leaving the
+    /// map unchanged. The caller still owns `ptr` in that case.
+    fn adopt_data_buffer(&mut self, ptr: *mut u8, layout: Layout) -> bool {
+        if ptr.is_null() || layout.size() == 0 || !self.can_grow_bytes_by(layout.size()) {
+            return false;
+        }
+        self.register_data_buffer(ptr, layout);
+        true
+    }
+
+    fn tracks_data_buffer(&self, ptr: *mut u8) -> bool {
+        !ptr.is_null() && self.data_bufs.contains_key(&ptr)
     }
 
     fn take_data_buffer(&mut self, ptr: *mut u8) -> Option<Layout> {
         if let Some(layout) = self.data_bufs.remove(&ptr) {
-            self.total_bytes_allocated = self.total_bytes_allocated.saturating_sub(layout.size());
+            self.sub_accounted_bytes(layout.size());
             Some(layout)
         } else {
             None
@@ -726,6 +780,7 @@ impl RArena {
             || self
                 .total_bytes_allocated
                 .checked_add(self.transient_bytes.get())
+                .and_then(|total| total.checked_add(self.pending_data_bytes.get()))
                 .and_then(|total| total.checked_add(bytes))
                 .is_some_and(|total| total <= self.budget.max_bytes)
     }
@@ -880,6 +935,7 @@ impl RArena {
             let new_total = self
                 .total_bytes_allocated
                 .checked_add(self.transient_bytes.get())
+                .and_then(|total| total.checked_add(self.pending_data_bytes.get()))
                 .and_then(|total| total.checked_add(total_increase))
                 .ok_or(ArenaError::ByteBudgetExceeded {
                     limit: self.budget.max_bytes,
@@ -1094,7 +1150,7 @@ impl RArena {
         let ptr: SEXP = unsafe { self.node_pages[self.slab_page].base.add(self.slab_offset) };
         unsafe { std::ptr::write(ptr, *node) };
         self.slab_offset += 1;
-        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
+        self.add_accounted_bytes(std::mem::size_of::<SexprecCore>());
         self.register_new_node(ptr)
     }
 
@@ -1327,6 +1383,247 @@ where
 thread_local! {
     static LENT_ARENAS: std::cell::RefCell<std::collections::HashSet<usize>> =
         std::cell::RefCell::new(std::collections::HashSet::new());
+    /// Buffers attached to a vector while its arena was already lent.
+    /// `with_arena_in` registers them after the lend ends and before deferred GC.
+    static PENDING_DATA_BUFFERS: std::cell::RefCell<Vec<PendingDataBuffer>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+struct PendingDataBuffer {
+    instance: usize,
+    node: SEXP,
+    ptr: *mut u8,
+    layout: Layout,
+    /// `layout.size()` is already in the arena's `pending_data_bytes`.
+    reserved: bool,
+}
+
+struct LendLedger {
+    max_bytes: usize,
+    total: Cell<usize>,
+    transient: Rc<Cell<usize>>,
+    pending: Rc<Cell<usize>>,
+}
+
+thread_local! {
+    /// One entry per `with_arena_in`, including a nested call that is about
+    /// to be rejected. Popping restores the outer lend's snapshot.
+    static LEND_LEDGER: RefCell<Vec<LendLedger>> = const { RefCell::new(Vec::new()) };
+}
+
+fn install_lend_ledger(inst: *mut super::instance::RInstance) {
+    let ledger = unsafe {
+        let arena = &(*inst).arena;
+        LendLedger {
+            max_bytes: arena.budget.max_bytes,
+            total: Cell::new(arena.total_bytes_allocated),
+            transient: Rc::clone(&arena.transient_bytes),
+            pending: Rc::clone(&arena.pending_data_bytes),
+        }
+    };
+    LEND_LEDGER.with(|slot| slot.borrow_mut().push(ledger));
+}
+
+fn note_lend_budget(max_bytes: usize) {
+    LEND_LEDGER.with(|slot| {
+        if let Some(ledger) = slot.borrow_mut().last_mut() {
+            ledger.max_bytes = max_bytes;
+        }
+    });
+}
+
+/// Promise `bytes` against the active lend's budget.
+///
+/// Returns false when the promise does not fit. The caller must not publish
+/// a pointer in that case: the lend's flush would otherwise free a buffer
+/// the caller is still holding.
+fn reserve_lend_bytes(bytes: usize) -> bool {
+    LEND_LEDGER.with(|slot| {
+        let ledger_ref = slot.borrow();
+        let Some(ledger) = ledger_ref.last() else {
+            return false;
+        };
+        if ledger.max_bytes != 0 {
+            let Some(total) = ledger
+                .total
+                .get()
+                .checked_add(ledger.transient.get())
+                .and_then(|total| total.checked_add(ledger.pending.get()))
+                .and_then(|total| total.checked_add(bytes))
+            else {
+                return false;
+            };
+            if total > ledger.max_bytes {
+                return false;
+            }
+        }
+        ledger
+            .pending
+            .set(ledger.pending.get().saturating_add(bytes));
+        true
+    })
+}
+
+struct ClearLendLedger;
+impl Drop for ClearLendLedger {
+    fn drop(&mut self) {
+        LEND_LEDGER.with(|slot| {
+            slot.borrow_mut().pop();
+        });
+    }
+}
+
+/// Zero-fill `bytes` and attach the pointer as `node`'s vector payload.
+///
+/// When the arena is already lent, the pointer is queued instead of
+/// re-entering [`with_arena`]. The bytes are reserved first. If the budget
+/// cannot hold them, nothing is published and this returns null. The lend's
+/// `with_arena_in` registers a published buffer before deferred collection
+/// and does not free it.
+///
+/// # Safety
+/// `node` is a live vector header. `bytes > 0`.
+pub(crate) unsafe fn attach_zeroed_data_buffer(node: SEXP, bytes: usize) -> *mut u8 {
+    unsafe {
+        if node.is_null() || bytes == 0 {
+            return ptr::null_mut();
+        }
+        let Ok(layout) = Layout::from_size_align(bytes, std::mem::align_of::<u64>()) else {
+            return ptr::null_mut();
+        };
+        let data_ptr = alloc(layout);
+        if data_ptr.is_null() {
+            return ptr::null_mut();
+        }
+        ptr::write_bytes(data_ptr, 0, bytes);
+
+        let Some(inst) = super::instance::current_instance_ptr() else {
+            dealloc(data_ptr, layout);
+            return ptr::null_mut();
+        };
+        if is_arena_lent(inst) {
+            // Refuse before the pointer is stored. Flush keeps every queued
+            // pointer, so publishing one the budget cannot own would either
+            // exceed the budget or free memory the caller still holds.
+            if !reserve_lend_bytes(layout.size()) {
+                dealloc(data_ptr, layout);
+                return ptr::null_mut();
+            }
+            (*node).gengc_next_node = data_ptr as SEXP;
+            PENDING_DATA_BUFFERS.with(|queue| {
+                queue.borrow_mut().push(PendingDataBuffer {
+                    instance: inst as usize,
+                    node,
+                    ptr: data_ptr,
+                    layout,
+                    reserved: true,
+                });
+            });
+            return data_ptr;
+        }
+        (*node).gengc_next_node = data_ptr as SEXP;
+        let adopted = with_arena(|arena| arena.adopt_data_buffer(data_ptr, layout));
+        if !adopted {
+            (*node).gengc_next_node = ptr::null_mut();
+            dealloc(data_ptr, layout);
+            return ptr::null_mut();
+        }
+        data_ptr
+    }
+}
+
+/// True when `node`'s payload was attached during a lend and not yet accepted.
+pub(crate) unsafe fn vector_payload_is_pending(node: SEXP) -> bool {
+    unsafe {
+        if node.is_null() {
+            return false;
+        }
+        let ptr = (*node).gengc_next_node as *mut u8;
+        if ptr.is_null() {
+            return false;
+        }
+        PENDING_DATA_BUFFERS.with(|queue| {
+            queue
+                .borrow()
+                .iter()
+                .any(|item| item.node == node && item.ptr == ptr)
+        })
+    }
+}
+
+/// True when `node`'s payload is in the arena map or waiting for the lend to end.
+pub(crate) unsafe fn vector_payload_is_tracked(node: SEXP) -> bool {
+    unsafe {
+        if node.is_null() {
+            return false;
+        }
+        let ptr = (*node).gengc_next_node as *mut u8;
+        if ptr.is_null() {
+            return false;
+        }
+        if let Some(inst) = super::instance::current_instance_ptr() {
+            let queued = PENDING_DATA_BUFFERS.with(|queue| {
+                queue
+                    .borrow()
+                    .iter()
+                    .any(|item| item.instance == inst as usize && item.ptr == ptr)
+            });
+            if queued {
+                return true;
+            }
+            if is_arena_lent(inst) {
+                return false;
+            }
+        }
+        with_arena(|arena| arena.tracks_data_buffer(ptr))
+    }
+}
+
+fn flush_pending_data_buffers(inst: *mut super::instance::RInstance) {
+    let key = inst as usize;
+    let mine = PENDING_DATA_BUFFERS.with(|queue| {
+        let mut queue = queue.borrow_mut();
+        let mut kept = Vec::new();
+        let mut mine = Vec::new();
+        for item in queue.drain(..) {
+            if item.instance == key {
+                mine.push(item);
+            } else {
+                kept.push(item);
+            }
+        }
+        *queue = kept;
+        mine
+    });
+    // A nested `with_arena` is rejected before its lend starts, so this flush
+    // can run while the outer lend is still active. Those buffers belong to
+    // the outer lend; committing them here would free or register them early.
+    if is_arena_lent(inst) {
+        PENDING_DATA_BUFFERS.with(|queue| {
+            queue.borrow_mut().extend(mine);
+        });
+        return;
+    }
+    unsafe {
+        for item in mine {
+            // A queued pointer was returned to the caller. Keep it alive.
+            if item.reserved {
+                (*inst)
+                    .arena
+                    .commit_reserved_data_buffer(item.ptr, item.layout);
+            } else {
+                (*inst).arena.register_data_buffer(item.ptr, item.layout);
+            }
+            super::altseq::commit_expanded_buffer(item.node);
+        }
+    }
+}
+
+struct FlushPending(*mut super::instance::RInstance);
+impl Drop for FlushPending {
+    fn drop(&mut self) {
+        flush_pending_data_buffers(self.0);
+    }
 }
 struct ArenaLend(usize);
 impl ArenaLend {
@@ -1364,9 +1661,21 @@ where
     // nothing reenters the interpreter while the lend is live. The
     // deferred firings are processed only after it is released.
     unsafe {
+        // Snapshot the budget before the `&mut RArena` lend. Compact-sequence
+        // expansion during the callback reserves through this ledger instead
+        // of borrowing the arena again.
+        install_lend_ledger(inst);
+        let _clear_ledger = ClearLendLedger;
         let result = {
-            let _lend = ArenaLend::new(inst);
-            f(&mut (*inst).arena)
+            // Drop flushes after the lend ends, including when `f` unwinds,
+            // and before deferred collection below. The ledger outlives the
+            // flush so reserved bytes stay in step with the arena.
+            let _flush = FlushPending(inst);
+            let result = {
+                let _lend = ArenaLend::new(inst);
+                f(&mut (*inst).arena)
+            };
+            result
         };
         let torture_ticks = std::mem::take(&mut (*inst).arena.alloc_gc_torture_ticks);
         let collect_requested = std::mem::take(&mut (*inst).arena.alloc_gc_collect_requested);

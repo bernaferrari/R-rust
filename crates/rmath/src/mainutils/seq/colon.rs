@@ -122,6 +122,9 @@ pub unsafe fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
             } else {
                 R_compact_intrange(n1 as R_xlen_t, (n1 - n as c_double + 1.0) as R_xlen_t)
             }
+        } else if n > 1 {
+            let step = if n1 <= n2 { 1.0 } else { -1.0 };
+            crate::sexp::altseq::compact_real_seq(n1, step, n as usize)
         } else {
             let ans = Rf_allocVector3(REALSXP_VAL, n);
             let ra = REAL(ans);

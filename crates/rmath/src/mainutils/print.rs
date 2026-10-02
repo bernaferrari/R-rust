@@ -1567,6 +1567,10 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
             let tag = TAG(a);
 
             // Skip certain attributes
+            if crate::sexp::altseq::is_formula_tag(tag) {
+                a = CDR(a);
+                continue;
+            }
             if useSlots && tag == R_ClassSymbol() {
                 a = CDR(a);
                 continue;

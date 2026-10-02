@@ -8,11 +8,12 @@
 //! callers get tolerance-aware comparison rather than an `identical()` alias.
 
 use std::ffi::{CStr, CString};
+use std::os::raw::c_int;
 
 use crate::mainutils::identical::{R_IsNA, R_compute_identical};
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, STRING_ELT,
-    TAG, TYPEOF, VECTOR_ELT,
+    ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL,
+    REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_mkString};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
@@ -389,6 +390,10 @@ unsafe fn attributes(mut attrs: SEXP) -> Vec<(String, SEXP)> {
     unsafe {
         let mut result = Vec::new();
         while !is_nil(attrs) {
+            if crate::sexp::altseq::is_formula_tag(TAG(attrs)) {
+                attrs = CDR(attrs);
+                continue;
+            }
             let name = tag_name(TAG(attrs)).unwrap_or_else(|| "<unnamed>".into());
             result.push((name, CAR(attrs)));
             attrs = CDR(attrs);
@@ -464,13 +469,25 @@ unsafe fn numeric_components(value: SEXP, index: usize) -> Numeric {
                 (value as f64, 0.0)
             }
             t if t == SEXPTYPE::INTSXP => {
-                let value = *INTEGER(value).add(index);
+                let ptr = INTEGER(value);
+                let value = if ptr.is_null() {
+                    INTEGER_ELT(value, index as c_int)
+                } else {
+                    *ptr.add(index)
+                };
                 if value == NA_INTEGER {
                     return Numeric::Missing;
                 }
                 (value as f64, 0.0)
             }
-            t if t == SEXPTYPE::REALSXP => (*REAL(value).add(index), 0.0),
+            t if t == SEXPTYPE::REALSXP => {
+                let ptr = REAL(value);
+                if ptr.is_null() {
+                    (REAL_ELT(value, index as c_int), 0.0)
+                } else {
+                    (*ptr.add(index), 0.0)
+                }
+            },
             t if t == SEXPTYPE::CPLXSXP => {
                 let value = *COMPLEX(value).add(index);
                 (value.r, value.i)

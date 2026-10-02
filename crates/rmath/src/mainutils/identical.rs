@@ -15,8 +15,8 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, LENGTH, LOGICAL, PRIMOFFSET,
-    PRINTNAME, RAW, REAL, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    ALTREP, ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, INTEGER_ELT, LENGTH,
+    LOGICAL, PRIMOFFSET, PRINTNAME, RAW, REAL, REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::attrib_core::{R_RowNamesSymbol, getAttrib};
 use crate::sexp::constructors::Rf_length;
@@ -237,15 +237,23 @@ unsafe fn ignore_closure_srcref(x: SEXP, flags: c_int) -> bool {
     unsafe { flags & IDENT_USE_SRCREF == 0 && TYPEOF(x) == SEXPTYPE::CLOSXP }
 }
 
+/// Compact sequences store their formula under an internal attribute tag.
+/// `identical` compares values, so that cell is not an attribute.
+unsafe fn skip_identical_attr(object: SEXP, cell: SEXP, flags: c_int) -> bool {
+    unsafe {
+        crate::sexp::altseq::is_formula_tag(TAG(cell))
+            || (ignore_closure_srcref(object, flags)
+                && attr_tag_name(TAG(cell)).is_some_and(is_srcref_attr_name))
+    }
+}
+
 
 unsafe fn attr_pairlist_len_filtered(object: SEXP, list: SEXP, flags: c_int) -> c_int {
     unsafe {
-        let skip_srcref = ignore_closure_srcref(object, flags);
         let mut n = 0;
         let mut p = list;
         while !p.is_null() && p != R_NilValue() {
-            let skip = skip_srcref && attr_tag_name(TAG(p)).is_some_and(is_srcref_attr_name);
-            if !skip {
+            if !skip_identical_attr(object, p, flags) {
                 n += 1;
             }
             p = CDR(p);
@@ -323,18 +331,10 @@ unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             let mut px = ax;
             let mut py = ay;
             loop {
-                while !px.is_null()
-                    && px != R_NilValue()
-                    && ignore_closure_srcref(x, flags)
-                    && attr_tag_name(TAG(px)).is_some_and(is_srcref_attr_name)
-                {
+                while !px.is_null() && px != R_NilValue() && skip_identical_attr(x, px, flags) {
                     px = CDR(px);
                 }
-                while !py.is_null()
-                    && py != R_NilValue()
-                    && ignore_closure_srcref(y, flags)
-                    && attr_tag_name(TAG(py)).is_some_and(is_srcref_attr_name)
-                {
+                while !py.is_null() && py != R_NilValue() && skip_identical_attr(y, py, flags) {
                     py = CDR(py);
                 }
 
@@ -379,13 +379,13 @@ unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
         }
         let mut elx = ax;
         while !elx.is_null() && elx != R_NilValue() {
-            let Some(tx) = attr_tag_name(TAG(elx)) else {
-                return 0;
-            };
-            if ignore_closure_srcref(x, flags) && is_srcref_attr_name(tx) {
+            if skip_identical_attr(x, elx, flags) {
                 elx = CDR(elx);
                 continue;
             }
+            let Some(tx) = attr_tag_name(TAG(elx)) else {
+                return 0;
+            };
 
             let mut ely = ay;
             let mut found = false;
@@ -509,11 +509,17 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             }
             let ix = INTEGER(x);
             let iy = INTEGER(y);
-            if ix.is_null() && iy.is_null() {
-                return 1;
-            }
             if ix.is_null() || iy.is_null() {
-                return 0;
+                // Materialize failed. A compact sequence still has its formula.
+                if ALTREP(x) != 0 || ALTREP(y) != 0 {
+                    for i in 0..nx {
+                        if INTEGER_ELT(x, i) != INTEGER_ELT(y, i) {
+                            return 0;
+                        }
+                    }
+                    return 1;
+                }
+                return if ix.is_null() && iy.is_null() { 1 } else { 0 };
             }
             let size = (nx as usize) * std::mem::size_of::<c_int>();
             if size == 0 {
@@ -535,11 +541,17 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             }
             let rx = REAL(x);
             let ry = REAL(y);
-            if rx.is_null() && ry.is_null() {
-                return 1;
-            }
             if rx.is_null() || ry.is_null() {
-                return 0;
+                if ALTREP(x) != 0 || ALTREP(y) != 0 {
+                    let strictness = compute_strictness(flags);
+                    for i in 0..nx {
+                        if neWithNaN(REAL_ELT(x, i), REAL_ELT(y, i), strictness) != 0 {
+                            return 0;
+                        }
+                    }
+                    return 1;
+                }
+                return if rx.is_null() && ry.is_null() { 1 } else { 0 };
             }
             let str = compute_strictness(flags);
             for i in 0..nx as usize {

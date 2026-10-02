@@ -1,16 +1,9 @@
 #![cfg(feature = "altrep")]
-//! ALTREP (Alternative Representations) support.
+//! Feature-gated ALTREP experiments.
 //!
-//! ALTREP allows R vectors to compute elements on demand rather than
-//! storing all elements in memory. This is used for sequences like
-//! `1:1000000` which would be expensive to materialize.
-//!
-//! # Design
-//!
-//! An ALTREP object is a VECSXP with:
-//! - The ALT bit set (sxpinfo.alt)
-//! - data1: pointer to the ALTREP class/methods
-//! - data2: pointer to the ALTREP instance data
+//! Compact sequences live in [`super::altseq`] and are part of the default
+//! build. This module must not store a Rust pointer in a SEXP slot: the
+//! collector traces `VECSXP` payloads as SEXP references.
 //!
 //! # Example
 //!
@@ -100,37 +93,19 @@ impl AltrepBuilder {
     ///
     /// Returns None if class or data is not set.
     pub fn build(self) -> Option<SEXP> {
-        let class = self.class?;
-        let data = self.data?;
+        let _class = self.class?;
+        // Drop the payload. Writing it into a VECSXP slot would make the
+        // collector follow a Rust pointer.
+        let _data = self.data?;
 
         with_arena(|arena| {
-            // Create a VECSXP to hold the ALTREP metadata
             let vec = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
             if vec.is_null() {
                 return None;
             }
-
             unsafe {
-                // Set the ALT bit
                 (*vec).sxpinfo.set_alt(true);
-
-                // Store class pointer in data1
-                let data_ptr = (*vec).gengc_next_node as *mut SEXP;
-                if data_ptr.is_null() {
-                    return None;
-                }
-
-                // Store class as external pointer (simplified)
-                // In a full implementation, this would be a proper EXTPTRSXP
-                *data_ptr = class as *const AltrepClass as SEXP;
-
-                // Store data in second slot
-                // For now, we box the data and store the pointer
-                let boxed_data = Box::new(data);
-                let data_ptr2 = data_ptr.add(1);
-                *data_ptr2 = Box::into_raw(boxed_data) as SEXP;
             }
-
             Some(vec)
         })
     }

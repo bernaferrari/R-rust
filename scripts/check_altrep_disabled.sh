@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Assert the ALTREP feature stays OFF in default / release-shaped builds.
+# Assert the ALTREP cargo feature stays OFF in default / release-shaped builds.
 #
-# ALTREP currently stores ordinary Rust heap pointers in SEXP payload slots
-# that the generational GC traces as SEXP references — enabling the feature
-# corrupts the heap under collection. Dependents must not flip it on.
+# The feature-gated method tables are not the supported path: they used to
+# store Rust pointers in SEXP slots the GC traces. Compact sequences (`:`
+# for length > 1) are implemented in the default build as ordinary vectors
+# with a traced `.InternalAltSeq` attribute and no Rust pointer. Dependents
+# must not flip the `altrep` feature on.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

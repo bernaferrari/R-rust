@@ -1362,6 +1362,10 @@ unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
         let mut attrs = crate::sexp::accessors::ATTRIB(x);
         while !attrs.is_null() && attrs != R_NilValue() {
             let tag = TAG(attrs);
+            if crate::sexp::altseq::is_formula_tag(tag) {
+                attrs = CDR(attrs);
+                continue;
+            }
             let name = if tag.is_null() || tag == R_NilValue() {
                 String::new()
             } else {

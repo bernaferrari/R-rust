@@ -12,6 +12,7 @@
 //! - `symbol` submodule: symbol table and interning
 
 pub(crate) mod accessors;
+pub(crate) mod altseq;
 #[cfg(feature = "altrep")]
 pub mod altrep;
 pub mod attrib_core;
@@ -66,12 +67,13 @@ pub use object::{
 #[allow(unused_imports)]
 pub use session::{CancellationToken, RSession};
 
-/// Default-build guards for the ALTREP feature gate.
+/// Default-build guards for the ALTREP cargo feature.
 ///
-/// `sexp::altrep`, `mainutils::altrep`, and `mainutils::altclasses` are all
-/// `#[cfg(feature = "altrep")]`: in the default build they do not exist, and
-/// any code referencing them fails to compile. These tests pin the observable
-/// side of that contract.
+/// `sexp::altrep`, `mainutils::altrep`, and `mainutils::altclasses` stay behind
+/// `#[cfg(feature = "altrep")]`. Compact sequences in [`altseq`] may set the
+/// ALT bit; they are ordinary vectors whose formula is a traced attribute.
+/// These tests pin the feature gate and that a plain vector still survives
+/// collection with the ALT bit clear.
 #[cfg(all(test, not(feature = "altrep")))]
 mod no_altrep_guards {
     use crate::sexp::accessors::ALTREP;
@@ -83,11 +85,10 @@ mod no_altrep_guards {
         assert!(!cfg!(feature = "altrep"));
     }
 
-    /// With every ALTREP constructor compiled out, no public path can set the
-    /// ALT bit; a plain VECSXP holding a REALSXP survives a full collection
-    /// through the general payload tracing, unmarked and uncorrupted.
+    /// A plain VECSXP holding a REALSXP survives a full collection with the ALT
+    /// bit clear. Compact sequences are a separate path and are not built here.
     #[test]
-    fn default_build_never_produces_altrep_objects() {
+    fn plain_vector_survives_full_gc_with_alt_bit_clear() {
         let _session = crate::sexp::session::RSession::new();
         let sym =
             unsafe { crate::sexp::symbol::Rf_install(b"no_altrep_probe\0".as_ptr() as *const _) };

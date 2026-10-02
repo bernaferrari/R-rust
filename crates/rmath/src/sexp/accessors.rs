@@ -145,6 +145,21 @@ pub unsafe fn ATTRIB(x: SEXP) -> SEXP {
 pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
+            // Materialize before replacing the list. The formula cell is what
+            // keeps a compact sequence's values alive, and `materialize`
+            // clears the ALT bit before it writes the attribute slot. If the
+            // buffer was not committed, the formula stays at the head.
+            if ALTREP(x) != 0 {
+                super::altseq::materialize(x);
+            }
+            let uncommitted = ALTREP(x) != 0
+                && ((*x).gengc_next_node.is_null()
+                    || super::memory::vector_payload_is_pending(x));
+            if uncommitted {
+                super::altseq::keep_formula_replace_tail(x, v);
+                return;
+            }
+            let v = super::altseq::without_formula_cells(v);
             super::gengc::attrib_write_barrier(x, v);
             (*x).attrib = v;
         }
@@ -732,9 +747,13 @@ pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
         if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
-        // For vector types, data pointer is stored in gengc_next_node
+        // For vector types, data pointer is stored in gengc_next_node.
+        // A compact sequence keeps that pointer null until the first request.
         let t = (*x).sxpinfo.type_of();
         if t.is_vector_type() || t == SEXPTYPE::CHARSXP {
+            if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
+                super::altseq::materialize(x);
+            }
             (*x).gengc_next_node as *mut c_void
         } else {
             ptr::null_mut()
@@ -1043,6 +1062,14 @@ pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
         if !is_valid_sexp_ptr(x) {
             return NA_INTEGER;
         }
+        // Resolve a compact sequence before `INTEGER`, which materializes.
+        if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
+            match super::altseq::lazy_int_elt(x, i as R_xlen_t) {
+                super::altseq::LazyRead::Ready(value) => return value,
+                super::altseq::LazyRead::OutOfRange => return NA_INTEGER,
+                super::altseq::LazyRead::Absent => {}
+            }
+        }
         let data = INTEGER(x);
         if data.is_null() || (data as usize) % std::mem::align_of::<c_int>() != 0 {
             return NA_INTEGER;
@@ -1064,6 +1091,13 @@ pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
     unsafe {
         if !is_valid_sexp_ptr(x) {
             return NA_REAL;
+        }
+        if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
+            match super::altseq::lazy_real_elt(x, i as R_xlen_t) {
+                super::altseq::LazyRead::Ready(value) => return value,
+                super::altseq::LazyRead::OutOfRange => return NA_REAL,
+                super::altseq::LazyRead::Absent => {}
+            }
         }
         let data = REAL(x);
         if data.is_null() || (data as usize) % std::mem::align_of::<c_double>() != 0 {
@@ -1193,6 +1227,19 @@ impl SexprecCore {
                 },
             };
         }
+    }
+
+    /// Set the logical vector length without touching the element buffer.
+    #[inline]
+    pub unsafe fn set_vecsxp_length(&mut self, v: R_xlen_t) {
+        self.require_vector_header();
+        let truelength = unsafe { self.data.vecsxp.truelength };
+        self.data = SexprecData {
+            vecsxp: super::ffi::Vecsxp {
+                length: v,
+                truelength,
+            },
+        };
     }
 }
 
