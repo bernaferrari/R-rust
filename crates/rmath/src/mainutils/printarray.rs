@@ -63,7 +63,7 @@ const STRSXP_VAL: i32 = 16;
 const RAWSXP_VAL: i32 = 24;
 
 /// OutDec: decimal separator character (always '.' in this port).
-static OUT_DEC: c_char = b'.' as c_char;
+static OUT_DEC: [c_char; 2] = [b'.' as c_char, 0];
 
 /// Rbyte type alias.
 type Rbyte = u8;
@@ -779,7 +779,7 @@ unsafe fn print_real_matrix(
         };
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
-        let dec_ptr = &OUT_DEC as *const c_char;
+        let dec_ptr = OUT_DEC.as_ptr();
 
         for j in 0..c as usize {
             if print_ij {
@@ -889,7 +889,7 @@ unsafe fn print_complex_matrix(
         let base = COMPLEX(sx);
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
-        let dec_ptr = &OUT_DEC as *const c_char;
+        let dec_ptr = OUT_DEC.as_ptr();
 
         for j in 0..c as usize {
             if print_ij {
@@ -1750,6 +1750,14 @@ pub unsafe fn formatRawMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
 mod tests {
     use super::*;
     use std::ptr;
+
+    #[test]
+    fn decimal_separator_is_terminated_for_real_encoding() {
+        let dec_ptr = OUT_DEC.as_ptr();
+        // Numeric encoders consume this argument as a NUL-terminated C string.
+        let separator = unsafe { std::ffi::CStr::from_ptr(dec_ptr) };
+        assert_eq!(separator.to_bytes(), b".");
+    }
 
     #[test]
     fn test_print_matrix_null() {

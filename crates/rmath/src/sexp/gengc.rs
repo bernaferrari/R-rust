@@ -211,7 +211,7 @@ fn mark_reachable_traced(obj: SEXP) {
         // so keep only a debug tripwire that surfaces regressions loudly
         // instead of dereferencing (or silently skipping) garbage.
         debug_assert!(
-            (obj as usize) >= 0x1_0000 && (obj as usize).trailing_zeros() >= 3,
+            obj.addr() >= 0x1_0000 && obj.is_aligned(),
             "mark_reachable_traced on implausible SEXP pointer {:#x}",
             obj as usize
         );

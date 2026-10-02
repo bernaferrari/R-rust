@@ -742,6 +742,11 @@ pub unsafe fn SET_PRIMOFFSET(x: SEXP, v: c_int) {
 /// For vector types, the data is stored in a separate allocation
 /// tracked by the arena allocator. The data pointer is stored in
 /// the gengc_next_node field for vector types.
+///
+/// # Safety
+/// `x` must be live and belong to the active instance. No Rust payload borrow
+/// may overlap materialization. Nonempty compact expansion returns usable
+/// storage or raises `RError`; checked owner-bound access uses `Sexp` instead.
 pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
     unsafe {
         if !is_valid_sexp_ptr(x) {
@@ -753,6 +758,11 @@ pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
         if t.is_vector_type() || t == SEXPTYPE::CHARSXP {
             if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
                 super::altseq::materialize(x);
+                // Ported callers expect usable storage or an R error. A
+                // nonempty lazy vector must never yield a null data pointer.
+                if (*x).vecsxp_length() != 0 && (*x).gengc_next_node.is_null() {
+                    super::context::r_error("cannot materialize compact vector: invalid size, memory budget or allocation failure");
+                }
             }
             (*x).gengc_next_node as *mut c_void
         } else {

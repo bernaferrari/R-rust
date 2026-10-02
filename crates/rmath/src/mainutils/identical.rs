@@ -15,7 +15,7 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ALTREP, ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, INTEGER_ELT, LENGTH,
+    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, INTEGER_ELT, LENGTH,
     LOGICAL, PRIMOFFSET, PRINTNAME, RAW, REAL, REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::attrib_core::{R_RowNamesSymbol, getAttrib};
@@ -507,18 +507,19 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             if nx != ny {
                 return 0;
             }
+            if crate::sexp::altseq::unexpanded_int(x).is_some()
+                || crate::sexp::altseq::unexpanded_int(y).is_some()
+            {
+                for i in 0..nx {
+                    if INTEGER_ELT(x, i) != INTEGER_ELT(y, i) {
+                        return 0;
+                    }
+                }
+                return 1;
+            }
             let ix = INTEGER(x);
             let iy = INTEGER(y);
             if ix.is_null() || iy.is_null() {
-                // Materialize failed. A compact sequence still has its formula.
-                if ALTREP(x) != 0 || ALTREP(y) != 0 {
-                    for i in 0..nx {
-                        if INTEGER_ELT(x, i) != INTEGER_ELT(y, i) {
-                            return 0;
-                        }
-                    }
-                    return 1;
-                }
                 return if ix.is_null() && iy.is_null() { 1 } else { 0 };
             }
             let size = (nx as usize) * std::mem::size_of::<c_int>();
@@ -539,18 +540,20 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             if nx != ny {
                 return 0;
             }
+            if crate::sexp::altseq::unexpanded_real(x).is_some()
+                || crate::sexp::altseq::unexpanded_real(y).is_some()
+            {
+                let strictness = compute_strictness(flags);
+                for i in 0..nx {
+                    if neWithNaN(REAL_ELT(x, i), REAL_ELT(y, i), strictness) != 0 {
+                        return 0;
+                    }
+                }
+                return 1;
+            }
             let rx = REAL(x);
             let ry = REAL(y);
             if rx.is_null() || ry.is_null() {
-                if ALTREP(x) != 0 || ALTREP(y) != 0 {
-                    let strictness = compute_strictness(flags);
-                    for i in 0..nx {
-                        if neWithNaN(REAL_ELT(x, i), REAL_ELT(y, i), strictness) != 0 {
-                            return 0;
-                        }
-                    }
-                    return 1;
-                }
                 return if rx.is_null() && ry.is_null() { 1 } else { 0 };
             }
             let str = compute_strictness(flags);

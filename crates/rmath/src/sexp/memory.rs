@@ -127,6 +127,21 @@ fn vector_layout(sexptype: SEXPTYPE, length: R_xlen_t) -> Result<Layout, ArenaEr
         .map_err(|_| ArenaError::InvalidLength)
 }
 
+#[cfg(test)]
+thread_local! {
+    static BUFFER_ALLOCATION_ATTEMPTS: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn buffer_allocation_attempts() -> usize {
+    BUFFER_ALLOCATION_ATTEMPTS.with(Cell::get)
+}
+
+#[cfg(test)]
+fn note_buffer_allocation_attempt() {
+    BUFFER_ALLOCATION_ATTEMPTS.with(|count| count.set(count.get() + 1));
+}
+
 /// Own a raw buffer until it is transferred to an arena or transient stack.
 /// This also releases an unpublished payload if node allocation unwinds.
 pub(crate) struct OwnedBuffer {
@@ -139,6 +154,8 @@ impl OwnedBuffer {
         if layout.size() == 0 {
             return None;
         }
+        #[cfg(test)]
+        note_buffer_allocation_attempt();
         let ptr = std::ptr::NonNull::new(unsafe { std::alloc::alloc_zeroed(layout) })?;
         Some(Self { ptr, layout })
     }
@@ -1521,10 +1538,14 @@ fn note_lend_budget(arena: usize, max_bytes: usize) {
 /// Returns false when the promise does not fit. The caller must not publish
 /// a pointer in that case: the lend's flush would otherwise free a buffer
 /// the caller is still holding.
-fn reserve_lend_bytes(bytes: usize) -> bool {
+fn reserve_lend_bytes(inst: *mut super::instance::RInstance, bytes: usize) -> bool {
     LEND_LEDGER.with(|slot| {
         let ledger_ref = slot.borrow();
-        let Some(ledger) = ledger_ref.last() else {
+        let Some(ledger) = ledger_ref
+            .iter()
+            .rev()
+            .find(|ledger| ledger.instance == inst.addr())
+        else {
             return false;
         };
         if ledger.max_bytes != 0 {
@@ -1566,7 +1587,8 @@ impl Drop for ClearLendLedger {
 /// and does not free it.
 ///
 /// # Safety
-/// `node` is a live vector header. `bytes > 0`.
+/// `node` is a live vector header owned by the active instance, with no prior
+/// payload. `bytes > 0` is its complete payload size; the caller roots the node.
 pub(crate) unsafe fn attach_zeroed_data_buffer(node: SEXP, bytes: usize) -> *mut u8 {
     unsafe {
         if node.is_null() || bytes == 0 {
@@ -1575,43 +1597,48 @@ pub(crate) unsafe fn attach_zeroed_data_buffer(node: SEXP, bytes: usize) -> *mut
         let Ok(layout) = Layout::from_size_align(bytes, std::mem::align_of::<u64>()) else {
             return ptr::null_mut();
         };
-        let data_ptr = alloc(layout);
-        if data_ptr.is_null() {
-            return ptr::null_mut();
-        }
-        ptr::write_bytes(data_ptr, 0, bytes);
-
         let Some(inst) = super::instance::current_instance_ptr() else {
-            dealloc(data_ptr, layout);
             return ptr::null_mut();
         };
-        if is_arena_lent(inst) {
-            // Refuse before the pointer is stored. Flush keeps every queued
-            // pointer, so publishing one the budget cannot own would either
-            // exceed the budget or free memory the caller still holds.
-            if !reserve_lend_bytes(layout.size()) {
-                dealloc(data_ptr, layout);
+        // Admit the whole payload before allocation or zero-fill. The guard
+        // also restores accounting if allocation or bookkeeping fails.
+        let Some(reservation) = reserve_transient_in(inst, layout.size()) else {
+            return ptr::null_mut();
+        };
+        let lent = is_arena_lent(inst);
+        if lent && !PENDING_DATA_BUFFERS.with(|queue| queue.borrow_mut().try_reserve(1).is_ok()) {
+            return ptr::null_mut();
+        }
+        let Some(buffer) = OwnedBuffer::zeroed(layout) else {
+            return ptr::null_mut();
+        };
+        let data_ptr = buffer.as_ptr();
+        // Transfer the reservation to the lend's pending ledger, or to the
+        // arena's registered bytes. No R reentry occurs during this transfer.
+        drop(reservation);
+        if lent {
+            if !reserve_lend_bytes(inst, layout.size()) {
                 return ptr::null_mut();
             }
-            (*node).gengc_next_node = data_ptr as SEXP;
             PENDING_DATA_BUFFERS.with(|queue| {
                 queue.borrow_mut().push(PendingDataBuffer {
-                    instance: inst as usize,
+                    instance: inst.addr(),
                     node,
                     ptr: data_ptr,
                     layout,
                     reserved: true,
                 });
             });
+            let _ = buffer.into_raw();
+            (*node).gengc_next_node = data_ptr as SEXP;
             return data_ptr;
         }
-        (*node).gengc_next_node = data_ptr as SEXP;
         let adopted = with_arena(|arena| arena.adopt_data_buffer(data_ptr, layout));
         if !adopted {
-            (*node).gengc_next_node = ptr::null_mut();
-            dealloc(data_ptr, layout);
             return ptr::null_mut();
         }
+        let _ = buffer.into_raw();
+        (*node).gengc_next_node = data_ptr as SEXP;
         data_ptr
     }
 }
