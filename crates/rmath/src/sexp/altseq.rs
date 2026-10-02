@@ -191,6 +191,29 @@ impl CompactSeq {
         matches!(self.formula, Formula::Real { .. })
     }
 
+    #[inline]
+    pub(crate) fn len(self) -> R_xlen_t {
+        self.len
+    }
+
+    /// Origin and step of an integer formula. `None` for a real sequence.
+    #[inline]
+    pub(crate) fn int_origin_step(self) -> Option<(c_int, c_int)> {
+        match self.formula {
+            Formula::Int { from, step } => Some((from, step)),
+            Formula::Real { .. } => None,
+        }
+    }
+
+    /// Origin and step of a real formula. `None` for an integer sequence.
+    #[inline]
+    pub(crate) fn real_origin_step(self) -> Option<(c_double, c_double)> {
+        match self.formula {
+            Formula::Real { from, step } => Some((from, step)),
+            Formula::Int { .. } => None,
+        }
+    }
+
     pub(crate) fn int_or_na(self, i: R_xlen_t) -> c_int {
         match self.read_int(i) {
             LazyRead::Ready(value) => value,
@@ -307,6 +330,25 @@ impl Sexp<'_> {
         }
         seq.read_real(i)
     }
+}
+
+/// Compact integer sequence whose element buffer is still null.
+///
+/// A null `x` is [`None`]. Wrapping a live node copies its header and does not allocate.
+pub(crate) fn unexpanded_int(x: SEXP) -> Option<CompactSeq> {
+    unexpanded(x).filter(|seq| seq.is_int())
+}
+
+/// Compact real sequence whose element buffer is still null.
+///
+/// See [`unexpanded_int`].
+pub(crate) fn unexpanded_real(x: SEXP) -> Option<CompactSeq> {
+    unexpanded(x).filter(|seq| seq.is_real())
+}
+
+fn unexpanded(x: SEXP) -> Option<CompactSeq> {
+    let sx = unsafe { Sexp::from_raw(x) }?;
+    sx.compact_seq().filter(|seq| seq.payload_is_null())
 }
 
 /// Expand a compact sequence into a normal vector buffer.

@@ -19,19 +19,39 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 
 pub unsafe fn R_compact_intrange(from: R_xlen_t, to: R_xlen_t) -> SEXP {
     unsafe {
-        let n = (if from <= to { to - from } else { from - to } + 1) as c_int;
+        // `0:2147483647` has length 2^31. That length does not fit in `c_int`,
+        // and both endpoints do. Truncating the length would allocate a
+        // negative vector. A range whose endpoint does not fit in `c_int`
+        // (seq_len past INT_MAX, or `(-2147483649):1`) is a real sequence.
+        let n = if from <= to {
+            to.saturating_sub(from).saturating_add(1)
+        } else {
+            from.saturating_sub(to).saturating_add(1)
+        };
         if n > 1 {
-            let step: c_int = if from <= to { 1 } else { -1 };
-            return crate::sexp::altseq::compact_int_seq(from as c_int, step, n as usize);
+            if let (Ok(from_i), Ok(_to_i)) = (c_int::try_from(from), c_int::try_from(to)) {
+                let step: c_int = if from <= to { 1 } else { -1 };
+                if let Ok(nu) = usize::try_from(n) {
+                    return crate::sexp::altseq::compact_int_seq(from_i, step, nu);
+                }
+            } else {
+                let step = if from <= to { 1.0 } else { -1.0 };
+                if let Ok(nu) = usize::try_from(n) {
+                    return crate::sexp::altseq::compact_real_seq(from as c_double, step, nu);
+                }
+            }
+            return ptr::null_mut();
         }
-        let ans = Rf_allocVector(INTSXP_VAL, n);
-        if !ans.is_null() && n > 0 {
+        // One element. An endpoint outside `c_int` is a real scalar, not a
+        // truncated integer.
+        if c_int::try_from(from).is_err() {
+            return Rf_ScalarReal(from as c_double);
+        }
+        let ans = Rf_allocVector(INTSXP_VAL, 1);
+        if !ans.is_null() {
             let data = INTEGER(ans);
-            let step: c_int = if from <= to { 1 } else { -1 };
-            let mut val = from as c_int;
-            for i in 0..n as usize {
-                *data.add(i) = val;
-                val += step;
+            if !data.is_null() {
+                *data = from as c_int;
             }
         }
         ans

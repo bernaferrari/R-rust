@@ -948,7 +948,7 @@ fn real_index(index: usize) -> Option<R_xlen_t> {
 }
 
 fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
-    use crate::mainutils::format::{formatReal, real_field};
+    use crate::mainutils::format::{compact_real_field, formatReal, real_field};
     use crate::mainutils::printutils::EncodeReal;
     use crate::sexp::accessors::REAL;
     use crate::sexp::ffi::NA_REAL;
@@ -960,11 +960,10 @@ fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
         let mut col_fmt = Vec::with_capacity(ncol);
         for c in 0..ncol {
             let start = c * nrow;
-            let fmt = real_field(nrow as R_xlen_t, 0, |i| {
-                real_index(start + i as usize)
-                    .map(|index| seq.real_or_na(index))
-                    .unwrap_or(NA_REAL)
-            });
+            let fmt = match (real_index(start), real_index(nrow)) {
+                (Some(start), Some(rows)) => compact_real_field(seq, start, rows, 0),
+                _ => real_field(1, 0, |_| NA_REAL),
+            };
             col_fmt.push(fmt);
         }
         return format_matrix_with(x, nrow, ncol, |r, c| {
@@ -993,10 +992,9 @@ fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
             let mut d = 0;
             let mut e = 0;
             if data.is_null() {
-                let fmt = real_field(nrow as R_xlen_t, 0, |_| NA_REAL);
-                w = fmt.w;
-                d = fmt.d;
-                e = fmt.e;
+                // Same empty width as formatReal on a null pointer. The cells
+                // below still encode NA_REAL. The pointer is not offset.
+                formatReal(std::ptr::null(), 0, &mut w, &mut d, &mut e, 0);
             } else {
                 formatReal(
                     data.add(c * nrow),

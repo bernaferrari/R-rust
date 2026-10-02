@@ -11,12 +11,11 @@ use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use crate::mainutils::format::{
-    formatComplex, formatComplexS, formatInteger, formatIntegerS, formatLogicalS, formatRaw,
-    formatRawS, formatReal, formatRealS, formatString, formatStringS, integer_field_width,
-    real_field,
+    compact_int_width, compact_real_field, formatComplex, formatComplexS, formatInteger,
+    formatIntegerS, formatLogicalS, formatRaw, formatRawS, formatReal, formatRealS, formatString,
+    formatStringS,
 };
-use crate::sexp::altseq::CompactSeq;
-use crate::sexp::object::Sexp;
+use crate::sexp::altseq::{unexpanded_int, unexpanded_real, CompactSeq};
 use crate::mainutils::printutils::{
     EncodeComplex, EncodeInteger, EncodeLogical, EncodeRaw, EncodeReal0,
     EncodeString as encode_string, Rprt_adj,
@@ -580,28 +579,13 @@ unsafe fn printRawVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 
 unsafe fn printRealVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
     unsafe {
-        if n > 0 && n <= c_int::MAX as R_xlen_t {
-            if let Some(seq) = unexpanded_real(x) {
-                print_unexpanded_real_vector(seq, n, indx);
-                return;
-            }
+        if let Some(seq) = unexpanded_real(x) {
+            print_unexpanded_real_vector(seq, n, indx);
+            return;
         }
         let px = REAL(x);
         printRealVector(px, n, indx);
     }
-}
-
-fn unexpanded_real(x: SEXP) -> Option<CompactSeq> {
-    // SAFETY: null yields `None`. The caller holds a live node. No allocation.
-    let sx = unsafe { Sexp::from_raw(x) }?;
-    sx.compact_seq()
-        .filter(|seq| seq.payload_is_null() && seq.is_real())
-}
-
-fn unexpanded_int(x: SEXP) -> Option<CompactSeq> {
-    let sx = unsafe { Sexp::from_raw(x) }?;
-    sx.compact_seq()
-        .filter(|seq| seq.payload_is_null() && seq.is_int())
 }
 
 /// Same layout as [`printRealVector`], reading the formula instead of a buffer.
@@ -620,7 +604,7 @@ unsafe fn print_unexpanded_real_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int
             width = 0;
         }
 
-        let fmt = real_field(n, 0, |i| seq.real_or_na(i));
+        let fmt = compact_real_field(seq, 0, n, 0);
         let w = fmt.w + rp.gap;
 
         let outdec = b".\0".as_ptr() as *const c_char;
@@ -651,11 +635,9 @@ unsafe fn print_unexpanded_real_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int
 
 unsafe fn printIntegerVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
     unsafe {
-        if n > 0 && n <= c_int::MAX as R_xlen_t {
-            if let Some(seq) = unexpanded_int(x) {
-                print_unexpanded_integer_vector(seq, n, indx);
-                return;
-            }
+        if let Some(seq) = unexpanded_int(x) {
+            print_unexpanded_integer_vector(seq, n, indx);
+            return;
         }
         let px = INTEGER(x);
         printIntegerVector(px, n, indx);
@@ -677,7 +659,7 @@ unsafe fn print_unexpanded_integer_vector(seq: CompactSeq, n: R_xlen_t, indx: c_
             width = 0;
         }
 
-        let mut w = integer_field_width(n, |i| seq.int_or_na(i));
+        let mut w = compact_int_width(seq, 0, n);
         w += rp.gap;
 
         for i in 0..n {

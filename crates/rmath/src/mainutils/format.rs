@@ -13,9 +13,8 @@
 use std::os::raw::{c_double, c_int, c_void};
 
 use crate::sexp::accessors::{COMPLEX, INTEGER, LOGICAL, REAL, STRING_ELT};
-use crate::sexp::altseq::CompactSeq;
-use crate::sexp::object::Sexp;
-use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP};
+use crate::sexp::altseq::{unexpanded_int, unexpanded_real, CompactSeq};
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP};
 
 // ---------------------------------------------------------------------------
 // Print parameters (R_print global)
@@ -575,19 +574,189 @@ pub(crate) fn integer_field_width(n: R_xlen_t, mut elt: impl FnMut(R_xlen_t) -> 
     fieldwidth
 }
 
-fn unexpanded_int(x: SEXP) -> Option<CompactSeq> {
-    // SAFETY: null yields `None`. A non-null `x` is a live node from a printer
-    // or formatter that already holds it. Wrapping does not allocate.
-    let sx = unsafe { Sexp::from_raw(x) }?;
-    sx.compact_seq()
-        .filter(|seq| seq.payload_is_null() && seq.is_int())
+/// Field width of `n` elements of an integer compact sequence, starting at `start`.
+///
+/// The width matches [`integer_field_width`] on the same formula. A span whose
+/// mathematical endpoints fit in `i32` is monotonic, so the endpoints decide it.
+/// A unit step that wraps is a circular arc and still takes constant time.
+/// Anything longer than a million elements with another step uses the widest
+/// integer field: colon only constructs steps of ±1, and a full walk of a
+/// vector longer than `c_int::MAX` is not possible here.
+pub(crate) fn compact_int_width(seq: CompactSeq, start: R_xlen_t, n: R_xlen_t) -> c_int {
+    if n <= 0 {
+        return 1;
+    }
+    let Some((from, step)) = seq.int_origin_step() else {
+        return 1;
+    };
+    let len = seq.len();
+    if start < 0 || start >= len {
+        return current_R_print().na_width.max(1);
+    }
+    let in_range = n.min(len - start);
+    let extra_na = n > in_range;
+    let origin = from as i128 + start as i128 * step as i128;
+    let mut width = int_run_width(origin, step as i128, in_range);
+    if extra_na {
+        width = width.max(current_R_print().na_width);
+    }
+    width.max(1)
 }
 
-fn unexpanded_real(x: SEXP) -> Option<CompactSeq> {
-    // SAFETY: same contract as [`unexpanded_int`].
-    let sx = unsafe { Sexp::from_raw(x) }?;
-    sx.compact_seq()
-        .filter(|seq| seq.payload_is_null() && seq.is_real())
+struct IntExtrema {
+    xmin: i32,
+    xmax: i32,
+    any: bool,
+    na: bool,
+}
+
+impl IntExtrema {
+    fn new() -> Self {
+        Self {
+            xmin: 0,
+            xmax: 0,
+            any: false,
+            na: false,
+        }
+    }
+
+    fn observe(&mut self, value: i32) {
+        if value == NA_INTEGER {
+            self.na = true;
+            return;
+        }
+        if !self.any {
+            self.xmin = value;
+            self.xmax = value;
+            self.any = true;
+        } else {
+            if value < self.xmin {
+                self.xmin = value;
+            }
+            if value > self.xmax {
+                self.xmax = value;
+            }
+        }
+    }
+
+    fn width(self) -> c_int {
+        let mut fieldwidth = if self.na {
+            current_R_print().na_width
+        } else {
+            1
+        };
+        // `xmin` excludes NA_INTEGER, so `-xmin` fits in `c_int`.
+        if self.any && self.xmin < 0 {
+            let l = unsafe { IndexWidth(-self.xmin) } + 1;
+            if l > fieldwidth {
+                fieldwidth = l;
+            }
+        }
+        if self.any && self.xmax > 0 {
+            let l = unsafe { IndexWidth(self.xmax) };
+            if l > fieldwidth {
+                fieldwidth = l;
+            }
+        }
+        fieldwidth
+    }
+}
+
+fn observe_i32_range(acc: &mut IntExtrema, lo: i32, hi: i32) {
+    if lo == i32::MIN {
+        acc.na = true;
+        if hi != i32::MIN {
+            acc.observe(i32::MIN + 1);
+            acc.observe(hi);
+        }
+    } else if hi == i32::MIN {
+        acc.na = true;
+        acc.observe(lo);
+    } else {
+        acc.observe(lo);
+        acc.observe(hi);
+    }
+}
+
+fn i32_span_width(first: i128, last: i128, step: i128, n: R_xlen_t) -> Option<c_int> {
+    let in_i32 = |v: i128| v >= i32::MIN as i128 && v <= i32::MAX as i128;
+    if !in_i32(first) || !in_i32(last) {
+        return None;
+    }
+    let mut acc = IntExtrema::new();
+    acc.observe(first as i32);
+    if n > 1 {
+        acc.observe(last as i32);
+        if first as i32 == NA_INTEGER {
+            let neighbor = first + step;
+            if in_i32(neighbor) {
+                acc.observe(neighbor as i32);
+            }
+        }
+        if last as i32 == NA_INTEGER && first as i32 != NA_INTEGER {
+            let neighbor = last - step;
+            if in_i32(neighbor) {
+                acc.observe(neighbor as i32);
+            }
+        }
+    }
+    Some(acc.width())
+}
+
+fn wrapping_unit_step_width(start: i32, step: i32, n: R_xlen_t) -> c_int {
+    let mut acc = IntExtrema::new();
+    if n as u128 >= (1u128 << 32) {
+        acc.na = true;
+        acc.observe(i32::MIN + 1);
+        acc.observe(i32::MAX);
+        return acc.width();
+    }
+    let span = n as i128 - 1;
+    if step == 1 {
+        let reach = start as i128 + span;
+        if reach <= i32::MAX as i128 {
+            observe_i32_range(&mut acc, start, reach as i32);
+        } else {
+            let extra = reach - i32::MAX as i128;
+            let tail_last = (i32::MIN as i128 + extra - 1) as i32;
+            observe_i32_range(&mut acc, start, i32::MAX);
+            observe_i32_range(&mut acc, i32::MIN, tail_last);
+        }
+    } else {
+        let reach = start as i128 - span;
+        if reach >= i32::MIN as i128 {
+            observe_i32_range(&mut acc, reach as i32, start);
+        } else {
+            let extra = i32::MIN as i128 - reach;
+            let tail_last = (i32::MAX as i128 - (extra - 1)) as i32;
+            observe_i32_range(&mut acc, i32::MIN, start);
+            observe_i32_range(&mut acc, tail_last, i32::MAX);
+        }
+    }
+    acc.width()
+}
+
+fn int_run_width(origin: i128, step: i128, n: R_xlen_t) -> c_int {
+    if n <= 0 {
+        return 1;
+    }
+    if n == 1 || step == 0 {
+        let mut acc = IntExtrema::new();
+        acc.observe(origin as i32);
+        return acc.width();
+    }
+    let last = origin + (n as i128 - 1) * step;
+    if let Some(width) = i32_span_width(origin, last, step, n) {
+        return width;
+    }
+    if step == 1 || step == -1 {
+        return wrapping_unit_step_width(origin as i32, step as i32, n);
+    }
+    if n <= 1_000_000 {
+        return integer_field_width(n, |i| (origin + (i as i128) * step) as i32);
+    }
+    let numeric = unsafe { IndexWidth(c_int::MAX) } + 1;
+    current_R_print().na_width.max(numeric)
 }
 
 fn buffered_real_field(x: SEXP, n: R_xlen_t, nsmall: c_int) -> RealField {
@@ -614,16 +783,10 @@ fn buffered_real_field(x: SEXP, n: R_xlen_t, nsmall: c_int) -> RealField {
 pub unsafe fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
     let width = if x.is_null() || n == 0 {
         1
-    } else if n > 0 && n <= c_int::MAX as R_xlen_t {
-        if let Some(seq) = unexpanded_int(x) {
-            integer_field_width(n, |i| seq.int_or_na(i)).max(1)
-        } else {
-            let mut tmpfw = 1;
-            unsafe {
-                formatInteger(INTEGER(x), n, &mut tmpfw);
-            }
-            tmpfw.max(1)
-        }
+    } else if let Some(seq) = unexpanded_int(x) {
+        // The formula covers every length, including those above `c_int::MAX`.
+        // INTEGER() would allocate the payload.
+        compact_int_width(seq, 0, n).max(1)
     } else {
         let mut tmpfw = 1;
         unsafe {
@@ -820,6 +983,223 @@ pub(crate) fn real_field(
     RealField { w, d, e }
 }
 
+/// Format parameters for a real arithmetic sequence, from a short sample.
+///
+/// Used when the length is above [`c_int::MAX`]. A full walk would read every
+/// element. Colon steps are ±1, so the aggregates in [`real_field`] are fixed
+/// by the endpoints, the element nearest zero, and one non-round probe in each
+/// decade (a pure power of ten understates `nsig`, and rounding-widens just
+/// below a power of ten). The altseq sample test checks this against a full
+/// walk on moderate sequences.
+pub(crate) fn sampled_real_field(
+    from: c_double,
+    step: c_double,
+    n: R_xlen_t,
+    nsmall: c_int,
+) -> RealField {
+    if n <= 0 {
+        return RealField { w: 0, d: 0, e: 0 };
+    }
+    let samples = real_sequence_samples(from, step, n);
+    if samples.is_empty() {
+        return RealField { w: 0, d: 0, e: 0 };
+    }
+    real_field(samples.len() as R_xlen_t, nsmall, |i| samples[i as usize])
+}
+
+const REAL_SAMPLE_CAP: usize = 4000;
+
+fn real_at_index(from: c_double, step: c_double, index: u64) -> c_double {
+    from + (index as c_double) * step
+}
+
+fn real_sequence_samples(from: c_double, step: c_double, n: R_xlen_t) -> Vec<c_double> {
+    let Ok(n_u) = u64::try_from(n) else {
+        return Vec::new();
+    };
+    if n_u == 0 {
+        return Vec::new();
+    }
+    if !from.is_finite() || !step.is_finite() || step == 0.0 {
+        let mut samples = vec![real_at_index(from, step, 0)];
+        if n_u > 1 {
+            samples.push(real_at_index(from, step, n_u - 1));
+        }
+        return samples;
+    }
+
+    let mut indices = Vec::with_capacity(64);
+    push_window(&mut indices, n_u, 0, 3);
+    push_window(&mut indices, n_u, n_u - 1, 3);
+    let closest = closest_real_index(from, step, n_u);
+    push_window(&mut indices, n_u, closest, 8);
+    if let Some(boundary) = last_finite_index(from, step, n_u) {
+        push_window(&mut indices, n_u, boundary, 2);
+    }
+
+    let first = real_at_index(from, step, 0);
+    let last = real_at_index(from, step, n_u - 1);
+    let (lo, hi) = if first <= last {
+        (first, last)
+    } else {
+        (last, first)
+    };
+    // Factors that are not trailing-zero powers of ten, plus the value just
+    // below the next power where rounding can widen the field.
+    const FACTORS: [f64; 5] = [1.0, 1.234567, 2.345678, 9.876543, 9.999999];
+    if lo.is_finite() && hi.is_finite() {
+        for k in -307..=308 {
+            if indices.len() >= REAL_SAMPLE_CAP {
+                break;
+            }
+            let p = 10f64.powi(k);
+            let p_hi = 10f64.powi(k + 1);
+            if !p.is_finite() {
+                continue;
+            }
+            let upper = if p_hi.is_finite() { p_hi } else { hi };
+            if !ranges_overlap(p, upper, lo, hi) && !ranges_overlap(-upper, -p, lo, hi) {
+                continue;
+            }
+            for factor in FACTORS {
+                let target = p * factor;
+                if let Some(index) = index_near(from, step, n_u, target) {
+                    push_window(&mut indices, n_u, index, 2);
+                }
+                if let Some(index) = index_near(from, step, n_u, -target) {
+                    push_window(&mut indices, n_u, index, 2);
+                }
+                if indices.len() >= REAL_SAMPLE_CAP {
+                    break;
+                }
+            }
+        }
+    }
+
+    indices.into_iter().map(|index| real_at_index(from, step, index)).collect()
+}
+
+fn ranges_overlap(a0: f64, a1: f64, b0: f64, b1: f64) -> bool {
+    a0 <= b1 && b0 <= a1
+}
+
+fn push_index(indices: &mut Vec<u64>, n: u64, index: u64) {
+    if index < n && indices.len() < REAL_SAMPLE_CAP && !indices.contains(&index) {
+        indices.push(index);
+    }
+}
+
+fn push_window(indices: &mut Vec<u64>, n: u64, index: u64, radius: u64) {
+    push_index(indices, n, index);
+    for delta in 1..=radius {
+        if index >= delta {
+            push_index(indices, n, index - delta);
+        }
+        push_index(indices, n, index.saturating_add(delta));
+    }
+}
+
+fn closest_real_index(from: f64, step: f64, n: u64) -> u64 {
+    if n == 0 {
+        return 0;
+    }
+    let t = (-from / step).round();
+    if !t.is_finite() || t <= 0.0 {
+        0
+    } else if t >= n as f64 {
+        n - 1
+    } else {
+        t as u64
+    }
+}
+
+fn index_near(from: f64, step: f64, n: u64, target: f64) -> Option<u64> {
+    if n == 0 || !target.is_finite() || step == 0.0 {
+        return None;
+    }
+    let t = ((target - from) / step).round();
+    if !t.is_finite() {
+        return None;
+    }
+    let index = if t <= 0.0 {
+        0
+    } else if t >= n as f64 {
+        n - 1
+    } else {
+        t as u64
+    };
+    let value = real_at_index(from, step, index);
+    let slack = step.abs() * 1.5 + target.abs().max(1.0) * 1e-9;
+    if (value - target).abs() <= slack {
+        Some(index)
+    } else {
+        None
+    }
+}
+
+fn last_finite_index(from: f64, step: f64, n: u64) -> Option<u64> {
+    if n == 0 || !real_at_index(from, step, 0).is_finite() {
+        return None;
+    }
+    if real_at_index(from, step, n - 1).is_finite() {
+        return Some(n - 1);
+    }
+    let mut lo = 0u64;
+    let mut hi = n;
+    while lo + 1 < hi {
+        let mid = lo + (hi - lo) / 2;
+        if real_at_index(from, step, mid).is_finite() {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    Some(lo)
+}
+
+/// Format parameters for `n` elements of a real compact sequence starting at `start`.
+///
+/// Lengths up to [`c_int::MAX`] walk every element, matching a buffer of the
+/// same values. Longer sequences use [`sampled_real_field`] and never call `REAL()`.
+pub(crate) fn compact_real_field(
+    seq: CompactSeq,
+    start: R_xlen_t,
+    n: R_xlen_t,
+    nsmall: c_int,
+) -> RealField {
+    if n <= 0 {
+        return RealField { w: 0, d: 0, e: 0 };
+    }
+    let Some((from, step)) = seq.real_origin_step() else {
+        return RealField { w: 0, d: 0, e: 0 };
+    };
+    let len = seq.len();
+    if start < 0 || start >= len {
+        return real_field(1, nsmall, |_| NA_REAL);
+    }
+    let in_range = n.min(len - start);
+    let extra_na = n > in_range;
+    if in_range <= c_int::MAX as R_xlen_t {
+        let count = in_range + if extra_na { 1 } else { 0 };
+        return real_field(count, nsmall, |i| {
+            if i < in_range {
+                seq.real_or_na(start + i)
+            } else {
+                NA_REAL
+            }
+        });
+    }
+    let origin = from + (start as c_double) * step;
+    let mut samples = real_sequence_samples(origin, step, in_range);
+    if extra_na {
+        samples.push(NA_REAL);
+    }
+    if samples.is_empty() {
+        return RealField { w: 0, d: 0, e: 0 };
+    }
+    real_field(samples.len() as R_xlen_t, nsmall, |i| samples[i as usize])
+}
+
 // ---------------------------------------------------------------------------
 // formatRealS  -- SEXP variant
 //
@@ -848,12 +1228,9 @@ pub unsafe fn formatRealS(
         if x.is_null() || n == 0 {
             return;
         }
-        let fmt = if n > 0 && n <= c_int::MAX as R_xlen_t {
-            if let Some(seq) = unexpanded_real(x) {
-                real_field(n, nsmall, |i| seq.real_or_na(i))
-            } else {
-                buffered_real_field(x, n, nsmall)
-            }
+        let fmt = if let Some(seq) = unexpanded_real(x) {
+            // The formula covers every length. REAL() would allocate the payload.
+            compact_real_field(seq, 0, n, nsmall)
         } else {
             buffered_real_field(x, n, nsmall)
         };

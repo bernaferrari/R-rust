@@ -1185,9 +1185,7 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
         assert!(!shown_lazy.stdout.contains(".InternalAltSeq"));
         assert!(still_lazy(lazy_r));
 
-        crate::sexp::memory::with_arena(|arena| {
-            arena.set_budget(crate::sexp::memory::ArenaBudget::new(1, 0));
-        });
+        refuse_new_nodes();
         let under_budget = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             let mut w = 0;
             crate::mainutils::format::formatIntegerS(neg, XLENGTH(neg), &mut w);
@@ -1242,6 +1240,219 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
             panic!("{message}");
         }
     }
+}
+
+#[test]
+fn altseq_encode_element_does_not_materialize_or_null_deref() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let lazy = seq_colon(1.0, 12.0, ptr::null_mut());
+        let plain = make_int_vec(&[1]);
+        root_global("alt_encode_lazy", lazy);
+        root_global("alt_encode_plain", plain);
+        let dec = b".\0".as_ptr() as *const c_char;
+        let lazy_text = encode_text(lazy, 0, dec);
+        let plain_text = encode_text(plain, 0, dec);
+        assert_eq!(lazy_text, plain_text);
+        assert!(still_lazy(lazy));
+
+        let missing = encode_text(lazy, -1, dec);
+        let past = encode_text(lazy, 12, dec);
+        assert!(missing.contains("NA"), "negative index encoded {missing}");
+        assert!(past.contains("NA"), "past-the-end index encoded {past}");
+        assert!(still_lazy(lazy));
+
+        refuse_new_nodes();
+        let under_budget = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            assert_eq!(encode_text(lazy, 0, dec), plain_text);
+            assert!(still_lazy(lazy));
+            let _ = encode_text(lazy, -1, dec);
+            let _ = encode_text(lazy, 99, dec);
+            assert!(still_lazy(lazy));
+        }));
+        restore_unlimited_budget();
+        if let Err(payload) = under_budget {
+            panic!("{}", unwind_message(payload));
+        }
+    }
+}
+
+#[test]
+fn altseq_long_integer_colon_stays_lazy() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let n = (c_int::MAX as R_xlen_t) + 1;
+        let seq = seq_colon(0.0, c_int::MAX as c_double, ptr::null_mut());
+        root_global("alt_long_int", seq);
+        assert_eq!(TYPEOF(seq), INTSXP_VAL);
+        assert_eq!(XLENGTH(seq), n);
+        assert!(still_lazy(seq));
+        let mut width = 0;
+        crate::mainutils::format::formatIntegerS(seq, XLENGTH(seq), &mut width);
+        assert_eq!(width, 10);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 0), 0);
+        assert_eq!(
+            crate::sexp::accessors::INTEGER_ELT(seq, c_int::MAX),
+            c_int::MAX
+        );
+        assert!(still_lazy(seq));
+
+        let via = R_compact_intrange(0, c_int::MAX as R_xlen_t);
+        root_global("alt_long_intrange", via);
+        assert_eq!(TYPEOF(via), INTSXP_VAL);
+        assert_eq!(XLENGTH(via), n);
+        assert!(still_lazy(via));
+        let mut via_width = 0;
+        crate::mainutils::format::formatIntegerS(via, XLENGTH(via), &mut via_width);
+        assert_eq!(via_width, 10);
+        assert_eq!(crate::sexp::accessors::INTEGER_ELT(via, 0), 0);
+        assert_eq!(
+            crate::sexp::accessors::INTEGER_ELT(via, c_int::MAX),
+            c_int::MAX
+        );
+        assert!(still_lazy(via));
+
+        // Short runs, including ones that wrap past c_int::MAX, must match a
+        // full walk. The long colon above is the constant-time case.
+        for (from, step, len) in [
+            (c_int::MAX - 1, 1, 4i64),
+            (c_int::MIN + 2, -1, 5),
+            (c_int::MAX - 10, 100, 5),
+            (-40, 0, 8),
+            (1, 1, 12),
+            (-100, 1, 11),
+        ] {
+            let sample = crate::sexp::altseq::compact_int_seq(from, step, len as usize);
+            root_global(&format!("alt_int_width_{from}_{step}"), sample);
+            let mut fast = 0;
+            crate::mainutils::format::formatIntegerS(sample, len, &mut fast);
+            let view = crate::sexp::Sexp::from_raw(sample).unwrap();
+            let formula = view.compact_seq().unwrap();
+            let scanned =
+                crate::mainutils::format::integer_field_width(len, |i| formula.int_or_na(i));
+            assert_eq!(fast, scanned, "int width from={from} step={step} n={len}");
+            assert!(still_lazy(sample));
+        }
+
+        // Two columns of 2^31. The second column starts at 2^31, past
+        // c_int::MAX, and contains NA plus the widest negative integer.
+        let matrix = crate::sexp::altseq::compact_int_seq(0, 1, 1usize << 32);
+        root_global("alt_int_matrix_width", matrix);
+        assert_eq!(XLENGTH(matrix), 1i64 << 32);
+        assert!(still_lazy(matrix));
+        let mut matrix_w = 0;
+        crate::mainutils::printarray::formatIntegerMatrix(matrix, 1i64 << 31, &mut matrix_w);
+        assert_eq!(matrix_w, 11);
+        assert!(still_lazy(matrix));
+    }
+}
+
+#[test]
+fn altseq_long_real_colon_stays_lazy() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    unsafe {
+        let n = (c_int::MAX as R_xlen_t) + 1;
+        let seq = seq_colon(1.0, (c_int::MAX as c_double) + 1.0, ptr::null_mut());
+        root_global("alt_long_real", seq);
+        assert_eq!(TYPEOF(seq), REALSXP_VAL);
+        assert_eq!(XLENGTH(seq), n);
+        assert!(still_lazy(seq));
+        let (mut w, mut d, mut e) = (0, 0, 0);
+        crate::mainutils::format::formatRealS(seq, XLENGTH(seq), &mut w, &mut d, &mut e, 0);
+        assert!(w > 0, "long real colon width was {w}");
+        assert_eq!(crate::sexp::accessors::REAL_ELT(seq, 0), 1.0);
+        assert!(still_lazy(seq));
+
+        let via = R_compact_intrange(1, n);
+        root_global("alt_long_seq_len", via);
+        assert_eq!(TYPEOF(via), REALSXP_VAL);
+        assert_eq!(XLENGTH(via), n);
+        assert!(still_lazy(via));
+        let via_view = crate::sexp::Sexp::from_raw(via).unwrap();
+        assert_eq!(via_view.try_real_elt(0), Ok(1.0));
+        assert_eq!(via_view.try_real_elt(n - 1), Ok((c_int::MAX as c_double) + 1.0));
+        assert!(still_lazy(via));
+
+        // `(-2147483649):1` does not fit in an integer sequence.
+        let wide = R_compact_intrange(-2147483649, 1);
+        root_global("alt_wide_real", wide);
+        assert_eq!(TYPEOF(wide), REALSXP_VAL);
+        assert_eq!(XLENGTH(wide), 2147483651);
+        assert!(still_lazy(wide));
+        let wide_view = crate::sexp::Sexp::from_raw(wide).unwrap();
+        assert_eq!(wide_view.try_real_elt(0), Ok(-2147483649.0));
+        assert_eq!(wide_view.try_real_elt(2147483650), Ok(1.0));
+        assert!(still_lazy(wide));
+    }
+}
+
+#[test]
+fn altseq_sampled_real_field_matches_a_full_scan() {
+    let _session = crate::sexp::session::RSession::new_without_default_packages();
+    let cases = [
+        (-120.0, 1.0, 250i64),
+        (50.0, -1.0, 400),
+        (9990.0, 1.0, 40),
+        (999_000.0, 1.0, 2_500),
+        (1_000_000.0, 1.0, 1_500),
+        (1_000_000.5, 0.5, 400),
+        (0.5, 0.5, 800),
+        (-2.5, 0.5, 40),
+        (9_999.5, 0.5, 20),
+        (-1_000_010.0, 1.0, 40),
+        (10010.0, -1.0, 40),
+        (0.25, 0.25, 400),
+        (-8.0, 0.5, 80),
+    ];
+    for (from, step, n) in cases {
+        let full = crate::mainutils::format::real_field(n, 0, |i| from + (i as f64) * step);
+        let sampled = crate::mainutils::format::sampled_real_field(from, step, n, 0);
+        assert_eq!(
+            (sampled.w, sampled.d, sampled.e),
+            (full.w, full.d, full.e),
+            "sampled real field from={from} step={step} n={n}"
+        );
+    }
+}
+
+fn encode_text(x: SEXP, index: R_xlen_t, dec: *const c_char) -> String {
+    unsafe {
+        let encoded = crate::mainutils::printutils::EncodeElement0(x, index, 0, dec);
+        std::ffi::CStr::from_ptr(encoded)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+fn refuse_new_nodes() {
+    unsafe {
+        crate::sexp::memory::with_arena(|arena| {
+            let nodes = arena.node_count();
+            let max_nodes = if nodes == 0 { 1 } else { nodes };
+            arena.set_budget(crate::sexp::memory::ArenaBudget::new(1, max_nodes));
+        });
+    }
+}
+
+fn restore_unlimited_budget() {
+    unsafe {
+        crate::sexp::memory::with_arena(|arena| {
+            arena.set_budget(crate::sexp::memory::ArenaBudget::unlimited());
+        });
+    }
+}
+
+fn unwind_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    payload
+        .downcast_ref::<crate::sexp::context::RError>()
+        .map(|err| err.message.clone())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .or_else(|| {
+            payload
+                .downcast_ref::<&str>()
+                .map(|message| (*message).to_string())
+        })
+        .unwrap_or_else(|| "print under a refused budget panicked".to_string())
 }
 
 fn still_lazy(value: SEXP) -> bool {

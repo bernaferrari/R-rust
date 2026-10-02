@@ -19,20 +19,22 @@
 use std::cell::RefCell;
 use std::ffi::CStr;
 use std::io::Write as IoWrite;
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 use std::rc::Rc;
 
 use crate::sexp::accessors::{
-    CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF,
+    CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF, XLENGTH,
 };
+use crate::sexp::altseq::{unexpanded_int, unexpanded_real};
 use crate::sexp::constructors::Rf_mkChar;
 use crate::sexp::ffi::{
-    NA_INTEGER, R_NA_BIT_PATTERN, R_size_t, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE,
+    NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_size_t, R_xlen_t, Rbyte, Rcomplex, SEXP,
+    SEXPTYPE,
 };
 
 use crate::mainutils::format::{
-    formatComplex, formatInteger, formatLogical, formatReal, formatString,
+    formatComplex, formatLogical, formatReal, formatString, integer_field_width, real_field,
 };
 
 // ---------------------------------------------------------------------------
@@ -1089,11 +1091,94 @@ pub unsafe fn EncodeElement(x: SEXP, indx: c_int, quote: c_int, cdec: c_char) ->
     }
 }
 
+fn element_in_range(x: SEXP, indx: R_xlen_t) -> bool {
+    let n = unsafe { XLENGTH(x) };
+    indx >= 0 && indx < n
+}
+
+fn one_integer(x: SEXP, indx: R_xlen_t) -> c_int {
+    if !element_in_range(x, indx) {
+        return NA_INTEGER;
+    }
+    if let Some(seq) = unexpanded_int(x) {
+        return seq.int_or_na(indx);
+    }
+    let data = unsafe { INTEGER(x) };
+    if data.is_null() {
+        return NA_INTEGER;
+    }
+    unsafe { *data.add(indx as usize) }
+}
+
+fn one_real(x: SEXP, indx: R_xlen_t) -> c_double {
+    if !element_in_range(x, indx) {
+        return NA_REAL;
+    }
+    if let Some(seq) = unexpanded_real(x) {
+        return seq.real_or_na(indx);
+    }
+    let data = unsafe { REAL(x) };
+    if data.is_null() {
+        return NA_REAL;
+    }
+    unsafe { *data.add(indx as usize) }
+}
+
+fn one_logical(x: SEXP, indx: R_xlen_t) -> c_int {
+    if !element_in_range(x, indx) {
+        return NA_LOGICAL;
+    }
+    let data = unsafe { LOGICAL(x) };
+    if data.is_null() {
+        return NA_LOGICAL;
+    }
+    unsafe { *data.add(indx as usize) }
+}
+
+fn one_complex(x: SEXP, indx: R_xlen_t) -> Rcomplex {
+    if !element_in_range(x, indx) {
+        return Rcomplex {
+            r: NA_REAL,
+            i: NA_REAL,
+        };
+    }
+    let data = unsafe { COMPLEX(x) };
+    if data.is_null() {
+        return Rcomplex {
+            r: NA_REAL,
+            i: NA_REAL,
+        };
+    }
+    unsafe { *data.add(indx as usize) }
+}
+
+fn one_raw(x: SEXP, indx: R_xlen_t) -> Rbyte {
+    if !element_in_range(x, indx) {
+        return 0;
+    }
+    let data = unsafe { RAW(x) };
+    if data.is_null() {
+        return 0;
+    }
+    unsafe { *data.add(indx as usize) }
+}
+
+fn one_string(x: SEXP, indx: R_xlen_t) -> SEXP {
+    if !element_in_range(x, indx) {
+        return ptr::null_mut();
+    }
+    let data = unsafe { crate::sexp::accessors::DATAPTR(x) };
+    if data.is_null() {
+        return ptr::null_mut();
+    }
+    unsafe { STRING_ELT(x, indx) }
+}
+
 /// Encode a single element of an R vector for printing (R_xlen_t index).
 ///
 /// Dispatches on TYPEOF(x) to the appropriate encode function.
-/// Uses `formatReal`/`formatLogical`/`formatInteger`/`formatComplex`/`formatString`
-/// to determine optimal widths, then calls the corresponding Encode function.
+/// A compact integer or real sequence contributes that one formula element.
+/// A null buffer or an index outside the vector encodes as NA and is not offset.
 pub unsafe fn EncodeElement0(
     x: SEXP,
     indx: R_xlen_t,
@@ -1105,37 +1190,29 @@ pub unsafe fn EncodeElement0(
 
         match SEXPTYPE(sexptype) {
             SEXPTYPE::LGLSXP => {
-                let log_data = LOGICAL(x);
-                let val = *log_data.add(indx as usize);
+                let val = one_logical(x, indx);
                 let mut w: c_int = 0;
-                formatLogical(log_data.add(indx as usize), 1, &mut w);
+                formatLogical(&val, 1, &mut w);
                 EncodeLogical(val, w)
             }
             SEXPTYPE::INTSXP => {
-                let int_data = INTEGER(x);
-                let val = *int_data.add(indx as usize);
-                let mut w: c_int = 0;
-                formatInteger(int_data.add(indx as usize), 1, &mut w);
+                let val = one_integer(x, indx);
+                let w = integer_field_width(1, |_| val);
                 EncodeInteger(val, w)
             }
             SEXPTYPE::REALSXP => {
-                let real_data = REAL(x);
-                let val = *real_data.add(indx as usize);
-                let mut w: c_int = 0;
-                let mut d: c_int = 0;
-                let mut e: c_int = 0;
-                formatReal(real_data.add(indx as usize), 1, &mut w, &mut d, &mut e, 0);
-                EncodeReal0(val, w, d, e, dec)
+                let val = one_real(x, indx);
+                let fmt = real_field(1, 0, |_| val);
+                EncodeReal0(val, fmt.w, fmt.d, fmt.e, dec)
             }
             SEXPTYPE::STRSXP => {
-                let elt = STRING_ELT(x, indx);
+                let elt = one_string(x, indx);
                 let mut w: c_int = 0;
                 formatString(&elt, 1, &mut w, quote);
                 EncodeString(elt, w, quote, Rprt_adj::left)
             }
             SEXPTYPE::CPLXSXP => {
-                let cpx_data = COMPLEX(x);
-                let val = *cpx_data.add(indx as usize);
+                let val = one_complex(x, indx);
                 let mut wr: c_int = 0;
                 let mut dr: c_int = 0;
                 let mut er: c_int = 0;
@@ -1143,21 +1220,12 @@ pub unsafe fn EncodeElement0(
                 let mut di: c_int = 0;
                 let mut ei: c_int = 0;
                 formatComplex(
-                    cpx_data.add(indx as usize),
-                    1,
-                    &mut wr,
-                    &mut dr,
-                    &mut er,
-                    &mut wi,
-                    &mut di,
-                    &mut ei,
-                    0,
+                    &val, 1, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
                 );
                 EncodeComplex(val, wr, dr, er, wi, di, ei, dec)
             }
             SEXPTYPE::RAWSXP => {
-                let raw_data = RAW(x);
-                let val = *raw_data.add(indx as usize);
+                let val = one_raw(x, indx);
                 EncodeRaw(val, b"\0".as_ptr() as *const c_char)
             }
             _ => b"\0".as_ptr() as *const c_char,

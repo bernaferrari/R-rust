@@ -12,12 +12,11 @@ use std::ptr;
 
 use crate::mainutils::printvector::GetMatrixDimnames;
 use crate::sexp::accessors::{
-    COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF, VECTOR_ELT,
+    COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::altseq::CompactSeq;
+use crate::sexp::altseq::{unexpanded_int, unexpanded_real, CompactSeq};
 use crate::sexp::ffi::R_xlen_t;
-use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_IsNA, SEXP};
-use crate::sexp::object::Sexp;
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, Rcomplex, SEXP};
 use crate::sexp::globals::R_NilValue;
 
 // `eprint!` during `cargo test` never reaches fd 2. These shadows keep the
@@ -85,8 +84,8 @@ unsafe fn get_R_print_full() -> MutPtr<R_PrintData> {
 // ---------------------------------------------------------------------------
 
 use crate::mainutils::format::{
-    formatComplex, formatInteger, formatLogical, formatRaw, formatReal, integer_field_width,
-    real_field, RealField,
+    compact_int_width, compact_real_field, formatComplex, formatInteger, formatLogical, formatRaw,
+    formatReal, integer_field_width, real_field, RealField,
 };
 use crate::mainutils::printutils::IndexWidth_xlen as IndexWidth;
 use crate::mainutils::printutils::{
@@ -385,7 +384,7 @@ unsafe fn std_column_labels(cl: SEXP, jmin: usize, jmax: usize, w: &[c_int]) {
 
 unsafe fn print_logical_matrix(
     sx: SEXP,
-    offset: c_int,
+    offset: R_xlen_t,
     r_pr: c_int,
     r: c_int,
     c: c_int,
@@ -404,14 +403,17 @@ unsafe fn print_logical_matrix(
         let mut w = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let x = LOGICAL(sx).offset(offset as isize);
+        let base = LOGICAL(sx);
+        let len = XLENGTH(sx);
+        let rows = r as R_xlen_t;
 
         // Compute w[j] for each column
         for j in 0..c as usize {
             if print_ij {
-                let col_ptr = x.offset((j as c_int * r) as isize);
+                let start = column_start(offset, j as R_xlen_t, rows);
+                let col_ptr = in_column(base, len, start, rows);
                 let mut fw: c_int = 0;
-                formatLogical(col_ptr, r as R_xlen_t, &mut fw);
+                formatLogical(col_ptr, rows, &mut fw);
                 w[j] = fw;
             } else {
                 w[j] = 0;
@@ -464,7 +466,11 @@ unsafe fn print_logical_matrix(
                     MatrixRowLabel(rl, i as c_int, rlabw, lbloff);
                     if print_ij {
                         for j in jmin..jmax {
-                            let val = *x.offset((j as c_int * r + i as c_int) as isize);
+                            let val = logical_at(
+                                base,
+                                len,
+                                element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
+                            );
                             let s = EncodeLogical(val, w[j]);
                             let cstr = std::ffi::CStr::from_ptr(s);
                             eprint!("{}", cstr.to_str().unwrap_or(""));
@@ -480,86 +486,156 @@ unsafe fn print_logical_matrix(
 
 // ---------------------------------------------------------------------------
 // Compact sequences have no element buffer. The formula is an owned copy.
-// A null data pointer is NA; it is never offset.
+// A null data pointer is never offset. Its column width matches
+// formatInteger/formatReal/formatLogical on a null pointer. Elements still
+// print as NA.
 // ---------------------------------------------------------------------------
 
-fn unexpanded_int(x: SEXP) -> Option<CompactSeq> {
-    // SAFETY: null yields `None`. The printer holds a live node. No allocation.
-    let sx = unsafe { Sexp::from_raw(x) }?;
-    sx.compact_seq()
-        .filter(|seq| seq.payload_is_null() && seq.is_int())
+/// Column origin in column-major order.
+///
+/// `col * nrow` is formed in `R_xlen_t`. The same product in `c_int` wraps
+/// once a matrix is longer than `c_int::MAX`, and a wrapped origin is either
+/// the wrong column or an offset off the buffer.
+fn column_count(len: R_xlen_t, nrow: R_xlen_t) -> usize {
+    if nrow <= 0 || len <= 0 {
+        0
+    } else {
+        usize::try_from(len / nrow).unwrap_or(0)
+    }
 }
 
-fn unexpanded_real(x: SEXP) -> Option<CompactSeq> {
-    let sx = unsafe { Sexp::from_raw(x) }?;
-    sx.compact_seq()
-        .filter(|seq| seq.payload_is_null() && seq.is_real())
+fn column_start(offset: R_xlen_t, col: R_xlen_t, nrow: R_xlen_t) -> R_xlen_t {
+    col.checked_mul(nrow)
+        .and_then(|scaled| scaled.checked_add(offset))
+        .unwrap_or(R_xlen_t::MAX)
 }
 
-fn int_width_at(seq: Option<CompactSeq>, data: *mut c_int, start: c_int, n: R_xlen_t) -> c_int {
+fn element_index(offset: R_xlen_t, col: R_xlen_t, row: R_xlen_t, nrow: R_xlen_t) -> R_xlen_t {
+    column_start(offset, col, nrow)
+        .checked_add(row)
+        .unwrap_or(R_xlen_t::MAX)
+}
+
+/// Pointer to a contiguous in-range column, or null when that slice is not
+/// inside the buffer. A null pointer is not offset.
+fn in_column<T>(data: *const T, len: R_xlen_t, start: R_xlen_t, n: R_xlen_t) -> *const T {
+    if data.is_null() || start < 0 || n < 0 || start > len || n > len.saturating_sub(start) {
+        return std::ptr::null();
+    }
+    match usize::try_from(start) {
+        Ok(index) => unsafe { data.add(index) },
+        Err(_) => std::ptr::null(),
+    }
+}
+
+fn load_at<T: Copy>(data: *const T, len: R_xlen_t, index: R_xlen_t, missing: T) -> T {
+    if data.is_null() || index < 0 || index >= len {
+        return missing;
+    }
+    match usize::try_from(index) {
+        Ok(i) => unsafe { *data.add(i) },
+        Err(_) => missing,
+    }
+}
+
+fn logical_at(data: *const c_int, len: R_xlen_t, index: R_xlen_t) -> c_int {
+    load_at(data, len, index, NA_LOGICAL)
+}
+
+fn complex_at(data: *const Rcomplex, len: R_xlen_t, index: R_xlen_t) -> Rcomplex {
+    load_at(
+        data,
+        len,
+        index,
+        Rcomplex {
+            r: NA_REAL,
+            i: NA_REAL,
+        },
+    )
+}
+
+fn raw_at(data: *const Rbyte, len: R_xlen_t, index: R_xlen_t) -> Rbyte {
+    load_at(data, len, index, 0)
+}
+
+fn int_width_at(
+    seq: Option<CompactSeq>,
+    data: *mut c_int,
+    len: R_xlen_t,
+    start: R_xlen_t,
+    n: R_xlen_t,
+) -> c_int {
     if let Some(seq) = seq {
-        return integer_field_width(n, |i| seq.int_or_na(i + start as R_xlen_t));
+        return compact_int_width(seq, start, n);
     }
     if data.is_null() {
-        return integer_field_width(n, |_| NA_INTEGER);
+        let mut fw = 0;
+        unsafe {
+            formatInteger(std::ptr::null(), n, &mut fw);
+        }
+        return fw;
     }
-    let mut fw = 0;
-    // SAFETY: `data` is the live integer buffer and `start` is its column origin.
-    unsafe {
-        formatInteger(data.offset(start as isize), n, &mut fw);
+    let col = in_column(data, len, start, n);
+    if !col.is_null() {
+        let mut fw = 0;
+        unsafe {
+            formatInteger(col, n, &mut fw);
+        }
+        return fw;
     }
-    fw
+    integer_field_width(n, |i| {
+        let index = start.checked_add(i).unwrap_or(R_xlen_t::MAX);
+        load_at(data, len, index, NA_INTEGER)
+    })
 }
 
-fn int_at(seq: Option<CompactSeq>, data: *mut c_int, index: c_int) -> c_int {
+fn int_at(seq: Option<CompactSeq>, data: *mut c_int, len: R_xlen_t, index: R_xlen_t) -> c_int {
     if let Some(seq) = seq {
-        return seq.int_or_na(index as R_xlen_t);
+        return seq.int_or_na(index);
     }
-    if data.is_null() || index < 0 {
-        return NA_INTEGER;
-    }
-    // SAFETY: `data` is the live integer buffer and `index` is in range.
-    unsafe { *data.offset(index as isize) }
+    load_at(data, len, index, NA_INTEGER)
 }
 
 fn real_format_at(
     seq: Option<CompactSeq>,
     data: *mut c_double,
-    start: c_int,
+    len: R_xlen_t,
+    start: R_xlen_t,
     n: R_xlen_t,
 ) -> RealField {
     if let Some(seq) = seq {
-        return real_field(n, 0, |i| seq.real_or_na(i + start as R_xlen_t));
+        return compact_real_field(seq, start, n, 0);
     }
     if data.is_null() {
-        return real_field(n, 0, |_| NA_REAL);
+        let mut w = 0;
+        let mut d = 0;
+        let mut e = 0;
+        unsafe {
+            formatReal(std::ptr::null(), n, &mut w, &mut d, &mut e, 0);
+        }
+        return RealField { w, d, e };
     }
-    let mut w = 0;
-    let mut d = 0;
-    let mut e = 0;
-    // SAFETY: `data` is the live real buffer and `start` is its column origin.
-    unsafe {
-        formatReal(
-            data.offset(start as isize),
-            n,
-            &mut w,
-            &mut d,
-            &mut e,
-            0,
-        );
+    let col = in_column(data, len, start, n);
+    if !col.is_null() {
+        let mut w = 0;
+        let mut d = 0;
+        let mut e = 0;
+        unsafe {
+            formatReal(col, n, &mut w, &mut d, &mut e, 0);
+        }
+        return RealField { w, d, e };
     }
-    RealField { w, d, e }
+    real_field(n, 0, |i| {
+        let index = start.checked_add(i).unwrap_or(R_xlen_t::MAX);
+        load_at(data, len, index, NA_REAL)
+    })
 }
 
-fn real_at(seq: Option<CompactSeq>, data: *mut c_double, index: c_int) -> c_double {
+fn real_at(seq: Option<CompactSeq>, data: *mut c_double, len: R_xlen_t, index: R_xlen_t) -> c_double {
     if let Some(seq) = seq {
-        return seq.real_or_na(index as R_xlen_t);
+        return seq.real_or_na(index);
     }
-    if data.is_null() || index < 0 {
-        return NA_REAL;
-    }
-    // SAFETY: `data` is the live real buffer and `index` is in range.
-    unsafe { *data.offset(index as isize) }
+    load_at(data, len, index, NA_REAL)
 }
 
 // ---------------------------------------------------------------------------
@@ -568,7 +644,7 @@ fn real_at(seq: Option<CompactSeq>, data: *mut c_double, index: c_int) -> c_doub
 
 unsafe fn print_integer_matrix(
     sx: SEXP,
-    offset: c_int,
+    offset: R_xlen_t,
     r_pr: c_int,
     r: c_int,
     c: c_int,
@@ -593,11 +669,13 @@ unsafe fn print_integer_matrix(
         } else {
             INTEGER(sx)
         };
+        let len = XLENGTH(sx);
+        let rows = r as R_xlen_t;
 
         for j in 0..c as usize {
             if print_ij {
-                let col = j as c_int;
-                let fw = int_width_at(seq, data, offset + col * r, r as R_xlen_t);
+                let start = column_start(offset, j as R_xlen_t, rows);
+                let fw = int_width_at(seq, data, len, start, rows);
                 w[j] = fw;
             } else {
                 w[j] = 0;
@@ -647,7 +725,12 @@ unsafe fn print_integer_matrix(
                     MatrixRowLabel(rl, i as c_int, rlabw, lbloff);
                     if print_ij {
                         for j in jmin..jmax {
-                            let val = int_at(seq, data, offset + j as c_int * r + i as c_int);
+                            let val = int_at(
+                                seq,
+                                data,
+                                len,
+                                element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
+                            );
                             let s = EncodeInteger(val, w[j]);
                             let cstr = std::ffi::CStr::from_ptr(s);
                             eprint!("{}", cstr.to_str().unwrap_or(""));
@@ -667,7 +750,7 @@ unsafe fn print_integer_matrix(
 
 unsafe fn print_real_matrix(
     sx: SEXP,
-    offset: c_int,
+    offset: R_xlen_t,
     r_pr: c_int,
     r: c_int,
     c: c_int,
@@ -694,12 +777,14 @@ unsafe fn print_real_matrix(
         } else {
             REAL(sx)
         };
+        let len = XLENGTH(sx);
+        let rows = r as R_xlen_t;
         let dec_ptr = &OUT_DEC as *const c_char;
 
         for j in 0..c as usize {
             if print_ij {
-                let col = j as c_int;
-                let fmt = real_format_at(seq, data, offset + col * r, r as R_xlen_t);
+                let start = column_start(offset, j as R_xlen_t, rows);
+                let fmt = real_format_at(seq, data, len, start, rows);
                 w[j] = fmt.w;
                 d[j] = fmt.d;
                 e[j] = fmt.e;
@@ -751,7 +836,12 @@ unsafe fn print_real_matrix(
                     MatrixRowLabel(rl, i as c_int, rlabw, lbloff);
                     if print_ij {
                         for j in jmin..jmax {
-                            let val = real_at(seq, data, offset + j as c_int * r + i as c_int);
+                            let val = real_at(
+                                seq,
+                                data,
+                                len,
+                                element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
+                            );
                             let s = EncodeReal0(val, w[j], d[j], e[j], dec_ptr);
                             let cstr = std::ffi::CStr::from_ptr(s);
                             eprint!("{}", cstr.to_str().unwrap_or(""));
@@ -771,7 +861,7 @@ unsafe fn print_real_matrix(
 
 unsafe fn print_complex_matrix(
     sx: SEXP,
-    offset: c_int,
+    offset: R_xlen_t,
     r_pr: c_int,
     r: c_int,
     c: c_int,
@@ -796,15 +886,18 @@ unsafe fn print_complex_matrix(
         let mut ei = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let x = COMPLEX(sx).offset(offset as isize);
+        let base = COMPLEX(sx);
+        let len = XLENGTH(sx);
+        let rows = r as R_xlen_t;
         let dec_ptr = &OUT_DEC as *const c_char;
 
         for j in 0..c as usize {
             if print_ij {
-                let col_ptr = x.offset((j as c_int * r) as isize);
+                let start = column_start(offset, j as R_xlen_t, rows);
+                let col_ptr = in_column(base, len, start, rows);
                 formatComplex(
                     col_ptr,
-                    r as R_xlen_t,
+                    rows,
                     &mut wr[j],
                     &mut dr[j],
                     &mut er[j],
@@ -862,7 +955,11 @@ unsafe fn print_complex_matrix(
                     MatrixRowLabel(rl, i as c_int, rlabw, lbloff);
                     if print_ij {
                         for j in jmin..jmax {
-                            let cx = *x.offset((j as c_int * r + i as c_int) as isize);
+                            let cx = complex_at(
+                                base,
+                                len,
+                                element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
+                            );
                             let s = if R_IsNA(cx.r) || R_IsNA(cx.i) {
                                 EncodeReal0(f64::NAN, w[j], 0, 0, dec_ptr)
                             } else {
@@ -895,7 +992,7 @@ unsafe fn print_complex_matrix(
 
 unsafe fn print_string_matrix(
     sx: SEXP,
-    offset: c_int,
+    offset: R_xlen_t,
     r_pr: c_int,
     r: c_int,
     c: c_int,
@@ -923,7 +1020,7 @@ unsafe fn print_string_matrix(
                 for i in 0..r as R_xlen_t {
                     let elem = STRING_ELT(
                         sx,
-                        (offset as R_xlen_t) + (j as R_xlen_t) * (r as R_xlen_t) + i,
+                        element_index(offset, j as R_xlen_t, i, r as R_xlen_t),
                     );
                     let l = if elem == NA_STRING() {
                         if quote != 0 {
@@ -1001,9 +1098,7 @@ unsafe fn print_string_matrix(
                         for j in jmin..jmax {
                             let elem = STRING_ELT(
                                 sx,
-                                (offset as R_xlen_t)
-                                    + (j as R_xlen_t) * (r as R_xlen_t)
-                                    + (i as R_xlen_t),
+                                element_index(offset, j as R_xlen_t, i as R_xlen_t, r as R_xlen_t),
                             );
                             eprint!("{:width$}", "", width = rp.gap as usize);
                             let adj = if right != 0 {
@@ -1034,7 +1129,7 @@ unsafe fn print_string_matrix(
 
 unsafe fn print_raw_matrix(
     sx: SEXP,
-    offset: c_int,
+    offset: R_xlen_t,
     r_pr: c_int,
     r: c_int,
     c: c_int,
@@ -1053,13 +1148,16 @@ unsafe fn print_raw_matrix(
         let mut w = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let x = RAW(sx).offset(offset as isize);
+        let base = RAW(sx);
+        let len = XLENGTH(sx);
+        let rows = r as R_xlen_t;
 
         for j in 0..c as usize {
             if print_ij {
-                let col_ptr = x.offset((j as c_int * r) as isize);
+                let start = column_start(offset, j as R_xlen_t, rows);
+                let col_ptr = in_column(base, len, start, rows);
                 let mut fw: c_int = 0;
-                formatRaw(col_ptr as *const c_void, r as R_xlen_t, &mut fw);
+                formatRaw(col_ptr as *const c_void, rows, &mut fw);
                 w[j] = fw;
             } else {
                 w[j] = 0;
@@ -1109,7 +1207,11 @@ unsafe fn print_raw_matrix(
                     MatrixRowLabel(rl, i as c_int, rlabw, lbloff);
                     if print_ij {
                         for j in jmin..jmax {
-                            let val = *x.offset((j as c_int * r + i as c_int) as isize);
+                            let val = raw_at(
+                                base,
+                                len,
+                                element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
+                            );
                             let pad = w[j] - 2;
                             if pad > 0 {
                                 eprint!("{:width$}", "", width = pad as usize);
@@ -1149,8 +1251,15 @@ pub unsafe fn printMatrix(
 
         let rp = get_R_print_full();
         let pdim = INTEGER(dim);
+        if pdim.is_null() {
+            return;
+        }
         let r = *pdim;
         let c = *pdim.add(1);
+        if r < 0 || c < 0 {
+            return;
+        }
+        let origin = offset as R_xlen_t;
 
         // Check label lengths
         if rl != R_NilValue() && r > LENGTH(rl) {
@@ -1179,23 +1288,23 @@ pub unsafe fn printMatrix(
 
         match TYPEOF(x) {
             LGLSXP_VAL => {
-                print_logical_matrix(x, offset, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                print_logical_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
             }
             INTSXP_VAL => {
-                print_integer_matrix(x, offset, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                print_integer_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
             }
             REALSXP_VAL => {
-                print_real_matrix(x, offset, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                print_real_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
             }
             CPLXSXP_VAL => {
-                print_complex_matrix(x, offset, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                print_complex_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
             }
             STRSXP_VAL => {
                 let q = if quote != 0 { b'"' as c_int } else { 0 };
-                print_string_matrix(x, offset, r_pr, r, c_pr, q, right, rl, cl, rn, cn, true);
+                print_string_matrix(x, origin, r_pr, r, c_pr, q, right, rl, cl, rn, cn, true);
             }
             RAWSXP_VAL => {
-                print_raw_matrix(x, offset, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                print_raw_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
             }
             _ => {
                 eprintln!(" {} x {} matrix of type {}", r, c, TYPEOF(x));
@@ -1251,10 +1360,19 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
         // ndim >= 3
         let rp = get_R_print_full();
         let pdim = INTEGER(dim);
+        if pdim.is_null() {
+            return;
+        }
 
         let nr = *pdim;
         let nc = *pdim.add(1);
-        let b = nr * nc; // elements per matrix slice
+        if nr < 0 || nc < 0 {
+            return;
+        }
+        // Slice length can exceed `c_int`. The printers take that origin as
+        // `R_xlen_t`; the `max.print` cap still speaks `c_int`.
+        let b_wide = (nr as R_xlen_t).saturating_mul(nc as R_xlen_t);
+        let b = c_int::try_from(b_wide).unwrap_or(c_int::MAX);
 
         let has_dimnames = dimnames != R_NilValue();
         let mut dn0: SEXP = R_NilValue();
@@ -1338,7 +1456,7 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
                 eprintln!(" array of type {}>", TYPEOF(x));
             }
 
-            let offset = (ii as c_int) * b;
+            let offset = (ii as R_xlen_t).saturating_mul(b_wide);
             match TYPEOF(x) {
                 LGLSXP_VAL => {
                     print_logical_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij);
@@ -1395,16 +1513,16 @@ pub unsafe fn formatLogicalMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
         if x.is_null() || n <= 0 {
             return;
         }
-        let len = LENGTH(x);
-        let nc = if n > 0 { len as i64 / n } else { 0 };
-        let r = n as c_int;
+        let len = XLENGTH(x);
+        let columns = column_count(len, n);
 
         let data = LOGICAL(x);
         let mut max_w: c_int = 0;
 
-        for j in 0..nc as usize {
+        for j in 0..columns {
             let mut fw: c_int = 0;
-            let col_ptr = data.offset((j as c_int * r) as isize);
+            let start = column_start(0, j as R_xlen_t, n);
+            let col_ptr = in_column(data, len, start, n);
             formatLogical(col_ptr, n, &mut fw);
             if fw > max_w {
                 max_w = fw;
@@ -1426,15 +1544,10 @@ pub unsafe fn formatIntegerMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
         if x.is_null() || n <= 0 {
             return;
         }
-        let len = LENGTH(x);
-        let nc = if n > 0 { len as i64 / n } else { 0 };
-        let r = n as c_int;
+        let len = XLENGTH(x);
+        let columns = column_count(len, n);
 
-        let seq = if n > 0 && n <= c_int::MAX as R_xlen_t {
-            unexpanded_int(x)
-        } else {
-            None
-        };
+        let seq = unexpanded_int(x);
         let data = if seq.is_some() {
             ptr::null_mut()
         } else {
@@ -1442,9 +1555,9 @@ pub unsafe fn formatIntegerMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
         };
         let mut max_w: c_int = 0;
 
-        for j in 0..nc as usize {
-            let col = j as c_int;
-            let fw = int_width_at(seq, data, col * r, n);
+        for j in 0..columns {
+            let start = column_start(0, j as R_xlen_t, n);
+            let fw = int_width_at(seq, data, len, start, n);
             if fw > max_w {
                 max_w = fw;
             }
@@ -1465,15 +1578,10 @@ pub unsafe fn formatRealMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int, d: *mut c_in
         if x.is_null() || n <= 0 {
             return;
         }
-        let len = LENGTH(x);
-        let nc = if n > 0 { len as i64 / n } else { 0 };
-        let r = n as c_int;
+        let len = XLENGTH(x);
+        let columns = column_count(len, n);
 
-        let seq = if n > 0 && n <= c_int::MAX as R_xlen_t {
-            unexpanded_real(x)
-        } else {
-            None
-        };
+        let seq = unexpanded_real(x);
         let data = if seq.is_some() {
             ptr::null_mut()
         } else {
@@ -1483,9 +1591,9 @@ pub unsafe fn formatRealMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int, d: *mut c_in
         let mut best_d: c_int = 0;
         let mut best_e: c_int = 0;
 
-        for j in 0..nc as usize {
-            let col = j as c_int;
-            let fmt = real_format_at(seq, data, col * r, n);
+        for j in 0..columns {
+            let start = column_start(0, j as R_xlen_t, n);
+            let fmt = real_format_at(seq, data, len, start, n);
             if fmt.w > max_w {
                 max_w = fmt.w;
                 best_d = fmt.d;
@@ -1523,9 +1631,8 @@ pub unsafe fn formatComplexMatrix(
         if x.is_null() || n <= 0 {
             return;
         }
-        let len = LENGTH(x);
-        let nc = if n > 0 { len as i64 / n } else { 0 };
-        let r = n as c_int;
+        let len = XLENGTH(x);
+        let columns = column_count(len, n);
 
         let data = COMPLEX(x);
         let mut max_wr: c_int = 0;
@@ -1535,14 +1642,15 @@ pub unsafe fn formatComplexMatrix(
         let mut best_di: c_int = 0;
         let mut best_ei: c_int = 0;
 
-        for j in 0..nc as usize {
+        for j in 0..columns {
             let mut fwr: c_int = 0;
             let mut fdr: c_int = 0;
             let mut fer: c_int = 0;
             let mut fwi: c_int = 0;
             let mut fdi: c_int = 0;
             let mut fei: c_int = 0;
-            let col_ptr = data.offset((j as c_int * r) as isize);
+            let start = column_start(0, j as R_xlen_t, n);
+            let col_ptr = in_column(data, len, start, n);
             formatComplex(
                 col_ptr, n, &mut fwr, &mut fdr, &mut fer, &mut fwi, &mut fdi, &mut fei, 0,
             );
@@ -1588,15 +1696,15 @@ pub unsafe fn formatStringMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int, quote: c_i
         if x.is_null() || n <= 0 {
             return;
         }
-        let len = LENGTH(x);
-        let nc = if n > 0 { len as i64 / n } else { 0 };
+        let len = XLENGTH(x);
+        let columns = column_count(len, n);
 
         let rp = get_R_print_full();
         let mut max_w: c_int = 0;
 
-        for j in 0..nc as usize {
+        for j in 0..columns {
             for i in 0..n {
-                let elem = STRING_ELT(x, (j as R_xlen_t) * n + i);
+                let elem = STRING_ELT(x, element_index(0, j as R_xlen_t, i, n));
                 let l = if elem == NA_STRING() {
                     if quote != 0 {
                         rp.na_width
