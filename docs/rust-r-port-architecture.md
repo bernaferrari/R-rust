@@ -140,6 +140,24 @@ a live mutable lend; quiescent session processing services the pending request.
 No whole-instance Rust borrow may survive R reentry (the P1/P2 rules in
 `sexp/instance.rs`). The collector preserves object addresses.
 
+GC notifications copy statistics and retain owned callback leases before
+invoking user code. No borrow of `GcState` crosses a callback. A callback may
+register another callback or collect again: new registrations participate in
+the next notification, and nested collections update statistics without
+recursively notifying the active callback set. An owned notification guard
+resets this suppression flag on normal return and panic.
+
+Each interpreter allocation owns a Rust liveness token that is invalidated
+before its fields are destroyed. Notification loops and activation guards
+retain weak observers of that identity, rather than dereferencing the owner
+after arbitrary callback code. If a notification drops its ambient session,
+later callbacks stop, collection skips owner-dependent cleanup, and activation
+restores only a still-live previous interpreter, RNG and numerical state.
+The weak control block distinguishes allocations even when addresses are
+reused. It observes teardown; it does not extend the interpreter allocation's
+lifetime or make a retained raw pointer safe to dereference. Raw entrypoints
+retain their stated owner-lifetime contracts.
+
 ### Allocation admission and graph writes
 
 Vector factories validate the type's union layout, convert the length with
@@ -148,6 +166,13 @@ the arena. Non-vector headers require their dedicated constructors; the GNU
 compatibility bridge dispatches `LISTSXP` and `LANGSXP` to real node chains.
 Unpublished vector and character payloads have RAII owners until the arena
 adopts them.
+
+Checked ALTREP factories install a temporary managed root before ending the
+allocation's arena lend. Deferred collection can notify user callbacks as the
+lend ends; rooting only after the factory returned allowed a nested full
+collection to reclaim the fresh node first. Vector, string, metadata cons-cell
+and checked compact-sequence construction now retain that temporary root
+through notifications until the returned session handle owns its root lease.
 
 `R_alloc` buffers retain both their raw allocation and a reservation against
 their original session's byte budget. Watermark resets and instance teardown
@@ -181,7 +206,10 @@ vectors retain their existing pointer convention. Expansion converts logical
 lengths with `usize::try_from` to reject 32-bit truncation.
 
 The opt-in `altrep` feature provides rooted Rust classes for integer, real,
-logical, raw, complex, string and list vectors. A class descriptor is an
+logical, raw, complex, string and list vectors without compiling the native
+callback adapter. The separate `altrep-native` feature includes `altrep` and
+opts into that unsafe Rust adapter. Neither feature is enabled by default.
+A class descriptor is an
 interned symbol; data1, data2 and the private expanded cache occupy a traced
 VECSXP in an internal attribute. They never occupy a numeric buffer or hold a
 native Rust pointer. Class methods receive `AltrepContext` and return copied
@@ -203,10 +231,14 @@ deferred evaluation validates and roots a result before caching it. Class type
 and cache policy are sampled once at registration under the original owner;
 changing provider state cannot change the registered representation. Logical
 length is assigned by a consuming construction handle and stays immutable.
+Sequence, repeat and deferred-evaluation providers and session compact-sequence
+helpers are available through the Rust `altrep` interface; they do not require
+native callback registration.
 
 The Rust dispatch module rejects `unsafe` code; built-in class providers and
 the registry forbid it. `altrep/registry.rs` owns one class record including
-optional native methods and Rust callback guards. Runtime state has an owned
+Rust callback guards, with optional native methods compiled only under
+`altrep-native`. Runtime state has an owned
 `Rc` lease with checked `RefCell` borrows; class handles retain their immutable
 record directly. Registering, looking up or dropping a guard does not mutably
 borrow an interpreter field, and a Rust state lease remains valid even after
@@ -222,15 +254,52 @@ bulk expansion. They propagate root-allocation failure with `SexpResult`;
 providers use `context.data1()?` and `context.data2()?`. This changes the opt-in
 Rust provider interface from the earlier snapshot getters.
 
+The safe Rust provider interface enforces ownership through lifetime-bound
+handles, checked child insertion and rooted construction. Its copied results
+and callback guards avoid lending mutable interpreter state or payloads
+across user code. Audited raw storage and translated execution boundaries
+remain necessary, and native callback registration still requires an explicit
+unsafe contract.
+
 Serialization falls back to dense values with public attributes, and ordinary
-duplication excludes internal class metadata. Native Length/Elt, duplicate,
+duplication excludes internal class metadata. Under `altrep-native`, the
+optional native Length/Elt, duplicate,
 inspect and coerce adapters validate and root inputs and results, ending table
-borrows before calling C code. Native callbacks retain their unsafe contract;
-this is not a complete GNU C API/ABI implementation (custom serialized state,
-DLL reload, and the full optional method/optimization table remain outside this
-implementation). The feature stays opt-in; defaults are unchanged. Default
-compact sequences remain available without it. Native and strict-provenance
-Miri gates exercise allocation denial, collection, aliasing and recovery.
+borrows before calling C code. Native class constructors return the GNU-shaped
+`#[repr(C)] R_altrep_class_t` with a `SEXP ptr` field. Canonical `Length`,
+`Duplicate`, `DuplicateEX`, `Coerce` and `Inspect` setters coexist with the
+earlier Rust adapter names. `R_altrep_inherits` compares the registered class
+descriptor. Inspect accepts GNU's vector-print limit and subtree callback in
+addition to indentation and depth. These signatures and default dispatch
+policies follow the pinned GNU sources in
+`../r-source-trunk/original-r/src/include/R_ext/Altrep.h` and
+`../r-source-trunk/original-r/src/main/altrep.c` (upstream
+[header](https://svn.r-project.org/R/trunk/src/include/R_ext/Altrep.h) and
+[dispatch implementation](https://svn.r-project.org/R/trunk/src/main/altrep.c)).
+
+A registered `DuplicateEX` callback takes precedence, including when it
+returns NULL to decline. A legacy `Duplicate` callback instead receives GNU's
+default attribute policy: a distinct returned object gets deep or shallow
+public attributes and object/S4 flags; a same-object return is left alone.
+This policy preserves a returned lazy object's own class/data metadata.
+Source attributes, callback results and copied attributes stay rooted across
+recursive copying. Newly constructed pairlist and vector copies are rooted
+while child callbacks can collect.
+
+Native callbacks retain their unsafe contract and require the explicit
+`altrep-native` opt-in. Matching these Rust adapter
+signatures does not establish exported GNU C symbols or binary compatibility
+with compiled packages. Foreign data-pointer storage ownership, optional
+region/sortedness/No_NA/summary/subset methods and their interpreter dispatch,
+custom serialized state and named-class restoration, and DLL unload/reload
+lifetimes remain unfinished under `rport-876g5`. The feature stays opt-in;
+defaults are unchanged. Default compact sequences remain available without it.
+Native and strict-provenance Miri gates exercise allocation denial, collection,
+aliasing and recovery; each milestone records the tests actually run.
+The nightly Rust-class gate checks and tests `altrep` independently. Separate
+native-adapter Miri jobs enable `altrep-native` on native and 32-bit targets,
+covering canonical callbacks, duplicate defaults, allocation-time roots,
+notification reentry and owner teardown with a 90-minute budget per job.
 
 GraphApp buffers reject size overflow before allocating or reallocating and
 align their payloads for object pointers, including platforms where C long is

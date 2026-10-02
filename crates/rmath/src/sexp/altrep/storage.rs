@@ -129,18 +129,15 @@ pub(super) fn allocate<'s>(
 ) -> SexpResult<Sexp<'s>> {
     VectorKind::from_sexp(kind)?;
     usize::try_from(length).map_err(|_| failure("invalid vector length"))?;
-    // SAFETY: allocation runs under the original owner; no payload loan escapes.
-    let raw = activate(owner, || unsafe {
-        super::super::memory::with_arena(|a| a.alloc_vector(kind, length))
-    });
-    owner.sexp(raw).map_err(|_| failure("ALTREP vector"))
+    allocate_rooted(owner, |arena| {
+        arena.alloc_vector_sexp(kind, length).map(Sexp::as_raw)
+    })
+    .map_err(|_| failure("ALTREP vector"))
 }
 pub(super) fn string<'s>(owner: OwnerToken<'s>, text: &str) -> SexpResult<Sexp<'s>> {
-    // SAFETY: copied bytes enter the owner arena; validate and root immediately.
-    let raw = activate(owner, || unsafe {
-        super::super::memory::with_arena(|a| a.alloc_charsxp(text.as_bytes()))
-    });
-    owner.sexp(raw)
+    allocate_rooted(owner, |arena| {
+        arena.alloc_charsxp_sexp(text.as_bytes()).map(Sexp::as_raw)
+    })
 }
 pub(super) fn intern<'s>(owner: OwnerToken<'s>, name: &std::ffi::CStr) -> SexpResult<Sexp<'s>> {
     // SAFETY: terminated name stays live; interned symbol belongs to this owner.
@@ -155,14 +152,37 @@ fn cons<'s>(
     cdr: Sexp<'s>,
     tag: Sexp<'s>,
 ) -> SexpResult<Sexp<'s>> {
-    // SAFETY: all children stay rooted across allocation in the same owner.
-    let raw = activate(owner, || unsafe {
-        super::super::memory::with_arena(|a| {
-            a.cons(
+    let car = owner.sexp(car.as_raw())?;
+    let cdr = owner.sexp(cdr.as_raw())?;
+    let tag = owner.sexp(tag.as_raw())?;
+    // SAFETY: session-validated children stay rooted across this local arena
+    // allocation. Tags may be interned symbols outside the arena itself.
+    allocate_rooted(owner, |arena| {
+        Some(unsafe {
+            arena.cons(
                 car.clone().as_raw(),
                 cdr.clone().as_raw(),
                 tag.clone().as_raw(),
             )
+        })
+    })
+}
+
+/// Root the fresh node before ending the arena lend: its deferred GC
+/// notifications can run callbacks, including another full collection. The
+/// temporary guard spans those callbacks and the checked owner's new lease.
+fn allocate_rooted<'s>(
+    owner: OwnerToken<'s>,
+    allocation: impl FnOnce(&mut super::super::memory::RArena) -> Option<SEXP>,
+) -> SexpResult<Sexp<'s>> {
+    // SAFETY: callers use checked vector/string factories or a cons cell
+    // whose children have been validated and rooted in this owner.
+    // The raw guard touches only the disjoint root table while the arena is
+    // lent. No owner classification or whole-instance borrow occurs there.
+    let (raw, _root) = activate(owner, || unsafe {
+        super::super::memory::with_arena(|arena| {
+            let raw = allocation(arena).unwrap_or(std::ptr::null_mut());
+            (raw, super::super::protect::protect(raw))
         })
     });
     owner.sexp(raw)
@@ -320,3 +340,7 @@ pub(super) fn copy_public_attributes(source: &Sexp<'_>, target: &Sexp<'_>) -> Se
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "safety_tests.rs"]
+mod safety_tests;

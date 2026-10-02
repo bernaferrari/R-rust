@@ -21,8 +21,9 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_logical_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
         #[cfg(feature = "altrep")]
-        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
-            self.expect_type(SEXPTYPE::LGLSXP, "LGLSXP")?;
+        if self.typeof_() == SEXPTYPE::LGLSXP
+            && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
+        {
             return match result? { crate::sexp::altrep::AltrepElement::Logical(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
         }
         let data = self.try_typed_data::<c_int>(SEXPTYPE::LGLSXP, "logical vector")?;
@@ -47,8 +48,9 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_integer_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
         #[cfg(feature = "altrep")]
-        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
-            self.expect_type(SEXPTYPE::INTSXP, "INTSXP")?;
+        if self.typeof_() == SEXPTYPE::INTSXP
+            && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
+        {
             return match result? { crate::sexp::altrep::AltrepElement::Integer(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
         }
         match self.read_compact_int(i, false) {
@@ -84,8 +86,9 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_real_elt(&self, i: R_xlen_t) -> SexpResult<c_double> {
         #[cfg(feature = "altrep")]
-        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
-            self.expect_type(SEXPTYPE::REALSXP, "REALSXP")?;
+        if self.typeof_() == SEXPTYPE::REALSXP
+            && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
+        {
             return match result? { crate::sexp::altrep::AltrepElement::Real(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
         }
         match self.read_compact_real(i, false) {
@@ -118,8 +121,9 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_raw_elt(&self, i: R_xlen_t) -> SexpResult<Rbyte> {
         #[cfg(feature = "altrep")]
-        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
-            self.expect_type(SEXPTYPE::RAWSXP, "RAWSXP")?;
+        if self.typeof_() == SEXPTYPE::RAWSXP
+            && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
+        {
             return match result? { crate::sexp::altrep::AltrepElement::Raw(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
         }
         let data = self.try_typed_data::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")?;
@@ -140,8 +144,9 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_complex_elt(&self, i: R_xlen_t) -> SexpResult<Rcomplex> {
         #[cfg(feature = "altrep")]
-        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
-            self.expect_type(SEXPTYPE::CPLXSXP, "CPLXSXP")?;
+        if self.typeof_() == SEXPTYPE::CPLXSXP
+            && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
+        {
             return match result? { crate::sexp::altrep::AltrepElement::Complex(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
         }
         let data = self.try_typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")?;
@@ -162,8 +167,9 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_string_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
         #[cfg(feature = "altrep")]
-        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
-            self.expect_type(SEXPTYPE::STRSXP, "STRSXP")?;
+        if self.typeof_() == SEXPTYPE::STRSXP
+            && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
+        {
             return match result? { crate::sexp::altrep::AltrepElement::String(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
         }
         let data = self.try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
@@ -239,8 +245,9 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_vector_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
         #[cfg(feature = "altrep")]
-        if let Some(result) = crate::sexp::altrep::lazy_element(self, i) {
-            self.expect_type(SEXPTYPE::VECSXP, "VECSXP")?;
+        if self.typeof_() == SEXPTYPE::VECSXP
+            && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
+        {
             return match result? { crate::sexp::altrep::AltrepElement::List(v) => Ok(v), _ => Err(SexpError::Altrep { reason: "element type mismatch" }) };
         }
         let data = self.try_vector_sexp_data()?;

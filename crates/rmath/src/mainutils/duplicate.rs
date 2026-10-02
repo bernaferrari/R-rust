@@ -44,7 +44,7 @@ const GROWABLE_BIT_MASK: u16 = 1 << 5;
 // Local helpers and entry points
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "altrep")]
+#[cfg(feature = "altrep-native")]
 unsafe fn ALTREP_DUPLICATE_EX(s: SEXP, deep: c_int) -> SEXP {
     unsafe {
         crate::mainutils::altrep::R_altrep_duplicate(s, deep)
@@ -358,6 +358,72 @@ unsafe fn DUPLICATE_ATTRIB(to: SEXP, from: SEXP, deep: c_int) {
     }
 }
 
+/// Apply GNU's default DuplicateEX attribute policy to a legacy ALTREP
+/// Duplicate result. The caller activates the source owner before calling.
+///
+/// # Safety
+/// Both objects must be live in the active owner, with no outstanding payload
+/// loans. Recursive attribute callbacks must uphold their native contracts.
+#[cfg(feature = "altrep-native")]
+pub(crate) unsafe fn altrep_duplicate_attributes(to: SEXP, from: SEXP, deep: c_int) {
+    if to == from || to.is_null() {
+        return;
+    }
+    let fail = |error: crate::sexp::object::SexpError| {
+        crate::sexp::context::r_error(error.to_string())
+    };
+    // A newly returned callback object must survive allocations and collection
+    // while its source's attributes are recursively copied.
+    let source = unsafe { crate::sexp::altrep::rooted_raw(from) }.unwrap_or_else(fail);
+    let target = unsafe { crate::sexp::altrep::rooted_raw(to) }.unwrap_or_else(fail);
+    unsafe {
+        let source_attributes = if crate::sexp::altrep::has_extension_raw(from) {
+            CDR(ATTRIB(from))
+        } else {
+            ATTRIB(from)
+        };
+        let target_is_extension = crate::sexp::altrep::has_extension_raw(to);
+        let target_attributes = if target_is_extension {
+            CDR(ATTRIB(to))
+        } else {
+            ATTRIB(to)
+        };
+        let has_source_attributes =
+            !source_attributes.is_null() && source_attributes != R_NilValue();
+        if has_source_attributes {
+            let attributes_source =
+                crate::sexp::altrep::rooted_raw(source_attributes).unwrap_or_else(fail);
+            let attributes = crate::sexp::altrep::rooted_raw(duplicate1(
+                attributes_source.clone().as_raw(),
+                deep,
+            ))
+            .unwrap_or_else(fail);
+            if crate::sexp::altrep::has_extension_raw(to) {
+                // SET_ATTRIB materializes an extension. Preserve its private
+                // traced class/data head and replace only the public tail.
+                SETCDR(ATTRIB(to), attributes.clone().as_raw());
+            } else {
+                SET_ATTRIB(to, attributes.clone().as_raw());
+            }
+            SET_OBJECT(to, OBJECT(from));
+            if IS_S4_OBJECT(from) != 0 {
+                SET_S4_OBJECT(to);
+            } else {
+                UNSET_S4_OBJECT(to);
+            }
+        } else if !target_attributes.is_null() && target_attributes != R_NilValue() {
+            if target_is_extension {
+                SETCDR(ATTRIB(to), R_NilValue());
+            } else {
+                SET_ATTRIB(to, R_NilValue());
+            }
+            SET_OBJECT(to, 0);
+            UNSET_S4_OBJECT(to);
+        }
+    }
+    drop((target, source));
+}
+
 /// Copy tag from `from` to `to`, if it is non-nil.
 #[inline]
 unsafe fn COPY_TAG(to: SEXP, from: SEXP) {
@@ -380,6 +446,7 @@ unsafe fn duplicate_atomic_vector(
     unsafe {
         let n = XLENGTH(from);
         let new_vec = Rf_allocVector3(TYPEOF(from), n);
+        let _guard = crate::sexp::protect::protect(new_vec);
         *to = new_vec;
         if n > 0 {
             let from_data = DATAPTR(from);
@@ -500,8 +567,8 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
         #[cfg(feature = "altrep")]
         let _class_copy_guard = class_copy_source.as_ref().map(|source| crate::sexp::altrep::duplication_guard(source).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())));
 
-        // ALTREP: try class-specific duplicate when the alt bit is set
-        #[cfg(feature = "altrep")]
+        // ALTREP: try native class-specific duplicate when the alt bit is set
+        #[cfg(feature = "altrep-native")]
         if ALTREP_CHECK(s) != 0 {
             let ans = ALTREP_DUPLICATE_EX(s, deep);
             if !ans.is_null() {
@@ -554,6 +621,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
             SEXPTYPE::EXPRSXP | SEXPTYPE::VECSXP => {
                 let n = XLENGTH(s);
                 t = Rf_allocVector3(TYPEOF(s), n);
+                let _guard = crate::sexp::protect::protect(t);
                 for i in 0..n {
                     SET_VECTOR_ELT(t, i, duplicate_child(VECTOR_ELT(s, i), deep));
                 }
@@ -583,6 +651,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
             SEXPTYPE::STRSXP => {
                 let n = XLENGTH(s);
                 t = Rf_allocVector3(TYPEOF(s), n);
+                let _guard = crate::sexp::protect::protect(t);
                 for i in 0..n {
                     SET_STRING_ELT(t, i, STRING_ELT(s, i));
                 }
@@ -799,11 +868,13 @@ pub unsafe fn R_cycle_detected(s: SEXP, child: SEXP) -> c_int {
 unsafe fn duplicate_list(s: SEXP, deep: c_int) -> SEXP {
     unsafe {
         let mut val: SEXP = R_NilValue();
+        let mut root = crate::sexp::protect::protect(val);
 
         // First pass: build the skeleton list
         let mut sp = s;
         while !sp.is_null() && sp != R_NilValue() {
             val = Rf_cons(R_NilValue(), val);
+            root = crate::sexp::protect::protect(val);
             sp = CDR(sp);
         }
 
@@ -818,6 +889,7 @@ unsafe fn duplicate_list(s: SEXP, deep: c_int) -> SEXP {
             vp = CDR(vp);
         }
 
+        drop(root);
         val
     }
 }
@@ -1389,6 +1461,10 @@ pub unsafe fn R_duplicate_attr(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+#[cfg(all(test, feature = "altrep-native"))]
+#[path = "duplicate/altrep_tests.rs"]
+mod altrep_tests;
 
 #[cfg(test)]
 mod tests {

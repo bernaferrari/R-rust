@@ -49,6 +49,7 @@ pub(super) enum CachePolicy {
     Private,
     Data2,
 }
+#[cfg(feature = "altrep-native")]
 type NativeMethods = Rc<RefCell<crate::mainutils::altrep::NativeMethods>>;
 
 /// Configuration is sampled before insertion, under the original owner.
@@ -57,6 +58,7 @@ pub(super) struct RegisteredClass {
     pub(super) kind: VectorKind,
     pub(super) cache: CachePolicy,
     pub(super) provider: Rc<dyn AltrepClass>,
+    #[cfg(feature = "altrep-native")]
     native: Option<NativeMethods>,
 }
 #[derive(Clone, Default)]
@@ -110,8 +112,15 @@ pub(super) fn register<'s>(
     name: &str,
     provider: Rc<dyn AltrepClass>,
 ) -> SexpResult<AltrepClassHandle<'s>> {
-    register_record(owner, name, provider, None)
+    register_record(
+        owner,
+        name,
+        provider,
+        #[cfg(feature = "altrep-native")]
+        None,
+    )
 }
+#[cfg(feature = "altrep-native")]
 pub(crate) fn register_native<'s>(
     owner: OwnerToken<'s>,
     name: &str,
@@ -124,7 +133,7 @@ fn register_record<'s>(
     owner: OwnerToken<'s>,
     name: &str,
     provider: Rc<dyn AltrepClass>,
-    native: Option<NativeMethods>,
+    #[cfg(feature = "altrep-native")] native: Option<NativeMethods>,
 ) -> SexpResult<AltrepClassHandle<'s>> {
     let kind = storage::activate(owner, || VectorKind::from_sexp(provider.vector_type()))?;
     let cache = storage::activate(owner, || {
@@ -142,6 +151,7 @@ fn register_record<'s>(
         kind,
         cache,
         provider,
+        #[cfg(feature = "altrep-native")]
         native,
     });
     bridge::runtime(owner).insert(key, class.clone())?;
@@ -168,9 +178,11 @@ pub(crate) fn class_handle<'s>(
         record,
     })
 }
+#[cfg(feature = "altrep-native")]
 pub(crate) fn native_methods_for_class(class: &AltrepClassHandle<'_>) -> Option<NativeMethods> {
     class.record.native.clone()
 }
+#[cfg(feature = "altrep-native")]
 pub(crate) fn native_methods(object: &Sexp<'_>) -> Option<NativeMethods> {
     let owner = storage::owner(object).ok()?;
     let descriptor = storage::Metadata::load(object)?.descriptor().ok()?;

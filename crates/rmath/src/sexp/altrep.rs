@@ -20,11 +20,10 @@ mod bridge;
 mod registry;
 mod storage;
 pub(crate) use bridge::{has_extension_raw, lazy_raw, materialize_raw, rooted_raw};
-pub(crate) use registry::{
-    AltrepRuntimeState, OperationGuard, class_handle, native_methods, native_methods_for_class,
-    register_native,
-};
+pub(crate) use registry::{AltrepRuntimeState, OperationGuard, class_handle};
 use registry::{Operation, RegisteredClass, enter_operation, lookup, register};
+#[cfg(feature = "altrep-native")]
+pub(crate) use registry::{native_methods, native_methods_for_class, register_native};
 use storage::{InstanceStorage, Metadata, allocate, owner};
 
 /// A copied element, or an independently rooted string/list element.

@@ -202,6 +202,7 @@ fn original_owner_budget_and_cross_session_data_are_checked() {
         Err(SexpError::UnownedPointer { .. })
     ));
 }
+#[cfg(feature = "altrep-native")]
 #[test]
 fn compact_vectors_work_with_feature_and_do_not_recurse_on_duplicate() {
     let s = RSession::new_for_gc_tests();
@@ -289,6 +290,7 @@ fn serialize_falls_back_to_plain_values_without_internal_metadata() {
         assert!(!is_materialized(&x));
     });
 }
+#[cfg(feature = "altrep-native")]
 #[test]
 fn native_class_metadata_and_reentrant_registration_work() {
     let s = RSession::new_for_gc_tests();
@@ -301,7 +303,7 @@ fn native_class_metadata_and_reentrant_registration_work() {
             unsafe {
                 // A callback is allowed to update its class table; no RefCell
                 // or RInstance borrow may survive invocation.
-                R_set_altreal_Elt_method(R_altrep_class(x), Some(element));
+                R_set_altreal_Elt_method(R_altrep_class(x).into(), Some(element));
                 crate::sexp::gengc::full_gc();
                 REAL_ELT(R_altrep_data1(x), 0) + i as f64
             }
@@ -361,15 +363,10 @@ fn expanded_cache_outlives_original_and_releases_final_buffer_lease() {
     let cache;
     let payload;
     {
-        let raw =
-            s.with_active(|| unsafe { crate::mainutils::altrep::R_compact_realseq(4.0, 0.5, 8) });
-        let x = s.sexp(raw).unwrap();
+        let x = new_sequence(token, SEXPTYPE::REALSXP, 4.0, 0.5, 8).unwrap();
         before = unsafe { (*token.as_ptr()).arena.total_bytes_allocated() };
         force_materialization(&x).unwrap();
-        cache = s.with_active(|| unsafe {
-            s.sexp(crate::mainutils::altrep::R_altrep_data2(raw))
-                .unwrap()
-        });
+        cache = data2(&x).unwrap();
         assert_eq!(cache.len(), 8);
         assert_eq!(cache.header().payload, x.header().payload);
         payload = x.header().payload;
@@ -434,10 +431,10 @@ fn deferred_evaluation_caches_a_rooted_result() {
 #[test]
 fn long_integer_sequence_rejects_unrepresentable_expansion_without_truncation() {
     let s = RSession::new_for_gc_tests();
-    let raw = s.with_active(|| unsafe {
-        crate::mainutils::altrep::R_compact_intseq(i32::MIN as i64, i32::MAX as i64)
-    });
-    let x = s.sexp(raw).unwrap();
+    let x = new_sequence(
+        s.owner_token().unwrap(), SEXPTYPE::INTSXP,
+        i32::MIN as f64, 1.0, 1_i64 << 32,
+    ).unwrap();
     assert_eq!(x.len(), 1_i64 << 32);
     assert_eq!(x.integer_elt((1_i64 << 32) - 1), Some(i32::MAX));
     assert!(force_materialization(&x).is_err());
@@ -486,13 +483,12 @@ fn raw_dataptr_expands_extension_without_discarding_class_or_data() {
     assert_eq!(unsafe { *ptr.add(4) }, 12.0);
     assert!(is_altrep(&x));
     assert_eq!(altrep_class(&x).unwrap().as_raw(), descriptor.as_raw());
-    let source =
-        s.with_active(|| unsafe { crate::mainutils::altrep::R_altrep_data1(x.clone().as_raw()) });
-    assert_eq!(s.sexp(source).unwrap().real_elt(0), Some(10.0));
+    assert_eq!(data1(&x).unwrap().real_elt(0), Some(10.0));
     s.with_active(|| s.owner_token().unwrap().full_gc().unwrap());
     assert_eq!(x.real_elt(4), Some(12.0));
 }
 
+#[cfg(feature = "altrep-native")]
 #[test]
 fn native_scalar_callback_failure_raises_error_instead_of_missing_value() {
     let s = RSession::new_for_gc_tests();
@@ -514,6 +510,7 @@ fn native_scalar_callback_failure_raises_error_instead_of_missing_value() {
     );
 }
 
+#[cfg(feature = "altrep-native")]
 #[test]
 fn raw_dispatch_and_classification_respect_existing_arena_lends() {
     let s = RSession::new_for_gc_tests();
@@ -600,6 +597,7 @@ fn serialization_cycle_fails_cleanly_and_resets_rust_operation_guard() {
     assert_eq!(x.vector_elt(0).unwrap().as_raw(), x.clone().as_raw());
 }
 
+#[cfg(feature = "altrep-native")]
 #[test]
 fn native_duplicate_inspect_and_coerce_restore_original_owner() {
     let s = RSession::new_for_gc_tests();
@@ -861,4 +859,38 @@ fn owned_registry_and_operation_leases_survive_owner_teardown() {
     assert!(state.operations_are_idle());
     drop(state);
     assert_eq!(drops.get(), 1);
+}
+
+
+#[test]
+fn mismatched_typed_reads_do_not_invoke_lazy_providers() {
+    struct RejectReads(SEXPTYPE);
+    impl AltrepClass for RejectReads {
+        fn vector_type(&self) -> SEXPTYPE { self.0 }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> { Ok(1) }
+        fn element<'s>(&self, _: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+            panic!("a mismatched typed read invoked the provider")
+        }
+    }
+    let session = RSession::new_for_gc_tests();
+    for kind in [SEXPTYPE::INTSXP, SEXPTYPE::REALSXP, SEXPTYPE::LGLSXP,
+                 SEXPTYPE::RAWSXP, SEXPTYPE::CPLXSXP, SEXPTYPE::STRSXP, SEXPTYPE::VECSXP] {
+        let class = session.register_altrep_class(&format!("reject-{}", kind.0), RejectReads(kind)).unwrap();
+        let object = AltrepBuilder::new(class).build().unwrap();
+        macro_rules! reject {
+            ($kind:ident, $read:ident) => {
+                if kind != SEXPTYPE::$kind {
+                    assert!(matches!(object.$read(0), Err(SexpError::TypeMismatch { .. })));
+                }
+            };
+        }
+        reject!(INTSXP, try_integer_elt);
+        reject!(REALSXP, try_real_elt);
+        reject!(LGLSXP, try_logical_elt);
+        reject!(RAWSXP, try_raw_elt);
+        reject!(CPLXSXP, try_complex_elt);
+        reject!(STRSXP, try_string_elt);
+        reject!(VECSXP, try_vector_elt);
+        assert!(!is_materialized(&object));
+    }
 }

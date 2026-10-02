@@ -129,40 +129,86 @@ pub(crate) unsafe fn compact_real_seq(from: c_double, step: c_double, n: usize) 
     unsafe { compact_seq(SEXPTYPE::REALSXP, n, Formula::Real { from, step }) }
 }
 
+/// Checked callers retain this temporary root until they have installed
+/// their own session-bound lease. It is created before deferred GC callbacks.
+/// # Safety
+/// Same owner and payload-loan requirements as `compact_int_seq`; the caller
+/// must retain that original owner until the returned guard has been dropped.
+#[cfg(feature = "altrep")]
+pub(crate) unsafe fn compact_int_seq_protected(
+    from: c_int,
+    step: c_int,
+    n: usize,
+) -> (SEXP, super::protect::ProtectGuard<'static>) {
+    unsafe {
+        compact_seq_with_result(SEXPTYPE::INTSXP, n, Formula::Int { from, step }, |raw| {
+            (raw, super::protect::protect(raw))
+        })
+    }
+}
+
+/// # Safety
+/// Same owner and payload-loan requirements as `compact_real_seq`; the caller
+/// must retain that original owner until the returned guard has been dropped.
+#[cfg(feature = "altrep")]
+pub(crate) unsafe fn compact_real_seq_protected(
+    from: c_double,
+    step: c_double,
+    n: usize,
+) -> (SEXP, super::protect::ProtectGuard<'static>) {
+    unsafe {
+        compact_seq_with_result(SEXPTYPE::REALSXP, n, Formula::Real { from, step }, |raw| {
+            (raw, super::protect::protect(raw))
+        })
+    }
+}
+
 unsafe fn compact_seq(kind: SEXPTYPE, n: usize, formula: Formula) -> SEXP {
+    unsafe { compact_seq_with_result(kind, n, formula, |raw| raw) }
+}
+
+unsafe fn compact_seq_with_result<T>(
+    kind: SEXPTYPE,
+    n: usize,
+    formula: Formula,
+    finish: impl FnOnce(SEXP) -> T,
+) -> T {
     unsafe {
         if n == 0 {
-            return with_arena(|arena| arena.alloc_vector(kind, 0));
+            return with_arena(|arena| finish(arena.alloc_vector(kind, 0)));
         }
         let Ok(len) = R_xlen_t::try_from(n) else {
-            return std::ptr::null_mut();
+            return finish(std::ptr::null_mut());
         };
         let tag = super::symbol::Rf_install(ALTSEQ_TAG_NAME.as_ptr());
         if tag.is_null() {
-            return std::ptr::null_mut();
+            return finish(std::ptr::null_mut());
         }
-        with_arena(|arena| unsafe {
-            let info = arena.alloc_vector(formula.info_type(), 2);
-            if info.is_null() || (*info).gengc_next_node.is_null() {
-                return std::ptr::null_mut();
-            }
-            formula.write_info((*info).gengc_next_node as *mut u8);
-            let header = arena.alloc_vector(kind, 0);
-            if header.is_null() {
-                return std::ptr::null_mut();
-            }
-            (*header).set_vecsxp_length(len);
-            (*header).set_vecsxp_truelength(0);
-            SET_ALTREP(header, 1);
-            let cell = arena.cons(info, super::globals::R_NilValue(), tag);
-            if cell.is_null() {
-                return std::ptr::null_mut();
-            }
-            // Header and cell are both young, allocated in this lend. The
-            // write barrier would be a no-op, and it must not run while the
-            // arena borrow is live.
-            (*header).attrib = cell;
-            header
+        with_arena(|arena| {
+            let raw = (|| {
+                let info = arena.alloc_vector(formula.info_type(), 2);
+                if info.is_null() || (*info).gengc_next_node.is_null() {
+                    return std::ptr::null_mut();
+                }
+                formula.write_info((*info).gengc_next_node as *mut u8);
+                let header = arena.alloc_vector(kind, 0);
+                if header.is_null() {
+                    return std::ptr::null_mut();
+                }
+                (*header).set_vecsxp_length(len);
+                (*header).set_vecsxp_truelength(0);
+                SET_ALTREP(header, 1);
+                let cell = arena.cons(info, super::globals::R_NilValue(), tag);
+                if cell.is_null() {
+                    return std::ptr::null_mut();
+                }
+                // Header and cell are both young, allocated in this lend. The
+                // write barrier would be a no-op, and it must not run while the
+                // arena borrow is live.
+                (*header).attrib = cell;
+                header
+            })();
+            finish(raw)
         })
     }
 }

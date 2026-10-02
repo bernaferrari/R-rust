@@ -5,9 +5,9 @@ pub mod Rmain;
 pub mod agrep;
 pub mod all_equal;
 pub mod alloca;
-#[cfg(feature = "altrep")]
+#[cfg(feature = "altrep-native")]
 pub mod altclasses;
-#[cfg(feature = "altrep")]
+#[cfg(feature = "altrep-native")]
 pub mod altrep;
 pub mod apply;
 pub mod arithmetic;

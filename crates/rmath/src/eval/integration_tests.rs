@@ -184,7 +184,7 @@ fn test_eval_null_via_safe() {
     assert_eq!(must(result).typeof_(), SEXPTYPE::NILSXP);
 }
 
-#[cfg(feature = "altrep")]
+#[cfg(feature = "altrep-native")]
 #[test]
 fn test_altrep_compact_intseq() {
     let _session = crate::sexp::session::RSession::new();
@@ -200,7 +200,7 @@ fn test_altrep_compact_intseq() {
     }
 }
 
-#[cfg(feature = "altrep")]
+#[cfg(feature = "altrep-native")]
 #[test]
 fn test_altrep_compact_realseq() {
     let _session = crate::sexp::session::RSession::new();
@@ -216,7 +216,7 @@ fn test_altrep_compact_realseq() {
     }
 }
 
-#[cfg(feature = "altrep")]
+#[cfg(feature = "altrep-native")]
 #[test]
 fn test_altrep_new_altrep_data_roundtrip() {
     let _session = crate::sexp::session::RSession::new();

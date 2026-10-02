@@ -17,11 +17,12 @@ rust-backend = ["faer"]
 # Enable RenderPlot-backed GE device for high-quality skia output inside real R graphics (plot, grid, etc.)
 # Pulls r-graphics-engine (kept optional so pure-math WASM builds stay small).
 renderplot-device = ["r-graphics-engine"]
-# Opt-in rooted ALTREP class dispatch: safe Rust classes and a native callback
-# adapter. Default compact sequences use the same traced R metadata discipline
-# without this feature. Native C API/ABI compatibility is still incomplete;
-# r-embed/r-uniffi do not enable this feature automatically.
+# Opt-in rooted ALTREP classes implemented through safe Rust providers.
+# Default compact sequences remain available without this feature.
 altrep = []
+# Optional GNU C-shaped callback adapter. Native ABI/package compatibility
+# remains incomplete; embedders do not enable it automatically.
+altrep-native = ["altrep"]
 # GNU configures this off unless --enable-memory-profiling. The pinned
 # oracle is built without it, so tracemem errors and duplicate does not
 # report copies. Enable to match a Homebrew-style build.

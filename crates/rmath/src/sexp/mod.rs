@@ -65,8 +65,8 @@ pub use session::{CancellationToken, RSession};
 
 /// Default-build guards for the ALTREP cargo feature.
 ///
-/// `sexp::altrep`, `mainutils::altrep`, and `mainutils::altclasses` stay behind
-/// `#[cfg(feature = "altrep")]`. Compact sequences in [`altseq`] may set the
+/// `sexp::altrep` stays behind `altrep`; the native adapter modules require
+/// the separate `altrep-native` feature. Compact sequences in [`altseq`] may set the
 /// ALT bit; they are ordinary vectors whose formula is a traced attribute.
 /// These tests pin the feature gate and that a plain vector still survives
 /// collection with the ALT bit clear.

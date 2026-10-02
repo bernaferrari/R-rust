@@ -43,8 +43,8 @@ pub(super) fn compact_integer_sequence<'s>(
     length: usize,
 ) -> SexpResult<Sexp<'s>> {
     // SAFETY: default compact-vector construction runs in the retained owner.
-    let raw = storage::activate(owner, || unsafe {
-        super::super::altseq::compact_int_seq(origin, step, length)
+    let (raw, _root) = storage::activate(owner, || unsafe {
+        super::super::altseq::compact_int_seq_protected(origin, step, length)
     });
     owner.sexp(raw)
 }
@@ -55,8 +55,8 @@ pub(super) fn compact_real_sequence<'s>(
     length: usize,
 ) -> SexpResult<Sexp<'s>> {
     // SAFETY: same owner contract as integer construction.
-    let raw = storage::activate(owner, || unsafe {
-        super::super::altseq::compact_real_seq(origin, step, length)
+    let (raw, _root) = storage::activate(owner, || unsafe {
+        super::super::altseq::compact_real_seq_protected(origin, step, length)
     });
     owner.sexp(raw)
 }
