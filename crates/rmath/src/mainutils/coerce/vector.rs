@@ -218,16 +218,19 @@ pub unsafe fn coerceToString(v: SEXP) -> SEXP {
         // significant digits regardless of options("digits"). The port's
         // formatReal reads options("digits") live, so pin the option.
         let pin_digits = vtype == SEXPTYPE::REALSXP || vtype == SEXPTYPE::CPLXSXP;
-        let saved_digits = if pin_digits {
+        let (saved_digits, _saved_digits_guard) = if pin_digits {
             let digits_sym = Rf_install(b"digits\0".as_ptr() as *const c_char);
             let saved = crate::mainutils::options::GetOption1(digits_sym);
             let _saved_guard = protect(saved);
             let max = Rf_ScalarInteger(15);
             let _max_guard = protect(max);
             crate::mainutils::options::R_SetOption(digits_sym, max);
-            saved
+            // The old option is no longer in the instance map after replacement.
+            // Keep its existing guard through restoration, including every
+            // allocating element conversion and coercion-warning callback.
+            (saved, Some(_saved_guard))
         } else {
-            R_NilValue()
+            (R_NilValue(), None)
         };
         let _digits_guard = RestoreDigitsOnScopeEnd {
             active: pin_digits,
@@ -506,9 +509,17 @@ pub unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             return rval;
         }
 
-        let from = unsafe { std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(v) as i32)).to_string_lossy() };
-        let to = unsafe { std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(type_.0 as i32)).to_string_lossy() };
-        error(&format!("cannot coerce type '{from}' to vector of type '{to}'"));
+        let from = unsafe {
+            std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(v) as i32))
+                .to_string_lossy()
+        };
+        let to = unsafe {
+            std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(type_.0 as i32))
+                .to_string_lossy()
+        };
+        error(&format!(
+            "cannot coerce type '{from}' to vector of type '{to}'"
+        ));
     }
 }
 

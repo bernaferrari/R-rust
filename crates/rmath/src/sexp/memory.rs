@@ -338,6 +338,30 @@ pub(crate) fn checked_node(pointer: SEXP) -> Option<CheckedNode> {
     CheckedNode::new(meta.clone(), meta.current_id(slot)?)
 }
 
+/// Snapshot automatic handle roots from the one registered production heap.
+/// Both arena and permanent pages use this directory and heap identity. The
+/// directory borrow ends before any root is projected or passed to tracing.
+pub(crate) fn automatic_roots(identity: &HeapIdentity) -> Vec<(SEXP, CheckedNode)> {
+    let pages = SLAB_META
+        .try_with(|map| {
+            map.borrow()
+                .values()
+                .filter(|entry| entry.meta.belongs_to(identity))
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    pages
+        .iter()
+        .flat_map(|entry| {
+            entry.meta.rooted_ids().filter_map(move |id| {
+                let (pointer, allocation) = entry.projection.resolve_slot(id.slot())?;
+                (allocation.id() == &id).then_some((pointer, allocation))
+            })
+        })
+        .collect()
+}
+
 /// Use the input address only to select an owned slot. The returned pointer
 /// is freshly projected from that slot's canonical Cell, never from the
 /// caller's potentially provenance-free or invalidated pointer tag.
@@ -659,6 +683,8 @@ impl RArena {
             .copy_live(&id)
             .expect("initialized owned arena node");
         meta.set_old(slot, header.sxpinfo.gcgen() == 1);
+        let allocation = CheckedNode::new(meta, id).expect("new live arena allocation");
+        note_lend_allocation(std::ptr::from_ref(self).addr(), ptr, allocation);
     }
 
     fn track_node_freed(&mut self, ptr: SEXP) {
@@ -1473,6 +1499,7 @@ struct LendLedger {
     total: Cell<usize>,
     transient: Rc<Cell<usize>>,
     pending: Rc<Cell<usize>>,
+    fresh: Vec<(SEXP, CheckedNode)>,
 }
 
 thread_local! {
@@ -1491,9 +1518,42 @@ fn install_lend_ledger(inst: *mut super::instance::RInstance) {
             total: Cell::new(arena.total_bytes_allocated),
             transient: Rc::clone(&arena.transient_bytes),
             pending: Rc::clone(&arena.pending_data_bytes),
+            fresh: Vec::new(),
         }
     };
     LEND_LEDGER.with(|slot| slot.borrow_mut().push(ledger));
+}
+
+/// Keep the exact allocation alive until its lend finishes dispatching
+/// deferred collection and callbacks. The arena supplies its own identity;
+/// no instance field is accessed while the mutable arena borrow is live.
+fn note_lend_allocation(arena: usize, projection: SEXP, allocation: CheckedNode) {
+    LEND_LEDGER.with(|slot| {
+        if let Some(ledger) = slot
+            .borrow_mut()
+            .iter_mut()
+            .rev()
+            .find(|ledger| ledger.arena == arena)
+        {
+            ledger.fresh.push((projection, allocation));
+        }
+    });
+}
+
+/// Snapshot temporary roots for the collector's heap domain. The original
+/// tokens reject freed/reused slots; lookup never refreshes them by address.
+/// The owned snapshot releases its TLS borrow before tracing or callbacks.
+pub(crate) fn fresh_allocation_roots(identity: &HeapIdentity) -> Vec<(SEXP, CheckedNode)> {
+    LEND_LEDGER
+        .try_with(|slot| {
+            slot.borrow()
+                .iter()
+                .flat_map(|ledger| &ledger.fresh)
+                .filter(|(_, allocation)| allocation.belongs_to(identity) && allocation.is_live())
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Reserve transient bytes without borrowing an already-lent arena again.
@@ -1576,7 +1636,7 @@ fn reserve_lend_bytes(
 struct ClearLendLedger;
 impl Drop for ClearLendLedger {
     fn drop(&mut self) {
-        LEND_LEDGER.with(|slot| {
+        let _ = LEND_LEDGER.try_with(|slot| {
             slot.borrow_mut().pop();
         });
     }
@@ -1813,6 +1873,7 @@ where
         // Snapshot the budget before the `&mut RArena` lend. Compact-sequence
         // expansion during the callback reserves through this ledger instead
         // of borrowing the arena again.
+        let liveness = super::instance::instance_liveness(inst);
         install_lend_ledger(inst);
         let _clear_ledger = ClearLendLedger;
         let result = {
@@ -1829,7 +1890,13 @@ where
         let torture_ticks = std::mem::take(&mut (*inst).arena.alloc_gc_torture_ticks);
         let collect_requested = std::mem::take(&mut (*inst).arena.alloc_gc_collect_requested);
         crate::eval::parser::flush_literal_warnings();
-        crate::sexp::gengc::process_deferred_alloc_gc_in(inst, torture_ticks, collect_requested);
+        if liveness.is_live() {
+            crate::sexp::gengc::process_deferred_alloc_gc_in(
+                inst,
+                torture_ticks,
+                collect_requested,
+            );
+        }
         result
     }
 }
@@ -1848,6 +1915,202 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn automatic_roots_span_registered_arena_and_permanent_pages_in_one_heap() {
+        let mut arena = super::RArena::new();
+        let identity = arena.heap_identity();
+        let mut permanent =
+            super::super::instance::persistent::PersistentHeap::new(identity.clone());
+        let arena_node = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+        let arena_token = arena.node_token(arena_node).unwrap();
+        let arena_lease = arena_token.root_lease().unwrap();
+        let permanent_node = permanent
+            .allocate_header(super::SexprecCore::new(super::SEXPTYPE::ENVSXP))
+            .unwrap();
+        let permanent_token = permanent.token(permanent_node).unwrap();
+        let permanent_lease = permanent_token.root_lease().unwrap();
+        let mut foreign = super::RArena::new();
+        let foreign_node = foreign.alloc_node(super::SEXPTYPE::INTSXP);
+        let foreign_token = foreign.node_token(foreign_node).unwrap();
+        let foreign_lease = foreign_token.root_lease().unwrap();
+        let roots = super::automatic_roots(&identity);
+        assert_eq!(roots.len(), 2);
+        assert!(roots.contains(&(arena_node, arena_token.clone())));
+        assert!(roots.contains(&(permanent_node, permanent_token.clone())));
+        assert!(!roots.contains(&(foreign_node, foreign_token.clone())));
+        drop(permanent_lease);
+        assert_eq!(
+            super::automatic_roots(&identity),
+            [(arena_node, arena_token.clone())]
+        );
+        super::SLAB_META.with(|pages| {
+            let _directory_borrow = pages.borrow();
+            drop(arena_lease);
+        });
+        assert!(super::automatic_roots(&identity).is_empty());
+        let retained_metadata = arena_token.root_lease().unwrap();
+        drop(arena);
+        assert!(!arena_token.is_live());
+        assert!(super::automatic_roots(&identity).is_empty());
+        drop(retained_metadata);
+        drop(foreign_lease);
+    }
+
+    #[test]
+    fn fresh_lend_allocations_survive_nested_collection_notifications() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let session = super::super::session::RSession::new_for_gc_tests();
+        let notifications = Arc::new(AtomicUsize::new(0));
+        let calls = notifications.clone();
+        session.with_active(|| unsafe {
+            super::super::instance::with_required_current_instance(|owner| {
+                (*owner).memory_state.gc_force_gap = 1;
+                (*owner).memory_state.gc_force_wait = 1;
+            });
+            super::super::gengc::register_gc_callback(Box::new(move |_| {
+                if calls.fetch_add(1, Ordering::SeqCst) != 0 {
+                    return;
+                }
+                let identity = super::super::instance::with_required_current_instance(|owner| {
+                    (*owner).arena.heap_identity()
+                });
+                let original = super::fresh_allocation_roots(&identity);
+                assert_eq!(original.len(), 4);
+                super::super::gengc::full_gc();
+                assert!(original.iter().all(|(_, token)| token.is_live()));
+                let nested = super::with_arena(|arena| {
+                    let node = arena.alloc_vector(super::SEXPTYPE::REALSXP, 3);
+                    arena.node_token(node).unwrap()
+                });
+                assert!(nested.is_live());
+                // The nested lend has returned, so its scope is gone while
+                // the outer allocation-return scope remains rooted.
+                super::super::gengc::full_gc();
+                assert!(!nested.is_live());
+                assert!(original.iter().all(|(_, token)| token.is_live()));
+            }));
+            let original = super::with_arena(|arena| {
+                let nodes = [
+                    arena.alloc_node(super::SEXPTYPE::INTSXP),
+                    arena.alloc_vector(super::SEXPTYPE::REALSXP, 3),
+                    arena.alloc_charsxp(b"fresh allocation"),
+                    arena.alloc_node(super::SEXPTYPE::LISTSXP),
+                ];
+                nodes.map(|node| arena.node_token(node).unwrap())
+            });
+            assert_eq!(notifications.load(Ordering::SeqCst), 1);
+            assert!(original.iter().all(super::CheckedNode::is_live));
+            super::super::gengc::full_gc();
+            assert!(original.iter().all(|token| !token.is_live()));
+        });
+    }
+
+    #[test]
+    fn fresh_lend_scope_is_removed_after_notification_panic() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        let session = super::super::session::RSession::new_for_gc_tests();
+        let panic_once = Arc::new(AtomicBool::new(true));
+        session.with_active(|| unsafe {
+            let identity = super::super::instance::with_required_current_instance(|owner| {
+                (*owner).memory_state.gc_force_gap = 1;
+                (*owner).memory_state.gc_force_wait = 1;
+                (*owner).arena.heap_identity()
+            });
+            super::super::gengc::register_gc_callback(Box::new(move |_| {
+                if panic_once.swap(false, Ordering::SeqCst) {
+                    panic!("injected fresh allocation notification panic");
+                }
+            }));
+            let mut abandoned = None;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                super::with_arena(|arena| {
+                    let node = arena.alloc_vector(super::SEXPTYPE::INTSXP, 3);
+                    abandoned = arena.node_token(node);
+                    node
+                })
+            }));
+            assert!(result.is_err());
+            assert!(super::fresh_allocation_roots(&identity).is_empty());
+            let abandoned = abandoned.unwrap();
+            assert!(abandoned.is_live());
+            super::super::gengc::full_gc();
+            assert!(!abandoned.is_live());
+        });
+    }
+
+    #[test]
+    fn fresh_lend_roots_preserve_exact_generations_and_heap_domains() {
+        let mut left = super::super::instance::RInstance::new_for_gc_tests();
+        let mut right = super::super::instance::RInstance::new_for_gc_tests();
+        let left_identity = left.arena.heap_identity();
+        let right_identity = right.arena.heap_identity();
+        unsafe {
+            super::with_arena_in(&mut left, |arena| {
+                let first = arena.alloc_node(super::SEXPTYPE::INTSXP);
+                let old = arena.node_token(first).unwrap();
+                arena.free_node(first);
+                let replacement = arena.alloc_node(super::SEXPTYPE::REALSXP);
+                assert_eq!(replacement, first);
+                let current = arena.node_token(replacement).unwrap();
+                let roots = super::fresh_allocation_roots(&left_identity);
+                assert_eq!(roots.len(), 1);
+                assert_eq!(roots[0].1, current);
+                assert!(!old.is_live());
+                assert!(super::fresh_allocation_roots(&right_identity).is_empty());
+                super::with_arena_in(&mut right, |other| {
+                    let foreign = other.alloc_node(super::SEXPTYPE::SYMSXP);
+                    let foreign_token = other.node_token(foreign).unwrap();
+                    assert_eq!(
+                        super::fresh_allocation_roots(&right_identity)[0].1,
+                        foreign_token
+                    );
+                    assert_eq!(super::fresh_allocation_roots(&left_identity)[0].1, current);
+                });
+                assert!(super::fresh_allocation_roots(&right_identity).is_empty());
+                assert_eq!(super::fresh_allocation_roots(&left_identity)[0].1, current);
+            });
+        }
+        assert!(super::fresh_allocation_roots(&left_identity).is_empty());
+        assert!(super::fresh_allocation_roots(&right_identity).is_empty());
+    }
+
+    #[test]
+    fn fresh_lend_scope_is_removed_after_constructor_unwind() {
+        let mut owner = super::super::instance::RInstance::new_for_gc_tests();
+        let identity = owner.arena.heap_identity();
+        let mut abandoned = None;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::with_arena_in(&mut owner, |arena| {
+                let node = arena.alloc_charsxp(b"abandoned constructor");
+                abandoned = arena.node_token(node);
+                assert_eq!(super::fresh_allocation_roots(&identity).len(), 1);
+                panic!("injected constructor unwind");
+            });
+        }));
+        assert!(result.is_err());
+        assert!(super::fresh_allocation_roots(&identity).is_empty());
+        unsafe {
+            super::super::gengc::full_gc_in(&mut owner);
+        }
+        assert!(!abandoned.unwrap().is_live());
+    }
+
+    #[test]
+    fn standalone_arena_allocations_do_not_accumulate_temporary_roots() {
+        let mut arena = super::RArena::new();
+        let identity = arena.heap_identity();
+        for _ in 0..3 {
+            arena.alloc_node(super::SEXPTYPE::INTSXP);
+        }
+        assert!(super::fresh_allocation_roots(&identity).is_empty());
+    }
+
     #[test]
     fn typed_scratch_storage_preserves_requested_layout_and_views_after_owner_moves() {
         for alignment in [1, 2, 4, 8] {

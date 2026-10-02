@@ -427,6 +427,24 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             mark_reachable(node);
         }
 
+        // Fresh results remain rooted through lend cleanup, warning dispatch,
+        // deferred collection and notification callbacks. The ledger snapshot
+        // owns exact allocation identities and ends its TLS borrow before trace.
+        let identity = &(*instance).heap_identity;
+        let fresh = super::memory::fresh_allocation_roots(identity)
+            .into_iter()
+            .map(|(projection, allocation)| RootValue::Checked { projection, allocation })
+            .collect();
+        MARK_WHERE.with(|w| w.set("fresh_allocations"));
+        mark_checked_root_snapshot(fresh);
+
+        let automatic = super::memory::automatic_roots(identity)
+            .into_iter()
+            .map(|(projection, allocation)| RootValue::Checked { projection, allocation })
+            .collect();
+        MARK_WHERE.with(|w| w.set("automatic_handles"));
+        mark_checked_root_snapshot(automatic);
+
         // Every native and Rust protection channel carries original checked
         // allocation identities; raw address reuse never creates a new root.
         MARK_WHERE.with(|w| w.set("legacy_protect"));
@@ -568,8 +586,8 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
 /// while still reachable (plans/001-separate-remembered-set-membership.md).
 #[derive(Default)]
 pub struct RememberedSet {
-    entries: Vec<SEXP>,
-    members: HashSet<usize>,
+    entries: Vec<(SEXP, super::heap::CheckedNode)>,
+    members: HashSet<super::heap::NodeId>,
     #[cfg(test)]
     fail_next_reservation: bool,
 }
@@ -589,16 +607,16 @@ impl RememberedSet {
     /// entries remain unchanged so the caller can reject the write.
     #[inline]
     pub(crate) fn try_add(&mut self, obj: SEXP) -> bool {
-        if obj.is_null() {
+        let Some((projection, allocation)) = super::memory::checked_projection(obj) else {
+            return true;
+        };
+        let Some(header) = super::memory::checked_snapshot(projection, &allocation) else {
+            return true;
+        };
+        if header.sxpinfo.gcgen() == Generation::Young as u8 {
             return true;
         }
-        unsafe {
-            if (*obj).sxpinfo.gcgen() == 0 {
-                return true;
-            }
-        }
-        let addr = obj as usize;
-        if self.members.contains(&addr) {
+        if self.members.contains(allocation.id()) {
             return true;
         }
         #[cfg(test)]
@@ -610,8 +628,8 @@ impl RememberedSet {
         if self.entries.try_reserve(1).is_err() || self.members.try_reserve(1).is_err() {
             return false;
         }
-        self.entries.push(obj);
-        self.members.insert(addr);
+        self.members.insert(allocation.id().clone());
+        self.entries.push((projection, allocation));
         true
     }
 
@@ -626,7 +644,9 @@ impl RememberedSet {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = SEXP> + '_ {
-        self.entries.iter().copied()
+        self.entries.iter().filter_map(|(projection, allocation)| {
+            allocation.is_live().then_some(*projection)
+        })
     }
 
     #[allow(clippy::len_without_is_empty)]
@@ -638,18 +658,43 @@ impl RememberedSet {
     /// freed addresses to `R_NilValue`) and rebuild membership so a later
     /// barrier cannot deduplicate against a stale address.
     pub fn remap(&mut self, old_to_new: &HashMap<usize, SEXP>) {
-        for entry in &mut self.entries {
-            let addr = *entry as usize;
-            if let Some(&new_ptr) = old_to_new.get(&addr) {
-                *entry = new_ptr;
+        self.entries.retain_mut(|(projection, allocation)| {
+            if !allocation.is_live() {
+                return false;
             }
-        }
-        self.members = self
-            .entries
-            .iter()
-            .filter(|entry| !entry.is_null())
-            .map(|entry| *entry as usize)
-            .collect();
+            if let Some(&replacement) = old_to_new.get(&(*projection as usize)) {
+                let Some((canonical, current)) = super::memory::checked_projection(replacement) else {
+                    return false;
+                };
+                if !allocation.same_heap(&current) {
+                    return false;
+                }
+                *projection = canonical;
+                *allocation = current;
+            }
+            true
+        });
+        self.rebuild_membership();
+    }
+
+    fn retain_live(&mut self, freed: &HashSet<usize>) {
+        self.entries.retain(|(projection, allocation)| {
+            allocation.is_live() && !freed.contains(&(*projection as usize))
+        });
+        self.rebuild_membership();
+    }
+
+    fn rebuild_membership(&mut self) {
+        self.members.clear();
+        self.members.extend(self.entries.iter().map(|(_, allocation)| allocation.id().clone()));
+    }
+
+    fn checked_roots(&self) -> Vec<RootValue> {
+        self.entries.iter().filter(|(_, allocation)| allocation.is_live())
+            .map(|(projection, allocation)| RootValue::Checked {
+                projection: *projection,
+                allocation: allocation.clone(),
+            }).collect()
     }
 }
 
@@ -718,16 +763,34 @@ pub fn write_barrier(parent: SEXP, child: SEXP) {
         return;
     }
 
-    unsafe {
-        let parent_gen = (*parent).sxpinfo.gcgen();
-        let child_gen = (*child).sxpinfo.gcgen();
-
-        if parent_gen == Generation::Old as u8 && child_gen == Generation::Young as u8 {
-            with_gc_state(|state| {
-                state.remembered_set.add(parent);
-            });
+    let Some(instance) = instance::current_instance_ptr() else { return; };
+    // Inputs are address lookups only; the checked barrier copies canonical
+    // cells after validating both allocation identities and their owner.
+    if !unsafe { write_barrier_in(instance, parent, child) } {
+        // A valid edge may have been published by an infallible setter.
+        // Invalid inputs are rejected before any reservation is attempted.
+        if checked_barrier_pair(instance, parent, child).is_some() {
+            std::alloc::handle_alloc_error(std::alloc::Layout::new::<SEXP>());
         }
     }
+}
+
+fn checked_barrier_pair(
+    instance: *mut instance::RInstance,
+    parent: SEXP,
+    child: SEXP,
+) -> Option<(SEXP, u8, u8)> {
+    let (parent, parent_id) = super::memory::checked_projection(parent)?;
+    let (child, child_id) = super::memory::checked_projection(child)?;
+    // SAFETY: only callers with a live owner invoke this local helper. The
+    // immutable identity is independent of an outstanding arena lend.
+    let identity = unsafe { &(*instance).heap_identity };
+    if !parent_id.belongs_to(identity) || !child_id.belongs_to(identity) {
+        return None;
+    }
+    let parent_header = super::memory::checked_snapshot(parent, &parent_id)?;
+    let child_header = super::memory::checked_snapshot(child, &child_id)?;
+    Some((parent, parent_header.sxpinfo.gcgen(), child_header.sxpinfo.gcgen()))
 }
 
 /// Record an old-to-young edge in the original owner's remembered set.
@@ -745,14 +808,19 @@ pub(crate) unsafe fn write_barrier_in(
     if parent.is_null() || child.is_null() {
         return true;
     }
-    unsafe {
-        if (*parent).sxpinfo.gcgen() == Generation::Old as u8
-            && (*child).sxpinfo.gcgen() == Generation::Young as u8
-        {
-            with_gc_state_in(instance, |state| state.remembered_set.try_add(parent))
-        } else {
-            true
-        }
+    // Immutable singleton edges never introduce a young allocation.
+    if super::globals::immutable_singleton_projection(parent).is_some()
+        || super::globals::immutable_singleton_projection(child).is_some()
+    {
+        return true;
+    }
+    let Some((parent, parent_gen, child_gen)) = checked_barrier_pair(instance, parent, child) else {
+        return false;
+    };
+    if parent_gen == Generation::Old as u8 && child_gen == Generation::Young as u8 {
+        with_gc_state_in(instance, |state| state.remembered_set.try_add(parent))
+    } else {
+        true
     }
 }
 
@@ -1435,9 +1503,7 @@ fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
         // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
         // about allocating HashSets and hashing every edge.)
         mark_instance_roots(instance);
-        for &obj in &(*instance).gc_state.remembered_set.entries {
-            mark_reachable(obj);
-        }
+        mark_checked_root_snapshot((*instance).gc_state.remembered_set.checked_roots());
 
         let mut freed_count = 0;
         let mut promoted_count = 0;
@@ -1636,8 +1702,7 @@ fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize
         (*instance)
             .gc_state
             .remembered_set
-            .entries
-            .retain(|parent| !parent.is_null() && !freed_set.contains(&(*parent as usize)));
+            .retain_live(&freed_set);
 
         (0, freed_count)
     }
@@ -1648,9 +1713,7 @@ fn mark_from_all_roots_in(instance: *mut instance::RInstance) {
         // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
         // about allocating HashSets and hashing every edge.)
         mark_instance_roots(instance);
-        for &obj in &(*instance).gc_state.remembered_set.entries {
-            mark_reachable(obj);
-        }
+        mark_checked_root_snapshot((*instance).gc_state.remembered_set.checked_roots());
     }
 }
 
@@ -2285,6 +2348,72 @@ mod tests {
         write_barrier(ptr::null_mut(), ptr::null_mut());
         write_barrier(ptr::null_mut(), 0x1 as SEXP);
         write_barrier(0x1 as SEXP, ptr::null_mut());
+    }
+
+    #[test]
+    fn safe_barriers_ignore_unregistered_inputs_without_reading_them() {
+        let _session = RSession::new_for_gc_tests();
+        let invalid = std::ptr::without_provenance_mut::<super::super::ffi::SexprecCore>(1);
+        let mut remembered = RememberedSet::default();
+        remembered.add(invalid);
+        remembered.add(std::ptr::dangling_mut());
+        assert_eq!(remembered.len(), 0);
+        write_barrier(invalid, invalid);
+        vector_write_barrier(invalid, 0, invalid);
+        list_write_barrier(invalid, 0, invalid);
+        attrib_write_barrier(invalid, invalid);
+        assert_eq!(with_gc_state(|state| state.remembered_set.len()), 0);
+    }
+
+    #[test]
+    fn remembered_identity_does_not_root_a_reused_generation() {
+        let mut arena = RArena::new();
+        let original = arena.alloc_node(SEXPTYPE::LISTSXP);
+        unsafe { (*original).sxpinfo.set_gcgen(Generation::Old as u8); }
+        let original_id = arena.node_token(original).unwrap();
+        let mut remembered = RememberedSet::default();
+        // Address-only inputs must recover the canonical cell's provenance.
+        remembered.add(std::ptr::without_provenance_mut(original.addr()));
+        assert_eq!(remembered.len(), 1);
+        unsafe { arena.free_node(original); }
+        let replacement = arena.alloc_node(SEXPTYPE::LISTSXP);
+        assert_eq!(replacement, original);
+        assert!(!original_id.is_live());
+        assert!(remembered.checked_roots().is_empty());
+        assert_eq!(remembered.iter().count(), 0);
+        super::super::memory::begin_gc_epoch();
+        let _trace = gc_trace::TraceScope::enter(gc_trace::TraceContext::new(
+            arena.heap_identity(),
+            super::super::memory::current_gc_epoch(),
+        ));
+        mark_checked_root_snapshot(remembered.checked_roots());
+        assert!(!super::super::memory::arena_node_marked(replacement));
+        unsafe { (*replacement).sxpinfo.set_gcgen(Generation::Old as u8); }
+        remembered.add(replacement);
+        assert_eq!(remembered.iter().count(), 1);
+        remembered.remap(&HashMap::new());
+        assert_eq!(remembered.len(), 1);
+        remembered.add(replacement);
+        assert_eq!(remembered.len(), 1);
+    }
+
+    #[test]
+    fn checked_write_barrier_rejects_foreign_allocation_domains() {
+        let mut left = instance::RInstance::new_for_gc_tests();
+        let mut right = instance::RInstance::new_for_gc_tests();
+        let parent = left.arena.alloc_node(SEXPTYPE::LISTSXP);
+        let child = left.arena.alloc_node(SEXPTYPE::INTSXP);
+        let foreign = right.arena.alloc_node(SEXPTYPE::INTSXP);
+        unsafe {
+            (*parent).sxpinfo.set_gcgen(Generation::Old as u8);
+            let owner = &raw mut left;
+            assert!(!write_barrier_in(owner, parent, foreign));
+            assert!(!write_barrier_in(owner, foreign, child));
+            assert!(!write_barrier_in(owner, parent, 1 as SEXP));
+            assert_eq!((*owner).gc_state.remembered_set.len(), 0);
+            assert!(write_barrier_in(owner, parent, child));
+            assert_eq!((*owner).gc_state.remembered_set.len(), 1);
+        }
     }
 
     #[test]

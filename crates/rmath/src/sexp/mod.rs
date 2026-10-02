@@ -34,7 +34,7 @@ pub mod object;
 pub mod output;
 pub(crate) mod payload;
 pub(crate) mod owner;
-pub mod protect;
+pub(crate) mod protect;
 pub mod session;
 pub mod symbol;
 

@@ -111,9 +111,9 @@ pub enum SexpOwner {
 ///
 /// # Pointer Equality
 ///
-/// `Sexp` implements `PartialEq`, `Eq`, and `Hash` based on pointer
-/// identity, not structural equality. Two `Sexp` values are equal if
-/// and only if they point to the same memory address.
+/// Checked handles compare allocation identities. A reclaimed slot reused by
+/// another object is a different identity, even at the same physical address.
+/// Immutable and unchecked views retain their separate pointer identity.
 ///
 /// # Intentionally Not `Copy`
 ///
@@ -140,16 +140,8 @@ pub struct Sexp<'a> {
     owner: SexpOwner,
     node: Option<crate::sexp::heap::CheckedNode>,
     pub(crate) session_owner_ptr: Option<std::ptr::NonNull<crate::sexp::instance::RInstance>>,
-    root: Option<std::rc::Rc<RootLease<'a>>>,
+    root: Option<std::rc::Rc<crate::sexp::heap::NodeRootLease>>,
     _marker: std::marker::PhantomData<&'a SexprecCore>,
-}
-
-struct RootLease<'a>(crate::sexp::protect::IndexedProtectGuard<'a>);
-
-impl std::fmt::Debug for RootLease<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("RootLease").field(&self.0.slot()).finish()
-    }
 }
 
 /// Duplicate this handle; the clone aliases the same R object, it does not
@@ -284,6 +276,7 @@ impl<'a> Sexp<'a> {
                 address: ptr as usize,
             })?;
         let mut sexp = unsafe { Sexp::try_from_raw(ptr) }?;
+        sexp.root = Some(token.root_lease().ok_or(SexpError::RootUnavailable)?);
         sexp.node = Some(token);
         sexp.owner = SexpOwner::Arena(Self::arena_owner_token(arena));
         Ok(sexp)
@@ -316,9 +309,13 @@ impl<'a> Sexp<'a> {
         )?);
         sexp.owner = SexpOwner::Session(instance as usize);
         sexp.session_owner_ptr = std::ptr::NonNull::new(instance);
-        let guard = crate::sexp::protect::try_protect_sexp_with_index(sexp.clone())
-            .map_err(|_| SexpError::RootUnavailable)?;
-        sexp.root = Some(std::rc::Rc::new(RootLease(guard)));
+        sexp.root = Some(
+            sexp.node
+                .as_ref()
+                .expect("validated owner allocation")
+                .root_lease()
+                .ok_or(SexpError::RootUnavailable)?,
+        );
         Ok(sexp)
     }
 
@@ -877,12 +874,16 @@ impl<'a> Sexp<'a> {
 // string_elt() for bounds-checked element access instead.
 
 // ---------------------------------------------------------------------------
-// PartialEq/Eq/Hash — pointer equality
+// PartialEq/Eq/Hash — allocation identity
 // ---------------------------------------------------------------------------
 
 impl PartialEq for Sexp<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.ptr == other.ptr
+        match (&self.node, &other.node) {
+            (Some(first), Some(second)) => first == second,
+            (None, None) => self.ptr == other.ptr,
+            _ => false,
+        }
     }
 }
 
@@ -890,7 +891,13 @@ impl Eq for Sexp<'_> {}
 
 impl std::hash::Hash for Sexp<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (self.ptr as usize).hash(state);
+        if let Some(node) = &self.node {
+            1_u8.hash(state);
+            node.id().hash(state);
+        } else {
+            0_u8.hash(state);
+            (self.ptr as usize).hash(state);
+        }
     }
 }
 

@@ -22,9 +22,9 @@ unsafe fn require_allocation(value: SEXP) -> SEXP {
     }
     let bounded = unsafe {
         memory::with_arena(|arena| {
-        let budget = arena.budget();
-        budget.max_bytes > 0 || budget.max_nodes > 0
-    })
+            let budget = arena.budget();
+            budget.max_bytes > 0 || budget.max_nodes > 0
+        })
     };
     if value.is_null() && bounded {
         std::panic::panic_any(super::context::RError {
@@ -56,12 +56,16 @@ unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
                 }
                 list
             });
-            return if n == 0 { list } else { require_allocation(list) };
+            return if n == 0 {
+                list
+            } else {
+                require_allocation(list)
+            };
         }
         require_allocation(memory::with_arena(|arena| {
-        arena.alloc_vector(sexptype, length)
-    }))
-}
+            arena.alloc_vector(sexptype, length)
+        }))
+    }
 }
 
 unsafe fn alloc_vector_inner(sexptype: SEXPTYPE, length: c_int) -> SEXP {
@@ -79,63 +83,47 @@ pub unsafe fn Rf_allocVector<T: Into<SEXPTYPE>>(sexptype: T, length: c_int) -> S
 pub unsafe fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe {
         require_allocation(memory::with_arena(|arena| {
-        arena.cons(car, cdr, ptr::null_mut())
-    }))
-}
+            arena.cons(car, cdr, ptr::null_mut())
+        }))
+    }
 }
 
-/// Create a tagged cons cell (LANGSXP).
+/// Allocate and finish a call graph before deferred collection can observe it.
+/// Every input becomes reachable from the fresh head within the same lend.
+unsafe fn language(items: &[SEXP]) -> SEXP {
+    unsafe {
+        require_allocation(memory::with_arena(|arena| {
+            let mut head = R_NilValue();
+            for &item in items.iter().rev() {
+                head = arena.cons(item, head, ptr::null_mut());
+                if head.is_null() {
+                    return head;
+                }
+            }
+            (*head).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            head
+        }))
+    }
+}
+
+/// Create a two-element call.
 pub unsafe fn Rf_lang2(car: SEXP, cdr: SEXP) -> SEXP {
-    unsafe {
-        let cdr_cell = Rf_cons(cdr, R_NilValue());
-        let cell = Rf_cons(car, cdr_cell);
-        if !cell.is_null() {
-            (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-        }
-        cell
-    }
+    unsafe { language(&[car, cdr]) }
 }
 
-/// Create a lang3 (3-element call).
+/// Create a three-element call.
 pub unsafe fn Rf_lang3(car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
-    unsafe {
-        let tag_cell = Rf_cons(tag, crate::sexp::globals::R_NilValue());
-        let cdr_cell = Rf_cons(cdr, tag_cell);
-        let cell = Rf_cons(car, cdr_cell);
-        if !cell.is_null() {
-            (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-        }
-        cell
-    }
+    unsafe { language(&[car, cdr, tag]) }
 }
 
-/// Create a lang4 (4-element call).
+/// Create a four-element call.
 pub unsafe fn Rf_lang4(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP) -> SEXP {
-    unsafe {
-        let e4 = Rf_cons(a4, crate::sexp::globals::R_NilValue());
-        let e3 = Rf_cons(a3, e4);
-        let e2 = Rf_cons(a2, e3);
-        let cell = Rf_cons(car, e2);
-        if !cell.is_null() {
-            (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-        }
-        cell
-    }
+    unsafe { language(&[car, a2, a3, a4]) }
 }
 
-/// Create a lang5 (5-element call).
+/// Create a five-element call.
 pub unsafe fn Rf_lang5(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
-    unsafe {
-        let e5 = Rf_cons(a5, crate::sexp::globals::R_NilValue());
-        let e4 = Rf_cons(a4, e5);
-        let e3 = Rf_cons(a3, e4);
-        let e2 = Rf_cons(a2, e3);
-        let cell = Rf_cons(car, e2);
-        if !cell.is_null() {
-            (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-        }
-        cell
-    }
+    unsafe { language(&[car, a2, a3, a4, a5]) }
 }
 /// Allocate a pairlist chain of n NILSXP elements.
 pub unsafe fn Rf_allocList(n: c_int) -> SEXP {
@@ -159,7 +147,9 @@ pub unsafe fn Rf_mkChar(s: *const c_char) -> SEXP {
 }
 
 pub unsafe fn persistent_mkChar(s: *const c_char) -> SEXP {
-    if s.is_null() { return ptr::null_mut(); }
+    if s.is_null() {
+        return ptr::null_mut();
+    }
     let bytes = unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes();
     super::instance::with_required_current_instance(|owner| unsafe {
         super::symbol::persistent_charsxp_from_bytes_in(owner, bytes)
@@ -183,107 +173,97 @@ pub unsafe fn Rf_mkString(s: *const c_char) -> SEXP {
         if s.is_null() {
             return ptr::null_mut();
         }
-        let charsxp = Rf_mkChar(s);
-        if charsxp.is_null() {
-            return ptr::null_mut();
-        }
-        let strsxp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        if strsxp.is_null() {
-            return ptr::null_mut();
-        }
-        // Store CHARSXP pointer as the first element
-        let data = (*strsxp).gengc_next_node as *mut SEXP;
-        *data = charsxp;
-        strsxp
+        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
+        require_allocation(memory::with_arena(|arena| {
+            let charsxp = arena.alloc_charsxp(bytes);
+            if charsxp.is_null() {
+                return ptr::null_mut();
+            }
+            let strsxp = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+            if !strsxp.is_null() {
+                (*strsxp).gengc_next_node.cast::<SEXP>().write(charsxp);
+            }
+            strsxp
+        }))
+    }
+}
+
+/// Allocate and initialize a scalar before allocation notifications run.
+/// The private initializer only writes its fresh payload; it cannot reenter R.
+unsafe fn scalar(sexptype: SEXPTYPE, initialize: impl FnOnce(SEXP)) -> SEXP {
+    unsafe {
+        require_allocation(memory::with_arena(|arena| {
+            let value = arena.alloc_vector(sexptype, 1);
+            if !value.is_null() {
+                initialize(value);
+            }
+            value
+        }))
     }
 }
 
 /// Create a scalar STRSXP containing NA_STRING (R's NA_character_).
-///
-/// This is the R literal `NA_character_` — a length-1 STRSXP whose sole
-/// element is the NA_STRING sentinel. `is.na()` on this returns TRUE,
-/// unlike the string `"NA"` which is a normal string value.
 pub unsafe fn Rf_mkNAString() -> SEXP {
-    unsafe {
-        let strsxp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        if strsxp.is_null() {
-            return ptr::null_mut();
-        }
-        let data = (*strsxp).gengc_next_node as *mut SEXP;
-        *data = super::globals::R_NaString();
-        strsxp
-    }
+    unsafe { Rf_ScalarString(super::globals::R_NaString()) }
 }
 
 /// Create a scalar logical value.
 pub unsafe fn Rf_ScalarLogical(x: c_int) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
-        if !s.is_null() {
-            let data = (*s).gengc_next_node as *mut c_int;
-            *data = x;
-        }
-        s
+        scalar(SEXPTYPE::LGLSXP, |value| {
+            (*value).gengc_next_node.cast::<c_int>().write(x)
+        })
     }
 }
 
 /// Create a scalar integer value.
 pub unsafe fn Rf_ScalarInteger(x: c_int) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-        if !s.is_null() {
-            let data = (*s).gengc_next_node as *mut c_int;
-            *data = x;
-        }
-        s
+        scalar(SEXPTYPE::INTSXP, |value| {
+            (*value).gengc_next_node.cast::<c_int>().write(x)
+        })
     }
 }
 
 /// Create a scalar real value.
 pub unsafe fn Rf_ScalarReal(x: c_double) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-        if !s.is_null() {
-            let data = (*s).gengc_next_node as *mut c_double;
-            *data = x;
-        }
-        s
+        scalar(SEXPTYPE::REALSXP, |value| {
+            (*value).gengc_next_node.cast::<c_double>().write(x)
+        })
     }
 }
 
 /// Create a scalar complex value.
 pub unsafe fn Rf_ScalarComplex(x: super::ffi::Rcomplex) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::CPLXSXP, 1);
-        if !s.is_null() {
-            let data = (*s).gengc_next_node as *mut super::ffi::Rcomplex;
-            *data = x;
-        }
-        s
+        scalar(SEXPTYPE::CPLXSXP, |value| {
+            (*value)
+                .gengc_next_node
+                .cast::<super::ffi::Rcomplex>()
+                .write(x)
+        })
     }
 }
 
 /// Create a scalar string from a CHARSXP.
 pub unsafe fn Rf_ScalarString(x: SEXP) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        if !s.is_null() {
-            let data = (*s).gengc_next_node as *mut SEXP;
-            *data = x;
-        }
-        s
+        scalar(SEXPTYPE::STRSXP, |value| {
+            (*value).gengc_next_node.cast::<SEXP>().write(x)
+        })
     }
 }
 
 /// Create a scalar raw value.
 pub unsafe fn Rf_ScalarRaw(x: super::ffi::Rbyte) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::RAWSXP, 1);
-        if !s.is_null() {
-            let data = (*s).gengc_next_node as *mut super::ffi::Rbyte;
-            *data = x;
-        }
-        s
+        scalar(SEXPTYPE::RAWSXP, |value| {
+            (*value)
+                .gengc_next_node
+                .cast::<super::ffi::Rbyte>()
+                .write(x)
+        })
     }
 }
 
@@ -463,6 +443,10 @@ pub unsafe fn Rf_isEnvironment(x: SEXP) -> c_int {
     }
 }
 
+#[cfg(test)]
+#[path = "constructor_lifetime_tests.rs"]
+mod constructor_lifetime_tests;
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -489,7 +473,11 @@ mod tests {
             assert_eq!(Rf_allocVector3(SEXPTYPE::NILSXP, 3), R_NilValue());
             for (kind, length) in [(SEXPTYPE::LISTSXP, i64::MAX), (SEXPTYPE::REALSXP, -1)] {
                 let error = std::panic::catch_unwind(|| Rf_allocVector3(kind, length)).unwrap_err();
-                assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
+                assert!(
+                    error
+                        .downcast_ref::<crate::sexp::context::RError>()
+                        .is_some()
+                );
             }
         });
     }
@@ -654,28 +642,44 @@ pub unsafe fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP {
 
 pub unsafe fn persistent_scalar_integer(val: c_int) -> SEXP {
     super::instance::with_required_current_instance(|owner| unsafe {
-        (*owner).persistent_nodes.allocate_integer(val, false).unwrap_or(ptr::null_mut())
+        (*owner)
+            .persistent_nodes
+            .allocate_integer(val, false)
+            .unwrap_or(ptr::null_mut())
     })
 }
 
 pub unsafe fn persistent_scalar_logical(val: c_int) -> SEXP {
     super::instance::with_required_current_instance(|owner| unsafe {
-        (*owner).persistent_nodes.allocate_integer(val, true).unwrap_or(ptr::null_mut())
+        (*owner)
+            .persistent_nodes
+            .allocate_integer(val, true)
+            .unwrap_or(ptr::null_mut())
     })
 }
 
 pub unsafe fn persistent_scalar_real(val: c_double) -> SEXP {
     super::instance::with_required_current_instance(|owner| unsafe {
-        (*owner).persistent_nodes.allocate_real(val).unwrap_or(ptr::null_mut())
+        (*owner)
+            .persistent_nodes
+            .allocate_real(val)
+            .unwrap_or(ptr::null_mut())
     })
 }
 
 pub unsafe fn persistent_mkstring(s: *const c_char) -> SEXP {
-    if s.is_null() { return ptr::null_mut(); }
+    if s.is_null() {
+        return ptr::null_mut();
+    }
     let bytes = unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes();
     super::instance::with_required_current_instance(|owner| unsafe {
         let chars = super::symbol::persistent_charsxp_from_bytes_in(owner, bytes);
-        if chars.is_null() { return chars; }
-        (*owner).persistent_nodes.allocate_string(chars).unwrap_or(ptr::null_mut())
+        if chars.is_null() {
+            return chars;
+        }
+        (*owner)
+            .persistent_nodes
+            .allocate_string(chars)
+            .unwrap_or(ptr::null_mut())
     })
 }

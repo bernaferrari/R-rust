@@ -26,6 +26,7 @@
 //! [`RSession::close`]. Once closed, evaluation and variable definition
 //! operations become no-ops or return errors.
 
+use std::cell::UnsafeCell;
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -412,55 +413,41 @@ impl Drop for RenderPlotBackendGuard {
 }
 
 struct ProtectScope {
-    /// Address of the owning instance, stored with exposed provenance —
-    /// see `protect::with_guard_owner`. Holding a Rust reference across the
-    /// scoped closure would be a protected lend that reentrant ambient
-    /// writes under the closure must pop (aliasing UB under Stacked
-    /// Borrows), so the scope keeps only the address and re-derives a raw
-    /// instance pointer per operation, exactly like
-    /// `protect::with_guard_owner`.
-    instance: usize,
-    /// Legacy protection stack depth at scope entry.
+    /// Original shared-cell projection, never reconstituted from an address.
+    instance: std::ptr::NonNull<RInstance>,
+    /// Weak availability observation; scopes do not retain closed owners.
+    liveness: super::instance::InstanceLiveness,
     legacy_depth: usize,
-    /// `RootTable::checkpoint()` generation at scope entry, not a slot count.
     root_depth: u64,
 }
 
 impl ProtectScope {
     fn new(instance: *mut RInstance) -> Self {
-        // P2: strictly-local RefCell reads; no ambient write intervenes.
+        let liveness = unsafe { super::instance::instance_liveness(instance) };
         let (legacy_depth, root_depth) = unsafe {
-            (
-                (*instance).legacy_protect.len(),
-                (*instance).root_table.checkpoint(),
-            )
+            ((*instance).legacy_protect.len(), (*instance).root_table.checkpoint())
         };
         Self {
-            instance: instance.addr(),
+            instance: std::ptr::NonNull::new(instance).expect("live protection owner"),
+            liveness,
             legacy_depth,
             root_depth,
         }
-    }
-
-    /// Re-derive the owning instance through the exposed-provenance
-    /// wildcard as a raw pointer: raw place accesses carry no borrow tag,
-    /// so reentrant ambient writes cannot invalidate them. The session owns
-    /// the instance and outlives the scope.
-    fn with_instance<R>(&self, f: impl FnOnce(*mut RInstance) -> R) -> R {
-        // SAFETY: see the struct docs; the instance outlives the scope.
-        f(unsafe { std::ptr::with_exposed_provenance_mut::<RInstance>(self.instance) })
     }
 }
 
 impl Drop for ProtectScope {
     fn drop(&mut self) {
-        self.with_instance(|inst| unsafe {
-            // P2: strictly-local RefCell access; no ambient write intervenes.
-            // Unwind BOTH protection storages to their entry depths: leaked
-            // legacy entries and leaked/forgotten root-table guards alike.
-            (*inst).legacy_protect.truncate(self.legacy_depth);
-            (*inst).root_table.restore(self.root_depth);
-        });
+        if !self.liveness.is_live() {
+            return;
+        }
+        let instance = self.instance.as_ptr();
+        // The observation is weak, and no callback occurs between this check
+        // and these short storage operations.
+        unsafe {
+            (*instance).legacy_protect.truncate(self.legacy_depth);
+            (*instance).root_table.restore(self.root_depth);
+        }
     }
 }
 
@@ -479,15 +466,11 @@ impl Drop for ProtectScope {
 pub struct RSession {
     /// Whether this session is active.
     active: bool,
-    /// The owned R instance with isolated state.
-    ///
-    /// Held as a raw pointer disowned via `Box::into_raw`: the thread-local
-    /// current-instance pointer is the stable borrowing root for this
-    /// allocation, and deriving that pointer from a `Box` field that is
-    /// later moved or reborrowed would retag the allocation out from under
-    /// it (aliasing UB under Stacked Borrows). Reclaimed with
-    /// `Box::from_raw` in `Drop`.
+    /// Native projection of the shared interior cell owned below.
     instance: *mut RInstance,
+    /// Physical allocation authority. Created before projection and never
+    /// cloned into guards; moving a session cannot retag its instance bytes.
+    _instance_owner: Rc<UnsafeCell<RInstance>>,
     /// Marker that keeps sessions thread-confined at compile time.
     _thread_confined: PhantomData<Rc<()>>,
 }
@@ -531,15 +514,16 @@ impl RSession {
 
     fn new_with_instance(instance: RInstance, attach_default_packages: bool) -> Self {
         super::context::install_r_panic_hook();
-        // Disown the box immediately: the thread-local current-instance
-        // pointer must be the stable borrowing root for this allocation.
-        let instance: *mut RInstance = Box::into_raw(Box::new(instance));
-        // Expose the session root provenance: protect guards reconstitute
-        // the owning instance from a bare address at drop time (see
-        // `protect::with_guard_owner`), and Miri validates that wildcard
-        // access against this exposed, never-invalidated root tag even
-        // after sibling re-acquisitions popped their own tags.
-        let _session_root_provenance = instance.expose_provenance();
+        let instance_owner = Rc::new(UnsafeCell::new(instance));
+        let instance = instance_owner.get();
+        // Own the allocation before installing it, so initialization unwind
+        // also detaches the thread-local runtime state through normal Drop.
+        let session = RSession {
+            active: true,
+            instance,
+            _instance_owner: instance_owner,
+            _thread_confined: PhantomData,
+        };
         unsafe {
             set_current_instance(instance);
             install_state(&mut (*instance).math_state as *mut MathState);
@@ -563,11 +547,6 @@ impl RSession {
                 crate::mainutils::errors::nmath_warning_hook,
             ));
         }
-        let session = RSession {
-            active: true,
-            instance,
-            _thread_confined: PhantomData,
-        };
         if !attach_default_packages {
             return session;
         }
@@ -639,12 +618,11 @@ impl RSession {
         session
     }
 
-    /// Immutable view of the owned instance (see the field docs for the raw
-    /// ownership discipline).
+    /// Short immutable view of the owned interior cell.
     #[inline]
     fn inst(&self) -> &RInstance {
-        // SAFETY: `instance` is the live `Box::into_raw` allocation owned by
-        // this session; aliasing follows the runtime's ambient-borrow model.
+        // SAFETY: the Rc-owned cell remains allocated for this session.
+        // Callers keep field borrows local and end them before R callbacks.
         unsafe { &*self.instance }
     }
 
@@ -653,6 +631,7 @@ impl RSession {
     }
 
     fn activate(&self) -> CurrentInstanceGuard {
+        assert!(self.active, "cannot activate a closed R session");
         // SAFETY: the session retains the owner for the guard's lifetime.
         unsafe { CurrentInstanceGuard::new(self.instance_ptr()) }
     }
@@ -1709,7 +1688,11 @@ impl RSession {
     ///
     /// After closing, [`is_active`](RSession::is_active) returns `false`
     pub fn close(&mut self) {
+        if !self.active {
+            return;
+        }
         self.active = false;
+        unsafe { super::instance::revoke_instance_availability(self.instance); }
         detach_state(&self.inst().math_state);
         detach_rng(&self.inst().rng_state);
         clear_current_instance_if(self.instance);
@@ -1734,15 +1717,15 @@ impl Default for RSession {
 
 impl Drop for RSession {
     fn drop(&mut self) {
+        // Guards and callback restoration must stop using this owner before
+        // field destruction can run provider-defined Rust destructors.
+        unsafe { super::instance::revoke_instance_availability(self.instance); }
         if self.active {
             detach_state(&self.inst().math_state);
             detach_rng(&self.inst().rng_state);
             clear_current_instance_if(self.instance);
         }
-        // Reclaim the instance disowned via `Box::into_raw` in `new`.
-        unsafe {
-            drop(Box::from_raw(self.instance));
-        }
+        // The owning Rc field releases the instance through ordinary Rust Drop.
     }
 }
 // ---------------------------------------------------------------------------
@@ -1757,6 +1740,80 @@ mod tests {
         current_instance_ptr, replace_current_instance, with_current_instance,
     };
     use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject, with_preserved_objects};
+
+    #[test]
+    fn owned_session_projection_survives_moves_and_reentry() {
+        let session = RSession::new_for_gc_tests();
+        let projection = session.instance_ptr();
+        let observer = unsafe { super::super::instance::instance_liveness(projection) };
+        let mut moved = Vec::new();
+        moved.push(session);
+        moved.reserve(32);
+        let session = moved.pop().unwrap();
+        assert_eq!(session.instance_ptr(), projection);
+        assert_eq!(Rc::strong_count(&session._instance_owner), 1);
+        session.with_protected(|| {
+            assert_eq!(current_instance_ptr(), Some(projection));
+            let value = session.global_env().unwrap();
+            assert!(value.is_environment());
+            session.gc();
+            assert!(value.is_environment());
+        });
+        drop(session);
+        assert!(!observer.is_live());
+        assert!(current_instance_ptr().is_none());
+    }
+
+    #[test]
+    fn owner_close_during_activation_never_restores_closed_state() {
+        for inject_panic in [false, true] {
+            let left = RSession::new_for_gc_tests();
+            let mut right = RSession::new_for_gc_tests();
+            let observer = unsafe { super::super::instance::instance_liveness(right.instance_ptr()) };
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                left.with_protected(|| {
+                    right.close();
+                    assert!(!observer.is_live());
+                    assert_eq!(current_instance_ptr(), Some(left.instance_ptr()));
+                    if inject_panic { panic!("injected close callback unwind"); }
+                });
+            }));
+            assert_eq!(result.is_err(), inject_panic);
+            assert!(current_instance_ptr().is_none());
+            assert!(right.owner_token().is_none());
+            assert!(catch_unwind(AssertUnwindSafe(|| right.with_active(|| ()))).is_err());
+            assert!(current_instance_ptr().is_none());
+            // Detachment is idempotent and cannot disturb another owner.
+            left.with_active(|| { right.close(); });
+            assert!(current_instance_ptr().is_none());
+        }
+    }
+
+    #[test]
+    fn weak_protection_scope_skips_destroyed_owner_even_on_unwind() {
+        for inject_panic in [false, true] {
+            let session = RSession::new_for_gc_tests();
+            let pointer = session.instance_ptr();
+            let observer = unsafe { super::super::instance::instance_liveness(pointer) };
+            let mut owner = Some(session);
+            let mut fresh = None;
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let _scope = ProtectScope::new(pointer);
+                unsafe { super::super::protect::protect_raw_pointer(R_NilValue()); }
+                // This is a user callback's teardown/reentry pattern: the
+                // scope retains a weak witness, never the physical allocation.
+                drop(owner.take());
+                fresh = Some(RSession::new_for_gc_tests());
+                unsafe { super::super::protect::protect_raw_pointer(R_NilValue()); }
+                if inject_panic { panic!("injected scope teardown unwind"); }
+            }));
+            assert_eq!(result.is_err(), inject_panic);
+            assert!(!observer.is_live());
+            assert_eq!(R_ProtectCount(), 1);
+            unsafe { super::super::protect::unprotect_count(1); }
+            drop(fresh);
+        }
+    }
 
     #[test]
     fn test_session_creation() {

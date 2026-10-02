@@ -86,7 +86,7 @@ use root_sequence::{RootSequence, SequenceLease};
 /// Error returned when a safe protection API receives a handle whose owner was
 /// not validated.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProtectError {
+pub(crate) enum ProtectError {
     UnownedHandle { api: &'static str, owner: SexpOwner },
     ForeignOwner,
     StaleSlot,
@@ -568,7 +568,7 @@ enum GuardRelease {
 /// // ... do work ...
 /// // guard automatically unprotects when it goes out of scope
 /// ```
-pub struct ProtectGuard<'a> {
+pub(crate) struct ProtectGuard<'a> {
     /// Provenance-preserving owning instance handle — see
     /// [`with_guard_owner`].
     owner: Option<GuardOwner>,
@@ -599,14 +599,14 @@ impl Drop for ProtectGuard<'_> {
 
 /// Protect an owner-scoped SEXP handle and return an RAII guard.
 ///
-/// This is the Rust API exposed to embedders. Raw pointer protection remains
-/// crate-local translation scaffolding for ported interpreter modules.
-pub fn protect_sexp<'a>(value: Sexp<'a>) -> ProtectGuard<'a> {
+/// Internal translation helper. Safe embedding handles root themselves
+/// automatically; embedding callers never manipulate this table.
+pub(crate) fn protect_sexp<'a>(value: Sexp<'a>) -> ProtectGuard<'a> {
     try_protect_sexp(value).expect("protect_sexp requires an owner-scoped Sexp")
 }
 
 /// Try to protect an owner-scoped SEXP handle.
-pub fn try_protect_sexp<'a>(value: Sexp<'a>) -> Result<ProtectGuard<'a>, ProtectError> {
+pub(crate) fn try_protect_sexp<'a>(value: Sexp<'a>) -> Result<ProtectGuard<'a>, ProtectError> {
     ensure_owner_scoped(value.clone(), "protect_sexp")?;
     let owner = session_owner_handle(&value);
     let slot = try_claim_value(&value, owner.as_ref())?;
@@ -793,7 +793,7 @@ where
 /// freed index with newer generations, so [`is_stale`](ProtectionSlot::is_stale)
 /// detects a handle whose slot was released and handed out again.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ProtectionSlot {
+pub(crate) struct ProtectionSlot {
     index: Option<usize>,
     generation: u64,
 }
@@ -841,18 +841,18 @@ impl ProtectionSlot {
     /// The generation assigned to the table entry when this slot was
     /// created. A released-then-reused slot always reports a different
     /// generation than handles captured before the release.
-    pub fn generation(self) -> u64 {
+    pub(crate) fn generation(self) -> u64 {
         self.generation
     }
 
-    pub fn is_active(self) -> bool {
+    pub(crate) fn is_active(self) -> bool {
         self.index.is_some()
     }
 
     /// Whether this handle no longer refers to the root-table entry it was
     /// created for: the entry was released and its index handed out again
     /// (or is gone entirely). Inactive slots are never stale.
-    pub fn is_stale(self) -> bool {
+    pub(crate) fn is_stale(self) -> bool {
         with_required_current_instance(|inst| protect_slot_is_stale_in(inst, self))
     }
 }
@@ -920,7 +920,7 @@ fn protect_slot_is_stale_in(inst: *mut RInstance, slot: ProtectionSlot) -> bool 
 }
 
 /// RAII guard for a replaceable root-table slot.
-pub struct IndexedProtectGuard<'a> {
+pub(crate) struct IndexedProtectGuard<'a> {
     owner: Option<GuardOwner>,
     slot: ProtectionSlot,
     value_owner: SexpOwner,
@@ -928,7 +928,7 @@ pub struct IndexedProtectGuard<'a> {
 }
 
 impl<'a> IndexedProtectGuard<'a> {
-    pub fn slot(&self) -> ProtectionSlot {
+    pub(crate) fn slot(&self) -> ProtectionSlot {
         self.slot
     }
 
@@ -955,12 +955,12 @@ impl<'a> IndexedProtectGuard<'a> {
         }
     }
 
-    pub fn reprotect_sexp(&mut self, value: Sexp<'a>) {
+    pub(crate) fn reprotect_sexp(&mut self, value: Sexp<'a>) {
         self.try_reprotect_sexp(value)
             .expect("reprotect_sexp requires an owner-scoped Sexp");
     }
 
-    pub fn try_reprotect_sexp(&mut self, value: Sexp<'a>) -> Result<(), ProtectError> {
+    pub(crate) fn try_reprotect_sexp(&mut self, value: Sexp<'a>) -> Result<(), ProtectError> {
         ensure_owner_scoped(value.clone(), "reprotect_sexp")?;
         if value.owner() != self.value_owner {
             return Err(ProtectError::ForeignOwner);
@@ -1008,7 +1008,7 @@ impl Drop for IndexedProtectGuard<'_> {
 /// let n = root.get().expect("root is live").length(); // checked read
 /// drop(root); // table slot released
 /// ```
-pub struct RootedSexp<'a> {
+pub(crate) struct RootedSexp<'a> {
     value: Sexp<'a>,
     guard: IndexedProtectGuard<'a>,
     /// Generation of the table entry captured at root creation; verified
@@ -1029,13 +1029,13 @@ impl<'a> RootedSexp<'a> {
     /// Panics if `sexp` is not owner-scoped (see [`try_root`]).
     ///
     /// [`try_root`]: RootedSexp::try_root
-    pub fn root(sexp: Sexp<'a>) -> Self {
+    pub(crate) fn root(sexp: Sexp<'a>) -> Self {
         Self::try_root(sexp).expect("RootedSexp::root requires an owner-scoped Sexp")
     }
 
     /// Like [`root`](RootedSexp::root), but reports unowned handles as
     /// [`ProtectError::UnownedHandle`] instead of panicking.
-    pub fn try_root(sexp: Sexp<'a>) -> Result<Self, ProtectError> {
+    pub(crate) fn try_root(sexp: Sexp<'a>) -> Result<Self, ProtectError> {
         ensure_owner_scoped(sexp.clone(), "RootedSexp::root")?;
         let guard = try_protect_sexp_with_index(sexp.clone())?;
         let expected_generation = guard.slot().generation();
@@ -1053,7 +1053,7 @@ impl<'a> RootedSexp<'a> {
     ///
     /// Returns `None` when the slot was released and handed out again (see
     /// [`is_stale`](RootedSexp::is_stale)), or its allocation was reclaimed.
-    pub fn get(&self) -> Option<&Sexp<'a>> {
+    pub(crate) fn get(&self) -> Option<&Sexp<'a>> {
         let stale = self.is_stale();
         if stale { None } else { Some(&self.value) }
     }
@@ -1062,13 +1062,13 @@ impl<'a> RootedSexp<'a> {
     /// entry created for it — the root was released (or displaced by an
     /// out-of-order drop) and the slot handed out again. Checked reads via
     /// [`get`](RootedSexp::get) report the mismatch as `None`.
-    pub fn is_stale(&self) -> bool {
+    pub(crate) fn is_stale(&self) -> bool {
         !self.value.is_live() || !self.guard.slot_generation_is(self.expected_generation)
     }
 
     /// The underlying protection slot, for callers that need to reprotect
     /// the rooted value in place (write barrier).
-    pub fn slot(&self) -> ProtectionSlot {
+    pub(crate) fn slot(&self) -> ProtectionSlot {
         self.guard.slot()
     }
 
@@ -1077,13 +1077,13 @@ impl<'a> RootedSexp<'a> {
     ///
     /// # Panics
     /// Panics if `value` is not owner-scoped.
-    pub fn reprotect(&mut self, value: Sexp<'a>) {
+    pub(crate) fn reprotect(&mut self, value: Sexp<'a>) {
         self.try_reprotect(value)
             .expect("RootedSexp::reprotect requires an owner-scoped Sexp");
     }
 
     /// Non-panicking variant of [`reprotect`](RootedSexp::reprotect).
-    pub fn try_reprotect(&mut self, value: Sexp<'a>) -> Result<(), ProtectError> {
+    pub(crate) fn try_reprotect(&mut self, value: Sexp<'a>) -> Result<(), ProtectError> {
         ensure_owner_scoped(value.clone(), "RootedSexp::reprotect")?;
         self.guard.try_reprotect_sexp(value.clone())?;
         self.value = value;
@@ -1092,7 +1092,7 @@ impl<'a> RootedSexp<'a> {
 
     /// Consume the root, returning the guarded handle. The protection is
     /// released; a checked session handle retains its own shared root lease.
-    pub fn unroot(self) -> Sexp<'a> {
+    pub(crate) fn unroot(self) -> Sexp<'a> {
         let Self { value, guard, .. } = self;
         drop(guard);
         value
@@ -1100,14 +1100,14 @@ impl<'a> RootedSexp<'a> {
 }
 
 /// Protect an owner-scoped SEXP handle in a replaceable root-table slot.
-pub fn protect_sexp_with_index<'a>(value: Sexp<'a>) -> IndexedProtectGuard<'a> {
+pub(crate) fn protect_sexp_with_index<'a>(value: Sexp<'a>) -> IndexedProtectGuard<'a> {
     try_protect_sexp_with_index(value)
         .expect("protect_sexp_with_index requires an owner-scoped Sexp")
 }
 
 /// Try to protect an owner-scoped SEXP handle in a replaceable root-table
 /// slot.
-pub fn try_protect_sexp_with_index<'a>(
+pub(crate) fn try_protect_sexp_with_index<'a>(
     value: Sexp<'a>,
 ) -> Result<IndexedProtectGuard<'a>, ProtectError> {
     ensure_owner_scoped(value.clone(), "protect_sexp_with_index")?;
@@ -1224,7 +1224,7 @@ fn release_preserved(s: SEXP) {
 ///
 /// Dropping the guard releases the preserved object from the owning session.
 /// Like every protection guard it is `!Send + !Sync` ([`Confined`]).
-pub struct PreserveGuard<'a> {
+pub(crate) struct PreserveGuard<'a> {
     owner: Option<GuardOwner>,
     lease: Option<SequenceLease>,
     _confined: Confined<'a>,
@@ -1244,13 +1244,13 @@ impl Drop for PreserveGuard<'_> {
 }
 
 /// Preserve an owner-scoped SEXP handle until the returned guard is dropped.
-pub fn preserve_sexp<'a>(value: Sexp<'a>) -> PreserveGuard<'a> {
+pub(crate) fn preserve_sexp<'a>(value: Sexp<'a>) -> PreserveGuard<'a> {
     try_preserve_sexp(value).expect("preserve_sexp requires an owner-scoped Sexp")
 }
 
 /// Try to preserve an owner-scoped SEXP handle until the returned guard is
 /// dropped.
-pub fn try_preserve_sexp<'a>(value: Sexp<'a>) -> Result<PreserveGuard<'a>, ProtectError> {
+pub(crate) fn try_preserve_sexp<'a>(value: Sexp<'a>) -> Result<PreserveGuard<'a>, ProtectError> {
     ensure_owner_scoped(value.clone(), "preserve_sexp")?;
     let raw = value.clone().as_raw();
     let owner = session_owner_handle(&value);
@@ -1645,9 +1645,9 @@ mod tests {
             assert_eq!(R_ProtectCount(), legacy_before);
             with_protected_objects(|legacy, roots| {
                 assert_eq!(legacy.len(), legacy_before);
-                assert_eq!(roots, &[value.clone().as_raw(); 2]);
+                assert_eq!(roots, &[value.clone().as_raw()]);
             });
-            assert_eq!(roots_before, 1);
+            assert_eq!(roots_before, 0);
             drop(guard);
             with_protected_objects(|_, roots| assert_eq!(roots.len(), roots_before));
             assert_eq!(R_ProtectCount(), legacy_before);
@@ -1664,12 +1664,12 @@ mod tests {
 
         session.with_protected(|| {
             let root = RootedSexp::root(value.clone());
-            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw(); 2]));
+            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw()]));
             let readback = root.get().expect("fresh root must resolve").clone();
             assert_eq!(readback, value);
             let sexp = root.unroot();
             assert_eq!(sexp.as_raw(), value.clone().as_raw());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 0));
         });
     }
 
@@ -1695,17 +1695,17 @@ mod tests {
             }
             // The tail drop collapses the inner slot off the table, so the
             // outer root is the only entry left.
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
             outer.reprotect(second.clone());
             with_protected_objects(|_, roots| {
-                assert_eq!(roots, &[raw_first, raw_second, raw_second])
+                assert_eq!(roots, &[raw_second])
             });
             assert_eq!(
                 outer.get().expect("outer root must resolve").clone(),
                 second
             );
             drop(outer);
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 2));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 0));
         });
     }
 
@@ -1788,20 +1788,16 @@ mod tests {
         session.with_protected(|| {
             let mut guard = protect_sexp_with_index(first.clone());
             assert!(guard.slot().is_active());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
             guard.reprotect_sexp(second.clone());
             with_protected_objects(|_, roots| {
                 assert_eq!(
                     roots,
-                    &[
-                        first.clone().as_raw(),
-                        second.clone().as_raw(),
-                        second.clone().as_raw()
-                    ]
+                    &[second.clone().as_raw()]
                 )
             });
             drop(guard);
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 2));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 0));
         });
     }
 
@@ -2067,7 +2063,7 @@ mod tests {
             assert_eq!(root.slot().generation(), generation);
             let readback = root.get().expect("rooted value must resolve after gc");
             assert_eq!(readback.clone().as_raw(), value.clone().as_raw());
-            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw(); 2]));
+            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw()]));
         });
     }
 
@@ -2090,7 +2086,7 @@ mod tests {
             // is handed out again.
             let sexp = root.unroot();
             assert_eq!(sexp.as_raw(), value.clone().as_raw());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 0));
             crate::sexp::instance::with_required_current_instance(|inst| unsafe {
                 for _ in 0..1000 {
                     (*inst).arena.alloc_node(SEXPTYPE::INTSXP);
@@ -2122,7 +2118,7 @@ mod tests {
             let first = RootedSexp::root(value.clone());
             let second = RootedSexp::root(value.clone());
             let third = RootedSexp::root(value.clone());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 4));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
             assert!(!first.is_stale());
             assert!(!second.is_stale());
             assert!(!third.is_stale());
@@ -2134,7 +2130,7 @@ mod tests {
             assert!(third.get().is_some());
             assert!(!second.is_stale());
             assert!(!third.is_stale());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 4));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
 
             // The freed index is reusable: a fresh root lands exactly there
             // with a newer generation while the survivors stay healthy.
@@ -2143,14 +2139,14 @@ mod tests {
             assert!(fresh.get().is_some());
             assert!(!second.is_stale());
             assert!(!third.is_stale());
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 4));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 3));
 
             drop(fresh);
             drop(third);
             drop(second);
             // All slots released: the tail collapse pops every entry, so the
             // live-entry depth is restored exactly.
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 0));
         });
     }
 
@@ -2165,7 +2161,7 @@ mod tests {
         session.with_protected(|| {
             let mut roots: Vec<RootedSexp<'_>> =
                 (0..16).map(|_| RootedSexp::root(value.clone())).collect();
-            with_protected_objects(|_, table| assert_eq!(table.len(), 17));
+            with_protected_objects(|_, table| assert_eq!(table.len(), 16));
             // Deterministic bit-reversal permutation: exercises a genuinely
             // shuffled drop order without pulling in an RNG dependency.
             let mut permuted: Vec<RootedSexp<'_>> = Vec::with_capacity(roots.len());
@@ -2181,7 +2177,7 @@ mod tests {
             // Drain the rest in the shuffled order too: every release either
             // reuses, tombstones, or collapses, so the depth is restored.
             while roots.pop().is_some() {}
-            with_protected_objects(|_, table| assert_eq!(table.len(), 1));
+            with_protected_objects(|_, table| assert_eq!(table.len(), 0));
         });
     }
 
@@ -2244,13 +2240,13 @@ mod tests {
             assert!(second.get().is_some());
             with_protected_objects(|legacy, roots| {
                 assert!(legacy.is_empty());
-                assert_eq!(roots.len(), 3);
+                assert_eq!(roots.len(), 2);
             });
 
             drop(second);
             assert!(!first.is_stale());
             drop(first);
-            with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
+            with_protected_objects(|_, roots| assert_eq!(roots.len(), 0));
         });
     }
 
@@ -2303,7 +2299,7 @@ mod tests {
         left.with_active(|| {
             with_protected_objects(|legacy, roots| {
                 assert!(legacy.is_empty());
-                assert_eq!(roots.len(), 3); // handle lease + explicit root + left_guard
+                assert_eq!(roots.len(), 2); // explicit root + left_guard
             })
         });
         right.with_active(|| {
@@ -2378,7 +2374,7 @@ mod tests {
         let value = left.global_env().unwrap();
         let mut root = protect_sexp_with_index(value.clone());
         left.with_active(|| {
-            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw(); 2]))
+            with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw()]))
         });
         right.with_active(|| with_protected_objects(|_, roots| assert!(roots.is_empty())));
         assert_eq!(

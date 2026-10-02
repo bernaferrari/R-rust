@@ -51,14 +51,38 @@ unsafe fn error(msg: &str) {
 unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
     unsafe {
         let len = names.len() as c_int;
-        let ans = Rf_allocVector(sexptype, len);
-        let _ans_guard = protect(ans);
-        let nm = Rf_allocVector(SEXPTYPE::STRSXP, len);
-        for i in 0..names.len() {
-            let c_str = std::ffi::CString::new(names[i]).unwrap_or_default();
-            SET_STRING_ELT(nm, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
+        let names_symbol = crate::attrib_core::R_NamesSymbol();
+        let ans = crate::sexp::memory::with_arena(|arena| {
+            let ans = arena.alloc_vector(SEXPTYPE(sexptype), len as R_xlen_t);
+            let nm = arena.alloc_vector(SEXPTYPE::STRSXP, len as R_xlen_t);
+            if ans.is_null() || nm.is_null() {
+                return ptr::null_mut();
+            }
+            for (i, name) in names.iter().enumerate() {
+                // Preserve the former CString fallback for an interior NUL.
+                let bytes = if name.as_bytes().contains(&0) {
+                    &[]
+                } else {
+                    name.as_bytes()
+                };
+                let value = arena.alloc_charsxp(bytes);
+                if value.is_null() {
+                    return ptr::null_mut();
+                }
+                (*nm).gengc_next_node.cast::<SEXP>().add(i).write(value);
+            }
+            let attribute = arena.cons(nm, R_NilValue(), names_symbol);
+            if attribute.is_null() {
+                return ptr::null_mut();
+            }
+            // Fresh vectors have no existing attributes or old-generation
+            // edges. Publish the complete owned graph before ending the lend.
+            (*ans).attrib = attribute;
+            ans
+        });
+        if ans.is_null() {
+            error("could not allocate named regression result");
         }
-        crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), nm);
         ans
     }
 }
@@ -199,3 +223,33 @@ pub unsafe fn do_isoreg(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn named_results_keep_every_name_live_across_reentrant_collection() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            crate::sexp::gengc::register_gc_callback(Box::new(|_| {
+                crate::sexp::gengc::full_gc();
+            }));
+            crate::mainutils::memory_main::R_gc_torture(1, 1, 0);
+            let result = mkNamed(SEXPTYPE::VECSXP.0, &["x", "y", "yf", "iKnots"]);
+            crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+            let result_root = protect(result);
+            let names = crate::attrib_core::getAttrib(result, crate::attrib_core::R_NamesSymbol());
+            assert!(crate::sexp::memory::checked_projection(names).is_some());
+            assert_eq!(XLENGTH(names), 4);
+            for (index, expected) in ["x", "y", "yf", "iKnots"].into_iter().enumerate() {
+                let name = STRING_ELT(names, index as R_xlen_t);
+                assert!(crate::sexp::memory::checked_projection(name).is_some());
+                assert_eq!(
+                    std::ffi::CStr::from_ptr(CHAR(name)).to_bytes(),
+                    expected.as_bytes()
+                );
+            }
+            drop(result_root);
+        });
+    }
+}

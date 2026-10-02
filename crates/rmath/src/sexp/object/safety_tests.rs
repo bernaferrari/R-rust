@@ -14,7 +14,35 @@ fn full_gc(session: &RSession) {
 }
 
 fn roots(session: &RSession) -> usize {
-    session.with_active_in(|owner| unsafe { (*owner).root_table.len() })
+    session.with_active_in(|owner| unsafe {
+        crate::sexp::memory::automatic_roots(&(*owner).heap_identity).len()
+    })
+}
+
+#[test]
+fn automatic_handles_trace_cycles_and_last_drop_releases_them() {
+    let session = RSession::new_for_gc_tests();
+    let first_ptr = alloc(&session, SEXPTYPE::VECSXP, 1);
+    let first = session.sexp(first_ptr).unwrap();
+    let second_ptr = alloc(&session, SEXPTYPE::VECSXP, 1);
+    let second = session.sexp(second_ptr).unwrap();
+    SexpMut::try_from_checked(first.clone())
+        .unwrap()
+        .try_set_vector_elt(0, second.clone())
+        .unwrap();
+    SexpMut::try_from_checked(second.clone())
+        .unwrap()
+        .try_set_vector_elt(0, first.clone())
+        .unwrap();
+    drop(second);
+    full_gc(&session);
+    let child = first.vector_elt(0).unwrap();
+    assert_eq!(child.vector_elt(0).unwrap(), first);
+    drop(child);
+    drop(first);
+    full_gc(&session);
+    assert!(session.sexp(first_ptr).is_none());
+    assert!(session.sexp(second_ptr).is_none());
 }
 
 #[test]
@@ -387,6 +415,12 @@ fn checked_handle_rejects_reclaimed_and_reused_allocation() {
     let fresh = session.sexp(reused).unwrap();
     assert!(fresh.is_live());
     assert!(!old.is_live());
+    assert_ne!(old, fresh, "reusing storage must not reuse value identity");
+    let mut identities = std::collections::HashSet::new();
+    identities.insert(old.clone());
+    assert!(!identities.contains(&fresh));
+    identities.insert(fresh.clone());
+    assert_eq!(identities.len(), 2);
     assert_eq!(
         old.try_integer_elt(0),
         Err(super::SexpError::StaleAllocation)

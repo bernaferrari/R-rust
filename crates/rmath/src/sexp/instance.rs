@@ -335,6 +335,8 @@ pub struct RInstance {
     // Only this allocation owns a strong token. It is invalidated before any
     // owned field is destroyed; weak observers never prolong its lifetime.
     liveness: Option<Rc<()>>,
+    /// Immutable ownership domain; readable while the arena is lent.
+    pub(crate) heap_identity: super::heap::HeapIdentity,
     /// Arena allocator for this instance.
     pub arena: RArena,
     /// Sole Rust ownership of persistent headers and symbol-name bytes.
@@ -576,7 +578,8 @@ impl RInstance {
         let nil = unsafe { super::globals::R_NilValue() };
 
         let arena = RArena::new();
-        let mut persistent_nodes = PersistentHeap::new(arena.heap_identity());
+        let heap_identity = arena.heap_identity();
+        let mut persistent_nodes = PersistentHeap::new(heap_identity.clone());
         let mut env_nodes = Vec::with_capacity(3);
         let empty_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, nil, nil);
         let base_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, empty_env, nil);
@@ -584,6 +587,7 @@ impl RInstance {
 
         let mut instance = RInstance {
             liveness: Some(Rc::new(())),
+            heap_identity,
             arena,
             persistent_nodes,
             global_env,
@@ -832,6 +836,15 @@ impl InstanceLiveness {
     pub(crate) fn is_live(&self) -> bool {
         self.0.strong_count() != 0
     }
+}
+
+/// Revoke all weak owner observations before terminal close or destruction.
+/// This touches only the availability field, never lending the whole owner.
+/// # Safety
+/// The pointer is a live writable owner projection; no borrow of its
+/// availability field overlaps this operation.
+pub(crate) unsafe fn revoke_instance_availability(instance: *mut RInstance) {
+    unsafe { drop((*instance).liveness.take()); }
 }
 
 /// Snapshot an owner's teardown identity without borrowing its fields during

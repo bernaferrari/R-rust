@@ -95,6 +95,17 @@ impl CheckedNode {
     pub(crate) fn id(&self) -> &NodeId {
         &self.id
     }
+    /// Root this exact allocation without borrowing its header or owner.
+    /// Cloning the returned Rc shares this single counted lease.
+    pub(crate) fn root_lease(&self) -> Option<Rc<NodeRootLease>> {
+        self.metadata.acquire_root(&self.id)?;
+        Some(Rc::new(NodeRootLease {
+            allocation: self.clone(),
+        }))
+    }
+    pub(crate) fn root_count(&self) -> usize {
+        self.metadata.root_count(&self.id)
+    }
 }
 impl PartialEq for CheckedNode {
     fn eq(&self, other: &Self) -> bool {
@@ -102,6 +113,23 @@ impl PartialEq for CheckedNode {
     }
 }
 impl Eq for CheckedNode {}
+
+/// An automatic root for one exact allocation generation. Metadata Cells
+/// remain accessible during a heap lend and after the physical page closes.
+#[derive(Debug)]
+pub(crate) struct NodeRootLease {
+    allocation: CheckedNode,
+}
+impl NodeRootLease {
+    pub(crate) fn allocation(&self) -> &CheckedNode {
+        &self.allocation
+    }
+}
+impl Drop for NodeRootLease {
+    fn drop(&mut self) {
+        self.allocation.metadata.release_root(self.allocation.id());
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HeapError {
@@ -129,6 +157,8 @@ pub(crate) struct PageMetadata {
     retired: Cell<bool>,
     live: Box<[Cell<u64>]>,
     old: Box<[Cell<u64>]>,
+    rooted: Box<[Cell<u64>]>,
+    roots: Box<[Cell<usize>]>,
     epochs: Box<[Cell<u32>]>,
     generations: Box<[Cell<u64>]>,
 }
@@ -147,6 +177,8 @@ impl PageMetadata {
             retired: Cell::new(false),
             live: cells(words, || 0)?,
             old: cells(words, || 0)?,
+            rooted: cells(words, || 0)?,
+            roots: cells(slots, || 0)?,
             epochs: cells(slots, || 0)?,
             generations: cells(slots, || 0)?,
         })
@@ -164,6 +196,12 @@ impl PageMetadata {
         }
         for word in &self.old {
             word.set(0);
+        }
+        for word in &self.rooted {
+            word.set(0);
+        }
+        for count in &self.roots {
+            count.set(0);
         }
         self.clear_epochs();
     }
@@ -207,6 +245,8 @@ impl PageMetadata {
             .ok_or(HeapError::RetiredSlot)?;
         self.generations[slot].set(generation);
         self.epochs[slot].set(0);
+        self.roots[slot].set(0);
+        self.root_bit(slot, false);
         self.bit(false, slot, true);
         self.bit(true, slot, old);
         Ok(NodeId {
@@ -233,6 +273,66 @@ impl PageMetadata {
             && self.is_live(id.slot)
             && self.generations[id.slot].get() == id.generation
     }
+    fn root_bit(&self, slot: usize, on: bool) {
+        let word = &self.rooted[slot >> 6];
+        let mask = 1_u64 << (slot & 63);
+        word.set(if on {
+            word.get() | mask
+        } else {
+            word.get() & !mask
+        });
+    }
+    fn acquire_root(&self, id: &NodeId) -> Option<()> {
+        if !self.validates(id) {
+            return None;
+        }
+        let count = self.roots[id.slot].get().checked_add(1)?;
+        self.roots[id.slot].set(count);
+        self.root_bit(id.slot, true);
+        Some(())
+    }
+    fn release_root(&self, id: &NodeId) {
+        // Forced release or owner teardown invalidates the original identity.
+        // Such a lease must never decrement a replacement allocation's roots.
+        if !self.validates(id) {
+            return;
+        }
+        let previous = self.roots[id.slot].get();
+        let count = previous
+            .checked_sub(1)
+            .expect("live automatic root has a counted metadata lease");
+        self.roots[id.slot].set(count);
+        if count == 0 {
+            self.root_bit(id.slot, false);
+        }
+    }
+    fn root_count(&self, id: &NodeId) -> usize {
+        if self.validates(id) {
+            self.roots[id.slot].get()
+        } else {
+            0
+        }
+    }
+    /// Enumerate current rooted IDs using the root bitmap, avoiding a scan
+    /// over every unrooted slot on each allocation-time collection.
+    pub(crate) fn rooted_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.rooted.iter().enumerate().flat_map(move |(index, word)| {
+            let mut bits = word.get();
+            std::iter::from_fn(move || {
+                while bits != 0 {
+                    let bit = bits.trailing_zeros() as usize;
+                    bits &= bits - 1;
+                    let slot = index * 64 + bit;
+                    if let Some(id) = self.current_id(slot) {
+                        if self.root_count(&id) > 0 {
+                            return Some(id);
+                        }
+                    }
+                }
+                None
+            })
+        })
+    }
     /// Invalidate the current identity before its storage is made reusable.
     /// Generation exhaustion permanently retires the slot instead of wrapping.
     pub(crate) fn release(&self, id: &NodeId) -> bool {
@@ -241,6 +341,8 @@ impl PageMetadata {
         }
         self.bit(false, id.slot, false);
         self.bit(true, id.slot, false);
+        self.roots[id.slot].set(0);
+        self.root_bit(id.slot, false);
         self.epochs[id.slot].set(0);
         let generation = &self.generations[id.slot];
         generation.set(generation.get().saturating_add(1));
@@ -407,6 +509,73 @@ impl<T: Copy> NodePage<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn automatic_root_clones_share_one_lease_and_last_drop_unroots() {
+        let page = NodePage::try_new(HeapIdentity::new(), 0, 130, || 0).unwrap();
+        for slot in [0, 64, 129] {
+            page.metadata.activate(slot, false).unwrap();
+        }
+        let node = page.token(64).unwrap();
+        let lease = node.root_lease().unwrap();
+        let clone = lease.clone();
+        assert_eq!(node.root_count(), 1);
+        assert_eq!(lease.allocation(), &node);
+        assert_eq!(
+            page.metadata.rooted_ids().collect::<Vec<_>>(),
+            [node.id().clone()]
+        );
+        drop(lease);
+        assert_eq!(node.root_count(), 1);
+        let independent = node.root_lease().unwrap();
+        assert_eq!(node.root_count(), 2);
+        drop(clone);
+        assert_eq!(node.root_count(), 1);
+        drop(independent);
+        assert_eq!(node.root_count(), 0);
+        assert!(page.metadata.rooted_ids().next().is_none());
+    }
+
+    #[test]
+    fn stale_automatic_root_drop_cannot_unroot_replacement_or_revive_closed_page() {
+        let page = NodePage::try_new(HeapIdentity::new(), 0, 1, || 0).unwrap();
+        let old_id = page.metadata.activate(0, false).unwrap();
+        let old = page.token(0).unwrap();
+        let old_lease = old.root_lease().unwrap();
+        assert!(page.metadata.release(&old_id));
+        page.replace_inactive(0, 7).unwrap();
+        page.metadata.activate(0, false).unwrap();
+        let replacement = page.token(0).unwrap();
+        let replacement_lease = replacement.root_lease().unwrap();
+        assert!(old.root_lease().is_none());
+        drop(old_lease);
+        assert_eq!(replacement.root_count(), 1);
+        assert_eq!(
+            page.metadata.rooted_ids().collect::<Vec<_>>(),
+            [replacement.id().clone()]
+        );
+        let metadata = page.metadata();
+        drop(page);
+        assert!(replacement.root_lease().is_none());
+        assert_eq!(replacement.root_count(), 0);
+        assert!(metadata.rooted_ids().next().is_none());
+        drop(replacement_lease);
+        assert!(metadata.rooted_ids().next().is_none());
+    }
+
+    #[test]
+    fn automatic_root_overflow_fails_without_changing_the_count() {
+        let page = NodePage::try_new(HeapIdentity::new(), 0, 1, || 0).unwrap();
+        page.metadata.activate(0, false).unwrap();
+        let node = page.token(0).unwrap();
+        let lease = node.root_lease().unwrap();
+        page.metadata.roots[0].set(usize::MAX);
+        assert!(node.root_lease().is_none());
+        assert_eq!(node.root_count(), usize::MAX);
+        assert_eq!(page.metadata.rooted[0].get(), 1);
+        page.metadata.roots[0].set(1);
+        drop(lease);
+    }
+
     #[test]
     fn page_drop_invalidates_surviving_metadata_leases() {
         let page = NodePage::try_new(HeapIdentity::new(), 0, 2, || 0).unwrap();

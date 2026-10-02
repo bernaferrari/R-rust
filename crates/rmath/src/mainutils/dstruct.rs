@@ -38,9 +38,13 @@ pub unsafe fn mkPRIMSXP(offset: c_int, eval: c_int) -> SEXP {
             SEXPTYPE::SPECIALSXP
         };
 
-        let node = with_arena(|arena| arena.alloc_node(sexptype));
-        SET_PRIMOFFSET(node, offset);
-        node
+        with_arena(|arena| {
+            let node = arena.alloc_node(sexptype);
+            if !node.is_null() {
+                SET_PRIMOFFSET(node, offset);
+            }
+            node
+        })
     }
 }
 
@@ -54,32 +58,32 @@ pub unsafe fn mkPRIMSXP(offset: c_int, eval: c_int) -> SEXP {
 /// If `rho` is R_NilValue, the global environment is used instead.
 pub unsafe fn mkCLOSXP(formals: SEXP, body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let c = with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
-
-        SET_FORMALS(c, formals);
-
         let body_type = TYPEOF(body);
-        match SEXPTYPE(body_type) {
+        let valid_body = !matches!(
+            SEXPTYPE(body_type),
             SEXPTYPE::CLOSXP
-            | SEXPTYPE::BUILTINSXP
-            | SEXPTYPE::SPECIALSXP
-            | SEXPTYPE::DOTSXP
-            | SEXPTYPE::ANYSXP => {
-                // Invalid body type - in real R this would error.
-                //  skip setting the body.
+                | SEXPTYPE::BUILTINSXP
+                | SEXPTYPE::SPECIALSXP
+                | SEXPTYPE::DOTSXP
+                | SEXPTYPE::ANYSXP
+        );
+        let env = if rho.is_null() || rho == R_NilValue() {
+            R_GlobalEnv()
+        } else {
+            rho
+        };
+        with_arena(|arena| {
+            let c = arena.alloc_node(SEXPTYPE::CLOSXP);
+            if c.is_null() {
+                return c;
             }
-            _ => {
+            SET_FORMALS(c, formals);
+            if valid_body {
                 SET_BODY(c, body);
             }
-        }
-
-        if rho.is_null() || rho == R_NilValue() {
-            SET_CLOENV(c, R_GlobalEnv());
-        } else {
-            SET_CLOENV(c, rho);
-        }
-
-        c
+            SET_CLOENV(c, env);
+            c
+        })
     }
 }
 
@@ -147,14 +151,19 @@ unsafe fn isDDName(name: SEXP) -> c_int {
 pub unsafe fn mkSYMSXP(name: SEXP, value: SEXP) -> SEXP {
     unsafe {
         let ddval = isDDName(name);
-        let c = with_arena(|arena| arena.alloc_node(SEXPTYPE::SYMSXP));
-        SET_PRINTNAME(c, name);
-        SET_SYMVALUE(c, value);
-        if ddval != 0 {
-            let gp = (*c).sxpinfo.gp() | DDVAL_MASK;
-            (*c).sxpinfo.set_gp(gp);
-        }
-        c
+        with_arena(|arena| {
+            let c = arena.alloc_node(SEXPTYPE::SYMSXP);
+            if c.is_null() {
+                return c;
+            }
+            SET_PRINTNAME(c, name);
+            SET_SYMVALUE(c, value);
+            if ddval != 0 {
+                let gp = (*c).sxpinfo.gp() | DDVAL_MASK;
+                (*c).sxpinfo.set_gp(gp);
+            }
+            c
+        })
     }
 }
 
