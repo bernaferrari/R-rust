@@ -1045,6 +1045,51 @@ fn is_special_rhs_function(name: &str) -> bool {
 // Parser
 // ---------------------------------------------------------------------------
 
+/// Completed expressions stay rooted across later parsing allocations. Until
+/// parsing succeeds, this scope owns those preserves and rolls them back on
+/// errors or unwinding. Success transfers them to the existing caller protocol.
+struct ParsedExpressionPreserves {
+    owner: *mut crate::sexp::instance::RInstance,
+    expressions: Vec<SEXP>,
+}
+
+impl ParsedExpressionPreserves {
+    fn new() -> Self {
+        Self {
+            owner: crate::sexp::instance::current_instance_ptr()
+                .expect("parsing requires an active session"),
+            expressions: Vec::new(),
+        }
+    }
+
+    fn preserve(&mut self, expression: SEXP) -> Result<(), ParseError> {
+        // Reserve the bookkeeping slot first: once R_PreserveObject succeeds,
+        // recording its ownership must not allocate or fail.
+        self.expressions.try_reserve(1)
+            .map_err(|_| ParseError("cannot reserve parsed expression roots".into()))?;
+        unsafe {
+            // SAFETY: parsing borrows the owning arena and the completed tree is live.
+            crate::sexp::protect::R_PreserveObject(expression);
+        }
+        self.expressions.push(expression);
+        Ok(())
+    }
+
+    fn transfer_to_caller(mut self) {
+        self.expressions.clear();
+    }
+}
+
+impl Drop for ParsedExpressionPreserves {
+    fn drop(&mut self) {
+        for &expression in &self.expressions {
+            // The parser's arena borrow keeps the creating session alive. Use
+            // that owner directly, even if unwinding changes ambient dispatch.
+            crate::sexp::protect::release_preserved_in(self.owner, expression);
+        }
+    }
+}
+
 pub struct Parser<'arena> {
     tokens: Vec<Token>,
     /// Half-open char span `[start, end)` of each token in `source`,
@@ -1436,6 +1481,7 @@ impl<'arena> Parser<'arena> {
     pub fn parse_top_level_expressions(&mut self) -> Result<Vec<SEXP>, ParseError> {
         begin_parsed_expr_warnings();
         let mut exprs = Vec::new();
+        let mut preserves = ParsedExpressionPreserves::new();
         loop {
             self.skip_terminators();
             if self.peek() == &Token::Eof {
@@ -1453,13 +1499,12 @@ impl<'arena> Parser<'arena> {
             // Later parse_expr allocations may GC. Keep each completed
             // top-level SEXP alive until the caller roots the vector
             // (eval_script protect guards / parse() EXPRSXP).
-            unsafe {
-                crate::sexp::protect::R_PreserveObject(expr);
-            }
+            preserves.preserve(expr)?;
             record_parsed_expr_warning_msgs(self.take_token_warnings(start, self.pos));
             self.skip_terminators();
         }
 
+        preserves.transfer_to_caller();
         Ok(exprs)
     }
 
@@ -1483,6 +1528,7 @@ impl<'arena> Parser<'arena> {
     pub fn parse_top_level_with_spans(&mut self) -> Result<Vec<(SEXP, usize, usize)>, ParseError> {
         begin_parsed_expr_warnings();
         let mut spans = Vec::new();
+        let mut preserves = ParsedExpressionPreserves::new();
         loop {
             self.skip_terminators();
             if self.peek() == &Token::Eof {
@@ -1510,12 +1556,11 @@ impl<'arena> Parser<'arena> {
                 tok_start
             };
             spans.push((expr, tok_start, tok_end));
-            unsafe {
-                crate::sexp::protect::R_PreserveObject(expr);
-            }
+            preserves.preserve(expr)?;
             record_parsed_expr_warning_msgs(self.take_token_warnings(start, self.pos));
             self.skip_terminators();
         }
+        preserves.transfer_to_caller();
         Ok(spans)
     }
 
@@ -2994,6 +3039,68 @@ mod tests {
         session
             .with_arena(|arena| parse(input, arena))
             .unwrap_or_else(|| Err(ParseError("test session is closed".to_string())))
+    }
+
+    #[test]
+    fn failed_parse_releases_completed_expression_preserves() {
+        let mut session = RSession::new_for_gc_tests();
+        let existing = session.with_arena(|arena| parse_expressions("99", arena))
+            .unwrap().unwrap();
+        let preserve_count = || unsafe {
+            // SAFETY: the fixture owns the active session; the closure only counts roots.
+            crate::sexp::protect::with_preserved_objects(|roots| roots.len())
+        };
+        let baseline = preserve_count();
+        for input in ["1; )", "1; _", "1; 2; function("] {
+            for with_spans in [false, true] {
+                for _ in 0..3 {
+                    session.with_arena(|arena| {
+                        let mut parser = Parser::new(input, arena);
+                        if with_spans {
+                            assert!(parser.parse_top_level_with_spans().is_err());
+                        } else {
+                            assert!(parser.parse_top_level_expressions().is_err());
+                        }
+                    }).unwrap();
+                    assert_eq!(preserve_count(), baseline, "{input}, spans={with_spans}");
+                    session.gc();
+                    assert_eq!(preserve_count(), baseline);
+                }
+            }
+        }
+        unsafe {
+            // SAFETY: the original successful parse still owns this preserve.
+            crate::sexp::protect::R_ReleaseObject(existing[0]);
+        }
+        assert_eq!(preserve_count(), baseline - 1);
+    }
+
+    #[test]
+    fn successful_parse_transfers_preserves_to_the_caller() {
+        let mut session = RSession::new_for_gc_tests();
+        for with_spans in [false, true] {
+            let expressions = session.with_arena(|arena| {
+                let mut parser = Parser::new("1; 2", arena);
+                if with_spans {
+                    parser.parse_top_level_with_spans().unwrap().into_iter()
+                        .map(|(expression, _, _)| expression).collect::<Vec<_>>()
+                } else {
+                    parser.parse_top_level_expressions().unwrap()
+                }
+            }).unwrap();
+            session.gc();
+            unsafe {
+                // SAFETY: successful parsing transfers live preserves to this caller.
+                crate::sexp::protect::with_preserved_objects(|roots| {
+                    assert_eq!(roots.len(), expressions.len());
+                });
+                for expression in expressions {
+                    assert_eq!(TYPEOF(expression), SEXPTYPE::REALSXP);
+                    crate::sexp::protect::R_ReleaseObject(expression);
+                }
+                crate::sexp::protect::with_preserved_objects(|roots| assert!(roots.is_empty()));
+            }
+        }
     }
 
     fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
