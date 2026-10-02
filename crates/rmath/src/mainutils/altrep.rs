@@ -18,15 +18,21 @@ use std::{
 };
 
 fn fail<T>(result: SexpResult<T>) -> T {
-    result.unwrap_or_else(|e| crate::sexp::context::r_error(&e.to_string()))
+    result.unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 fn missing(what: &'static str) -> SexpError {
     SexpError::AllocationFailed { object: what }
 }
 
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_data1(x: SEXP) -> SEXP {
     unsafe { data(x, 1) }
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_data2(x: SEXP) -> SEXP {
     unsafe { data(x, 2) }
 }
@@ -37,9 +43,15 @@ unsafe fn data(x: SEXP, i: i64) -> SEXP {
     });
     fail(metadata.try_vector_elt(i)).as_raw()
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_set_altrep_data1(x: SEXP, v: SEXP) {
     unsafe { set_data(x, v, 1) }
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_set_altrep_data2(x: SEXP, v: SEXP) {
     unsafe { set_data(x, v, 2) }
 }
@@ -51,6 +63,9 @@ unsafe fn set_data(x: SEXP, v: SEXP, i: i64) {
     let child = fail(unsafe { altrep::rooted_raw(v) });
     fail(fail(SexpMut::try_from_checked(metadata)).try_set_vector_elt(i, child));
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_class(x: SEXP) -> SEXP {
     let object = fail(unsafe { altrep::rooted_raw(x) });
     if let Some(class) = altrep::altrep_class(&object) {
@@ -67,6 +82,9 @@ pub unsafe fn R_altrep_class(x: SEXP) -> SEXP {
     }
     crate::sexp::context::r_error("object is not an ALTREP")
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_length(x: SEXP) -> R_xlen_t {
     if x.is_null() {
         0
@@ -74,6 +92,9 @@ pub unsafe fn R_altrep_length(x: SEXP) -> R_xlen_t {
         unsafe { XLENGTH(x) }
     }
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_new_altrep(class: SEXP, data1: SEXP, data2: SEXP) -> SEXP {
     let instance = crate::sexp::instance::current_instance_ptr().expect("active ALTREP owner");
     let owner = unsafe { OwnerToken::from_raw(instance) };
@@ -86,14 +107,16 @@ pub unsafe fn R_new_altrep(class: SEXP, data1: SEXP, data2: SEXP) -> SEXP {
     )
     .as_raw()
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_compact_intseq(from: R_xlen_t, to: R_xlen_t) -> SEXP {
     let from = i32::try_from(from)
         .unwrap_or_else(|_| crate::sexp::context::r_error("integer sequence origin out of range"));
     let to = i32::try_from(to).unwrap_or_else(|_| {
         crate::sexp::context::r_error("integer sequence endpoint out of range")
     });
-    let length = usize::try_from((i64::from(to) - i64::from(from)).unsigned_abs() + 1)
-        .unwrap_or_else(|_| crate::sexp::context::r_error("sequence length out of range"));
+    let length = (i64::from(to) - i64::from(from)).unsigned_abs() + 1;
     let owner = unsafe {
         OwnerToken::from_raw(crate::sexp::instance::current_instance_ptr().expect("active owner"))
     };
@@ -106,6 +129,9 @@ pub unsafe fn R_compact_intseq(from: R_xlen_t, to: R_xlen_t) -> SEXP {
     ))
     .as_raw()
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_compact_realseq(from: f64, by: f64, length: R_xlen_t) -> SEXP {
     if length < 0 || length > (1_i64 << 52) {
         crate::sexp::context::r_error("invalid sequence length");
@@ -122,18 +148,26 @@ pub unsafe fn R_compact_realseq(from: f64, by: f64, length: R_xlen_t) -> SEXP {
     ))
     .as_raw()
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_realize(x: SEXP) -> SEXP {
     unsafe {
         DATAPTR(x);
     }
     x
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_duplicate(x: SEXP, deep: c_int) -> SEXP {
     if let Some(methods) = unsafe { native_methods(x) } {
         let callback = methods.borrow().duplicate;
         if let Some(callback) = callback {
             let input = fail(unsafe { altrep::rooted_raw(x) });
-            let result = unsafe { callback(input.clone().as_raw(), deep) };
+            let result = fail(altrep::activate_for(&input, || unsafe {
+                callback(input.clone().as_raw(), deep)
+            }));
             if !result.is_null() {
                 return fail(unsafe { altrep::rooted_raw(result) }).as_raw();
             }
@@ -142,22 +176,34 @@ pub unsafe fn R_altrep_duplicate(x: SEXP, deep: c_int) -> SEXP {
     // NULL requests the regular type-specific duplication path, avoiding recursion.
     std::ptr::null_mut()
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_inspect(x: SEXP, pre: c_int, deep: c_int) -> c_int {
     let Some(methods) = (unsafe { native_methods(x) }) else {
         return 0;
     };
     let callback = methods.borrow().inspect;
-    let _root = fail(unsafe { altrep::rooted_raw(x) });
-    callback.map_or(0, |f| unsafe { f(x, pre, deep) })
+    let input = fail(unsafe { altrep::rooted_raw(x) });
+    callback.map_or(0, |f| {
+        fail(altrep::activate_for(&input, || unsafe { f(x, pre, deep) }))
+    })
 }
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn R_altrep_coerce(x: SEXP, kind: c_int) -> SEXP {
     let Some(methods) = (unsafe { native_methods(x) }) else {
         return std::ptr::null_mut();
     };
     let callback = methods.borrow().coerce;
-    let _root = fail(unsafe { altrep::rooted_raw(x) });
+    let input = fail(unsafe { altrep::rooted_raw(x) });
     callback.map_or(std::ptr::null_mut(), |f| {
-        fail(unsafe { altrep::rooted_raw(f(x, kind)) }).as_raw()
+        let result = fail(altrep::activate_for(&input, || unsafe { f(x, kind) }));
+        if result.is_null() {
+            return result;
+        }
+        fail(unsafe { altrep::rooted_raw(result) }).as_raw()
     })
 }
 
@@ -167,9 +213,11 @@ macro_rules! scalar_accessors {
             if x.is_null() {
                 return $absent;
             }
-            fail(unsafe { altrep::rooted_raw(x) })
-                .$read(i)
-                .unwrap_or($absent)
+            match fail(unsafe { altrep::rooted_raw(x) }).$read(i) {
+                Ok(value) => value,
+                Err(SexpError::OutOfBounds { .. }) => $absent,
+                Err(error) => fail(Err(error)),
+            }
         }
         pub unsafe fn $set(x: SEXP, i: R_xlen_t, value: $ty) {
             let object = fail(unsafe { altrep::rooted_raw(x) });
@@ -180,7 +228,7 @@ macro_rules! scalar_accessors {
 scalar_accessors!(
     ALTINTEGER_ELT,
     ALTINTEGER_SET_ELT,
-    integer_elt,
+    try_integer_elt,
     try_set_integer_elt,
     i32,
     crate::sexp::ffi::NA_INTEGER
@@ -188,7 +236,7 @@ scalar_accessors!(
 scalar_accessors!(
     ALTREAL_ELT,
     ALTREAL_SET_ELT,
-    real_elt,
+    try_real_elt,
     try_set_real_elt,
     f64,
     crate::sexp::ffi::NA_REAL
@@ -196,16 +244,23 @@ scalar_accessors!(
 scalar_accessors!(
     ALTLOGICAL_ELT,
     ALTLOGICAL_SET_ELT,
-    logical_elt,
+    try_logical_elt,
     try_set_logical_elt,
     i32,
     crate::sexp::ffi::NA_LOGICAL
 );
-scalar_accessors!(ALTRAW_ELT, ALTRAW_SET_ELT, raw_elt, try_set_raw_elt, u8, 0);
+scalar_accessors!(
+    ALTRAW_ELT,
+    ALTRAW_SET_ELT,
+    try_raw_elt,
+    try_set_raw_elt,
+    u8,
+    0
+);
 scalar_accessors!(
     ALTCOMPLEX_ELT,
     ALTCOMPLEX_SET_ELT,
-    complex_elt,
+    try_complex_elt,
     try_set_complex_elt,
     Rcomplex,
     Rcomplex {
@@ -213,9 +268,16 @@ scalar_accessors!(
         i: crate::sexp::ffi::NA_REAL
     }
 );
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn ALTSTRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
-    fail(fail(unsafe { altrep::rooted_raw(x) }).try_string_elt(i)).as_raw()
+    unsafe { STRING_ELT(x, i) }
 }
+
+/// # Safety
+/// Inputs must be live and rooted in the active owner. Exclude payload
+/// loans during callbacks/materialization and retain returned objects during use.
 pub unsafe fn ALTSTRING_SET_ELT(x: SEXP, i: R_xlen_t, v: SEXP) {
     let object = fail(unsafe { altrep::rooted_raw(x) });
     let value = fail(unsafe { altrep::rooted_raw(v) });
@@ -299,6 +361,9 @@ impl AltrepClass for NativeClass {
     }
 }
 unsafe fn native_methods(x: SEXP) -> Option<Rc<RefCell<NativeMethods>>> {
+    if !unsafe { altrep::has_extension_raw(x) } {
+        return None;
+    }
     let object = unsafe { altrep::rooted_raw(x) }.ok()?;
     let class = altrep::altrep_class(&object)?.as_raw();
     let current = crate::sexp::instance::current_instance_ptr()?;

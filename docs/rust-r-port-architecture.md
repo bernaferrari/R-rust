@@ -180,11 +180,37 @@ comparison reads compact elements without requesting expansion. Empty
 vectors retain their existing pointer convention. Expansion converts logical
 lengths with `usize::try_from` to reject 32-bit truncation.
 
-The separate experimental `altrep` Cargo feature stays off by default. Its
-class/payload layout, callback aliasing and GC ownership need a redesign before
-production use. Default compact integer/real sequences use ordinary traced R
-metadata and remain available without it. Nightly gates cover compact
-allocation and recovery on native and i686 Miri.
+The opt-in `altrep` feature provides rooted Rust classes for integer, real,
+logical, raw, complex, string and list vectors. A class descriptor is an
+interned symbol; data1, data2 and the private expanded cache occupy a traced
+VECSXP in an internal attribute. They never occupy a numeric buffer or hold a
+native Rust pointer. Class methods receive `AltrepContext` and return copied
+scalars or rooted elements. Tables are session-owned `Rc` values, copied out
+before invocation; callbacks can allocate, collect and reenter R without a live
+instance, arena, method-table or payload borrow. Rust-owned operation guards
+reject recursive element/expansion calls and serialization/duplication cycles,
+then reset after errors or unwinds.
+
+Expansion builds a rooted private vector and publishes only completed values.
+`OwnedBuffer` owns registered allocations through RAII; checked header leases
+allow the original and its expanded cache to share storage. Collection releases
+only the final lease and accounts the allocation once. Cache handles may
+outlive the original vector. Pointer writes and checked writes see the same
+expanded values; borrowed string access expands before returning a loan so its
+parent actually traces the child. Native pointer-element reads retain returned
+children in a sparse, traced cache. Repeat and deferred classes use traced data;
+deferred evaluation validates and roots a result before caching it. Class type
+and logical length are immutable after construction.
+
+Serialization falls back to dense values with public attributes, and ordinary
+duplication excludes internal class metadata. Native Length/Elt, duplicate,
+inspect and coerce adapters validate and root inputs and results, ending table
+borrows before calling C code. Native callbacks retain their unsafe contract;
+this is not a complete GNU C API/ABI implementation (custom serialized state,
+DLL reload, and the full optional method/optimization table remain outside this
+implementation). The feature stays opt-in; defaults are unchanged. Default
+compact sequences remain available without it. Native and strict-provenance
+Miri gates exercise allocation denial, collection, aliasing and recovery.
 
 GraphApp buffers reject size overflow before allocating or reallocating and
 align their payloads for object pointers, including platforms where C long is

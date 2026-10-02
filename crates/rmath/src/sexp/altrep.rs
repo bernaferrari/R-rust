@@ -34,6 +34,10 @@ pub enum AltrepElement<'s> {
 /// run R or collect; they return copied scalars or rooted child handles.
 pub trait AltrepClass: 'static {
     fn vector_type(&self) -> SEXPTYPE;
+    /// Built-ins may expose the completed dense cache as R's data2 field.
+    fn cache_in_data2(&self) -> bool {
+        false
+    }
     fn length(&self, context: &AltrepContext<'_>) -> SexpResult<R_xlen_t>;
     fn element<'s>(
         &self,
@@ -47,8 +51,7 @@ pub(crate) struct AltrepRuntimeState {
     classes: HashMap<usize, Rc<dyn AltrepClass>>,
     pub(crate) native:
         HashMap<usize, Rc<std::cell::RefCell<crate::mainutils::altrep::NativeMethods>>>,
-    expanding: std::collections::HashSet<usize>,
-    reading: std::collections::HashSet<(usize, i64)>,
+    active: Rc<std::cell::RefCell<std::collections::HashSet<Operation>>>,
 }
 
 /// Lifetime-bound activation and allocation for a class callback.
@@ -92,6 +95,12 @@ impl<'s> AltrepContext<'s> {
         // Root and validate both inputs before entering translated code.
         let expression = self.owner.sexp(expression.as_raw())?;
         let environment = self.owner.sexp(environment.as_raw())?;
+        if environment.typeof_() != SEXPTYPE::ENVSXP {
+            return Err(SexpError::TypeMismatch {
+                expected: "environment",
+                actual: environment.typeof_(),
+            });
+        }
         let result = self
             .active(|| unsafe { crate::eval::eval::eval(expression.clone(), environment.clone()) });
         self.owner.sexp(
@@ -226,7 +235,7 @@ impl<'s> AltrepBuilder<'s> {
             data2,
         };
 
-        let metadata = allocate(owner, SEXPTYPE::VECSXP, 3)?;
+        let metadata = allocate(owner, SEXPTYPE::VECSXP, 5)?;
         let mut metadata = SexpMut::try_from_checked(metadata)?;
         metadata.try_set_vector_elt(0, self.class.descriptor)?;
         metadata.try_set_vector_elt(1, context.data1.clone())?;
@@ -312,7 +321,7 @@ pub(crate) fn metadata<'s>(object: &Sexp<'s>) -> Option<Sexp<'s>> {
         return None;
     }
     let data = cell.car()?;
-    (data.typeof_() == SEXPTYPE::VECSXP && data.len() == 3).then_some(data)
+    (data.typeof_() == SEXPTYPE::VECSXP && data.len() == 5).then_some(data)
 }
 
 fn context<'s>(object: &Sexp<'s>) -> SexpResult<(AltrepContext<'s>, Rc<dyn AltrepClass>)> {
@@ -332,6 +341,11 @@ fn context<'s>(object: &Sexp<'s>) -> SexpResult<(AltrepContext<'s>, Rc<dyn Altre
         },
         class,
     ))
+}
+
+pub(crate) fn activate_for<T>(object: &Sexp<'_>, callback: impl FnOnce() -> T) -> SexpResult<T> {
+    let owner = owner(object)?;
+    Ok(unsafe { with_instance_active(owner.as_ptr(), callback) })
 }
 
 pub fn is_altrep(object: &Sexp<'_>) -> bool {
@@ -391,39 +405,63 @@ fn validate_element<'s>(
         scalar => scalar,
     })
 }
-struct Reading<'s> {
-    owner: OwnerToken<'s>,
-    key: (usize, i64),
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Operation {
+    Read(usize, i64),
+    Expand(usize),
+    Serialize(usize),
+    Duplicate(usize),
 }
-impl Drop for Reading<'_> {
+
+/// Cleanup owns a Rust state lease, independent of any raw interpreter pointer.
+/// Its destructor stays valid through errors, unwinding and owner teardown.
+pub(crate) struct OperationGuard {
+    active: Rc<std::cell::RefCell<std::collections::HashSet<Operation>>>,
+    operation: Operation,
+}
+impl Drop for OperationGuard {
     fn drop(&mut self) {
-        unsafe {
-            (*self.owner.as_ptr())
-                .altrep_state
-                .reading
-                .remove(&self.key);
-        }
+        self.active.borrow_mut().remove(&self.operation);
     }
 }
+fn enter_operation(owner: OwnerToken<'_>, operation: Operation) -> SexpResult<OperationGuard> {
+    // Clone the Rust state lease and end field access before reentry.
+    let active = unsafe { (*owner.as_ptr()).altrep_state.active.clone() };
+    {
+        let mut state = active.borrow_mut();
+        state
+            .try_reserve(1)
+            .map_err(|_| failure("callback state allocation"))?;
+        if !state.insert(operation) {
+            return Err(failure("recursive ALTREP operation"));
+        }
+    }
+    Ok(OperationGuard { active, operation })
+}
+
+pub(crate) fn serialization_guard(object: &Sexp<'_>) -> SexpResult<OperationGuard> {
+    enter_operation(
+        owner(object)?,
+        Operation::Serialize(object.clone().as_raw() as usize),
+    )
+}
+
+pub(crate) fn duplication_guard(object: &Sexp<'_>) -> SexpResult<OperationGuard> {
+    enter_operation(
+        owner(object)?,
+        Operation::Duplicate(object.clone().as_raw() as usize),
+    )
+}
+
 fn invoke_element<'s>(
     context: &AltrepContext<'s>,
     class: &dyn AltrepClass,
     index: i64,
 ) -> SexpResult<AltrepElement<'s>> {
-    let key = (context.object.clone().as_raw() as usize, index);
-    unsafe {
-        let reading = &mut (*context.owner.as_ptr()).altrep_state.reading;
-        reading
-            .try_reserve(1)
-            .map_err(|_| failure("element callback state allocation"))?;
-        if !reading.insert(key) {
-            return Err(failure("recursive element callback"));
-        }
-    }
-    let _reading = Reading {
-        owner: context.owner,
-        key,
-    };
+    let _operation = enter_operation(
+        context.owner,
+        Operation::Read(context.object.clone().as_raw() as usize, index),
+    )?;
     context.active(|| class.element(context, index))
 }
 pub(crate) fn lazy_element<'s>(
@@ -435,14 +473,84 @@ pub(crate) fn lazy_element<'s>(
     }
     Some(altrep_elt(object, index))
 }
+/// Retain pointer-valued native reads in the parent before returning a raw
+/// SEXP. Safe Rust readers already return independent leases. The sparse
+/// cache keeps native STRING_ELT/VECTOR_ELT results traced while the vector
+/// stays lazy, without allocating a full-length pointer array.
+fn retain_native_child(object: &Sexp<'_>, index: i64, child: &Sexp<'_>) -> SexpResult<()> {
+    let owner = owner(object)?;
+    let child = owner.sexp(child.clone().as_raw())?;
+    let data = metadata(object).ok_or(failure("missing instance metadata"))?;
+    let mut cell = data.try_vector_elt(4)?;
+    let mut seen = std::collections::HashSet::new();
+    while cell.typeof_() != SEXPTYPE::NILSXP {
+        seen.try_reserve(1)
+            .map_err(|_| failure("native element cache walk"))?;
+        if !seen.insert(cell.clone().as_raw() as usize) {
+            return Err(failure("cyclic native element cache"));
+        }
+        let entry = cell.try_car()?;
+        if entry.try_vector_elt(0)?.try_real_elt(0)? == index as f64 {
+            return SexpMut::try_from_checked(entry)?.try_set_vector_elt(1, child);
+        }
+        cell = cell.try_cdr()?;
+    }
+    let key = allocate(owner, SEXPTYPE::REALSXP, 1)?;
+    let mut key = SexpMut::try_from_checked(key)?;
+    key.try_set_real_elt(0, index as f64)?;
+    let entry = allocate(owner, SEXPTYPE::VECSXP, 2)?;
+    let mut entry = SexpMut::try_from_checked(entry)?;
+    entry.try_set_vector_elt(0, key.freeze())?;
+    entry.try_set_vector_elt(1, child)?;
+    let entry = entry.freeze();
+    let tail = data.try_vector_elt(4)?;
+    let cell = unsafe {
+        with_instance_active(owner.as_ptr(), || {
+            super::memory::with_arena(|a| {
+                a.cons(
+                    entry.clone().as_raw(),
+                    tail.clone().as_raw(),
+                    super::globals::R_NilValue(),
+                )
+            })
+        })
+    };
+    let cell = owner.sexp(cell)?;
+    SexpMut::try_from_checked(data)?.try_set_vector_elt(4, cell)
+}
+
+/// Probe copied headers without installing roots or borrowing an owner. Raw
+/// callers already retain this graph, and the probe cannot allocate or collect.
+/// # Safety
+/// `raw` and its reachable metadata must be live throughout this nonallocating read.
+pub(crate) unsafe fn has_extension_raw(raw: SEXP) -> bool {
+    let Some(view) = (unsafe { Sexp::from_raw(raw) }) else {
+        return false;
+    };
+    metadata(&view).is_some()
+}
+
 /// # Safety
 /// Raw translated callers retain the active owner and exclude payload loans.
 pub(crate) unsafe fn lazy_raw<'s>(
     raw: SEXP,
     index: R_xlen_t,
 ) -> Option<SexpResult<AltrepElement<'s>>> {
-    let object = unsafe { rooted_raw(raw) }.ok()?;
-    lazy_element(&object, index)
+    let view = unsafe { Sexp::from_raw(raw) }?;
+    if !view.header().payload.is_null() || metadata(&view).is_none() {
+        return None;
+    }
+    let object = match unsafe { rooted_raw(raw) } {
+        Ok(object) => object,
+        Err(error) => return Some(Err(error)),
+    };
+    let value = lazy_element(&object, index)?;
+    Some(value.and_then(|value| {
+        if let AltrepElement::String(child) | AltrepElement::List(child) = &value {
+            retain_native_child(&object, index, child)?;
+        }
+        Ok(value)
+    }))
 }
 
 fn dense_element<'s>(object: &Sexp<'s>, i: R_xlen_t) -> SexpResult<AltrepElement<'s>> {
@@ -477,41 +585,18 @@ fn write_element<'s>(
     }
 }
 
-struct Expansion<'s> {
-    owner: OwnerToken<'s>,
-    key: usize,
-}
-impl Drop for Expansion<'_> {
-    fn drop(&mut self) {
-        unsafe {
-            (*self.owner.as_ptr())
-                .altrep_state
-                .expanding
-                .remove(&self.key);
-        }
-    }
-}
-/// Transactional expansion. Failure leaves the original lazy values intact.
+/// Expansion publishes a complete payload or leaves the lazy representation
+/// available for retry. Callback side effects are not rolled back on failure.
 /// Collection can trace the private output and metadata during each callback.
 pub fn force_materialization(object: &Sexp<'_>) -> SexpResult<()> {
     if metadata(object).is_none() || is_materialized(object) {
         return Ok(());
     }
     let (context, class) = context(object)?;
-    let key = object.clone().as_raw() as usize;
-    unsafe {
-        let active = &mut (*context.owner.as_ptr()).altrep_state.expanding;
-        active
-            .try_reserve(1)
-            .map_err(|_| failure("ALTREP expansion state"))?;
-        if !active.insert(key) {
-            return Err(failure("recursive ALTREP materialization"));
-        }
-    }
-    let _expansion = Expansion {
-        owner: context.owner,
-        key,
-    };
+    let _operation = enter_operation(
+        context.owner,
+        Operation::Expand(object.clone().as_raw() as usize),
+    )?;
     if super::memory::is_arena_lent(context.owner.as_ptr()) {
         return Err(failure("release the arena lend before materialization"));
     }
@@ -525,20 +610,28 @@ pub fn force_materialization(object: &Sexp<'_>) -> SexpResult<()> {
         )?;
     }
     let output = output.freeze();
-    // No callback or payload loan survives. Both vectors have the same owner,
-    // type and length. Ownership of the tracked buffer moves to the target;
-    // the scratch node becomes an empty vector and cannot free that buffer.
+    // The private vector is complete and rooted. Install its cache root before
+    // sharing storage, so collection never sees an incomplete pointer payload.
+    let data = metadata(object).ok_or(failure("missing instance metadata"))?;
+    let mut data = SexpMut::try_from_checked(data)?;
+    data.try_set_vector_elt(3, output.clone())?;
+    if class.cache_in_data2() {
+        data.try_set_vector_elt(2, output.clone())?;
+    }
+    // No callback or payload loan survives. The arena installs a checked
+    // header lease rather than transferring a naked pointer or cloning bytes.
     unsafe {
-        let target = object.clone().as_raw();
-        let source = output.clone().as_raw();
-        if !super::gengc::write_barrier_in(context.owner.as_ptr(), target, source) {
+        if !super::gengc::write_barrier_in(
+            context.owner.as_ptr(),
+            object.clone().as_raw(),
+            output.clone().as_raw(),
+        ) {
             return Err(failure("ALTREP payload barrier"));
         }
-        (*target).gengc_next_node = (*source).gengc_next_node;
-        (*target).set_vecsxp_truelength(object.len());
-        (*source).gengc_next_node = std::ptr::null_mut();
-        (*source).set_vecsxp_length(0);
-        (*source).set_vecsxp_truelength(0);
+        with_instance_active(context.owner.as_ptr(), || {
+            super::memory::with_arena(|arena| arena.share_vector_payload(&output, object))
+        })?;
+        (*object.clone().as_raw()).set_vecsxp_truelength(object.len());
     }
     Ok(())
 }
@@ -548,6 +641,9 @@ pub fn force_materialization(object: &Sexp<'_>) -> SexpResult<()> {
 /// `raw` must name a live node in the active session; no payload loan may overlap.
 pub(crate) unsafe fn rooted_raw<'a>(raw: SEXP) -> SexpResult<Sexp<'a>> {
     let current = super::instance::current_instance_ptr().ok_or(SexpError::OwnerNotActive)?;
+    if super::memory::is_arena_lent(current) {
+        return Err(failure("release the arena lend before class dispatch"));
+    }
     // This unsafe boundary relies on the caller retaining the owner lifetime.
     unsafe { OwnerToken::from_raw(current) }.sexp(raw)
 }
@@ -556,10 +652,10 @@ pub(crate) unsafe fn rooted_raw<'a>(raw: SEXP) -> SexpResult<Sexp<'a>> {
 /// # Safety
 /// Same owner and loan requirements as `rooted_raw`.
 pub(crate) unsafe fn materialize_raw(raw: SEXP) -> SexpResult<bool> {
-    let object = unsafe { rooted_raw(raw) }?;
-    if metadata(&object).is_none() {
+    if !unsafe { has_extension_raw(raw) } {
         return Ok(false);
     }
+    let object = unsafe { rooted_raw(raw) }?;
     force_materialization(&object)?;
     Ok(true)
 }
@@ -597,188 +693,9 @@ pub fn materialized_copy<'s>(object: &Sexp<'s>) -> SexpResult<Sexp<'s>> {
     Ok(output)
 }
 
-pub(crate) fn builtin_sequence<'s>(
-    owner: OwnerToken<'s>,
-    kind: SEXPTYPE,
-) -> SexpResult<AltrepClassHandle<'s>> {
-    let name = match kind {
-        SEXPTYPE::INTSXP => ".builtin.compact_intseq",
-        SEXPTYPE::REALSXP => ".builtin.compact_realseq",
-        _ => return Err(failure("sequence vector type")),
-    };
-    let symbol = CString::new(format!(".AltrepClass.{name}")).unwrap();
-    let raw = unsafe {
-        with_instance_active(owner.as_ptr(), || {
-            super::symbol::Rf_install(symbol.as_ptr())
-        })
-    };
-    if lookup(owner, raw).is_some() {
-        return class_handle(owner, raw);
-    }
-    register(owner, name, Rc::new(SequenceClass(kind)))
-}
-
-pub(crate) fn new_sequence<'s>(
-    owner: OwnerToken<'s>,
-    kind: SEXPTYPE,
-    origin: f64,
-    step: f64,
-    length: i64,
-) -> SexpResult<Sexp<'s>> {
-    let class = builtin_sequence(owner, kind)?;
-    let state = allocate(owner, SEXPTYPE::REALSXP, 3)?;
-    let mut state = SexpMut::try_from_checked(state)?;
-    state.try_set_real_elt(0, length as f64)?;
-    state.try_set_real_elt(1, origin)?;
-    state.try_set_real_elt(2, step)?;
-    AltrepBuilder::new(class).data1(state.freeze()).build()
-}
-
-/// Formula in data1: GNU's `[length, origin, step]` real triple.
-/// Both classes retain that state after expanding, independently of values.
-pub struct SequenceClass(pub SEXPTYPE);
-impl AltrepClass for SequenceClass {
-    fn vector_type(&self) -> SEXPTYPE {
-        self.0
-    }
-    fn length(&self, c: &AltrepContext<'_>) -> SexpResult<i64> {
-        let state = c.data1();
-        if state.len() != 3 {
-            return Err(failure("sequence state must contain three scalars"));
-        }
-        let length = state.try_real_elt(0)?;
-        if !length.is_finite()
-            || length < 0.0
-            || length > (1_u64 << 52) as f64
-            || length.fract() != 0.0
-        {
-            return Err(failure("invalid sequence length"));
-        }
-        if self.0 == SEXPTYPE::INTSXP {
-            let first = state.try_real_elt(1)?;
-            let step = state.try_real_elt(2)?;
-            let last = first + (length - 1.0).max(0.0) * step;
-            if [first, step, last].iter().any(|v| {
-                !v.is_finite() || v.fract() != 0.0 || *v < i32::MIN as f64 || *v > i32::MAX as f64
-            }) {
-                return Err(failure("integer sequence out of range"));
-            }
-        }
-        Ok(length as i64)
-    }
-    fn element<'s>(&self, c: &AltrepContext<'s>, i: i64) -> SexpResult<AltrepElement<'s>> {
-        let state = c.data1();
-        let value = state.try_real_elt(1)? + i as f64 * state.try_real_elt(2)?;
-        match self.0 {
-            SEXPTYPE::INTSXP
-                if value.is_finite()
-                    && value.fract() == 0.0
-                    && value >= i32::MIN as f64
-                    && value <= i32::MAX as f64 =>
-            {
-                Ok(AltrepElement::Integer(value as i32))
-            }
-            SEXPTYPE::REALSXP => Ok(AltrepElement::Real(value)),
-            _ => Err(failure("invalid sequence element")),
-        }
-    }
-}
-
-/// Deferred evaluation with a traced result cache. data1 is a list containing
-/// `[expression, environment, length]`; data2 starts at NULL. Evaluation failure
-/// leaves the cache empty, so retry is possible. Cached results must have the
-/// declared vector type and length.
-pub struct DeferredClass(pub SEXPTYPE);
-impl AltrepClass for DeferredClass {
-    fn vector_type(&self) -> SEXPTYPE {
-        self.0
-    }
-    fn length(&self, c: &AltrepContext<'_>) -> SexpResult<i64> {
-        let len = c.data1().try_vector_elt(2)?.try_real_elt(0)?;
-        if !len.is_finite() || len < 0.0 || len > (1_u64 << 52) as f64 || len.fract() != 0.0 {
-            return Err(failure("invalid deferred vector length"));
-        }
-        Ok(len as i64)
-    }
-    fn element<'s>(&self, c: &AltrepContext<'s>, i: i64) -> SexpResult<AltrepElement<'s>> {
-        let cached = c.data2();
-        let cached = if cached.typeof_() == SEXPTYPE::NILSXP {
-            let data = c.data1();
-            let result = c.eval(data.try_vector_elt(0)?, data.try_vector_elt(1)?)?;
-            if result.typeof_() != self.0 || result.len() != c.object().len() {
-                return Err(failure("deferred result type or length mismatch"));
-            }
-            c.set_data2(result.clone())?;
-            result
-        } else {
-            cached
-        };
-        if cached.typeof_() != self.0 || cached.len() != c.object().len() {
-            return Err(failure("invalid deferred result cache"));
-        }
-        dense_element(&cached, i)
-    }
-}
-
-impl RSession {
-    /// Safe built-in compact vectors using the production formula representation.
-    pub fn compact_integer_sequence(
-        &self,
-        origin: i32,
-        step: i32,
-        length: usize,
-    ) -> SexpResult<Sexp<'_>> {
-        if length > 0 {
-            let last = i128::from(origin) + (length - 1) as i128 * i128::from(step);
-            if last < i32::MIN as i128 || last > i32::MAX as i128 {
-                return Err(failure("integer sequence out of range"));
-            }
-        }
-        let owner = self.owner_token().ok_or(SexpError::OwnerNotActive)?;
-        let raw = unsafe {
-            with_instance_active(owner.as_ptr(), || {
-                super::altseq::compact_int_seq(origin, step, length)
-            })
-        };
-        owner.sexp(raw)
-    }
-    pub fn compact_real_sequence(
-        &self,
-        origin: f64,
-        step: f64,
-        length: usize,
-    ) -> SexpResult<Sexp<'_>> {
-        let owner = self.owner_token().ok_or(SexpError::OwnerNotActive)?;
-        let raw = unsafe {
-            with_instance_active(owner.as_ptr(), || {
-                super::altseq::compact_real_seq(origin, step, length)
-            })
-        };
-        owner.sexp(raw)
-    }
-}
-
-/// Rust built-in repeated atomic or list elements. Data1 is the scalar source,
-/// data2 an integer/real length. GC traces both independently of the payload.
-pub struct RepeatClass(pub SEXPTYPE);
-impl AltrepClass for RepeatClass {
-    fn vector_type(&self) -> SEXPTYPE {
-        self.0
-    }
-    fn length(&self, c: &AltrepContext<'_>) -> SexpResult<R_xlen_t> {
-        if c.data1.len() != 1 || c.data1.typeof_() != self.0 {
-            return Err(failure("ALTREP repeat scalar"));
-        }
-        let len = c.data2.try_real_elt(0)?;
-        if !len.is_finite() || len < 0.0 || len.fract() != 0.0 || len >= i64::MAX as f64 {
-            return Err(failure("ALTREP repeat length"));
-        }
-        Ok(len as i64)
-    }
-    fn element<'s>(&self, c: &AltrepContext<'s>, _: R_xlen_t) -> SexpResult<AltrepElement<'s>> {
-        dense_element(&c.data1, 0)
-    }
-}
+mod builtins;
+pub use builtins::{DeferredClass, RepeatClass, SequenceClass};
+pub(crate) use builtins::{builtin_sequence, new_sequence};
 
 #[cfg(test)]
 mod tests;

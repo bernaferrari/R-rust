@@ -1236,8 +1236,9 @@ pub unsafe fn WriteItemInternal(
         let _item_guard = protect(s);
         #[cfg(feature = "altrep")]
         {
-            let object = crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| error(&e.to_string()));
-            if crate::sexp::altrep::metadata(&object).is_some() {
+            if crate::sexp::altrep::has_extension_raw(s) {
+                let object = crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| error(&e.to_string()));
+                let _operation = crate::sexp::altrep::serialization_guard(&object).unwrap_or_else(|e| error(&e.to_string()));
                 let copy = crate::sexp::altrep::materialized_copy(&object).unwrap_or_else(|e| error(&e.to_string()));
                 WriteItemInternal(copy.clone().as_raw(), ref_table, writer);
                 return;

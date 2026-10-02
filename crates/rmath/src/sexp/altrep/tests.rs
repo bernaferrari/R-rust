@@ -351,3 +351,316 @@ fn zero_negative_and_invalid_scalar_lengths_are_handled() {
     force_materialization(&empty).unwrap();
     assert!(altrep_elt(&empty, 0).is_err());
 }
+
+#[test]
+fn expanded_cache_outlives_original_and_releases_final_buffer_lease() {
+    let s = RSession::new_for_gc_tests();
+    let token = s.owner_token().unwrap();
+    let before;
+    let cache;
+    let payload;
+    {
+        let raw =
+            s.with_active(|| unsafe { crate::mainutils::altrep::R_compact_realseq(4.0, 0.5, 8) });
+        let x = s.sexp(raw).unwrap();
+        before = unsafe { (*token.as_ptr()).arena.total_bytes_allocated() };
+        force_materialization(&x).unwrap();
+        cache = s.with_active(|| unsafe {
+            s.sexp(crate::mainutils::altrep::R_altrep_data2(raw))
+                .unwrap()
+        });
+        assert_eq!(cache.len(), 8);
+        assert_eq!(cache.header().payload, x.header().payload);
+        payload = x.header().payload;
+        let mut cache_mut = SexpMut::try_from_checked(cache.clone()).unwrap();
+        cache_mut.try_set_real_elt(1, 99.0).unwrap();
+        assert_eq!(x.real_elt(1), Some(99.0));
+        let after = unsafe { (*token.as_ptr()).arena.total_bytes_allocated() };
+        assert_eq!(
+            after - before,
+            std::mem::size_of::<crate::sexp::ffi::SexprecCore>() + 8 * std::mem::size_of::<f64>()
+        );
+    }
+    s.with_active(|| token.full_gc().unwrap());
+    assert_eq!(cache.real_elt(1), Some(99.0));
+    assert_eq!(cache.real_elt(7), Some(7.5));
+    // The original header is gone; the independently rooted cache is sole owner.
+    drop(cache);
+    s.with_active(|| token.full_gc().unwrap());
+    assert!(!s.with_active(|| unsafe {
+        crate::sexp::memory::with_arena(|a| a.tracks_altrep_test_buffer(payload as *mut u8))
+    }));
+}
+#[test]
+fn replacing_attributes_keeps_payload_owned_after_cache_is_swept() {
+    let s = RSession::new_for_gc_tests();
+    let x = numbers(&s, Rc::new(Cell::new(0)), true);
+    s.with_active(|| unsafe { SET_ATTRIB(x.clone().as_raw(), crate::sexp::globals::R_NilValue()) });
+    assert!(!is_altrep(&x));
+    s.gc();
+    assert_eq!(x.real_elt(4), Some(12.0));
+    let mut x_mut = SexpMut::try_from_checked(x.clone()).unwrap();
+    x_mut.try_set_real_elt(0, 5.0).unwrap();
+    assert_eq!(x.real_elt(0), Some(5.0));
+}
+#[test]
+fn deferred_evaluation_caches_a_rooted_result() {
+    let s = RSession::new_for_gc_tests();
+    let result = real(&s, 32.0);
+    let data = vector(&s, SEXPTYPE::VECSXP, 3);
+    let mut data = SexpMut::try_from_checked(data).unwrap();
+    data.try_set_vector_elt(0, result).unwrap();
+    data.try_set_vector_elt(1, s.global_env().unwrap()).unwrap();
+    data.try_set_vector_elt(2, real(&s, 1.0)).unwrap();
+    let class = s
+        .register_altrep_class("deferred", DeferredClass(SEXPTYPE::REALSXP))
+        .unwrap();
+    let x = AltrepBuilder::new(class)
+        .data1(data.freeze())
+        .build()
+        .unwrap();
+    assert_eq!(x.real_elt(0), Some(32.0));
+    let cache = metadata(&x).unwrap().vector_elt(2).unwrap();
+    assert_eq!(cache.real_elt(0), Some(32.0));
+    s.gc();
+    assert_eq!(x.real_elt(0), Some(32.0));
+    force_materialization(&x).unwrap();
+    s.gc();
+    assert_eq!(x.real_elt(0), Some(32.0));
+}
+
+#[cfg(target_pointer_width = "32")]
+#[test]
+fn long_integer_sequence_rejects_unrepresentable_expansion_without_truncation() {
+    let s = RSession::new_for_gc_tests();
+    let raw = s.with_active(|| unsafe {
+        crate::mainutils::altrep::R_compact_intseq(i32::MIN as i64, i32::MAX as i64)
+    });
+    let x = s.sexp(raw).unwrap();
+    assert_eq!(x.len(), 1_i64 << 32);
+    assert_eq!(x.integer_elt((1_i64 << 32) - 1), Some(i32::MAX));
+    assert!(force_materialization(&x).is_err());
+    assert!(x.header().payload.is_null());
+    assert_eq!(x.integer_elt((1_i64 << 32) - 1), Some(i32::MAX));
+}
+
+#[test]
+fn native_pointer_elements_are_retained_without_bulk_expansion() {
+    let s = RSession::new_for_gc_tests();
+    let class = s
+        .register_altrep_class("native-fresh", FreshStrings)
+        .unwrap();
+    let x = AltrepBuilder::new(class).build().unwrap();
+    let raw = s.with_active(|| unsafe { STRING_ELT(x.clone().as_raw(), 1) });
+    s.with_active(|| s.owner_token().unwrap().full_gc().unwrap());
+    // The raw child has no independent lease. Its parent sparse cache roots it.
+    let child = s
+        .sexp(raw)
+        .expect("native result must remain retained by parent");
+    assert_eq!(child.as_string().as_deref(), Some("value-1"));
+    assert!(!is_materialized(&x));
+    let cache_head = metadata(&x).unwrap().vector_elt(4).unwrap();
+    let again = s.with_active(|| unsafe { STRING_ELT(x.clone().as_raw(), 1) });
+    assert_eq!(
+        metadata(&x).unwrap().vector_elt(4).unwrap().as_raw(),
+        cache_head.as_raw()
+    );
+    assert_eq!(
+        s.sexp(again).unwrap().as_string().as_deref(),
+        Some("value-1")
+    );
+}
+
+#[test]
+fn raw_dataptr_expands_extension_without_discarding_class_or_data() {
+    let s = RSession::new_for_gc_tests();
+    let x = numbers(&s, Rc::new(Cell::new(0)), true);
+    let descriptor = altrep_class(&x).unwrap();
+    let ptr = s.with_active(|| unsafe { REAL(x.clone().as_raw()) });
+    assert!(!ptr.is_null());
+    assert_eq!(unsafe { *ptr.add(4) }, 12.0);
+    assert!(is_altrep(&x));
+    assert_eq!(altrep_class(&x).unwrap().as_raw(), descriptor.as_raw());
+    let source =
+        s.with_active(|| unsafe { crate::mainutils::altrep::R_altrep_data1(x.clone().as_raw()) });
+    assert_eq!(s.sexp(source).unwrap().real_elt(0), Some(10.0));
+    s.with_active(|| s.owner_token().unwrap().full_gc().unwrap());
+    assert_eq!(x.real_elt(4), Some(12.0));
+}
+
+#[test]
+fn native_scalar_callback_failure_raises_error_instead_of_missing_value() {
+    let s = RSession::new_for_gc_tests();
+    let state = Rc::new(Cell::new(1));
+    let x = numbers(&s, state.clone(), false);
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        s.with_active(|| unsafe { crate::mainutils::altrep::ALTREAL_ELT(x.clone().as_raw(), 2) })
+    }))
+    .unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .is_some()
+    );
+    state.set(0);
+    assert_eq!(
+        s.with_active(|| unsafe { crate::mainutils::altrep::ALTREAL_ELT(x.clone().as_raw(), 2) }),
+        11.0
+    );
+}
+
+#[test]
+fn raw_dispatch_and_classification_respect_existing_arena_lends() {
+    let s = RSession::new_for_gc_tests();
+    let dense = integer(&s, 6);
+    let formula = s.compact_integer_sequence(3, 1, 4).unwrap();
+    let extension = s.with_active(|| unsafe {
+        s.sexp(crate::mainutils::altrep::R_compact_intseq(1, 4))
+            .unwrap()
+    });
+    s.with_active_in(|owner| unsafe {
+        crate::sexp::memory::with_arena_in(owner, |arena| {
+            let count = arena.node_count();
+            assert_eq!(INTEGER_ELT(dense.clone().as_raw(), 0), 6);
+            assert_eq!(INTEGER_ELT(formula.clone().as_raw(), 3), 6);
+            assert_eq!(
+                crate::mainutils::altclasses::R_compact_intseq_check(dense.clone().as_raw()),
+                0
+            );
+            assert_eq!(
+                crate::mainutils::altclasses::R_compact_intseq_check(formula.clone().as_raw()),
+                1
+            );
+            assert_eq!(
+                crate::mainutils::altclasses::R_compact_intseq_check(extension.clone().as_raw()),
+                1
+            );
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                DATAPTR(extension.clone().as_raw())
+            }))
+            .unwrap_err();
+            assert!(
+                failure
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
+            );
+            assert_eq!(arena.node_count(), count);
+        });
+    });
+    force_materialization(&extension).unwrap();
+    assert_eq!(extension.integer_elt(3), Some(4));
+}
+struct SelfList;
+impl AltrepClass for SelfList {
+    fn vector_type(&self) -> SEXPTYPE {
+        SEXPTYPE::VECSXP
+    }
+    fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+        Ok(1)
+    }
+    fn element<'s>(&self, c: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+        Ok(AltrepElement::List(c.object()))
+    }
+}
+#[test]
+fn serialization_cycle_fails_cleanly_and_resets_rust_operation_guard() {
+    let s = RSession::new_for_gc_tests();
+    let class = s.register_altrep_class("self-list", SelfList).unwrap();
+    let x = AltrepBuilder::new(class).build().unwrap();
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        s.with_active(|| unsafe {
+            let nil = crate::sexp::globals::R_NilValue();
+            crate::mainutils::serialize::R_serialize(x.clone().as_raw(), nil, nil, nil, nil)
+        })
+    }))
+    .unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .is_some()
+    );
+    assert!(unsafe {
+        (*s.owner_token().unwrap().as_ptr())
+            .altrep_state
+            .active
+            .borrow()
+            .is_empty()
+    });
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        s.with_active(|| unsafe { crate::mainutils::duplicate::Rf_duplicate(x.clone().as_raw()) })
+    }))
+    .unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .is_some()
+    );
+    assert!(unsafe {
+        (*s.owner_token().unwrap().as_ptr())
+            .altrep_state
+            .active
+            .borrow()
+            .is_empty()
+    });
+    force_materialization(&x).unwrap();
+    s.gc();
+    assert_eq!(x.vector_elt(0).unwrap().as_raw(), x.clone().as_raw());
+}
+
+#[test]
+fn native_duplicate_inspect_and_coerce_restore_original_owner() {
+    let s = RSession::new_for_gc_tests();
+    s.with_active(|| unsafe {
+        use crate::mainutils::altrep::*;
+        unsafe extern "C" fn length(_: SEXP) -> i64 {
+            1
+        }
+        unsafe extern "C" fn duplicate(x: SEXP, _: i32) -> SEXP {
+            let result = unsafe { R_altrep_data1(x) };
+            let other = RSession::new_for_gc_tests();
+            other.gc();
+            drop(other);
+            result
+        }
+        unsafe extern "C" fn inspect(_: SEXP, _: i32, _: i32) -> i32 {
+            let other = RSession::new_for_gc_tests();
+            drop(other);
+            1
+        }
+        unsafe extern "C" fn coerce(x: SEXP, _: i32) -> SEXP {
+            unsafe { duplicate(x, 0) }
+        }
+        let class =
+            R_make_altreal_class(c"restore".as_ptr(), c"test".as_ptr(), std::ptr::null_mut());
+        R_set_altrep_length_method(class, Some(length));
+        R_set_altrep_duplicate_method(class, Some(duplicate));
+        R_set_altrep_inspect_method(class, Some(inspect));
+        R_set_altrep_coerce_method(class, Some(coerce));
+        let data = real(&s, 50.0);
+        let x = s
+            .sexp(R_new_altrep(
+                class,
+                data.clone().as_raw(),
+                crate::sexp::globals::R_NilValue(),
+            ))
+            .unwrap();
+        let expected_owner = s.owner_token().unwrap().as_ptr();
+        let dup = crate::mainutils::duplicate::Rf_duplicate(x.clone().as_raw());
+        assert_eq!(s.sexp(dup).unwrap().real_elt(0), Some(50.0));
+        assert_eq!(
+            crate::sexp::instance::current_instance_ptr(),
+            Some(expected_owner)
+        );
+        assert_eq!(R_altrep_inspect(x.clone().as_raw(), 0, 0), 1);
+        assert_eq!(
+            crate::sexp::instance::current_instance_ptr(),
+            Some(expected_owner)
+        );
+        let coerced = R_altrep_coerce(x.clone().as_raw(), SEXPTYPE::REALSXP.0 as i32);
+        assert_eq!(s.sexp(coerced).unwrap().real_elt(0), Some(50.0));
+        assert_eq!(
+            crate::sexp::instance::current_instance_ptr(),
+            Some(expected_owner)
+        );
+    });
+}

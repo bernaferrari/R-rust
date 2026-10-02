@@ -341,7 +341,7 @@ unsafe fn DUPLICATE_ATTRIB(to: SEXP, from: SEXP, deep: c_int) {
     unsafe {
         let mut a = ATTRIB(from);
         #[cfg(feature = "altrep")]
-        if crate::sexp::altrep::metadata(&crate::sexp::altrep::rooted_raw(from).unwrap_or_else(|e| crate::sexp::context::r_error(&e.to_string()))).is_some() {
+        if crate::sexp::altrep::has_extension_raw(from) {
             // Ordinary duplicates copy values and public attributes, not a
             // descriptor/payload belonging to the source's lazy class.
             a = CDR(a);
@@ -490,6 +490,15 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
         if s.is_null() {
             return ptr::null_mut();
         }
+
+        // Retain a Rust recursion guard throughout the default copy too.
+        // Pointer-valued class elements can legitimately refer to their parent.
+        #[cfg(feature = "altrep")]
+        let class_copy_source = if crate::sexp::altrep::has_extension_raw(s) {
+            Some(crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())))
+        } else { None };
+        #[cfg(feature = "altrep")]
+        let _class_copy_guard = class_copy_source.as_ref().map(|source| crate::sexp::altrep::duplication_guard(source).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())));
 
         // ALTREP: try class-specific duplicate when the alt bit is set
         #[cfg(feature = "altrep")]
