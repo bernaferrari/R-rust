@@ -8,7 +8,7 @@
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
-use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
+use super::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::memory::{self};
 

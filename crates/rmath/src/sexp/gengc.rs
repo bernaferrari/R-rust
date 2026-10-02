@@ -791,10 +791,10 @@ pub fn attrib_write_barrier(obj: SEXP, value: SEXP) {
 
 #[inline]
 pub unsafe fn promote_to_old(obj: SEXP) {
+    if obj.is_null() || super::globals::immutable_singleton_projection(obj).is_some() {
+        return;
+    }
     unsafe {
-        if obj.is_null() {
-            return;
-        }
         debug_assert!((*obj).sxpinfo.gcgen() == Generation::Young as u8);
         (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
     }
@@ -857,7 +857,7 @@ fn update_remembered_set_in(instance: *mut instance::RInstance, old_to_new: &Has
 }
 
 fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<usize, SEXP>) {
-    if obj.is_null() {
+    if obj.is_null() || super::globals::immutable_singleton_projection(obj).is_some() {
         return;
     }
     unsafe {
@@ -975,10 +975,11 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         for obj in (*instance).symbols.values_mut() {
             update_field(obj, old_to_new);
         }
-        for &node in &(*instance).symbol_nodes {
-            update_references_in_object(node, old_to_new);
-        }
-        for &node in &(*instance).env_nodes {
+        // All permanent owned headers participate, including records absent
+        // from compatibility projection lists. End the map borrow before
+        // rewriting any physical graph fields.
+        let permanent_nodes: Vec<_> = (*instance).persistent_nodes.projections().collect();
+        for node in permanent_nodes {
             update_references_in_object(node, old_to_new);
         }
         for obj in &mut (*instance).names_state.ddval_symbols {
@@ -1077,7 +1078,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
             let mut sexp = *obj as SEXP;
             update_field(&mut sexp, old_to_new);
             *obj = sexp;
-            update_references_in_object(*obj, old_to_new);
         }
     }
 }
@@ -2929,6 +2929,62 @@ mod tests {
 
         let after_ptr = unsafe { *((*vec).gengc_next_node as *mut SEXP) };
         assert_eq!(after_ptr, replacement);
+    }
+
+    #[test]
+    fn checked_gc_clears_dead_key_in_unlisted_permanent_weak_header() {
+        for collect in [minor_gc as fn() -> (usize, usize), full_gc] {
+            let session = RSession::new_for_gc_tests();
+            session.with_active(|| {
+                // SAFETY: this active fixture publishes a valid weak header
+                // under one arena lend, before any deferred collection runs.
+                let (key, key_token, value, weak, weak_token) = unsafe {
+                    with_arena(|arena| {
+                        let key = arena.alloc_node(SEXPTYPE::INTSXP);
+                        let key_token = arena.node_token(key).unwrap();
+                        let value = arena.alloc_node(SEXPTYPE::REALSXP);
+                        let nil = crate::sexp::globals::R_NilValue();
+                        let mut header = crate::sexp::ffi::SexprecCore::new(SEXPTYPE::WEAKREFSXP);
+                        header.attrib = nil;
+                        header.data = crate::sexp::ffi::SexprecData {
+                            listsxp: crate::sexp::ffi::Listsxp {
+                                carval: key,
+                                cdrval: value,
+                                tagval: nil,
+                            },
+                        };
+                        instance::with_required_current_instance(|owner| {
+                            let weak = (*owner).persistent_nodes.allocate_header(header).unwrap();
+                            let token = (*owner).persistent_nodes.token(weak).unwrap();
+                            assert!(!(*owner).raw_cons.contains(&weak));
+                            assert!(!(*owner).symbol_nodes.contains(&weak));
+                            assert!(!(*owner).env_nodes.contains(&weak));
+                            (key, key_token, value, weak, token)
+                        })
+                    })
+                };
+                collect();
+                assert!(!key_token.is_live(), "weak key must be reclaimed");
+                assert!(weak_token.is_live());
+                // SAFETY: membership is inspected without dereferencing the
+                // dead key; only the live permanent header is read afterward.
+                unsafe {
+                    with_arena(|arena| {
+                        assert!(!arena.contains(key));
+                        assert!(arena.contains(value));
+                    });
+                    assert_eq!((*weak).data.listsxp.carval, crate::sexp::globals::R_NilValue());
+                    assert_eq!((*weak).data.listsxp.cdrval, value);
+                }
+                full_gc();
+                // SAFETY: the next cycle must retain the strong value and
+                // leave the already-cleared weak key as immutable nil.
+                unsafe {
+                    assert_eq!((*weak).data.listsxp.carval, crate::sexp::globals::R_NilValue());
+                    assert!(with_arena(|arena| arena.contains(value)));
+                }
+            });
+        }
     }
 
     #[test]

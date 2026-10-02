@@ -437,9 +437,8 @@ pub(crate) unsafe fn materialize(x: SEXP) {
             let elem = memory::sexp_elem_size((*x).sxpinfo.type_of());
             if let Some(bytes) = n.checked_mul(elem)
                 && bytes > 0
-                && !memory::attach_zeroed_data_buffer(x, bytes).is_null()
             {
-                fill((*x).gengc_next_node as *mut u8, &formula, n);
+                memory::attach_initialized_data_buffer(x, bytes, |data| fill(data, &formula, n));
             }
         }
         let committed = !(*x).gengc_next_node.is_null() && !memory::vector_payload_is_pending(x);

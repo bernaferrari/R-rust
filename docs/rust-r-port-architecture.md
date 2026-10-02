@@ -68,6 +68,18 @@ permanent policy keeps them rooted until explicit release or session teardown.
 Permanent character, scalar, and string payloads are typed Rust cell arrays;
 no header or payload is disowned into a raw allocation.
 
+Arena vectors and character buffers also own initialized typed cell chunks.
+Buffer transfer moves their owner by value; shared vector caches retain a
+lease on that one allocation. Pending buffers retain the original header's
+allocation identity and a byte-reservation lease, so recycling the header
+cannot attach an old buffer to its replacement. Compact sequences fill a
+private payload before publishing it to a header or a callback.
+
+Process sentinels use `OnceLock`-owned atomic interior cells with native layout
+assertions. Rust supplies their thread-safety traits without an unsafe assertion
+for `SexprecCore`. Their canonical projections never escape into generic
+metadata or element mutation: those setters leave shared sentinels unchanged.
+
 `sexp/heap.rs` and `sexp/persistent.rs` forbid unsafe code. Each allocation has
 an opaque identity comprising heap, page identity, slot, and generation. Slot
 release invalidates its old identity before reuse; generation exhaustion retires
@@ -77,7 +89,7 @@ The legacy pointer directory indexes exact live page ranges without reading a
 candidate pointer's header.
 
 Raw `SEXP` pointers remain projections of those same physical headers during
-the engine migration. Header unions, arena vector payloads, graph fields,
+the engine migration. Header unions, legacy payload views, graph fields,
 evaluator access, and native compatibility still have audited unsafe paths.
 Rust ownership of pages alone does not make those operations safe. Shared
 backing storage is essential: moving a boxed page after publishing raw pointers
@@ -104,13 +116,25 @@ The port of R's `PROTECT`/`UNPROTECT` mechanism, owned by the active
   (safe RAII guards) survive. Unmanaged raw `protect` roots allocated
   since the checkpoint are released. `RootTable::truncate` is a
   separate index cut and is not what scope exit uses.
-- **Generation exhaustion is session-fatal and transactional.** The
-  counter uses `checked_add`. If it cannot advance, `claim` and
-  `release` panic with `root generation exhausted` before writing
-  entries, generations, the free list, or managed identities.
+- **Fallible claims and allocation-free release.** A claim reserves storage
+  and checks its next generation before publishing a slot. Safe `try_*`
+  entrypoints return capacity or generation errors without changing live
+  roots. Release needs no new generation or allocation, including at
+  exhaustion. Vacancies cannot match an old lease when a slot is reused.
 - **The collector does not move live objects.** Root scans read both
-  storages. Old-to-young edges go through the remembered-set write
-  barriers in `sexp/gengc.rs`.
+  storages. Rust root occupants retain checked allocation identities; root
+  snapshots end their storage borrow before traversal or callbacks. Guard
+  cleanup also checks a weak owner-liveness witness before touching session
+  storage. Old-to-young edges go through the remembered-set write barriers
+  in `sexp/gengc.rs`.
+
+Collector work carries the owning heap, exact allocation generation, and mark
+epoch. It rederives each header projection from owned storage and rejects
+unknown, foreign, or reclaimed graph nodes before header access. Its raw bridge
+copies child values without mutable header or payload loans during marking.
+Static sentinels require no mark writes. Permanent roots and reference rewrites
+cover every owned persistent header, including ones absent from legacy lists.
+The collection scope ends before notifications, including when tracing unwinds.
 
 ### Checked handles and managed roots
 

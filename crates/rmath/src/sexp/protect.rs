@@ -22,8 +22,8 @@
 //!   Rust-side handles ([`ProtectGuard`] from [`protect_sexp`] / [`protect`],
 //!   [`IndexedProtectGuard`] / [`protect_sexp_with_index`], [`RootedSexp`],
 //!   and the `R_ProtectWithIndex` shim). Slots are released BY SLOT ID +
-//!   GENERATION in ANY order; a released slot is tombstoned in place (null
-//!   pointer + a fresh generation) and its index recycled via a free list,
+//!   GENERATION in ANY order; a released slot becomes vacant in place and its
+//!   index is recycled via a free list,
 //!   so surviving guards keep resolving to their own entries and a stale
 //!   handle is detectable ([`ProtectionSlot::is_stale`]) instead of silently
 //!   aliasing another entry's protection.
@@ -57,7 +57,7 @@
 //!
 //! The root table is a `Vec` with stable slot indices. Releasing a slot
 //! (`IndexedProtectGuard` / [`RootedSexp`] / [`ProtectGuard`] drop)
-//! tombstones its entry (null pointer + a fresh generation) and pushes the
+//! makes its entry vacant and pushes the
 //! index onto a per-instance free list instead of shifting later entries, so
 //! guards may be dropped in **any order** — surviving guards keep resolving
 //! to their own entries. A later slot push reuses a freed index with a fresh
@@ -370,12 +370,9 @@ impl RootTable {
         self.storage
             .borrow()
             .entries()
-            .filter_map(|(_, value)| value.is_live().then(|| value.clone()))
+            .filter(|(_, value)| value.is_live())
+            .map(|(_, value)| value.clone())
             .collect()
-    }
-    pub(crate) fn with_checked_entries<R>(&self, f: impl FnOnce(&[RootValue]) -> R) -> R {
-        let entries = self.checked_entries_snapshot();
-        f(&entries)
     }
     fn entries_snapshot(&self) -> Vec<SEXP> {
         let storage = self.storage.borrow();
@@ -439,10 +436,10 @@ type Confined<'a> = PhantomData<(&'a (), *mut ())>;
 /// accesses to the owner's `RefCell` fields without creating a new exclusive
 /// borrow of the complete instance.
 ///
-/// Soundness relies on the owner instance outliving every guard created
-/// against it — the session APIs keep the instance alive across the scoped
-/// interpreter call that owns the guard — and on the [`Confined`] marker
-/// keeping guards on the owning thread. Release-time staleness is guarded
+/// Creation requires a live owner. A weak allocation-lifetime witness skips
+/// cleanup when that exact owner is destroyed, without keeping its storage alive
+/// or mistaking a reused address for the original instance. [`Confined`] keeps
+/// guards on the owning thread. Release-time staleness is guarded
 /// separately: root-slot releases check the slot's generation
 /// ([`RootTable::release`]) so a guard whose entry was already recycled or
 /// unwound is a no-op instead of evicting the live owner.
@@ -984,14 +981,9 @@ impl<'a> RootedSexp<'a> {
     /// resolve to another entry's protection.
     ///
     /// Returns `None` when the slot was released and handed out again (see
-    /// [`is_stale`](RootedSexp::is_stale)); debug builds assert on the
-    /// mismatch, release builds degrade to `None`.
+    /// [`is_stale`](RootedSexp::is_stale)), or its allocation was reclaimed.
     pub fn get(&self) -> Option<&Sexp<'a>> {
         let stale = self.is_stale();
-        debug_assert!(
-            !stale,
-            "RootedSexp slot was released and reused; the root is stale"
-        );
         if stale { None } else { Some(&self.value) }
     }
 
@@ -1259,7 +1251,8 @@ fn ensure_owner_scoped(value: Sexp<'_>, api: &'static str) -> Result<(), Protect
 /// Iterate over every protection entry: first the legacy stack (in push
 /// order), then the root table (in index order; tombstoned slots hold
 /// null). Used by GC-facing tests and diagnostics; the collector's mark and
-/// update paths walk the two storages through the same view.
+/// updates use this compatibility view; marking consumes exact allocation
+/// identities through `RootTable::checked_entries_snapshot`.
 pub(crate) fn with_protected_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP], &[SEXP]) -> R,
@@ -2365,6 +2358,147 @@ mod tests {
                 _ => super::super::globals::R_False(),
             }
         }
+    }
+
+    #[test]
+    fn stale_allocation_root_cannot_pin_reused_header_address() {
+        use super::super::heap::{HeapIdentity, NodePage};
+        let page = NodePage::try_new(HeapIdentity::new(), 0, 1, || {
+            super::super::ffi::SexprecCore::new(SEXPTYPE::INTSXP)
+        })
+        .unwrap();
+        let metadata = page.metadata();
+        metadata.activate(0, false).unwrap();
+        let _registration = super::super::memory::register_node_page(&page);
+        let projection = page.raw_slot(0).unwrap();
+        let allocation = page.token(0).unwrap();
+        let old_value = RootValue::Checked {
+            projection,
+            allocation: allocation.clone(),
+        };
+        let table = RootTable::new();
+        let old_slot = table.try_claim(old_value.clone(), true).unwrap();
+        assert!(metadata.release(allocation.id()));
+        page.replace_inactive(0, super::super::ffi::SexprecCore::new(SEXPTYPE::REALSXP))
+            .unwrap();
+        metadata.activate(0, false).unwrap();
+        let replacement = page.token(0).unwrap();
+        assert_ne!(replacement, allocation);
+        assert_eq!(page.raw_slot(0), Some(projection));
+        assert!(table.checked_entries_snapshot().is_empty());
+        assert_eq!(table.entries_snapshot(), vec![ptr::null_mut()]);
+        assert_eq!(table.generation_at(old_slot), None);
+        assert_eq!(
+            table.try_claim(old_value, true),
+            Err(ProtectError::StaleAllocation)
+        );
+        table.release(old_slot);
+        assert_eq!(table.len(), 0);
+    }
+
+    #[test]
+    fn root_claim_recovers_owned_provenance_from_address_only_input() {
+        use super::super::heap::{HeapIdentity, NodePage};
+        let page = NodePage::try_new(HeapIdentity::new(), 0, 1, || {
+            super::super::ffi::SexprecCore::new(SEXPTYPE::INTSXP)
+        })
+        .unwrap();
+        page.metadata().activate(0, false).unwrap();
+        let _registration = super::super::memory::register_node_page(&page);
+        let pointer = page.raw_slot(0).unwrap();
+        let table = RootTable::new();
+        let slot = table
+            .try_claim(
+                RootValue::Checked {
+                    projection: ptr::without_provenance_mut(pointer.addr()),
+                    allocation: page.token(0).unwrap(),
+                },
+                true,
+            )
+            .unwrap();
+        let recovered = table.entries_snapshot()[0];
+        // Miri verifies that the stored projection came from the actual cell,
+        // not from the matching integer address supplied at the native seam.
+        assert_eq!(
+            unsafe { super::super::accessors::TYPEOF(recovered) },
+            SEXPTYPE::INTSXP.as_c_int()
+        );
+        table.release(slot);
+    }
+
+    #[test]
+    fn protection_updates_allow_reentry_without_overwriting_recycled_root() {
+        let session = RSession::new_for_gc_tests();
+        let mut old = Some(unsafe { protect_with_index_raw(token(1), "fixture") });
+        let old_slot = old.as_ref().unwrap().slot();
+        let mut new = None;
+        update_protect_stack_refs(|_| {
+            drop(old.take());
+            new = Some(unsafe { protect_with_index_raw(token(2), "fixture") });
+            token(3)
+        });
+        let new = new.unwrap();
+        assert_ne!(new.slot().generation(), old_slot.generation());
+        with_protected_objects(|_, roots| assert_eq!(roots, &[token(2)]));
+        drop(new);
+        drop(session);
+    }
+
+    #[test]
+    fn safe_gc_owner_teardown_skips_native_guard_cleanup_even_on_unwind() {
+        thread_local! {
+            static OWNER: RefCell<Option<RSession>> = const { RefCell::new(None) };
+        }
+        for inject_panic in [false, true] {
+            let session = RSession::new_for_gc_tests();
+            let observer = unsafe {
+                super::super::instance::instance_liveness(session.owner_token().unwrap().as_ptr())
+            };
+            let simple = unsafe { protect(token(1)) };
+            let indexed = unsafe { protect_with_index_raw(token(2), "fixture") };
+            unsafe {
+                protect_raw_pointer(token(3));
+            }
+            let counted = protect_n(1);
+            push_preserve(token(4));
+            let preserved = PreserveGuard {
+                owner: Some(unsafe { GuardOwner::new(session.owner_token().unwrap().as_ptr()) }),
+                value: token(4),
+                _confined: PhantomData,
+            };
+            super::super::gengc::register_gc_callback(Box::new(move |_| {
+                drop(OWNER.with(|owner| owner.borrow_mut().take()));
+                if inject_panic {
+                    panic!("injected owner teardown panic");
+                }
+            }));
+            OWNER.with(|owner| assert!(owner.borrow_mut().replace(session).is_none()));
+            let result = std::panic::catch_unwind(super::super::gengc::full_gc);
+            assert_eq!(result.is_err(), inject_panic);
+            assert!(!observer.is_live());
+            assert!(!indexed.slot_generation_is(indexed.slot().generation()));
+            // Every guard must skip the destroyed allocation, including unwind
+            // cleanup; a fresh owner cannot inherit or satisfy its weak token.
+            let fresh = RSession::new_for_gc_tests();
+            drop((simple, indexed, counted, preserved));
+            with_protected_objects(|legacy, roots| assert!(legacy.is_empty() && roots.is_empty()));
+            with_preserved_objects(|roots| assert!(roots.is_empty()));
+            drop(fresh);
+        }
+    }
+
+    #[test]
+    fn projection_update_callback_may_destroy_owner() {
+        let session = RSession::new_for_gc_tests();
+        let pointer = session.owner_token().unwrap().as_ptr();
+        let guard = unsafe { protect(token(1)) };
+        let mut owner = Some(session);
+        update_protect_stack_refs_in(pointer, |_| {
+            drop(owner.take());
+            token(2)
+        });
+        drop(guard);
+        assert!(super::super::instance::current_instance_ptr().is_none());
     }
 
     #[test]
