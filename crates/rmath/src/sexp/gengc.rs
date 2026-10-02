@@ -79,7 +79,12 @@
 //! internals still require careful auditing; do not document new
 //! invariants here unless they are enforced by code and regression tests.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    cell::Cell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    sync::Arc,
+};
 #[cfg(test)]
 use std::ptr;
 
@@ -135,20 +140,53 @@ fn record_collection_in(state: &mut GcState, promoted: usize, freed: usize) {
 
 /// Callback type for GC event notifications.
 pub type GcCallback = Box<dyn Fn(&GcStats) + Send + Sync>;
+type GcCallbackLease = Arc<dyn Fn(&GcStats) + Send + Sync>;
 
-/// Register a callback to be invoked after each GC cycle.
+/// Register a callback to be invoked after each outer GC notification cycle.
+/// Callbacks may collect or register callbacks. New registrations participate
+/// in the next notification; nested collections update statistics without
+/// recursively notifying the same callbacks.
 pub fn register_gc_callback(cb: GcCallback) {
-    with_gc_state(|state| state.callbacks.push(cb));
+    with_gc_state(|state| state.callbacks.push(Arc::from(cb)));
 }
 
-fn notify_gc_callbacks_in(state: &GcState) {
-    let stats = state.stats.clone();
-    notify_gc_callbacks_with_stats(state, &stats);
+struct NotificationGuard(Rc<Cell<bool>>);
+impl Drop for NotificationGuard {
+    fn drop(&mut self) {
+        self.0.set(false);
+    }
 }
 
-fn notify_gc_callbacks_with_stats(state: &GcState, stats: &GcStats) {
-    for cb in &state.callbacks {
-        cb(stats);
+fn notify_gc_callbacks_in(owner: *mut instance::RInstance) {
+    // SAFETY: collection reaches notification with a live owner. This weak
+    // token detects teardown; it does not pretend to keep the allocation live.
+    let liveness = unsafe { instance::instance_liveness(owner) };
+    // Only owned leases and copied statistics survive callback execution.
+    // Registration or nested collection can mutate GcState freely.
+    let snapshot = with_gc_state_in(owner, |state| {
+        if state.notifying.get() {
+            None
+        } else {
+            Some((
+                state.callbacks.clone(),
+                state.stats.clone(),
+                state.notifying.clone(),
+            ))
+        }
+    });
+    let Some((callbacks, stats, notifying)) = snapshot else {
+        return;
+    };
+    notifying.set(true);
+    let _notification = NotificationGuard(notifying);
+    for callback in callbacks {
+        if !liveness.is_live() {
+            break;
+        }
+        // SAFETY: the checked original owner is still live. No collector field
+        // or payload reference is lent while arbitrary code executes. Scoped
+        // activation also detects teardown before restoring an old owner.
+        unsafe { super::session::with_instance_active(owner, || callback(&stats)) };
     }
 }
 
@@ -654,7 +692,8 @@ impl RememberedSet {
 
 pub struct GcState {
     pub(crate) stats: GcStats,
-    pub(crate) callbacks: Vec<GcCallback>,
+    pub(crate) callbacks: Vec<GcCallbackLease>,
+    notifying: Rc<Cell<bool>>,
     pub(crate) in_progress: bool,
     pub(crate) remembered_set: RememberedSet,
     /// Set when allocation would trigger GC during evaluation; flushed at quiescence.
@@ -671,6 +710,7 @@ impl GcState {
         GcState {
             stats: GcStats::default(),
             callbacks: Vec::new(),
+            notifying: Rc::new(Cell::new(false)),
             in_progress: false,
             remembered_set: RememberedSet::default(),
             gc_pending: false,
@@ -1119,7 +1159,7 @@ where
             Ok((promoted, freed)) => {
                 record_collection_in(&mut (*instance).gc_state, promoted, freed);
                 (*instance).arena.note_gc_completed();
-                notify_gc_callbacks_in(&(*instance).gc_state);
+                notify_gc_callbacks_in(instance);
                 (promoted, freed)
             }
 
@@ -1243,9 +1283,12 @@ fn maybe_torture_gc_in(instance: *mut instance::RInstance, ticks: u32) {
         (*instance).gc_state.gc_pending = false;
         (*instance).memory_state.in_gc = 1;
         (*instance).memory_state.gc_count = (*instance).memory_state.gc_count.wrapping_add(1);
+        let liveness = instance::instance_liveness(instance);
         run_gc_cycle_in(instance, do_torture_mark_sweep_in);
-        (*instance).memory_state.in_gc = 0;
-        super::protect::unprotect_count_in(instance, added);
+        if liveness.is_live() {
+            (*instance).memory_state.in_gc = 0;
+            super::protect::unprotect_count_in(instance, added);
+        }
     }
 }
 
@@ -1338,12 +1381,15 @@ pub fn collect_with_environment_protects(full: bool) -> (usize, usize) {
         push_environment_binding_protects(instance);
         let added = (*instance).legacy_protect.len().saturating_sub(start);
         (*instance).gc_state.gc_pending = false;
+        let liveness = instance::instance_liveness(instance);
         let result = if full {
             full_gc_in(instance)
         } else {
             minor_gc_in(instance)
         };
-        super::protect::unprotect_count_in(instance, added);
+        if liveness.is_live() {
+            super::protect::unprotect_count_in(instance, added);
+        }
         result
     })
 }
@@ -1376,13 +1422,18 @@ pub fn maybe_collect_at_eval_safe_point() {
         // objects would accumulate unbounded between explicit gc() calls.
         (*instance).gc_state.safe_point_collections =
             (*instance).gc_state.safe_point_collections.wrapping_add(1);
+        let liveness = instance::instance_liveness(instance);
         if (*instance).gc_state.safe_point_collections % SAFE_POINT_FULL_COLLECTION_INTERVAL == 0 {
             full_gc_in(instance);
         } else {
             minor_gc_in(instance);
         }
-        super::protect::unprotect_count_in(instance, added);
-        true
+        if liveness.is_live() {
+            super::protect::unprotect_count_in(instance, added);
+            true
+        } else {
+            false
+        }
     });
     if collected {
         run_pending_finalizers_after_collection();
@@ -1430,6 +1481,8 @@ pub(crate) unsafe fn run_pending_gc_if_quiescent_in(inst: *mut instance::RInstan
         Some(inst),
         "deferred GC requires activation of its owning session"
     );
+    // SAFETY: the explicit owner is live before collection starts.
+    let liveness = unsafe { instance::instance_liveness(inst) };
     let collected = unsafe {
         // Raw place accesses: minor_gc_in reenters instance bookkeeping.
         if (*inst).eval_state.eval_depth == 0 && (*inst).gc_state.gc_pending {
@@ -1440,7 +1493,7 @@ pub(crate) unsafe fn run_pending_gc_if_quiescent_in(inst: *mut instance::RInstan
             false
         }
     };
-    if collected {
+    if collected && liveness.is_live() {
         run_pending_finalizers_after_collection();
     }
 }
@@ -3669,3 +3722,7 @@ mod kani_proofs {
         kani::cover(seen[root as usize] && !seen[((root as usize) + 1) % 4], "partial");
     }
 }
+
+#[cfg(test)]
+#[path = "gc_notification_tests.rs"]
+mod notification_tests;

@@ -254,13 +254,17 @@ impl Drop for ToplevelExprNoGuard {
 
 struct CurrentInstanceGuard {
     previous: Option<*mut RInstance>,
+    previous_liveness: Option<super::instance::InstanceLiveness>,
     previous_rng: Option<*mut rmath_nmath::RngState>,
     previous_state: Option<*mut rmath_nmath::MathState>,
 }
 
 impl CurrentInstanceGuard {
     unsafe fn new(instance: *mut RInstance) -> Self {
-        let previous = unsafe { replace_current_instance(Some(instance)) };
+        let previous = super::instance::current_instance_ptr();
+        let previous_liveness =
+            previous.map(|owner| unsafe { super::instance::instance_liveness(owner) });
+        unsafe { replace_current_instance(Some(instance)) };
         // Scope the nmath RNG to this session for the duration of the
         // activation, mirroring the instance swap above: session-owned
         // streams must not leak across concurrently-live sessions.
@@ -279,6 +283,7 @@ impl CurrentInstanceGuard {
         };
         CurrentInstanceGuard {
             previous,
+            previous_liveness,
             previous_rng,
             previous_state,
         }
@@ -289,8 +294,10 @@ impl CurrentInstanceGuard {
 /// RNG and numerical state on every exit, including an R error unwind.
 ///
 /// # Safety
-/// The owner remains live; no whole-instance or payload borrow may overlap
-/// reentry inside the closure.
+/// The owner is live on entry; no whole-instance or payload borrow may
+/// overlap reentry. Callers using it after a callback must retain a session
+/// borrow or check its teardown identity. The guard restores prior state only
+/// while that prior owner remains live.
 pub(crate) unsafe fn with_instance_active<T>(instance: *mut RInstance, f: impl FnOnce() -> T) -> T {
     let _guard = unsafe { CurrentInstanceGuard::new(instance) };
     f()
@@ -298,12 +305,24 @@ pub(crate) unsafe fn with_instance_active<T>(instance: *mut RInstance, f: impl F
 
 impl Drop for CurrentInstanceGuard {
     fn drop(&mut self) {
+        // Callback code can destroy an ambient owner stored in thread-local
+        // user state. Never reinstall any of that owner's now dangling state.
+        let previous_alive = self
+            .previous_liveness
+            .as_ref()
+            .is_none_or(|owner| owner.is_live());
         unsafe {
-            replace_current_instance(self.previous);
-            // Restore the RNG installation this activation replaced so two
-            // live sessions on one thread never observe each other's stream.
-            rmath_nmath::rng::swap_rng(self.previous_rng);
-            rmath_nmath::state::restore_state(self.previous_state);
+            replace_current_instance(if previous_alive { self.previous } else { None });
+            rmath_nmath::rng::swap_rng(if previous_alive {
+                self.previous_rng
+            } else {
+                None
+            });
+            rmath_nmath::state::restore_state(if previous_alive {
+                self.previous_state
+            } else {
+                None
+            });
         }
     }
 }
@@ -2613,3 +2632,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "gc_owner_teardown_tests.rs"]
+mod gc_owner_teardown_tests;

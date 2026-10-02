@@ -36,6 +36,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::os::raw::{c_char, c_int};
+use std::rc::{Rc, Weak};
 use std::time::Instant;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
@@ -328,6 +329,9 @@ impl Default for EvalControlState {
 ///
 /// The raw SEXP pointers inside are valid for as long as the arena is alive.
 pub struct RInstance {
+    // Only this allocation owns a strong token. It is invalidated before any
+    // owned field is destroyed; weak observers never prolong its lifetime.
+    liveness: Option<Rc<()>>,
     /// Arena allocator for this instance.
     pub arena: RArena,
     /// The global environment for this instance.
@@ -578,6 +582,7 @@ impl RInstance {
         let global_env = Self::push_env(&mut env_nodes, nil, base_env, nil);
 
         let mut instance = RInstance {
+            liveness: Some(Rc::new(())),
             arena: RArena::new(),
             global_env,
             base_env,
@@ -799,6 +804,9 @@ impl Default for RInstance {
 
 impl Drop for RInstance {
     fn drop(&mut self) {
+        // Provider destructors can run arbitrary Rust code while fields are
+        // released. Mark the owner unavailable before teardown starts.
+        drop(self.liveness.take());
         // Persistent sentinel/symbol nodes were disowned via `Box::into_raw`.
         for ptr in self.env_nodes.drain(..).chain(self.symbol_nodes.drain(..)) {
             if !ptr.is_null() {
@@ -825,6 +833,26 @@ impl Drop for RInstance {
             self.eval_state.profiling.profile_outfile = -1;
         }
     }
+}
+
+/// A teardown observation, not an ownership lease. Keeping this value alive
+/// cannot keep a destroyed RInstance or its numerical state installed.
+#[derive(Clone)]
+pub(crate) struct InstanceLiveness(Weak<()>);
+impl InstanceLiveness {
+    pub(crate) fn is_live(&self) -> bool {
+        self.0.strong_count() != 0
+    }
+}
+
+/// Snapshot an owner's teardown identity without borrowing its fields during
+/// later callbacks. The control block also distinguishes reused addresses.
+/// # Safety
+/// The pointer must refer to a live allocation when this function is called.
+/// A returned observer can subsequently outlive that allocation safely.
+pub(crate) unsafe fn instance_liveness(instance: *mut RInstance) -> InstanceLiveness {
+    let token = unsafe { &(*instance).liveness };
+    InstanceLiveness(token.as_ref().map_or_else(Weak::new, Rc::downgrade))
 }
 
 // ---------------------------------------------------------------------------
@@ -976,16 +1004,12 @@ pub fn with_current_instance<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(*mut RInstance) -> R,
 {
-    CURRENT_INSTANCE.with(|ci| {
-        let borrow = ci.borrow();
-        match *borrow {
-            Some(ptr) => {
-                // Guarded: prevents overlapping &mut derived from the raw current ptr.
-                Some(acquire_instance_mut(ptr, f))
-            }
-            None => None,
-        }
-    })
+    // Copy the installed pointer before arbitrary runtime code executes. A
+    // callback may activate another owner; no TLS RefCell borrow may survive
+    // that reentry. Field lends remain governed by acquire_instance_mut's
+    // depth monitor and the arena guard.
+    let current = CURRENT_INSTANCE.with(|ci| *ci.borrow());
+    current.map(|ptr| acquire_instance_mut(ptr, f))
 }
 
 /// Execute a closure with the current instance.
