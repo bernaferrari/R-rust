@@ -381,7 +381,8 @@ mod tests {
 
         use super::super::closure::match_closure_args;
 
-        let _session = RSession::new();
+        // Matching needs the real heap and primitive table, without package bootstrap.
+        let _session = RSession::new_for_gc_tests();
 
         let rows: &[(&[&str], &[Option<&str>])] = &[
             (&["a", "b"], &[Some("b"), Some("a")]),
@@ -495,14 +496,19 @@ mod tests {
                     .collect();
                 (chain(&formal_cells), chain(&supplied_cells))
             };
-            let closure = unsafe { match_closure_args(formals, supplied) };
+            let factory = unsafe { crate::eval::dispatch::active_argument_factory() };
+            let formals_owner = crate::eval::dispatch::argument_value(&factory, formals);
+            let supplied_owner = crate::eval::dispatch::argument_value(&factory, supplied);
+            let closure = unsafe {
+                match_closure_args(&factory, formals_owner.clone(), supplied_owner.clone())
+            };
             let builtin = catch_unwind(AssertUnwindSafe(|| unsafe {
                 matchArgs_NR_local(formals, supplied, R_NilValue())
             }));
             match (&expected, &closure, &builtin) {
                 (Ok(spec), Ok(actuals), Ok(builtin_actuals)) => {
                     assert_eq!(
-                        observe(formals, *actuals),
+                        observe(formals, actuals.as_raw()),
                         *spec,
                         "{names:?} {tags:?} closure"
                     );

@@ -24,6 +24,7 @@ use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::memory::with_arena_in;
+use crate::sexp::object::{SessionNodeFactory, Sexp};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install_in;
 
@@ -683,89 +684,131 @@ pub(crate) unsafe fn is_exec_continuation_in(inst: *mut RInstance, val: SEXP) ->
 /// Handle an exec continuation (tail call optimization).
 ///
 /// Ported from R's `handle_exec_continuation()` in eval.c.
-pub unsafe fn handle_exec_continuation(mut val: SEXP) -> SEXP {
+pub unsafe fn handle_exec_continuation(val: SEXP) -> SEXP {
     unsafe {
-        while is_exec_continuation(val) != FALSE {
-            let call = crate::sexp::accessors::VECTOR_ELT(val, 1);
-            let rho = crate::sexp::accessors::VECTOR_ELT(val, 2);
-            let op = crate::sexp::accessors::VECTOR_ELT(val, 3);
-
-            if TYPEOF(op) == SEXPTYPE::CLOSXP {
-                let arglist = tailcall_promise_args(CDR(call), rho);
-                let _arglist_guard = protect(arglist);
+        let factory = super::dispatch::active_argument_factory();
+        let mut continuation = super::dispatch::argument_value(&factory, val);
+        while is_exec_continuation(continuation.as_raw()) != FALSE {
+            let call = continuation
+                .try_vector_elt(1)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let rho = continuation
+                .try_vector_elt(2)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let op = continuation
+                .try_vector_elt(3)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let result = if op.typeof_() == SEXPTYPE::CLOSXP {
+                let arglist_owner = tailcall_promise_args(
+                    &factory,
+                    call.try_cdr()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                    rho.clone(),
+                );
                 let ctx = crate::eval::runtime::global_context();
                 let supplied = if !ctx.is_null()
-                    && unsafe { (*ctx).sysparent } != std::ptr::null_mut()
-                    && unsafe { (*ctx).sysparent } != R_NilValue()
-                    && unsafe { TYPEOF((*ctx).sysparent) } == SEXPTYPE::ENVSXP
+                    && (*ctx).sysparent != std::ptr::null_mut()
+                    && (*ctx).sysparent != R_NilValue()
+                    && TYPEOF((*ctx).sysparent) == SEXPTYPE::ENVSXP
                 {
-                    unsafe { (*ctx).sysparent }
+                    (*ctx).sysparent
                 } else {
-                    rho
+                    rho.as_raw()
                 };
-                let result = super::closure::applyClosure(
-                    call, op, arglist, rho, supplied, TRUE,
-                );
-                val = result;
+                super::closure::applyClosure(
+                    call.as_raw(),
+                    op.as_raw(),
+                    arglist_owner.as_raw(),
+                    rho.as_raw(),
+                    supplied,
+                    TRUE,
+                )
             } else {
-                // For non-closures, build a call and eval
-                let expr = Rf_cons(op, CDR(call));
+                // For non-closures, build a call and eval.
+                let expr = Rf_cons(op.as_raw(), CDR(call.as_raw()));
                 if !expr.is_null() {
                     (*expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
                 let _expr_guard = protect(expr);
-                val = super::eval::Rf_eval(expr, rho);
-            }
+                super::eval::Rf_eval(expr, rho.as_raw())
+            };
+            continuation = super::dispatch::argument_value(&factory, result);
         }
-        val
+        continuation.as_raw()
     }
 }
 
-unsafe fn tailcall_promise_args(call: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let args = super::dispatch::promiseArgs(call, rho);
-        let mut src = call;
-        let mut dst = args;
-        while !src.is_null() && src != R_NilValue() && !dst.is_null() && dst != R_NilValue() {
-            let mut expr = CAR(src);
-            if TYPEOF(expr) == SEXPTYPE::PROMSXP {
-                expr = crate::sexp::accessors::PRCODE(expr);
-            }
-            if expr == crate::sexp::symbol::R_DotsSymbol() {
-                let dots = crate::sexp::envir::R_findVarInFrame(rho, expr);
-                let mut n = 0i32;
-                if TYPEOF(dots) == SEXPTYPE::DOTSXP {
-                    let mut dh = dots;
-                    while !dh.is_null() && dh != R_NilValue() {
-                        n += 1;
-                        dh = CDR(dh);
-                    }
-                }
-                src = CDR(src);
-                for _ in 0..n {
-                    if dst.is_null() || dst == R_NilValue() {
-                        break;
-                    }
-                    dst = CDR(dst);
-                }
-                continue;
-            }
-            if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-                let found = crate::sexp::envir::R_findVarInFrame(rho, expr);
-                if found == R_MissingArg()
-                    || (TYPEOF(found) == SEXPTYPE::PROMSXP
-                        && crate::sexp::accessors::PRCODE(found) == R_MissingArg())
-                {
-                    crate::sexp::accessors::SETCAR(dst, R_MissingArg());
-                } else if TYPEOF(found) == SEXPTYPE::PROMSXP {
-                    crate::sexp::accessors::SETCAR(dst, found);
-                }
-            }
-            src = CDR(src);
-            dst = CDR(dst);
+/// Keep both the source expressions and rewritten promises alive through
+/// lookups that can invoke active bindings or allocation callbacks.
+unsafe fn tailcall_promise_args<'s>(
+    factory: &SessionNodeFactory<'s>,
+    call: Sexp<'s>,
+    rho: Sexp<'s>,
+) -> Sexp<'s> {
+    let args = unsafe { super::dispatch::promiseArgs(factory, call.clone(), rho.clone()) };
+    let mut src = call;
+    let mut dst = args.clone();
+    let missing = factory.missing();
+    while !src.is_nil() && !dst.is_nil() {
+        let mut expression = src
+            .try_car()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if expression.typeof_() == SEXPTYPE::PROMSXP {
+            expression = expression
+                .try_prcode()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-        args
+        if expression.as_raw() == unsafe { crate::sexp::symbol::R_DotsSymbol() } {
+            let dots = super::dispatch::argument_value(factory, unsafe {
+                crate::sexp::envir::R_findVarInFrame(rho.as_raw(), expression.as_raw())
+            });
+            let count = if dots.typeof_() == SEXPTYPE::DOTSXP {
+                crate::sexp::object::PairlistIter::new(dots).count()
+            } else {
+                0
+            };
+            src = src
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            for _ in 0..count {
+                if dst.is_nil() {
+                    break;
+                }
+                dst = dst
+                    .try_cdr()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            }
+            continue;
+        }
+        if expression.typeof_() == SEXPTYPE::SYMSXP {
+            let found = super::dispatch::argument_value(factory, unsafe {
+                crate::sexp::envir::R_findVarInFrame(rho.as_raw(), expression.as_raw())
+            });
+            let missing_binding = found.as_raw() == missing.as_raw()
+                || (found.typeof_() == SEXPTYPE::PROMSXP
+                    && found
+                        .try_prcode()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                        .as_raw()
+                        == missing.as_raw());
+            if missing_binding {
+                unsafe {
+                    crate::sexp::accessors::SETCAR(dst.as_raw(), missing.as_raw());
+                }
+            } else if found.typeof_() == SEXPTYPE::PROMSXP {
+                unsafe {
+                    crate::sexp::accessors::SETCAR(dst.as_raw(), found.as_raw());
+                }
+            }
+        }
+        src = src
+            .try_cdr()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        dst = dst
+            .try_cdr()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
+    args
 }
 
 unsafe fn tailcall_error(message: impl Into<String>) -> ! {
@@ -947,6 +990,156 @@ mod tests {
     use crate::sexp::session::RSession;
 
     use super::*;
+
+    #[test]
+    fn owned_tailcall_arguments_preserve_forwarded_promises_and_missing_through_gc() {
+        use crate::sexp::object::{PairlistBuilder, PairlistIter};
+        use std::{cell::Cell, rc::Rc};
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = SessionNodeFactory::new(owner);
+        let global = session.global_env().unwrap();
+        let environment = factory
+            .wrap(unsafe {
+                crate::sexp::memory_ext::NewEnvironment(R_NilValue(), global.as_raw(), R_NilValue())
+            })
+            .unwrap();
+        let seed = factory
+            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(44) })
+            .unwrap();
+        let other_seed = factory
+            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(100) })
+            .unwrap();
+        let seed_symbol = factory
+            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"seed".as_ptr()) })
+            .unwrap();
+        let x_symbol = factory
+            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"x".as_ptr()) })
+            .unwrap();
+        let absent_symbol = factory
+            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"absent".as_ptr()) })
+            .unwrap();
+        let forwarded = factory.promise(&seed_symbol, &global).unwrap();
+        unsafe {
+            crate::sexp::envir::defineVar(seed_symbol.as_raw(), seed.as_raw(), global.as_raw());
+            crate::sexp::envir::defineVar(
+                seed_symbol.as_raw(),
+                other_seed.as_raw(),
+                environment.as_raw(),
+            );
+            crate::sexp::envir::defineVar(
+                x_symbol.as_raw(),
+                forwarded.as_raw(),
+                environment.as_raw(),
+            );
+            crate::sexp::envir::defineVar(
+                absent_symbol.as_raw(),
+                factory.missing().as_raw(),
+                environment.as_raw(),
+            );
+        }
+        let call = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "f(first=x, second=absent, ..., tail=7L)",
+                    arena,
+                    factory.clone(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let function_expression = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "function(first, second, ...) { gc(); first }",
+                    arena,
+                    factory.clone(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let function = factory
+            .wrap(unsafe { Rf_eval(function_expression.as_raw(), global.as_raw()) })
+            .unwrap();
+        let mut dots_builder = PairlistBuilder::from_factory(factory.clone());
+        dots_builder.push(seed.clone(), None).unwrap();
+        let dots = dots_builder.finish_as_type(SEXPTYPE::DOTSXP).unwrap();
+        unsafe {
+            crate::sexp::envir::defineVar(
+                crate::sexp::symbol::R_DotsSymbol(),
+                dots.as_raw(),
+                environment.as_raw(),
+            );
+        }
+        // Compiler-package discovery is unrelated to this actual tail-call
+        // application; the source closure exercises matching/forcing directly.
+        session.with_active_in(|instance| unsafe {
+            (*instance).eval_state.jit_enabled = 0;
+        });
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        let before = crate::sexp::protect::R_ProtectCount();
+        let promised = unsafe {
+            tailcall_promise_args(&factory, call.try_cdr().unwrap(), environment.clone())
+        };
+        let cells: Vec<_> = PairlistIter::new(promised.clone()).collect();
+        assert_eq!(cells.len(), 4);
+        assert_eq!(cells[0].try_car().unwrap(), forwarded);
+        assert_eq!(
+            cells[1].try_car().unwrap().as_raw(),
+            factory.missing().as_raw()
+        );
+        assert_eq!(
+            cells[0]
+                .try_tag()
+                .unwrap()
+                .try_printname()
+                .unwrap()
+                .try_as_string()
+                .unwrap(),
+            "first"
+        );
+        assert_eq!(
+            cells[3]
+                .try_tag()
+                .unwrap()
+                .try_printname()
+                .unwrap()
+                .try_as_string()
+                .unwrap(),
+            "tail"
+        );
+        let continuation = factory
+            .wrap(unsafe {
+                make_exec_continuation(call.as_raw(), environment.as_raw(), function.as_raw())
+            })
+            .unwrap();
+        drop(call);
+        drop(function_expression);
+        drop(function);
+        drop(dots);
+        drop(promised);
+        drop(cells);
+        let answer = factory
+            .wrap(unsafe { handle_exec_continuation(continuation.as_raw()) })
+            .unwrap();
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 0;
+        });
+        drop(continuation);
+        crate::sexp::gengc::full_gc();
+        assert_eq!(answer.integer_elt(0), Some(44));
+        assert!(notifications.get() >= 8);
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+    }
 
     #[test]
     fn test_jit_settings_parse_and_gate_unavailable_compiler() {

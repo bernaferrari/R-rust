@@ -26,16 +26,27 @@ use crate::sexp::protect::protect;
 /// This is a special `.Internal`.
 pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        let factory = crate::eval::parser::active_factory();
+        let input_args = if args.is_null() { factory.nil() } else {
+            factory.wrap(args).expect("bind arguments belong to the active heap")
+        };
+        let environment = if env.is_null() { factory.nil() } else {
+            factory.wrap(env).expect("bind environment belongs to the active heap")
+        };
+        let args = input_args.as_raw();
         // The first argument is "deparse.level". Evaluate it.
         let deparse_level_val = crate::eval::eval::Rf_eval(CAR(args), env);
+        let _deparse_level_value = factory.wrap(deparse_level_val)
+            .expect("evaluated bind level remains live through coercion");
         let deparse_level: c_int = crate::mainutils::coerce::asInteger(deparse_level_val);
         let try_s4 = deparse_level >= 0;
 
         // Build promises for lazy evaluation and method dispatch.
         // This allows method implementations to use substitute() to get
         // the original expressions.
-        let args = promiseArgs(args, env);
-        let _args_guard = protect(args);
+        let promised = promiseArgs(&factory, input_args, environment);
+        // Keep the owning head through forcing, method dispatch and names.
+        let args = promised.as_raw();
 
         // Determine the generic name from PRIMVAL(op).
         // PRIMVAL(op) == 1 for cbind, other for rbind.

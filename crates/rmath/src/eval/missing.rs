@@ -438,13 +438,22 @@ pub(crate) unsafe fn tryDispatch(
     pv: *mut SEXP,
 ) -> c_int {
     unsafe {
+        let factory = super::dispatch::active_argument_factory();
+        let call_owner = super::dispatch::argument_value(&factory, call);
+        let environment_owner = super::dispatch::argument_value(&factory, rho);
         let generic_sym = Rf_install(generic);
         // GNU eval.c: op = SYMVALUE(install(generic)); R_has_methods(op)
         // requires the primitive, not the symbol.
         let op = dispatch_primitive(generic_sym);
 
-        let pargs = promiseArgs(CDR(call), rho);
-        let _pargs_guard = protect(pargs);
+        let pargs_owner = promiseArgs(
+            &factory,
+            call_owner
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+            environment_owner.clone(),
+        );
+        let pargs = pargs_owner.as_raw();
 
         if !pargs.is_null() && pargs != R_NilValue() {
             let first_promise = CAR(pargs);
@@ -963,6 +972,9 @@ pub unsafe fn check_stack_balance(op: SEXP, save: c_int) {
 // no_mangle removed (duplicate)
 pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let factory = super::dispatch::active_argument_factory();
+        let _call_owner = super::dispatch::argument_value(&factory, call);
+        let environment_owner = super::dispatch::argument_value(&factory, rho);
         let n_expr = CADR(call);
         let n = crate::mainutils::coerce::asInteger(Rf_eval(n_expr, rho));
         let e = CDDR(call);
@@ -989,8 +1001,12 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
             let _delegated_call_guard = protect(delegated_call);
             Rf_eval(delegated_call, rho)
         } else if TYPEOF(fun) == SEXPTYPE::CLOSXP {
-            let pargs = promiseArgs(rest, rho);
-            let _pargs_guard = protect(pargs);
+            let pargs_owner = promiseArgs(
+                &factory,
+                super::dispatch::argument_value(&factory, rest),
+                environment_owner.clone(),
+            );
+            let pargs = pargs_owner.as_raw();
             // Force the first n promises
             let mut a = pargs;
             let mut count: c_int = 0;

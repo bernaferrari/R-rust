@@ -105,6 +105,22 @@ Rust ownership of pages alone does not make those operations safe. Shared
 backing storage is essential: moving a boxed page after publishing raw pointers
 invalidates their aliasing provenance even when the bytes do not move.
 
+### Owning evaluator arguments
+
+The session factory publishes fully initialized promise and pairlist bodies
+before installing their automatic roots and releasing the arena lend.
+Promise construction retains the original expression, environment, and
+singleton bank across collecting callbacks. Pairlist builders validate the
+current head and tail before appending or changing the list kind; a callback
+that changes their shape causes a checked error without overwriting its state.
+
+Promise argument construction, closure matching, tail-call continuations,
+and bind handlers carry owning `Sexp` values. Matching retains each indexed
+formal, supplied, and result cell independently, so detaching a chain during
+a callback cannot collect a cell still in use. Exact, partial, positional,
+and dots matching retain their existing GNU R ordering. Raw lookup,
+evaluation, and field setter boundaries remain pending migration.
+
 ### Native Rust resources
 
 An external-pointer node can own a typed `Rc` resource in its actual physical

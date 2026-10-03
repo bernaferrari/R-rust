@@ -1393,7 +1393,11 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// It delegates to range.default via applyClosure.
 pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let args = fixup_NaRm(args);
+        let factory = crate::eval::parser::active_factory();
+        let input_args = if args.is_null() { factory.nil() } else {
+            factory.wrap(args).expect("range arguments belong to the active heap")
+        };
+        let args = fixup_NaRm(input_args.as_raw());
         let _args_guard = protect(args);
 
         // Find range.default and apply it
@@ -1402,11 +1406,11 @@ pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let _range_fun_guard = protect(range_fun);
 
         // Build promise args
-        let prargs = crate::eval::dispatch::promiseArgs(args, R_NilValue());
-        let _prargs_guard = protect(prargs);
+        let arguments = factory.wrap(args).expect("fixed range arguments remain live");
+        let prargs = crate::eval::dispatch::promiseArgs(&factory, arguments, factory.nil());
 
         // Evaluate range.default via applyClosure
-        let ans = crate::eval::closure::applyClosure(call, range_fun, prargs, env, R_NilValue(), 1);
+        let ans = crate::eval::closure::applyClosure(call, range_fun, prargs.as_raw(), env, R_NilValue(), 1);
 
         ans
     }

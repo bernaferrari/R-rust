@@ -170,6 +170,14 @@ impl SingletonPoolLease {
         self.0.values[0].clone()
     }
 
+    pub(crate) fn unbound(&self) -> SingletonLease {
+        self.0.values[1].clone()
+    }
+
+    pub(crate) fn missing(&self) -> SingletonLease {
+        self.0.values[2].clone()
+    }
+
     pub(crate) fn na_string_projection(&self) -> SEXP {
         self.0.values[6].projection()
     }

@@ -86,24 +86,24 @@ unsafe fn eval_if_needed(x: SEXP, rho: SEXP) -> SEXP {
 /// GNU `.Internal(cbind(deparse.level, ...))` / rbind: evaluate the
 /// sentinel, then promise the data arguments so `...` expansion keeps
 /// the original expressions for deparse.level=1 names.
-unsafe fn eval_bind_internal_args(call: SEXP, args: SEXP, rho: SEXP) -> (i32, SEXP) {
+unsafe fn eval_bind_internal_args<'s>(
+    factory: &crate::sexp::object::SessionNodeFactory<'s>,
+    call: SEXP,
+    args: crate::sexp::object::Sexp<'s>,
+    rho: crate::sexp::object::Sexp<'s>,
+) -> (i32, crate::sexp::object::Sexp<'s>) {
     unsafe {
-        if args.is_null() || args == R_NilValue() {
-            return (1, args);
-        }
-        let dl_val = eval_if_needed(CAR(args), rho);
-        let _dl_guard = protect(dl_val);
+        if args.is_nil() { return (1, args); }
+        let dl_val = eval_if_needed(CAR(args.as_raw()), rho.as_raw());
+        let _dl_value = factory.wrap(dl_val).expect("evaluated bind level remains live");
         let dl = crate::mainutils::coerce::asInteger(dl_val);
-        let dl = if dl == crate::sexp::ffi::NA_INTEGER {
-            1
-        } else {
-            dl
+        let dl = if dl == crate::sexp::ffi::NA_INTEGER { 1 } else { dl };
+        let rest = CDR(args.as_raw());
+        let rest = if rest.is_null() { factory.nil() } else {
+            factory.wrap(rest).expect("bind data expressions remain live")
         };
-        let rest = CDR(args);
-        if rest.is_null() || rest == R_NilValue() {
-            return (dl, rest);
-        }
-        let promised = crate::eval::dispatch::promiseArgs(rest, rho);
+        if rest.is_nil() { return (dl, rest); }
+        let promised = crate::eval::dispatch::promiseArgs(factory, rest, rho);
         (dl, promised)
     }
 }
@@ -189,8 +189,16 @@ unsafe fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Optio
 /// R's `cbind(...)` — combine vectors/matrices by columns.
 pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let (deparse_level, args) = eval_bind_internal_args(call, args, rho);
-        let _args_guard = protect(args);
+        let factory = crate::eval::parser::active_factory();
+        let arguments = if args.is_null() { factory.nil() } else {
+            factory.wrap(args).expect("bind arguments belong to the active heap")
+        };
+        let environment = if rho.is_null() { factory.nil() } else {
+            factory.wrap(rho).expect("bind environment belongs to the active heap")
+        };
+        let (deparse_level, promised) = eval_bind_internal_args(&factory, call, arguments, environment);
+        // Ownership survives all forcing, dispatch and expression-name derivation.
+        let args = promised.as_raw();
         if let Some(ans) = try_s3_bind(call, args, rho, "cbind") {
             return ans;
         }
@@ -356,8 +364,16 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `rbind(...)` — combine vectors/matrices by rows.
 pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let (deparse_level, args) = eval_bind_internal_args(call, args, rho);
-        let _args_guard = protect(args);
+        let factory = crate::eval::parser::active_factory();
+        let arguments = if args.is_null() { factory.nil() } else {
+            factory.wrap(args).expect("bind arguments belong to the active heap")
+        };
+        let environment = if rho.is_null() { factory.nil() } else {
+            factory.wrap(rho).expect("bind environment belongs to the active heap")
+        };
+        let (deparse_level, promised) = eval_bind_internal_args(&factory, call, arguments, environment);
+        // Ownership survives all forcing, dispatch and expression-name derivation.
+        let args = promised.as_raw();
         if deparse_level >= 0
             && let Some(ans) = try_methods_bind(call, args, rho, b"rbind\0", deparse_level)
         {
@@ -1243,17 +1259,35 @@ pub unsafe fn copy_bind_value(
 
 pub unsafe fn set_bind_dimnames(result: SEXP, row_names: SEXP, col_names: SEXP) {
     unsafe {
-        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        if dimnames.is_null() {
-            return;
-        }
-        let _dimnames_guard = protect(dimnames);
-        SET_VECTOR_ELT(dimnames, 0, row_names);
-        SET_VECTOR_ELT(dimnames, 1, col_names);
+        let factory = crate::eval::parser::active_factory();
+        let owned = |raw: SEXP| {
+            if raw.is_null() {
+                factory.nil()
+            } else {
+                factory.wrap(raw).unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(error.to_string())
+                })
+            }
+        };
+        // Capture every input before allocation can run collection callbacks.
+        let result = owned(result);
+        let rows = owned(row_names);
+        let cols = owned(col_names);
+        let dimnames = factory.allocate(|arena| {
+            let raw = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+            (!raw.is_null()).then_some(raw)
+        }).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let mut dimnames = crate::sexp::object::SexpMut::try_from_checked(dimnames)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        dimnames.try_set_vector_elt(0, rows)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        dimnames.try_set_vector_elt(1, cols)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let dimnames = dimnames.freeze();
         crate::sexp::attrib_core::setAttrib(
-            result,
+            result.as_raw(),
             crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dimnames,
+            dimnames.as_raw(),
         );
     }
 }
@@ -1869,4 +1903,120 @@ mod rbind_data_frame_tests {
         );
     }
 
+}
+
+
+#[cfg(test)]
+mod owned_bind_argument_tests {
+    use super::*;
+    use crate::sexp::{object::{Sexp, PairlistBuilder}, session::RSession};
+    use std::{cell::Cell, rc::Rc};
+
+    fn inputs<'s>(session: &'s RSession, generic: &std::ffi::CStr) -> (Sexp<'s>, Sexp<'s>) {
+        let factory = session.owner_token().unwrap().node_factory();
+        let integer = |values: &[i32]| factory.allocate(|arena| {
+            let raw = arena.alloc_vector(SEXPTYPE::INTSXP, values.len() as _);
+            if raw.is_null() { return None; }
+            unsafe { std::ptr::copy_nonoverlapping(values.as_ptr(), INTEGER(raw), values.len()); }
+            Some(raw)
+        }).unwrap();
+        let level = integer(&[1]);
+        let x = integer(&[1, 2]);
+        let y = integer(&[3, 4]);
+        let (generic, x_symbol, y_symbol, label) = unsafe {
+            (factory.wrap(Rf_install(generic.as_ptr())).unwrap(),
+             factory.wrap(Rf_install(c"x".as_ptr())).unwrap(),
+             factory.wrap(Rf_install(c"y".as_ptr())).unwrap(),
+             factory.wrap(Rf_install(c"labelled".as_ptr())).unwrap())
+        };
+        let environment = session.global_env().unwrap();
+        unsafe {
+            crate::sexp::envir::defineVar(x_symbol.as_raw(), x.as_raw(), environment.as_raw());
+            crate::sexp::envir::defineVar(y_symbol.as_raw(), y.as_raw(), environment.as_raw());
+        }
+        let mut call = PairlistBuilder::from_factory(factory.clone());
+        call.push(generic, None).unwrap();
+        call.push(x_symbol.clone(), None).unwrap();
+        call.push(y_symbol.clone(), Some(label.clone())).unwrap();
+        let call = call.finish_as_type(SEXPTYPE::LANGSXP).unwrap();
+        let mut args = PairlistBuilder::from_factory(factory);
+        args.push(level, None).unwrap();
+        args.push(x_symbol, None).unwrap();
+        args.push(y_symbol, Some(label)).unwrap();
+        (call, args.finish().unwrap())
+    }
+
+    fn collect_at_every_allocation(session: &RSession) -> Rc<Cell<usize>> {
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        session.with_active_in(|owner| unsafe {
+            (*owner).memory_state.gc_force_gap = 1;
+            (*owner).memory_state.gc_force_wait = 1;
+        });
+        notifications
+    }
+
+    #[test]
+    fn owned_bind_promises_keep_expressions_tags_and_values_after_input_drop() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let (call, arguments) = inputs(&session, c"cbind");
+            let factory = session.owner_token().unwrap().node_factory();
+            let before = crate::sexp::protect::R_ProtectCount();
+            let notifications = collect_at_every_allocation(&session);
+            let (level, promised) = eval_bind_internal_args(&factory, call.as_raw(), arguments,
+                session.global_env().unwrap());
+            drop(call);
+            assert_eq!(level, 1);
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+            crate::sexp::gengc::full_gc();
+            let first = promised.try_car().unwrap();
+            assert_eq!(first.try_prcode().unwrap().typeof_(), SEXPTYPE::SYMSXP);
+            assert_eq!(first.try_prvalue().unwrap().as_raw(), factory.unbound().as_raw());
+            let second_cell = promised.try_cdr().unwrap();
+            assert_eq!(tag_name(second_cell.as_raw()).as_deref(), Some("labelled"));
+            let first_value = factory.wrap(force_bind_arg(promised.as_raw())).unwrap();
+            let second_value = factory.wrap(force_bind_arg(second_cell.as_raw())).unwrap();
+            assert_eq!(first_value.iter_integer().collect::<Vec<_>>(), [1, 2]);
+            assert_eq!(second_value.iter_integer().collect::<Vec<_>>(), [3, 4]);
+            assert!(notifications.get() >= 4);
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+        });
+    }
+
+    #[test]
+    fn owned_bind_handlers_keep_gnu_names_and_values_during_full_gc_callbacks() {
+        for (generic, expected, names_dimension) in [
+            (c"cbind", [1, 2, 3, 4], 1),
+            (c"rbind", [1, 3, 2, 4], 0),
+        ] {
+            let session = RSession::new_for_gc_tests();
+            session.with_active(|| unsafe {
+                let (call, arguments) = inputs(&session, generic);
+                let factory = session.owner_token().unwrap().node_factory();
+                let notifications = collect_at_every_allocation(&session);
+                let raw = if generic == c"cbind" {
+                    do_cbind(call.as_raw(), R_NilValue(), arguments.as_raw(), session.global_env().unwrap().as_raw())
+                } else {
+                    do_rbind(call.as_raw(), R_NilValue(), arguments.as_raw(), session.global_env().unwrap().as_raw())
+                };
+                let result = factory.wrap(raw).unwrap();
+                drop(call);
+                drop(arguments);
+                crate::sexp::gengc::full_gc();
+                assert_eq!(result.clone().iter_integer().collect::<Vec<_>>(), expected);
+                let dims = factory.wrap(crate::sexp::attrib_core::getAttrib(result.as_raw(), crate::sexp::attrib_core::R_DimSymbol())).unwrap();
+                assert_eq!(dims.iter_integer().collect::<Vec<_>>(), [2, 2]);
+                let names = factory.wrap(crate::sexp::attrib_core::getAttrib(result.as_raw(), crate::sexp::attrib_core::R_DimNamesSymbol())).unwrap();
+                let labels = names.try_vector_elt(names_dimension).unwrap();
+                assert_eq!(labels.try_string_value_elt(0).unwrap().as_deref(), Some("x"));
+                assert_eq!(labels.try_string_value_elt(1).unwrap().as_deref(), Some("labelled"));
+                assert!(notifications.get() >= 4);
+            });
+        }
+    }
 }

@@ -20,8 +20,8 @@ use crate::sexp::accessors::{
 use crate::sexp::envir::{Environment, addMissingVarsToNewEnv};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE};
-use crate::sexp::object::{PairlistBuilder, PairlistIter, Sexp, SexpError};
+use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
+use crate::sexp::object::{PairlistBuilder, PairlistIter, SessionNodeFactory, Sexp, SexpError};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_DotsSymbol;
 
@@ -138,9 +138,11 @@ pub unsafe fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<S
         return Ok(args);
     }
 
-    unsafe { match_closure_args(formals.as_raw(), args.as_raw()) }.and_then(|matched| {
-        unsafe { Sexp::try_from_raw(matched) }.map_err(|err| sexp_err("matched argument wrap", err))
-    })
+    let factory = formals
+        .node_factory()
+        .or_else(|_| args.node_factory())
+        .map_err(|err| sexp_err("argument matching owner", err))?;
+    unsafe { match_closure_args(&factory, formals, args) }
 }
 
 /// Safe environment creation.
@@ -205,6 +207,11 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             return R_NilValue();
         }
 
+        let factory = super::dispatch::active_argument_factory();
+        let arguments_owner = super::dispatch::argument_value(&factory, arglist);
+        let environment_owner = super::dispatch::argument_value(&factory, rho);
+        let _call_owner = super::dispatch::argument_value(&factory, call);
+
         // Keep the closure rooted while the JIT compiler allocates its code
         // and constant pool. Compilation installs BODY(op) only after the
         // complete bytecode object exists; an unsupported body stays source.
@@ -224,8 +231,9 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         // `v` in the generic's frame instead of the caller's).
         // Double-wrapping is transparent: forcing the outer promise
         // evaluates the inner one in its own recorded environment.
-        let promised_args = super::dispatch::promiseArgs(arglist, rho);
-        let _promised_args_guard = protect(promised_args);
+        let promised_args_owner =
+            super::dispatch::promiseArgs(&factory, arguments_owner, environment_owner);
+        let promised_args = promised_args_owner.as_raw();
 
         let newrho = make_applyClosure_env(call, op, arglist, rho);
         if newrho.is_null() || newrho == R_NilValue() {
@@ -610,11 +618,15 @@ unsafe fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
 }
 
 pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {
+    // Retain the raw entry frame before method remapping or argument matching
+    // can allocate and invoke the collector.
+    let factory = unsafe { super::dispatch::active_argument_factory() };
+    let _call_owner = super::dispatch::argument_value(&factory, call);
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         match (
-            Sexp::from_raw(op),
-            Sexp::from_raw(arglist),
-            Sexp::from_raw(rho),
+            factory.wrap(op).ok(),
+            Some(super::dispatch::argument_value(&factory, arglist)),
+            Some(super::dispatch::argument_value(&factory, rho)),
         ) {
             (Some(closure), Some(args), Some(env)) => {
                 if !closure.clone().is_closure() {
@@ -629,22 +641,25 @@ pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SE
                     Ok(e) => e,
                     Err(_) => return R_NilValue(),
                 };
-                let cloenv = Sexp::from_raw_unchecked(remap_methods_snapshot_cloenv(
-                    op,
-                    cloenv.as_raw()));
+                let cloenv = super::dispatch::argument_value(
+                    &factory,
+                    remap_methods_snapshot_cloenv(op, cloenv.as_raw()),
+                );
                 let cloenv = reparent_empty_utils_runner(op, cloenv.as_raw());
-                let cloenv = Sexp::from_raw_unchecked(cloenv);
+                let cloenv = super::dispatch::argument_value(&factory, cloenv);
 
-                let promised_args = crate::eval::dispatch::promiseArgs(arglist, rho);
-                let matched = match_closure_args(formals.clone().as_raw(), promised_args)
-                    .unwrap_or_else(|message| {
-                        crate::mainutils::errors::record_error_call(call, true);
-                        crate::mainutils::errors::save_error_traceback();
-                        std::panic::panic_any(crate::sexp::context::RSignal::Error { message })
-                    });
+                let promised_args_owner = crate::eval::dispatch::promiseArgs(&factory, args, env);
+                let matched_owner =
+                    match_closure_args(&factory, formals.clone(), promised_args_owner)
+                        .unwrap_or_else(|message| {
+                            crate::mainutils::errors::record_error_call(call, true);
+                            crate::mainutils::errors::save_error_traceback();
+                            std::panic::panic_any(crate::sexp::context::RSignal::Error { message })
+                        });
+                let matched = matched_owner.as_raw();
 
-                let new_env = match create_env_safe(Sexp::from_raw_unchecked(matched), cloenv) {
-                    Ok(e) => e,
+                let new_env = match create_env_safe(matched_owner, cloenv) {
+                    Ok(e) => super::dispatch::argument_value(&factory, e.as_raw()),
                     Err(_) => return R_NilValue(),
                 };
 
@@ -672,7 +687,7 @@ pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SE
 
 unsafe fn formal_tag_name(formal_tag: SEXP) -> Option<String> {
     unsafe {
-        if formal_tag.is_null() || formal_tag == R_NilValue() {
+        if formal_tag.is_null() || TYPEOF(formal_tag) != SEXPTYPE::SYMSXP {
             return None;
         }
         let pname = PRINTNAME(formal_tag);
@@ -699,265 +714,257 @@ unsafe fn formal_tag_name(formal_tag: SEXP) -> Option<String> {
 /// a DOTSXP; with no `...` formal present, an "unused arguments" error is
 /// raised. The returned pairlist has one element per formal, in formal order,
 /// each holding the matched value or `R_MissingArg`.
-pub(super) unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, String> {
-    unsafe {
-        // Snapshot the supplied cells so we can index them alongside a
-        // parallel `used` flag vector (upstream uses ARGUSED on the cells).
-        let mut supplied_cells = Vec::new();
-        let mut cur = supplied;
-        while !cur.is_null() && cur != R_NilValue() {
-            supplied_cells.push(cur);
-            cur = CDR(cur);
-        }
-        // 0 = unused, 1 = partially matched, 2 = exactly matched.
-        let mut used = vec![0u8; supplied_cells.len()];
-        // fargused[i]: whether formal i has been matched (and how many times).
-        let formal_count = {
-            let mut n = 0usize;
-            let mut f = formals;
-            while !f.is_null() && f != R_NilValue() {
-                n += 1;
-                f = CDR(f);
-            }
-            n
-        };
-        let mut fargused = vec![false; formal_count];
-
-        // Build the result as a chain of cells (one per formal, all initially
-        // R_MissingArg), mirroring upstream matchArgs_NR's `actuals`. Each
-        // cell carries its formal name as TAG: this pairlist becomes the new
-        // environment's frame, whose lookups are tag-based.
-        let mut result_cells: Vec<SEXP> = Vec::with_capacity(formal_count);
-        {
-            let mut f = formals;
-            while !f.is_null() && f != R_NilValue() {
-                let cell = CONS_NR(R_MissingArg(), R_NilValue());
-                if cell.is_null() || cell == R_NilValue() {
-                    return Err("failed to allocate matched argument cell".to_string());
-                }
-                if let Some(&last) = result_cells.last() {
-                    SETCDR(last, cell);
-                }
-                let ftag = TAG(f);
-                if !ftag.is_null() && ftag != R_NilValue() {
-                    crate::sexp::accessors::SETTAG(cell, ftag);
-                }
-                result_cells.push(cell);
-                f = CDR(f);
-            }
-        }
-
-        // First pass: exact matches by tag.
-        {
-            let mut formal_idx = 0usize;
-            let mut f = formals;
-            while !f.is_null() && f != R_NilValue() {
-                let ftag = TAG(f);
-                if !ftag.is_null() && ftag != R_NilValue() && ftag != R_DotsSymbol() {
-                    if let Some(ftag_name) = formal_tag_name(ftag) {
-                        for i in 0..supplied_cells.len() {
-                            let btag = TAG(supplied_cells[i]);
-                            if btag.is_null() || btag == R_NilValue() {
-                                continue;
-                            }
-                            let Some(btag_name) = formal_tag_name(btag) else {
-                                continue;
-                            };
-                            if ftag_name == btag_name {
-                                if fargused[formal_idx] {
-                                    return Err(format!(
-                                        "formal argument \"{ftag_name}\" matched by multiple actual arguments"
-                                    ));
-                                }
-                                if used[i] == 2 {
-                                    return Err(format!(
-                                        "argument {} matches multiple formal arguments",
-                                        i + 1
-                                    ));
-                                }
-                                SETCAR(result_cells[formal_idx], CAR(supplied_cells[i]));
-                                used[i] = 2;
-                                fargused[formal_idx] = true;
-                            }
-                        }
-                    }
-                }
-                f = CDR(f);
-                formal_idx += 1;
-            }
-        }
-
-        // Second pass: partial matches based on tags. An exact match is
-        // required after the first ... ; its location is recorded so the ...
-        // can gobble remaining args later.
-        let mut dots_formal_index: Option<usize> = None;
-        let mut seen_dots = false;
-        {
-            let mut formal_idx = 0usize;
-            let mut f = formals;
-            while !f.is_null() && f != R_NilValue() {
-                if !fargused[formal_idx] {
-                    let ftag = TAG(f);
-                    if ftag == R_DotsSymbol() && !seen_dots {
-                        // Record where ... value goes.
-                        dots_formal_index = Some(formal_idx);
-                        seen_dots = true;
-                    } else if !seen_dots {
-                        if let Some(ftag_name) = formal_tag_name(ftag) {
-                            for i in 0..supplied_cells.len() {
-                                let btag = TAG(supplied_cells[i]);
-                                if btag.is_null() || btag == R_NilValue() || used[i] == 2 {
-                                    continue;
-                                }
-                                let Some(btag_name) = formal_tag_name(btag) else {
-                                    continue;
-                                };
-                                // Upstream psmatch: the supplied tag may be a
-                                // prefix of the formal's name.
-                                if ftag_name.starts_with(btag_name.as_str()) {
-                                    if used[i] != 0 {
-                                        return Err(format!(
-                                            "argument {} matches multiple formal arguments",
-                                            i + 1
-                                        ));
-                                    }
-                                    if fargused[formal_idx] {
-                                        return Err(format!(
-                                            "formal argument \"{ftag_name}\" matched by multiple actual arguments"
-                                        ));
-                                    }
-                                    crate::mainutils::match_mod::R_warn_partial_match_args(
-                                        R_NilValue(),
-                                        btag,
-                                        ftag,
-                                    );
-                                    SETCAR(result_cells[formal_idx], CAR(supplied_cells[i]));
-                                    used[i] = 1;
-                                    fargused[formal_idx] = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                f = CDR(f);
-                formal_idx += 1;
-            }
-        }
-
-        // Third pass: matches based on order. All tagged args have now been
-        // matched. Bind untagged values in order to any unmatched formals,
-        // stopping at the first ... (which gobbles all remaining args below).
-        {
-            let mut formal_idx = 0usize;
-            let mut b = 0usize;
-            let mut f = formals;
-            let mut seendots = false;
-            while !f.is_null() && f != R_NilValue() && b < supplied_cells.len() && !seendots {
-                let ftag = TAG(f);
-                if ftag == R_DotsSymbol() {
-                    seendots = true;
-                    f = CDR(f);
-                    formal_idx += 1;
-                } else if !is_missing_car(result_cells[formal_idx]) {
-                    // Already matched by tag: skip to next formal.
-                    f = CDR(f);
-                    formal_idx += 1;
-                } else if used[b] != 0 || !tag_is_nil(TAG(supplied_cells[b])) {
-                    // This value is used or tagged: skip to next value.
-                    b += 1;
-                } else {
-                    // Positional match.
-                    SETCAR(result_cells[formal_idx], CAR(supplied_cells[b]));
-                    used[b] = 1;
-                    fargused[formal_idx] = true;
-                    b += 1;
-                    f = CDR(f);
-                    formal_idx += 1;
-                }
-            }
-        }
-
-        // Finally: gobble up all unused actuals into ..., or error.
-        if let Some(dots_idx) = dots_formal_index {
-            let mut dots = PairlistBuilder::new();
-            let mut collected = 0usize;
-            for i in 0..supplied_cells.len() {
-                if used[i] != 0 {
-                    continue;
-                }
-                used[i] = 1;
-                let tag_raw = TAG(supplied_cells[i]);
-                let tag = if tag_raw.is_null() || tag_raw == R_NilValue() {
-                    None
-                } else {
-                    Some(Sexp::from_raw_unchecked(tag_raw))
-                };
-                dots.push(Sexp::from_raw_unchecked(CAR(supplied_cells[i])), tag)
-                    .map_err(|err| sexp_err("dots argument pairlist build", err))?;
-                collected += 1;
-            }
-            if collected == 0 {
-                SETCAR(result_cells[dots_idx], R_MissingArg());
-            } else {
-                let dots_value = dots
-                    .finish_as_type(SEXPTYPE::DOTSXP)
-                    .map_err(|err| sexp_err("dots argument pairlist wrap", err))?;
-                SETCAR(result_cells[dots_idx], dots_value.as_raw());
-            }
-        } else {
-            // Show bad arguments in the call without evaluating them:
-            // unwrap promises back to their expressions for deparsing.
-            // Stock match.c reports every unused argument, singular
-            // ("unused argument (y = 1)") or plural
-            // ("unused arguments (x = 1, y = 2)").
-            let mut unused: Vec<String> = Vec::new();
-            for i in 0..supplied_cells.len() {
-                if used[i] != 0 {
-                    continue;
-                }
-                let mut car_b = CAR(supplied_cells[i]);
-                if TYPEOF(car_b) == SEXPTYPE::PROMSXP {
-                    car_b = PRCODE(car_b);
-                }
-                let deparsed = deparse_for_error(car_b);
-                let item = match formal_tag_name(TAG(supplied_cells[i])) {
-                    Some(tag) => format!("{tag} = {deparsed}"),
-                    None => deparsed,
-                };
-                unused.push(item);
-            }
-            if !unused.is_empty() {
-                if unused.len() == 1 {
-                    return Err(format!("unused argument ({})", unused[0]));
-                }
-                return Err(format!("unused arguments ({})", unused.join(", ")));
-            }
-        }
-        // GNU matchArgs_NR: unmatched formals keep MISSING=1 on the
-        // frame cell so `missing(x)` stays TRUE after a default promise
-        // is installed (`function(x=1) missing(x)`).
-        for cell in &result_cells {
-            if is_missing_car(*cell) {
-                crate::sexp::accessors::SET_MISSING(*cell, 1);
-            }
-        }
-
-        // Return the head of the matched-arguments chain.
-        Ok(if result_cells.is_empty() {
-            R_NilValue()
-        } else {
-            result_cells[0]
-        })
-
+pub(super) unsafe fn match_closure_args<'s>(
+    factory: &SessionNodeFactory<'s>,
+    formals: Sexp<'s>,
+    supplied: Sexp<'s>,
+) -> Result<Sexp<'s>, String> {
+    factory
+        .require_active()
+        .map_err(|error| sexp_err("argument matching owner", error))?;
+    factory
+        .link(&formals)
+        .and_then(|_| factory.link(&supplied))
+        .map_err(|error| sexp_err("argument matching domain", error))?;
+    // Each indexed cell owns its root independently. A callback may detach
+    // cells from either original chain while warning or allocating a result.
+    let supplied_cells: Vec<_> = PairlistIter::new(supplied).collect();
+    let formal_cells: Vec<_> = PairlistIter::new(formals).collect();
+    let mut used = vec![0u8; supplied_cells.len()];
+    let mut fargused = vec![false; formal_cells.len()];
+    let missing = factory.missing();
+    let dots_symbol = unsafe { R_DotsSymbol() };
+    let mut result_owner = PairlistBuilder::from_factory(factory.clone());
+    let mut result_cells = Vec::with_capacity(formal_cells.len());
+    for formal in &formal_cells {
+        let tag = formal
+            .try_tag()
+            .map_err(|error| sexp_err("formal tag", error))?;
+        let tag = if tag.is_nil() { None } else { Some(tag) };
+        result_cells.push(
+            result_owner
+                .push_cell(missing.clone(), tag)
+                .map_err(|error| sexp_err("matched argument cell", error))?,
+        );
     }
-}
 
-unsafe fn is_missing_car(cell: SEXP) -> bool {
-    unsafe { CAR(cell) == R_MissingArg() }
-}
+    // First pass: exact tag matching.
+    for (formal_idx, formal) in formal_cells.iter().enumerate() {
+        let ftag = formal
+            .try_tag()
+            .map_err(|error| sexp_err("formal tag", error))?;
+        if ftag.is_nil() || ftag.as_raw() == dots_symbol {
+            continue;
+        }
+        if let Some(ftag_name) = unsafe { formal_tag_name(ftag.as_raw()) } {
+            for (index, supplied) in supplied_cells.iter().enumerate() {
+                let btag = supplied
+                    .try_tag()
+                    .map_err(|error| sexp_err("supplied tag", error))?;
+                if btag.is_nil() {
+                    continue;
+                }
+                let Some(btag_name) = (unsafe { formal_tag_name(btag.as_raw()) }) else {
+                    continue;
+                };
+                if ftag_name != btag_name {
+                    continue;
+                }
+                if fargused[formal_idx] {
+                    return Err(format!(
+                        "formal argument \"{ftag_name}\" matched by multiple actual arguments"
+                    ));
+                }
+                if used[index] == 2 {
+                    return Err(format!(
+                        "argument {} matches multiple formal arguments",
+                        index + 1
+                    ));
+                }
+                let value = supplied
+                    .try_car()
+                    .map_err(|error| sexp_err("supplied value", error))?;
+                unsafe {
+                    SETCAR(result_cells[formal_idx].as_raw(), value.as_raw());
+                }
+                used[index] = 2;
+                fargused[formal_idx] = true;
+            }
+        }
+    }
 
-unsafe fn tag_is_nil(tag: SEXP) -> bool {
-    unsafe { tag.is_null() || tag == R_NilValue() }
+    // Second pass: partial tags; exact matching remains required after ... .
+    let mut dots_formal_index = None;
+    let mut seen_dots = false;
+    for (formal_idx, formal) in formal_cells.iter().enumerate() {
+        if fargused[formal_idx] {
+            continue;
+        }
+        let ftag = formal
+            .try_tag()
+            .map_err(|error| sexp_err("formal tag", error))?;
+        if ftag.as_raw() == dots_symbol && !seen_dots {
+            dots_formal_index = Some(formal_idx);
+            seen_dots = true;
+        } else if !seen_dots {
+            if let Some(ftag_name) = unsafe { formal_tag_name(ftag.as_raw()) } {
+                for (index, supplied) in supplied_cells.iter().enumerate() {
+                    let btag = supplied
+                        .try_tag()
+                        .map_err(|error| sexp_err("supplied tag", error))?;
+                    if btag.is_nil() || used[index] == 2 {
+                        continue;
+                    }
+                    let Some(btag_name) = (unsafe { formal_tag_name(btag.as_raw()) }) else {
+                        continue;
+                    };
+                    if !ftag_name.starts_with(btag_name.as_str()) {
+                        continue;
+                    }
+                    if used[index] != 0 {
+                        return Err(format!(
+                            "argument {} matches multiple formal arguments",
+                            index + 1
+                        ));
+                    }
+                    if fargused[formal_idx] {
+                        return Err(format!(
+                            "formal argument \"{ftag_name}\" matched by multiple actual arguments"
+                        ));
+                    }
+                    let value = supplied
+                        .try_car()
+                        .map_err(|error| sexp_err("supplied value", error))?;
+                    unsafe {
+                        crate::mainutils::match_mod::R_warn_partial_match_args(
+                            factory.nil().as_raw(),
+                            btag.as_raw(),
+                            ftag.as_raw(),
+                        );
+                        SETCAR(result_cells[formal_idx].as_raw(), value.as_raw());
+                    }
+                    used[index] = 1;
+                    fargused[formal_idx] = true;
+                }
+            }
+        }
+    }
+
+    // Third pass: positional matching stops at the first ... formal.
+    let mut formal_idx = 0;
+    let mut supplied_idx = 0;
+    while formal_idx < formal_cells.len() && supplied_idx < supplied_cells.len() {
+        let formal_tag = formal_cells[formal_idx]
+            .try_tag()
+            .map_err(|error| sexp_err("formal tag", error))?;
+        if formal_tag.as_raw() == dots_symbol {
+            break;
+        }
+        let matched = result_cells[formal_idx]
+            .try_car()
+            .map_err(|error| sexp_err("matched value", error))?;
+        if matched.as_raw() != missing.as_raw() {
+            formal_idx += 1;
+        } else if used[supplied_idx] != 0
+            || !supplied_cells[supplied_idx]
+                .try_tag()
+                .map_err(|error| sexp_err("supplied tag", error))?
+                .is_nil()
+        {
+            supplied_idx += 1;
+        } else {
+            let value = supplied_cells[supplied_idx]
+                .try_car()
+                .map_err(|error| sexp_err("supplied value", error))?;
+            unsafe {
+                SETCAR(result_cells[formal_idx].as_raw(), value.as_raw());
+            }
+            used[supplied_idx] = 1;
+            fargused[formal_idx] = true;
+            supplied_idx += 1;
+            formal_idx += 1;
+        }
+    }
+
+    if let Some(dots_idx) = dots_formal_index {
+        let mut dots = PairlistBuilder::from_factory(factory.clone());
+        let mut collected = 0;
+        for (index, supplied) in supplied_cells.iter().enumerate() {
+            if used[index] != 0 {
+                continue;
+            }
+            used[index] = 1;
+            let tag = supplied
+                .try_tag()
+                .map_err(|error| sexp_err("supplied tag", error))?;
+            let tag = if tag.is_nil() { None } else { Some(tag) };
+            let value = supplied
+                .try_car()
+                .map_err(|error| sexp_err("supplied value", error))?;
+            dots.push(value, tag)
+                .map_err(|error| sexp_err("dots argument pairlist build", error))?;
+            collected += 1;
+        }
+        if collected == 0 {
+            unsafe {
+                SETCAR(result_cells[dots_idx].as_raw(), missing.as_raw());
+            }
+        } else {
+            let dots = dots
+                .finish_as_type(SEXPTYPE::DOTSXP)
+                .map_err(|error| sexp_err("dots argument pairlist wrap", error))?;
+            unsafe {
+                SETCAR(result_cells[dots_idx].as_raw(), dots.as_raw());
+            }
+        }
+    } else {
+        let mut unused = Vec::new();
+        for (index, supplied) in supplied_cells.iter().enumerate() {
+            if used[index] != 0 {
+                continue;
+            }
+            let mut value = supplied
+                .try_car()
+                .map_err(|error| sexp_err("unused value", error))?;
+            if value.typeof_() == SEXPTYPE::PROMSXP {
+                value = value
+                    .try_prcode()
+                    .map_err(|error| sexp_err("unused promise code", error))?;
+            }
+            let deparsed = deparse_for_error(value.as_raw());
+            let tag = supplied
+                .try_tag()
+                .map_err(|error| sexp_err("supplied tag", error))?;
+            let item = match unsafe { formal_tag_name(tag.as_raw()) } {
+                Some(tag) => format!("{tag} = {deparsed}"),
+                None => deparsed,
+            };
+            unused.push(item);
+        }
+        if !unused.is_empty() {
+            return Err(if unused.len() == 1 {
+                format!("unused argument ({})", unused[0])
+            } else {
+                format!("unused arguments ({})", unused.join(", "))
+            });
+        }
+    }
+    // Defaults retain MISSING=1 even after their promise is installed.
+    for cell in &result_cells {
+        if cell
+            .try_car()
+            .map_err(|error| sexp_err("matched value", error))?
+            .as_raw()
+            == missing.as_raw()
+        {
+            unsafe {
+                crate::sexp::accessors::SET_MISSING(cell.as_raw(), 1);
+            }
+        }
+    }
+    result_owner
+        .finish()
+        .map_err(|error| sexp_err("matched argument pairlist", error))
 }
 
 fn deparse_for_error(expr: SEXP) -> String {
@@ -1048,5 +1055,256 @@ pub unsafe fn R_execClosure(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod owned_matcher_tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn owned_matcher_retains_cells_detached_by_reentrant_gc_callbacks() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let mut formals = PairlistBuilder::from_factory(factory.clone());
+        let mut arguments = PairlistBuilder::from_factory(factory.clone());
+        for (name, number) in [(c"first", 10), (c"second", 20), (c"third", 30)] {
+            let tag = factory
+                .wrap(unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) })
+                .unwrap();
+            formals.push(factory.missing(), Some(tag)).unwrap();
+            let value = factory
+                .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(number) })
+                .unwrap();
+            arguments.push(value, None).unwrap();
+        }
+        let formals = formals.finish().unwrap();
+        let arguments = arguments.finish().unwrap();
+        let original_formals = formals.as_raw();
+        let original_arguments = arguments.as_raw();
+        let nil = factory.nil().as_raw();
+        let detached = Rc::new(Cell::new(false));
+        let changed = detached.clone();
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            if !changed.replace(true) {
+                // The caller retains both original heads for this callback.
+                // Every detached indexed cell must now be owned by the matcher.
+                unsafe {
+                    SETCDR(original_formals, nil);
+                    SETCDR(original_arguments, nil);
+                }
+            }
+            crate::sexp::gengc::full_gc();
+        }));
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        let before = crate::sexp::protect::R_ProtectCount();
+        let matched =
+            unsafe { match_closure_args(&factory, formals.clone(), arguments.clone()) }.unwrap();
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 0;
+        });
+        assert!(detached.get());
+        assert!(formals.try_cdr().unwrap().is_nil());
+        assert!(arguments.try_cdr().unwrap().is_nil());
+        drop(formals);
+        drop(arguments);
+        crate::sexp::gengc::full_gc();
+        let cells: Vec<_> = PairlistIter::new(matched).collect();
+        assert_eq!(cells.len(), 3);
+        let values: Vec<_> = cells
+            .iter()
+            .map(|cell| cell.try_car().unwrap().integer_elt(0).unwrap())
+            .collect();
+        assert_eq!(values, [10, 20, 30]);
+        let tags: Vec<_> = cells
+            .iter()
+            .map(|cell| {
+                cell.try_tag()
+                    .unwrap()
+                    .try_printname()
+                    .unwrap()
+                    .try_as_string()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(tags, ["first", "second", "third"]);
+        assert!(notifications.get() >= 3);
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+    }
+
+    #[test]
+    fn owned_matcher_partial_warning_collects_unwinds_and_retries() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = SessionNodeFactory::new(owner);
+        let global = session.global_env().unwrap();
+        session.with_active_in(|instance| unsafe {
+            (*instance).eval_state.jit_enabled = 0;
+        });
+        let parse = |input: &str| {
+            owner
+                .with_arena(|arena| crate::eval::parser::parse(input, arena, factory.clone()))
+                .unwrap()
+                .unwrap()
+        };
+        let function_expression = parse("function(alpha) alpha");
+        let function = factory
+            .wrap(unsafe { Rf_eval(function_expression.as_raw(), global.as_raw()) })
+            .unwrap();
+        let selected = factory
+            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(37) })
+            .unwrap();
+        let handled = factory
+            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(0) })
+            .unwrap();
+        let symbol = |name: &CStr| {
+            factory
+                .wrap(unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) })
+                .unwrap()
+        };
+        let function_name = symbol(c"f");
+        let selected_name = symbol(c"selected");
+        let handled_name = symbol(c"handled");
+        unsafe {
+            crate::sexp::envir::defineVar(
+                function_name.as_raw(),
+                function.as_raw(),
+                global.as_raw(),
+            );
+            crate::sexp::envir::defineVar(
+                selected_name.as_raw(),
+                selected.as_raw(),
+                global.as_raw(),
+            );
+            crate::sexp::envir::defineVar(handled_name.as_raw(), handled.as_raw(), global.as_raw());
+            crate::mainutils::options::SetOptionByName(
+                "warnPartialMatchArgs",
+                factory
+                    .wrap(crate::sexp::constructors::Rf_ScalarLogical(1))
+                    .unwrap()
+                    .as_raw(),
+            );
+        }
+        let expression = parse(
+            "withCallingHandlers(f(al=selected), warning=function(w) { handled <<- handled + 1L; gc() })",
+        );
+        // Keep the actual selected formal, supplied tag, and argument value
+        // independently owned across the warning handler and error unwind.
+        let formal = function.try_formals().unwrap();
+        let formal_tag = formal.try_tag().unwrap();
+        let call = expression.try_cdr().unwrap().try_car().unwrap();
+        let supplied = call.try_cdr().unwrap();
+        let supplied_tag = supplied.try_tag().unwrap();
+        let supplied_value = supplied.try_car().unwrap();
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        let set_warn = |level| unsafe {
+            let value = factory
+                .wrap(crate::sexp::constructors::Rf_ScalarInteger(level))
+                .unwrap();
+            crate::mainutils::options::SetOptionByName("warn", value.as_raw());
+        };
+        let runtime_state = || {
+            session.with_active_in(|instance| unsafe {
+                (
+                    (*instance).context_stack.len(),
+                    (*instance).error_state.handler_stack,
+                    (*instance).error_state.restart_stack,
+                    (*instance).error_state.in_warning,
+                )
+            })
+        };
+        let handled_count = || unsafe {
+            let count = factory
+                .wrap(crate::sexp::envir::R_findVar(
+                    handled_name.as_raw(),
+                    global.as_raw(),
+                ))
+                .unwrap();
+            count.integer_elt(0).unwrap()
+        };
+        set_warn(0);
+        let before_protection = crate::sexp::protect::R_ProtectCount();
+        let before_runtime = runtime_state();
+        let first = factory
+            .wrap(unsafe { Rf_eval(expression.as_raw(), global.as_raw()) })
+            .unwrap();
+        assert_eq!(first.integer_elt(0).unwrap(), 37);
+        assert_eq!(handled_count(), 1);
+        assert!(notifications.get() > 0);
+        assert!(crate::mainutils::essentials::warning_handler_invoked());
+        assert_eq!(runtime_state(), before_runtime);
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before_protection);
+
+        set_warn(2);
+        let collections_before_error = notifications.get();
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            Rf_eval(expression.as_raw(), global.as_raw())
+        }));
+        let payload = error.expect_err("warn=2 must unwind after the collecting calling handler");
+        let message = if let Some(error) = payload.downcast_ref::<crate::sexp::context::RError>() {
+            &error.message
+        } else if let Some(crate::sexp::context::RSignal::Error { message }) =
+            payload.downcast_ref::<crate::sexp::context::RSignal>()
+        {
+            message
+        } else {
+            std::panic::resume_unwind(payload);
+        };
+        assert!(message.contains("converted from warning"), "{message}");
+        assert!(
+            message.contains("partial argument match of 'al' to 'alpha'"),
+            "{message}"
+        );
+        assert_eq!(handled_count(), 2);
+        assert!(notifications.get() > collections_before_error);
+        assert_eq!(runtime_state(), before_runtime);
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before_protection);
+
+        set_warn(0);
+        let collections_before_retry = notifications.get();
+        let retry = factory
+            .wrap(unsafe { Rf_eval(expression.as_raw(), global.as_raw()) })
+            .unwrap();
+        crate::sexp::gengc::full_gc();
+        assert_eq!(retry.integer_elt(0).unwrap(), 37);
+        assert_eq!(first.integer_elt(0).unwrap(), 37);
+        assert_eq!(selected.integer_elt(0).unwrap(), 37);
+        assert_eq!(
+            formal_tag.try_printname().unwrap().try_as_string().unwrap(),
+            "alpha"
+        );
+        assert_eq!(
+            supplied_tag
+                .try_printname()
+                .unwrap()
+                .try_as_string()
+                .unwrap(),
+            "al"
+        );
+        assert_eq!(
+            supplied_value
+                .try_printname()
+                .unwrap()
+                .try_as_string()
+                .unwrap(),
+            "selected"
+        );
+        assert_eq!(handled_count(), 3);
+        assert!(notifications.get() > collections_before_retry);
+        assert_eq!(runtime_state(), before_runtime);
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before_protection);
     }
 }

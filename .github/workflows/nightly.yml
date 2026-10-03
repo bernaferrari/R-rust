@@ -107,6 +107,15 @@ jobs:
         include:
           - subject: arguments
             filter: owned_argument_tests
+          - subject: promise construction
+            filter: >-
+              checked_producers_publish_initialized_roots_and_keep_original_sentinels
+              pairlist_builder_rejects_callback_shape_changes_without_overwriting_them
+              owned_promise_arguments
+              promise_arguments_reject_invalid_dots
+              owned_tailcall_arguments
+              owned_bind_
+              owned_matcher_
           - subject: conditions
             filter: bounded_condition_text_survives_each_allocation_and_reentrant_gc
           - subject: option defaults
@@ -127,6 +136,24 @@ jobs:
         run: >-
           cargo +nightly miri test -p rmath --lib -- --test-threads=1
           ${{ matrix.filter }}
+
+  miri-renderplot-evaluation:
+    name: Miri (owning renderplot evaluation)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      - name: Retain parsed statements and restore the graphics backend
+        env:
+          MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-strict-provenance
+        run: >-
+          cargo +nightly miri test -p rmath --lib --features renderplot-device
+          owned_renderplot_statements_survive_reentrant_gc_and_restore_backend_after_error
+          -- --test-threads=1
 
   miri-checked-graph:
     name: Miri (checked ${{ matrix.subject }})

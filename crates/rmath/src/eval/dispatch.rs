@@ -25,7 +25,7 @@ use crate::sexp::context::RError;
 use crate::sexp::envir::{R_findVar, R_findVarInFrame, R_isMissing, forcePromise};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
+use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, vmaxget, vmaxset};
 use crate::sexp::object::{PairlistBuilder, SessionNodeFactory, Sexp};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
@@ -118,31 +118,25 @@ unsafe fn method_name_is(method: SEXP, name: &[u8]) -> bool {
     }
 }
 
-/// Validate and retain the next value before allocating its cell. The
-/// builder's counted head root retains the whole completed prefix.
-unsafe fn push_pairlist_cell(builder: &mut PairlistBuilder, value: SEXP, tag: SEXP) {
-    let value = builder
-        .wrap(value)
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
-    let tag = if tag.is_null() {
-        None
-    } else {
-        Some(
-            builder
-                .wrap(tag)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
-        )
-    };
-    builder
-        .push(value, tag)
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+/// Capture the active owner once at a translated evaluator entry.
+/// # Safety
+/// The caller retains this owner for `'s` and excludes overlapping payload loans.
+pub(super) unsafe fn active_argument_factory<'s>() -> SessionNodeFactory<'s> {
+    SessionNodeFactory::new(
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+    )
 }
 
-fn finish_pairlist(builder: PairlistBuilder) -> SEXP {
-    builder
-        .finish()
-        .map(|value| value.as_raw())
-        .unwrap_or_else(|_| unsafe { R_NilValue() })
+/// Normalize a raw entry argument into the captured allocation domain.
+pub(super) fn argument_value<'s>(factory: &SessionNodeFactory<'s>, value: SEXP) -> Sexp<'s> {
+    if value.is_null() {
+        factory.nil()
+    } else {
+        factory
+            .wrap(value)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -304,58 +298,78 @@ unsafe fn drop_named_link(val: SEXP) {
 // promiseArgs — create promises for closure arguments
 // ---------------------------------------------------------------------------
 
-/// Create promises for each argument, matching to formals.
-///
-/// This is the equivalent of R's `promiseArgs()` in eval.c.
-pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if call.is_null() || call == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let mut result = PairlistBuilder::new();
-
-        let mut current = call;
-        while !current.is_null() && current != R_NilValue() {
-            let arg_expr = CAR(current);
-            let tag = TAG(current);
-
-            if arg_expr == R_DotsSymbol() {
-                // If we have a ... symbol, look up what it is bound to. A
-                // DOTSXP (or nil) binding is spliced cell by cell, creating a
-                // fresh promise for each expression (R_MissingArg entries are
-                // carried through verbatim) and preserving tags; anything else
-                // bound to a ... symbol (other than R_MissingArg) is an error.
-                let h = R_findVar(arg_expr, rho);
-                let _h_guard = protect(h);
-                if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
-                    let mut dh = h;
-                    while !dh.is_null() && dh != R_NilValue() {
-                        let cell_value = if CAR(dh) == R_MissingArg() {
-                            CAR(dh)
-                        } else {
-                            mkPROMISE(CAR(dh), rho)
-                        };
-                        push_pairlist_cell(&mut result, cell_value, TAG(dh));
-                        dh = CDR(dh);
-                    }
-                } else if h != R_MissingArg() {
-                    std::panic::panic_any(RError {
-                        message: "'...' used in an incorrect context".to_string(),
-                    });
+/// Retain promised arguments across allocation and dispatch callbacks.
+/// The explicit factory also supports promises whose environment is nil.
+/// # Safety
+/// Activate the factory's original owner and exclude Rust payload loans across
+/// the translated variable lookup and R error bridges.
+pub(crate) unsafe fn promiseArgs<'s>(
+    factory: &SessionNodeFactory<'s>,
+    arguments: Sexp<'s>,
+    rho: Sexp<'s>,
+) -> Sexp<'s> {
+    factory
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    factory
+        .link(&arguments)
+        .and_then(|_| factory.link(&rho))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let missing = factory.missing();
+    let dots_symbol = unsafe { R_DotsSymbol() };
+    let mut result = PairlistBuilder::from_factory(factory.clone());
+    let mut remaining = arguments;
+    while !remaining.is_nil() {
+        let expression = remaining
+            .try_car()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if expression.as_raw() == dots_symbol {
+            // Lookup can invoke active bindings. Root the returned dots before
+            // constructing promises or allocating any new list cell.
+            let mut dots = argument_value(factory, unsafe { R_findVar(dots_symbol, rho.as_raw()) });
+            if dots.typeof_() == SEXPTYPE::DOTSXP || dots.is_nil() {
+                while !dots.is_nil() {
+                    let expression = dots
+                        .try_car()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    let value = if expression.as_raw() == missing.as_raw() {
+                        expression
+                    } else {
+                        factory.promise(&expression, &rho).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        })
+                    };
+                    result
+                        .push(value, dots.tag())
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    dots = dots
+                        .try_cdr()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
-            } else if arg_expr == R_MissingArg() {
-                push_pairlist_cell(&mut result, R_MissingArg(), tag);
-            } else {
-                // Create a promise for each argument
-                let prom = mkPROMISE(arg_expr, rho);
-                push_pairlist_cell(&mut result, prom, tag);
+            } else if dots.as_raw() != missing.as_raw() {
+                crate::sexp::context::r_error("'...' used in an incorrect context");
             }
-            current = CDR(current);
+        } else {
+            let value = if expression.as_raw() == missing.as_raw() {
+                expression
+            } else {
+                // Incoming promises are intentionally wrapped again: their
+                // original expression and environment must survive redispatch.
+                factory
+                    .promise(&expression, &rho)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            };
+            result
+                .push(value, remaining.tag())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-
-        finish_pairlist(result)
+        remaining = remaining
+            .try_cdr()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
+    result
+        .finish()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -640,6 +654,10 @@ pub unsafe fn DispatchOrEval(
     argsevald: c_int,
 ) -> c_int {
     unsafe {
+        let factory = active_argument_factory();
+        let arguments_owner = argument_value(&factory, args);
+        let environment_owner = argument_value(&factory, rho);
+        let _call_owner = argument_value(&factory, call);
         let mut x: SEXP = R_NilValue();
         let mut dots: c_int = FALSE;
         let mut guards = Vec::new();
@@ -699,8 +717,9 @@ pub unsafe fn DispatchOrEval(
             // Only dispatch if not already the default method
             if pt.is_null() || streql(pt, b".default\x00".as_ptr() as *const c_char) == FALSE {
                 // Create promises for the arguments
-                let pargs = promiseArgs(args, rho);
-                guards.push(protect(pargs));
+                let pargs_owner =
+                    promiseArgs(&factory, arguments_owner.clone(), environment_owner.clone());
+                let pargs = pargs_owner.as_raw();
 
                 // Create a new environment for dispatch context
                 let rho1 = NewEnvironment(R_NilValue(), rho, R_NilValue());
@@ -875,6 +894,10 @@ pub unsafe fn DispatchGroup(
     ans: *mut SEXP,
 ) -> c_int {
     unsafe {
+        let factory = active_argument_factory();
+        let _arguments_owner = argument_value(&factory, args);
+        let environment_owner = argument_value(&factory, rho);
+        let call_owner = argument_value(&factory, call);
         if args.is_null() || args == R_NilValue() || ans.is_null() {
             return 0;
         }
@@ -1090,8 +1113,14 @@ pub unsafe fn DispatchGroup(
         guards.push(protect(newcall));
 
         // Create promises for the arguments
-        let pargs = promiseArgs(CDR(call), rho);
-        guards.push(protect(pargs));
+        let pargs_owner = promiseArgs(
+            &factory,
+            call_owner
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+            environment_owner.clone(),
+        );
+        let pargs = pargs_owner.as_raw();
 
         // Set promise values to the evaluated args
         let mut pi = pargs;
@@ -1204,6 +1233,222 @@ mod owned_argument_tests {
     use super::*;
     use crate::sexp::{object::PairlistIter, session::RSession};
     use std::{cell::Cell, rc::Rc};
+
+    fn parse_arguments<'s>(
+        session: &'s RSession,
+        factory: &SessionNodeFactory<'s>,
+        text: &str,
+    ) -> Sexp<'s> {
+        session
+            .owner_token()
+            .unwrap()
+            .with_arena(|arena| crate::eval::parser::parse(text, arena, factory.clone()))
+            .unwrap()
+            .unwrap()
+    }
+
+    fn force_allocations_with_reentrant_gc(session: &RSession) -> Rc<Cell<usize>> {
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        notifications
+    }
+
+    #[test]
+    fn owned_promise_arguments_preserve_dots_tags_and_caller_environment_through_gc() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let environment = session.global_env().unwrap();
+        for (name, number) in [(c"x", 11), (c"y", 22)] {
+            let value = factory.wrap(unsafe { Rf_ScalarInteger(number) }).unwrap();
+            unsafe {
+                crate::sexp::envir::defineVar(
+                    Rf_install(name.as_ptr()),
+                    value.as_raw(),
+                    environment.as_raw(),
+                );
+            }
+        }
+        let call = parse_arguments(&session, &factory, "list(first=x, absent=, ..., last=33L)");
+        let dots_source = parse_arguments(&session, &factory, "list(dot_missing=, dot_value=y)");
+        let mut dots_builder = PairlistBuilder::from_factory(factory.clone());
+        let mut inner_promise = None;
+        for cell in PairlistIter::new(dots_source.try_cdr().unwrap()) {
+            let expression = cell.try_car().unwrap();
+            let value = if expression.as_raw() == factory.missing().as_raw() {
+                expression
+            } else {
+                let promise = factory.promise(&expression, &environment).unwrap();
+                inner_promise = Some(promise.clone());
+                promise
+            };
+            dots_builder.push(value, cell.tag()).unwrap();
+        }
+        let dots = dots_builder.finish_as_type(SEXPTYPE::DOTSXP).unwrap();
+        unsafe {
+            crate::sexp::envir::defineVar(R_DotsSymbol(), dots.as_raw(), environment.as_raw());
+        }
+        let args = call.try_cdr().unwrap();
+        let first_expression = args.try_car().unwrap();
+        let first_code = first_expression.as_raw();
+        let original_named = unsafe { crate::sexp::accessors::NAMED(first_code) };
+        let inner_code = inner_promise.as_ref().unwrap().as_raw();
+        let before = crate::sexp::protect::R_ProtectCount();
+        let notifications = force_allocations_with_reentrant_gc(&session);
+        let promised = unsafe { promiseArgs(&factory, args, environment.clone()) };
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 0;
+        });
+        assert!(notifications.get() >= 8);
+        assert_eq!(
+            unsafe { crate::sexp::accessors::NAMED(first_code) },
+            original_named
+        );
+        drop(first_expression);
+        drop(call);
+        drop(dots_source);
+        drop(dots);
+        drop(inner_promise);
+        unsafe {
+            crate::sexp::envir::defineVar(
+                R_DotsSymbol(),
+                factory.nil().as_raw(),
+                environment.as_raw(),
+            );
+        }
+        crate::sexp::gengc::full_gc();
+        let cells: Vec<_> = PairlistIter::new(promised).collect();
+        assert_eq!(cells.len(), 5);
+        let tags: Vec<_> = cells
+            .iter()
+            .map(|cell| {
+                cell.try_tag()
+                    .unwrap()
+                    .try_printname()
+                    .unwrap()
+                    .try_as_string()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(
+            tags,
+            ["first", "absent", "dot_missing", "dot_value", "last"]
+        );
+        assert_eq!(
+            cells[1].try_car().unwrap().as_raw(),
+            factory.missing().as_raw()
+        );
+        assert_eq!(
+            cells[2].try_car().unwrap().as_raw(),
+            factory.missing().as_raw()
+        );
+        for (index, expected) in [(0, 11), (3, 22), (4, 33)] {
+            let promise = cells[index].try_car().unwrap();
+            assert_eq!(promise.typeof_(), SEXPTYPE::PROMSXP);
+            assert_eq!(promise.try_prenv().unwrap(), environment);
+            assert_eq!(
+                promise.try_prvalue().unwrap().as_raw(),
+                factory.unbound().as_raw()
+            );
+            if index == 0 {
+                assert_eq!(promise.try_prcode().unwrap().as_raw(), first_code);
+            }
+            if index == 3 {
+                assert_eq!(promise.try_prcode().unwrap().as_raw(), inner_code);
+            }
+            let value = factory
+                .wrap(unsafe { crate::sexp::envir::forcePromise(promise.as_raw()) })
+                .unwrap();
+            assert_eq!(value.integer_elt(0), Some(expected));
+        }
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+    }
+
+    #[test]
+    fn owned_promise_arguments_allow_nil_environment() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let call = parse_arguments(&session, &factory, "list(first=11L, second=22L)");
+        let promised = unsafe { promiseArgs(&factory, call.try_cdr().unwrap(), factory.nil()) };
+        drop(call);
+        crate::sexp::gengc::full_gc();
+        let cells: Vec<_> = PairlistIter::new(promised).collect();
+        assert_eq!(cells.len(), 2);
+        for (cell, expected) in cells.into_iter().zip([11, 22]) {
+            let promise = cell.try_car().unwrap();
+            assert!(promise.try_prenv().unwrap().is_nil());
+            let value = factory
+                .wrap(unsafe { crate::sexp::envir::forcePromise(promise.as_raw()) })
+                .unwrap();
+            assert_eq!(value.integer_elt(0), Some(expected));
+        }
+    }
+
+    #[test]
+    fn promise_arguments_reject_invalid_dots_after_partial_construction_and_retry() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let environment = session.global_env().unwrap();
+        let invalid = factory.wrap(unsafe { Rf_ScalarInteger(7) }).unwrap();
+        unsafe {
+            crate::sexp::envir::defineVar(R_DotsSymbol(), invalid.as_raw(), environment.as_raw());
+        }
+        let call = parse_arguments(&session, &factory, "list(first=11L, ..., last=22L)");
+        let args = call.try_cdr().unwrap();
+        let before = crate::sexp::protect::R_ProtectCount();
+        let notifications = force_allocations_with_reentrant_gc(&session);
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            promiseArgs(&factory, args.clone(), environment.clone())
+        }))
+        .expect_err("invalid dots must fail after building the first promise");
+        let message = failure
+            .downcast_ref::<RError>()
+            .map(|error| error.message.as_str())
+            .or_else(|| {
+                failure
+                    .downcast_ref::<crate::sexp::context::RSignal>()
+                    .and_then(|signal| {
+                        if let crate::sexp::context::RSignal::Error { message } = signal {
+                            Some(message.as_str())
+                        } else {
+                            None
+                        }
+                    })
+            });
+        assert_eq!(message, Some("'...' used in an incorrect context"));
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+        unsafe {
+            crate::sexp::envir::defineVar(
+                R_DotsSymbol(),
+                factory.missing().as_raw(),
+                environment.as_raw(),
+            );
+        }
+        let retry = unsafe { promiseArgs(&factory, args.clone(), environment.clone()) };
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 0;
+        });
+        drop(call);
+        drop(args);
+        crate::sexp::gengc::full_gc();
+        let cells: Vec<_> = PairlistIter::new(retry).collect();
+        assert_eq!(cells.len(), 2);
+        for (cell, expected) in cells.iter().zip([11, 22]) {
+            let value = factory
+                .wrap(unsafe { crate::sexp::envir::forcePromise(cell.try_car().unwrap().as_raw()) })
+                .unwrap();
+            assert_eq!(value.integer_elt(0), Some(expected));
+        }
+        assert!(notifications.get() >= 6);
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+    }
 
     #[test]
     fn owned_keep_missing_preserves_dots_and_tags_through_reentrant_gc() {

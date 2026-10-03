@@ -1,6 +1,5 @@
 use super::{SessionNodeFactory, Sexp, SexpError, SexpResult};
-use crate::sexp::accessors::SETCDR;
-use crate::sexp::ffi::SEXPTYPE;
+use crate::sexp::ffi::{EdgeField, NodeBody, SEXPTYPE};
 #[cfg(test)]
 use crate::sexp::globals::R_NilValue;
 
@@ -60,7 +59,7 @@ impl<'a> Iterator for PairlistIter<'a> {
 ///
 /// R's evaluator has many paths that append tagged cons cells. Keeping that
 /// mutation here avoids repeating head/tail pointer stitching throughout the
-/// safe-ish evaluator boundary while preserving the underlying LISTSXP shape.
+/// checked evaluator boundary while preserving the underlying LISTSXP shape.
 pub(crate) struct PairlistBuilder<'a> {
     head: Option<Sexp<'a>>,
     tail: Option<Sexp<'a>>,
@@ -111,40 +110,63 @@ impl<'a> PairlistBuilder<'a> {
         value: Sexp<'a>,
         tag: Option<Sexp<'a>>,
     ) -> SexpResult<Sexp<'a>> {
-        // Retain each exact capability before the raw producer boundary.
-        self.factory.link(&value)?;
-        if let Some(tag) = &tag {
-            self.factory.link(tag)?;
-        }
-        let value = self.factory.wrap(value.as_raw())?;
-        let tag = tag.map(|tag| self.factory.wrap(tag.as_raw())).transpose()?;
         let nil = self.factory.nil();
-        let cell = self.factory.allocate(|arena| {
-            // SAFETY: validated children stay rooted throughout construction.
-            // The captured factory roots this fresh header inside this lend.
-            Some(unsafe {
-                arena.cons(
-                    value.as_raw(),
-                    nil.as_raw(),
-                    tag.as_ref().map_or(nil.as_raw(), Sexp::as_raw),
+        let cell = self
+            .factory
+            .pairlist_cell(&value, &nil, tag.as_ref().unwrap_or(&nil))?;
+        if let Some(tail) = &self.tail {
+            let allocation = tail.allocation()?;
+            let heap = allocation.heap_identity();
+            let header = heap
+                .node_snapshot(allocation)
+                .ok_or(SexpError::StaleAllocation)?;
+            if !matches!(header.data, NodeBody::List(_))
+                || !matches!(
+                    header.sxpinfo.type_of(),
+                    SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP
                 )
-            })
-        })?;
-        // SAFETY: these rooted cells have no borrowed payload; the checked
-        // child domain validation preceded their nonallocating edge writes.
-        unsafe {
-            if let Some(tail) = &self.tail {
-                SETCDR(tail.as_raw(), cell.as_raw());
-            } else {
-                self.head = Some(cell.clone());
+            {
+                return Err(SexpError::TypeMismatch {
+                    expected: "pairlist tail",
+                    actual: header.sxpinfo.type_of(),
+                });
             }
+            tail.check_child_owner(&cell)?;
+            tail.remember_child(&cell)?;
+            heap.set_edge(
+                allocation,
+                EdgeField::ListCdr,
+                crate::sexp::heap::ReferenceChild::Node(cell.allocation()?),
+            )
+            .ok_or(SexpError::StaleAllocation)?;
+        } else {
+            self.head = Some(cell.clone());
         }
         self.tail = Some(cell.clone());
         Ok(cell)
     }
 
     pub(crate) fn finish(self) -> SexpResult<Sexp<'a>> {
-        Ok(self.head.unwrap_or_else(|| self.factory.nil()))
+        let head = self.head.unwrap_or_else(|| self.factory.nil());
+        if !head.is_nil() {
+            let header = head
+                .allocation()?
+                .heap_identity()
+                .node_snapshot(head.allocation()?)
+                .ok_or(SexpError::StaleAllocation)?;
+            if !matches!(header.data, NodeBody::List(_))
+                || !matches!(
+                    header.sxpinfo.type_of(),
+                    SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP
+                )
+            {
+                return Err(SexpError::TypeMismatch {
+                    expected: "pairlist head",
+                    actual: header.sxpinfo.type_of(),
+                });
+            }
+        }
+        Ok(head)
     }
 
     pub(crate) fn finish_as_type(self, sexptype: SEXPTYPE) -> SexpResult<Sexp<'a>> {
@@ -159,10 +181,14 @@ impl<'a> PairlistBuilder<'a> {
         }
         let head = self.finish()?;
         if !head.is_nil() {
-            // SAFETY: only compatible cons-cell tags are accepted.
-            unsafe {
-                (*head.clone().as_raw()).sxpinfo.set_type(sexptype);
-            }
+            let allocation = head.allocation()?;
+            let heap = allocation.heap_identity();
+            let mut header = heap
+                .node_snapshot(allocation)
+                .ok_or(SexpError::StaleAllocation)?;
+            header.sxpinfo.set_type(sexptype);
+            heap.replace_node(allocation, header)
+                .ok_or(SexpError::StaleAllocation)?;
         }
         Ok(head)
     }
@@ -174,6 +200,62 @@ mod tests {
     use crate::sexp::accessors::{CAR, CDR, TAG};
     use crate::sexp::constructors::Rf_ScalarInteger;
     use crate::sexp::symbol::Rf_install;
+
+    #[test]
+    fn pairlist_builder_rejects_callback_shape_changes_without_overwriting_them() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let value = factory.character("kept through callback").unwrap();
+            let mut builder = PairlistBuilder::from_factory(factory.clone());
+            let head = builder.push_cell(value.clone(), None).unwrap();
+            let allocation = head.allocation().unwrap().clone();
+            let inspected = allocation.clone();
+            let changed = std::rc::Rc::new(std::cell::Cell::new(false));
+            let observed = changed.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if observed.replace(true) {
+                    return;
+                }
+                crate::sexp::gengc::full_gc();
+                let heap = inspected.heap_identity();
+                let mut header = heap.node_snapshot(&inspected).unwrap();
+                header.sxpinfo.set_type(SEXPTYPE::S4SXP);
+                header.data = NodeBody::Other;
+                heap.replace_node(&inspected, header).unwrap();
+            }));
+            session.with_active_in(|owner| unsafe {
+                (*owner).memory_state.gc_force_gap = 1;
+                (*owner).memory_state.gc_force_wait = 1;
+            });
+            assert!(matches!(
+                builder.push(value.clone(), None),
+                Err(SexpError::TypeMismatch {
+                    expected: "pairlist tail",
+                    actual: SEXPTYPE::S4SXP
+                })
+            ));
+            assert!(changed.get());
+            let header = allocation
+                .heap_identity()
+                .node_snapshot(&allocation)
+                .unwrap();
+            assert_eq!(header.sxpinfo.type_of(), SEXPTYPE::S4SXP);
+            assert!(matches!(header.data, NodeBody::Other));
+            assert!(matches!(
+                builder.finish(),
+                Err(SexpError::TypeMismatch {
+                    expected: "pairlist head",
+                    actual: SEXPTYPE::S4SXP
+                })
+            ));
+            assert_eq!(value.try_as_string().unwrap(), "kept through callback");
+            drop(head);
+            drop(value);
+            crate::sexp::gengc::full_gc();
+            assert!(!allocation.is_live());
+        });
+    }
 
     #[test]
     fn pairlist_builder_preserves_order_and_tags() {

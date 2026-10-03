@@ -239,6 +239,16 @@ pub unsafe fn R_possible_dispatch(
     promisedArgs: c_int,
 ) -> SEXP {
     unsafe {
+        let factory = crate::eval::parser::active_factory();
+        let call_owner = if call.is_null() { factory.nil() } else {
+            factory.wrap(call).expect("primitive dispatch call belongs to the active heap")
+        };
+        let _arguments = if args.is_null() { factory.nil() } else {
+            factory.wrap(args).expect("primitive dispatch arguments belong to the active heap")
+        };
+        let environment = if rho.is_null() { factory.nil() } else {
+            factory.wrap(rho).expect("primitive dispatch environment belongs to the active heap")
+        };
         let offset = PRIMOFFSET(op);
         let cur_max = with_objects_state(|state| state.cur_max_offset);
         if offset < 0 || offset > cur_max {
@@ -313,8 +323,11 @@ pub unsafe fn R_possible_dispatch(
 
 
                     if promisedArgs == FALSE {
-                        let s = crate::eval::dispatch::promiseArgs(CDR(call), rho);
-                        let _s_guard = protect(s);
+                        let expressions = if call_owner.is_nil() { factory.nil() } else {
+                            factory.wrap(CDR(call_owner.as_raw())).expect("dispatch expressions remain live")
+                        };
+                        let promised = crate::eval::dispatch::promiseArgs(&factory, expressions, environment.clone());
+                        let s = promised.as_raw();
                         if length(s) != length(args) {
                             error("dispatch error");
                         }
@@ -371,8 +384,11 @@ pub unsafe fn R_possible_dispatch(
         }
 
         if promisedArgs == FALSE {
-            let s = crate::eval::dispatch::promiseArgs(CDR(call), rho);
-            let _s_guard = protect(s);
+            let expressions = if call_owner.is_nil() { factory.nil() } else {
+                factory.wrap(CDR(call_owner.as_raw())).expect("dispatch expressions remain live")
+            };
+            let promised = crate::eval::dispatch::promiseArgs(&factory, expressions, environment);
+            let s = promised.as_raw();
             if length(s) != length(args) {
                 error("dispatch error");
             }
