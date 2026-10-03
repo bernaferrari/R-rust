@@ -3,6 +3,58 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 use super::*;
+use crate::sexp::owner::{OwnerPin, OwnerToken, with_runtime};
+
+/// Cleanup retains the exact original allocation, including after revocation.
+/// It never reads ambient runtime state or invokes callbacks while unwinding.
+struct RestorePrint {
+    old: crate::mainutils::format::RPrint,
+    owner: OwnerPin,
+}
+
+impl RestorePrint {
+    fn enter(owner: OwnerPin) -> Self {
+        let replacement = crate::mainutils::format::RPrint {
+            digits: 15,
+            scipen: 0,
+            na_width: 2,
+            na_width_noquote: 2,
+        };
+        let old = unsafe {
+            std::mem::replace(&mut (*owner.as_ptr()).eval_state.format_print, replacement)
+        };
+        Self { old, owner }
+    }
+}
+
+impl Drop for RestorePrint {
+    fn drop(&mut self) {
+        unsafe { (*self.owner.as_ptr()).eval_state.format_print = self.old };
+    }
+}
+
+struct RestoreBrowseLines {
+    old: c_int,
+    owner: OwnerPin,
+}
+
+impl RestoreBrowseLines {
+    fn enter(owner: OwnerPin, value: c_int) -> Self {
+        let old = unsafe {
+            std::mem::replace(
+                &mut (*owner.as_ptr()).eval_state.deparse.browse_lines,
+                value,
+            )
+        };
+        Self { old, owner }
+    }
+}
+
+impl Drop for RestoreBrowseLines {
+    fn drop(&mut self) {
+        unsafe { (*self.owner.as_ptr()).eval_state.deparse.browse_lines = self.old };
+    }
+}
 
 // deparse2 — setup and call deparse2buff
 // ---------------------------------------------------------------------------
@@ -37,122 +89,145 @@ pub unsafe fn deparse1WithCutoff(
     nlines: c_int,
 ) -> SEXP {
     unsafe {
-        // GNU deparse.c: PrintDefaults(); savedigits = R_print.digits;
-        // R_print.digits = DBL_DIG; restored after the result is built.
-        const DBL_DIG: c_int = 15;
-        let old_print =
-            crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
-                digits: DBL_DIG,
-                scipen: 0,
-                na_width: 2,
-                na_width_noquote: 2,
-            });
-        struct RestorePrint {
-            old: crate::mainutils::format::RPrint,
-        }
-        impl Drop for RestorePrint {
-            fn drop(&mut self) {
-                unsafe {
-                    crate::mainutils::format::format_set_R_print(self.old);
-                }
-            }
-        }
-        let _restore = RestorePrint { old: old_print };
         let allocation_error =
             || -> ! { buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation) };
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|_| allocation_error());
-        let factory = owner.node_factory();
-        let _input = factory.wrap(call).unwrap_or_else(|_| allocation_error());
-
-        let mut local_data = LocalParseData::default();
-        local_data.cutoff = cutoff;
-        local_data.backtick = if backtick { 1 } else { 0 };
-        local_data.opts = opts;
-        local_data.strvec = R_NilValue();
-
-        let mut svec = R_NilValue();
-        let mut need_ellipses = false;
-
-        if nlines > 0 {
-            local_data.linenumber = nlines;
-            local_data.maxlines = nlines;
-        } else {
-            let browse_lines = get_browse_lines();
-            if browse_lines > 0 {
-                local_data.maxlines = browse_lines + 1;
-            }
-            deparse2(call, svec, &mut local_data);
-            local_data.active = true;
-            let browse_lines = get_browse_lines();
-            if browse_lines > 0 && local_data.linenumber > browse_lines {
-                local_data.linenumber = browse_lines + 1;
-                need_ellipses = true;
-            }
-        }
-
-        let mut output = factory
-            .allocate(|arena| {
-                Some(arena.alloc_vector(SEXPTYPE::STRSXP, local_data.linenumber.into()))
-            })
-            .unwrap_or_else(|_| allocation_error());
-        svec = output.as_raw();
-
-        deparse2(call, svec, &mut local_data);
-        if nlines > 0 && local_data.linenumber > 0 && (local_data.linenumber as i64) < nlines as i64
-        {
-            let used = local_data.linenumber;
-            let shrunk = factory
-                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, used.into())))
+        let token = OwnerToken::current().unwrap_or_else(|_| allocation_error());
+        let runtime = token.weak_owner().unwrap_or_else(|| allocation_error());
+        let original_pin = runtime.pin().unwrap_or_else(|_| allocation_error());
+        let result = with_runtime(&runtime, |access| {
+            let domain = access.domain();
+            let input = domain.wrap(call).unwrap_or_else(|_| allocation_error());
+            // Install the original owning lease before mutating print state.
+            let _restore = RestorePrint::enter(original_pin);
+            let allocator = access
+                .allocator(&domain)
                 .unwrap_or_else(|_| allocation_error());
-            let mut shrunk = crate::sexp::object::SexpMut::try_from_checked(shrunk)
-                .unwrap_or_else(|_| allocation_error());
-            for i in 0..used {
-                let character = output
-                    .try_string_elt(i as i64)
-                    .unwrap_or_else(|_| allocation_error());
-                shrunk
-                    .try_set_string_elt(i as i64, character)
-                    .unwrap_or_else(|_| allocation_error());
-            }
-            // The actual result stays owned through warning handlers and all
-            // later allocations, even after the original output is dropped.
-            output = shrunk.freeze();
-            svec = output.as_raw();
-        }
 
-        if abbrev {
-            let mut data = [0u8; 14];
-            let first = STRING_ELT(svec, 0);
-            if !first.is_null() {
-                let name = CHAR(first);
-                if !name.is_null() {
-                    let bytes = std::ffi::CStr::from_ptr(name).to_bytes();
-                    let copy_len = std::cmp::min(bytes.len(), 10);
-                    data[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                    data[copy_len] = 0;
-                    if bytes.len() > 10 {
-                        data[10] = b'.';
-                        data[11] = b'.';
-                        data[12] = b'.';
-                        data[13] = 0;
-                    } else {
-                        data[copy_len] = 0;
-                    }
+            let mut local_data = LocalParseData::default();
+            local_data.cutoff = cutoff;
+            local_data.backtick = if backtick { 1 } else { 0 };
+            local_data.opts = opts;
+            local_data.strvec = R_NilValue();
+
+            let mut svec = R_NilValue();
+            let mut need_ellipses = false;
+
+            if nlines > 0 {
+                local_data.linenumber = nlines;
+                local_data.maxlines = nlines;
+            } else {
+                let browse_lines = get_browse_lines();
+                if browse_lines > 0 {
+                    local_data.maxlines = browse_lines + 1;
+                }
+                access
+                    .with_native(|_| {
+                        deparse2(input.as_raw(), svec, &mut local_data);
+                        Ok(())
+                    })
+                    .unwrap_or_else(|_| allocation_error());
+                local_data.active = true;
+                let browse_lines = get_browse_lines();
+                if browse_lines > 0 && local_data.linenumber > browse_lines {
+                    local_data.linenumber = browse_lines + 1;
+                    need_ellipses = true;
                 }
             }
-            let result = Rf_mkString(data.as_ptr() as *const c_char);
-            return result;
-        } else if need_ellipses {
-            let ellipsis = Rf_mkChar(b"  ...\0".as_ptr() as *const c_char);
-            SET_STRING_ELT(svec, get_browse_lines() as R_xlen_t, ellipsis);
-        }
 
-        if (opts & WARNINCOMPLETE) != 0 && local_data.sourceable == 0 {
-            crate::mainutils::errors::Rf_warning1(c"deparse may be incomplete".as_ptr());
-        }
+            let mut output = allocator
+                .allocate(|arena| {
+                    Some(arena.alloc_vector(SEXPTYPE::STRSXP, local_data.linenumber.into()))
+                })
+                .unwrap_or_else(|_| allocation_error());
+            svec = output.as_raw();
 
-        svec
+            access
+                .with_native(|_| {
+                    deparse2(input.as_raw(), svec, &mut local_data);
+                    Ok(())
+                })
+                .unwrap_or_else(|_| allocation_error());
+            if nlines > 0
+                && local_data.linenumber > 0
+                && (local_data.linenumber as i64) < nlines as i64
+            {
+                let used = local_data.linenumber;
+                let shrunk = allocator
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, used.into())))
+                    .unwrap_or_else(|_| allocation_error());
+                let mut shrunk = crate::sexp::object::SexpMut::try_from_checked(shrunk)
+                    .unwrap_or_else(|_| allocation_error());
+                for i in 0..used {
+                    let character = output
+                        .try_string_elt(i as i64)
+                        .unwrap_or_else(|_| allocation_error());
+                    shrunk
+                        .try_set_string_elt(i as i64, character)
+                        .unwrap_or_else(|_| allocation_error());
+                }
+                // The actual result stays owned through warning handlers and all
+                // later allocations, even after the original output is dropped.
+                output = shrunk.freeze();
+                svec = output.as_raw();
+            }
+
+            if abbrev {
+                let mut data = [0u8; 14];
+                let first = output
+                    .clone()
+                    .try_string_elt(0)
+                    .unwrap_or_else(|_| allocation_error());
+                let first = first.as_raw();
+                if !first.is_null() {
+                    let name = CHAR(first);
+                    if !name.is_null() {
+                        let bytes = std::ffi::CStr::from_ptr(name).to_bytes();
+                        let copy_len = std::cmp::min(bytes.len(), 10);
+                        data[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                        data[copy_len] = 0;
+                        if bytes.len() > 10 {
+                            data[10] = b'.';
+                            data[11] = b'.';
+                            data[12] = b'.';
+                            data[13] = 0;
+                        } else {
+                            data[copy_len] = 0;
+                        }
+                    }
+                }
+                let bytes = std::ffi::CStr::from_ptr(data.as_ptr().cast()).to_bytes();
+                return allocator
+                    .allocate(|arena| {
+                        crate::sexp::builder::scalar_bytes_in(arena, bytes)
+                            .map(|value| value.as_raw())
+                    })
+                    .unwrap_or_else(|_| allocation_error());
+            } else if need_ellipses {
+                let ellipsis = allocator
+                    .character("  ...")
+                    .unwrap_or_else(|_| allocation_error());
+                let mut result = crate::sexp::object::SexpMut::try_from_checked(output.clone())
+                    .unwrap_or_else(|_| allocation_error());
+                result
+                    .try_set_string_elt(get_browse_lines() as R_xlen_t, ellipsis)
+                    .unwrap_or_else(|_| allocation_error());
+            }
+
+            if (opts & WARNINCOMPLETE) != 0 && local_data.sourceable == 0 {
+                access
+                    .with_native(|_| {
+                        crate::mainutils::errors::Rf_warning1(
+                            c"deparse may be incomplete".as_ptr(),
+                        );
+                        Ok(())
+                    })
+                    .unwrap_or_else(|_| allocation_error());
+            }
+
+            output
+        })
+        .unwrap_or_else(|_| allocation_error());
+        result.as_raw()
     }
 }
 
@@ -449,11 +524,17 @@ pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Used in bind.c, builtin.c, coerce.c, match.c, relop.c, and do_dput/do_dump.
 pub unsafe fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
-        let old_bl = get_browse_lines();
-        set_browse_lines(0);
-        let result = deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, 0);
-        set_browse_lines(old_bl);
-        result
+        let token = OwnerToken::current().unwrap_or_else(|_| {
+            buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation)
+        });
+        let pin = token
+            .weak_owner()
+            .and_then(|owner| owner.pin().ok())
+            .unwrap_or_else(|| {
+                buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation)
+            });
+        let _restore = RestoreBrowseLines::enter(pin, 0);
+        deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, 0)
     }
 }
 
@@ -484,18 +565,42 @@ pub unsafe fn deparse_symbolic(call: SEXP, backtick: bool) -> SEXP {
 /// Unimplemented: requires getOption infrastructure.
 pub unsafe fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
-        let old_bl = get_browse_lines();
-        let max_lines = {
-            let val = crate::mainutils::options::GetOption(
-                b"deparse.max.lines\0".as_ptr() as *const c_char
-            );
-            let n = crate::mainutils::coerce::asInteger(val);
-            if n == NA_INTEGER { 100 } else { n }
-        };
-        set_browse_lines(max_lines);
-        let result = deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, 0);
-        set_browse_lines(old_bl);
-        result
+        let allocation_error =
+            || -> ! { buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation) };
+        let token = OwnerToken::current().unwrap_or_else(|_| allocation_error());
+        let runtime = token.weak_owner().unwrap_or_else(|| allocation_error());
+        let pin = runtime.pin().unwrap_or_else(|_| allocation_error());
+        let result = with_runtime(&runtime, |access| {
+            let domain = access.domain();
+            let input = domain.wrap(call).unwrap_or_else(|_| allocation_error());
+            let value = access
+                .with_native(|_| {
+                    Ok(crate::mainutils::options::GetOption(
+                        c"deparse.max.lines".as_ptr(),
+                    ))
+                })
+                .unwrap_or_else(|_| allocation_error());
+            let value = domain.wrap(value).unwrap_or_else(|_| allocation_error());
+            let n = access
+                .with_native(|_| Ok(crate::mainutils::coerce::asInteger(value.as_raw())))
+                .unwrap_or_else(|_| allocation_error());
+            let _restore = RestoreBrowseLines::enter(pin, if n == NA_INTEGER { 100 } else { n });
+            let raw = access
+                .with_native(|_| {
+                    Ok(deparse1WithCutoff(
+                        input.as_raw(),
+                        abbrev,
+                        DEFAULT_CUTOFF,
+                        true,
+                        opts,
+                        0,
+                    ))
+                })
+                .unwrap_or_else(|_| allocation_error());
+            domain.wrap(raw).unwrap_or_else(|_| allocation_error())
+        })
+        .unwrap_or_else(|_| allocation_error());
+        result.as_raw()
     }
 }
 
@@ -653,4 +758,193 @@ pub unsafe fn con_cleanup(data: *mut std::ffi::c_void) {
 /// Exported for use by other modules.
 pub unsafe fn Rf_isValidName(s: *const c_char) -> c_int {
     unsafe { if isValidName(s) { 1 } else { 0 } }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    use crate::sexp::object::{SessionNodeFactory, Sexp};
+    use crate::sexp::session::RSession;
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+
+    fn scalar(factory: &SessionNodeFactory<'_>) -> Sexp<'static> {
+        factory
+            .allocate(|arena| {
+                crate::sexp::builder::scalar_integer_in(arena, 7).map(|value| value.as_raw())
+            })
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    }
+
+    unsafe fn install_original_state(owner: *mut crate::sexp::instance::RInstance) {
+        unsafe {
+            (*owner).eval_state.format_print = crate::mainutils::format::RPrint {
+                digits: 6,
+                scipen: 8,
+                na_width: 17,
+                na_width_noquote: 22,
+            };
+            (*owner).eval_state.deparse.browse_lines = 9;
+            (*owner).memory_state.gc_force_gap = 1;
+            (*owner).memory_state.gc_force_wait = 1;
+        }
+    }
+
+    unsafe fn assert_original_state(owner: *mut crate::sexp::instance::RInstance) {
+        unsafe {
+            let print = (*owner).eval_state.format_print;
+            assert_eq!(
+                (
+                    print.digits,
+                    print.scipen,
+                    print.na_width,
+                    print.na_width_noquote
+                ),
+                (6, 8, 17, 22)
+            );
+            assert_eq!((*owner).eval_state.deparse.browse_lines, 9);
+        }
+    }
+
+    #[test]
+    fn owned_error_deparse_restores_original_state_after_callback_switches_runtime() {
+        let original = RSession::new_for_gc_tests();
+        let original_owner = original.owner_token().unwrap().weak_owner().unwrap();
+        let factory = original_owner.node_factory().unwrap();
+        let input = scalar(&factory);
+        let other = RSession::new_for_gc_tests();
+        let other_pin = other
+            .owner_token()
+            .unwrap()
+            .weak_owner()
+            .unwrap()
+            .pin()
+            .unwrap();
+        let other_pointer = other_pin.as_ptr();
+        unsafe {
+            (*other_pointer).eval_state.format_print.digits = 3;
+        }
+        original.with_active_in(|owner| unsafe {
+            install_original_state(owner);
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                assert_eq!((*owner).eval_state.format_print.digits, 15);
+                crate::sexp::instance::set_current_instance(other_pointer);
+                assert_eq!(
+                    crate::sexp::instance::current_instance_ptr(),
+                    Some(other_pointer)
+                );
+            }));
+            // GC notifications run inside with_instance_active. Its owning
+            // scope restores the original runtime after each callback, making
+            // successful publication correct once availability is rechecked.
+            let result = factory
+                .wrap(deparse1(input.as_raw(), false, DEFAULTDEPARSE))
+                .unwrap();
+            assert_eq!(crate::sexp::instance::current_instance_ptr(), Some(owner));
+            assert_eq!(result.string_value_elt(0), Some(Some("7L".into())));
+            assert_original_state(owner);
+            assert_eq!((*other_pointer).eval_state.format_print.digits, 3);
+        });
+    }
+
+    #[test]
+    fn owned_error_deparse_restores_original_state_after_callback_revokes_runtime() {
+        let original = RSession::new_for_gc_tests();
+        let factory = original.owner_token().unwrap().node_factory();
+        let input = scalar(&factory);
+        original.with_active_in(|owner| unsafe {
+            install_original_state(owner);
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                assert_eq!((*owner).eval_state.format_print.digits, 15);
+                crate::sexp::instance::revoke_instance_availability(owner);
+            }));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                deparse1(input.as_raw(), false, DEFAULTDEPARSE)
+            }));
+            assert!(result.is_err());
+            assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+            assert_original_state(owner);
+        });
+    }
+
+    #[test]
+    fn owned_error_deparse_restores_pinned_original_after_callback_drops_facade() {
+        let original = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+        let runtime = original
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .owner_token()
+            .unwrap()
+            .weak_owner()
+            .unwrap();
+        let pin = runtime.pin().unwrap();
+        let owner = pin.as_ptr();
+        let factory = runtime.node_factory().unwrap();
+        let input = scalar(&factory);
+        let raw_input = input.as_raw();
+        let facade = Rc::downgrade(&original);
+        unsafe {
+            install_original_state(owner);
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                assert_eq!((*owner).eval_state.format_print.digits, 15);
+                drop(facade.upgrade().unwrap().borrow_mut().take());
+            }));
+        }
+        drop(input);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            deparse1(raw_input, false, DEFAULTDEPARSE)
+        }));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+        assert!(original.borrow().is_none());
+        assert!(!runtime.is_live());
+        unsafe {
+            assert_original_state(owner);
+        }
+    }
+
+    #[test]
+    fn owned_error_deparse_input_and_output_survive_reentrant_collection() {
+        let original = RSession::new_for_gc_tests();
+        let factory = original.owner_token().unwrap().node_factory();
+        let input = scalar(&factory);
+        let raw_input = input.as_raw();
+        let input_node = crate::sexp::memory::checked_projection(raw_input)
+            .unwrap()
+            .1;
+        let observed = input_node.clone();
+        let notifications = Rc::new(Cell::new(0));
+        let calls = notifications.clone();
+        original.with_active_in(|owner| unsafe {
+            install_original_state(owner);
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                calls.set(calls.get() + 1);
+                assert_eq!((*owner).eval_state.format_print.digits, 15);
+                assert!(!crate::sexp::memory::is_arena_lent(owner));
+                crate::sexp::gengc::full_gc();
+                assert!(observed.is_live());
+            }));
+            drop(input);
+            let output = factory
+                .wrap(deparse1(raw_input, false, DEFAULTDEPARSE))
+                .unwrap();
+            assert_original_state(owner);
+            assert_eq!(output.string_value_elt(0), Some(Some("7L".into())));
+            assert!(notifications.get() >= 2);
+            (*owner).memory_state.gc_force_gap = 0;
+            (*owner).gc_state.callbacks.clear();
+            crate::sexp::gengc::full_gc();
+            assert!(!input_node.is_live());
+            assert_eq!(output.string_value_elt(0), Some(Some("7L".into())));
+            let output_node = crate::sexp::memory::checked_projection(output.as_raw())
+                .unwrap()
+                .1;
+            drop(output);
+            crate::sexp::gengc::full_gc();
+            assert!(!output_node.is_live());
+        });
+    }
 }
