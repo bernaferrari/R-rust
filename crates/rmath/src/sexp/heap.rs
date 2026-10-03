@@ -134,6 +134,7 @@ pub(crate) struct HeapBackingOwners {
     stores: RefCell<Vec<PhysicalBacking>>,
     singletons: RefCell<Vec<SingletonLease>>,
     retired_resources: RetiredResources,
+    binding_tables: RefCell<super::env_hash::BindingTables>,
 }
 impl HeapBackingOwners {
     /// Transient detached resources only; attached state remains on NodePage.
@@ -182,6 +183,7 @@ impl HeapIdentity {
                 stores: RefCell::new(Vec::new()),
                 singletons: RefCell::new(Vec::new()),
                 retired_resources: Rc::new(RefCell::new(Vec::new())),
+                binding_tables: RefCell::new(super::env_hash::BindingTables::default()),
             });
             *self.0.backing.borrow_mut() = Rc::downgrade(&owners);
             owners
@@ -424,16 +426,28 @@ impl HeapIdentity {
             ResolvedLink::Singleton(lease) => Some(lease.projection()),
         }
     }
+    /// Short index operations only; no storage loan or R callback spans f.
+    pub(crate) fn with_binding_tables<R>(&self, f: impl FnOnce(&mut super::env_hash::BindingTables) -> R) -> Option<R> {
+        let owners = self.retained_backing()?;
+        Some(f(&mut owners.binding_tables.borrow_mut()))
+    }
+    pub(crate) fn prune_binding_indexes(&self) {
+        self.with_binding_tables(|tables| tables.prune(self));
+    }
+    pub(crate) fn clear_binding_indexes(&self) {
+        self.with_binding_tables(super::env_hash::BindingTables::clear);
+    }
     pub(crate) fn replace_node(&self, node: &CheckedNode, value: SexprecCore) -> Option<()> {
-        if !value.has_valid_shape() || !node.belongs_to(self) || !node.is_live() {
-            return None;
-        }
+        if !value.has_valid_shape() || !node.belongs_to(self) || !node.is_live() { return None; }
+        let original = self.node_snapshot(node)?;
         let owners = self.retained_backing()?;
         let result = owners.stores.borrow().iter().find_map(|store| match store {
             PhysicalBacking::Arena(store) => store.replace_node(node.id(), value),
             PhysicalBacking::Persistent(store) => store.replace_node(node.id(), value),
         });
-        result
+        result?;
+        owners.binding_tables.borrow_mut().invalidate_node(node.link()?, &original, &value);
+        Some(())
     }
 
     /// Change only a semantic tag whose existing body and actual storage can

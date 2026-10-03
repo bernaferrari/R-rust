@@ -445,8 +445,6 @@ pub struct RInstance {
     pub options: HashMap<String, SEXP>,
     /// Defaults are published through one explicit, reentry-safe phase.
     pub(crate) options_initialization: crate::mainutils::options::OptionsInitialization,
-    /// Per-instance environment hash side tables.
-    pub(crate) env_hash_tables: hashbrown::HashMap<usize, hashbrown::HashMap<usize, SEXP>>,
     /// Initial table size of hashed environments, keyed by environment address.
     /// GC contract: entries whose environment is collected are swept by the
     /// `gengc` reference-update pass (the address would otherwise alias a
@@ -639,7 +637,6 @@ impl RInstance {
             output_capture: RefCell::new(super::output::OutputCaptureState::default()),
             options: HashMap::new(),
             options_initialization: crate::mainutils::options::OptionsInitialization::Uninitialized,
-            env_hash_tables: hashbrown::HashMap::new(),
             env_hash_sizes: hashbrown::HashMap::new(),
             locked_environments: HashSet::new(),
             locked_bindings: HashSet::new(),

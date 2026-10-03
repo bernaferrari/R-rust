@@ -108,22 +108,6 @@ unsafe fn mirror_base_frame(env: SEXP, peer: Option<SEXP>) {
     }
 }
 
-unsafe fn hash_insert_base_pair(env: SEXP, peer: Option<SEXP>, symbol: SEXP, value: SEXP) {
-    // Insert is a no-op until that environment is promoted, so the peer does
-    // not gain a second table that can drift from this one.
-    super::env_hash::hash_insert(env, symbol, value);
-    if let Some(peer) = peer {
-        super::env_hash::hash_insert(peer, symbol, value);
-    }
-}
-
-unsafe fn hash_remove_base_pair(env: SEXP, peer: Option<SEXP>, symbol: SEXP) {
-    super::env_hash::hash_remove(env, symbol);
-    if let Some(peer) = peer {
-        super::env_hash::hash_remove(peer, symbol);
-    }
-}
-
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
 }
@@ -283,7 +267,6 @@ pub(crate) fn remove_binding_raw(env: SEXP, symbol: SEXP) {
                 } else {
                     SETCDR(previous, next);
                 }
-                hash_remove_base_pair(env, peer, symbol);
                 with_required_current_instance(|instance| unsafe {
                     // P2: strictly-local map writes; no other raw path
                     // touches the instance inside this closure.
@@ -324,7 +307,6 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
                     binding_error("cannot change value of locked binding");
                 }
                 SETCAR(frame, fun);
-                hash_insert_base_pair(env, peer, symbol, fun);
                 with_required_current_instance(|instance| unsafe {
                     // P2: single-field write; no other raw path touches the
                     // instance inside this closure.
@@ -354,7 +336,6 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
         SETTAG(new_cell, symbol);
         SET_FRAME(env, new_cell);
         mirror_base_frame(env, peer);
-        hash_insert_base_pair(env, peer, symbol, fun);
         with_required_current_instance(|instance| unsafe {
             // P2: single-field write; no other raw path touches the
             // instance inside this closure.
@@ -499,15 +480,30 @@ pub unsafe fn find_var_in_frame_result<'a>(
         return Ok(None);
     }
 
-    // The pairlist frame is authoritative. Hash tables are a write-through cache
-    // and can retain stale values across GC if frame cells were remapped first.
+    // The index names exact binding cells, not copied values. Read current CAR
+    // only after membership validation; missing keys retain name-equality walk.
+    if let Some(link) = super::env_hash::hash_binding_cell(&rho, &symbol) {
+        let cell = rho.checked_child(link).map_err(|err| sexp_err("indexed binding cell", err))?;
+        if let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw()) {
+            return unsafe { Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None)) }
+                .map(Some).map_err(|err| sexp_err("active binding value", err));
+        }
+        return cell.try_car().map(Some).map_err(|err| sexp_err("indexed binding value", err));
+    }
+
     let frame = rho
         .clone()
         .try_frame()
         .clone()
         .map_err(|err| sexp_err("environment frame lookup", err))?;
 
+    let mut seen = hashbrown::HashSet::new();
     for cell in PairlistIter::new(frame) {
+        let link = cell.allocation().ok().and_then(|node| node.link())
+            .ok_or_else(|| sexp_err("environment frame lookup", SexpError::StaleAllocation))?;
+        seen.try_reserve(1).map_err(|_| "environment frame lookup: allocation failed".to_string())?;
+        if !seen.insert(link) { return Err("environment frame lookup: cyclic binding chain".to_string()); }
+
         let tag = cell
             .clone()
             .try_tag()
@@ -523,26 +519,8 @@ pub unsafe fn find_var_in_frame_result<'a>(
             let val = cell
                 .try_car()
                 .map_err(|err| sexp_err("binding value lookup", err))?;
-            if super::env_hash::env_has_hash_table(rho.clone().as_raw()) {
-                super::env_hash::hash_insert(rho.as_raw(), symbol.as_raw(), val.clone().as_raw());
-            }
             return Ok(Some(val));
         }
-    }
-
-    if super::env_hash::env_has_hash_table(rho.clone().as_raw())
-        && let Some(val) = super::env_hash::hash_get(rho.clone().as_raw(), symbol.clone().as_raw())
-    {
-        if val != unsafe { R_UnboundValue() }
-            && let Some(fun) = active_binding_fun_raw(rho.clone().as_raw(), symbol.as_raw())
-        {
-            return unsafe { Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None)) }
-                .map(Some)
-                .map_err(|err| sexp_err("active binding value", err));
-        }
-        return unsafe { Sexp::try_from_raw(val) }
-            .map(Some)
-            .map_err(|err| sexp_err("hash binding value", err));
     }
 
     Ok(None)
@@ -762,14 +740,6 @@ pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) 
 
 
             increment_named_on_assign(value.clone().as_raw());
-            unsafe {
-                hash_insert_base_pair(
-                    rho.clone().as_raw(),
-                    peer,
-                    symbol.clone().as_raw(),
-                    value.clone().as_raw(),
-                );
-            }
             return true;
         }
     }
@@ -787,14 +757,6 @@ pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) 
         }
         increment_named_on_assign(value.clone().as_raw());
 
-        unsafe {
-            hash_insert_base_pair(
-                rho.clone().as_raw(),
-                peer,
-                symbol.clone().as_raw(),
-                value.clone().as_raw(),
-            );
-        }
 
         let peer_has_hash =
             peer.is_some_and(|peer| super::env_hash::env_has_hash_table(peer));
@@ -805,17 +767,7 @@ pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) 
             while !cur.is_null() && cur != nil {
                 count += 1;
                 if count >= 100 {
-                    let mut bindings = Vec::new();
-                    cur = unsafe { super::accessors::FRAME(rho.clone().as_raw()) };
-                    while !cur.is_null() && cur != nil {
-                        let tag = unsafe { super::accessors::TAG(cur) };
-                        let car = unsafe { super::accessors::CAR(cur) };
-                        if !tag.is_null() && tag != nil {
-                            bindings.push((tag, car));
-                        }
-                        cur = unsafe { super::accessors::CDR(cur) };
-                    }
-                    super::env_hash::promote_to_hash_table(rho.as_raw(), &bindings);
+                    super::env_hash::promote_to_hash_table(rho.as_raw());
                     break;
                 }
                 cur = unsafe { super::accessors::CDR(cur) };
@@ -866,9 +818,6 @@ pub unsafe fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
                     SETCAR(cell.as_raw(), value.clone().as_raw());
                 }
                 increment_named_on_assign(value.clone().as_raw());
-                if super::env_hash::env_has_hash_table(current.clone().as_raw()) {
-                    super::env_hash::hash_insert(current.as_raw(), symbol.as_raw(), value.as_raw());
-                }
                 return;
             }
         }

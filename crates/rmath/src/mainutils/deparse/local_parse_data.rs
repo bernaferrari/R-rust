@@ -30,7 +30,7 @@ pub struct LocalParseData {
     /// Left-side precedence tracking for parenthesization.
     pub left: c_int,
     /// The string buffer for building the current line.
-    pub buffer: R_StringBuffer,
+    pub(crate) buffer: super::owned_line_buffer::OwnedLineBuffer,
     /// Line width cutoff.
     pub cutoff: c_int,
     /// Whether to use backticks for non-standard names.
@@ -60,11 +60,7 @@ impl Default for LocalParseData {
             indent: 0,
             strvec: unsafe { R_NilValue() },
             left: 0,
-            buffer: R_StringBuffer {
-                data: ptr::null_mut(),
-                bufsize: 0,
-                defaultSize: BUFSIZE as usize,
-            },
+            buffer: super::owned_line_buffer::OwnedLineBuffer::default(),
             cutoff: DEFAULT_CUTOFF,
             backtick: 0,
             opts: 0,
@@ -229,9 +225,6 @@ pub unsafe fn getPPinfo_for_symbol(sym: SEXP) -> Option<PPinfo> {
             .map(|entry| entry.pp)
     }
 }
-
-
-
 
 /// Resolve the `[` vs `[[` discriminator for a PP_SUBSET call.
 ///

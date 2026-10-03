@@ -40,14 +40,13 @@ pub unsafe fn deparse1WithCutoff(
         // GNU deparse.c: PrintDefaults(); savedigits = R_print.digits;
         // R_print.digits = DBL_DIG; restored after the result is built.
         const DBL_DIG: c_int = 15;
-        let old_print = crate::mainutils::format::format_set_R_print(
-            crate::mainutils::format::RPrint {
+        let old_print =
+            crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
                 digits: DBL_DIG,
                 scipen: 0,
                 na_width: 2,
                 na_width_noquote: 2,
-            },
-        );
+            });
         struct RestorePrint {
             old: crate::mainutils::format::RPrint,
         }
@@ -59,15 +58,18 @@ pub unsafe fn deparse1WithCutoff(
             }
         }
         let _restore = RestorePrint { old: old_print };
+        let allocation_error =
+            || -> ! { buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation) };
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|_| allocation_error());
+        let factory = owner.node_factory();
+        let _input = factory.wrap(call).unwrap_or_else(|_| allocation_error());
 
         let mut local_data = LocalParseData::default();
         local_data.cutoff = cutoff;
         local_data.backtick = if backtick { 1 } else { 0 };
         local_data.opts = opts;
         local_data.strvec = R_NilValue();
-
-        // Ensure buffer allocation
-        print2buff(b"\0".as_ptr() as *const c_char, &mut local_data);
 
         let mut svec = R_NilValue();
         let mut need_ellipses = false;
@@ -89,18 +91,34 @@ pub unsafe fn deparse1WithCutoff(
             }
         }
 
-        svec = Rf_allocVector(SEXPTYPE::STRSXP, local_data.linenumber);
-        let _svec_guard = protect(svec);
+        let mut output = factory
+            .allocate(|arena| {
+                Some(arena.alloc_vector(SEXPTYPE::STRSXP, local_data.linenumber.into()))
+            })
+            .unwrap_or_else(|_| allocation_error());
+        svec = output.as_raw();
 
         deparse2(call, svec, &mut local_data);
-        if nlines > 0 && local_data.linenumber > 0 && (local_data.linenumber as i64) < nlines as i64 {
+        if nlines > 0 && local_data.linenumber > 0 && (local_data.linenumber as i64) < nlines as i64
+        {
             let used = local_data.linenumber;
-            let shrunk = Rf_allocVector(SEXPTYPE::STRSXP, used);
-            let _sh = protect(shrunk);
+            let shrunk = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, used.into())))
+                .unwrap_or_else(|_| allocation_error());
+            let mut shrunk = crate::sexp::object::SexpMut::try_from_checked(shrunk)
+                .unwrap_or_else(|_| allocation_error());
             for i in 0..used {
-                SET_STRING_ELT(shrunk, i as i64, STRING_ELT(svec, i as i64));
+                let character = output
+                    .try_string_elt(i as i64)
+                    .unwrap_or_else(|_| allocation_error());
+                shrunk
+                    .try_set_string_elt(i as i64, character)
+                    .unwrap_or_else(|_| allocation_error());
             }
-            svec = shrunk;
+            // The actual result stays owned through warning handlers and all
+            // later allocations, even after the original output is dropped.
+            output = shrunk.freeze();
+            svec = output.as_raw();
         }
 
         if abbrev {
@@ -124,7 +142,6 @@ pub unsafe fn deparse1WithCutoff(
                 }
             }
             let result = Rf_mkString(data.as_ptr() as *const c_char);
-            R_FreeStringBuffer(&mut local_data.buffer);
             return result;
         } else if need_ellipses {
             let ellipsis = Rf_mkChar(b"  ...\0".as_ptr() as *const c_char);
@@ -135,8 +152,6 @@ pub unsafe fn deparse1WithCutoff(
             crate::mainutils::errors::Rf_warning1(c"deparse may be incomplete".as_ptr());
         }
 
-
-        R_FreeStringBuffer(&mut local_data.buffer);
         svec
     }
 }
@@ -209,7 +224,9 @@ unsafe fn deparse_call_args(args: SEXP) -> DeparseCallArgs {
                         cutoff = v;
                     }
                 }
-                Some("backtick") => backtick = Some(crate::mainutils::coerce::asLogical(value) != 0),
+                Some("backtick") => {
+                    backtick = Some(crate::mainutils::coerce::asLogical(value) != 0)
+                }
                 Some("control") => opts = Some(deparse_opts_from_control(value)),
                 Some("nlines") => {
                     let v = crate::mainutils::coerce::asInteger(value);

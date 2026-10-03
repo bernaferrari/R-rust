@@ -462,14 +462,6 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             mark_reachable(methods);
         }
         mark_reachable((*instance).objects_state.deferred_default_object);
-        MARK_WHERE.with(|w| w.set("env_hash"));
-        for (&env, table) in &(*instance).env_hash_tables {
-            mark_reachable(env as SEXP);
-            for (&symbol, &value) in table {
-                mark_reachable(symbol as SEXP);
-                mark_reachable(value);
-            }
-        }
         // Namespace cache values may be reachable only through the cache: a
         // pure-R package namespace has no other root once attach-time references
         // die. Untraced, a collection swept the namespace env and left a dangling
@@ -1030,20 +1022,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
             &mut (*instance).objects_state.deferred_default_object,
             old_to_new,
         );
-        let old_hash_tables = std::mem::take(&mut (*instance).env_hash_tables);
-        (*instance).env_hash_tables = old_hash_tables
-            .into_iter()
-            .map(|(env, table)| {
-                let table = table
-                    .into_iter()
-                    .map(|(symbol, mut value)| {
-                        update_field(&mut value, old_to_new);
-                        (remap_addr(symbol, old_to_new), value)
-                    })
-                    .collect();
-                (remap_addr(env, old_to_new), table)
-            })
-            .collect();
         let old_cache = std::mem::take(&mut (*instance).package_namespace_cache);
         (*instance).package_namespace_cache = old_cache
             .into_iter()
@@ -1165,6 +1143,10 @@ where
             collect(instance)
         }));
         (*instance).gc_state.in_progress = false;
+        // Sweep has retired exact generations. This metadata-only pass drops
+        // dead env indexes without rooting any cell. Live indexes remain warm;
+        // canonical structural writes invalidate their membership separately.
+        (*instance).heap_identity.prune_binding_indexes();
 
         match result {
             Ok((promoted, freed)) => {
@@ -1274,29 +1256,6 @@ fn eval_safe_point_gc_due_in(instance: *mut instance::RInstance) -> bool {
     unsafe { (*instance).gc_state.gc_pending || (*instance).arena.growth_warrants_gc() }
 }
 
-fn sync_env_hash_tables_from_frames(instance: *mut instance::RInstance) {
-    unsafe {
-        let envs: Vec<usize> = (*instance).env_hash_tables.keys().copied().collect();
-        for env_addr in envs {
-            let env = env_addr as SEXP;
-            unsafe {
-                if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
-                    continue;
-                }
-                let mut frame = super::accessors::FRAME(env);
-                while !frame.is_null() && (*frame).sxpinfo.type_of() != SEXPTYPE::NILSXP {
-                    let tag = super::accessors::TAG(frame);
-                    let val = super::accessors::CAR(frame);
-                    if !tag.is_null() {
-                        super::env_hash::hash_insert_in(instance, env, tag, val);
-                    }
-                    frame = super::accessors::CDR(frame);
-                }
-            }
-        }
-    }
-}
-
 fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec<SEXP> {
     unsafe {
         let mut values = Vec::new();
@@ -1331,7 +1290,6 @@ fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec
 
 fn push_environment_binding_protects(instance: *mut instance::RInstance) {
     unsafe {
-        sync_env_hash_tables_from_frames(instance);
         let values = collect_environment_binding_values(instance);
         for value in values {
             push_protect_in(instance, value);
@@ -2011,7 +1969,7 @@ mod tests {
             (*instance).main_state.task_callbacks.clear();
             (*instance).objects_state.prim_generics.clear();
             (*instance).objects_state.prim_mlist.clear();
-            (*instance).env_hash_tables.clear();
+            (*instance).heap_identity.clear_binding_indexes();
             (*instance).memory_state.pending_finalizers.clear();
             (*instance).dynload_state.dll_info_eptrs = nil;
             (*instance).dynload_state.symbol_eptrs = nil;

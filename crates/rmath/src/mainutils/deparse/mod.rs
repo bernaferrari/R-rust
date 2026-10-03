@@ -20,7 +20,7 @@
 //!
 //! Porting status:
 //! - Full implementation of deparse2buff, deparse2, print2buff, writeline,
-//!   linebreak, printtab2buff, args2buff, vector2buff, vec2buff.
+//!   linebreak, args2buff, vector2buff, vec2buff.
 //! - deparse1WithCutoff, deparse1, deparse1w, deparse1line, deparse1s, deparse1m.
 //! - do_deparse with argument extraction.
 //! - Helper functions: curlyahead, needsparens, quotify, etc.
@@ -31,7 +31,6 @@ use std::os::raw::{c_char, c_int, c_uint};
 use std::ptr;
 
 use crate::eval::attrib_core::getAttrib;
-use crate::mainutils::memory_main::{R_AllocStringBuffer, R_FreeStringBuffer, R_StringBuffer};
 use crate::mainutils::names::{
     PP_ASSIGN as N_PP_ASSIGN, PP_ASSIGN2 as N_PP_ASSIGN2, PP_BINARY as N_PP_BINARY,
     PP_BINARY2 as N_PP_BINARY2, PP_BREAK as N_PP_BREAK, PP_CURLY as N_PP_CURLY,
@@ -59,6 +58,7 @@ pub mod dispatch;
 pub mod elements;
 pub mod entry;
 pub mod local_parse_data;
+mod owned_line_buffer;
 pub mod predicates;
 pub mod srcref;
 

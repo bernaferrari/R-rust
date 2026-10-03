@@ -207,6 +207,14 @@ jobs:
             filters: >-
               provider_declaration_replacement_rejects_length_and_element_publication
               rejected_dense_payload_publication_keeps_provider_cache_cells_unchanged
+          - subject: owned deparse bytes and output
+            filters: >-
+              bounded_line_growth_empty_unicode_and_rejection_preserve_bytes
+              owned_deparse_
+          - subject: original binding cell indexes
+            filters: >-
+              owned_binding_index
+              owned_binding_indexes
           - subject: graph rewrites
             filters: >-
               canonical_saved_link_rejects_same_address_reuse_without_marking_replacement

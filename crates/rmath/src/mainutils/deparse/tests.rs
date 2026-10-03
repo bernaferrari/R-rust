@@ -204,7 +204,6 @@ grepl("lab = NULL", paste(deparse(o), collapse = "\n"), fixed = TRUE)
     assert_eq!(result.logical_elt(0), Some(crate::sexp::ffi::TRUE));
 }
 
-
 #[test]
 fn test_browse_lines_initial() {
     let _session = RSession::new();
@@ -299,4 +298,187 @@ identical(d[2], "{") &&
     assert_eq!(result.logical_elt(0), Some(crate::sexp::ffi::TRUE));
 }
 
+#[test]
+fn owned_deparse_line_flushes_empty_and_unterminated_unicode_through_actual_values() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let output = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, 3)))
+            .unwrap();
+        let collections = std::rc::Rc::new(std::cell::Cell::new(0));
+        let observed = collections.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        let mut data = LocalParseData::default();
+        data.strvec = output.clone().as_raw();
+        data.maxlines = 3;
+        unsafe {
+            print2buff(c"".as_ptr(), &mut data);
+            writeline(&mut data);
+        }
+        assert_eq!(output.string_value_elt(0), Some(Some(String::new())));
+        let text = "λ café".repeat(200).into_bytes();
+        assert_ne!(text.last(), Some(&0));
+        data.indent = 6;
+        append_line_bytes(&text, &mut data);
+        assert!(data.buffer.bytes().len() > BUFSIZE as usize);
+        assert_eq!(data.len as usize, text.len() + 20);
+        unsafe {
+            writeline(&mut data);
+        }
+        assert_eq!(
+            output.string_value_elt(1),
+            Some(Some(format!(
+                "{}{}",
+                " ".repeat(20),
+                String::from_utf8(text).unwrap()
+            )))
+        );
+        assert!(data.buffer.bytes().is_empty());
+        assert_eq!(data.len, 0);
+        assert!(data.startline);
+        data.indent = 0;
+        append_line_bytes(b"last", &mut data);
+        unsafe {
+            writeline(&mut data);
+        }
+        assert_eq!(output.string_value_elt(2), Some(Some("last".into())));
+        assert_eq!(data.linenumber, 3);
+        assert!(!data.active);
+        assert!(collections.get() > 0);
+        session.gc();
+        assert_eq!(output.string_value_elt(0), Some(Some(String::new())));
+    });
+}
 
+#[test]
+fn owned_deparse_shortened_result_survives_collecting_warning_handler() {
+    let mut session = RSession::new_for_gc_tests();
+    let collections = std::rc::Rc::new(std::cell::Cell::new(0));
+    let observed = collections.clone();
+    crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+        observed.set(observed.get() + 1);
+    }));
+    let (result, _, _) = session.eval_code_with_output_capture(
+        r#"{
+            deparse_warning_hits <- 0L
+            result <- withCallingHandlers(
+                deparse(globalenv(), control = "warnIncomplete", nlines = 10L),
+                warning = function(w) {
+                    deparse_warning_hits <<- deparse_warning_hits + 1L
+                    gc()
+                }
+            )
+            c(result, as.character(deparse_warning_hits))
+        }"#,
+    );
+    let result = result.expect("shortened output must survive the warning handler");
+    assert_eq!(result.len(), 2);
+    assert_eq!(
+        result.string_value_elt(0),
+        Some(Some("<environment>".into()))
+    );
+    assert_eq!(result.string_value_elt(1), Some(Some("1".into())));
+    assert!(collections.get() > 0);
+}
+
+#[test]
+fn owned_deparse_line_wrap_and_line_limit_preserve_original_output() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let factory = session.owner_token().unwrap().node_factory();
+        let output = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, 2)))
+            .unwrap();
+        let mut data = LocalParseData::default();
+        data.strvec = output.clone().as_raw();
+        data.maxlines = 2;
+        data.cutoff = 3;
+        let mut continued = false;
+        append_line_bytes(b"abc", &mut data);
+        unsafe {
+            linebreak(&mut continued, &mut data);
+        }
+        assert_eq!(data.linenumber, 0);
+        append_line_bytes(b"d", &mut data);
+        unsafe {
+            linebreak(&mut continued, &mut data);
+        }
+        assert!(continued);
+        assert_eq!(data.indent, 1);
+        assert_eq!(output.string_value_elt(0), Some(Some("abcd".into())));
+        append_line_bytes(b"next", &mut data);
+        unsafe {
+            writeline(&mut data);
+        }
+        assert_eq!(output.string_value_elt(1), Some(Some("    next".into())));
+        assert!(!data.active);
+        // Counting flushes after the limit cannot overwrite completed lines.
+        append_line_bytes(b"ignored", &mut data);
+        unsafe {
+            writeline(&mut data);
+        }
+        assert_eq!(output.string_value_elt(1), Some(Some("    next".into())));
+    });
+}
+
+#[test]
+fn owned_deparse_buffer_error_unwind_preserves_line_and_allows_actual_error_rendering() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let mut data = LocalParseData::default();
+        append_line_bytes(b"prefix", &mut data);
+        data.startline = true;
+        data.indent = c_int::MAX;
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            append_line_bytes(b"suffix", &mut data);
+        }));
+        assert!(failure.is_err());
+        assert_eq!(data.buffer.bytes(), b"prefix");
+        assert_eq!(data.len, 6);
+        assert!(data.startline);
+        drop(data);
+        let factory = session.owner_token().unwrap().node_factory();
+        let scalar = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let mut scalar_mut = crate::sexp::object::SexpMut::try_from_checked(scalar).unwrap();
+        scalar_mut.try_set_integer_elt(0, 7).unwrap();
+        let scalar = scalar_mut.freeze();
+        let result = factory
+            .wrap(unsafe {
+                deparse1WithCutoff(
+                    scalar.clone().as_raw(),
+                    false,
+                    DEFAULT_CUTOFF,
+                    true,
+                    DEFAULTDEPARSE,
+                    -1,
+                )
+            })
+            .unwrap();
+        assert_eq!(result.string_value_elt(0), Some(Some("7L".into())));
+        let input = factory.strings(&[""]).unwrap();
+        let result = factory
+            .wrap(unsafe {
+                deparse1WithCutoff(
+                    input.clone().as_raw(),
+                    false,
+                    DEFAULT_CUTOFF,
+                    true,
+                    DEFAULTDEPARSE,
+                    -1,
+                )
+            })
+            .unwrap();
+        assert_eq!(result.string_value_elt(0), Some(Some("\"\"".into())));
+    });
+}

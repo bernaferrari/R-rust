@@ -775,7 +775,7 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn checked_child(&self, link: NodeLink) -> SexpResult<Sexp<'a>> {
+    pub(crate) fn checked_child(&self, link: NodeLink) -> SexpResult<Sexp<'a>> {
         self.ensure_live()?;
         if link.is_null() {
             return Ok(if let Some(pool) = &self.singletons {
