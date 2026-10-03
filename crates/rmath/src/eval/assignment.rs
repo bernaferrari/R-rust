@@ -360,7 +360,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let _arg_list_guard = protect(arg_list);
                 let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
                 if !repl_call.is_null() {
-                    (*repl_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(repl_call, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 let _repl_call_guard = protect(repl_call);
 
@@ -620,7 +620,7 @@ unsafe fn replace_tmp_call(assign_fn: SEXP, tmp_sym: SEXP, rest: SEXP, rhs: SEXP
         let _tmp_cell = protect(tmp_cell);
         let call = crate::sexp::constructors::Rf_cons(assign_fn, tmp_cell);
         if !call.is_null() {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         call
     }

@@ -536,12 +536,12 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
             }
             SEXPTYPE::LANGSXP => {
                 t = duplicate_list(s, deep);
-                (*t).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(t, SEXPTYPE::LANGSXP.as_c_int());
                 DUPLICATE_ATTRIB(t, s, deep);
             }
             SEXPTYPE::DOTSXP => {
                 t = duplicate_list(s, deep);
-                (*t).sxpinfo.set_type(SEXPTYPE::DOTSXP);
+                crate::sexp::accessors::SET_TYPEOF(t, SEXPTYPE::DOTSXP.as_c_int());
                 DUPLICATE_ATTRIB(t, s, deep);
             }
             SEXPTYPE::CHARSXP => {

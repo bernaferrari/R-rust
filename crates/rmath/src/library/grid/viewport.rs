@@ -109,7 +109,7 @@ unsafe fn lang1(fn_: SEXP) -> SEXP {
     unsafe {
         let call = Rf_cons(fn_, R_NilValue());
         if !call.is_null() {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         call
     }

@@ -390,7 +390,22 @@ mod tests {
                         match change {
                             Change::Shorter => header.set_vecsxp_length(1),
                             Change::DifferentPayload => header.gengc_next_node = other_payload,
-                            Change::DifferentBody => header.data = crate::sexp::ffi::NodeBody::Other,
+                            Change::DifferentBody => {
+                                let original_header = heap.node_snapshot(&token).unwrap();
+                                let mut incompatible = header;
+                                incompatible.data = crate::sexp::ffi::NodeBody::Other;
+                                assert!(heap.replace_node(&token, incompatible).is_none());
+                                let unchanged = heap.node_snapshot(&token).unwrap();
+                                assert_eq!(unchanged.data, original_header.data);
+                                assert_eq!(unchanged.sxpinfo.type_and_flags, original_header.sxpinfo.type_and_flags);
+                                assert_eq!(unchanged.attrib, original_header.attrib);
+                                assert_eq!(unchanged.gengc_next_node, original_header.gengc_next_node);
+                                assert_eq!(heap.reference_links(&token), Some(vec![original, original]));
+                                // A callback can publish a complete valid transition;
+                                // the pending GC transaction must still reject it.
+                                header.sxpinfo.set_type(SEXPTYPE::S4SXP);
+                                header.data = crate::sexp::ffi::NodeBody::Other;
+                            }
                         }
                         heap.replace_node(&token, header).unwrap();
                     }
@@ -412,7 +427,8 @@ mod tests {
                 Change::Shorter => assert_eq!(current.vecsxp_length(), 1),
                 Change::DifferentPayload => assert_eq!(current.gengc_next_node, other_payload),
                 Change::DifferentBody => {
-                    assert!(matches!(current.data, crate::sexp::ffi::NodeBody::Other))
+                    assert_eq!(current.sxpinfo.type_of(), SEXPTYPE::S4SXP);
+                    assert!(matches!(current.data, crate::sexp::ffi::NodeBody::Other));
                 }
             }
         }

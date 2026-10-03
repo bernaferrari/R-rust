@@ -413,7 +413,7 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
             }
             let call = Rf_cons(fun, args);
             if !call.is_null() {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             }
             let result = crate::eval::eval::Rf_eval(call, rho);
             crate::mainutils::coerce::asLogical(result) == TRUE
@@ -523,7 +523,7 @@ unsafe fn make_task_callback_call(
         }
         let call = Rf_cons(fun, args);
         if !call.is_null() {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         call
     }

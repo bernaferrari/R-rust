@@ -56,6 +56,44 @@ pub(crate) struct PersistentBacking {
     references: RefCell<HashMap<usize, usize>>,
 }
 impl PersistentBacking {
+    pub(crate) fn payload_capacity_for_kind(
+        &self,
+        pointer: *mut u8,
+        kind: SEXPTYPE,
+    ) -> Option<usize> {
+        self.nodes.borrow().values().find_map(|allocation| {
+            let payload = allocation.payload.as_ref()?;
+            if payload.pointer().cast::<u8>() != pointer {
+                return None;
+            }
+            match payload {
+                PersistentPayload::Bytes(values)
+                    if matches!(kind, SEXPTYPE::RAWSXP | SEXPTYPE::CHARSXP) =>
+                {
+                    Some(values.len())
+                }
+                PersistentPayload::Integers(values)
+                    if matches!(kind, SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP) =>
+                {
+                    Some(values.len())
+                }
+                PersistentPayload::Reals(values) if kind == SEXPTYPE::REALSXP => Some(values.len()),
+                PersistentPayload::References(values)
+                    if matches!(
+                        kind,
+                        SEXPTYPE::STRSXP
+                            | SEXPTYPE::VECSXP
+                            | SEXPTYPE::EXPRSXP
+                            | SEXPTYPE::BCODESXP
+                    ) =>
+                {
+                    Some(values.len())
+                }
+                _ => None,
+            }
+        })
+    }
+
     pub(crate) fn node_snapshot(&self, id: &NodeId) -> Option<SexprecCore> {
         let key = *self.pages.borrow().get(&id.page_cookie())?;
         self.nodes.borrow().get(&key)?.header.copy_live(id)
@@ -69,6 +107,9 @@ impl PersistentBacking {
         self.nodes.borrow().get(&key)?.header.resolve_link(link)
     }
     pub(crate) fn replace_node(&self, id: &NodeId, value: SexprecCore) -> Option<()> {
+        if !value.has_valid_shape() {
+            return None;
+        }
         let key = *self.pages.borrow().get(&id.page_cookie())?;
         self.nodes
             .borrow()
@@ -196,6 +237,9 @@ impl PersistentHeap {
         header: SexprecCore,
         payload: Option<PersistentPayload>,
     ) -> Result<SEXP, HeapError> {
+        if !header.has_valid_shape() {
+            return Err(HeapError::InvalidShape);
+        }
         self.backing
             .nodes
             .borrow_mut()
@@ -379,6 +423,38 @@ impl Drop for PersistentHeap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn invalid_permanent_shapes_publish_nothing_and_retype_uses_actual_payload() {
+        let mut permanent = PersistentHeap::new(HeapIdentity::new());
+        let heap = permanent.identity.clone();
+        let mut invalid = SexprecCore::new(SEXPTYPE::LISTSXP);
+        invalid.data = NodeBody::Other;
+        let next_page = permanent.next_page;
+        assert_eq!(
+            permanent.allocate_header(invalid),
+            Err(HeapError::InvalidShape)
+        );
+        assert_eq!(permanent.len(), 0);
+        assert_eq!(permanent.next_page, next_page);
+        assert!(permanent.backing.pages.borrow().is_empty());
+        assert!(permanent.backing.references.borrow().is_empty());
+
+        let pointer = permanent.allocate_integer(42, true).unwrap();
+        let node = permanent.token(pointer).unwrap();
+        let original = heap.node_snapshot(&node).unwrap();
+        let mut invalid = original;
+        invalid.data = NodeBody::Other;
+        assert!(heap.replace_node(&node, invalid).is_none());
+        assert!(permanent.backing.replace_node(node.id(), invalid).is_none());
+        assert_eq!(heap.node_snapshot(&node).unwrap().data, original.data);
+        heap.retype_node(&node, SEXPTYPE::INTSXP).unwrap();
+        assert!(heap.retype_node(&node, SEXPTYPE::REALSXP).is_none());
+        assert_eq!(
+            heap.node_snapshot(&node).unwrap().gengc_next_node,
+            original.gengc_next_node
+        );
+    }
+
     #[test]
     fn automatic_lease_retains_permanent_storage_and_releases_it_on_last_drop() {
         let mut heap = PersistentHeap::new(HeapIdentity::new());

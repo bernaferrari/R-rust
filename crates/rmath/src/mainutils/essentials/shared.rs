@@ -2638,7 +2638,7 @@ pub(crate) unsafe fn lazy_lazy_load_package_db(
             ),
         );
         if !template.is_null() {
-            (*template).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(template, SEXPTYPE::LANGSXP.as_c_int());
         }
         let _template_guard = protect(template);
 

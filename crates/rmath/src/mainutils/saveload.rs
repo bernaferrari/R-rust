@@ -831,7 +831,7 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
                 let mut current = value;
                 for _ in 0..len {
                     if SEXPTYPE::from(sexptype) == SEXPTYPE::LANGSXP {
-                        (*current).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        crate::sexp::accessors::SET_TYPEOF(current, SEXPTYPE::LANGSXP.as_c_int());
                     }
                     let tag = read_saved_object(reader)?;
                     let car = read_saved_object(reader)?;

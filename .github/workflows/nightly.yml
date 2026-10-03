@@ -118,6 +118,11 @@ jobs:
               owned_matcher_
           - subject: conditions
             filter: bounded_condition_text_survives_each_allocation_and_reentrant_gc
+          - subject: logical ALTREP arithmetic
+            filter: >-
+              owned_logical_coercion
+              materialized_altrep_retype_preserves_original_kind_body_and_cache
+              owned_integer_vector
           - subject: option defaults
             filter: options_initialization_retains_defaults_through_reentrant_gc
           - subject: option retry
@@ -163,6 +168,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - subject: node shape publication
+            filters: >-
+              semantic_shape_checks_reject_mismatches_and_unrepresentable_kinds
+              invalid_initial_shapes_preserve_arena_budget_and_reusable_slots
+              allocation_callback_rejects_invalid_shape_without_changing_rooted_parent
+              canonical_shape_rejection_is_atomic_and_retype_checks_actual_storage
+              invalid_permanent_shapes_publish_nothing_and_retype_uses_actual_payload
+              checked_kind_setter_
+              pairlist_builder_finish_as_type_preserves_cells_and_rejects_other_bodies
+              starma_incompatible_publication_is_rejected_without_changing_attached_state
           - subject: graph identities
             filters: >-
               cookies_exhaust_without_wrapping_or_issuing_reserved_zero

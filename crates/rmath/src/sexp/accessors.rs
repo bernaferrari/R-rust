@@ -56,7 +56,11 @@ fn mutate_header(pointer: SEXP, update: impl FnOnce(&mut SexprecCore)) {
         .unwrap_or_else(|| super::context::r_error("unowned header write"));
     let mut header = super::memory::checked_snapshot(projection, &node)
         .unwrap_or_else(|| super::context::r_error("stale header write"));
+    let original_kind = header.sxpinfo.type_of();
     update(&mut header);
+    if header.sxpinfo.type_of() != original_kind {
+        super::context::r_error("header mutation cannot change kind");
+    }
     node.heap_identity()
         .replace_node(&node, header)
         .unwrap_or_else(|| super::context::r_error("stale header write"));
@@ -106,6 +110,23 @@ fn debug_assert_vector_type(x: SEXP, expected: SEXPTYPE) {
 /// Get the SEXPTYPE tag of an SEXP.
 pub unsafe fn TYPEOF(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| header.sxpinfo.type_of().0)
+}
+
+/// Change the kind only when the existing canonical body and payload support it.
+/// Immutable sentinels and NULL retain their original kind.
+///
+/// # Safety
+/// The projection must refer to the active runtime or a retained live allocation.
+/// No payload loan may cross a successful kind change.
+pub unsafe fn SET_TYPEOF(x: SEXP, kind: c_int) {
+    if x.is_null() || immutable_lease(x).is_some() {
+        return;
+    }
+    let (_, node) = super::memory::checked_projection(x)
+        .unwrap_or_else(|| super::context::r_error("unowned kind write"));
+    node.heap_identity()
+        .retype_node(&node, SEXPTYPE(kind))
+        .unwrap_or_else(|| super::context::r_error("incompatible or stale kind write"));
 }
 
 /// Get the length of a vector SEXP.
@@ -1269,6 +1290,66 @@ impl SexprecCore {
 mod tests {
     use super::super::ffi::*;
     use super::*;
+
+    #[test]
+    fn checked_kind_setter_rejects_incompatible_changes_without_modifying_values() {
+        let mut arena = super::super::memory::RArena::new();
+        let vector = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        unsafe { SET_INTEGER_ELT(vector, 0, 42) };
+        let (_, allocation) = super::super::memory::checked_projection(vector).unwrap();
+        let heap = allocation.heap_identity();
+        let before = heap.node_snapshot(&allocation).unwrap();
+        for kind in [SEXPTYPE::REALSXP, SEXPTYPE::SYMSXP, SEXPTYPE::LISTSXP] {
+            let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                SET_TYPEOF(vector, kind.0);
+            }));
+            assert!(rejected.is_err());
+            let after = heap.node_snapshot(&allocation).unwrap();
+            assert_eq!(after.sxpinfo.type_of(), before.sxpinfo.type_of());
+            assert_eq!(after.data, before.data);
+            assert_eq!(unsafe { INTEGER_ELT(vector, 0) }, 42);
+        }
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            mutate_header(vector, |header| header.sxpinfo.set_type(SEXPTYPE::REALSXP));
+        }));
+        assert!(rejected.is_err());
+        assert_eq!(unsafe { TYPEOF(vector) }, SEXPTYPE::INTSXP.0);
+        assert_eq!(unsafe { INTEGER_ELT(vector, 0) }, 42);
+    }
+
+    #[test]
+    fn checked_kind_setter_preserves_compatible_payloads_edges_and_immutable_nil() {
+        let mut arena = super::super::memory::RArena::new();
+        let logical = arena.alloc_vector(SEXPTYPE::LGLSXP, 2);
+        unsafe {
+            SET_LOGICAL_ELT(logical, 0, 1);
+            SET_LOGICAL_ELT(logical, 1, NA_INTEGER);
+            SET_TYPEOF(logical, SEXPTYPE::INTSXP.0);
+            assert_eq!(INTEGER_ELT(logical, 0), 1);
+            assert_eq!(INTEGER_ELT(logical, 1), NA_INTEGER);
+            SET_TYPEOF(logical, SEXPTYPE::LGLSXP.0);
+            assert_eq!(LOGICAL_ELT(logical, 0), 1);
+            assert_eq!(LOGICAL_ELT(logical, 1), NA_INTEGER);
+        }
+        let list = arena.alloc_list_chain(2);
+        unsafe { SETCAR(list, logical) };
+        let (_, allocation) = super::super::memory::checked_projection(list).unwrap();
+        let heap = allocation.heap_identity();
+        let original_body = heap.node_snapshot(&allocation).unwrap().data;
+        for kind in [SEXPTYPE::LANGSXP, SEXPTYPE::DOTSXP, SEXPTYPE::LISTSXP] {
+            unsafe {
+                SET_TYPEOF(list, kind.0);
+                assert_eq!(TYPEOF(list), kind.0);
+                assert_eq!(CAR(list), logical);
+                assert_eq!(XLENGTH(list), 2);
+            }
+            assert_eq!(heap.node_snapshot(&allocation).unwrap().data, original_body);
+        }
+        let nil = super::super::object::Sexp::nil();
+        unsafe { SET_TYPEOF(nil.as_raw(), SEXPTYPE::LISTSXP.0) };
+        assert!(nil.is_nil());
+        assert_eq!(unsafe { TYPEOF(nil.as_raw()) }, SEXPTYPE::NILSXP.0);
+    }
 
     #[test]
     fn nil_list_accessors_use_the_nil_value_without_a_list_body() {

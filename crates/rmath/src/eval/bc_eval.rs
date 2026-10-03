@@ -3649,7 +3649,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
 
                         if !call.is_null() {
-                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         }
                         let src = BCODE_EXPR(body);
                         if !src.is_null() && TYPEOF(src) == SEXPTYPE::LANGSXP {
@@ -3688,7 +3688,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     } else {
                         let call = Rf_cons(fun, args);
                         if !call.is_null() {
-                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         }
                         let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
                             Ok(value) => value,
@@ -3719,7 +3719,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     } else {
                         let call = Rf_cons(fun, args);
                         if !call.is_null() {
-                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         }
                         let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
                             Ok(value) => value,
@@ -3967,7 +3967,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                             arg_list = Rf_cons(obj, arg_list);
                             let call = Rf_cons(bracket_sym, arg_list);
                             if !call.is_null() {
-                                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                             }
                             let result = with_stack_rooted(&stack, call, || unsafe {
                                 crate::eval::eval::Rf_eval(call, rho)
@@ -3996,7 +3996,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                             let args = Rf_cons(obj, Rf_cons(idx, nil));
                             let call = Rf_cons(dbracket_sym, args);
                             if !call.is_null() {
-                                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                             }
                             let result = with_stack_rooted(&stack, call, || unsafe {
                                 crate::eval::eval::Rf_eval(call, rho)
@@ -4602,7 +4602,7 @@ mod tests {
                 crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
                 R_NilValue(),
             );
-            (*body).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(body, SEXPTYPE::LANGSXP.as_c_int());
             crate::sexp::accessors::SET_BODY(clos, body);
             crate::sexp::accessors::SET_CLOENV(clos, crate::sexp::globals::R_BaseEnv());
             clos
@@ -4657,7 +4657,7 @@ mod tests {
                 crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
                 R_NilValue(),
             );
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             let promise = crate::sexp::memory_ext::mkPROMISE(call, env);
             defineVar(symbol, promise, env);
             (symbol, env)

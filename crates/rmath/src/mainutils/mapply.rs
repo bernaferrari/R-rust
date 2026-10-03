@@ -395,7 +395,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
 
             let call = Rf_cons(fun, call_args);
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             let _call_guard = protect(call);
             let val = crate::eval::eval::Rf_eval(call, rho);
             SET_VECTOR_ELT(ans, i, val);

@@ -712,7 +712,7 @@ pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _m = protect(matched);
         let call = Rf_cons(crate::sexp::symbol::Rf_install(c"match.fun".as_ptr()), matched,
         );
-        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         let _c = protect(call);
         let fun = crate::eval::eval::Rf_eval(call, rho);
 
@@ -883,7 +883,7 @@ pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
         let call_sexp = Rf_cons(fun, call_args);
         let _call_sexp = protect(call_sexp);
-        (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
         let _ctx = crate::sexp::context::begin_context_guard(
             crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
             _call,
@@ -1024,7 +1024,7 @@ fn apply_fun_to_element(fun: SEXP, elem: SEXP, extra_args: SEXP, rho: SEXP) -> S
         let _call_args_guard = protect(call_args);
         let call = Rf_cons(fun, call_args);
         if !call.is_null() {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         let _call_guard = protect(call);
         crate::eval::closure::applyClosure(
@@ -1329,7 +1329,7 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let call_args = Rf_cons(row_vec, R_NilValue());
                 let call_sexp = Rf_cons(fun, call_args);
                 if !call_sexp.is_null() {
-                    (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 let val = crate::eval::eval::Rf_eval(call_sexp, rho);
                 crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
@@ -1347,7 +1347,7 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let call_args = Rf_cons(col_vec, R_NilValue());
                 let call_sexp = Rf_cons(fun, call_args);
                 if !call_sexp.is_null() {
-                    (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 let val = crate::eval::eval::Rf_eval(call_sexp, rho);
                 crate::sexp::accessors::SET_VECTOR_ELT(result, j as i64, val);
@@ -1460,7 +1460,7 @@ pub unsafe fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let call_args = Rf_cons(group_vec, R_NilValue());
             let call_sexp = Rf_cons(fun, call_args);
             if !call_sexp.is_null() {
-                (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
             }
             let val = crate::eval::eval::Rf_eval(call_sexp, rho);
             crate::sexp::accessors::SET_VECTOR_ELT(result, g as i64, val);
@@ -1762,7 +1762,7 @@ pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let _ed = protect(extra_dup);
                 let call = Rf_cons(fun, Rf_cons(xrep, Rf_cons(yrep, extra_dup)));
                 if !call.is_null() {
-                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 call
             };

@@ -140,6 +140,12 @@ impl SEXPTYPE {
     pub const S4SXP: SEXPTYPE = SEXPTYPE(25);
     pub const FUNSXP: SEXPTYPE = SEXPTYPE(99);
 
+    /// Canonical headers store a five-bit language type. Query-only tags such
+    /// as FUNSXP must never truncate into a different allocated type.
+    pub(crate) fn is_header_kind(self) -> bool {
+        (0..=31).contains(&self.0)
+    }
+
     /// Return the raw C integer tag value.
     #[inline]
     pub const fn as_c_int(self) -> c_int {
@@ -189,6 +195,7 @@ pub struct SxpInfo {
 impl SxpInfo {
     /// Create a new SxpInfo with the given type.
     pub fn new(sexptype: SEXPTYPE) -> Self {
+        assert!(sexptype.is_header_kind(), "invalid allocated SEXPTYPE");
         SxpInfo {
             type_and_flags: sexptype.0 as u32 & 0x1F,
             rcount: 0,
@@ -264,6 +271,7 @@ impl SxpInfo {
 
     #[inline]
     pub fn set_type(&mut self, t: SEXPTYPE) {
+        assert!(t.is_header_kind(), "invalid allocated SEXPTYPE");
         self.type_and_flags = (self.type_and_flags & !0x1F) | (t.0 as u32 & 0x1F);
     }
 
@@ -434,6 +442,13 @@ pub enum NodeBody {
 }
 
 impl NodeBody {
+    /// Check semantic type versus the actual initialized enum arm. This does
+    /// not grant authority to reinterpret any vector's physical payload.
+    pub(crate) fn accepts_kind(&self, kind: SEXPTYPE) -> bool {
+        kind.is_header_kind()
+            && std::mem::discriminant(self) == std::mem::discriminant(&Self::for_kind(kind))
+    }
+
     /// Initialize the arm used by this object's semantic type family.
     pub fn for_kind(kind: SEXPTYPE) -> Self {
         let null = NodeLink::null();
@@ -633,6 +648,12 @@ pub struct SexprecCore {
 }
 
 impl SexprecCore {
+    /// Validate semantic type/body agreement before canonical publication.
+    /// Payload type, bounds and ownership remain separate storage checks.
+    pub(crate) fn has_valid_shape(&self) -> bool {
+        self.data.accepts_kind(self.sxpinfo.type_of())
+    }
+
     /// Create a new SexprecCore with the given type.
     pub fn new(sexptype: SEXPTYPE) -> Self {
         SexprecCore {
@@ -904,10 +925,32 @@ mod tests {
             SEXPTYPE::NILSXP,
             SEXPTYPE::ANYSXP,
             SEXPTYPE::OBJSXP,
-            SEXPTYPE::FUNSXP,
             SEXPTYPE(31),
         ] {
             assert!(matches!(SexprecCore::new(kind).data, NodeBody::Other));
+        }
+    }
+
+    #[test]
+    fn semantic_shape_checks_reject_mismatches_and_unrepresentable_kinds() {
+        for raw_kind in 0..=31 {
+            assert!(SexprecCore::new(SEXPTYPE(raw_kind)).has_valid_shape());
+        }
+        let mut header = SexprecCore::new(SEXPTYPE::LISTSXP);
+        header.data = NodeBody::Other;
+        assert!(!header.has_valid_shape());
+        for kind in [SEXPTYPE::FUNSXP, SEXPTYPE(-1), SEXPTYPE(32)] {
+            assert!(!NodeBody::Other.accepts_kind(kind));
+            assert!(std::panic::catch_unwind(|| SexprecCore::new(kind)).is_err());
+            let mut info = SxpInfo::new(SEXPTYPE::LISTSXP);
+            let original = info.type_and_flags;
+            assert!(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    info.set_type(kind);
+                }))
+                .is_err()
+            );
+            assert_eq!(info.type_and_flags, original);
         }
     }
 

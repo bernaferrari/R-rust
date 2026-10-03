@@ -238,6 +238,16 @@ pub(crate) struct ArenaBacking {
     data_bufs: RefCell<HashMap<*mut u8, SharedBuffer>>,
 }
 impl ArenaBacking {
+    pub(crate) fn payload_capacity_for_kind(
+        &self,
+        pointer: *mut u8,
+        kind: SEXPTYPE,
+    ) -> Option<usize> {
+        let buffers = self.data_bufs.borrow();
+        let payload = &buffers.get(&pointer)?.allocation;
+        payload.accepts_kind(kind).then(|| payload.len())
+    }
+
     pub(crate) fn node_snapshot(&self, id: &NodeId) -> Option<SexprecCore> {
         self.node_pages
             .borrow()
@@ -259,6 +269,9 @@ impl ArenaBacking {
             .resolve_link(link)
     }
     pub(crate) fn replace_node(&self, id: &NodeId, value: SexprecCore) -> Option<()> {
+        if !value.has_valid_shape() {
+            return None;
+        }
         self.node_pages
             .borrow()
             .get(id.page())?
@@ -700,13 +713,17 @@ impl RArena {
     where
         F: FnOnce() -> SexprecCore,
     {
+        let header = ctor();
+        if !header.has_valid_shape() {
+            return ptr::null_mut();
+        }
         while let Some(pointer) = self.free_list.pop() {
             let Some((page, slot)) = self.reusable_slot(pointer) else {
                 continue;
             };
             let ptr = self.backing.node_pages.borrow()[page]
                 .storage
-                .replace_inactive(slot, ctor())
+                .replace_inactive(slot, header)
                 .expect("reusable arena slot");
             return self.register_new_node(ptr);
         }
@@ -715,7 +732,7 @@ impl RArena {
         }
         let ptr = self.backing.node_pages.borrow()[self.slab_page]
             .storage
-            .replace_inactive(self.slab_offset, ctor())
+            .replace_inactive(self.slab_offset, header)
             .expect("fresh inactive arena slot");
         self.slab_offset += 1;
         self.add_accounted_bytes(std::mem::size_of::<SexprecCore>());
@@ -1019,6 +1036,9 @@ impl RArena {
     /// and improve locality (hard problem from review: one alloc per node was bad).
     #[inline(always)]
     pub(crate) fn alloc_node(&mut self, sexptype: SEXPTYPE) -> SEXP {
+        if !sexptype.is_header_kind() {
+            return ptr::null_mut();
+        }
         self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
         if !self.can_activate_node() {
             return ptr::null_mut();
@@ -2172,6 +2192,148 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn invalid_initial_shapes_preserve_arena_budget_and_reusable_slots() {
+        let mut arena = super::RArena::with_budget(super::ArenaBudget::new(0, 1));
+        let mut invalid = super::SexprecCore::new(super::SEXPTYPE::LISTSXP);
+        invalid.data = super::NodeBody::Other;
+        let original_bytes = arena.total_bytes_allocated;
+        let original_offset = arena.slab_offset;
+        assert!(arena.allocate_core_in_slab(|| invalid).is_null());
+        assert!(arena.alloc_node(super::SEXPTYPE::FUNSXP).is_null());
+        assert_eq!(arena.node_count(), 0);
+        assert_eq!(arena.total_bytes_allocated, original_bytes);
+        assert_eq!(arena.slab_offset, original_offset);
+        assert_eq!(arena.alloc_gc_torture_ticks, 0);
+
+        let first = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+        assert!(!first.is_null());
+        let bytes = arena.total_bytes_allocated;
+        assert!(arena.alloc_node(super::SEXPTYPE::LISTSXP).is_null());
+        assert_eq!(arena.node_count(), 1);
+        assert_eq!(arena.total_bytes_allocated, bytes);
+        // SAFETY: this isolated header has no graph or payload users.
+        unsafe {
+            arena.free_node(first);
+        }
+        let free_slots = arena.free_list.clone();
+        assert!(arena.allocate_core_in_slab(|| invalid).is_null());
+        assert_eq!(arena.free_list, free_slots);
+        assert_eq!(arena.total_bytes_allocated, bytes);
+        assert_eq!(arena.alloc_node(super::SEXPTYPE::LISTSXP), first);
+    }
+
+    #[test]
+    fn allocation_callback_rejects_invalid_shape_without_changing_rooted_parent() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let heap = session
+                .owner_token()
+                .unwrap()
+                .with_arena(|arena| arena.heap_identity())
+                .unwrap();
+            let callbacks = std::rc::Rc::new(std::cell::Cell::new(0));
+            let observed = callbacks.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                let roots = super::fresh_allocation_roots(&heap);
+                let (_, node) = roots
+                    .iter()
+                    .find(|(_, node)| {
+                        heap.node_snapshot(node).unwrap().sxpinfo.type_of()
+                            == super::SEXPTYPE::LISTSXP
+                    })
+                    .unwrap();
+                let original = heap.node_snapshot(node).unwrap();
+                let mut invalid = original;
+                invalid.data = super::NodeBody::Other;
+                assert!(heap.replace_node(node, invalid).is_none());
+                let current = heap.node_snapshot(node).unwrap();
+                assert_eq!(current.data, original.data);
+                assert_eq!(
+                    current.sxpinfo.type_and_flags,
+                    original.sxpinfo.type_and_flags
+                );
+                assert!(node.root_count() > 0);
+                crate::sexp::gengc::full_gc();
+                assert!(node.is_live());
+                observed.set(observed.get() + 1);
+            }));
+            session.with_active_in(|owner| unsafe {
+                (*owner).memory_state.gc_force_gap = 1;
+                (*owner).memory_state.gc_force_wait = 1;
+            });
+            let value = factory
+                .allocate(|arena| Some(arena.alloc_node(super::SEXPTYPE::LISTSXP)))
+                .unwrap();
+            assert_eq!(callbacks.get(), 1);
+            assert_eq!(value.typeof_(), super::SEXPTYPE::LISTSXP);
+        });
+    }
+
+    #[test]
+    fn canonical_shape_rejection_is_atomic_and_retype_checks_actual_storage() {
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let pointer = arena.alloc_vector(super::SEXPTYPE::INTSXP, 2);
+        let node = arena.node_token(pointer).unwrap();
+        let original = heap.node_snapshot(&node).unwrap();
+        let mut invalid = original;
+        invalid.data = super::NodeBody::Other;
+        assert!(heap.replace_node(&node, invalid).is_none());
+        assert!(arena.backing.replace_node(node.id(), invalid).is_none());
+        let current = heap.node_snapshot(&node).unwrap();
+        assert_eq!(current.data, original.data);
+        assert_eq!(
+            current.sxpinfo.type_and_flags,
+            original.sxpinfo.type_and_flags
+        );
+        assert_eq!(current.gengc_next_node, original.gengc_next_node);
+
+        heap.retype_node(&node, super::SEXPTYPE::LGLSXP).unwrap();
+        assert_eq!(
+            heap.node_snapshot(&node).unwrap().gengc_next_node,
+            original.gengc_next_node
+        );
+        heap.retype_node(&node, super::SEXPTYPE::INTSXP).unwrap();
+        assert!(heap.retype_node(&node, super::SEXPTYPE::REALSXP).is_none());
+        let real = arena.alloc_vector(super::SEXPTYPE::REALSXP, 2);
+        let real = arena.node_token(real).unwrap();
+        let mut forged_payload = original;
+        forged_payload.gengc_next_node = heap.node_snapshot(&real).unwrap().gengc_next_node;
+        // General header replacement validates semantic body shape only;
+        // physical payload publication is the separate .34 migration.
+        heap.replace_node(&node, forged_payload).unwrap();
+        assert!(heap.retype_node(&node, super::SEXPTYPE::LGLSXP).is_none());
+        assert_eq!(
+            heap.node_snapshot(&node).unwrap().gengc_next_node,
+            forged_payload.gengc_next_node
+        );
+        heap.replace_node(&node, original).unwrap();
+
+        let references = arena.alloc_vector(super::SEXPTYPE::VECSXP, 2);
+        let references = arena.node_token(references).unwrap();
+        for kind in [
+            super::SEXPTYPE::STRSXP,
+            super::SEXPTYPE::EXPRSXP,
+            super::SEXPTYPE::BCODESXP,
+        ] {
+            heap.retype_node(&references, kind).unwrap();
+        }
+        let weak = arena.alloc_node(super::SEXPTYPE::WEAKREFSXP);
+        let weak = arena.node_token(weak).unwrap();
+        assert!(heap.retype_node(&weak, super::SEXPTYPE::LISTSXP).is_none());
+        let pending = arena.alloc_node(super::SEXPTYPE::LGLSXP);
+        let pending = arena.node_token(pending).unwrap();
+        let mut header = heap.node_snapshot(&pending).unwrap();
+        header.sxpinfo.set_alt(true);
+        heap.replace_node(&pending, header).unwrap();
+        assert!(
+            heap.retype_node(&pending, super::SEXPTYPE::INTSXP)
+                .is_none()
+        );
+    }
+
     struct NativeResourceSpy {
         drops: std::rc::Rc<std::cell::Cell<usize>>,
         callback: Option<Box<dyn Fn()>>,
@@ -2259,8 +2421,17 @@ mod tests {
                 header.sxpinfo.set_type(SEXPTYPE::LISTSXP);
                 header
             };
-            heap.replace_node(&node, changed).unwrap();
-            assert!(heap.resource_erased(&node).is_none());
+            if replace_body {
+                heap.replace_node(&node, changed).unwrap();
+                assert!(heap.resource_erased(&node).is_none());
+            } else {
+                assert!(heap.replace_node(&node, changed).is_none());
+                assert_eq!(
+                    heap.node_snapshot(&node).unwrap().sxpinfo.type_of(),
+                    SEXPTYPE::EXTPTRSXP
+                );
+                assert!(heap.resource::<NativeResourceSpy>(&node).is_some());
+            }
             assert!(
                 heap.attach_resource(&node, std::rc::Rc::new(7_u32))
                     .is_none()
@@ -2270,10 +2441,7 @@ mod tests {
 
             let detached = heap.take_resource(&node).unwrap();
             let detached = detached.downcast::<NativeResourceSpy>().unwrap();
-            assert!(std::rc::Rc::ptr_eq(
-                &original.upgrade().unwrap(),
-                &detached
-            ));
+            assert!(std::rc::Rc::ptr_eq(&original.upgrade().unwrap(), &detached));
             assert!(heap.take_resource(&node).is_none());
             assert_eq!(drops.get(), 0);
             drop(detached);

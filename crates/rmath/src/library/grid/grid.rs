@@ -63,7 +63,7 @@ unsafe fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP {
         let tail = Rf_cons(arg1, tail);
         let call = Rf_cons(symbol, tail);
         if !call.is_null() {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         call
     }

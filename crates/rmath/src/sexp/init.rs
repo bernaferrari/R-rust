@@ -2756,7 +2756,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         // does not hide the primitive implementation.
         let internal_call = Rf_allocList(10);
         let _internal_call_guard = super::protect::protect(internal_call);
-        (*internal_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        crate::sexp::accessors::SET_TYPEOF(internal_call, SEXPTYPE::LANGSXP.as_c_int());
         let mut cell = internal_call;
         for name in [
             "identical",

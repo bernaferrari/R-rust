@@ -1158,7 +1158,7 @@ unsafe fn inherits(x: SEXP, _what: *const c_char) -> bool {
 #[inline]
 unsafe fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
     unsafe {
-        (*x).sxpinfo.set_type(v);
+        crate::sexp::accessors::SET_TYPEOF(x, v.as_c_int());
     }
 }
 

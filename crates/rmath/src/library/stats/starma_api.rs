@@ -1094,57 +1094,96 @@ mod tests {
         });
     }
     #[test]
+    fn starma_incompatible_publication_is_rejected_without_changing_attached_state() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let values = inputs(&session);
+            let baseline = live_allocations();
+            let heap = session.with_active_in(|owner| unsafe { (*owner).heap_identity.clone() });
+            let observed = Rc::new(RefCell::new(None));
+            let saved = observed.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if saved.borrow().is_some() { return; }
+                let roots = memory::fresh_allocation_roots(&heap);
+                let (_, token) = roots.iter().find(|(_, token)| {
+                    heap.resource::<StarmaState>(token).is_some()
+                }).expect("tentative STARMA state is attached before callbacks");
+                let state = heap.resource::<StarmaState>(token).unwrap();
+                *saved.borrow_mut() = Some((token.clone(), Rc::downgrade(&state)));
+                let original = heap.node_snapshot(token).unwrap();
+                let mut incompatible = original;
+                incompatible.sxpinfo.set_type(SEXPTYPE::S4SXP);
+                assert!(heap.replace_node(token, incompatible).is_none());
+                let current = heap.node_snapshot(token).unwrap();
+                assert_eq!(current.sxpinfo.type_and_flags, original.sxpinfo.type_and_flags);
+                assert_eq!(current.sxpinfo.rcount, original.sxpinfo.rcount);
+                assert_eq!(current.data, original.data);
+                assert_eq!(current.attrib, original.attrib);
+                assert_eq!(current.gengc_next_node, original.gengc_next_node);
+                assert_eq!(current.gengc_prev_node, original.gengc_prev_node);
+                assert!(Rc::ptr_eq(&heap.resource::<StarmaState>(token).unwrap(), &state));
+                crate::sexp::gengc::full_gc();
+            }));
+            force_callback_collections(&session);
+            let pointer = unsafe { setup(&values) };
+            let pointer = session.sexp(pointer).unwrap();
+            let (token, native) = observed.borrow().as_ref().unwrap().clone();
+            assert!(native.upgrade().is_some());
+            assert_eq!(token.heap_identity().node_snapshot(&token).unwrap().sxpinfo.type_of(), SEXPTYPE::EXTPTRSXP);
+            unsafe { c_free_starma(pointer.as_raw()); }
+            assert!(native.upgrade().is_none());
+            assert_eq!(live_allocations(), baseline);
+        });
+    }
+
+    #[test]
     fn starma_publication_type_changes_release_state_on_rejection_and_unwind() {
-        for change_body in [false, true] {
-            for callback_panics in [false, true] {
-                let session = RSession::new_for_gc_tests();
-                session.with_active(|| {
-                    let values = inputs(&session);
-                    let baseline = live_allocations();
-                    let heap = session.with_active_in(|owner| unsafe { (*owner).heap_identity.clone() });
-                    let observed = Rc::new(RefCell::new(None));
-                    let saved = observed.clone();
-                    crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                        if saved.borrow().is_some() { return; }
-                        let roots = memory::fresh_allocation_roots(&heap);
-                        let (_, token) = roots.iter().find(|(_, token)| {
-                            heap.resource::<StarmaState>(token).is_some()
-                        }).expect("tentative STARMA state is attached before callbacks");
-                        let state = heap.resource::<StarmaState>(token).unwrap();
-                        *saved.borrow_mut() = Some((token.clone(), Rc::downgrade(&state)));
-                        drop(state);
-                        crate::sexp::gengc::full_gc();
-                        let mut header = heap.node_snapshot(token).unwrap();
-                        header.sxpinfo.set_type(SEXPTYPE::S4SXP);
-                        if change_body {
-                            header.data = crate::sexp::ffi::NodeBody::for_kind(SEXPTYPE::S4SXP);
-                        }
-                        heap.replace_node(token, header).unwrap();
-                        if callback_panics { panic!("changed STARMA publication callback unwind"); }
-                    }));
-                    force_callback_collections(&session);
-                    let failure = std::panic::catch_unwind(AssertUnwindSafe(|| unsafe { setup(&values) }))
-                        .expect_err("a changed tentative object cannot publish native state");
-                    if callback_panics {
-                        assert_eq!(failure.downcast_ref::<&str>(), Some(&"changed STARMA publication callback unwind"));
-                    } else {
-                        assert!(failure.downcast_ref::<crate::sexp::context::RError>().unwrap()
-                            .message.contains("closed during initialization"));
-                    }
-                    assert_eq!(live_allocations(), baseline);
-                    let (token, native) = observed.borrow().as_ref().unwrap().clone();
-                    assert!(native.upgrade().is_none());
-                    assert!(token.is_live());
-                    let header = token.heap_identity().node_snapshot(&token).unwrap();
-                    assert_eq!(header.sxpinfo.type_of(), SEXPTYPE::S4SXP);
-                    if !change_body { assert!(header.data.extptr().address.is_null()); }
-                    let retry = unsafe { setup(&values) };
-                    unsafe { c_free_starma(retry); }
-                    assert_eq!(live_allocations(), baseline);
+        for callback_panics in [false, true] {
+            let session = RSession::new_for_gc_tests();
+            session.with_active(|| {
+                let values = inputs(&session);
+                let baseline = live_allocations();
+                let heap = session.with_active_in(|owner| unsafe { (*owner).heap_identity.clone() });
+                let observed = Rc::new(RefCell::new(None));
+                let saved = observed.clone();
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    if saved.borrow().is_some() { return; }
+                    let roots = memory::fresh_allocation_roots(&heap);
+                    let (_, token) = roots.iter().find(|(_, token)| {
+                        heap.resource::<StarmaState>(token).is_some()
+                    }).expect("tentative STARMA state is attached before callbacks");
+                    let state = heap.resource::<StarmaState>(token).unwrap();
+                    *saved.borrow_mut() = Some((token.clone(), Rc::downgrade(&state)));
+                    drop(state);
                     crate::sexp::gengc::full_gc();
-                    assert!(!token.is_live());
-                });
-            }
+                    let mut header = heap.node_snapshot(token).unwrap();
+                    header.sxpinfo.set_type(SEXPTYPE::S4SXP);
+                    header.data = crate::sexp::ffi::NodeBody::for_kind(SEXPTYPE::S4SXP);
+                    heap.replace_node(token, header).unwrap();
+                    if callback_panics { panic!("changed STARMA publication callback unwind"); }
+                }));
+                force_callback_collections(&session);
+                let failure = std::panic::catch_unwind(AssertUnwindSafe(|| unsafe { setup(&values) }))
+                    .expect_err("a changed tentative object cannot publish native state");
+                if callback_panics {
+                    assert_eq!(failure.downcast_ref::<&str>(), Some(&"changed STARMA publication callback unwind"));
+                } else {
+                    assert!(failure.downcast_ref::<crate::sexp::context::RError>().unwrap()
+                        .message.contains("closed during initialization"));
+                }
+                assert_eq!(live_allocations(), baseline);
+                let (token, native) = observed.borrow().as_ref().unwrap().clone();
+                assert!(native.upgrade().is_none());
+                assert!(token.is_live());
+                let header = token.heap_identity().node_snapshot(&token).unwrap();
+                assert_eq!(header.sxpinfo.type_of(), SEXPTYPE::S4SXP);
+                assert!(matches!(header.data, crate::sexp::ffi::NodeBody::Other));
+                let retry = unsafe { setup(&values) };
+                unsafe { c_free_starma(retry); }
+                assert_eq!(live_allocations(), baseline);
+                crate::sexp::gengc::full_gc();
+                assert!(!token.is_live());
+            });
         }
     }
 

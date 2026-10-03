@@ -2676,7 +2676,7 @@ fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
         let print_sym = crate::sexp::symbol::Rf_install(c"print".as_ptr());
         let call = crate::sexp::constructors::Rf_cons(print_sym, args);
         if !call.is_null() {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         let _call = crate::sexp::protect::protect(call);
         let guard = OutputCaptureGuard::start();

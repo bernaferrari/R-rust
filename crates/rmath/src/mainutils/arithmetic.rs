@@ -25,6 +25,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::{Rf_allocVector3, Rf_length};
 use crate::sexp::ffi::Rcomplex;
 use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
+use crate::sexp::object::{SessionNodeFactory, Sexp, SexpMut, SexpResult};
 use crate::sexp::protect::protect;
 use crate::special::cospi::{cospi, sinpi, tanpi};
 use crate::special::gamma::{gammafn, lgammafn};
@@ -687,122 +688,72 @@ const OP_POW: c_int = 5;
 const OP_MOD: c_int = 6;
 const OP_INTDIV: c_int = 7;
 
-/// Integer binary operation for +, -, *, %%, %/% with overflow detection.
-/// Returns an INTSXP result (or REALSXP for DIV and POW).
-unsafe fn integer_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
-    unsafe {
-        let n1 = XLENGTH(s1);
-        let n2 = XLENGTH(s2);
-        let n = if n1 == 0 || n2 == 0 {
-            0
+/// Integer binary operation with checked inputs and a rooted result of the
+/// operation's actual kind (real for division and exponentiation).
+fn integer_binary_arith<'s>(
+    factory: &SessionNodeFactory<'s>,
+    code: c_int,
+    left: &Sexp<'s>,
+    right: &Sexp<'s>,
+) -> SexpResult<Sexp<'s>> {
+    factory.require_active()?;
+    factory.link(left)?;
+    factory.link(right)?;
+    let n1 = left.len();
+    let n2 = right.len();
+    let length = if n1 == 0 || n2 == 0 { 0 } else { n1.max(n2) };
+    let real_result = matches!(code, OP_DIV | OP_POW);
+    let kind = if real_result {
+        SEXPTYPE::REALSXP
+    } else {
+        SEXPTYPE::INTSXP
+    };
+    let result = factory.allocate(|arena| Some(arena.alloc_vector(kind, length)))?;
+    let mut result = SexpMut::try_from_checked(result)?;
+    let mut naflag = false;
+    for index in 0..length {
+        // Checked element reads copy scalars before the next provider call.
+        // Neither input nor result exposes a buffer loan across reentry.
+        let x1 = left.try_integer_elt(index % n1)?;
+        let x2 = right.try_integer_elt(index % n2)?;
+        if real_result {
+            let value = if code == OP_DIV {
+                R_integer_divide(x1, x2)
+            } else if x1 == 1 || x2 == 0 {
+                1.0
+            } else if x1 == NA_INTEGER || x2 == NA_INTEGER {
+                NA_REAL
+            } else {
+                R_pow(x1 as f64, x2 as f64)
+            };
+            result.try_set_real_elt(index, value)?;
         } else {
-            if n1 > n2 { n1 } else { n2 }
-        };
-
-        // DIV and POW produce REALSXP
-        let ans = if code == OP_DIV || code == OP_POW {
-            Rf_allocVector3(SEXPTYPE::REALSXP, n)
-        } else {
-            Rf_allocVector3(SEXPTYPE::INTSXP, n)
-        };
-        let _ans_guard = protect(ans);
-
-        if n == 0 {
-            return ans;
-        }
-
-        let pa = INTEGER(ans);
-        let px1 = INTEGER(s1);
-        let px2 = INTEGER(s2);
-        let mut naflag = false;
-
-        match code {
-            OP_PLUS => {
-                for i in 0..(n as usize) {
-                    let i1 = if n1 > 1 { i % (n1 as usize) } else { 0 };
-                    let i2 = if n2 > 1 { i % (n2 as usize) } else { 0 };
-                    let x1 = *px1.add(i1);
-                    let x2 = *px2.add(i2);
-                    *pa.add(i) = R_integer_plus(x1, x2, &mut naflag);
-                }
-            }
-            OP_MINUS => {
-                for i in 0..(n as usize) {
-                    let i1 = if n1 > 1 { i % (n1 as usize) } else { 0 };
-                    let i2 = if n2 > 1 { i % (n2 as usize) } else { 0 };
-                    let x1 = *px1.add(i1);
-                    let x2 = *px2.add(i2);
-                    *pa.add(i) = R_integer_minus(x1, x2, &mut naflag);
-                }
-            }
-            OP_TIMES => {
-                for i in 0..(n as usize) {
-                    let i1 = if n1 > 1 { i % (n1 as usize) } else { 0 };
-                    let i2 = if n2 > 1 { i % (n2 as usize) } else { 0 };
-                    let x1 = *px1.add(i1);
-                    let x2 = *px2.add(i2);
-                    *pa.add(i) = R_integer_times(x1, x2, &mut naflag);
-                }
-            }
-            OP_DIV => {
-                let pa_d = REAL(ans);
-                for i in 0..(n as usize) {
-                    let i1 = if n1 > 1 { i % (n1 as usize) } else { 0 };
-                    let i2 = if n2 > 1 { i % (n2 as usize) } else { 0 };
-                    let x1 = *px1.add(i1);
-                    let x2 = *px2.add(i2);
-                    *pa_d.add(i) = R_integer_divide(x1, x2);
-                }
-            }
-            OP_POW => {
-                let pa_d = REAL(ans);
-                for i in 0..(n as usize) {
-                    let i1 = if n1 > 1 { i % (n1 as usize) } else { 0 };
-                    let i2 = if n2 > 1 { i % (n2 as usize) } else { 0 };
-                    let x1 = *px1.add(i1);
-                    let x2 = *px2.add(i2);
-                    if x1 == 1 || x2 == 0 {
-                        *pa_d.add(i) = 1.0;
-                    } else if x1 == NA_INTEGER || x2 == NA_INTEGER {
-                        *pa_d.add(i) = NA_REAL;
-                    } else {
-                        *pa_d.add(i) = R_pow(x1 as f64, x2 as f64);
-                    }
-                }
-            }
-            OP_MOD => {
-                for i in 0..(n as usize) {
-                    let i1 = if n1 > 1 { i % (n1 as usize) } else { 0 };
-                    let i2 = if n2 > 1 { i % (n2 as usize) } else { 0 };
-                    let x1 = *px1.add(i1);
-                    let x2 = *px2.add(i2);
+            let value = match code {
+                OP_PLUS => unsafe { R_integer_plus(x1, x2, &mut naflag) },
+                OP_MINUS => unsafe { R_integer_minus(x1, x2, &mut naflag) },
+                OP_TIMES => unsafe { R_integer_times(x1, x2, &mut naflag) },
+                OP_MOD => {
                     if x1 == NA_INTEGER || x2 == NA_INTEGER || x2 == 0 {
-                        *pa.add(i) = NA_INTEGER;
+                        NA_INTEGER
                     } else if x1 >= 0 && x2 > 0 {
-                        *pa.add(i) = x1 % x2;
+                        x1 % x2
                     } else {
-                        *pa.add(i) = myfmod(x1 as f64, x2 as f64) as c_int;
+                        myfmod(x1 as f64, x2 as f64) as c_int
                     }
                 }
-            }
-            OP_INTDIV => {
-                for i in 0..(n as usize) {
-                    let i1 = if n1 > 1 { i % (n1 as usize) } else { 0 };
-                    let i2 = if n2 > 1 { i % (n2 as usize) } else { 0 };
-                    let x1 = *px1.add(i1);
-                    let x2 = *px2.add(i2);
+                OP_INTDIV => {
                     if x1 == NA_INTEGER || x2 == NA_INTEGER || x2 == 0 {
-                        *pa.add(i) = NA_INTEGER;
+                        NA_INTEGER
                     } else {
-                        *pa.add(i) = libm::floor(x1 as f64 / x2 as f64) as c_int;
+                        libm::floor(x1 as f64 / x2 as f64) as c_int
                     }
                 }
-            }
-            _ => {} // intentionally unhandled: unsupported SEXPTYPE for integer modulo
+                _ => continue,
+            };
+            result.try_set_integer_elt(index, value)?;
         }
-
-        ans
     }
+    Ok(result.freeze())
 }
 
 /// Real (or mixed int/real) binary operation.
@@ -1239,20 +1190,28 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
 
             // General binary dispatch
-            let t1 = TYPEOF(arg1);
-            let t2 = TYPEOF(arg2);
-
-            // Coerce logicals to integer
-            let arg1 = if t1 == SEXPTYPE::LGLSXP {
-                coerce_logical_to_int(arg1)
-            } else {
-                arg1
-            };
-            let arg2 = if t2 == SEXPTYPE::LGLSXP {
-                coerce_logical_to_int(arg2)
-            } else {
-                arg2
-            };
+            // Retain both originals before either provider can detach them,
+            // and both conversions through the second provider and kernel.
+            let owner = crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
+                crate::sexp::context::r_error(format!("arithmetic owner: {error}"))
+            });
+            let factory = SessionNodeFactory::new(owner);
+            let original_arg1 = factory.wrap(arg1).unwrap_or_else(|error| {
+                crate::sexp::context::r_error(format!("arithmetic argument: {error}"))
+            });
+            let original_arg2 = factory.wrap(arg2).unwrap_or_else(|error| {
+                crate::sexp::context::r_error(format!("arithmetic argument: {error}"))
+            });
+            let arg1_owner =
+                coerce_logical_to_int(&factory, original_arg1).unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(format!("logical coercion: {error}"))
+                });
+            let arg2_owner =
+                coerce_logical_to_int(&factory, original_arg2).unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(format!("logical coercion: {error}"))
+                });
+            let arg1 = arg1_owner.as_raw();
+            let arg2 = arg2_owner.as_raw();
 
             let t1 = TYPEOF(arg1);
             let t2 = TYPEOF(arg2);
@@ -1276,7 +1235,11 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 let result = real_binary_arith(code, s1, s2);
                 result
             } else if t1 == SEXPTYPE::INTSXP && t2 == SEXPTYPE::INTSXP {
-                integer_binary_arith(code, arg1, arg2)
+                let result = integer_binary_arith(&factory, code, &arg1_owner, &arg2_owner)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(format!("integer arithmetic: {error}"))
+                    });
+                result.as_raw()
             } else {
                 std::ptr::null_mut()
             }
@@ -1288,29 +1251,35 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     }
 }
 
-/// Coerce a LGLSXP to INTSXP (in-place conversion of logical to integer).
-/// Since LOGICAL and INTEGER share the same storage in R, we just need
-/// to change the type if there are no references.
-unsafe fn coerce_logical_to_int(x: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(x) == SEXPTYPE::LGLSXP {
-            if no_references(x) {
-                (*x).sxpinfo.set_type(SEXPTYPE::INTSXP);
-                x
-            } else {
-                let n = XLENGTH(x);
-                let y = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-                let src = LOGICAL(x);
-                let dst = INTEGER(y);
-                for i in 0..(n as usize) {
-                    *dst.add(i) = *src.add(i);
-                }
-                y
-            }
-        } else {
-            x
-        }
+/// Copy lazy or shared logical values through checked element reads. Only an
+/// unshared dense i32 payload can keep its allocation while changing kind.
+fn coerce_logical_to_int<'s>(
+    factory: &SessionNodeFactory<'s>,
+    input: Sexp<'s>,
+) -> SexpResult<Sexp<'s>> {
+    factory.require_active()?;
+    factory.link(&input)?;
+    if input.typeof_() != SEXPTYPE::LGLSXP {
+        return Ok(input);
     }
+    if !crate::sexp::altrep::is_altrep(&input) && unsafe { no_references(input.as_raw()) } {
+        let allocation = input.allocation()?;
+        allocation
+            .heap_identity()
+            .retype_node(allocation, SEXPTYPE::INTSXP)
+            .ok_or(crate::sexp::object::SexpError::StaleAllocation)?;
+        return Ok(input);
+    }
+    let length = input.len();
+    let output = factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, length)))?;
+    let mut output = SexpMut::try_from_checked(output)?;
+    for index in 0..length {
+        // Providers may collect, allocate, reenter, or fail. No input/output
+        // buffer loan crosses them; both canonical values remain rooted.
+        let value = input.try_logical_elt(index)?;
+        output.try_set_integer_elt(index, value)?;
+    }
+    Ok(output.freeze())
 }
 
 // ---------------------------------------------------------------------------
@@ -1320,6 +1289,385 @@ unsafe fn coerce_logical_to_int(x: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::sexp::{
+        altrep::{self, AltrepBuilder, AltrepClass, AltrepContext, AltrepElement},
+        object::{PairlistBuilder, SessionNodeFactory, Sexp, SexpError, SexpMut, SexpResult},
+        session::RSession,
+    };
+    use std::{cell::Cell, rc::Rc};
+
+    struct LogicalCoercionProvider {
+        mode: Rc<Cell<u8>>,
+        reads: Rc<Cell<usize>>,
+    }
+
+    impl AltrepClass for LogicalCoercionProvider {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::LGLSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+            Ok(4)
+        }
+        fn element<'s>(
+            &self,
+            context: &AltrepContext<'s>,
+            index: i64,
+        ) -> SexpResult<AltrepElement<'s>> {
+            self.reads.set(self.reads.get() + 1);
+            context.gc()?;
+            if index == 1 {
+                match self.mode.get() {
+                    1 => {
+                        return Err(SexpError::Altrep {
+                            reason: "logical coercion read failure",
+                        });
+                    }
+                    2 => panic!("logical coercion callback unwind"),
+                    3 => {
+                        context.object().try_logical_elt(index)?;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(AltrepElement::Logical(
+                [1, 0, NA_INTEGER, 1][index as usize],
+            ))
+        }
+    }
+
+    fn logical_coercion_source<'s>(
+        session: &'s RSession,
+        mode: Rc<Cell<u8>>,
+        reads: Rc<Cell<usize>>,
+    ) -> Sexp<'s> {
+        let class = session
+            .register_altrep_class("logical-coercion", LogicalCoercionProvider { mode, reads })
+            .unwrap();
+        AltrepBuilder::new(class).build().unwrap()
+    }
+
+    #[test]
+    fn owned_integer_vector_division_reads_collecting_altrep_without_output_loans() {
+        struct CollectingIntegers(Rc<Cell<usize>>);
+        impl AltrepClass for CollectingIntegers {
+            fn vector_type(&self) -> SEXPTYPE {
+                SEXPTYPE::INTSXP
+            }
+            fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+                Ok(4)
+            }
+            fn element<'s>(
+                &self,
+                context: &AltrepContext<'s>,
+                index: i64,
+            ) -> SexpResult<AltrepElement<'s>> {
+                self.0.set(self.0.get() + 1);
+                context.gc()?;
+                Ok(AltrepElement::Integer(
+                    [2, 8, NA_INTEGER, 1][index as usize],
+                ))
+            }
+        }
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let reads = Rc::new(Cell::new(0));
+        let class = session
+            .register_altrep_class("arithmetic-integers", CollectingIntegers(reads.clone()))
+            .unwrap();
+        let source = AltrepBuilder::new(class).build().unwrap();
+        let denominator = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap();
+        let mut denominator = SexpMut::try_from_checked(denominator).unwrap();
+        denominator.try_set_integer_elt(0, 2).unwrap();
+        denominator.try_set_integer_elt(1, 2).unwrap();
+        let mut arguments = PairlistBuilder::from_factory(factory.clone());
+        arguments.push(source.clone(), None).unwrap();
+        arguments.push(denominator.freeze(), None).unwrap();
+        let arguments = arguments.finish().unwrap();
+        let operation = factory
+            .wrap(unsafe { crate::mainutils::names::R_Primitive(c"/".as_ptr()) })
+            .unwrap();
+        let collections = Rc::new(Cell::new(0));
+        let observed = collections.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        let before = crate::sexp::protect::R_ProtectCount();
+        let result = factory
+            .wrap(unsafe {
+                do_arith(
+                    factory.nil().as_raw(),
+                    operation.as_raw(),
+                    arguments.as_raw(),
+                    factory.nil().as_raw(),
+                )
+            })
+            .unwrap();
+        drop(arguments);
+        crate::sexp::gengc::full_gc();
+        assert_eq!(result.typeof_(), SEXPTYPE::REALSXP);
+        for (index, value) in [(0, 1.0), (1, 4.0), (3, 0.5)] {
+            assert_eq!(result.try_real_elt(index).unwrap(), value);
+        }
+        assert!(crate::sexp::ffi::is_na_real(
+            result.try_real_elt(2).unwrap()
+        ));
+        assert_eq!(reads.get(), 4);
+        assert!(collections.get() >= 4);
+        assert_eq!(source.typeof_(), SEXPTYPE::INTSXP);
+        assert!(!altrep::is_materialized(&source));
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+    }
+
+    #[test]
+    fn owned_integer_vector_division_and_power_use_real_results_through_gc() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let integer_vector = |values: &[i32]| {
+            let vector = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, values.len() as _)))
+                .unwrap();
+            let mut vector = SexpMut::try_from_checked(vector).unwrap();
+            for (index, value) in values.iter().enumerate() {
+                vector.try_set_integer_elt(index as _, *value).unwrap();
+            }
+            vector.freeze()
+        };
+        let collections = Rc::new(Cell::new(0));
+        let observed = collections.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        let run = |name: &std::ffi::CStr, left: &[i32], right: &[i32]| {
+            let left = integer_vector(left);
+            let right = integer_vector(right);
+            let mut arguments = PairlistBuilder::from_factory(factory.clone());
+            arguments.push(left, None).unwrap();
+            arguments.push(right, None).unwrap();
+            let arguments = arguments.finish().unwrap();
+            let operation = factory
+                .wrap(unsafe { crate::mainutils::names::R_Primitive(name.as_ptr()) })
+                .unwrap();
+            let before = crate::sexp::protect::R_ProtectCount();
+            let collections_before = collections.get();
+            session.with_active_in(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+            });
+            let result = factory
+                .wrap(unsafe {
+                    do_arith(
+                        factory.nil().as_raw(),
+                        operation.as_raw(),
+                        arguments.as_raw(),
+                        factory.nil().as_raw(),
+                    )
+                })
+                .unwrap();
+            session.with_active_in(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 0;
+            });
+            assert!(collections.get() > collections_before);
+            assert_eq!(result.typeof_(), SEXPTYPE::REALSXP);
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+            drop(arguments);
+            crate::sexp::gengc::full_gc();
+            result
+        };
+        let divided = run(c"/", &[2, 8, NA_INTEGER, 0, 1], &[2, 0]);
+        assert_eq!(divided.len(), 5);
+        assert_eq!(divided.try_real_elt(0).unwrap(), 1.0);
+        assert_eq!(divided.try_real_elt(1).unwrap(), f64::INFINITY);
+        assert!(crate::sexp::ffi::is_na_real(
+            divided.try_real_elt(2).unwrap()
+        ));
+        let zero_divided = divided.try_real_elt(3).unwrap();
+        assert!(zero_divided.is_nan());
+        assert!(!crate::sexp::ffi::is_na_real(zero_divided));
+        assert_eq!(divided.try_real_elt(4).unwrap(), 0.5);
+
+        let power = run(
+            c"^",
+            &[2, 1, NA_INTEGER, NA_INTEGER, 0, NA_INTEGER],
+            &[3, NA_INTEGER, 0, 2, 0, NA_INTEGER],
+        );
+        assert_eq!(power.len(), 6);
+        for (index, value) in [(0, 8.0), (1, 1.0), (2, 1.0), (4, 1.0)] {
+            assert_eq!(power.try_real_elt(index).unwrap(), value);
+        }
+        for index in [3, 5] {
+            assert!(crate::sexp::ffi::is_na_real(
+                power.try_real_elt(index).unwrap()
+            ));
+        }
+        let recycled_power = run(c"^", &[2, 3, 4, 1, NA_INTEGER, NA_INTEGER], &[0, 2]);
+        for (index, value) in [1.0, 9.0, 1.0, 1.0, 1.0].into_iter().enumerate() {
+            assert_eq!(recycled_power.try_real_elt(index as _).unwrap(), value);
+        }
+        assert!(crate::sexp::ffi::is_na_real(
+            recycled_power.try_real_elt(5).unwrap()
+        ));
+        for name in [c"/", c"^"] {
+            let empty = run(name, &[], &[2]);
+            assert_eq!(empty.len(), 0);
+        }
+        crate::sexp::gengc::full_gc();
+        assert_eq!(power.try_real_elt(0).unwrap(), 8.0);
+        assert_eq!(divided.try_real_elt(4).unwrap(), 0.5);
+    }
+
+    #[test]
+    fn owned_logical_coercion_preserves_lazy_and_materialized_providers_during_gc() {
+        for materialized in [false, true] {
+            let session = RSession::new_for_gc_tests();
+            let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+            let reads = Rc::new(Cell::new(0));
+            let source = logical_coercion_source(&session, Rc::new(Cell::new(0)), reads.clone());
+            let descriptor = altrep::altrep_class(&source).unwrap();
+            if materialized {
+                altrep::force_materialization(&source).unwrap();
+            }
+            let reads_before = reads.get();
+            let collections = Rc::new(Cell::new(0));
+            let observed = collections.clone();
+            let detach_target = Rc::new(Cell::new(std::ptr::null_mut()));
+            let detached_head = detach_target.clone();
+            let nil = factory.nil().as_raw();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                observed.set(observed.get() + 1);
+                let head: SEXP = detached_head.replace(std::ptr::null_mut());
+                if !head.is_null() {
+                    unsafe { crate::sexp::accessors::SETCDR(head, nil) };
+                }
+                crate::sexp::gengc::full_gc();
+            }));
+            session.with_active_in(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+            });
+            let before = crate::sexp::protect::R_ProtectCount();
+            let result = coerce_logical_to_int(&factory, source.clone()).unwrap();
+            assert_ne!(result.as_raw(), source.as_raw());
+            assert_eq!(result.typeof_(), SEXPTYPE::INTSXP);
+            assert_eq!(source.typeof_(), SEXPTYPE::LGLSXP);
+            assert_eq!(altrep::altrep_class(&source).unwrap(), descriptor);
+            assert_eq!(altrep::is_materialized(&source), materialized);
+            assert!(!altrep::is_altrep(&result));
+            assert_eq!(reads.get() - reads_before, if materialized { 0 } else { 4 });
+            for (index, value) in [1, 0, NA_INTEGER, 1].into_iter().enumerate() {
+                assert_eq!(result.try_integer_elt(index as _).unwrap(), value);
+                assert_eq!(source.try_logical_elt(index as _).unwrap(), value);
+            }
+            // The actual binary arithmetic consumer must retain its first
+            // converted value while converting the second collecting provider.
+            let right_class = session
+                .register_altrep_class(
+                    "logical-coercion-right",
+                    LogicalCoercionProvider {
+                        mode: Rc::new(Cell::new(0)),
+                        reads: Rc::new(Cell::new(0)),
+                    },
+                )
+                .unwrap();
+            let right = AltrepBuilder::new(right_class).build().unwrap();
+            let mut arguments = PairlistBuilder::from_factory(factory.clone());
+            arguments.push(source.clone(), None).unwrap();
+            arguments.push(right, None).unwrap();
+            let arguments = arguments.finish().unwrap();
+            let plus = factory
+                .wrap(unsafe { crate::mainutils::names::R_Primitive(c"+".as_ptr()) })
+                .unwrap();
+            // The right provider has no caller root. The first result-allocation
+            // callback detaches it, before its own coercion begins.
+            detach_target.set(arguments.as_raw());
+            let sum = factory
+                .wrap(unsafe {
+                    do_arith(
+                        factory.nil().as_raw(),
+                        plus.as_raw(),
+                        arguments.as_raw(),
+                        factory.nil().as_raw(),
+                    )
+                })
+                .unwrap();
+            assert!(arguments.try_cdr().unwrap().is_nil());
+            crate::sexp::gengc::full_gc();
+            for (index, value) in [2, 0, NA_INTEGER, 2].into_iter().enumerate() {
+                assert_eq!(sum.try_integer_elt(index as _).unwrap(), value);
+            }
+            assert_eq!(result.try_integer_elt(2).unwrap(), NA_INTEGER);
+            assert_eq!(source.typeof_(), SEXPTYPE::LGLSXP);
+            assert_eq!(altrep::altrep_class(&source).unwrap(), descriptor);
+            assert!(collections.get() > 0);
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+        }
+    }
+
+    #[test]
+    fn owned_logical_coercion_retypes_only_unshared_dense_storage() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        for shared in [false, true] {
+            let value = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::LGLSXP, 2)))
+                .unwrap();
+            let mut value = SexpMut::try_from_checked(value).unwrap();
+            value.try_set_logical_elt(0, 1).unwrap();
+            value.try_set_logical_elt(1, NA_INTEGER).unwrap();
+            let input = value.freeze();
+            unsafe {
+                crate::sexp::accessors::SET_NAMED(input.as_raw(), if shared { 2 } else { 0 })
+            };
+            let original_pointer = input.as_raw();
+            let output = coerce_logical_to_int(&factory, input.clone()).unwrap();
+            assert_eq!(output.as_raw() == original_pointer, !shared);
+            assert_eq!(output.typeof_(), SEXPTYPE::INTSXP);
+            assert_eq!(output.try_integer_elt(0).unwrap(), 1);
+            assert_eq!(output.try_integer_elt(1).unwrap(), NA_INTEGER);
+            if shared {
+                assert_eq!(input.typeof_(), SEXPTYPE::LGLSXP);
+                assert_eq!(input.try_logical_elt(1).unwrap(), NA_INTEGER);
+            }
+        }
+    }
+
+    #[test]
+    fn owned_logical_coercion_errors_unwind_and_reentry_leave_source_retryable() {
+        for mode in [1, 2, 3] {
+            let session = RSession::new_for_gc_tests();
+            let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+            let state = Rc::new(Cell::new(mode));
+            let source = logical_coercion_source(&session, state.clone(), Rc::new(Cell::new(0)));
+            let descriptor = altrep::altrep_class(&source).unwrap();
+            let before = crate::sexp::protect::R_ProtectCount();
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                coerce_logical_to_int(&factory, source.clone())
+            }));
+            if mode == 2 {
+                assert!(failure.is_err());
+            } else {
+                assert!(failure.unwrap().is_err());
+            }
+            assert_eq!(source.typeof_(), SEXPTYPE::LGLSXP);
+            assert_eq!(altrep::altrep_class(&source).unwrap(), descriptor);
+            assert!(!altrep::is_materialized(&source));
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+            state.set(0);
+            crate::sexp::gengc::full_gc();
+            let retry = coerce_logical_to_int(&factory, source.clone()).unwrap();
+            crate::sexp::gengc::full_gc();
+            for (index, value) in [1, 0, NA_INTEGER, 1].into_iter().enumerate() {
+                assert_eq!(retry.try_integer_elt(index as _).unwrap(), value);
+                assert_eq!(source.try_logical_elt(index as _).unwrap(), value);
+            }
+            assert_eq!(source.typeof_(), SEXPTYPE::LGLSXP);
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+        }
+    }
 
     unsafe fn int_scalar(value: c_int) -> SEXP {
         unsafe {
@@ -1340,7 +1688,7 @@ mod tests {
 
     #[test]
     fn test_do_arith_uses_primitive_operation_code() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
             let plus = crate::mainutils::names::R_Primitive(c"+".as_ptr());
             let plus_args = two_arg_call_args(int_scalar(5), int_scalar(3));

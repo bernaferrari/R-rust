@@ -52,7 +52,7 @@ unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
             let list = memory::with_arena(|arena| {
                 let list = arena.alloc_list_chain(n);
                 if n > 0 && !list.is_null() && sexptype == SEXPTYPE::LANGSXP {
-                    (*list).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(list, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 list
             });
@@ -100,7 +100,7 @@ unsafe fn language(items: &[SEXP]) -> SEXP {
                     return head;
                 }
             }
-            (*head).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(head, SEXPTYPE::LANGSXP.as_c_int());
             head
         }))
     }

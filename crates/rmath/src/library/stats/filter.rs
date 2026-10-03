@@ -6728,7 +6728,7 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
         let list_sym = crate::sexp::symbol::Rf_install(c"list".as_ptr());
         let variables = Rf_cons(list_sym, varlist);
         if !variables.is_null() {
-            (*variables).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(variables, SEXPTYPE::LANGSXP.as_c_int());
         }
         let _vl = protect(variables);
         crate::sexp::attrib_core::setAttrib(

@@ -658,7 +658,7 @@ pub unsafe fn do_validObject(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
         let call = Rf_cons(method, call_args);
         let _call = protect(call);
         if !call.is_null() {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         let result = crate::eval::eval::Rf_eval(call, rho);
         let _result = protect(result);

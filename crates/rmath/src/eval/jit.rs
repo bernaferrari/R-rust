@@ -727,7 +727,7 @@ pub unsafe fn handle_exec_continuation(val: SEXP) -> SEXP {
                 // For non-closures, build a call and eval.
                 let expr = Rf_cons(op.as_raw(), CDR(call.as_raw()));
                 if !expr.is_null() {
-                    (*expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(expr, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 let _expr_guard = protect(expr);
                 super::eval::Rf_eval(expr, rho.as_raw())
@@ -922,7 +922,7 @@ unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
         if expr.is_null() {
             return R_NilValue();
         }
-        (*expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        crate::sexp::accessors::SET_TYPEOF(expr, SEXPTYPE::LANGSXP.as_c_int());
         let _expr_guard = protect(expr);
 
         let mask = crate::sexp::context::ctxt_flags::CTXT_FUNCTION

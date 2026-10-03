@@ -97,6 +97,23 @@ original canonical page and validates its saved generation before projecting
 any bytes. Graph cycles carry no strong backing or root leases. Cookie
 exhaustion rejects new identities instead of wrapping.
 
+Canonical header publication rejects a semantic kind that conflicts with its
+typed body before changing storage. Initial arena and permanent publication
+use the same check; unrepresentable type tags are rejected before allocation
+instead of being truncated. Checked retyping permits compatible list and
+primitive subkinds, and validates integer/reference conversions against the
+actual payload descriptor and capacity. Legacy type setters delegate to this
+checked boundary. ALTREP objects retain their original kind even after cache
+materialization, because changing the kind would invalidate the provider's
+contract. Logical arithmetic copies lazy or shared inputs into an owning
+integer result and retains both arguments through provider and GC callbacks.
+The integer binary arithmetic kernel uses checked element reads and owning
+typed result writes, including real results for division and powers. No raw
+input or output buffer loan spans its provider reads.
+Complete payload publication still needs the stronger typed
+capabilities tracked separately; detached header drafts retain both a kind
+and a body until the representation itself derives one from the other.
+
 Raw `SEXP` pointers remain projections of those same physical headers during
 the engine migration. Runtime/context roots, numerical payload projections,
 evaluator access, and raw owner capabilities still have unsafe paths. These

@@ -768,7 +768,7 @@ pub unsafe fn do_aggregate(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             let call_args = Rf_cons(x, R_NilValue());
             let call_sexp = Rf_cons(fun, call_args);
             if !call_sexp.is_null() {
-                (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
             }
             return crate::eval::eval::Rf_eval(call_sexp, rho);
         }
@@ -1413,7 +1413,7 @@ pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             let call_sexp = Rf_cons(fun, Rf_cons(sub, R_NilValue()));
             if !call_sexp.is_null() {
-                (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
             }
             let _cs = protect(call_sexp);
             let val = crate::eval::eval::Rf_eval(call_sexp, rho);
@@ -1471,7 +1471,7 @@ pub unsafe fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let call_args = Rf_cons(data, R_NilValue());
             let call_sexp = Rf_cons(fun, call_args);
             if !call_sexp.is_null() {
-                (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
             }
             let result = crate::eval::eval::Rf_eval(call_sexp, rho);
             let out = Rf_allocVector3(SEXPTYPE::VECSXP, 1);

@@ -194,6 +194,21 @@ impl OwnedPayload {
         self.length
     }
 
+    /// The actual typed owner, rather than its projected address or byte size,
+    /// decides which semantic element kinds can use this storage.
+    pub(crate) fn accepts_kind(&self, kind: SEXPTYPE) -> bool {
+        match &self.storage {
+            Storage::Bytes(_) => matches!(kind, SEXPTYPE::RAWSXP | SEXPTYPE::CHARSXP),
+            Storage::Integers(_) => matches!(kind, SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP),
+            Storage::Reals(_) => kind == SEXPTYPE::REALSXP,
+            Storage::Complex(_) => kind == SEXPTYPE::CPLXSXP,
+            Storage::References(_) => matches!(
+                kind,
+                SEXPTYPE::STRSXP | SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::BCODESXP
+            ),
+        }
+    }
+
     pub(crate) fn reference_capacity(&self) -> Option<usize> {
         matches!(self.storage, Storage::References(_)).then_some(self.length)
     }

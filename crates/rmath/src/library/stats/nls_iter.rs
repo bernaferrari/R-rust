@@ -47,7 +47,7 @@ unsafe fn eval_global(call: SEXP) -> SEXP {
 unsafe fn lang1(f: SEXP) -> SEXP {
     unsafe {
         let call = crate::sexp::constructors::Rf_cons(f, crate::sexp::globals::R_NilValue());
-        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         call
     }
 }
@@ -58,7 +58,7 @@ unsafe fn lang2(f: SEXP, arg: SEXP) -> SEXP {
             f,
             crate::sexp::constructors::Rf_cons(arg, crate::sexp::globals::R_NilValue()),
         );
-        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         call
     }
 }

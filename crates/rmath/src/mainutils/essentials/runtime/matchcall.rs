@@ -226,7 +226,7 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     } else {
                         let list = crate::mainutils::duplicate::shallow_duplicate(value);
                         let _list = protect(list);
-                        (*list).sxpinfo.set_type(SEXPTYPE::LISTSXP);
+                        crate::sexp::accessors::SET_TYPEOF(list, SEXPTYPE::LISTSXP.as_c_int());
                         append(&mut result_args, &mut result_tail, list, dots_symbol);
                     }
                 } else if TAG(formal) != dots_symbol && value != dots_symbol {
@@ -237,7 +237,7 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             formal = CDR(formal);
         }
         let result = Rf_cons(CAR(source), result_args);
-        (*result).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        crate::sexp::accessors::SET_TYPEOF(result, SEXPTYPE::LANGSXP.as_c_int());
         result
     }
 }

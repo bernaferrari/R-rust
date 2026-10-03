@@ -69,7 +69,7 @@ pub(crate) unsafe fn apply_in_environment(
         }
         let call = Rf_cons(fun, call_args);
         let _call = protect(call);
-        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         crate::eval::eval::Rf_eval(call, rho)
     }
 }

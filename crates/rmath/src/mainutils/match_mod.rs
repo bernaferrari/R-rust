@@ -53,7 +53,7 @@ unsafe fn SET_TAG(x: SEXP, y: SEXP) {
 #[inline(always)]
 unsafe fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
     unsafe {
-        (*x).sxpinfo.set_type(v);
+        crate::sexp::accessors::SET_TYPEOF(x, v.as_c_int());
     }
 }
 

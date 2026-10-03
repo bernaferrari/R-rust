@@ -803,7 +803,7 @@ unsafe fn run_pending_finalizer(finalizer: PendingFinalizer) {
                         if call.is_null() {
                             error("could not allocate finalizer call");
                         }
-                        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         (call, crate::sexp::protect::protect(call))
                     });
                     let _ = crate::eval::eval::Rf_eval(call, R_GlobalEnv());

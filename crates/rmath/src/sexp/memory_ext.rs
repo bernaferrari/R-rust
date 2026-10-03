@@ -214,7 +214,7 @@ pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
                 let cell = arena.cons(sym2, unsafe { R_NilValue() }, ptr::null_mut());
                 if !cell.is_null() {
                     unsafe {
-                        (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
                 cell
@@ -222,7 +222,7 @@ pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
             let car = arena.cons(sym1, cdr, ptr::null_mut());
             if !car.is_null() {
                 unsafe {
-                    (*car).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(car, SEXPTYPE::LANGSXP.as_c_int());
                 }
             }
             car
@@ -240,7 +240,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
                 let cell = arena.cons(sym3, unsafe { R_NilValue() }, ptr::null_mut());
                 if !cell.is_null() {
                     unsafe {
-                        (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
                 cell
@@ -251,7 +251,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
                 let cell = arena.cons(sym2, c3, ptr::null_mut());
                 if !cell.is_null() {
                     unsafe {
-                        (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
                 cell
@@ -262,7 +262,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
                 let cell = arena.cons(sym1, c2, ptr::null_mut());
                 if !cell.is_null() {
                     unsafe {
-                        (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
                 cell
@@ -293,7 +293,7 @@ pub unsafe fn allocLang(n: c_int) -> SEXP {
             // Walk the list and set each element to LANGSXP type
             let mut current = list;
             while !current.is_null() && current != R_NilValue() {
-                (*current).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(current, SEXPTYPE::LANGSXP.as_c_int());
                 current = crate::sexp::accessors::CDR(current);
             }
         }

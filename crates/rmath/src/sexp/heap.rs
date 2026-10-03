@@ -324,7 +324,7 @@ impl HeapIdentity {
         }
     }
     pub(crate) fn replace_node(&self, node: &CheckedNode, value: SexprecCore) -> Option<()> {
-        if !node.belongs_to(self) || !node.is_live() {
+        if !value.has_valid_shape() || !node.belongs_to(self) || !node.is_live() {
             return None;
         }
         let owners = self.retained_backing()?;
@@ -333,6 +333,70 @@ impl HeapIdentity {
             PhysicalBacking::Persistent(store) => store.replace_node(node.id(), value),
         });
         result
+    }
+
+    /// Change only a semantic tag whose existing body and actual storage can
+    /// represent it. Full, self-consistent header replacement is separate.
+    pub(crate) fn retype_node(&self, node: &CheckedNode, kind: SEXPTYPE) -> Option<()> {
+        let mut header = self.node_snapshot(node)?;
+        if !header.has_valid_shape() || !header.data.accepts_kind(kind) {
+            return None;
+        }
+        let original = header.sxpinfo.type_of();
+        // A cached payload does not change the provider's declared kind.
+        if original != kind && header.sxpinfo.alt() {
+            return None;
+        }
+        let pairlist = |kind| {
+            matches!(
+                kind,
+                SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP
+            )
+        };
+        let primitive = |kind| matches!(kind, SEXPTYPE::BUILTINSXP | SEXPTYPE::SPECIALSXP);
+        let integer = |kind| matches!(kind, SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP);
+        let references = |kind| {
+            matches!(
+                kind,
+                SEXPTYPE::STRSXP | SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::BCODESXP
+            )
+        };
+        if original != kind {
+            if (pairlist(original) && pairlist(kind)) || (primitive(original) && primitive(kind)) {
+                // These semantic families contain no native element storage.
+            } else if (integer(original) && integer(kind))
+                || (references(original) && references(kind))
+            {
+                let length = usize::try_from(header.vecsxp_length()).ok()?;
+                let pointer = header.gengc_next_node.cast::<u8>();
+                if pointer.is_null() {
+                    if length != 0 {
+                        return None;
+                    }
+                } else {
+                    let owners = self.retained_backing()?;
+                    let capacity = owners
+                        .stores
+                        .borrow()
+                        .iter()
+                        .find_map(|store| match store {
+                            PhysicalBacking::Arena(store) => {
+                                store.payload_capacity_for_kind(pointer, kind)
+                            }
+                            PhysicalBacking::Persistent(store) => {
+                                store.payload_capacity_for_kind(pointer, kind)
+                            }
+                        })?;
+                    if length > capacity {
+                        return None;
+                    }
+                }
+            } else {
+                return None;
+            }
+        }
+        header.sxpinfo.set_type(kind);
+        self.replace_node(node, header)
     }
     /// Own native state at the exact canonical external-pointer allocation.
     /// State must not retain owning values or this heap, which would form cycles.
@@ -678,6 +742,7 @@ pub(crate) enum HeapError {
     LiveSlot,
     RetiredSlot,
     IdentityExhausted,
+    InvalidShape,
 }
 
 fn cells<T>(len: usize, mut initial: impl FnMut() -> T) -> Result<Box<[Cell<T>]>, HeapError> {
@@ -1172,6 +1237,46 @@ impl<T: Copy> NodePage<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn materialized_altrep_retype_preserves_original_kind_body_and_cache() {
+        let mut arena = super::super::memory::RArena::new();
+        for kind in [SEXPTYPE::LGLSXP, SEXPTYPE::VECSXP] {
+            let pointer = arena.alloc_vector(kind, 2);
+            let node = arena.node_token(pointer).unwrap();
+            let heap = node.heap_identity();
+            let mut cached = heap.node_snapshot(&node).unwrap();
+            assert!(!cached.gengc_next_node.is_null());
+            cached.sxpinfo.set_alt(true);
+            heap.replace_node(&node, cached).unwrap();
+
+            let target = if kind == SEXPTYPE::LGLSXP {
+                SEXPTYPE::INTSXP
+            } else {
+                SEXPTYPE::EXPRSXP
+            };
+            assert!(heap.retype_node(&node, target).is_none());
+            let unchanged = heap.node_snapshot(&node).unwrap();
+            assert_eq!(
+                unchanged.sxpinfo.type_and_flags,
+                cached.sxpinfo.type_and_flags
+            );
+            assert_eq!(unchanged.data, cached.data);
+            assert_eq!(unchanged.attrib, cached.attrib);
+            assert_eq!(unchanged.gengc_next_node, cached.gengc_next_node);
+            assert_eq!(unchanged.gengc_prev_node, cached.gengc_prev_node);
+            assert_eq!(heap.retype_node(&node, kind), Some(()));
+
+            // The actual cached storage is compatible when ALTREP metadata is
+            // absent; this distinguishes provider preservation from a generic
+            // storage mismatch rejection.
+            let mut dense = cached;
+            dense.sxpinfo.set_alt(false);
+            heap.replace_node(&node, dense).unwrap();
+            assert_eq!(heap.retype_node(&node, target), Some(()));
+        }
+    }
+
     #[test]
     fn cookies_exhaust_without_wrapping_or_issuing_reserved_zero() {
         let heap_counter = AtomicU32::new(u32::MAX - 1);

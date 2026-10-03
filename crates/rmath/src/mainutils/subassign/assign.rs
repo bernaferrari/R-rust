@@ -612,7 +612,7 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 
         if oldtype == LANGSXP && Rf_length(x) > 0 {
             x = VectorToPairList(x);
-            SET_TYPEOF(x, LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(x, LANGSXP);
         }
 
         SETTER_CLEAR_NAMED(x);

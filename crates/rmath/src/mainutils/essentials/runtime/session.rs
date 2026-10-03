@@ -433,7 +433,7 @@ unsafe fn bquote_walk(expr: SEXP, rho: SEXP, splice: bool) -> SEXP {
             source = CDR(source);
         }
         if expr_type == SEXPTYPE::LANGSXP && !head.is_null() && head != R_NilValue() {
-            (*head).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(head, SEXPTYPE::LANGSXP.as_c_int());
         }
         head
     }

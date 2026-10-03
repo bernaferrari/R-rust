@@ -316,7 +316,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             if dotarg == R_DotsSymbol_fn() {
                 let t = crate::sexp::envir::R_findVarInFrame(env, dotarg);
                 if !t.is_null() && t != R_NilValue() && t != R_MissingArg() {
-                    (*t).sxpinfo.set_type(SEXPTYPE::LISTSXP);
+                    crate::sexp::accessors::SET_TYPEOF(t, SEXPTYPE::LISTSXP.as_c_int());
                     let s = matchmethargs(matchedarg, t);
                     drop(_matchedarg_guard);
                     matchedarg = s;

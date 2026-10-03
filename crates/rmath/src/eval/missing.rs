@@ -1208,7 +1208,7 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
             let new_expr = Rf_cons(CAR(expr), new_inner);
             let _new_expr_guard = protect(new_expr);
             if !new_expr.is_null() {
-                (*new_expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(new_expr, SEXPTYPE::LANGSXP.as_c_int());
             }
 
             let nval = Rf_eval(new_expr, rho);

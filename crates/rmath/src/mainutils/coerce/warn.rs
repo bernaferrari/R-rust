@@ -236,7 +236,7 @@ pub unsafe fn isArray(x: SEXP) -> bool {
 pub unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
     unsafe {
         if !x.is_null() {
-            (*x).sxpinfo.set_type(SEXPTYPE(v));
+            crate::sexp::accessors::SET_TYPEOF(x, SEXPTYPE(v).as_c_int());
         }
     }
 }

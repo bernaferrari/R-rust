@@ -247,7 +247,7 @@ unsafe fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe {
         let cell = Rf_cons(car, cdr);
         if !cell.is_null() {
-            (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
         }
         cell
     }

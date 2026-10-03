@@ -168,13 +168,13 @@ pub unsafe fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     }
                     ap = CDR(ap);
                 }
-                SET_TYPEOF(ans, SEXPTYPE::LANGSXP.into());
+                crate::sexp::accessors::SET_TYPEOF(ans, SEXPTYPE::LANGSXP.into());
                 SETTAG(ans, R_NilValue());
                 ans
             }
             t if t == SEXPTYPE::LISTSXP => {
                 let ans = crate::mainutils::duplicate::Rf_duplicate(x);
-                SET_TYPEOF(ans, SEXPTYPE::LANGSXP.into());
+                crate::sexp::accessors::SET_TYPEOF(ans, SEXPTYPE::LANGSXP.into());
                 SETTAG(ans, R_NilValue());
                 ans
             }

@@ -173,7 +173,7 @@ fn real_r_finalizer_call_survives_torture_before_evaluation() {
             let rhs = arena.cons(argument, nil, nil);
             let lhs = arena.cons(observation, rhs, nil);
             let body = arena.cons(assignment, lhs, nil);
-            (*body).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(body, SEXPTYPE::LANGSXP.as_c_int());
             let function = arena.alloc_node(SEXPTYPE::CLOSXP);
             crate::sexp::accessors::SET_FORMALS(function, formal);
             crate::sexp::accessors::SET_BODY(function, body);

@@ -385,7 +385,7 @@ pub(crate) unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
         return;
     }
     unsafe {
-        (*x).sxpinfo.set_type(SEXPTYPE(v));
+        crate::sexp::accessors::SET_TYPEOF(x, SEXPTYPE(v).as_c_int());
     }
 }
 

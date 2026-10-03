@@ -827,7 +827,7 @@ mod tests {
                     Rf_cons(Rf_ScalarInteger(1), R_NilValue()),
                 ),
             );
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             let bcode = compile_expr(call, env.clone().as_raw()).expect("addition should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(*INTEGER(result), 6);
@@ -850,7 +850,7 @@ mod tests {
                     R_NilValue(),
                 ),
             );
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             let bcode = compile_expr(call, env.clone().as_raw()).expect("! should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(
@@ -873,13 +873,13 @@ mod tests {
                     Rf_cons(Rf_ScalarInteger(1), R_NilValue()),
                 ),
             );
-            (*assign).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(assign, SEXPTYPE::LANGSXP.as_c_int());
 
             let block = Rf_cons(
                 Rf_install(c"{".as_ptr()),
                 Rf_cons(assign, Rf_cons(Rf_install(c"x".as_ptr()), R_NilValue())),
             );
-            (*block).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(block, SEXPTYPE::LANGSXP.as_c_int());
 
             let bcode = compile_expr(block, env.clone().as_raw()).expect("block should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.clone().as_raw());
@@ -912,12 +912,12 @@ mod tests {
                 Rf_install(c"+".as_ptr()),
                 Rf_cons(sum, Rf_cons(Rf_install(c"i".as_ptr()), R_NilValue())),
             );
-            (*add).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(add, SEXPTYPE::LANGSXP.as_c_int());
             let assign = Rf_cons(
                 Rf_install(c"<-".as_ptr()),
                 Rf_cons(sum, Rf_cons(add, R_NilValue())),
             );
-            (*assign).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(assign, SEXPTYPE::LANGSXP.as_c_int());
             let for_call = Rf_cons(
                 Rf_install(c"for".as_ptr()),
                 Rf_cons(
@@ -925,7 +925,7 @@ mod tests {
                     Rf_cons(sequence, Rf_cons(assign, R_NilValue())),
                 ),
             );
-            (*for_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(for_call, SEXPTYPE::LANGSXP.as_c_int());
 
             let bcode = compile_expr(for_call, env).expect("for loop should compile");
             let result = super::super::bc_eval::bcEval(bcode, env);
@@ -940,7 +940,7 @@ mod tests {
                     Rf_cons(empty, Rf_cons(R_NilValue(), R_NilValue())),
                 ),
             );
-            (*empty_for).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(empty_for, SEXPTYPE::LANGSXP.as_c_int());
             let empty_bcode = compile_expr(empty_for, env).expect("empty for loop should compile");
             assert_eq!(
                 super::super::bc_eval::bcEval(empty_bcode, env),
@@ -966,22 +966,22 @@ mod tests {
                 Rf_install(c"<".as_ptr()),
                 Rf_cons(counter, Rf_cons(Rf_ScalarInteger(1_000), R_NilValue())),
             );
-            (*condition).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(condition, SEXPTYPE::LANGSXP.as_c_int());
             let increment = Rf_cons(
                 Rf_install(c"+".as_ptr()),
                 Rf_cons(counter, Rf_cons(Rf_ScalarInteger(1), R_NilValue())),
             );
-            (*increment).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(increment, SEXPTYPE::LANGSXP.as_c_int());
             let assign = Rf_cons(
                 Rf_install(c"<-".as_ptr()),
                 Rf_cons(counter, Rf_cons(increment, R_NilValue())),
             );
-            (*assign).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(assign, SEXPTYPE::LANGSXP.as_c_int());
             let while_call = Rf_cons(
                 Rf_install(c"while".as_ptr()),
                 Rf_cons(condition, Rf_cons(assign, R_NilValue())),
             );
-            (*while_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(while_call, SEXPTYPE::LANGSXP.as_c_int());
 
             let bcode =
                 compile_expr(while_call, env.clone().as_raw()).expect("while loop should compile");

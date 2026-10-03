@@ -887,7 +887,7 @@ unsafe fn call_condition_handler(handler: SEXP, condition: SEXP, rho: SEXP) -> S
             let args = Rf_cons(condition, R_NilValue());
             let call = Rf_cons(handler, args);
             if !call.is_null() {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             }
             crate::eval::closure::applyClosure(call, handler, args, rho, R_NilValue(), TRUE)
         } else {

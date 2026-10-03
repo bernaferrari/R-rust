@@ -73,7 +73,7 @@ pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // Build LANGSXP: (sym arg1 arg2 ...)
         let result = Rf_cons(sym, evargs);
         if !result.is_null() {
-            (*result).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(result, SEXPTYPE::LANGSXP.as_c_int());
         }
         result
     }
@@ -353,7 +353,7 @@ pub unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
         }
 
         if res != R_NilValue() && TYPEOF(el) == SEXPTYPE::LANGSXP {
-            (*res).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(res, SEXPTYPE::LANGSXP.as_c_int());
         }
         res
     }

@@ -183,11 +183,7 @@ impl<'a> PairlistBuilder<'a> {
         if !head.is_nil() {
             let allocation = head.allocation()?;
             let heap = allocation.heap_identity();
-            let mut header = heap
-                .node_snapshot(allocation)
-                .ok_or(SexpError::StaleAllocation)?;
-            header.sxpinfo.set_type(sexptype);
-            heap.replace_node(allocation, header)
+            heap.retype_node(allocation, sexptype)
                 .ok_or(SexpError::StaleAllocation)?;
         }
         Ok(head)
@@ -200,6 +196,43 @@ mod tests {
     use crate::sexp::accessors::{CAR, CDR, TAG};
     use crate::sexp::constructors::Rf_ScalarInteger;
     use crate::sexp::symbol::Rf_install;
+
+    #[test]
+    fn pairlist_builder_finish_as_type_preserves_cells_and_rejects_other_bodies() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let factory = session.owner_token().unwrap().node_factory();
+        let value = factory.character("original element").unwrap();
+        for kind in [SEXPTYPE::LISTSXP, SEXPTYPE::LANGSXP, SEXPTYPE::DOTSXP] {
+            let mut builder = PairlistBuilder::from_factory(factory.clone());
+            builder.push(value.clone(), None).unwrap();
+            builder.push(value.clone(), None).unwrap();
+            let result = builder.finish_as_type(kind).unwrap();
+            crate::sexp::gengc::full_gc();
+            assert_eq!(result.typeof_(), kind);
+            let cells: Vec<_> = PairlistIter::new(result).collect();
+            assert_eq!(cells.len(), 2);
+            for cell in cells {
+                assert_eq!(
+                    cell.try_car().unwrap().try_as_string().unwrap(),
+                    "original element"
+                );
+            }
+        }
+        let mut builder = PairlistBuilder::from_factory(factory);
+        let head = builder.push_cell(value, None).unwrap();
+        assert!(matches!(
+            builder.finish_as_type(SEXPTYPE::REALSXP),
+            Err(SexpError::TypeMismatch {
+                expected: "pairlist type",
+                actual: SEXPTYPE::REALSXP,
+            })
+        ));
+        assert_eq!(head.typeof_(), SEXPTYPE::LISTSXP);
+        assert_eq!(
+            head.try_car().unwrap().try_as_string().unwrap(),
+            "original element"
+        );
+    }
 
     #[test]
     fn pairlist_builder_rejects_callback_shape_changes_without_overwriting_them() {

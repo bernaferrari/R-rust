@@ -378,7 +378,7 @@ fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> SEXP {
                 .unwrap_or_else(|| R_NilValue());
             let call = Rf_cons(fun, args);
             if !call.is_null() {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             }
             return crate::eval::closure::applyClosure(call, fun, args, env, R_NilValue(), 1);
         }
@@ -388,7 +388,7 @@ fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> SEXP {
             None => {
                 let call = Rf_cons(fun, R_NilValue());
                 if !call.is_null() {
-                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 call
             }

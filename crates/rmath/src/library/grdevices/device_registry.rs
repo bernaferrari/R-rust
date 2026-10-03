@@ -954,7 +954,7 @@ unsafe fn open_default_device() {
         if !missing && crate::sexp::accessors::TYPEOF(defdev) == SEXPTYPE::CLOSXP {
             let call = crate::sexp::constructors::Rf_cons(defdev, R_NilValue());
             if !call.is_null() {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             }
             let _ = crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv());
         } else if !missing
@@ -966,7 +966,7 @@ unsafe fn open_default_device() {
             );
             let call = crate::sexp::constructors::Rf_cons(name, R_NilValue());
             if !call.is_null() {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             }
             let _ = crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv());
         } else {

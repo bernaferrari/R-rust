@@ -1224,7 +1224,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         let arg_cell = self.cons(arg, nil)?;
         let call = self.cons(car, arg_cell)?;
         unsafe {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         Ok(call)
     }
@@ -1235,7 +1235,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         let arg1_cell = self.cons(arg1, arg2_cell)?;
         let call = self.cons(car, arg1_cell)?;
         unsafe {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         Ok(call)
     }
@@ -1547,7 +1547,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         }
         let call = self.cons(brace_sym, list)?;
         unsafe {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         self.factory
             .wrap(call)
@@ -1982,7 +1982,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             let fun = self.cons(fun_sym, formals_cell)?;
             if !fun.is_null() {
                 unsafe {
-                    (*fun).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(fun, SEXPTYPE::LANGSXP.as_c_int());
                 }
             }
             // lang2(fun, lhs): call the fresh closure on the pipe LHS.
@@ -2061,7 +2061,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             let args = self.cons(lhs, CDR(rhs))?;
             let call = self.cons(fun, args)?;
             if !call.is_null() {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             }
             Ok(call)
         }
@@ -2241,7 +2241,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                         }
                         let call = self.cons(expr, arg_list)?;
                         if !call.is_null() {
-                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         }
                         expr = call;
                     }
@@ -2268,7 +2268,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                         arg_list = self.cons(expr, arg_list)?;
                         let call = self.cons(bracket_sym, arg_list)?;
                         if !call.is_null() {
-                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         }
                         expr = call;
                     }
@@ -2299,7 +2299,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                         arg_list = self.cons(expr, arg_list)?;
                         let call = self.cons(dbracket_sym, arg_list)?;
                         if !call.is_null() {
-                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         }
                         expr = call;
                     }
@@ -2315,7 +2315,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                         let args = self.cons(expr, name_cell)?;
                         let call = self.cons(dollar_sym, args)?;
                         if !call.is_null() {
-                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         }
                         expr = call;
                     }
@@ -2343,7 +2343,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                         let args = self.cons(expr, name_cell)?;
                         let call = self.cons(at_sym, args)?;
                         if !call.is_null() {
-                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         }
                         expr = call;
                     }
@@ -2543,7 +2543,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 let cond_cell = self.cons(cond, body_cell)?;
                 let call = self.cons(if_sym, cond_cell)?;
                 if !call.is_null() {
-                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 Ok(call)
             }
@@ -2587,7 +2587,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             let var_cell = self.cons(var, seq_cell)?;
             let call = self.cons(for_sym, var_cell)?;
             if !call.is_null() {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             }
             Ok(call)
         }
@@ -2674,7 +2674,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             let formals_cell = self.cons(formals, body_cell)?;
             let call = self.cons(fn_sym, formals_cell)?;
             if !call.is_null() {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                 if self.keep_srcrefs {
                     let attr_cell = self.cons(srcref, nil)?;
                     SETTAG(attr_cell, Rf_install(c"srcref".as_ptr()));
@@ -2789,7 +2789,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 }
                 let call = self.cons(brace_sym, list)?;
                 if !call.is_null() {
-                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 Ok(call)
             }
