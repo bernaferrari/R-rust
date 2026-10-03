@@ -34,7 +34,7 @@ use crate::sexp::builder::{
 use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::memory::RArena;
-use crate::sexp::object::{SessionNodeFactory, Sexp};
+use crate::sexp::object::{NodeDomain, SessionNodeFactory, Sexp};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -1048,7 +1048,7 @@ fn is_special_rhs_function(name: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct Parser<'arena, 'session> {
-    factory: SessionNodeFactory<'session>,
+    domain: NodeDomain<'session>,
     tokens: Vec<Token>,
     /// Half-open char span `[start, end)` of each token in `source`,
     /// parallel to `tokens`. Used to render upstream-style parse errors
@@ -1103,7 +1103,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     pub fn new(
         input: &str,
         arena: &'arena mut RArena,
-        factory: SessionNodeFactory<'session>,
+        domain: impl Into<NodeDomain<'session>>,
     ) -> Self {
         let mut lexer = Lexer::new(input);
         let mut tokens = Vec::new();
@@ -1164,7 +1164,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             }
         }
         Parser {
-            factory,
+            domain: domain.into(),
             tokens,
             spans,
             source: input.chars().collect(),
@@ -1179,6 +1179,29 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             token_literal_warnings,
             keep_srcrefs: false,
         }
+    }
+
+    /// Reject a foreign arena or symbol bank before publishing graph edges.
+    /// Symbol interning is callback-free and touches only the persistent bank;
+    /// parsing allocates exclusively through the separately lent arena.
+    fn validate_domain(&self) -> Result<(), ParseError> {
+        if !self.domain.belongs_to(&self.arena.heap_identity()) {
+            return Err(ParseError("parser arena belongs to another runtime".into()));
+        }
+        self.domain
+            .wrap(self.domain.nil().as_raw())
+            .map_err(|error| ParseError(error.to_string()))?;
+        let active_heap = crate::sexp::instance::current_instance_ptr()
+            .map(|owner| unsafe { (*owner).heap_identity.clone() });
+        if !active_heap
+            .as_ref()
+            .is_some_and(|heap| self.domain.belongs_to(heap))
+        {
+            return Err(ParseError(
+                "parser symbol bank belongs to another runtime".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// The shared placeholder node for `_`, allocated on first use.
@@ -1287,7 +1310,11 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         if strings.is_null() {
             return Err(self.allocation_error());
         }
-        if self.arena.set_reference_element(strings, 0, unsafe { R_NaString() }).is_none() {
+        if self
+            .arena
+            .set_reference_element(strings, 0, unsafe { R_NaString() })
+            .is_none()
+        {
             return Err(self.allocation_error());
         }
         Ok(strings)
@@ -1440,6 +1467,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     }
 
     pub fn parse_top_level_expressions(&mut self) -> Result<Vec<Sexp<'session>>, ParseError> {
+        self.validate_domain()?;
         begin_parsed_expr_warnings();
         let mut exprs = Vec::new();
         loop {
@@ -1456,7 +1484,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 return Err(self.pipebind_position_error("invalid use of pipe bind symbol"));
             }
             exprs.push(
-                self.factory
+                self.domain
                     .wrap(expr)
                     .map_err(|error| ParseError(error.to_string()))?,
             );
@@ -1487,6 +1515,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     pub fn parse_top_level_with_spans(
         &mut self,
     ) -> Result<Vec<(Sexp<'session>, usize, usize)>, ParseError> {
+        self.validate_domain()?;
         begin_parsed_expr_warnings();
         let mut spans = Vec::new();
         loop {
@@ -1516,7 +1545,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 tok_start
             };
             spans.push((
-                self.factory
+                self.domain
                     .wrap(expr)
                     .map_err(|error| ParseError(error.to_string()))?,
                 tok_start,
@@ -1531,7 +1560,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     pub fn parse_program(&mut self) -> Result<Sexp<'session>, ParseError> {
         let exprs = self.parse_top_level_expressions()?;
         if exprs.is_empty() {
-            return Ok(Sexp::nil());
+            return Ok(self.domain.nil());
         }
         if exprs.len() == 1 {
             return Ok(exprs.into_iter().next().expect("one parsed expression"));
@@ -1549,7 +1578,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         unsafe {
             crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
-        self.factory
+        self.domain
             .wrap(call)
             .map_err(|error| ParseError(error.to_string()))
     }
@@ -2962,9 +2991,9 @@ pub(crate) unsafe fn active_factory<'session>() -> SessionNodeFactory<'session> 
 pub(crate) fn parse<'session>(
     input: &str,
     arena: &mut RArena,
-    factory: SessionNodeFactory<'session>,
+    domain: impl Into<NodeDomain<'session>>,
 ) -> Result<Sexp<'session>, ParseError> {
-    let mut parser = Parser::new(input, arena, factory);
+    let mut parser = Parser::new(input, arena, domain);
     parser.parse_program()
 }
 
@@ -2976,9 +3005,9 @@ pub(crate) fn parse<'session>(
 pub(crate) fn parse_expressions<'session>(
     input: &str,
     arena: &mut RArena,
-    factory: SessionNodeFactory<'session>,
+    domain: impl Into<NodeDomain<'session>>,
 ) -> Result<Vec<Sexp<'session>>, ParseError> {
-    let mut parser = Parser::new(input, arena, factory);
+    let mut parser = Parser::new(input, arena, domain);
     parser.parse_top_level_expressions()
 }
 
@@ -2991,9 +3020,9 @@ pub(crate) fn parse_expressions<'session>(
 pub(crate) fn parse_expressions_strict<'session>(
     input: &str,
     arena: &mut RArena,
-    factory: SessionNodeFactory<'session>,
+    domain: impl Into<NodeDomain<'session>>,
 ) -> Result<Vec<Sexp<'session>>, ParseError> {
-    let mut parser = Parser::new(input, arena, factory);
+    let mut parser = Parser::new(input, arena, domain);
     let _ = &mut parser;
     parser.parse_top_level_expressions()
 }
@@ -3017,11 +3046,11 @@ mod tests {
         session: &'session RSession,
         input: &str,
     ) -> Result<Sexp<'session>, ParseError> {
-        let factory =
-            SessionNodeFactory::new(session.owner_token().expect("active parser fixture"));
+        let domain =
+            SessionNodeFactory::new(session.owner_token().expect("active parser fixture")).domain();
         session.with_active_in(|owner| unsafe {
-            // SAFETY: only the arena is lent, and the factory was captured before it.
-            crate::sexp::memory::with_arena_in(owner, |arena| parse(input, arena, factory))
+            // SAFETY: only the arena is lent, and the domain was captured before it.
+            crate::sexp::memory::with_arena_in(owner, |arena| parse(input, arena, domain))
         })
     }
 
@@ -3030,11 +3059,11 @@ mod tests {
         input: &str,
         with_spans: bool,
     ) -> Result<Vec<Sexp<'session>>, ParseError> {
-        let factory =
-            SessionNodeFactory::new(session.owner_token().expect("active parser fixture"));
+        let domain =
+            SessionNodeFactory::new(session.owner_token().expect("active parser fixture")).domain();
         session.with_active_in(|owner| unsafe {
             crate::sexp::memory::with_arena_in(owner, |arena| {
-                let mut parser = Parser::new(input, arena, factory);
+                let mut parser = Parser::new(input, arena, domain);
                 if with_spans {
                     parser.parse_top_level_with_spans().map(|spans| {
                         spans
@@ -3047,6 +3076,79 @@ mod tests {
                 }
             })
         })
+    }
+
+    #[test]
+    fn passive_parser_domain_rejects_foreign_arena_before_allocating() {
+        let first = RSession::new_for_gc_tests();
+        let first_domain = SessionNodeFactory::new(first.owner_token().unwrap()).domain();
+        let second = RSession::new_for_gc_tests();
+        let second_domain = SessionNodeFactory::new(second.owner_token().unwrap()).domain();
+        second.with_active_in(|owner| unsafe {
+            crate::sexp::memory::with_arena_in(owner, |arena| {
+                let roots_before =
+                    crate::sexp::memory::automatic_roots(&arena.heap_identity()).len();
+                let mut parser = Parser::new("foreign_symbol + 1", arena, first_domain);
+                let error = parser.parse_program().unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("arena belongs to another runtime")
+                );
+                assert_eq!(
+                    crate::sexp::memory::automatic_roots(&parser.arena.heap_identity()).len(),
+                    roots_before
+                );
+                assert!(!(*owner).symbols.contains_key("foreign_symbol"));
+            });
+        });
+        // Rejection must not poison the receiving arena or its original bank.
+        second.with_active_in(|owner| unsafe {
+            crate::sexp::memory::with_arena_in(owner, |arena| {
+                let mut parser = Parser::new("3", arena, second_domain);
+                assert_eq!(parser.parse_program().unwrap().real_elt(0), Some(3.0));
+            });
+        });
+    }
+
+    #[test]
+    fn passive_parser_domain_rejects_foreign_active_symbol_bank() {
+        let first = RSession::new_for_gc_tests();
+        let first_domain = SessionNodeFactory::new(first.owner_token().unwrap()).domain();
+        let first_owner = first.with_active_in(|owner| owner);
+        let second = RSession::new_for_gc_tests();
+        second.with_active_in(|second_owner| unsafe {
+            // Intentionally provide the correct physical arena/domain with
+            // the wrong active symbol bank. No symbol or graph may be built.
+            crate::sexp::memory::with_arena_in(first_owner, |arena| {
+                let mut parser = Parser::new("foreign_symbol + 1", arena, first_domain);
+                let error = parser.parse_top_level_expressions().unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("symbol bank belongs to another runtime")
+                );
+                assert!(!(*second_owner).symbols.contains_key("foreign_symbol"));
+            });
+        });
+    }
+
+    #[test]
+    fn passive_parser_domain_rejects_revocation_even_for_empty_program() {
+        let mut session = RSession::new_for_gc_tests();
+        let token = session.owner_token().unwrap();
+        let owner = token.weak_owner().unwrap();
+        let domain = owner.node_factory().unwrap().domain();
+        let pin = owner.pin().unwrap();
+        session.close();
+        unsafe {
+            // Pin retains cleanup storage after the facade closes. Passive
+            // publication still rejects revocation, including nil output.
+            crate::sexp::memory::with_arena_in(pin.as_ptr(), |arena| {
+                let mut parser = Parser::new("", arena, domain);
+                assert!(parser.parse_program().is_err());
+            });
+        }
     }
 
     #[test]

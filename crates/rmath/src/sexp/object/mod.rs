@@ -49,7 +49,7 @@ mod vector;
 mod view;
 
 pub use error::{SexpError, SexpResult};
-pub(crate) use factory::SessionNodeFactory;
+pub(crate) use factory::{NodeAllocator, NodeDomain, SessionNodeFactory};
 pub(crate) use kind::{raw_is_atomic_vector, raw_is_vector};
 pub use mut_ref::SexpMut;
 pub(crate) use pairlist::PairlistBuilder;

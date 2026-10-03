@@ -27,6 +27,8 @@ pub enum SexpError {
     /// Safe mutation requires a checked, mutable owner.
     UncheckedMutation,
     OwnerNotActive,
+    /// Execution and allocation belong to different original heap domains.
+    HeapDomainMismatch,
     LengthMismatch {
         expected: usize,
         actual: usize,
@@ -74,6 +76,7 @@ impl std::fmt::Display for SexpError {
             SexpError::StaleAllocation => write!(f, "SEXP allocation has been reclaimed"),
             SexpError::RootUnavailable => write!(f, "SEXP owner could not retain its root"),
             SexpError::OwnerNotActive => write!(f, "activate the owning session before collection"),
+            SexpError::HeapDomainMismatch => write!(f, "allocation belongs to another heap domain"),
             SexpError::LengthMismatch { expected, actual } => {
                 write!(f, "expected output length {expected}, got {actual}")
             }

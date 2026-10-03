@@ -121,6 +121,88 @@ impl OwnerPin {
     }
 }
 
+/// Execution authority exists only inside `with_runtime`. It cannot be cloned
+/// or retained by provider data. Allocated values retain physical leases only.
+pub(crate) struct RuntimeAccess {
+    pin: OwnerPin,
+    domain: super::object::NodeDomain<'static>,
+}
+
+/// Keep the original runtime alive for a closed execution scope. The higher
+/// ranked callback cannot return a borrow of this authority or its allocator.
+pub(crate) fn with_runtime<T>(
+    owner: &WeakOwner,
+    operation: impl for<'execution> FnOnce(&'execution RuntimeAccess) -> T,
+) -> SexpResult<T> {
+    let access = RuntimeAccess {
+        pin: owner.pin()?,
+        domain: super::object::NodeDomain::from_capability(
+            owner.heap.clone(),
+            owner.availability.clone(),
+            owner.singletons.clone(),
+            owner.clone(),
+        ),
+    };
+    access.require_active()?;
+    let result = operation(&access);
+    access.require_active()?;
+    Ok(result)
+}
+
+impl RuntimeAccess {
+    pub(crate) fn require_live(&self) -> SexpResult<()> {
+        self.pin.require_live()
+    }
+
+    pub(crate) fn require_active(&self) -> SexpResult<()> {
+        self.require_live()?;
+        if super::instance::current_instance_ptr() == Some(self.pin.as_ptr()) {
+            Ok(())
+        } else {
+            Err(SexpError::OwnerNotActive)
+        }
+    }
+
+    pub(crate) fn domain(&self) -> super::object::NodeDomain<'static> {
+        self.domain.clone()
+    }
+
+    pub(crate) fn allocator<'execution, 'session>(
+        &'execution self,
+        domain: &super::object::NodeDomain<'session>,
+    ) -> SexpResult<super::object::NodeAllocator<'execution, 'session>> {
+        super::object::NodeAllocator::new(self, domain.clone())
+    }
+
+    /// The exclusive arena loan ends before warnings, GC, and destructors can
+    /// reenter the runtime. The pin retains cleanup storage after revocation.
+    pub(crate) fn with_arena<T>(
+        &self,
+        operation: impl FnOnce(&mut super::memory::RArena) -> T,
+    ) -> SexpResult<T> {
+        self.require_active()?;
+        if super::memory::is_arena_lent(self.pin.as_ptr()) {
+            return Err(SexpError::OwnerNotActive);
+        }
+        let result = unsafe { super::memory::with_arena_in(self.pin.as_ptr(), operation) };
+        self.require_active()?;
+        Ok(result)
+    }
+
+    /// Native adapters receive a token for this callback only. Its lifetime
+    /// cannot escape directly through the result type. This remains an audited
+    /// translated boundary: adapters can explicitly derive native owning pins.
+    pub(crate) fn with_native<T>(
+        &self,
+        operation: impl for<'operation> FnOnce(OwnerToken<'operation>) -> SexpResult<T>,
+    ) -> SexpResult<T> {
+        self.require_active()?;
+        let result = operation(unsafe { OwnerToken::from_raw(self.pin.as_ptr()) });
+        self.require_active()?;
+        result
+    }
+}
+
 /// Stored authority has a distinct representation for managed runtimes and
 /// explicitly borrowed native fixtures. Managed storage contains no raw token.
 #[derive(Clone)]

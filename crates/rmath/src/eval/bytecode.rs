@@ -9,8 +9,8 @@
 use std::os::raw::{c_double, c_int};
 
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::object::{SessionNodeFactory, Sexp, SexpError};
-use crate::sexp::owner::OwnerPin;
+use crate::sexp::object::{NodeAllocator, NodeDomain, Sexp, SexpError};
+use crate::sexp::owner::RuntimeAccess;
 
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
@@ -18,7 +18,7 @@ fn sexp_err(context: &str, err: SexpError) -> String {
 
 fn format_expression_vector(
     exprs: &Sexp<'static>,
-    execution: &PrivateExecution,
+    execution: &PrivateExecution<'_>,
 ) -> Result<String, String> {
     let entries = snapshot_constants(Some(exprs.clone()))?;
     if entries.is_empty() {
@@ -30,13 +30,16 @@ fn format_expression_vector(
         .map_err(|_| "cannot reserve expression print buffer")?;
     for expr in &entries {
         execution.require_live()?;
-        let deparsed = unsafe { crate::mainutils::deparse::deparse1line(expr.as_raw(), false) };
-        execution.require_live()?;
         let deparsed = execution
-            .factory
-            .wrap(deparsed)
+            .native(|_| {
+                execution
+                    .domain
+                    .wrap(unsafe { crate::mainutils::deparse::deparse1line(expr.as_raw(), false) })
+            })?
             .map_err(|e| sexp_err("deparsed expression", e))?;
-        parts.push(unsafe { crate::mainutils::essentials::elt_to_string(deparsed.as_raw(), 0) });
+        parts.push(execution.native(|_| unsafe {
+            crate::mainutils::essentials::elt_to_string(deparsed.as_raw(), 0)
+        })?);
         execution.require_live()?;
     }
     Ok(format!("expression({})", parts.join(", ")))
@@ -1861,32 +1864,40 @@ fn read_jump_target(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<
     Ok(target)
 }
 
-/// All interpreter work uses the original revocable owner and initialized,
-/// counted roots; the operation pin retains physical cleanup storage only.
-struct PrivateExecution {
-    factory: SessionNodeFactory<'static>,
-    pin: OwnerPin,
+/// Passive node provenance and owning values stay separate from execution.
+/// The scoped access and allocator cannot escape into retained callback data.
+struct PrivateExecution<'execution> {
+    access: &'execution RuntimeAccess,
+    domain: NodeDomain<'static>,
+    allocator: NodeAllocator<'execution, 'static>,
     nil: Sexp<'static>,
     true_value: Sexp<'static>,
     false_value: Sexp<'static>,
 }
-impl PrivateExecution {
+impl PrivateExecution<'_> {
+    fn native<T>(
+        &self,
+        operation: impl for<'operation> FnOnce(crate::sexp::owner::OwnerToken<'operation>) -> T,
+    ) -> Result<T, String> {
+        self.access
+            .with_native(|owner| Ok(operation(owner)))
+            .map_err(|e| sexp_err("private bytecode native adapter", e))
+    }
     fn require_live(&self) -> Result<(), String> {
-        self.pin
-            .require_live()
-            .and_then(|_| self.factory.require_active())
+        self.access
+            .require_active()
             .map_err(|e| sexp_err("private bytecode owner", e))
     }
 }
 
 fn initialized_scalar(
-    execution: &PrivateExecution,
+    execution: &PrivateExecution<'_>,
     kind: SEXPTYPE,
     initialize: impl FnOnce(&crate::sexp::payload::PayloadLease) -> Option<()>,
 ) -> Result<Sexp<'static>, String> {
     execution.require_live()?;
     let result = execution
-        .factory
+        .allocator
         .allocate(|arena| {
             let pointer = arena.alloc_vector(kind, 1);
             let heap = arena.heap_identity();
@@ -1901,17 +1912,17 @@ fn initialized_scalar(
     execution.require_live()?;
     Ok(result)
 }
-fn make_lgl(execution: &PrivateExecution, val: c_int) -> Result<Sexp<'static>, String> {
+fn make_lgl(execution: &PrivateExecution<'_>, val: c_int) -> Result<Sexp<'static>, String> {
     initialized_scalar(execution, SEXPTYPE::LGLSXP, |lease| {
         lease.set_integer_elt(0, val)
     })
 }
-fn make_real(execution: &PrivateExecution, val: c_double) -> Result<Sexp<'static>, String> {
+fn make_real(execution: &PrivateExecution<'_>, val: c_double) -> Result<Sexp<'static>, String> {
     initialized_scalar(execution, SEXPTYPE::REALSXP, |lease| {
         lease.set_real_elt(0, val)
     })
 }
-fn make_int(execution: &PrivateExecution, val: c_int) -> Result<Sexp<'static>, String> {
+fn make_int(execution: &PrivateExecution<'_>, val: c_int) -> Result<Sexp<'static>, String> {
     initialized_scalar(execution, SEXPTYPE::INTSXP, |lease| {
         lease.set_integer_elt(0, val)
     })
@@ -1938,13 +1949,13 @@ fn pop_arguments(
     Ok(args)
 }
 fn argument_list(
-    execution: &PrivateExecution,
+    execution: &PrivateExecution<'_>,
     args: &[Sexp<'static>],
 ) -> Result<Sexp<'static>, String> {
     let mut list = execution.nil.clone();
     for arg in args.iter().rev() {
         list = execution
-            .factory
+            .allocator
             .pairlist_cell(arg, &list, &execution.nil)
             .map_err(|e| sexp_err("private bytecode argument cell", e))?;
         execution.require_live()?;
@@ -1952,20 +1963,20 @@ fn argument_list(
     Ok(list)
 }
 fn language_call(
-    execution: &PrivateExecution,
+    execution: &PrivateExecution<'_>,
     fun: &Sexp<'static>,
     args: &Sexp<'static>,
 ) -> Result<Sexp<'static>, String> {
     let body = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
-        carval: execution.factory.link(fun).map_err(|e| e.to_string())?,
-        cdrval: execution.factory.link(args).map_err(|e| e.to_string())?,
+        carval: execution.domain.link(fun).map_err(|e| e.to_string())?,
+        cdrval: execution.domain.link(args).map_err(|e| e.to_string())?,
         tagval: execution
-            .factory
+            .domain
             .link(&execution.nil)
             .map_err(|e| e.to_string())?,
     });
     let call = execution
-        .factory
+        .allocator
         .allocate(|arena| {
             let pointer = arena.alloc_node(SEXPTYPE::LANGSXP);
             let heap = arena.heap_identity();
@@ -2015,7 +2026,7 @@ fn scalar_bool_or_false(value: &Sexp<'_>, context: &str) -> Result<bool, String>
 }
 
 fn apply_binary_op<FR, FI>(
-    execution: &PrivateExecution,
+    execution: &PrivateExecution<'_>,
     a: Sexp<'static>,
     b: Sexp<'static>,
     real_op: FR,
@@ -2048,7 +2059,7 @@ where
 }
 
 fn apply_comparison<F>(
-    execution: &PrivateExecution,
+    execution: &PrivateExecution<'_>,
     a: Sexp<'static>,
     b: Sexp<'static>,
     cmp: F,
@@ -2081,40 +2092,46 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
     let env = env
         .into_owned()
         .map_err(|e| sexp_err("private bytecode environment", e))?;
-    let pin = code
-        .pin_runtime()
-        .map_err(|e| e.to_string())?
+    let owner = code
+        .runtime_owner
+        .clone()
         .ok_or("private bytecode has no runtime owner")?;
-    let factory = code.node_factory().map_err(|e| e.to_string())?;
-    factory
+    crate::sexp::owner::with_runtime(&owner, |access| eval_bytecode_in_scope(code, env, access))
+        .map_err(|e| sexp_err("private bytecode owner", e))?
+}
+
+fn eval_bytecode_in_scope(
+    code: Sexp<'static>,
+    env: Sexp<'static>,
+    access: &RuntimeAccess,
+) -> Result<Sexp<'static>, String> {
+    let domain = access.domain();
+    let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
+    domain
         .link(&env)
         .map_err(|e| sexp_err("private bytecode environment domain", e))?;
     if env.typeof_() != SEXPTYPE::ENVSXP {
         return Err("private bytecode requires an environment".into());
     }
     let execution = PrivateExecution {
-        true_value: factory
-            .wrap(unsafe { crate::sexp::globals::R_True() })
-            .map_err(|e| e.to_string())?,
-        false_value: factory
-            .wrap(unsafe { crate::sexp::globals::R_False() })
-            .map_err(|e| e.to_string())?,
-        nil: factory.nil(),
-        factory,
-        pin,
+        true_value: domain.logical(true),
+        false_value: domain.logical(false),
+        nil: domain.nil(),
+        domain,
+        allocator,
+        access,
     };
     execution.require_live()?;
     if code.typeof_() != SEXPTYPE::INTSXP {
         return Err("invalid bytecode vector: expected integer vector".into());
     }
     // Snapshot actual pool entries before any lazy instruction reader callback.
-    let constants = snapshot_constants(code.attrib())?;
+    let constants = execution.native(|_| snapshot_constants(code.attrib()))??;
     let instruction_count = usize::try_from(code.len()).map_err(|_| "invalid bytecode length")?;
     let scratch_bytes = instruction_count
         .checked_mul(std::mem::size_of::<c_int>())
         .ok_or("bytecode scratch size overflow")?;
-    let _scratch = crate::sexp::owner::StoredOwner::from_value(&code)
-        .map_err(|e| e.to_string())?
+    let _scratch = access
         .with_arena(|arena| arena.try_reserve_transient(scratch_bytes))
         .map_err(|e| e.to_string())?
         .ok_or("bytecode scratch exceeds session memory limit")?;
@@ -2123,7 +2140,8 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
         .try_reserve_exact(instruction_count)
         .map_err(|_| "failed to allocate bytecode scratch")?;
     bytecode.resize(instruction_count, 0);
-    code.copy_integer_into(&mut bytecode)
+    access
+        .with_native(|_| code.copy_integer_into(&mut bytecode))
         .map_err(|e| sexp_err("invalid bytecode vector", e))?;
     execution.require_live()?;
     let mut pc = 0;
@@ -2171,7 +2189,7 @@ fn next_for_iteration(
     frame: &mut PrivateLoop,
     stack: &mut Vec<Sexp<'static>>,
     env: &Sexp<'static>,
-    execution: &PrivateExecution,
+    execution: &PrivateExecution<'_>,
 ) -> Result<Option<usize>, String> {
     let PrivateLoopKind::For {
         variable,
@@ -2203,9 +2221,9 @@ fn next_for_iteration(
         )?,
     };
     execution.require_live()?;
-    unsafe {
+    execution.native(|_| unsafe {
         crate::sexp::envir::defineVar(variable.as_raw(), value.as_raw(), env.as_raw());
-    }
+    })?;
     execution.require_live()?;
     push_operand(stack, value)?;
     *next += 1;
@@ -2221,7 +2239,7 @@ fn eval_bytecode_loop(
     stack: &mut Vec<Sexp<'static>>,
     constants: &[Sexp<'static>],
     env: Sexp<'static>,
-    execution: &PrivateExecution,
+    execution: &PrivateExecution<'_>,
 ) -> Result<(Sexp<'static>, ControlFlow), String> {
     let mut frames: Vec<PrivateLoop> = Vec::new();
     let mut current_pc = *pc;
@@ -2325,7 +2343,7 @@ fn eval_bytecode_segment(
     stack: &mut Vec<Sexp<'static>>,
     constants: &[Sexp<'static>],
     env: Sexp<'static>,
-    execution: &PrivateExecution,
+    execution: &PrivateExecution<'_>,
 ) -> Result<PrivateStep, String> {
     while *pc < bytecode.len() {
         execution.require_live()?;
@@ -2347,7 +2365,8 @@ fn eval_bytecode_segment(
                 if sym.typeof_() != SEXPTYPE::SYMSXP {
                     return Err("private variable constant is not a symbol".into());
                 }
-                let val = unsafe { crate::eval::eval::find_var_result(sym, env.clone()) }?
+                let val = execution
+                    .native(|_| unsafe { crate::eval::eval::find_var_result(sym, env.clone()) })??
                     .ok_or_else(|| "variable not found".to_string())?;
                 execution.require_live()?;
                 push_operand(stack, val.into_owned().map_err(|e| e.to_string())?)?;
@@ -2590,9 +2609,11 @@ fn eval_bytecode_segment(
                 if fun.clone().typeof_() == SEXPTYPE::CLOSXP {
                     let arg_list = argument_list(execution, &args_vec)?;
                     let call = language_call(execution, &fun, &arg_list)?;
-                    let result =
-                        unsafe { crate::eval::eval::eval_lang_safe(call.clone(), env.clone()) }
-                            .map_err(|e| format!("closure call failed: {e}"))?;
+                    let result = execution
+                        .native(|_| unsafe {
+                            crate::eval::eval::eval_lang_safe(call.clone(), env.clone())
+                        })?
+                        .map_err(|e| format!("closure call failed: {e}"))?;
                     execution.require_live()?;
                     push_operand(stack, result.into_owned().map_err(|e| e.to_string())?)?;
                 } else {
@@ -2757,10 +2778,11 @@ fn eval_bytecode_segment(
 
                     let call_sexp = language_call(execution, &fun, &arg_list)?;
 
-                    let result = unsafe {
-                        crate::eval::eval::eval_lang_safe(call_sexp.clone(), env.clone())
-                    }
-                    .map_err(|e| format!("special call failed: {e}"))?;
+                    let result = execution
+                        .native(|_| unsafe {
+                            crate::eval::eval::eval_lang_safe(call_sexp.clone(), env.clone())
+                        })?
+                        .map_err(|e| format!("special call failed: {e}"))?;
                     execution.require_live()?;
                     push_operand(stack, result.into_owned().map_err(|e| e.to_string())?)?;
                 } else {
@@ -2781,10 +2803,11 @@ fn eval_bytecode_segment(
 
                     let call_sexp = language_call(execution, &fun, &arg_list)?;
 
-                    let result = unsafe {
-                        crate::eval::eval::eval_lang_safe(call_sexp.clone(), env.clone())
-                    }
-                    .map_err(|e| format!("builtin call failed: {e}"))?;
+                    let result = execution
+                        .native(|_| unsafe {
+                            crate::eval::eval::eval_lang_safe(call_sexp.clone(), env.clone())
+                        })?
+                        .map_err(|e| format!("builtin call failed: {e}"))?;
                     execution.require_live()?;
                     push_operand(stack, result.into_owned().map_err(|e| e.to_string())?)?;
                 } else {
@@ -2869,33 +2892,38 @@ mod tests {
 
     fn private_code(session: &RSession, words: &[c_int], constants: &[Sexp<'_>]) -> Sexp<'static> {
         session.with_active(|| {
-            let factory = session.owner_token().unwrap().node_factory();
-            let pool = factory
-                .allocate(|arena| {
-                    let ptr = arena.alloc_vector(SEXPTYPE::VECSXP, constants.len() as i64);
-                    for (i, value) in constants.iter().enumerate() {
-                        arena.set_reference_element(ptr, i, value.as_raw())?;
-                    }
-                    Some(ptr)
-                })
-                .unwrap();
-            factory
-                .allocate(|arena| {
-                    let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, words.len() as i64);
-                    let heap = arena.heap_identity();
-                    let node = arena.node_token(ptr)?;
-                    let payload = heap.payload_lease(&node)?;
-                    for (i, word) in words.iter().enumerate() {
-                        payload.set_integer_elt(i, *word)?;
-                    }
-                    let mut header = heap.node_snapshot(&node)?;
-                    header.attrib = factory.link(&pool).ok()?;
-                    heap.replace_node(&node, header)?;
-                    Some(ptr)
-                })
-                .unwrap()
-                .into_owned()
-                .unwrap()
+            let owner = session.owner_token().unwrap().weak_owner().unwrap();
+            crate::sexp::owner::with_runtime(&owner, |access| {
+                let domain = access.domain();
+                let allocator = access.allocator(&domain).unwrap();
+                let pool = allocator
+                    .allocate(|arena| {
+                        let ptr = arena.alloc_vector(SEXPTYPE::VECSXP, constants.len() as i64);
+                        for (i, value) in constants.iter().enumerate() {
+                            arena.set_reference_element(ptr, i, value.as_raw())?;
+                        }
+                        Some(ptr)
+                    })
+                    .unwrap();
+                allocator
+                    .allocate(|arena| {
+                        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, words.len() as i64);
+                        let heap = arena.heap_identity();
+                        let node = arena.node_token(ptr)?;
+                        let payload = heap.payload_lease(&node)?;
+                        for (i, word) in words.iter().enumerate() {
+                            payload.set_integer_elt(i, *word)?;
+                        }
+                        let mut header = heap.node_snapshot(&node)?;
+                        header.attrib = domain.link(&pool).ok()?;
+                        heap.replace_node(&node, header)?;
+                        Some(ptr)
+                    })
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            })
+            .unwrap()
         })
     }
     fn run_private(
@@ -2930,20 +2958,22 @@ mod tests {
 
     fn fixture_integer(session: &RSession, value: c_int) -> Sexp<'static> {
         session.with_active(|| {
-            session
-                .owner_token()
-                .unwrap()
-                .node_factory()
-                .allocate(|arena| {
-                    let pointer = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-                    let heap = arena.heap_identity();
-                    let node = arena.node_token(pointer)?;
-                    heap.payload_lease(&node)?.set_integer_elt(0, value)?;
-                    Some(pointer)
-                })
-                .unwrap()
-                .into_owned()
-                .unwrap()
+            let owner = session.owner_token().unwrap().weak_owner().unwrap();
+            crate::sexp::owner::with_runtime(&owner, |access| {
+                let domain = access.domain();
+                access
+                    .allocator(&domain)
+                    .unwrap()
+                    .allocate(|arena| {
+                        let pointer = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                        let heap = arena.heap_identity();
+                        let node = arena.node_token(pointer)?;
+                        heap.payload_lease(&node)?.set_integer_elt(0, value)?;
+                        Some(pointer)
+                    })
+                    .unwrap()
+            })
+            .unwrap()
         })
     }
     fn collect_and_detach_pool(
@@ -3073,7 +3103,10 @@ mod tests {
     fn owned_private_bytecode_rejects_argument_underflow_and_handles_integer_edges_without_panics()
     {
         let session = RSession::new_for_gc_tests();
-        let nil = session.with_active(|| session.owner_token().unwrap().node_factory().nil());
+        let nil = session.with_active(|| {
+            let owner = session.owner_token().unwrap().weak_owner().unwrap();
+            crate::sexp::owner::with_runtime(&owner, |access| access.domain().nil()).unwrap()
+        });
         for opcode in [BCcall, BCbuiltin, BCspecial] {
             let error = run_private(&session, &[opcode, 0, c_int::MAX, BCreturn], &[nil.clone()])
                 .unwrap_err();
@@ -3132,6 +3165,46 @@ mod tests {
         words.extend_from_slice(&[BCfalse, BCreturn]);
         let result = run_private(&session, &words, &[]).unwrap();
         assert_eq!(result.logical_elt(0), Some(0));
+    }
+
+    #[test]
+    fn owned_private_bytecode_rejects_inactive_or_revoked_original_runtime() {
+        let mut original = RSession::new_for_gc_tests();
+        let code = private_code(&original, &[BCtrue, BCreturn], &[]);
+        let environment = original.global_env().unwrap().into_owned().unwrap();
+        let replacement = RSession::new_for_gc_tests();
+        replacement.with_active(|| {
+            let error = eval_bytecode(code.clone(), environment.clone()).unwrap_err();
+            assert!(error.contains("owner"), "{error}");
+        });
+        original.close();
+        replacement.with_active(|| {
+            let error = eval_bytecode(code.clone(), environment.clone()).unwrap_err();
+            assert!(error.contains("owner"), "{error}");
+        });
+        // Owning code remains physically readable, but grants no execution.
+        assert_eq!(code.integer_elt(0), Some(BCtrue));
+    }
+
+    #[test]
+    fn owned_private_bytecode_uses_original_bank_after_ambient_singleton_replacement() {
+        let session = RSession::new_for_gc_tests();
+        let code = private_code(&session, &[BCtrue, BCreturn], &[]);
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap().weak_owner().unwrap();
+            let original_true =
+                crate::sexp::owner::with_runtime(&owner, |access| access.domain().logical(true))
+                    .unwrap();
+            crate::sexp::globals::close_immutable_singletons_for_test();
+            let replacement = crate::sexp::globals::immutable_singleton_pool();
+            assert_ne!(
+                original_true.as_raw(),
+                replacement.logical(true).projection()
+            );
+            let result = eval_bytecode(code, session.global_env().unwrap()).unwrap();
+            assert_eq!(result.as_raw(), original_true.as_raw());
+            assert_eq!(result.logical_elt(0), Some(1));
+        });
     }
 
     #[test]

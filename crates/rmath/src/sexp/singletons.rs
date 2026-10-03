@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Thread-confined immutable values with genuine owned headers and payloads.
 
-use super::super::ffi::{NodeBody, SEXP, SEXPTYPE, SexprecCore, Vecsxp};
+use super::super::ffi::{NodeBody, SexprecCore, Vecsxp, SEXP, SEXPTYPE};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -78,7 +78,10 @@ impl SingletonLease {
             SingletonKind::NaString => (SEXPTYPE::CHARSXP, false, None),
         };
         let logical = logical.map(|value| {
-            let payload = super::super::payload::PayloadLease::from_integer_cells(Rc::from([Cell::new(value)]))
+            let payload =
+                super::super::payload::PayloadLease::from_integer_cells(Rc::from([Cell::new(
+                    value,
+                )]))
                 .expect("singleton payload identity");
             payload.make_immutable();
             payload
@@ -185,6 +188,10 @@ impl SingletonPoolLease {
 
     pub(crate) fn missing(&self) -> SingletonLease {
         self.0.values[2].clone()
+    }
+
+    pub(crate) fn logical(&self, value: bool) -> SingletonLease {
+        self.0.values[if value { 4 } else { 5 }].clone()
     }
 
     pub(crate) fn na_string_projection(&self) -> SEXP {

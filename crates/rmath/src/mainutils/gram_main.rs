@@ -9,13 +9,16 @@
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 
-use crate::sexp::accessors::{CHAR, SET_VECTOR_ELT, STRING_ELT, TYPEOF, XLENGTH};
+use crate::sexp::accessors::{CHAR, STRING_ELT, TYPEOF, XLENGTH};
+#[cfg(test)]
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::instance::with_required_current_instance;
-use crate::sexp::object::{SessionNodeFactory, Sexp};
+use crate::sexp::object::{NodeDomain, Sexp, SexpMut};
+use crate::sexp::owner::{OwnerToken, RuntimeAccess, with_runtime};
+#[cfg(test)]
 use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
@@ -34,16 +37,18 @@ pub const PARSE_EOF: c_int = 8;
 /// Parse a character vector of R code into a list of expressions.
 pub unsafe fn R_ParseVector(text: SEXP, n: c_int, status: *mut c_int, _srcfile: SEXP) -> SEXP {
     unsafe {
-        match parse_vector(text, n) {
+        with_parse_runtime(|access| match parse_vector(text, n, access) {
             Ok(exprs) => {
+                let result = exprs_to_exprsxp(exprs, access);
                 set_parse_status(status, PARSE_OK);
-                exprs_to_exprsxp(exprs)
+                result
             }
             Err(_) => {
+                let result = exprs_to_exprsxp(Vec::new(), access);
                 set_parse_status(status, PARSE_ERROR);
-                Rf_allocVector(SEXPTYPE::EXPRSXP, 0)
+                result
             }
-        }
+        })
     }
 }
 
@@ -161,24 +166,28 @@ pub unsafe fn R_ParseVectorBuffer(
     _srcfile: SEXP,
 ) -> SEXP {
     unsafe {
-        let Some(source) = buffer_source(text, len as c_int) else {
-            set_parse_status(status, PARSE_ERROR);
-            return Rf_allocVector(SEXPTYPE::EXPRSXP, 0);
-        };
-        match parse_source_list(
-            std::iter::once(Ok(source)),
-            n,
-            crate::eval::parser::active_factory(),
-        ) {
-            Ok(exprs) => {
-                set_parse_status(status, PARSE_OK);
-                exprs_to_exprsxp(exprs)
-            }
-            Err(_) => {
+        with_parse_runtime(|access| {
+            let Some(source) = c_int::try_from(len)
+                .ok()
+                .and_then(|length| buffer_source(text, length))
+            else {
+                let result = exprs_to_exprsxp(Vec::new(), access);
                 set_parse_status(status, PARSE_ERROR);
-                Rf_allocVector(SEXPTYPE::EXPRSXP, 0)
+                return result;
+            };
+            match parse_source_list(std::iter::once(Ok(source)), n, access.domain(), access) {
+                Ok(exprs) => {
+                    let result = exprs_to_exprsxp(exprs, access);
+                    set_parse_status(status, PARSE_OK);
+                    result
+                }
+                Err(_) => {
+                    let result = exprs_to_exprsxp(Vec::new(), access);
+                    set_parse_status(status, PARSE_ERROR);
+                    result
+                }
             }
-        }
+        })
     }
 }
 
@@ -190,33 +199,61 @@ unsafe fn set_parse_status(status: *mut c_int, value: c_int) {
     }
 }
 
-unsafe fn parse_vector<'session>(text: SEXP, n: c_int) -> Result<Vec<Sexp<'session>>, String> {
+/// Native entry: retain the exact managed runtime throughout parser callbacks.
+/// No execution authority or arena loan escapes the closed operation.
+unsafe fn with_parse_runtime<T>(
+    operation: impl for<'execution> FnOnce(&'execution RuntimeAccess) -> T,
+) -> T {
+    let token = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let owner = token.weak_owner().unwrap_or_else(|| {
+        crate::sexp::context::r_error("parsing requires a managed runtime")
+    });
+    with_runtime(&owner, operation)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+unsafe fn parse_vector<'session>(
+    text: SEXP,
+    n: c_int,
+    access: &RuntimeAccess,
+) -> Result<Vec<Sexp<'session>>, String> {
     unsafe {
-        if text.is_null() || text == R_NilValue() {
+        let domain = access.domain();
+        if text.is_null() || text == domain.nil().as_raw() {
             return Ok(Vec::new());
         }
-        if TYPEOF(text) != SEXPTYPE::STRSXP {
+        let text_owner = domain.wrap(text).map_err(|error| error.to_string())?;
+        if TYPEOF(text_owner.as_raw()) != SEXPTYPE::STRSXP {
             return Err("parse input must be a character vector".to_string());
         }
 
-        let len = XLENGTH(text);
-        let sources = (0..len).map(|i| {
-            let elt = STRING_ELT(text, i);
+        let len = XLENGTH(text_owner.as_raw());
+        access.require_active().map_err(|error| error.to_string())?;
+        let mut sources = Vec::new();
+        for i in 0..len {
+            let elt = STRING_ELT(text_owner.as_raw(), i);
+            access.require_active().map_err(|error| error.to_string())?;
             if elt == R_NaString() || elt.is_null() {
-                Err("parse input contains NA".to_string())
-            } else {
-                Ok(CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned())
+                return Err("parse input contains NA".to_string());
             }
-        });
+            let element = domain.wrap(elt).map_err(|error| error.to_string())?;
+            let bytes = CHAR(element.as_raw());
+            if bytes.is_null() {
+                return Err("parse input contains an invalid string".to_string());
+            }
+            sources.push(Ok(CStr::from_ptr(bytes).to_string_lossy().into_owned()));
+        }
 
-        parse_source_list(sources, n, crate::eval::parser::active_factory())
+        parse_source_list(sources.into_iter(), n, domain, access)
     }
 }
 
 fn parse_source_list<'session, I>(
     sources: I,
     n: c_int,
-    factory: SessionNodeFactory<'session>,
+    domain: NodeDomain<'session>,
+    access: &RuntimeAccess,
 ) -> Result<Vec<Sexp<'session>>, String>
 where
     I: Iterator<Item = Result<String, String>>,
@@ -238,51 +275,93 @@ where
     }
 
     crate::mainutils::source::remember_parse_context(&combined);
-    let mut exprs = unsafe {
-        crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(&combined, arena, factory)
+    let mut exprs = access
+        .with_arena(|arena| {
+            crate::eval::parser::parse_expressions(&combined, arena, domain)
                 .map_err(|err| err.to_string())
         })
-    }?;
+        .map_err(|error| error.to_string())??;
     crate::eval::parser::flush_literal_warnings();
+    access.require_active().map_err(|error| error.to_string())?;
     if let Some(limit) = limit {
         exprs.truncate(limit);
     }
     Ok(exprs)
 }
 
-unsafe fn parse_one_source<'session>(source: &str) -> Result<Sexp<'session>, String> {
+fn parse_one_source<'session>(
+    source: &str,
+    access: &RuntimeAccess,
+) -> Result<Sexp<'session>, String> {
     crate::mainutils::source::remember_parse_context(source);
-    let factory = unsafe { crate::eval::parser::active_factory() };
-    let parsed = unsafe {
-        crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse(source, arena, factory).map_err(|err| err.to_string())
+    let domain = access.domain();
+    let parsed = access
+        .with_arena(|arena| {
+            crate::eval::parser::parse(source, arena, domain).map_err(|err| err.to_string())
         })
-    };
+        .map_err(|error| error.to_string())?;
     crate::eval::parser::flush_literal_warnings();
+    access.require_active().map_err(|error| error.to_string())?;
     parsed
 }
 
-unsafe fn exprs_to_exprsxp(exprs: Vec<Sexp<'_>>) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, exprs.len() as R_xlen_t);
-        let _result_guard = protect(result);
-        for (i, expr) in exprs.iter().enumerate() {
-            SET_VECTOR_ELT(result, i as R_xlen_t, expr.clone().as_raw());
-        }
+fn exprs_to_exprsxp(exprs: Vec<Sexp<'_>>, access: &RuntimeAccess) -> SEXP {
+    let domain = access.domain();
+    let length = R_xlen_t::try_from(exprs.len())
+        .unwrap_or_else(|_| parse_failure("too many parsed expressions"));
+    let allocator = access
+        .allocator(&domain)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let result = allocator
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::EXPRSXP, length)))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut result = SexpMut::try_from_checked(result)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (i, expr) in exprs.iter().enumerate() {
         result
+            .try_set_vector_elt(
+                i as R_xlen_t,
+                domain
+                    .wrap(expr.as_raw())
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+            )
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
+    access
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    result.as_raw()
 }
 
 unsafe fn parse_eval_source(source: &str, envir: SEXP) -> SEXP {
     unsafe {
-        let expr = parse_one_source(source).unwrap_or_else(|message| parse_failure(message));
-        let rho = if envir.is_null() || envir == R_NilValue() {
-            with_required_current_instance(|instance| (*instance).global_env)
-        } else {
-            envir
-        };
-        crate::eval::eval::Rf_eval(expr.clone().as_raw(), rho)
+        with_parse_runtime(|access| {
+            let rho = if envir.is_null() || envir == R_NilValue() {
+                with_required_current_instance(|instance| (*instance).global_env)
+            } else {
+                envir
+            };
+            // Parsing can emit warnings with arbitrary runtime callbacks.
+            // Capture the environment before any parser callback runs.
+            let environment = access
+                .domain()
+                .wrap(rho)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let parsed = parse_one_source(source, access);
+            access
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let expr = parsed.unwrap_or_else(|message| parse_failure(message));
+            let raw = crate::eval::eval::Rf_eval(expr.as_raw(), environment.as_raw());
+            access
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let result = access
+                .domain()
+                .wrap(raw)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            result.as_raw()
+        })
     }
 }
 
@@ -326,6 +405,139 @@ mod tests {
     use crate::sexp::accessors::{REAL, TYPEOF, VECTOR_ELT, XLENGTH};
 
     use super::*;
+
+    #[test]
+    fn owned_parser_publication_survives_reentrant_collecting_callbacks() {
+        use crate::sexp::object::SessionNodeFactory;
+        use std::cell::Cell;
+        use std::rc::Rc;
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let text = factory.strings(&["1; 2"]).unwrap();
+        let raw_text = text.as_raw();
+        let text_node = crate::sexp::memory::checked_projection(raw_text).unwrap().1;
+        let observed = text_node.clone();
+        let notifications = Rc::new(Cell::new(0));
+        let calls = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            calls.set(calls.get() + 1);
+            let owner = crate::sexp::instance::current_instance_ptr().unwrap();
+            assert!(!crate::sexp::memory::is_arena_lent(owner));
+            crate::sexp::gengc::full_gc();
+            // The first drain follows parsing. The input is held until
+            // source copying and parsing finish; later drains need only trees.
+            if calls.get() == 1 {
+                assert!(observed.is_live());
+            }
+        }));
+        session.with_active_in(|owner| unsafe {
+            (*owner).memory_state.gc_force_gap = 1;
+            (*owner).memory_state.gc_force_wait = 1;
+        });
+        drop(text);
+        let mut status = 0;
+        let result = factory
+            .wrap(unsafe { R_ParseVector(raw_text, -1, &mut status, ptr::null_mut()) })
+            .unwrap();
+        assert_eq!(status, PARSE_OK);
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result.clone().try_vector_elt(0).unwrap().real_elt(0),
+            Some(1.0)
+        );
+        assert_eq!(
+            result.clone().try_vector_elt(1).unwrap().real_elt(0),
+            Some(2.0)
+        );
+        assert!(notifications.get() >= 2);
+        // Stop the input-specific observer before proving eventual release.
+        session.with_active_in(|owner| unsafe {
+            (*owner).memory_state.gc_force_gap = 0;
+            (*owner).gc_state.callbacks.clear();
+        });
+        crate::sexp::gengc::full_gc();
+        assert!(!text_node.is_live());
+    }
+
+    #[test]
+    fn owned_parser_rejects_publication_after_collecting_callback_closes_runtime() {
+        use crate::sexp::object::SessionNodeFactory;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let session = Rc::new(RefCell::new(
+            crate::sexp::session::RSession::new_for_gc_tests(),
+        ));
+        let factory = session
+            .borrow()
+            .owner_token()
+            .unwrap()
+            .weak_owner()
+            .unwrap()
+            .node_factory()
+            .unwrap();
+        let text = factory.strings(&["1; 2"]).unwrap();
+        let raw_text = text.as_raw();
+        let closing = Rc::downgrade(&session);
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            closing.upgrade().unwrap().borrow_mut().close();
+        }));
+        session.borrow().with_active_in(|owner| unsafe {
+            (*owner).memory_state.gc_force_gap = 1;
+            (*owner).memory_state.gc_force_wait = 1;
+        });
+        drop(text);
+        let mut status = 0;
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            R_ParseVector(raw_text, -1, &mut status, ptr::null_mut())
+        }));
+        assert!(outcome.is_err());
+        assert!(outcome.unwrap_err().is::<RError>());
+        assert!(!session.borrow().is_active());
+        assert_eq!(
+            status, 0,
+            "revoked parser must not publish a success status"
+        );
+    }
+
+    #[test]
+    fn owned_parse_eval_environment_survives_parser_collection() {
+        use crate::sexp::object::SessionNodeFactory;
+        use std::cell::Cell;
+        use std::rc::Rc;
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let environment = factory
+            .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
+            .unwrap();
+        let raw_environment = environment.as_raw();
+        let environment_node = crate::sexp::memory::checked_projection(raw_environment)
+            .unwrap()
+            .1;
+        let observed = environment_node.clone();
+        let notifications = Rc::new(Cell::new(0));
+        let calls = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            calls.set(calls.get() + 1);
+            crate::sexp::gengc::full_gc();
+            assert!(observed.is_live());
+        }));
+        session.with_active_in(|owner| unsafe {
+            (*owner).memory_state.gc_force_gap = 1;
+            (*owner).memory_state.gc_force_wait = 1;
+        });
+        drop(environment);
+        let result = factory
+            .wrap(unsafe { R_ParseEvalString(c"7".as_ptr(), raw_environment) })
+            .unwrap();
+        assert_eq!(result.real_elt(0), Some(7.0));
+        assert!(notifications.get() > 0);
+        session.with_active_in(|owner| unsafe {
+            (*owner).memory_state.gc_force_gap = 0;
+            (*owner).gc_state.callbacks.clear();
+        });
+        crate::sexp::gengc::full_gc();
+        assert!(!environment_node.is_live());
+    }
 
     #[test]
     fn test_parse_status_constants() {
