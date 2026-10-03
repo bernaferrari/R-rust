@@ -70,22 +70,38 @@ unsafe fn dispatch_special_by_name(
     rho: SEXP,
 ) -> SEXP {
     unsafe {
+        // SAFETY: this translated entry retains its explicitly active owner.
+        let factory = crate::sexp::object::SessionNodeFactory::new(
+            crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+        );
         match name {
             "{" => do_begin(CDR(call), rho),
             "(" => {
                 // `(` is an evaluated builtin. evalList splices `...`
                 // before the arity check, so `(...)` is the first dotted
                 // value and `(a, b)` is an error.
-                let evaled = super::dispatch::evalList(CDR(call), rho, call, -1);
-                let _evaled = protect(evaled);
-                let n = crate::sexp::constructors::Rf_length(evaled);
+                let evaled =
+                    super::dispatch::evalList(
+                        factory.wrap(CDR(call)).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(&error.to_string())
+                        }),
+                        factory.wrap(rho).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(&error.to_string())
+                        }),
+                        Some(factory.wrap(call).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(&error.to_string())
+                        })),
+                        -1,
+                    );
+                let n = crate::sexp::constructors::Rf_length(evaled.as_raw());
                 if n != 1 {
                     let noun = if n == 1 { "argument" } else { "arguments" };
                     std::panic::panic_any(crate::sexp::context::RError {
                         message: format!("{n} {noun} passed to '(' which requires 1"),
                     });
                 }
-                do_paren_builtin(call, op, evaled, rho)
+                do_paren_builtin(call, op, evaled.as_raw(), rho)
             }
             "if" => do_if(CDR(call), rho),
             "while" => do_while(CDR(call), rho),
@@ -136,13 +152,22 @@ unsafe fn dispatch_special_by_name(
                 // for names that are evaluated builtins (GNU round is
                 // BUILTINSXP). Eval args and run the builtin handler.
                 if let Some(handler) = super::builtin::evaluated_builtin_handler(name) {
-                    let evaled = super::dispatch::evalList(args, rho, call, -1);
-                    let _evaled = protect(evaled);
-                    return handler(call, op, evaled, rho);
+                    let evaled = super::dispatch::evalList(
+                        factory.wrap(args).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(&error.to_string())
+                        }),
+                        factory.wrap(rho).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(&error.to_string())
+                        }),
+                        Some(factory.wrap(call).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(&error.to_string())
+                        })),
+                        -1,
+                    );
+                    return handler(call, op, evaled.as_raw(), rho);
                 }
                 unimplemented_special_form(name)
             }
-
         }
     }
 }

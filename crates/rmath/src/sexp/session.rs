@@ -793,7 +793,7 @@ impl RSession {
     /// evaluation. Prefer [`RSession::eval_sexp`] when the caller already has a
     /// lifetime-bound [`Sexp`] handle.
     pub(crate) fn eval(&self, expr: SEXP) -> RResult<SEXP> {
-        self.eval_sexp_raw(expr).map(Sexp::as_raw)
+        self.eval_sexp_raw(expr).map(|value| value.as_raw())
     }
 
     /// Evaluate a raw expression pointer after proving it belongs to this session.
@@ -838,7 +838,7 @@ impl RSession {
             }
         };
         let (result, output, visible) = self.eval_sexp_with_output_capture(expr);
-        (result.map(Sexp::as_raw), output, visible)
+        (result.map(|value| value.as_raw()), output, visible)
     }
 
     /// Evaluate an expression while capturing output and returning a typed
@@ -1327,7 +1327,7 @@ impl RSession {
     pub(crate) fn eval_in(&self, expr: SEXP, env: SEXP) -> RResult<SEXP> {
         let expr = self.owned_sexp(expr_or_nil(expr), "expression")?;
         let env = self.owned_sexp(env, "environment")?;
-        self.eval_sexp_in(expr, env).map(Sexp::as_raw)
+        self.eval_sexp_in(expr, env).map(|value| value.as_raw())
     }
 
     /// Evaluate an expression in a custom environment and return a

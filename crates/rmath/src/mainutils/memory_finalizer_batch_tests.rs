@@ -29,7 +29,7 @@ fn graph() -> (SEXP, ProtectGuard<'static>) {
             let child = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
             let value = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
             *crate::sexp::accessors::INTEGER(value) = 73;
-            *(*child).gengc_next_node.cast::<SEXP>() = value;
+            arena.set_reference_element(child, 0, value).unwrap();
             (*key).data.extptr_mut()[1] = child.cast();
             (*key).data.extptr_mut()[2] = R_NilValue().cast();
             GRAPH_NODES.with(|nodes| {

@@ -12,9 +12,9 @@
 //! - `symbol` submodule: symbol table and interning
 
 pub(crate) mod accessors;
-pub(crate) mod altseq;
 #[cfg(feature = "altrep")]
 pub mod altrep;
+pub(crate) mod altseq;
 pub mod attrib_core;
 pub mod builder;
 pub(crate) mod constructors;
@@ -32,8 +32,8 @@ pub(crate) mod memory_ext;
 pub(crate) mod numeric;
 pub mod object;
 pub mod output;
-pub(crate) mod payload;
 pub(crate) mod owner;
+pub(crate) mod payload;
 pub(crate) mod protect;
 pub mod session;
 pub mod symbol;
@@ -41,14 +41,18 @@ pub mod symbol;
 // Re-export commonly used types at the module level
 #[allow(unused_imports)]
 pub use ffi::{
-    Closxp, DOTSXP, Envsxp, FALSE, ISNAN, Listsxp, NA_INTEGER, NA_LOGICAL, NA_REAL, Primsxp,
-    Promsxp, R_FINITE, R_IsNA, R_IsNaN, R_NA_BIT_PATTERN, R_len_t, R_size_t, R_xlen_t, Rboolean,
-    Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, NodeBody, SxpInfo, Symsxp, TRUE, Vecsxp,
+    Closxp, DOTSXP, Envsxp, FALSE, ISNAN, Listsxp, NA_INTEGER, NA_LOGICAL, NA_REAL, NodeBody,
+    Primsxp, Promsxp, R_FINITE, R_IsNA, R_IsNaN, R_NA_BIT_PATTERN, R_len_t, R_size_t, R_xlen_t,
+    Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SxpInfo, Symsxp, TRUE, Vecsxp,
 };
 
 #[cfg(feature = "altrep")]
 #[allow(unused_imports)]
-pub use altrep::{AltrepBuilder, AltrepClass, AltrepClassHandle, AltrepContext, AltrepElement, DeferredClass, SequenceClass, RepeatClass, altrep_class, altrep_elt, altrep_length, force_materialization, is_altrep, is_materialized};
+pub use altrep::{
+    AltrepBuilder, AltrepClass, AltrepClassHandle, AltrepContext, AltrepElement, DeferredClass,
+    RepeatClass, SequenceClass, altrep_class, altrep_elt, altrep_length, force_materialization,
+    is_altrep, is_materialized,
+};
 
 #[allow(unused_imports)]
 pub use output::{
@@ -75,7 +79,7 @@ pub use session::{CancellationToken, RSession};
 #[cfg(all(test, not(feature = "altrep")))]
 mod no_altrep_guards {
     use crate::sexp::accessors::ALTREP;
-    use crate::sexp::ffi::{SEXP, SEXPTYPE};
+    use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::memory::with_arena;
 
     #[test]
@@ -87,7 +91,7 @@ mod no_altrep_guards {
     /// bit clear. Compact sequences are a separate path and are not built here.
     #[test]
     fn plain_vector_survives_full_gc_with_alt_bit_clear() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let sym =
             unsafe { crate::sexp::symbol::Rf_install(b"no_altrep_probe\0".as_ptr() as *const _) };
         let outer = unsafe {
@@ -99,14 +103,14 @@ mod no_altrep_guards {
             with_arena(|arena| arena.alloc_vector(SEXPTYPE::REALSXP, 4))
         };
         unsafe {
-            *((*outer).gengc_next_node as *mut SEXP) = inner;
+            crate::sexp::accessors::SET_VECTOR_ELT(outer, 0, inner);
             crate::sexp::envir::defineVar(sym, outer, crate::sexp::globals::R_GlobalEnv());
         }
         crate::sexp::gengc::full_gc();
         unsafe {
             assert_eq!(ALTREP(outer), 0);
             assert_eq!(ALTREP(inner), 0);
-            assert_eq!(*((*outer).gengc_next_node as *mut SEXP), inner);
+            assert_eq!(crate::sexp::accessors::VECTOR_ELT(outer, 0), inner);
             assert_eq!(
                 crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym),
                 outer

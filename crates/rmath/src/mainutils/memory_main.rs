@@ -1391,37 +1391,6 @@ pub unsafe fn R_duplicateAsResizable(x: SEXP) -> SEXP {
     }
 }
 
-/// Resize a vector.
-///
-/// This is the equivalent of R's `R_resizeVector()`.
-pub unsafe fn R_resizeVector(x: SEXP, newlen: R_xlen_t) {
-    unsafe {
-        if x.is_null() || newlen == 0 {
-            return;
-        }
-        let t = TYPEOF(x);
-        let oldlen = XLENGTH(x);
-        if newlen <= oldlen {
-            return;
-        }
-        let new_vec = crate::sexp::constructors::Rf_allocVector(t, newlen as c_int);
-        if new_vec.is_null() {
-            return;
-        }
-        let elem_size = match t {
-            10..=14 | 16 | 24 => 4,
-            15 => 8,
-            _ => return,
-        };
-        let src = crate::sexp::accessors::DATAPTR(x) as *const u8;
-        let dst = crate::sexp::accessors::DATAPTR(new_vec) as *mut u8;
-        let copy_bytes = (oldlen as usize) * (elem_size as usize);
-        if !src.is_null() && !dst.is_null() {
-            std::ptr::copy_nonoverlapping(src, dst, copy_bytes);
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Protection stack error handlers
 // ---------------------------------------------------------------------------

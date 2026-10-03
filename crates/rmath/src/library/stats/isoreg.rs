@@ -69,7 +69,9 @@ unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
                 if value.is_null() {
                     return ptr::null_mut();
                 }
-                (*nm).gengc_next_node.cast::<SEXP>().add(i).write(value);
+                if arena.set_reference_element(nm, i, value).is_none() {
+                    return ptr::null_mut();
+                }
             }
             let attribute = arena.cons(nm, R_NilValue(), names_symbol);
             if attribute.is_null() {

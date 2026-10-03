@@ -237,6 +237,47 @@ pub(crate) struct ArenaBacking {
     data_bufs: RefCell<HashMap<*mut u8, SharedBuffer>>,
 }
 impl ArenaBacking {
+    pub(crate) fn node_snapshot(&self, id: &NodeId) -> Option<SexprecCore> {
+        self.node_pages
+            .borrow()
+            .get(id.page())?
+            .storage
+            .copy_live(id)
+    }
+
+    pub(crate) fn node_projection(&self, id: &NodeId) -> Option<SEXP> {
+        self.node_pages.borrow().get(id.page())?.storage.resolve(id)
+    }
+
+    pub(crate) fn reference_payload_capacity(&self, pointer: *mut u8) -> Option<usize> {
+        self.data_bufs
+            .borrow()
+            .get(&pointer)?
+            .allocation
+            .reference_capacity()
+    }
+
+    pub(crate) fn reference_payload_elt(&self, pointer: *mut u8, index: usize) -> Option<SEXP> {
+        self.data_bufs
+            .borrow()
+            .get(&pointer)?
+            .allocation
+            .reference_elt(index)
+    }
+
+    pub(crate) fn replace_reference_payload(
+        &self,
+        pointer: *mut u8,
+        start: usize,
+        values: &[SEXP],
+    ) -> Option<()> {
+        self.data_bufs
+            .borrow()
+            .get(&pointer)?
+            .allocation
+            .replace_references(start, values)
+    }
+
     pub(crate) fn copy_reference_payload(
         &self,
         pointer: *mut u8,
@@ -1252,6 +1293,41 @@ impl RArena {
         self.heap_identity.clone()
     }
 
+    /// Constructor bridge: resolve each current projection once while the
+    /// allocator is lent, then mutate only the canonical typed cells.
+    pub(crate) fn set_reference_element(
+        &self,
+        parent: SEXP,
+        index: usize,
+        child: SEXP,
+    ) -> Option<()> {
+        use super::heap::ReferenceChild;
+        let parent = self.node_token(parent)?;
+        if child.is_null() {
+            return self
+                .heap_identity
+                .set_reference_elt(&parent, index, ReferenceChild::Null);
+        }
+        if let Some(child) = checked_node(child) {
+            return self.heap_identity.set_reference_elt(
+                &parent,
+                index,
+                ReferenceChild::Node(&child),
+            );
+        }
+        if let Some(child) = self.heap_identity.retained_singleton(child) {
+            return self.heap_identity.set_reference_elt(
+                &parent,
+                index,
+                ReferenceChild::Singleton(&child),
+            );
+        }
+        let pool = super::globals::immutable_singleton_pool();
+        let child = pool.lease(child)?;
+        self.heap_identity
+            .set_reference_elt(&parent, index, ReferenceChild::Singleton(&child))
+    }
+
     pub(crate) fn node_token(&self, pointer: SEXP) -> Option<CheckedNode> {
         if !self.contains(pointer) {
             return None;
@@ -1942,6 +2018,228 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn checked_reference_writes_reject_foreign_stale_children_and_parent_reuse() {
+        use super::super::heap::ReferenceChild;
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let parent = arena.alloc_vector(super::SEXPTYPE::VECSXP, 3);
+        let parent_token = arena.node_token(parent).unwrap();
+        let child = arena.alloc_vector(super::SEXPTYPE::INTSXP, 1);
+        let child_token = arena.node_token(child).unwrap();
+        heap.set_reference_elt(&parent_token, 1, ReferenceChild::Node(&child_token))
+            .unwrap();
+        let expected = vec![std::ptr::null_mut(), child, std::ptr::null_mut()];
+        assert_eq!(
+            heap.reference_elements(&parent_token),
+            Some(expected.clone())
+        );
+        let mut foreign = super::RArena::new();
+        let foreign_child = foreign.alloc_vector(super::SEXPTYPE::INTSXP, 1);
+        let foreign_token = foreign.node_token(foreign_child).unwrap();
+        assert!(
+            heap.replace_reference_elements(
+                &parent_token,
+                0,
+                &[
+                    ReferenceChild::Node(&child_token),
+                    ReferenceChild::Node(&foreign_token)
+                ]
+            )
+            .is_none()
+        );
+        assert!(
+            heap.set_reference_elt(&parent_token, 3, ReferenceChild::Null)
+                .is_none()
+        );
+        assert!(
+            heap.replace_reference_elements(&parent_token, usize::MAX, &[ReferenceChild::Null])
+                .is_none()
+        );
+        assert_eq!(
+            heap.reference_elements(&parent_token),
+            Some(expected.clone())
+        );
+        unsafe {
+            arena.free_node(child);
+        }
+        let replacement = arena.alloc_vector(super::SEXPTYPE::INTSXP, 1);
+        assert_eq!(replacement, child);
+        assert!(
+            heap.set_reference_elt(&parent_token, 0, ReferenceChild::Node(&child_token))
+                .is_none()
+        );
+        assert_eq!(heap.reference_elements(&parent_token), Some(expected));
+        unsafe {
+            arena.free_node(parent);
+        }
+        let replacement = arena.alloc_vector(super::SEXPTYPE::VECSXP, 3);
+        assert_eq!(replacement, parent);
+        let replacement_token = arena.node_token(replacement).unwrap();
+        assert!(heap.reference_elements(&parent_token).is_none());
+        assert!(
+            heap.set_reference_elt(&parent_token, 0, ReferenceChild::Null)
+                .is_none()
+        );
+        assert_eq!(
+            heap.reference_elements(&replacement_token),
+            Some(vec![std::ptr::null_mut(); 3])
+        );
+        assert!(arena.backing.node_pages.try_borrow_mut().is_ok());
+        assert!(arena.backing.data_bufs.try_borrow_mut().is_ok());
+    }
+
+    #[test]
+    fn checked_reference_headers_validate_body_kind_length_and_actual_payload() {
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let parent = arena.alloc_vector(super::SEXPTYPE::VECSXP, 3);
+        let token = arena.node_token(parent).unwrap();
+        let original = arena.backing.node_snapshot(token.id()).unwrap();
+        let replace = |header| {
+            arena.backing.node_pages.borrow()[token.id().page()]
+                .storage
+                .replace_live(token.id(), header)
+                .unwrap()
+        };
+        let mut header = original;
+        header.data.vector_mut().length = 4;
+        replace(header);
+        assert!(heap.reference_elements(&token).is_none());
+        header.data.vector_mut().length = -1;
+        replace(header);
+        assert!(heap.reference_elt(&token, 0).is_none());
+        header = original;
+        header.data = super::NodeBody::Other;
+        replace(header);
+        assert!(heap.reference_elements(&token).is_none());
+        header = original;
+        header.sxpinfo.set_alt(true);
+        replace(header);
+        assert_eq!(
+            heap.reference_elements(&token),
+            Some(vec![std::ptr::null_mut(); 3])
+        );
+        assert_eq!(
+            heap.set_reference_elt(&token, 0, super::super::heap::ReferenceChild::Null),
+            Some(())
+        );
+        header.gengc_next_node = std::ptr::null_mut();
+        replace(header);
+        assert!(heap.reference_elements(&token).is_none());
+        assert!(
+            heap.set_reference_elt(&token, 0, super::super::heap::ReferenceChild::Null)
+                .is_none()
+        );
+        header.data.vector_mut().length = 0;
+        replace(header);
+        assert!(heap.reference_elements(&token).is_none());
+        header.data.vector_mut().length = 3;
+        header.gengc_next_node = std::ptr::dangling_mut::<super::SexprecCore>();
+        replace(header);
+        assert!(heap.reference_elements(&token).is_none());
+        replace(original);
+        let numbers = arena.alloc_vector(super::SEXPTYPE::INTSXP, 3);
+        let numbers_token = arena.node_token(numbers).unwrap();
+        let mut header = original;
+        header.gengc_next_node = arena
+            .backing
+            .node_snapshot(numbers_token.id())
+            .unwrap()
+            .gengc_next_node;
+        arena.backing.node_pages.borrow()[token.id().page()]
+            .storage
+            .replace_live(token.id(), header)
+            .unwrap();
+        assert!(heap.reference_elements(&token).is_none());
+        assert!(heap.reference_elements(&numbers_token).is_none());
+        let empty = arena.alloc_vector(super::SEXPTYPE::VECSXP, 0);
+        let empty_token = arena.node_token(empty).unwrap();
+        assert_eq!(heap.reference_elements(&empty_token), Some(Vec::new()));
+        assert!(heap.reference_elt(&empty_token, 0).is_none());
+        assert_eq!(
+            heap.replace_reference_elements(&empty_token, 0, &[]),
+            Some(())
+        );
+    }
+
+    #[test]
+    fn checked_reference_cells_keep_the_actual_singleton_after_pool_and_facade_drop() {
+        use super::super::{globals, heap::ReferenceChild};
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let parent = arena.alloc_vector(super::SEXPTYPE::VECSXP, 1);
+        let token = arena.node_token(parent).unwrap();
+        let root = token.root_lease().unwrap();
+        let pool = globals::immutable_singleton_pool();
+        let child = pool.nil();
+        let projection = child.projection();
+        heap.set_reference_elt(&token, 0, ReferenceChild::Singleton(&child))
+            .unwrap();
+        globals::close_immutable_singletons_for_test();
+        drop(child);
+        drop(pool);
+        drop(arena);
+        assert_eq!(heap.reference_elt(&token, 0), Some(projection));
+        let retained = heap.retained_singleton(projection).unwrap();
+        assert_eq!(
+            retained.snapshot().sxpinfo.type_of(),
+            super::SEXPTYPE::NILSXP
+        );
+        let new_pool = globals::immutable_singleton_pool();
+        assert_ne!(new_pool.nil().projection(), projection);
+        drop(retained);
+        drop(root);
+        assert!(heap.retained_singleton(projection).is_none());
+        assert!(heap.reference_elements(&token).is_none());
+    }
+
+    #[test]
+    fn checked_reference_cells_resolve_multiple_same_heap_stores_without_page_aliasing() {
+        use super::super::{heap::ReferenceChild, instance::persistent::PersistentHeap};
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let parent = arena.alloc_vector(super::SEXPTYPE::VECSXP, 2);
+        let parent_token = arena.node_token(parent).unwrap();
+        let root = parent_token.root_lease().unwrap();
+        let mut later = super::RArena::fresh_with_identity(heap.clone());
+        let child = later.alloc_vector(super::SEXPTYPE::INTSXP, 1);
+        let child_token = later.node_token(child).unwrap();
+        let mut permanent = PersistentHeap::new(heap.clone());
+        let scalar = permanent.allocate_integer(9, false).unwrap();
+        let scalar_token = permanent.token(scalar).unwrap();
+        let string = permanent.allocate_string(std::ptr::null_mut()).unwrap();
+        let string_token = permanent.token(string).unwrap();
+        heap.replace_reference_elements(
+            &parent_token,
+            0,
+            &[
+                ReferenceChild::Node(&child_token),
+                ReferenceChild::Node(&scalar_token),
+            ],
+        )
+        .unwrap();
+        heap.set_reference_elt(&string_token, 0, ReferenceChild::Node(&parent_token))
+            .unwrap();
+        assert_eq!(
+            heap.reference_elements(&parent_token),
+            Some(vec![child, scalar])
+        );
+        assert_eq!(heap.reference_elt(&string_token, 0), Some(parent));
+        permanent.remove(scalar);
+        assert!(
+            heap.set_reference_elt(&string_token, 0, ReferenceChild::Node(&scalar_token))
+                .is_none()
+        );
+        assert_eq!(heap.reference_elt(&string_token, 0), Some(parent));
+        drop(arena);
+        drop(later);
+        drop(permanent);
+        assert_eq!(heap.reference_elt(&string_token, 0), Some(parent));
+        drop(root);
+        assert!(heap.reference_elt(&string_token, 0).is_none());
+    }
+
     #[test]
     fn heap_reference_snapshots_use_only_typed_owners_in_the_same_domain() {
         let mut arena = super::RArena::new();

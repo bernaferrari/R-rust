@@ -1283,18 +1283,14 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     }
 
     fn scalar_na_string(&mut self) -> Result<SEXP, ParseError> {
-        let Some(strings) = self.arena.alloc_vector_sexp(SEXPTYPE::STRSXP, 1) else {
-            return Err(self.allocation_error());
-        };
-        let data = unsafe { (*strings.clone().as_raw()).gengc_next_node as *mut SEXP };
-        if data.is_null() {
-            drop(strings);
+        let strings = self.arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+        if strings.is_null() {
             return Err(self.allocation_error());
         }
-        unsafe {
-            *data = R_NaString();
+        if self.arena.set_reference_element(strings, 0, unsafe { R_NaString() }).is_none() {
+            return Err(self.allocation_error());
         }
-        Ok(strings.as_raw())
+        Ok(strings)
     }
 
     fn peek(&self) -> &Token {

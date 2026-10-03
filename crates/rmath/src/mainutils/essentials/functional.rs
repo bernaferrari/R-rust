@@ -3471,8 +3471,7 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
                     };
                     if !charsxp.is_null() {
-                        let data = (*result).gengc_next_node as *mut SEXP;
-                        *data.add(idx) = charsxp;
+                        crate::sexp::accessors::SET_STRING_ELT(result, idx as R_xlen_t, charsxp);
                     }
                 }
                 t if t == SEXPTYPE::CPLXSXP => {

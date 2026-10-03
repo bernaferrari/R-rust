@@ -190,15 +190,13 @@ impl<'a> SexpMut<'a> {
     /// the index is out of bounds, or data pointer is null.
     #[inline]
     pub fn set_string_elt(&mut self, i: R_xlen_t, v: Sexp<'a>) -> bool {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().set_string_elt(i, v) }
+        self.inner.clone().set_string_elt(i, v)
     }
 
     /// Set the i-th string element with typed error reporting.
     #[inline]
     pub fn try_set_string_elt(&mut self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().try_set_string_elt(i, v) }
+        self.inner.clone().try_set_string_elt(i, v)
     }
 
     /// Set the i-th vector element.
@@ -207,16 +205,14 @@ impl<'a> SexpMut<'a> {
     /// index is out of bounds, or data pointer is null.
     #[inline]
     pub fn set_vector_elt(&mut self, i: R_xlen_t, v: Sexp<'a>) -> bool {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().set_vector_elt(i, v) }
+        self.inner.clone().set_vector_elt(i, v)
     }
 
     /// Set the i-th generic/expression vector element with typed error
     /// reporting.
     #[inline]
     pub fn try_set_vector_elt(&mut self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().try_set_vector_elt(i, v) }
+        self.inner.clone().try_set_vector_elt(i, v)
     }
 }
 

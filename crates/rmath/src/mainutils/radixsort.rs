@@ -1123,12 +1123,16 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
         if n > 0 {
             *o = -1;
         }
-        let xd: *mut c_void = DATAPTR(x);
+        let xtype = TYPEOF(x);
+        let xd: *mut c_void = if matches!(SEXPTYPE(xtype), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::REALSXP) {
+            DATAPTR(x)
+        } else {
+            ptr::null_mut()
+        };
 
         with_radix_state(|s| s.stackgrps = narg > 1 || retGrp);
 
         // Dispatch on first arg type
-        let xtype = TYPEOF(x);
         match xtype {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
                 tmp = isorted(xd as *const c_int, n);
@@ -1212,7 +1216,6 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
         while col <= narg {
             x = CAR(args);
             args = CDR(args);
-            let xd_col: *mut c_void = DATAPTR(x);
             ngrp = with_radix_state(|s| s.gsngrp[with_radix_state(|s| s.flip) as usize]);
             if ngrp == n && with_radix_state(|s| s.nalast) != 0 {
                 break;
@@ -1234,6 +1237,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                 break;
             }
 
+            let xd_col: *mut c_void = DATAPTR(x);
             let mut idx: c_int = 0;
             let mut grp: c_int = 0;
             let cur_flip = with_radix_state(|s| s.flip);

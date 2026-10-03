@@ -135,9 +135,7 @@ pub unsafe fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, S
         eval_safe(expr.clone(), env)
     } {
         Ok(result) => Ok(result),
-        Err(message) if is_simple_warning_hook_call(expr) => {
-            Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
-        }
+        Err(message) if is_simple_warning_hook_call(expr) => Ok(Sexp::nil()),
         Err(message) => Err(message),
     }
 }
@@ -158,20 +156,30 @@ pub unsafe fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, S
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
 pub unsafe fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    // Dynamically constructed calls can contain literal heap values that are
-    // reachable only through this expression while recursive evaluation runs.
-    let _expr_root = unsafe { crate::sexp::protect::protect(expr.clone().as_raw()) };
-    let _env_root = unsafe { crate::sexp::protect::protect(env.clone().as_raw()) };
+    // Capture once and install automatic roots before the first callback.
+    // Raw entry points are normalized here into the actual active heap.
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .map_err(|err| sexp_err("evaluation owner", err))?;
+    let factory = crate::sexp::object::SessionNodeFactory::new(owner);
+    let expr = factory
+        .wrap(expr.as_raw())
+        .map_err(|err| sexp_err("expression", err))?;
+    let env = factory
+        .wrap(env.as_raw())
+        .map_err(|err| sexp_err("environment", err))?;
     let _guard = check_eval_depth()?;
 
-    let result =
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
         eval_safe_inner(expr, env)
     }));
 
     match result {
-        Ok(inner) => inner,
+        Ok(inner) => inner.and_then(|value| {
+            factory
+                .wrap(value.as_raw())
+                .map_err(|err| sexp_err("evaluation result", err))
+        }),
         Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
             Ok(signal) => match *signal {
                 crate::sexp::context::RSignal::Error { message } => Err(message),
@@ -251,8 +259,13 @@ unsafe fn eval_bytecode_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'
     }
     // The call that entered this body was already counted in `eval_safe`.
     // Counting again made `options(expressions=)` about half of GNU's depth.
+    let factory = env
+        .node_factory()
+        .map_err(|err| sexp_err("bytecode owner", err))?;
     let result = unsafe { super::bc_eval::bcEval(expr.as_raw(), env.as_raw()) };
-    Ok(unsafe { Sexp::from_raw_unchecked(result) })
+    factory
+        .wrap(result)
+        .map_err(|err| sexp_err("bytecode result", err))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -504,8 +517,13 @@ unsafe fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a
     }
 
     // Force the promise
+    let factory = rho
+        .node_factory()
+        .map_err(|err| sexp_err("promise owner", err))?;
     let raw_result = unsafe { forcePromise(prom.as_raw()) };
-    (unsafe { /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */ Sexp::try_from_raw(raw_result) }).map_err(|err| sexp_err("forced promise result", err))
+    factory
+        .wrap(raw_result)
+        .map_err(|err| sexp_err("forced promise result", err))
 }
 
 /// Safe dots evaluation.
@@ -515,7 +533,7 @@ fn eval_dots_safe<'a>(_dots: Sexp<'a>, _rho: Sexp<'a>) -> Result<Sexp<'a>, Strin
 
 // Application of closures, specials, and builtins lives in `eval::apply`.
 // ---------------------------------------------------------------------------
-// Legacy raw-pointer-based safe API (kept for backward compatibility)
+// Owner-scoped evaluation API
 // ---------------------------------------------------------------------------
 
 /// Evaluate an R expression in an environment.
@@ -529,66 +547,6 @@ pub unsafe fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     unsafe {
         /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
         eval_safe(e, rho)
-    }
-}
-
-/// Internal safe eval implementation (legacy, delegates to eval_safe).
-unsafe fn eval_inner_safe<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
-    if e.is_null() {
-        return Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
-    }
-
-    super::runtime::set_visible(TRUE);
-
-    let expr = unsafe { Sexp::from_raw_unchecked(e) };
-    let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    unsafe {
-        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-        eval_safe(expr, env)
-    }
-}
-
-/// Check if a SEXPTYPE is self-evaluating (returns as-is without further evaluation).
-fn is_self_evaluating(t: c_int) -> bool {
-    matches!(
-        t,
-        NILSXP
-            | LISTSXP
-            | LGLSXP
-            | INTSXP
-            | REALSXP
-            | STRSXP
-            | CPLXSXP
-            | RAWSXP
-            | OBJSXP
-            | SPECIALSXP
-            | BUILTINSXP
-            | ENVSXP
-            | CLOSXP
-            | VECSXP
-            | EXPRSXP
-            | EXTPTRSXP
-            | WEAKREFSXP
-    )
-}
-
-/// Dispatch evaluation based on SEXPTYPE (legacy, delegates to eval_safe).
-unsafe fn eval_dispatch<'a>(t: c_int, e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
-    let expr = unsafe { Sexp::from_raw_unchecked(e) };
-    let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    unsafe {
-        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-        eval_safe(expr, env)
-    }
-}
-
-/// Evaluate a symbol (SYMSXP) — variable lookup (legacy).
-unsafe fn eval_symbol<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
-    let expr = unsafe { Sexp::from_raw_unchecked(e) };
-    let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    unsafe {
-        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-        eval_safe(expr, env)
     }
 }
 
@@ -622,26 +580,26 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 /// `e` and `rho` must be valid SEXP pointers (or null).
 #[must_use]
 pub(crate) unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
-    match (
-        (unsafe {
-            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-            Sexp::from_raw(e)
-        }),
-        (unsafe {
-            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-            Sexp::from_raw(rho)
-        }),
-    ) {
-        (Some(expr), Some(env)) => match unsafe {
-            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-            eval_expr(expr, env)
-        } {
-            Ok(result) => unsafe { super::jit::handle_exec_continuation(result.as_raw()) },
-            Err(msg) => {
-                std::panic::panic_any(crate::sexp::context::RSignal::Error { message: msg });
-            }
-        },
-        _ => unsafe { R_NilValue() },
+    if e.is_null() || rho.is_null() {
+        return unsafe { R_NilValue() };
+    }
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
+    let factory = crate::sexp::object::SessionNodeFactory::new(owner);
+    let expr = factory
+        .wrap(e)
+        .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
+    let env = factory
+        .wrap(rho)
+        .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
+    match unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        eval_expr(expr, env)
+    } {
+        Ok(result) => unsafe { super::jit::handle_exec_continuation(result.as_raw()) },
+        Err(msg) => {
+            std::panic::panic_any(crate::sexp::context::RSignal::Error { message: msg });
+        }
     }
 }
 
@@ -658,52 +616,9 @@ fn is_simple_warning_hook_call(expr: Sexp<'_>) -> bool {
     )
 }
 
-/// Internal eval implementation (legacy, delegates to safe version).
+/// Raw entry for operations being migrated to owned evaluation.
 pub(crate) unsafe fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
     unsafe { Rf_eval(e, rho) }
-}
-
-// ---------------------------------------------------------------------------
-// eval_lang — evaluate a language/function call (legacy, delegates to safe)
-// ---------------------------------------------------------------------------
-
-/// Evaluate a LANGSXP (function call expression) — legacy wrapper.
-unsafe fn eval_lang<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
-    let expr = unsafe { Sexp::from_raw_unchecked(e) };
-    let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    unsafe {
-        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-        eval_lang_safe(expr, env)
-    }
-}
-
-/// Evaluate a SPECIAL function (arguments not evaluated) — legacy wrapper.
-unsafe fn eval_special<'a>(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
-    let fun = unsafe { Sexp::from_raw_unchecked(op) };
-    let call = unsafe { Sexp::from_raw_unchecked(e) };
-    let arglist = unsafe { Sexp::from_raw_unchecked(args) };
-    let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    apply_special_safe(fun, call, arglist, env)
-}
-
-/// Evaluate a BUILTIN function (arguments evaluated first) — legacy wrapper.
-unsafe fn eval_builtin<'a>(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
-    let fun = unsafe { Sexp::from_raw_unchecked(op) };
-    let call = unsafe { Sexp::from_raw_unchecked(e) };
-    let arglist = unsafe { Sexp::from_raw_unchecked(args) };
-    let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    apply_builtin_safe(fun, call, arglist, env)
-}
-
-/// Evaluate a CLOSXP (user-defined function) — legacy wrapper.
-unsafe fn eval_closure<'a>(e: SEXP, op: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
-    let fun = unsafe { Sexp::from_raw_unchecked(op) };
-    let call = unsafe { Sexp::from_raw_unchecked(e) };
-    let args = unsafe { Sexp::from_raw_unchecked(e) }
-        .try_cdr()
-        .map_err(|err| sexp_err("missing args", err))?;
-    let env = unsafe { Sexp::from_raw_unchecked(rho) };
-    apply_closure_safe(fun, call, args, env)
 }
 
 // ---------------------------------------------------------------------------

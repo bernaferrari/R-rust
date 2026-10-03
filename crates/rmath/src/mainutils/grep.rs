@@ -1640,6 +1640,13 @@ pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             Rf_error_fmt("grepRaw only supports fixed = TRUE in this port");
         }
 
+        if TYPEOF(pat) != SEXPTYPE::RAWSXP {
+            Rf_error_fmt("'pattern' must be a raw vector");
+        }
+        if TYPEOF(text) != SEXPTYPE::RAWSXP {
+            Rf_error_fmt("'text' must be a raw vector");
+        }
+
         // Get raw bytes from pattern and text
         let pat_len = XLENGTH(pat) as usize;
         let text_len = XLENGTH(text) as usize;
@@ -1774,6 +1781,47 @@ pub unsafe fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grepraw_rejects_reference_vectors_before_reading_payload_bytes() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            for (pattern_type, text_type, error) in [
+                (SEXPTYPE::STRSXP, SEXPTYPE::RAWSXP, Some("'pattern' must be a raw vector")),
+                (SEXPTYPE::RAWSXP, SEXPTYPE::VECSXP, Some("'text' must be a raw vector")),
+                (SEXPTYPE::RAWSXP, SEXPTYPE::RAWSXP, None),
+            ] {
+                let raw_args = unsafe {
+                    crate::sexp::memory::with_arena(|arena| {
+                        let pattern = arena.alloc_vector(pattern_type, 1);
+                        let text = arena.alloc_vector(text_type, 1);
+                        let nil = R_NilValue();
+                        let yes = crate::sexp::globals::R_True();
+                        let no = crate::sexp::globals::R_False();
+                        [pattern, text, nil, no, yes, no, no, no]
+                            .into_iter()
+                            .rev()
+                            .fold(nil, |tail, value| arena.cons(value, tail, std::ptr::null_mut()))
+                    })
+                };
+                let args = session.sexp(raw_args).expect("owned grepRaw arguments");
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    do_grepraw(R_NilValue(), R_NilValue(), args.clone().as_raw(), R_NilValue())
+                }));
+                match error {
+                    Some(expected) => {
+                        let payload = result.expect_err("reference vector must be rejected");
+                        let error = payload.downcast::<RError>().expect("R type error");
+                        assert_eq!(error.message, expected);
+                    }
+                    None => {
+                        let value = session.sexp(result.expect("valid raw search")).expect("owned result");
+                        assert_eq!(value.integer_elt(0), Some(1));
+                    }
+                }
+            }
+        });
+    }
 
     fn test_ok<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
         match result {

@@ -914,8 +914,7 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             let cstr = c"data.frame";
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*class_vec).gengc_next_node as *mut SEXP;
-                *data.add(0) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
         }
@@ -937,8 +936,7 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             let cstr = c"x";
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*names_vec).gengc_next_node as *mut SEXP;
-                *data.add(0) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(names_vec, 0 as R_xlen_t, charsxp);
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
         }

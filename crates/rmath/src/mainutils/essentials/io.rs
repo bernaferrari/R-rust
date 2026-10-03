@@ -151,8 +151,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             let cstr = CString::new(*line).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result
@@ -214,8 +213,7 @@ pub unsafe fn do_list_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let cstr = CString::new(name.as_str()).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result
@@ -1599,12 +1597,10 @@ pub unsafe fn do_with_visible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             let v_char = crate::sexp::constructors::Rf_mkChar(v_str.as_ptr());
             let vi_char = crate::sexp::constructors::Rf_mkChar(vi_str.as_ptr());
             if !v_char.is_null() {
-                let data = (*names).gengc_next_node as *mut SEXP;
-                *data.add(0) = v_char;
+                crate::sexp::accessors::SET_STRING_ELT(names, 0 as R_xlen_t, v_char);
             }
             if !vi_char.is_null() {
-                let data = (*names).gengc_next_node as *mut SEXP;
-                *data.add(1) = vi_char;
+                crate::sexp::accessors::SET_STRING_ELT(names, 1 as R_xlen_t, vi_char);
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         }
@@ -2725,14 +2721,12 @@ pub unsafe fn do_read_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     *dst.add(i) = v;
                 }
             }
-            let data = (*result).gengc_next_node as *mut SEXP;
-            *data.add(j) = col;
+            crate::sexp::accessors::SET_VECTOR_ELT(result, j as R_xlen_t, col);
 
             let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let nmdata = (*names_vec).gengc_next_node as *mut SEXP;
-                *nmdata.add(j) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(names_vec, j as R_xlen_t, charsxp);
             }
         }
 
@@ -2744,8 +2738,7 @@ pub unsafe fn do_read_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let cstr = c"data.frame";
         let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
         if !charsxp.is_null() {
-            let cdata = (*class_vec).gengc_next_node as *mut SEXP;
-            *cdata.add(0) = charsxp;
+            crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
         }
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
         result
@@ -2792,8 +2785,7 @@ pub unsafe fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             // TYPEOF returns c_int; only a VECSXP payload may be read as
             // column pointers. Atomic vectors format as a single column.
             let nrows = if t == SEXPTYPE::VECSXP {
-                let data = (*x).gengc_next_node as *mut SEXP;
-                let col = *data;
+                let col = crate::sexp::accessors::VECTOR_ELT(x, 0);
                 if !col.is_null() {
                     XLENGTH(col) as usize
                 } else {
@@ -2815,8 +2807,7 @@ pub unsafe fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 let mut row: Vec<String> = Vec::new();
                 for j in 0..ncols {
                     let val = if t == SEXPTYPE::VECSXP {
-                        let data = (*x).gengc_next_node as *mut SEXP;
-                        let col = *data.add(j);
+                        let col = crate::sexp::accessors::VECTOR_ELT(x, j as R_xlen_t);
                         if !col.is_null() {
                             elt_to_string(col, i as R_xlen_t)
                         } else {
@@ -2920,14 +2911,12 @@ pub unsafe fn do_read_delim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     *dst.add(i) = v;
                 }
             }
-            let data = (*result).gengc_next_node as *mut SEXP;
-            *data.add(j) = col;
+            crate::sexp::accessors::SET_VECTOR_ELT(result, j as R_xlen_t, col);
 
             let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let nmdata = (*names_vec).gengc_next_node as *mut SEXP;
-                *nmdata.add(j) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(names_vec, j as R_xlen_t, charsxp);
             }
         }
 
@@ -2937,8 +2926,7 @@ pub unsafe fn do_read_delim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let cstr = c"data.frame";
         let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
         if !charsxp.is_null() {
-            let cdata = (*class_vec).gengc_next_node as *mut SEXP;
-            *cdata.add(0) = charsxp;
+            crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
         }
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
         result
@@ -3110,8 +3098,7 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let cstr = c"data.frame";
         let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
         if !charsxp.is_null() {
-            let cdata = (*class_vec).gengc_next_node as *mut SEXP;
-            *cdata.add(0) = charsxp;
+            crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
         }
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
         result

@@ -33,6 +33,33 @@ impl<'session> OwnerToken<'session> {
         }
     }
 
+    /// Capture the explicitly active owner at a translated raw boundary.
+    ///
+    /// # Safety
+    /// The caller retains this writable owner for `'session` and excludes
+    /// overlapping instance, arena and payload loans across token operations.
+    pub(crate) unsafe fn current() -> SexpResult<Self> {
+        let pointer = super::instance::current_instance_ptr().ok_or(SexpError::OwnerNotActive)?;
+        // SAFETY: the raw entry boundary supplies the original owner lifetime.
+        Ok(unsafe { Self::from_raw(pointer) })
+    }
+
+    /// Lend the active owner's arena; callbacks and collection finish after
+    /// this exclusive lend ends. The result cannot borrow from the arena.
+    pub(crate) fn with_arena<T>(
+        self,
+        f: impl FnOnce(&mut super::memory::RArena) -> T,
+    ) -> SexpResult<T> {
+        self.require_active()?;
+        if super::memory::is_arena_lent(self.as_ptr()) {
+            return Err(SexpError::OwnerNotActive);
+        }
+        // SAFETY: the lifetime-bound token retains the owner, and the checked
+        // lend state excludes an overlapping arena loan. Field-local lending
+        // ends before deferred callbacks and GC run.
+        Ok(unsafe { super::memory::with_arena_in(self.as_ptr(), f) })
+    }
+
     pub(crate) fn as_ptr(self) -> *mut RInstance {
         self.pointer.as_ptr()
     }
@@ -57,7 +84,7 @@ impl<'session> OwnerToken<'session> {
     }
 
     /// Collection callbacks use ambient R dispatch, so require this owner active.
-    fn require_active(self) -> SexpResult<()> {
+    pub(crate) fn require_active(self) -> SexpResult<()> {
         if super::instance::current_instance_ptr() == Some(self.as_ptr()) {
             Ok(())
         } else {

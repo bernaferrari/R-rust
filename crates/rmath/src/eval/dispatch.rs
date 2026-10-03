@@ -26,8 +26,8 @@ use crate::sexp::envir::{R_findVar, R_findVarInFrame, R_isMissing, forcePromise}
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
-use crate::sexp::object::{PairlistBuilder, Sexp};
-use crate::sexp::protect::{ProtectGuard, protect};
+use crate::sexp::object::{PairlistBuilder, SessionNodeFactory, Sexp};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
 
 use super::builtin::PRIMNAME;
@@ -50,7 +50,6 @@ unsafe fn choose_ops_method(
         let _rho_guard = protect(newrho);
         let reverse_value = Rf_ScalarLogical(if reverse { TRUE } else { FALSE });
         let _reverse_guard = protect(reverse_value);
-        let mut guards = Vec::new();
         let mut actuals = PairlistBuilder::new();
         for (name, value) in [
             (c"x", x),
@@ -66,17 +65,21 @@ unsafe fn choose_ops_method(
             if named < 2 {
                 crate::sexp::accessors::SET_NAMED(value, named + 1);
             }
-            let cell = actuals
-                .push_cell(Sexp::from_raw_unchecked(symbol), None)
+            actuals
+                .push_cell(
+                    actuals
+                        .wrap(symbol)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                    None,
+                )
                 .unwrap_or_else(|_| {
                     crate::sexp::context::r_error("failed to allocate chooseOpsMethod arguments")
                 });
-            guards.push(protect(cell));
         }
-        let actuals = actuals.finish().unwrap_or_else(|_| {
+        let actuals_owner = actuals.finish().unwrap_or_else(|_| {
             crate::sexp::context::r_error("failed to allocate chooseOpsMethod arguments")
         });
-        let actuals = actuals.as_raw();
+        let actuals = actuals_owner.as_raw();
         let head = Rf_lang3(
             Rf_install(c"::".as_ptr()),
             Rf_install(c"base".as_ptr()),
@@ -115,37 +118,30 @@ unsafe fn method_name_is(method: SEXP, name: &[u8]) -> bool {
     }
 }
 
-/// Push one evaluated argument cell onto `builder`, keeping every cell built
-/// so far protected until the caller finishes the list.
-///
-/// Upstream `evalList`/`promiseArgs` PROTECT each accumulated pairlist cell
-/// (and the value stored into it) while later arguments are still being
-/// evaluated: a `gc()` run by a later argument — directly or via a forced
-/// promise or loop safe point — must not free the earlier results. `guards`
-/// owns those protect-stack entries; drop it only once the finished list has
-/// been handed to the caller.
-unsafe fn push_pairlist_cell(
-    builder: &mut PairlistBuilder,
-    guards: &mut Vec<ProtectGuard>,
-    value: SEXP,
-    tag: SEXP,
-) {
-    // The value is reachable only from this local until it lives in a
-    // protected cell, and the cons allocation below may run the collector.
-    guards.push(unsafe { protect(value) });
-    let Some(value) = (unsafe { Sexp::from_raw(value) }) else {
-        return;
+/// Validate and retain the next value before allocating its cell. The
+/// builder's counted head root retains the whole completed prefix.
+unsafe fn push_pairlist_cell(builder: &mut PairlistBuilder, value: SEXP, tag: SEXP) {
+    let value = builder
+        .wrap(value)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+    let tag = if tag.is_null() {
+        None
+    } else {
+        Some(
+            builder
+                .wrap(tag)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+        )
     };
-    let tag = unsafe { Sexp::from_raw(tag) };
-    if let Ok(cell) = builder.push_cell(value, tag) {
-        guards.push(unsafe { protect(cell) });
-    }
+    builder
+        .push(value, tag)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
 }
 
 fn finish_pairlist(builder: PairlistBuilder) -> SEXP {
     builder
         .finish()
-        .map(Sexp::as_raw)
+        .map(|value| value.as_raw())
         .unwrap_or_else(|_| unsafe { R_NilValue() })
 }
 
@@ -153,89 +149,124 @@ fn finish_pairlist(builder: PairlistBuilder) -> SEXP {
 // evalList — evaluate each element of a pairlist
 // ---------------------------------------------------------------------------
 
-/// Evaluate each element of a pairlist, returning a new pairlist of results.
-///
-/// This is the equivalent of R's `evalList()` in eval.c.
-pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
-    unsafe {
-        if el.is_null() || el == R_NilValue() {
-            return R_NilValue();
+/// Evaluate rooted arguments while retaining earlier results across callbacks.
+/// The returned pairlist owns its automatic root; callers borrow raw projections
+/// only while keeping this handle alive.
+pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: c_int) -> Sexp<'a> {
+    let factory = rho
+        .node_factory()
+        .or_else(|_| el.node_factory())
+        .or_else(|error| call.as_ref().map_or(Err(error), Sexp::node_factory))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+    factory
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+    let el = factory
+        .wrap(el.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+    let call = call.map(|call| {
+        factory
+            .wrap(call.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
+    });
+    let mut result = PairlistBuilder::from_factory(factory.clone());
+    let mut bumped = NamedArguments { values: Vec::new() };
+    let mut current = el;
+    let mut count: c_int = 0;
+    while !current.is_nil() {
+        if nargs >= 0 && count >= nargs {
+            break;
         }
-
-        let mut result = PairlistBuilder::new();
-        // Cells of the in-progress list stay protected across later argument
-        // evaluations; released once the finished list is returned.
-        let mut cell_guards: Vec<ProtectGuard> = Vec::new();
-        let mut bumped: Vec<SEXP> = Vec::new();
-
-        let mut current = el;
-        let mut count: c_int = 0;
-        while !current.is_null() && current != R_NilValue() {
-            if nargs >= 0 && count >= nargs {
-                break;
-            }
-
-            let expr = CAR(current);
-            if expr == R_DotsSymbol() {
-                // If we have a ... symbol, look up what it is bound to. A
-                // DOTSXP (or nil) binding is spliced cell by cell, forcing
-                // each promise and preserving tags; anything else bound to a
-                // ... symbol (other than R_MissingArg) is an error.
-                let h = R_findVar(expr, rho);
-                let _h_guard = protect(h);
-                if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
-                    let mut dh = h;
-                    while !dh.is_null() && dh != R_NilValue() {
-                        if nargs >= 0 && count >= nargs {
-                            break;
-                        }
-                        let val = Rf_eval(CAR(dh), rho);
-                        bump_named_link(val);
-                        bumped.push(val);
-                        push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(dh));
-                        dh = CDR(dh);
-                        count += 1;
+        let expr = current
+            .try_car()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        if expr.as_raw() == unsafe { R_DotsSymbol() } {
+            // Lookup may force active bindings; acquire its root before any
+            // later promise evaluation or list-cell allocation.
+            let h = factory
+                .wrap(unsafe { R_findVar(expr.as_raw(), rho.as_raw()) })
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            if h.typeof_() == SEXPTYPE::DOTSXP || h.is_nil() {
+                let mut dh = h;
+                while !dh.is_nil() {
+                    if nargs >= 0 && count >= nargs {
+                        break;
                     }
-                } else if h != R_MissingArg() {
-                    std::panic::panic_any(RError {
-                        message: "'...' used in an incorrect context".to_string(),
-                    });
+                    let expr = dh
+                        .try_car()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    let value = factory
+                        .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    bumped.retain(&value);
+                    result
+                        .push(value, dh.tag())
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    dh = dh
+                        .try_cdr()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    count += 1;
                 }
-            } else if expr == R_MissingArg() {
-                // GNU evalList errors on an empty argument (`list(, 1)`,
-                // `sum(1,)`). `colMeans(x,)` is in the upstream cancor
-                // source; those four margin primitives treat that slot as
-                // their default.
-                let head = if call.is_null() { R_NilValue() } else { CAR(call) };
-                let allow = if !head.is_null() && TYPEOF(head) == SEXPTYPE::SYMSXP {
-                    let name = crate::sexp::accessors::CHAR(crate::sexp::accessors::PRINTNAME(head));
-                    let name = if name.is_null() { "" } else { std::ffi::CStr::from_ptr(name).to_str().unwrap_or("") };
-                    matches!(name, "colMeans" | "colSums" | "rowMeans" | "rowSums" | "dput" | "round" | "signif")
-                } else {
-                    false
-                };
-                if allow {
-                    push_pairlist_cell(&mut result, &mut cell_guards, R_MissingArg(), TAG(current));
-                } else {
-                    std::panic::panic_any(RError {
-                        message: format!("argument {} is empty", count + 1),
-                    });
-                }
-            } else {
-                let val = Rf_eval(expr, rho);
-                bump_named_link(val);
-                bumped.push(val);
-                push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(current));
+            } else if h.as_raw() != unsafe { R_MissingArg() } {
+                crate::sexp::context::r_error("'...' used in an incorrect context");
             }
-
-            current = CDR(current);
-            count += 1;
+        } else if expr.as_raw() == unsafe { R_MissingArg() } {
+            let head = call.as_ref().and_then(Sexp::car);
+            let name = head
+                .filter(|head| head.typeof_() == SEXPTYPE::SYMSXP)
+                .and_then(|head| head.printname())
+                .and_then(|name| name.try_as_string().ok());
+            if name.as_deref().is_some_and(|name| {
+                matches!(
+                    name,
+                    "colMeans" | "colSums" | "rowMeans" | "rowSums" | "dput" | "round" | "signif"
+                )
+            }) {
+                result
+                    .push(expr, current.tag())
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            } else {
+                crate::sexp::context::r_error(&format!("argument {} is empty", count + 1));
+            }
+        } else {
+            let value = factory
+                .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            bumped.retain(&value);
+            result
+                .push(value, current.tag())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
         }
+        current = current
+            .try_cdr()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        count += 1;
+    }
+    result
+        .finish()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
+}
 
-        for val in bumped {
-            drop_named_link(val);
+/// NAMED link accounting is independent of root ownership. Restore the
+/// temporary sharing metadata on both normal return and an R error unwind.
+struct NamedArguments<'a> {
+    values: Vec<Sexp<'a>>,
+}
+impl<'a> NamedArguments<'a> {
+    fn retain(&mut self, value: &Sexp<'a>) {
+        unsafe {
+            bump_named_link(value.as_raw());
         }
-        finish_pairlist(result)
+        self.values.push(value.clone());
+    }
+}
+impl Drop for NamedArguments<'_> {
+    fn drop(&mut self) {
+        for value in &self.values {
+            unsafe {
+                drop_named_link(value.as_raw());
+            }
+        }
     }
 }
 
@@ -279,8 +310,6 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
         }
 
         let mut result = PairlistBuilder::new();
-        // Same protect chain as evalList: forcing a later promise can run gc().
-        let mut cell_guards: Vec<ProtectGuard> = Vec::new();
 
         let mut current = call;
         while !current.is_null() && current != R_NilValue() {
@@ -303,7 +332,7 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
                         } else {
                             mkPROMISE(CAR(dh), rho)
                         };
-                        push_pairlist_cell(&mut result, &mut cell_guards, cell_value, TAG(dh));
+                        push_pairlist_cell(&mut result, cell_value, TAG(dh));
                         dh = CDR(dh);
                     }
                 } else if h != R_MissingArg() {
@@ -312,11 +341,11 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
                     });
                 }
             } else if arg_expr == R_MissingArg() {
-                push_pairlist_cell(&mut result, &mut cell_guards, R_MissingArg(), tag);
+                push_pairlist_cell(&mut result, R_MissingArg(), tag);
             } else {
                 // Create a promise for each argument
                 let prom = mkPROMISE(arg_expr, rho);
-                push_pairlist_cell(&mut result, &mut cell_guards, prom, tag);
+                push_pairlist_cell(&mut result, prom, tag);
             }
             current = CDR(current);
         }
@@ -332,23 +361,40 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
 /// Evaluate arguments, optionally dropping missing values.
 /// Used by DispatchOrEval when args need to be evaluated before passing
 /// to the generic code.
-unsafe fn evalArgs(
+unsafe fn evalArgs<'a>(
     args: SEXP,
     rho: SEXP,
     dropmissing: c_int,
-    _call: SEXP,
+    call: SEXP,
     _argument_offset: c_int,
-) -> SEXP {
-    unsafe {
-        // GNU selects the normal or missing-preserving list evaluator here.
-        // Reuse those paths so ... is expanded and omitted subscripts survive.
-        // This port's evalList final argument is a count limit, not GNU's
-        // diagnostic offset, so -1 requests the entire list.
-        if dropmissing != 0 {
-            evalList(args, rho, _call, -1)
+) -> Sexp<'a> {
+    // SAFETY: this translated dispatch boundary retains the active owner.
+    let factory = SessionNodeFactory::new(
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+    );
+    if dropmissing != 0 {
+        let args = factory
+            .wrap(args)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let rho = factory
+            .wrap(rho)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let call = if call.is_null() {
+            None
         } else {
-            evalListKeepMissing(args, rho)
-        }
+            Some(
+                factory
+                    .wrap(call)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+            )
+        };
+        evalList(args, rho, call, -1)
+    } else {
+        let raw = unsafe { evalListKeepMissing(args, rho) };
+        factory
+            .wrap(raw)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
     }
 }
 
@@ -677,10 +723,9 @@ pub unsafe fn DispatchOrEval(
                 if crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE
                     && crate::mainutils::objects::R_has_methods(op) != FALSE
                 {
-                    let value = crate::mainutils::objects::R_possible_dispatch(
-                        call, op, pargs, rho, TRUE);
+                    let value =
+                        crate::mainutils::objects::R_possible_dispatch(call, op, pargs, rho, TRUE);
                     if !value.is_null() {
-
                         *ans = value;
                         return 1;
                     }
@@ -706,13 +751,13 @@ pub unsafe fn DispatchOrEval(
         // Step 3: No dispatch — evaluate arguments and return them
         if argsevald == 0 {
             if dots != FALSE {
-                *ans = evalArgs(args, rho, dropmissing, call, 0);
+                let evaluated = evalArgs(args, rho, dropmissing, call, 0);
+                *ans = evaluated.as_raw();
             } else {
                 bump_named_link(x);
                 let rest = evalArgs(CDR(args), rho, dropmissing, call, 1);
                 drop_named_link(x);
-                let _rest_guard = protect(rest);
-                let arglist = CONS_NR(x, rest);
+                let arglist = CONS_NR(x, rest.as_raw());
                 SETTAG(arglist, TAG(args));
                 *ans = arglist;
             }
@@ -862,16 +907,14 @@ pub unsafe fn DispatchGroup(
                 && crate::mainutils::coerce::IS_S4_OBJECT(CADR(args)) != FALSE)
         {
             if crate::mainutils::objects::R_has_methods(op) != FALSE {
-                let value = crate::mainutils::objects::R_possible_dispatch(
-                    call, op, args, rho, FALSE);
+                let value =
+                    crate::mainutils::objects::R_possible_dispatch(call, op, args, rho, FALSE);
                 if !value.is_null() {
-
                     *ans = value;
                     return 1;
                 }
             }
         }
-
 
         // For Ops group, check both args; for others, only the first
         let is_ops = streql(group, b"Ops\x00".as_ptr() as *const c_char) != FALSE
@@ -987,7 +1030,6 @@ pub unsafe fn DispatchGroup(
             }
             // If left side has no method, use right
             if isFunction(lsxp) == FALSE {
-
                 lsxp = rsxp;
                 lmeth = rmeth;
                 lgr = rgr;
@@ -1160,5 +1202,100 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
             drop_named_link(val);
         }
         head
+    }
+}
+
+#[cfg(test)]
+mod owned_argument_tests {
+    use super::*;
+    use crate::sexp::{object::PairlistIter, session::RSession};
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn owned_argument_list_survives_each_allocation_and_reentrant_gc() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = SessionNodeFactory::new(owner);
+        let call = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "list(first=11L + 1L, 22L + 2L, third=33L + 3L)",
+                    arena,
+                    factory.clone(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let args = call.try_cdr().unwrap();
+        let environment = session.global_env().unwrap();
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        let before = crate::sexp::protect::R_ProtectCount();
+        let evaluated = evalList(args, environment, Some(call.clone()), -1);
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 0;
+        });
+        drop(call);
+        crate::sexp::gengc::full_gc();
+        let cells: Vec<_> = PairlistIter::new(evaluated).collect();
+        let values: Vec<_> = cells
+            .iter()
+            .map(|cell| cell.try_car().unwrap().integer_elt(0).unwrap())
+            .collect();
+        assert_eq!(values, [12, 24, 36]);
+        assert_eq!(
+            cells[0]
+                .try_tag()
+                .unwrap()
+                .try_printname()
+                .unwrap()
+                .try_as_string()
+                .unwrap(),
+            "first"
+        );
+        assert_eq!(
+            cells[2]
+                .try_tag()
+                .unwrap()
+                .try_printname()
+                .unwrap()
+                .try_as_string()
+                .unwrap(),
+            "third"
+        );
+        assert!(notifications.get() >= 3);
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+    }
+
+    #[test]
+    fn argument_error_restores_named_links_without_manual_roots() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = SessionNodeFactory::new(owner);
+        let call = owner
+            .with_arena(|arena| crate::eval::parser::parse("list(11L, )", arena, factory))
+            .unwrap()
+            .unwrap();
+        let args = call.try_cdr().unwrap();
+        let first = args.try_car().unwrap();
+        let before_named = unsafe { crate::sexp::accessors::NAMED(first.as_raw()) };
+        let before_roots = crate::sexp::protect::R_ProtectCount();
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            evalList(args, session.global_env().unwrap(), Some(call), -1)
+        }));
+        assert!(error.is_err());
+        assert_eq!(
+            unsafe { crate::sexp::accessors::NAMED(first.as_raw()) },
+            before_named
+        );
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before_roots);
     }
 }

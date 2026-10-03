@@ -329,13 +329,25 @@ unsafe fn each_child(obj: SEXP, follow_weak_key: bool, mut visit: impl FnMut(&mu
             visit(&mut prot);
             (*obj).data.extptr_mut()[2] = prot as *mut std::ffi::c_void;
         }
-        if mask & EDGE_VECTOR != 0 {
-            let len = (*obj).vecsxp_length();
-            let data = (*obj).gengc_next_node as *mut SEXP;
-            if !data.is_null() && len > 0 {
-                for i in 0..len as usize {
-                    visit(&mut *data.add(i));
-                }
+        if mask & EDGE_VECTOR != 0 && !(*obj).gengc_next_node.is_null() {
+            let (_, parent) = super::memory::checked_projection(obj)
+                .expect("GC vector belongs to checked storage");
+            let heap = parent.heap_identity();
+            let children = heap.reference_elements(&parent)
+                .expect("GC vector has an owned reference payload");
+            let singletons = super::globals::immutable_singleton_pool();
+            for (index, mut child) in children.into_iter().enumerate() {
+                visit(&mut child);
+                let updated = if child.is_null() {
+                    heap.set_reference_elt(&parent, index, super::heap::ReferenceChild::Null)
+                } else if let Some(singleton) = heap.retained_singleton(child).or_else(|| singletons.lease(child)) {
+                    heap.set_reference_elt(&parent, index, super::heap::ReferenceChild::Singleton(&singleton))
+                } else {
+                    let (_, child) = super::memory::checked_projection(child)
+                        .expect("rewritten GC edge names a live allocation");
+                    heap.set_reference_elt(&parent, index, super::heap::ReferenceChild::Node(&child))
+                };
+                updated.expect("rewritten GC vector edge belongs to its heap");
             }
         }
         if mask & EDGE_ATTRIB != 0 {
@@ -3028,25 +3040,23 @@ mod tests {
 
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
+        let mut replacement: SEXP = ptr::null_mut();
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
             reset_gc_test_arena(arena);
             marker = arena.alloc_node(SEXPTYPE::LISTSXP);
             vec = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+            replacement = arena.alloc_node(SEXPTYPE::LISTSXP);
+            arena.set_reference_element(vec, 0, marker).expect("fixture reference slot");
             })
         });
-
-        unsafe {
-            *((*vec).gengc_next_node as *mut SEXP) = marker;
-        }
-
-        let replacement = 0x5678usize as SEXP;
         let mut map = HashMap::new();
         map.insert(marker as usize, replacement);
         update_object_references(&map);
 
-        let after_ptr = unsafe { *((*vec).gengc_next_node as *mut SEXP) };
+        let (_, node) = super::super::memory::checked_projection(vec).expect("fixture vector");
+        let after_ptr = node.heap_identity().reference_elt(&node, 0).expect("fixture reference slot");
         assert_eq!(after_ptr, replacement);
     }
 

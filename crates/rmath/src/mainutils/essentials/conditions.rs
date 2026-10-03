@@ -2542,8 +2542,7 @@ pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let cstr = CString::new(message).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*msg_vec).gengc_next_node as *mut SEXP;
-                *data = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(msg_vec, 0 as R_xlen_t, charsxp);
             }
         }
         SET_VECTOR_ELT(result, 0, msg_vec);
@@ -2554,8 +2553,7 @@ pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             for (i, cstr) in [c"message", c"call"].into_iter().enumerate() {
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
                 if !charsxp.is_null() {
-                    let data = (*names).gengc_next_node as *mut SEXP;
-                    *data.add(i) = charsxp;
+                    crate::sexp::accessors::SET_STRING_ELT(names, i as R_xlen_t, charsxp);
                 }
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
@@ -2567,8 +2565,7 @@ pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 let cs = CString::new(c).unwrap_or_default();
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
                 if !charsxp.is_null() {
-                    let data = (*class).gengc_next_node as *mut SEXP;
-                    *data.add(i) = charsxp;
+                    crate::sexp::accessors::SET_STRING_ELT(class, i as R_xlen_t, charsxp);
                 }
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
@@ -2653,8 +2650,7 @@ unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
                 let cstr = CString::new(*n).unwrap_or_default();
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
                 if !charsxp.is_null() {
-                    let data = (*names).gengc_next_node as *mut SEXP;
-                    *data.add(i) = charsxp;
+                    crate::sexp::accessors::SET_STRING_ELT(names, i as R_xlen_t, charsxp);
                 }
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
@@ -2674,8 +2670,7 @@ unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
             for i in 0..extra_classes as isize {
                 let src = crate::sexp::accessors::STRING_ELT(class_arg, i as i64);
                 if !src.is_null() {
-                    let data = (*class).gengc_next_node as *mut SEXP;
-                    *data.add(slot) = src;
+                    crate::sexp::accessors::SET_STRING_ELT(class, slot as R_xlen_t, src);
                     slot += 1;
                 }
             }
@@ -2683,8 +2678,7 @@ unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
                 let cstr = CString::new(name).unwrap_or_default();
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
                 if !charsxp.is_null() {
-                    let data = (*class).gengc_next_node as *mut SEXP;
-                    *data.add(slot) = charsxp;
+                    crate::sexp::accessors::SET_STRING_ELT(class, slot as R_xlen_t, charsxp);
                     slot += 1;
                 }
             }
@@ -2713,8 +2707,7 @@ pub unsafe fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             let cstr = CString::new(message).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*msg_vec).gengc_next_node as *mut SEXP;
-                *data = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(msg_vec, 0 as R_xlen_t, charsxp);
             }
         }
         SET_VECTOR_ELT(result, 0, msg_vec);
@@ -2723,8 +2716,7 @@ pub unsafe fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             let cstr = c"message";
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*names).gengc_next_node as *mut SEXP;
-                *data = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(names, 0 as R_xlen_t, charsxp);
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         }
@@ -2735,8 +2727,7 @@ pub unsafe fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                 let cs = CString::new(c).unwrap_or_default();
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
                 if !charsxp.is_null() {
-                    let data = (*class).gengc_next_node as *mut SEXP;
-                    *data.add(i) = charsxp;
+                    crate::sexp::accessors::SET_STRING_ELT(class, i as R_xlen_t, charsxp);
                 }
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);

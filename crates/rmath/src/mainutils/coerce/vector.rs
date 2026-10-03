@@ -531,11 +531,9 @@ pub unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
         // expression -> list: just change the type tag
         if type_ == SEXPTYPE::VECSXP && TYPEOF(v) == SEXPTYPE::EXPRSXP {
             let rval = Rf_allocVector3(SEXPTYPE::VECSXP, xlength(v));
-            // Copy the data pointers
-            let src = DATAPTR(v);
-            let dst = DATAPTR(rval);
-            if !src.is_null() && !dst.is_null() {
-                ptr::copy_nonoverlapping(src as *const SEXP, dst as *mut SEXP, xlength(v) as usize);
+            // Copy reference cells through the checked vector interface
+            for index in 0..xlength(v) {
+                SET_VECTOR_ELT(rval, index, VECTOR_ELT(v, index));
             }
             let attrs = crate::sexp::accessors::ATTRIB(v);
             if !isNull(attrs) {
@@ -550,10 +548,8 @@ pub unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
         // list -> expression: just change the type tag
         if type_ == SEXPTYPE::EXPRSXP && TYPEOF(v) == SEXPTYPE::VECSXP {
             let rval = Rf_allocVector3(SEXPTYPE::EXPRSXP, xlength(v));
-            let src = DATAPTR(v);
-            let dst = DATAPTR(rval);
-            if !src.is_null() && !dst.is_null() {
-                ptr::copy_nonoverlapping(src as *const SEXP, dst as *mut SEXP, xlength(v) as usize);
+            for index in 0..xlength(v) {
+                SET_VECTOR_ELT(rval, index, VECTOR_ELT(v, index));
             }
             let attrs = crate::sexp::accessors::ATTRIB(v);
             if !isNull(attrs) {

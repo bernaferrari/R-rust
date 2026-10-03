@@ -15397,6 +15397,19 @@ pub unsafe fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
 /// name the caller's formal; choices come from `formals(sys.function(0))`.
 pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let factory = crate::sexp::object::SessionNodeFactory::new(
+            crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+        );
+        let _args_owner = factory
+            .wrap(args)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let rho_owner = factory
+            .wrap(rho)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let call_owner = factory
+            .wrap(call)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
         let arg_expr = CAR(args);
         let choices_cell = CDR(args);
         let choices_expr = if choices_cell.is_null() || choices_cell == R_NilValue() {
@@ -15408,31 +15421,40 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             || choices_expr == R_NilValue()
             || choices_expr == R_MissingArg();
 
-        let arg = if arg_expr.is_null() || arg_expr == R_NilValue() || arg_expr == R_MissingArg()
-        {
+        let arg = if arg_expr.is_null() || arg_expr == R_NilValue() || arg_expr == R_MissingArg() {
             R_NilValue()
         } else {
             crate::eval::eval::Rf_eval(arg_expr, rho)
         };
-        let _arg_guard = protect(arg);
+        let _arg_owner = factory
+            .wrap(arg)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
 
-        let choices = if choices_missing {
-            match_arg_choices_from_formals(arg_expr, rho)
+        let choices_owner = if choices_missing {
+            factory.wrap(match_arg_choices_from_formals(arg_expr, rho))
         } else if choices_expr == crate::sexp::symbol::R_DotsSymbol() {
-            let cell = crate::sexp::constructors::Rf_cons(choices_expr, R_NilValue());
-            let _cell = protect(cell);
-            let spliced = crate::eval::dispatch::evalList(cell, rho, call, -1);
-            CAR(spliced)
+            let expression = factory
+                .wrap(choices_expr)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            let nil = factory.nil();
+            let cell = factory
+                .allocate(|arena| Some(arena.cons(expression.as_raw(), nil.as_raw(), nil.as_raw())))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            let spliced = crate::eval::dispatch::evalList(cell, rho_owner, Some(call_owner), -1);
+            spliced.try_car()
         } else {
-            crate::eval::eval::Rf_eval(choices_expr, rho)
-        };
-        let _choices_guard = protect(choices);
+            factory.wrap(crate::eval::eval::Rf_eval(choices_expr, rho))
+        }
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let choices = choices_owner.as_raw();
 
         if arg.is_null() || arg == R_NilValue() {
             return match_arg_first(choices);
         }
         if TYPEOF(arg) != SEXPTYPE::STRSXP {
-            crate::mainutils::errors::errorcall_str(call, "'arg' must be NULL or a character vector",
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "'arg' must be NULL or a character vector",
             );
         }
         if TYPEOF(choices) != SEXPTYPE::STRSXP || XLENGTH(choices) == 0 {
@@ -15465,7 +15487,10 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     }
                 }
                 if let Some(i) = exact.or_else(|| {
-                    if prefixes.len() == 1 { prefixes.pop() } else { None
+                    if prefixes.len() == 1 {
+                        prefixes.pop()
+                    } else {
+                        None
                     }
                 }) {
                     hits.push(elt_to_string(choices, i));
@@ -15479,7 +15504,6 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             }
             return result;
         }
-
 
         if crate::mainutils::identical::R_compute_identical(arg, choices, 0) != 0 {
             return match_arg_first(choices);

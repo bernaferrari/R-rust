@@ -302,8 +302,7 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let cstr = CString::new(sub).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
 
@@ -3821,8 +3820,7 @@ unsafe fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
             let cstr = CString::new(converted).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
 
@@ -3870,8 +3868,7 @@ pub unsafe fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let cstr = CString::new(trimmed).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result
@@ -4425,8 +4422,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             let cstr = CString::new(replaced).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         let src_names = crate::sexp::attrib_core::getAttrib(
@@ -4618,8 +4614,7 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let cstr = CString::new(translated).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result
@@ -4750,8 +4745,7 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let cstr = CString::new(s).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result
@@ -5057,8 +5051,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             let cstr = CString::new(text.as_str()).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         {
@@ -5402,8 +5395,7 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             let cstr = CString::new(out).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result
@@ -5686,8 +5678,7 @@ pub unsafe fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             let cstr = CString::new(padded).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result
@@ -6186,8 +6177,7 @@ pub unsafe fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             let cstr = CString::new(truncated).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result
@@ -6257,8 +6247,7 @@ pub unsafe fn do_str_extract(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let cs = CString::new(extracted).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result

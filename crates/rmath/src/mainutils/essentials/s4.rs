@@ -1471,8 +1471,7 @@ pub unsafe fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
             let cstr = CString::new(slot_name.as_str()).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
-                let data = (*names).gengc_next_node as *mut SEXP;
-                *data.add(idx as usize) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(names, idx as R_xlen_t, charsxp);
             }
             idx += 1;
             current = CDR(current);

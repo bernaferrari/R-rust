@@ -54,8 +54,7 @@ pub unsafe fn do_commandArgs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
             let cs = CString::new(arg.as_str()).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
             if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i) = charsxp;
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
         result

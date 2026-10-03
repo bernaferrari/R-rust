@@ -4117,6 +4117,13 @@ pub unsafe fn R_initialize_bcode() {
 
 #[cfg(test)]
 mod tests {
+    fn fixture_arena() -> crate::sexp::memory::RArena {
+        let heap = crate::sexp::instance::with_required_current_instance(|owner| unsafe {
+            (*owner).heap_identity.clone()
+        });
+        crate::sexp::memory::RArena::fresh_with_identity(heap)
+    }
+
     use super::*;
     use crate::sexp::accessors::SET_VECTOR_ELT;
     use crate::sexp::globals::R_BaseEnv;
@@ -4173,12 +4180,9 @@ mod tests {
         }
 
         let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
-        let bcode_data = unsafe { (*bcode).gengc_next_node as *mut SEXP };
-        unsafe {
-            *bcode_data.add(0) = code;
-            *bcode_data.add(1) = consts;
-            *bcode_data.add(2) = stack_hint;
-        }
+        arena.set_reference_element(bcode, 0, code).unwrap();
+        arena.set_reference_element(bcode, 1, consts).unwrap();
+        arena.set_reference_element(bcode, 2, stack_hint).unwrap();
         bcode
     }
 
@@ -4370,7 +4374,7 @@ mod tests {
     fn test_bc_eval_simple_code() {
         let _session = crate::sexp::session::RSession::new();
         use crate::sexp::memory::RArena;
-        let mut arena = RArena::new();
+        let mut arena = fixture_arena();
 
         let code = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
         let code_data = unsafe { (*code).gengc_next_node as *mut c_int };
@@ -4388,12 +4392,9 @@ mod tests {
         }
 
         let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
-        let bcode_data = unsafe { (*bcode).gengc_next_node as *mut SEXP };
-        unsafe {
-            *bcode_data.add(0) = code;
-            *bcode_data.add(1) = consts;
-            *bcode_data.add(2) = stack_hint;
-        }
+        arena.set_reference_element(bcode, 0, code).unwrap();
+        arena.set_reference_element(bcode, 1, consts).unwrap();
+        arena.set_reference_element(bcode, 2, stack_hint).unwrap();
 
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
@@ -4410,7 +4411,7 @@ mod tests {
     fn test_bc_eval_rejects_unknown_opcode() {
         let _session = crate::sexp::session::RSession::new();
         use crate::sexp::memory::RArena;
-        let mut arena = RArena::new();
+        let mut arena = fixture_arena();
 
         let code = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
         let code_data = unsafe { (*code).gengc_next_node as *mut c_int };
@@ -4426,12 +4427,9 @@ mod tests {
         }
 
         let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
-        let bcode_data = unsafe { (*bcode).gengc_next_node as *mut SEXP };
-        unsafe {
-            *bcode_data.add(0) = code;
-            *bcode_data.add(1) = consts;
-            *bcode_data.add(2) = stack_hint;
-        }
+        arena.set_reference_element(bcode, 0, code).unwrap();
+        arena.set_reference_element(bcode, 1, consts).unwrap();
+        arena.set_reference_element(bcode, 2, stack_hint).unwrap();
 
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
@@ -4454,7 +4452,7 @@ mod tests {
     fn test_bc_eval_setvar2_writes_enclosing_frame() {
         let _session = crate::sexp::session::RSession::new();
         use crate::sexp::memory::RArena;
-        let mut arena = RArena::new();
+        let mut arena = fixture_arena();
 
         let parent = empty_env(&mut arena);
         let child = empty_env(&mut arena);
@@ -4500,7 +4498,7 @@ mod tests {
     #[test]
     fn test_bc_eval_rejects_truncated_operand() {
         let _session = crate::sexp::session::RSession::new();
-        let mut arena = crate::sexp::memory::RArena::new();
+        let mut arena = fixture_arena();
         let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
         let bcode = bcode_with(&mut arena, &[opcodes::OP_PUSHCONST], consts);
         let env = empty_env(&mut arena);
@@ -4517,7 +4515,7 @@ mod tests {
     #[test]
     fn test_bc_eval_rejects_invalid_constant_index() {
         let _session = crate::sexp::session::RSession::new();
-        let mut arena = crate::sexp::memory::RArena::new();
+        let mut arena = fixture_arena();
         let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
         let bcode = bcode_with(
             &mut arena,
@@ -4538,7 +4536,7 @@ mod tests {
     #[test]
     fn test_bc_eval_rejects_stack_underflow() {
         let _session = crate::sexp::session::RSession::new();
-        let mut arena = crate::sexp::memory::RArena::new();
+        let mut arena = fixture_arena();
         let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
         let bcode = bcode_with(&mut arena, &[opcodes::OP_RETURN], consts);
         let env = empty_env(&mut arena);
@@ -4552,7 +4550,7 @@ mod tests {
     #[test]
     fn test_bc_eval_rejects_invalid_jump_target() {
         let _session = crate::sexp::session::RSession::new();
-        let mut arena = crate::sexp::memory::RArena::new();
+        let mut arena = fixture_arena();
         let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
         let bcode = bcode_with(&mut arena, &[opcodes::OP_BRANCH, -1], consts);
         let env = empty_env(&mut arena);
@@ -4569,13 +4567,10 @@ mod tests {
     #[test]
     fn test_bc_eval_swload_loads_constant_table_entry() {
         let _session = crate::sexp::session::RSession::new();
-        let mut arena = crate::sexp::memory::RArena::new();
+        let mut arena = fixture_arena();
         let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
         let value = unsafe { Rf_ScalarInteger(42) };
-        unsafe {
-            let data = (*consts).gengc_next_node as *mut SEXP;
-            *data = value;
-        }
+        arena.set_reference_element(consts, 0, value).unwrap();
         let bcode = bcode_with(
             &mut arena,
             &[
@@ -4619,12 +4614,9 @@ mod tests {
 
         // Detached arena keeps the bytecode alive for the whole test but is
         // invisible to the instance collector.
-        let mut arena = crate::sexp::memory::RArena::new();
+        let mut arena = fixture_arena();
         let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
-        unsafe {
-            let data = (*consts).gengc_next_node as *mut SEXP;
-            *data.add(0) = gc_closure;
-        }
+        arena.set_reference_element(consts, 0, gc_closure).unwrap();
         let bcode = bcode_with(
             &mut arena,
             &[
@@ -4670,7 +4662,7 @@ mod tests {
             defineVar(symbol, promise, env);
             (symbol, env)
         });
-        let mut arena = crate::sexp::memory::RArena::new();
+        let mut arena = fixture_arena();
         let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
         unsafe {
             crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, symbol);

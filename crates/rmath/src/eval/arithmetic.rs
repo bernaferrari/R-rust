@@ -3209,7 +3209,7 @@ fn summary_error(message: impl Into<String>) -> ! {
 
 fn tag_name_is(tag: SEXP, expected: &str) -> bool {
     unsafe {
-        if tag.is_null() {
+        if tag.is_null() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
             return false;
         }
         let pname = PRINTNAME(tag);

@@ -32,6 +32,33 @@ impl<'session> SessionNodeFactory<'session> {
         }
     }
 
+    pub(crate) fn require_active(&self) -> SexpResult<()> {
+        if !self.availability.is_live() {
+            return Err(SexpError::RootUnavailable);
+        }
+        self.owner.require_active()
+    }
+
+    pub(crate) fn nil(&self) -> Sexp<'session> {
+        Sexp::from_singleton(self.singletons.nil(), self.singletons.clone())
+    }
+
+    /// Install the root before the arena lend ends, so deferred collection or
+    /// notifications retain the newly allocated value throughout reentry.
+    pub(crate) fn allocate(
+        &self,
+        allocation: impl FnOnce(&mut crate::sexp::memory::RArena) -> Option<SEXP>,
+    ) -> SexpResult<Sexp<'session>> {
+        if !self.availability.is_live() {
+            return Err(SexpError::RootUnavailable);
+        }
+        self.owner.with_arena(|arena| {
+            let pointer =
+                allocation(arena).ok_or(SexpError::AllocationFailed { object: "R value" })?;
+            self.wrap(pointer)
+        })?
+    }
+
     pub(crate) fn wrap(&self, pointer: SEXP) -> SexpResult<Sexp<'session>> {
         if !self.availability.is_live() {
             return Err(SexpError::RootUnavailable);

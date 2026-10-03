@@ -352,15 +352,9 @@ impl StringVector {
         if ptr.is_null() {
             return None;
         }
-        let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
-        if data.is_null() {
-            return None;
-        }
         for (i, s) in self.values.iter().enumerate() {
             let charsxp = arena.alloc_charsxp(s.as_bytes());
-            unsafe {
-                *data.add(i) = charsxp;
-            }
+            arena.set_reference_element(ptr, i, charsxp)?;
         }
         arena.sexp(ptr)
     }
@@ -430,15 +424,8 @@ impl<'a> GenericVector<'a> {
         if ptr.is_null() {
             return None;
         }
-        // SAFETY: fresh vector, and retained children were checked against this owner.
-        unsafe {
-            let data = (*ptr).gengc_next_node as *mut SEXP;
-        if data.is_null() {
-            return None;
-        }
-            for (i, value) in self.elements.iter().enumerate() {
-                *data.add(i) = value.clone().as_raw();
-            }
+        for (i, value) in self.elements.iter().enumerate() {
+            arena.set_reference_element(ptr, i, value.clone().as_raw())?;
         }
         arena.sexp(ptr)
     }
@@ -534,7 +521,7 @@ pub(crate) fn int_sequence_current(start: c_int, end: c_int) -> Option<SEXP> {
         memory::with_arena(|arena| {
         IntVector::sequence(start, end)
             .and_then(|builder| builder.build_in(arena))
-            .map(Sexp::as_raw)
+            .map(|value| value.as_raw())
     })
     }
 }
@@ -637,14 +624,8 @@ pub fn scalar_string_in<'arena>(arena: &'arena mut RArena, s: &str) -> Option<Se
     if ptr.is_null() {
         return None;
     }
-    let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
-    if data.is_null() {
-        return None;
-    }
     let charsxp = arena.alloc_charsxp(s.as_bytes());
-    unsafe {
-        *data = charsxp;
-    }
+    arena.set_reference_element(ptr, 0, charsxp)?;
     arena.sexp(ptr)
 }
 
@@ -653,14 +634,8 @@ pub fn scalar_bytes_in<'arena>(arena: &'arena mut RArena, bytes: &[u8]) -> Optio
     if ptr.is_null() {
         return None;
     }
-    let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
-    if data.is_null() {
-        return None;
-    }
     let charsxp = arena.alloc_charsxp(bytes);
-    unsafe {
-        *data = charsxp;
-    }
+    arena.set_reference_element(ptr, 0, charsxp)?;
     arena.sexp(ptr)
 }
 

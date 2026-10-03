@@ -180,8 +180,8 @@ pub unsafe fn Rf_mkString(s: *const c_char) -> SEXP {
                 return ptr::null_mut();
             }
             let strsxp = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
-            if !strsxp.is_null() {
-                (*strsxp).gengc_next_node.cast::<SEXP>().write(charsxp);
+            if !strsxp.is_null() && arena.set_reference_element(strsxp, 0, charsxp).is_none() {
+                return ptr::null_mut();
             }
             strsxp
         }))
@@ -249,9 +249,13 @@ pub unsafe fn Rf_ScalarComplex(x: super::ffi::Rcomplex) -> SEXP {
 /// Create a scalar string from a CHARSXP.
 pub unsafe fn Rf_ScalarString(x: SEXP) -> SEXP {
     unsafe {
-        scalar(SEXPTYPE::STRSXP, |value| {
-            (*value).gengc_next_node.cast::<SEXP>().write(x)
-        })
+        require_allocation(memory::with_arena(|arena| {
+            let value = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+            if !value.is_null() && arena.set_reference_element(value, 0, x).is_none() {
+                return ptr::null_mut();
+            }
+            value
+        }))
     }
 }
 

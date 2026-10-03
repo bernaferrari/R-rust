@@ -8,7 +8,7 @@ use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 
 use crate::sexp::memory_ext::vmaxget;
-use crate::sexp::object::Sexp;
+use crate::sexp::object::{SessionNodeFactory, Sexp};
 
 use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
 use super::eval::eval_safe;
@@ -23,17 +23,21 @@ pub(crate) fn apply_closure_safe<'a>(
     args: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
+    let frame = PrimitiveCall::new(fun, call, args, rho)?;
     let raw_result = unsafe {
         super::closure::applyClosure(
-            call.as_raw(),
-            fun.as_raw(),
-            args.as_raw(),
-            rho.as_raw(),
-            R_NilValue(),
+            frame.call.as_raw(),
+            frame.fun.as_raw(),
+            frame.args.as_raw(),
+            frame.rho.as_raw(),
+            frame.factory.nil().as_raw(),
             TRUE,
         )
     };
-    Ok(unsafe { Sexp::from_raw_unchecked(raw_result) })
+    frame
+        .factory
+        .wrap(raw_result)
+        .map_err(|error| error.to_string())
 }
 
 fn call_head_name(call: Sexp<'_>) -> String {
@@ -138,6 +142,11 @@ pub(crate) fn apply_special_safe<'a>(
     args: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
+    let frame = PrimitiveCall::new(fun, call, args, rho)?;
+    let fun = frame.fun.clone();
+    let call = frame.call.clone();
+    let args = frame.args.clone();
+    let rho = frame.rho.clone();
     let _vmax = unsafe { vmaxget() };
     let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
     let flag = descriptor_print_flag(primitive.as_ref());
@@ -160,7 +169,7 @@ pub(crate) fn apply_special_safe<'a>(
     };
 
     finish_application(
-        tmp,
+        frame.factory.wrap(tmp).map_err(|error| error.to_string())?,
         flag,
         &op_name,
         VisibilityRestore::UnlessPrimitiveControlsIt,
@@ -173,18 +182,54 @@ struct PrimitiveCall<'a> {
     call: Sexp<'a>,
     args: Sexp<'a>,
     rho: Sexp<'a>,
+    factory: SessionNodeFactory<'a>,
 }
 
 impl<'a> PrimitiveCall<'a> {
-    fn eval_args(self) -> SEXP {
-        unsafe {
-            super::dispatch::evalList(
-                self.args.as_raw(),
-                self.rho.as_raw(),
-                self.call.as_raw(),
-                -1,
+    fn new(fun: Sexp<'a>, call: Sexp<'a>, args: Sexp<'a>, rho: Sexp<'a>) -> Result<Self, String> {
+        let checked_factory = rho
+            .node_factory()
+            .or_else(|_| fun.node_factory())
+            .or_else(|_| call.node_factory())
+            .or_else(|_| args.node_factory());
+        let factory = if let Ok(factory) = checked_factory {
+            factory
+        } else {
+            // SAFETY: raw evaluator entry points retain the active owner for
+            // the application lifetime. Normalize their internal raw views
+            // into counted handles before any provider or primitive runs.
+            SessionNodeFactory::new(
+                unsafe { crate::sexp::owner::OwnerToken::current() }
+                    .map_err(|error| error.to_string())?,
             )
-        }
+        };
+        factory
+            .require_active()
+            .map_err(|error| error.to_string())?;
+        Ok(Self {
+            fun: factory
+                .wrap(fun.as_raw())
+                .map_err(|error| error.to_string())?,
+            call: factory
+                .wrap(call.as_raw())
+                .map_err(|error| error.to_string())?,
+            args: factory
+                .wrap(args.as_raw())
+                .map_err(|error| error.to_string())?,
+            rho: factory
+                .wrap(rho.as_raw())
+                .map_err(|error| error.to_string())?,
+            factory,
+        })
+    }
+
+    fn eval_args(&self) -> Sexp<'a> {
+        super::dispatch::evalList(
+            self.args.clone(),
+            self.rho.clone(),
+            Some(self.call.clone()),
+            -1,
+        )
     }
 }
 
@@ -205,7 +250,7 @@ fn descriptor_print_flag(primitive: Option<&PrimitiveDescriptor<'_>>) -> c_int {
 }
 
 fn finish_application<'a>(
-    result: SEXP,
+    result: Sexp<'a>,
     flag: c_int,
     op_name: &str,
     restore: VisibilityRestore,
@@ -224,7 +269,7 @@ fn finish_application<'a>(
     if should_restore {
         set_visibility_for_print_flag(flag);
     }
-    Ok(unsafe { Sexp::from_raw_unchecked(result) })
+    Ok(result)
 }
 
 /// Safe builtin function application.
@@ -234,30 +279,33 @@ pub(crate) fn apply_builtin_safe<'a>(
     args: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
+    let frame = PrimitiveCall::new(fun, call, args, rho)?;
     let _vmax = unsafe { vmaxget() };
-    let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
+    let primitive = PrimitiveDescriptor::from_sexp(frame.fun.clone());
     let flag = descriptor_print_flag(primitive.as_ref());
     set_visibility_for_print_flag(flag);
 
-    let frame = PrimitiveCall {
-        fun,
-        call: call.clone(),
-        args,
-        rho,
-    };
-    let op_name = primitive_call_name(primitive, frame.fun.clone(), call);
+    let op_name = primitive_call_name(primitive, frame.fun.clone(), frame.call.clone());
 
     if let Some((result, restore)) = apply_unevaluated_builtin(frame.clone(), &op_name) {
-        return finish_application(result, flag, &op_name, restore);
+        return finish_application(
+            frame
+                .factory
+                .wrap(result)
+                .map_err(|error| error.to_string())?,
+            flag,
+            &op_name,
+            restore,
+        );
     }
 
-    let evaled_args = frame.clone().eval_args();
-    // Evaluated arguments are a fresh list; the source call only roots the
-    // expressions. Keep their values alive across allocations inside handlers.
-    let _evaled_args = unsafe { crate::sexp::protect::protect(evaled_args) };
-    let result = apply_evaluated_builtin(frame, &op_name, evaled_args);
+    let evaled_args = frame.eval_args();
+    let result = apply_evaluated_builtin(frame.clone(), &op_name, evaled_args.as_raw());
     finish_application(
-        result,
+        frame
+            .factory
+            .wrap(result)
+            .map_err(|error| error.to_string())?,
         flag,
         &op_name,
         VisibilityRestore::UnlessPrimitiveControlsIt,
@@ -275,25 +323,22 @@ pub(crate) fn apply_builtin_values_safe<'a>(
     args: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
+    let frame = PrimitiveCall::new(fun, call, args, rho)?;
     let _vmax = unsafe { vmaxget() };
-    let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
+    let primitive = PrimitiveDescriptor::from_sexp(frame.fun.clone());
     let flag = descriptor_print_flag(primitive.as_ref());
     // Already-forced arguments carry visibility (cat, message, ...elt).
     // A print-flag reset here makes withVisible report TRUE and
     // capture.output prints NULL.
 
-    let frame = PrimitiveCall {
-        fun,
-        call: call.clone(),
-        args: args.clone(),
-        rho,
-    };
-    let op_name = primitive_call_name(primitive, frame.fun.clone(), call);
-    let evaled_args = args.as_raw();
-    let _evaled_args = unsafe { crate::sexp::protect::protect(evaled_args) };
-    let result = apply_evaluated_builtin(frame, &op_name, evaled_args);
+    let op_name = primitive_call_name(primitive, frame.fun.clone(), frame.call.clone());
+    let evaled_args = frame.args.clone();
+    let result = apply_evaluated_builtin(frame.clone(), &op_name, evaled_args.as_raw());
     finish_application(
-        result,
+        frame
+            .factory
+            .wrap(result)
+            .map_err(|error| error.to_string())?,
         flag,
         &op_name,
         VisibilityRestore::UnlessPrimitiveControlsIt,
@@ -588,109 +633,6 @@ fn try_s4_dispatch<'a>(
     None
 }
 
-// ---------------------------------------------------------------------------
-// Real parent.frame() implementation
-// ---------------------------------------------------------------------------
-
-/// Walk up the call stack to find the parent frame environment.
-///
-/// In R, parent.frame(n) returns the environment n frames up the call stack.
-/// This implementation uses the RCNTXT context stack.
-fn do_parent_frame_impl(n: c_int, rho: SEXP) -> SEXP {
-    unsafe {
-        if n <= 0 {
-            return rho;
-        }
-
-        // Walk up the context stack to find the parent environment
-        let ctx = super::runtime::global_context();
-        if ctx.is_null() {
-            return super::runtime::global_env();
-        }
-
-        // Use the R_findParentContext helper
-        let parent_ctx = super::context::R_findParentContext(ctx, n);
-        if !parent_ctx.is_null() && !(*parent_ctx).cloenv.is_null() {
-            return (*parent_ctx).cloenv;
-        }
-
-        // Fallback: walk environment chain using Sexp enclos()
-        let env = Sexp::from_raw_unchecked(rho);
-        let mut current = env;
-        for _ in 0..n {
-            match current.try_enclos() {
-                Ok(enclos) if enclos.clone().is_environment() => current = enclos,
-                _ => return super::runtime::global_env(),
-            }
-        }
-        current.as_raw()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Real source() implementation — parse and evaluate R source files
-// ---------------------------------------------------------------------------
-
-/// Parse and evaluate an R source file.
-///
-/// This reads the file, parses it using the R parser, and evaluates
-/// each expression in the given environment.
-fn do_source_impl(file_path: &str, rho: SEXP) -> Result<SEXP, String> {
-    unsafe {
-        // Read the file
-        let content = std::fs::read_to_string(file_path)
-            .map_err(|e| format!("cannot open file '{}': {}", file_path, e))?;
-
-        // Parse the file contents
-        let factory = super::parser::active_factory();
-        let parsed_owner =
-            crate::sexp::memory::with_arena(|arena| super::parser::parse(&content, arena, factory))
-                .map_err(|e| format!("parse error in '{}': {}", file_path, e))?;
-        let parsed = parsed_owner.clone().as_raw();
-
-        // Evaluate each expression in the parsed program
-        // The parser returns a pairlist of expressions (or a single expression)
-        let env = Sexp::from_raw_unchecked(rho);
-
-        // If it's a pairlist (LANGSXP with CDR), evaluate each element
-        if !parsed.is_null() && TYPEOF(parsed) == SEXPTYPE::LANGSXP {
-            // Check if this is a "{" block - evaluate each element
-            let head = CAR(parsed);
-            if !head.is_null() && TYPEOF(head) == SEXPTYPE::SYMSXP {
-                let sym_name = PRINTNAME(head);
-                if !sym_name.is_null() {
-                    let name_str = crate::sexp::accessors::CHAR(sym_name);
-                    if !name_str.is_null() {
-                        if std::ffi::CStr::from_ptr(name_str).to_str() == Ok("{") {
-                            // It's a block — evaluate each sub-expression
-                            let mut current = CDR(parsed);
-                            let mut last_result = R_NilValue();
-                            while !current.is_null() && current != R_NilValue() {
-                                let expr = CAR(current);
-                                if !expr.is_null() {
-                                    let sexp_expr = Sexp::from_raw_unchecked(expr);
-                                    last_result = eval_safe(sexp_expr, env.clone())
-                                        .map_err(|e| format!("error in '{}': {}", file_path, e))?
-                                        .as_raw();
-                                }
-                                current = CDR(current);
-                            }
-                            return Ok(last_result);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Single expression or non-block
-        let sexp_expr = parsed_owner;
-        let result =
-            eval_safe(sexp_expr, env).map_err(|e| format!("error in '{}': {}", file_path, e))?;
-
-        Ok(result.as_raw())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -721,7 +663,7 @@ mod tests {
             defineVar(sym, prim, crate::eval::runtime::global_env());
 
             let expr = parse_source(&_session, "not_ported_builtin()").expect("parse call");
-            let env = Sexp::from_raw_unchecked(crate::eval::runtime::global_env());
+            let env = _session.global_env().expect("checked global environment");
             let err =
                 eval_safe(expr, env).expect_err("unknown builtin should not evaluate to NULL");
 
@@ -733,7 +675,7 @@ mod tests {
     fn aliased_special_dispatches_through_bound_value() {
         let _session = RSession::new();
         unsafe {
-            let env = Sexp::from_raw_unchecked(crate::eval::runtime::global_env());
+            let env = _session.global_env().expect("checked global environment");
 
             // h <- `[` binds the subset primitive under an unrelated name;
             // h(x, 2) must dispatch on that bound value (upstream dispatches
@@ -741,8 +683,7 @@ mod tests {
             let binding = parse_source(&_session, "h <- `[`").expect("parse alias binding");
             eval_safe(binding, env.clone()).expect("bind alias");
 
-            let call =
-                parse_source(&_session, "h(c(10, 20, 30), 2)").expect("parse aliased call");
+            let call = parse_source(&_session, "h(c(10, 20, 30), 2)").expect("parse aliased call");
             let result = eval_safe(call, env).expect("aliased subset call dispatches");
 
             assert_eq!(*crate::sexp::accessors::REAL(result.as_raw()), 20.0);

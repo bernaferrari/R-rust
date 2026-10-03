@@ -1,7 +1,7 @@
 use std::os::raw::{c_double, c_int};
 
 use super::{Sexp, SexpError, SexpResult};
-use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXPTYPE};
 
 #[allow(deprecated)] // deprecated Sexp set_* shims delegate to try_set_* shims
 impl<'a> Sexp<'a> {
@@ -207,9 +207,10 @@ impl<'a> Sexp<'a> {
                 }),
             };
         }
-        let data = self.try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
+        self.expect_type(SEXPTYPE::STRSXP, "string vector")?;
         let i = self.try_index(i)?;
-        self.checked_child(unsafe { *data.add(i) })
+        self.materialize_compact_payload()?;
+        self.checked_child(self.reference_elt(i)?)
     }
 
     /// Return the i-th string value as UTF-8 text, preserving R's `NA_STRING`.
@@ -290,9 +291,13 @@ impl<'a> Sexp<'a> {
                 }),
             };
         }
-        let data = self.try_vector_sexp_data()?;
+        self.expect_any_type(
+            "generic or expression vector",
+            &[SEXPTYPE::VECSXP, SEXPTYPE::EXPRSXP],
+        )?;
         let i = self.try_index(i)?;
-        self.checked_child(unsafe { *data.add(i) })
+        self.materialize_compact_payload()?;
+        self.checked_child(self.reference_elt(i)?)
     }
 
     // --- Mutation methods ---
@@ -452,83 +457,65 @@ impl<'a> Sexp<'a> {
     /// Set the i-th string element.
     ///
     /// Returns `false` if this is not a string vector, `v` is not CHARSXP,
-    /// the index is out of bounds, or data pointer is null.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// the index is out of bounds, or typed storage is unavailable.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
-        unsafe {
-            /* SAFETY: caller excludes borrowed payload views. */
-            self.try_set_string_elt(i, v)
-        }
-        .is_ok()
+    pub(crate) fn set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
+        self.try_set_string_elt(i, v).is_ok()
     }
 
     /// Set the i-th string element with typed error reporting.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Reference cells expose copied reads and bounded writes, without lending
+    /// Rust references into their storage.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+    pub(crate) fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
         self.check_child_owner(&v)?;
         v.clone()
             .expect_type(SEXPTYPE::CHARSXP, "character scalar")
             .clone()?;
-        let data = self
-            .clone()
-            .try_typed_data_mut::<SEXP>(SEXPTYPE::STRSXP, "string vector")
-            .clone()?;
+        self.expect_type(SEXPTYPE::STRSXP, "string vector")?;
         let i = self.try_index(i)?;
+        self.materialize_compact_payload()?;
+        self.reference_elt(i)?;
         self.remember_child(&v)?;
-        unsafe {
-            *data.add(i) = v.as_raw();
-        }
-        Ok(())
+        self.set_reference_elt(i, &v)
     }
 
     /// Set the i-th vector element.
     ///
     /// Returns `false` if this is not a generic/expression vector, the index is
-    /// out of bounds, or data pointer is null.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// out of bounds, or typed storage is unavailable.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
-        unsafe {
-            /* SAFETY: caller excludes borrowed payload views. */
-            self.try_set_vector_elt(i, v)
-        }
-        .is_ok()
+    pub(crate) fn set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
+        self.try_set_vector_elt(i, v).is_ok()
     }
 
     /// Set the i-th generic/expression vector element with typed error reporting.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Exact child identities and actual typed capacity are checked before the
+    /// canonical cell is changed.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+    pub(crate) fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
         self.check_child_owner(&v)?;
-        let data = self.clone().try_vector_sexp_data_mut().clone()?;
+        self.expect_any_type(
+            "generic or expression vector",
+            &[SEXPTYPE::VECSXP, SEXPTYPE::EXPRSXP],
+        )?;
         let i = self.try_index(i)?;
+        self.materialize_compact_payload()?;
+        self.reference_elt(i)?;
         self.remember_child(&v)?;
-        unsafe {
-            *data.add(i) = v.as_raw();
-        }
-        Ok(())
+        self.set_reference_elt(i, &v)
     }
 
     /// Copy integer payloads into caller-owned storage without lending a view.
@@ -680,7 +667,7 @@ impl<'a> Sexp<'a> {
     ///
     /// Null elements are replaced with `R_NilValue`.
     pub fn iter_vector(self) -> impl Iterator<Item = Sexp<'a>> + 'a {
-        let len = if self.vector_sexp_data().is_some() {
+        let len = if matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
             self.len()
         } else {
             0

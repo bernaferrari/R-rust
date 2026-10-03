@@ -427,7 +427,7 @@ pub unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
                 // Upstream coerceVector: non-string sources become NA_STRING
                 // entries (never a raw NULL CHARSXP slot).
                 for i in 0..n {
-                    *STRING_PTR(ans).add(i as usize) = crate::sexp::globals::R_NaString();
+                    crate::sexp::accessors::SET_STRING_ELT(ans, i as R_xlen_t, crate::sexp::globals::R_NaString());
                 }
             }
             RAWSXP_I => match t {
@@ -517,18 +517,6 @@ pub unsafe fn checked_allocVector(mode: SEXPTYPE, n: R_xlen_t) -> SEXP {
         });
     }
     ans
-}
-
-/// STRING_PTR: get a mutable pointer to the data array of a STRSXP.
-/// Equivalent to &(STRING_ELT(x, 0)) in C.
-#[inline(always)]
-pub unsafe fn STRING_PTR(x: SEXP) -> *mut SEXP {
-    unsafe {
-        if x.is_null() {
-            return ptr::null_mut();
-        }
-        (*x).gengc_next_node as *mut SEXP
-    }
 }
 
 #[inline(always)]

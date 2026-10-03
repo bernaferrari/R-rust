@@ -330,16 +330,21 @@ pub unsafe fn DispatchAnyOrEval(
         let has_methods = crate::mainutils::objects::R_has_methods(op);
 
         if has_methods != FALSE {
-            let argValue: SEXP;
-            let mut _arg_value_guard = None;
-
-            if argsevald == 0 {
-                // Evaluate all arguments
-                argValue = super::dispatch::evalList(args, rho, ptr::null_mut(), 0);
-                _arg_value_guard = Some(protect(argValue));
+            let factory = crate::sexp::object::SessionNodeFactory::new(
+                crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(&error.to_string())
+                }),
+            );
+            let args_owner = factory.wrap(args).unwrap_or_else(|error| {
+                crate::sexp::context::r_error(&error.to_string())
+            });
+            let arg_value_owner = if argsevald == 0 {
+                super::dispatch::evalList(args_owner,
+                    factory.wrap(rho).unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())), None, 0)
             } else {
-                argValue = args;
-            }
+                args_owner
+            };
+            let argValue = arg_value_owner.as_raw();
 
             // Check each argument for S4 objects
             let mut el = argValue;

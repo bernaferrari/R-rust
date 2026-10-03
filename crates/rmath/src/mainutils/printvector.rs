@@ -12,8 +12,7 @@ use std::ptr;
 
 use crate::mainutils::format::{
     compact_int_width, compact_real_field, formatComplex, formatComplexS, formatInteger,
-    formatIntegerS, formatLogicalS, formatRaw, formatRawS, formatReal, formatRealS, formatString,
-    formatStringS,
+    formatIntegerS, formatLogicalS, formatRaw, formatRawS, formatReal, formatRealS, formatStringS,
 };
 use crate::sexp::altseq::{unexpanded_int, unexpanded_real, CompactSeq};
 use crate::mainutils::printutils::{
@@ -464,54 +463,6 @@ pub unsafe fn printRawVector(x: *const u8, n: R_xlen_t, indx: c_int) {
             let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
             Rprintf!("{:width$}{}", "", s, width = rp.gap as usize);
             width += w;
-        }
-        Rprintf!("\n");
-    }
-}
-
-// ---------------------------------------------------------------------------
-// printStringVector -- internal (static in C)
-// ---------------------------------------------------------------------------
-
-unsafe fn printStringVector(x: *const SEXP, n: R_xlen_t, quote: c_int, indx: c_int) {
-    unsafe {
-        let rp = get_R_PrintData();
-        let mut w: c_int = 0;
-        let mut labwidth: c_int = 0;
-        let mut width: c_int = 0;
-
-        // DO_first_lab
-        if indx != 0 {
-            labwidth = index_width_xlen(n) + 2;
-            vector_index(1, labwidth);
-            width = labwidth;
-        } else {
-            width = 0;
-        }
-
-        formatString(x, n, &mut w, quote);
-
-        for i in 0..n {
-            let si = if x.is_null() {
-                ptr::null_mut()
-            } else {
-                *x.add(i as usize)
-            };
-
-            // CHARVECTOR_TIGHTLOOP
-            if i > 0 && width + w + rp.gap > rp.width {
-                Rprintf!("\n");
-                if indx != 0 {
-                    vector_index(i + 1, labwidth);
-                    width = labwidth;
-                } else {
-                    width = 0;
-                }
-            }
-            let enc = EncodeString(si, w, quote, rp.right);
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
-            Rprintf!("{:width$}{}", "", s, width = rp.gap as usize);
-            width += w + rp.gap;
         }
         Rprintf!("\n");
     }

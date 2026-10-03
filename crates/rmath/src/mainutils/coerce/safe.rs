@@ -1,5 +1,30 @@
 use super::*;
 
+/// Copy character graph edges through typed cells; numeric payloads remain byte copies.
+unsafe fn copy_atomic_payload(from: SEXP, to: SEXP, kind: SEXPTYPE) {
+    unsafe {
+        let length = xlength(from);
+        if kind == SEXPTYPE::STRSXP {
+            for index in 0..length {
+                SET_STRING_ELT(to, index, STRING_ELT(from, index));
+            }
+            return;
+        }
+        let element_size = match kind {
+            SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<c_int>(),
+            SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
+            SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
+            SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
+            _ => unreachable!("atomic coercion copy requires an atomic vector"),
+        };
+        let source = DATAPTR(from);
+        let destination = DATAPTR(to);
+        if !source.is_null() && !destination.is_null() {
+            ptr::copy_nonoverlapping(source.cast::<u8>(), destination.cast::<u8>(), length as usize * element_size);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // R-level entry points (do_* functions)
 // ---------------------------------------------------------------------------
@@ -64,22 +89,7 @@ pub fn coerce_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, S
                     }
                     let ans = Rf_allocVector3(type_, xlength(x_raw));
                     let _ans_guard = protect(ans);
-                    let src = DATAPTR(x_raw);
-                    let dst = DATAPTR(ans);
-                    let elem_size = match SEXPTYPE(type_) {
-                        SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<c_int>(),
-                        SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
-                        SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
-                        SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
-                        _ => std::mem::size_of::<SEXP>(),
-                    };
-                    if !src.is_null() && !dst.is_null() {
-                        ptr::copy_nonoverlapping(
-                            src as *const u8,
-                            dst as *mut u8,
-                            xlength(x_raw) as usize * elem_size,
-                        );
-                    }
+                    copy_atomic_payload(x_raw, ans, SEXPTYPE(type_));
                     return Ok(ans);
                 }
                 _ => return Ok(x_raw),
@@ -126,19 +136,7 @@ pub fn as_atomic_safe(x: Sexp<'_>, op: i32) -> Result<SEXP, String> {
             }
             let ans = Rf_allocVector3(type_, xlength(x_raw));
             let _ans_guard = protect(ans);
-            let src = DATAPTR(x_raw);
-            let dst = DATAPTR(ans);
-            let byte_len = xlength(x_raw) as usize
-                * match SEXPTYPE(type_) {
-                    SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<c_int>(),
-                    SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
-                    SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
-                    SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
-                    _ => std::mem::size_of::<SEXP>(),
-                };
-            if !src.is_null() && !dst.is_null() {
-                ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, byte_len);
-            }
+            copy_atomic_payload(x_raw, ans, SEXPTYPE(type_));
             CLEAR_ATTRIB(ans);
             return Ok(ans);
         }
@@ -197,22 +195,7 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
                     }
                     let ans = Rf_allocVector3(type_, xlength(x_raw));
                     let _ans_guard = protect(ans);
-                    let src = DATAPTR(x_raw);
-                    let dst = DATAPTR(ans);
-                    let elem_size = match SEXPTYPE(type_) {
-                        SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<c_int>(),
-                        SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
-                        SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
-                        SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
-                        _ => std::mem::size_of::<SEXP>(),
-                    };
-                    if !src.is_null() && !dst.is_null() {
-                        ptr::copy_nonoverlapping(
-                            src as *const u8,
-                            dst as *mut u8,
-                            xlength(x_raw) as usize * elem_size,
-                        );
-                    }
+                    copy_atomic_payload(x_raw, ans, SEXPTYPE(type_));
                     CLEAR_ATTRIB(ans);
                     return Ok(ans);
                 }

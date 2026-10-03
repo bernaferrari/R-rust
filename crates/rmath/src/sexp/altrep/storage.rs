@@ -130,13 +130,13 @@ pub(super) fn allocate<'s>(
     VectorKind::from_sexp(kind)?;
     usize::try_from(length).map_err(|_| failure("invalid vector length"))?;
     allocate_rooted(owner, |arena| {
-        arena.alloc_vector_sexp(kind, length).map(Sexp::as_raw)
+        arena.alloc_vector_sexp(kind, length).map(|value| value.as_raw())
     })
     .map_err(|_| failure("ALTREP vector"))
 }
 pub(super) fn string<'s>(owner: OwnerToken<'s>, text: &str) -> SexpResult<Sexp<'s>> {
     allocate_rooted(owner, |arena| {
-        arena.alloc_charsxp_sexp(text.as_bytes()).map(Sexp::as_raw)
+        arena.alloc_charsxp_sexp(text.as_bytes()).map(|value| value.as_raw())
     })
 }
 pub(super) fn intern<'s>(owner: OwnerToken<'s>, name: &std::ffi::CStr) -> SexpResult<Sexp<'s>> {
@@ -168,24 +168,14 @@ fn cons<'s>(
     })
 }
 
-/// Root the fresh node before ending the arena lend: its deferred GC
-/// notifications can run callbacks, including another full collection. The
-/// temporary guard spans those callbacks and the checked owner's new lease.
+/// Install the automatic value lease inside the allocation lend, before
+/// deferred collection and provider reentry can observe the fresh graph.
 fn allocate_rooted<'s>(
     owner: OwnerToken<'s>,
     allocation: impl FnOnce(&mut super::super::memory::RArena) -> Option<SEXP>,
 ) -> SexpResult<Sexp<'s>> {
-    // SAFETY: callers use checked vector/string factories or a cons cell
-    // whose children have been validated and rooted in this owner.
-    // The raw guard touches only the disjoint root table while the arena is
-    // lent. No owner classification or whole-instance borrow occurs there.
-    let (raw, _root) = activate(owner, || unsafe {
-        super::super::memory::with_arena(|arena| {
-            let raw = allocation(arena).unwrap_or(std::ptr::null_mut());
-            (raw, super::super::protect::protect(raw))
-        })
-    });
-    owner.sexp(raw)
+    let factory = super::super::object::SessionNodeFactory::new(owner);
+    activate(owner, || factory.allocate(allocation))
 }
 
 /// Owns the roots necessary for construction or final payload publication.

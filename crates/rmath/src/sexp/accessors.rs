@@ -957,7 +957,7 @@ pub(crate) struct ElementSlotReject {
     pub kind: ElementSlotRejectKind,
 }
 
-/// Pure accept/reject decision shared by [`checked_element_slot`].
+/// Pure accept/reject decision shared by [`checked_reference_slot`].
 ///
 /// `Ok(())` means the tag is legal for `string_only`, the index is in range,
 /// and the data pointer is non-null. A bad tag wins when the index is also
@@ -991,38 +991,95 @@ pub(crate) fn element_slot_decision(
     Ok(())
 }
 
-/// Validate the tag and index before forming a pointer into a SEXP array.
-/// The caller must supply a live, initialized object (as for every raw accessor).
-#[inline]
-unsafe fn checked_element_slot(x: SEXP, i: R_xlen_t, string_only: bool) -> *mut SEXP {
-    unsafe {
-        let tag = (*x).sxpinfo.type_of();
-        let length = (*x).vecsxp_length();
-        let data = DATAPTR(x).cast::<SEXP>();
-        if let Err(reject) = element_slot_decision(tag, string_only, length, i, data.is_null()) {
-            match reject.kind {
-                ElementSlotRejectKind::BadTag => {
-                    std::panic::panic_any(super::context::RError {
-                        message: format!(
-                            "invalid {} element access for type {}",
-                            if string_only { "string" } else { "vector" },
-                            TYPEOF(x)
-                        ),
-                    });
-                }
-                ElementSlotRejectKind::BadIndex => {
-                    std::panic::panic_any(super::context::RError {
-                        message: format!(
-                            "invalid vector buffer/index: type {} length {} index {}",
-                            TYPEOF(x),
-                            length,
-                            i
-                        ),
-                    });
-                }
+/// An exact live allocation retained through materialization and element access.
+struct ReferenceSlot {
+    pointer: SEXP,
+    node: super::heap::CheckedNode,
+    index: usize,
+    _root: std::rc::Rc<super::heap::NodeRootLease>,
+}
+
+fn checked_reference_slot(x: SEXP, i: R_xlen_t, string_only: bool) -> ReferenceSlot {
+    let (pointer, node) = super::memory::checked_projection(x)
+        .unwrap_or_else(|| super::context::r_error("unowned reference-vector allocation"));
+    let root = node
+        .root_lease()
+        .unwrap_or_else(|| super::context::r_error("reference-vector allocation is unavailable"));
+    let header = super::memory::checked_snapshot(pointer, &node)
+        .unwrap_or_else(|| super::context::r_error("stale reference-vector allocation"));
+    let length = match header.data {
+        NodeBody::Vector(vector) => vector.length,
+        _ => 0,
+    };
+    // A lazy element has no dense buffer yet. Bounds and kind are checked
+    // here; the actual typed allocation is checked after materialization.
+    if let Err(reject) =
+        element_slot_decision(header.sxpinfo.type_of(), string_only, length, i, false)
+    {
+        match reject.kind {
+            ElementSlotRejectKind::BadTag => super::context::r_error(format!(
+                "invalid {} element access for type {}",
+                if string_only { "string" } else { "vector" },
+                header.sxpinfo.type_of().0
+            )),
+            ElementSlotRejectKind::BadIndex => {
+                super::context::r_error(format!("invalid vector index: length {length} index {i}"))
             }
         }
-        data.add(i as usize)
+    }
+    ReferenceSlot {
+        pointer,
+        node,
+        index: i as usize,
+        _root: root,
+    }
+}
+
+impl ReferenceSlot {
+    fn read(&self) -> SEXP {
+        self.node
+            .heap_identity()
+            .reference_elt(&self.node, self.index)
+            .unwrap_or_else(|| super::context::r_error("invalid typed reference-vector buffer"))
+    }
+}
+
+/// Own both inputs before any provider callback. No supplied pointer is read.
+enum ReferenceValue {
+    Null,
+    Node(
+        super::heap::CheckedNode,
+        std::rc::Rc<super::heap::NodeRootLease>,
+    ),
+    Singleton(super::globals::SingletonLease),
+}
+impl ReferenceValue {
+    fn capture(slot: &ReferenceSlot, pointer: SEXP) -> Self {
+        if pointer.is_null() {
+            return Self::Null;
+        }
+        let heap = slot.node.heap_identity();
+        if let Some(singleton) = heap
+            .retained_singleton(pointer)
+            .or_else(|| super::globals::immutable_singleton_pool().lease(pointer))
+        {
+            return Self::Singleton(singleton);
+        }
+        let (_, node) = super::memory::checked_projection(pointer)
+            .filter(|(_, node)| slot.node.same_heap(node))
+            .unwrap_or_else(|| super::context::r_error("unowned reference-vector child"));
+        let root = node
+            .root_lease()
+            .unwrap_or_else(|| super::context::r_error("reference-vector child is unavailable"));
+        Self::Node(node, root)
+    }
+
+    fn capability(&self) -> super::heap::ReferenceChild<'_> {
+        match self {
+            Self::Null => super::heap::ReferenceChild::Null,
+            Self::Node(node, _root) => super::heap::ReferenceChild::Node(node),
+            Self::Singleton(singleton) => super::heap::ReferenceChild::Singleton(singleton),
+        }
     }
 }
 
@@ -1104,70 +1161,63 @@ mod element_slot_kani {
     }
 }
 
-/// Get the i-th element of a STRSXP (a CHARSXP).
+/// Get the i-th element from checked canonical string storage.
 pub unsafe fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
-    unsafe {
-        #[cfg(feature = "altrep")]
-        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::String(v) =
-                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
-            {
-                return v.as_raw();
-            }
-            super::context::r_error("ALTREP element type mismatch");
+    let slot = checked_reference_slot(x, i, true);
+    #[cfg(feature = "altrep")]
+    if let Some(value) = unsafe { super::altrep::lazy_raw(slot.pointer, i) } {
+        if let super::altrep::AltrepElement::String(value) =
+            value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
+        {
+            return value.as_raw();
         }
-        if !is_valid_sexp_ptr(x) {
-            return ptr::null_mut();
-        }
-        *checked_element_slot(x, i, true)
+        super::context::r_error("ALTREP element type mismatch");
     }
+    // SAFETY: the exact parent lease retains the node through materialization.
+    let _ = unsafe { DATAPTR(slot.pointer) };
+    slot.read()
 }
 
-/// Set the i-th element of a STRSXP, recording old-to-young references.
+/// Store a string child through typed cells and the collector barrier.
 pub unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            let slot = checked_element_slot(x, i, true);
-            super::gengc::vector_write_barrier(x, i as usize, val);
-            *slot = val;
-        }
-    }
+    let slot = checked_reference_slot(x, i, true);
+    let value = ReferenceValue::capture(&slot, val);
+    let _ = unsafe { DATAPTR(slot.pointer) };
+    let _ = slot.read();
+    unsafe { super::gengc::vector_write_barrier(slot.pointer, slot.index, val) };
+    slot.node
+        .heap_identity()
+        .set_reference_elt(&slot.node, slot.index, value.capability())
+        .unwrap_or_else(|| super::context::r_error("invalid typed reference-vector write"));
 }
 
-/// Get the i-th element of a SEXP array, including internal bytecode payloads.
+/// Get a checked reference-array element, including bytecode constants.
 pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
-    unsafe {
-        #[cfg(feature = "altrep")]
-        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::List(v) =
-                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
-            {
-                return v.as_raw();
-            }
-            super::context::r_error("ALTREP element type mismatch");
+    let slot = checked_reference_slot(x, i, false);
+    #[cfg(feature = "altrep")]
+    if let Some(value) = unsafe { super::altrep::lazy_raw(slot.pointer, i) } {
+        if let super::altrep::AltrepElement::List(value) =
+            value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
+        {
+            return value.as_raw();
         }
-        if !is_valid_sexp_ptr(x) {
-            return ptr::null_mut();
-        }
-        *checked_element_slot(x, i, false)
+        super::context::r_error("ALTREP element type mismatch");
     }
+    let _ = unsafe { DATAPTR(slot.pointer) };
+    slot.read()
 }
 
-/// Set the i-th element of a SEXP array, recording old-to-young references.
+/// Store a checked reference-array child and record old-to-young edges.
 pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            let slot = checked_element_slot(x, i, false);
-            super::gengc::vector_write_barrier(x, i as usize, val);
-            *slot = val;
-        }
-    }
+    let slot = checked_reference_slot(x, i, false);
+    let value = ReferenceValue::capture(&slot, val);
+    let _ = unsafe { DATAPTR(slot.pointer) };
+    let _ = slot.read();
+    unsafe { super::gengc::vector_write_barrier(slot.pointer, slot.index, val) };
+    slot.node
+        .heap_identity()
+        .set_reference_elt(&slot.node, slot.index, value.capability())
+        .unwrap_or_else(|| super::context::r_error("invalid typed reference-vector write"));
 }
 
 // ---------------------------------------------------------------------------
@@ -1845,4 +1895,49 @@ pub unsafe fn getCharCE(x: SEXP) -> c_int {
     else {
         0
     } // CE_NATIVE
+}
+#[test]
+fn reference_elements_reject_forged_lengths_and_payloads_without_reading_them() {
+    let mut arena = super::memory::RArena::new();
+    let parent = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+    let node = arena.node_token(parent).unwrap();
+    let original = super::memory::checked_snapshot(parent, &node).unwrap();
+    let numeric = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+    let numeric_node = arena.node_token(numeric).unwrap();
+    let numeric_payload = super::memory::checked_snapshot(numeric, &numeric_node)
+        .unwrap()
+        .gengc_next_node;
+    for payload in [
+        original.gengc_next_node,
+        numeric_payload,
+        ptr::dangling_mut(),
+    ] {
+        let mut forged = original;
+        forged.data.vector_mut().length = 3;
+        forged.gengc_next_node = payload;
+        // SAFETY: this fixture exclusively modifies its own initialized
+        // header. Every element operation must reject the forged shape.
+        unsafe {
+            parent.write(forged);
+        }
+        for index in [0, 2] {
+            for write in [false, true] {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    if write {
+                        SET_VECTOR_ELT(parent, index, ptr::null_mut());
+                    } else {
+                        VECTOR_ELT(parent, index);
+                    }
+                }));
+                assert!(result.is_err());
+            }
+        }
+    }
+    unsafe {
+        parent.write(original);
+    }
+    assert_eq!(
+        node.heap_identity().reference_elements(&node),
+        Some(vec![ptr::null_mut()])
+    );
 }

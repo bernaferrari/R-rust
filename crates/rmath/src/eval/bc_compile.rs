@@ -630,9 +630,8 @@ fn symbol_getvar_bcode(sym: SEXP) -> SEXP {
         with_required_current_instance(|inst| {
             with_arena_in(inst, |arena| {
                 let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
-                let consts_data = (*consts).gengc_next_node as *mut SEXP;
-                *consts_data = sym;
-                *consts_data.add(1) = sym;
+                arena.set_reference_element(consts, 0, sym).expect("fresh constant pool slot");
+                arena.set_reference_element(consts, 1, sym).expect("fresh constant pool slot");
                 let code = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
                 let code_data = (*code).gengc_next_node as *mut c_int;
                 *code_data = opcodes::OP_GETVAR;
@@ -642,10 +641,9 @@ fn symbol_getvar_bcode(sym: SEXP) -> SEXP {
                 let stack_data = (*stack_hint).gengc_next_node as *mut c_int;
                 *stack_data = 4;
                 let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
-                let bcode_data = (*bcode).gengc_next_node as *mut SEXP;
-                *bcode_data = code;
-                *bcode_data.add(1) = consts;
-                *bcode_data.add(2) = stack_hint;
+                arena.set_reference_element(bcode, 0, code).expect("fresh bytecode slot");
+                arena.set_reference_element(bcode, 1, consts).expect("fresh bytecode slot");
+                arena.set_reference_element(bcode, 2, stack_hint).expect("fresh bytecode slot");
                 bcode
             })
         })
@@ -781,7 +779,7 @@ mod tests {
 
     #[test]
     fn compile_constant_round_trips_through_bc_eval() {
-        let session = RSession::new();
+        let session = RSession::new_without_default_packages();
         let expr = session.with_active(|| unsafe { Rf_ScalarInteger(42) });
         let env = session.global_env().expect("global env");
 
@@ -795,7 +793,7 @@ mod tests {
 
     #[test]
     fn compile_getvar_round_trips_through_bc_eval() {
-        let session = RSession::new();
+        let session = RSession::new_without_default_packages();
         let env = session.global_env().expect("global env");
 
         unsafe {
@@ -813,7 +811,7 @@ mod tests {
 
     #[test]
     fn compile_simple_call_round_trips_through_bc_eval() {
-        let session = RSession::new();
+        let session = RSession::new_without_default_packages();
         let env = session.global_env().expect("global env");
 
         unsafe {
@@ -841,7 +839,7 @@ mod tests {
         // Pinned GNU R oracle (`compiler::cmpfun(function(x) !x)` applied to
         // FALSE) returns TRUE; this exercises the same supported expression
         // through the portable private bytecode evaluator.
-        let session = RSession::new();
+        let session = RSession::new_without_default_packages();
         let env = session.global_env().expect("global env");
 
         unsafe {
@@ -864,7 +862,7 @@ mod tests {
 
     #[test]
     fn compile_assignment_block_round_trips_through_bc_eval() {
-        let session = RSession::new();
+        let session = RSession::new_without_default_packages();
         let env = session.global_env().expect("global env");
 
         unsafe {
@@ -898,7 +896,7 @@ mod tests {
 
     #[test]
     fn compile_for_loop_updates_binding_and_returns_invisible_null() {
-        let session = RSession::new();
+        let session = RSession::new_without_default_packages();
         let env = session.global_env().expect("global env").as_raw();
 
         session.with_active(|| unsafe {
@@ -957,7 +955,7 @@ mod tests {
 
     #[test]
     fn compile_while_loop_keeps_operand_stack_balanced() {
-        let session = RSession::new();
+        let session = RSession::new_without_default_packages();
         let env = session.global_env().expect("global env");
 
         unsafe {

@@ -33,6 +33,11 @@ pub(crate) fn immutable_singleton_pool() -> SingletonPoolLease {
     singletons::pool()
 }
 
+#[cfg(test)]
+pub(crate) fn close_immutable_singletons_for_test() {
+    singletons::close_pool_for_test();
+}
+
 /// Get a pointer to R_NilValue.
 pub unsafe fn R_NilValue() -> SEXP { singletons::nil() }
 /// Get a pointer to R_UnboundValue.
@@ -355,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_singletons_reject_legacy_mutation() {
+    fn shared_singletons_remain_immutable() {
         use crate::sexp::accessors::*;
         unsafe {
             for node in [R_NilValue(), R_UnboundValue(), R_MissingArg(), R_RestartToken(), R_NaString(), R_True(), R_False()] {
@@ -404,8 +409,12 @@ mod tests {
                 SET_REAL_ELT(node, 0, 99.0);
                 SET_COMPLEX_ELT(node, 0, Rcomplex { r: 99.0, i: 99.0 });
                 SET_RAW_ELT(node, 0, 99);
-                SET_STRING_ELT(node, 0, R_NaString());
-                SET_VECTOR_ELT(node, 0, R_True());
+                assert!(std::panic::catch_unwind(|| {
+                    SET_STRING_ELT(node, 0, R_NaString());
+                }).is_err());
+                assert!(std::panic::catch_unwind(|| {
+                    SET_VECTOR_ELT(node, 0, R_True());
+                }).is_err());
                 assert_eq!((*node).sxpinfo.type_and_flags, flags.type_and_flags);
                 assert_eq!((*node).sxpinfo.rcount, flags.rcount);
                 assert_eq!((*node).attrib, attributes);

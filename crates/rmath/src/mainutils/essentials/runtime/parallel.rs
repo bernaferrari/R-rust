@@ -65,15 +65,13 @@ pub unsafe fn do_foreach(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         let _p = protect(result);
 
-        let dst = (*result).gengc_next_node as *mut SEXP;
         for i in 0..n {
-            let elt = if TYPEOF(x) == SEXPTYPE::VECSXP {
-                let src = (*x).gengc_next_node as *const SEXP;
-                *src.add(i)
+            let elt = if TYPEOF(x) == SEXPTYPE::VECSXP && i < XLENGTH(x) as usize {
+                crate::sexp::accessors::VECTOR_ELT(x, i as R_xlen_t)
             } else {
                 R_NilValue()
             };
-            *dst.add(i) = elt;
+            crate::sexp::accessors::SET_VECTOR_ELT(result, i as R_xlen_t, elt);
         }
         result
     }

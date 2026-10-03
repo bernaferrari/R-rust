@@ -2796,8 +2796,7 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
                 let cstr = CString::new(s).unwrap_or_default();
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
                 if !charsxp.is_null() {
-                    let data = (*result).gengc_next_node as *mut SEXP;
-                    *data.add(i as usize) = charsxp;
+                    crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
                 }
             }
             return result;
@@ -3292,7 +3291,7 @@ pub unsafe fn do_print_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         while !cur.is_null() && cur != R_NilValue() && TYPEOF(cur) == SEXPTYPE::LISTSXP {
             let tag = crate::sexp::accessors::TAG(cur);
             let val = CAR(cur);
-            let name = if !tag.is_null() {
+            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
                 let pname = crate::sexp::accessors::PRINTNAME(tag);
                 if !pname.is_null() {
                     let s = crate::sexp::accessors::CHAR(pname);
@@ -3548,5 +3547,39 @@ pub unsafe fn do_summary_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
+    }
+}
+
+#[cfg(test)]
+mod pairlist_print_tests {
+    use super::*;
+    use crate::sexp::object::PairlistBuilder;
+
+    #[test]
+    fn print_pairlist_accepts_owned_untagged_cells() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().expect("live session owner");
+            let value = session
+                .sexp(unsafe { Rf_ScalarInteger(42) })
+                .expect("owned integer");
+            let mut list = PairlistBuilder::new_in(owner);
+            list.push(value, None).expect("untagged cell");
+            let list = list.finish().expect("owned pairlist");
+            assert!(list.try_tag().expect("captured untagged cell").is_nil());
+
+            let mut arguments = PairlistBuilder::new_in(owner);
+            arguments.push(list.clone(), None).expect("print argument");
+            let arguments = arguments.finish().expect("owned print arguments");
+            let result = unsafe {
+                do_print_pairlist(
+                    R_NilValue(),
+                    R_NilValue(),
+                    arguments.as_raw(),
+                    R_NilValue(),
+                )
+            };
+            assert_eq!(result, list.as_raw());
+        });
     }
 }

@@ -361,6 +361,9 @@ impl<'a> Sexp<'a> {
     /// Whether this value is the retained `NA_character_` sentinel.
     #[inline]
     pub fn is_na_string(&self) -> bool {
+        if let Some(singleton) = &self.singleton {
+            return singleton.is_na_string();
+        }
         if let Some(pool) = &self.singletons {
             return self.ptr == pool.na_string_projection();
         }
@@ -370,17 +373,27 @@ impl<'a> Sexp<'a> {
             && crate::sexp::globals::immutable_na_string_projection() == Some(self.ptr)
     }
 
-    /// Get the underlying raw SEXP pointer.
-    ///
-    /// This is useful for passing the `Sexp` to FFI functions that
-    /// expect a raw `SEXP`.
+    /// Borrow the raw projection while this handle retains the allocation.
     #[inline]
-    // Internal SEXP views deliberately consume the non-Copy handle.
-    #[allow(clippy::wrong_self_convention)]
-    pub fn as_raw(self) -> SEXP {
+    pub fn as_raw(&self) -> SEXP {
         self.ensure_live()
             .expect("SEXP allocation has been reclaimed");
         self.ptr
+    }
+
+    /// Capture this value's allocation domain before execution or an arena lend.
+    pub(crate) fn node_factory(&self) -> SexpResult<SessionNodeFactory<'a>> {
+        self.ensure_live()?;
+        let owner = self.session_owner_ptr.ok_or(SexpError::RootUnavailable)?;
+        if self.node.is_none() || self.owner != SexpOwner::Session(owner.as_ptr().addr()) {
+            return Err(SexpError::RootUnavailable);
+        }
+        // SAFETY: checked session construction binds the owner to this handle's
+        // session lifetime. Snapshotting ends before the returned factory runs.
+        let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(owner.as_ptr()) };
+        let factory = SessionNodeFactory::new(owner);
+        factory.wrap(self.ptr)?;
+        Ok(factory)
     }
 
     /// Check the allocation generation without dereferencing interpreter memory.
@@ -576,53 +589,58 @@ impl<'a> Sexp<'a> {
         }
     }
 
-    #[inline]
-    fn vector_sexp_data(&self) -> Option<*const SEXP> {
-        self.try_vector_sexp_data().ok()
+    fn reference_node(&self) -> SexpResult<crate::sexp::heap::CheckedNode> {
+        self.ensure_live()?;
+        if let Some(node) = &self.node {
+            return Ok(node.clone());
+        }
+        crate::sexp::memory::checked_projection(self.ptr)
+            .map(|(_, node)| node)
+            .ok_or(SexpError::UnownedPointer {
+                address: self.ptr.addr(),
+            })
     }
 
-    #[inline]
-    fn try_vector_sexp_data(&self) -> SexpResult<*const SEXP> {
-        self.ensure_live()?;
-        if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
-            return Err(SexpError::TypeMismatch {
-                expected: "generic or expression vector",
-                actual: self.typeof_(),
-            });
-        }
-        let data = self.header().payload as *const SEXP;
-        if data.is_null() {
-            Err(SexpError::MissingData {
+    fn reference_elt(&self, index: usize) -> SexpResult<SEXP> {
+        let node = self.reference_node()?;
+        node.heap_identity()
+            .reference_elt(&node, index)
+            .ok_or(SexpError::MissingData {
                 sexptype: self.typeof_(),
             })
+    }
+
+    fn set_reference_elt(&self, index: usize, child: &Sexp<'_>) -> SexpResult<()> {
+        use crate::sexp::heap::ReferenceChild;
+        let node = self.reference_node()?;
+        let heap = node.heap_identity();
+        let singleton;
+        let child_node;
+        let value = if let Some(owner) = &child.singleton {
+            ReferenceChild::Singleton(owner)
+        } else if let Some(owner) = &child.node {
+            ReferenceChild::Node(owner)
+        } else if let Some(owner) = self
+            .singletons
+            .as_ref()
+            .and_then(|pool| pool.lease(child.ptr))
+            .or_else(|| heap.retained_singleton(child.ptr))
+            .or_else(|| {
+                (self.owner == SexpOwner::Unknown)
+                    .then(|| crate::sexp::globals::immutable_singleton_pool().lease(child.ptr))
+                    .flatten()
+            })
+        {
+            singleton = owner;
+            ReferenceChild::Singleton(&singleton)
         } else {
-            Ok(data)
-        }
-    }
-
-    #[inline]
-    fn vector_sexp_data_mut(&self) -> Option<*mut SEXP> {
-        self.try_vector_sexp_data_mut().ok()
-    }
-
-    #[inline]
-    fn try_vector_sexp_data_mut(&self) -> SexpResult<*mut SEXP> {
-        self.ensure_live()?;
-        if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
-            return Err(SexpError::TypeMismatch {
-                expected: "generic or expression vector",
-                actual: self.typeof_(),
-            });
-        }
-        self.materialize_compact_payload()?;
-        let data = self.header().payload as *mut SEXP;
-        if data.is_null() {
-            Err(SexpError::MissingData {
+            child_node = child.reference_node()?;
+            ReferenceChild::Node(&child_node)
+        };
+        heap.set_reference_elt(&node, index, value)
+            .ok_or(SexpError::MissingData {
                 sexptype: self.typeof_(),
             })
-        } else {
-            Ok(data)
-        }
     }
 
     #[inline]
@@ -690,8 +708,20 @@ impl<'a> Sexp<'a> {
             } else {
                 Ok(Sexp::nil())
             }
-        } else if let Some(singleton) = self.singletons.as_ref().and_then(|pool| pool.lease(ptr)) {
-            Ok(Self::from_singleton(singleton, self.singletons.clone().expect("retained sentinel bank")))
+        } else if let Some(singleton) = self
+            .singletons
+            .as_ref()
+            .and_then(|pool| pool.lease(ptr))
+            .or_else(|| {
+                self.node
+                    .as_ref()
+                    .and_then(|node| node.heap_identity().retained_singleton(ptr))
+            })
+        {
+            Ok(Self::from_singleton(
+                singleton,
+                self.singletons.clone().expect("retained sentinel bank"),
+            ))
         } else {
             // SAFETY: the parent factory established graph liveness for this lifetime.
             let mut child = unsafe { Sexp::try_from_raw(ptr) }?;

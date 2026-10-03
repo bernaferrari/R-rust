@@ -34,7 +34,7 @@ use crate::sexp::ffi::{
 };
 
 use crate::mainutils::format::{
-    formatComplex, formatLogical, formatReal, formatString, integer_field_width, real_field,
+    formatComplex, formatLogical, formatReal, integer_field_width, real_field, string_element_width,
 };
 
 // ---------------------------------------------------------------------------
@@ -1167,10 +1167,6 @@ fn one_string(x: SEXP, indx: R_xlen_t) -> SEXP {
     if !element_in_range(x, indx) {
         return ptr::null_mut();
     }
-    let data = unsafe { crate::sexp::accessors::DATAPTR(x) };
-    if data.is_null() {
-        return ptr::null_mut();
-    }
     unsafe { STRING_ELT(x, indx) }
 }
 
@@ -1207,8 +1203,7 @@ pub unsafe fn EncodeElement0(
             }
             SEXPTYPE::STRSXP => {
                 let elt = one_string(x, indx);
-                let mut w: c_int = 0;
-                formatString(&elt, 1, &mut w, quote);
+                let w = string_element_width(elt, quote);
                 EncodeString(elt, w, quote, Rprt_adj::left)
             }
             SEXPTYPE::CPLXSXP => {

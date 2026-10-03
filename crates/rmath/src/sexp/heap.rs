@@ -5,11 +5,24 @@
 //! ownership, allocation identity and collector metadata stay ordinary Rust.
 //! IDs never keep a dead node alive and cannot select a reused or foreign slot.
 
+use super::{
+    ffi::{NodeBody, SEXP, SEXPTYPE, SexprecCore},
+    globals::SingletonLease,
+};
 use std::{
     cell::{Cell, RefCell},
     hash::{Hash, Hasher},
     rc::{Rc, Weak},
 };
+
+/// Child identities are captured by their caller, never refreshed from an
+/// address while a graph edge is being written.
+#[derive(Clone, Copy)]
+pub(crate) enum ReferenceChild<'a> {
+    Null,
+    Node(&'a CheckedNode),
+    Singleton(&'a SingletonLease),
+}
 
 /// The shared domain retains physical storage through one ownership bag.
 /// Only the weak link lives here: pages contain this identity themselves.
@@ -40,6 +53,7 @@ impl std::fmt::Debug for PhysicalBacking {
 /// only a HeapIdentity with a weak bag link, never a strong link back here.
 pub(crate) struct HeapBackingOwners {
     stores: RefCell<Vec<PhysicalBacking>>,
+    singletons: RefCell<Vec<SingletonLease>>,
 }
 impl std::fmt::Debug for HeapBackingOwners {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -74,6 +88,7 @@ impl HeapIdentity {
         let owners = self.retained_backing().unwrap_or_else(|| {
             let owners = Rc::new(HeapBackingOwners {
                 stores: RefCell::new(Vec::new()),
+                singletons: RefCell::new(Vec::new()),
             });
             *self.0.backing.borrow_mut() = Rc::downgrade(&owners);
             owners
@@ -92,6 +107,153 @@ impl HeapIdentity {
         backing: Rc<super::instance::persistent::PersistentBacking>,
     ) -> Rc<HeapBackingOwners> {
         self.retain(PhysicalBacking::Persistent(backing))
+    }
+
+    pub(crate) fn retained_singleton(&self, pointer: SEXP) -> Option<SingletonLease> {
+        let owners = self.retained_backing()?;
+        let result = owners
+            .singletons
+            .borrow()
+            .iter()
+            .find(|lease| lease.projection() == pointer)
+            .cloned();
+        result
+    }
+
+    fn node_snapshot(&self, node: &CheckedNode) -> Option<SexprecCore> {
+        if !node.belongs_to(self) || !node.is_live() {
+            return None;
+        }
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.node_snapshot(node.id()),
+            PhysicalBacking::Persistent(store) => store.node_snapshot(node.id()),
+        });
+        result
+    }
+
+    fn node_projection(&self, node: &CheckedNode) -> Option<SEXP> {
+        if !node.belongs_to(self) || !node.is_live() {
+            return None;
+        }
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.node_projection(node.id()),
+            PhysicalBacking::Persistent(store) => store.node_projection(node.id()),
+        });
+        result
+    }
+
+    /// Header kind, exact generation and typed allocation capacity are all
+    /// checked before a graph operation can select a payload cell.
+    fn reference_payload(&self, parent: &CheckedNode) -> Option<(*mut u8, usize)> {
+        let header = self.node_snapshot(parent)?;
+        if !matches!(
+            header.sxpinfo.type_of(),
+            SEXPTYPE::STRSXP | SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::BCODESXP
+        ) {
+            return None;
+        }
+        let NodeBody::Vector(vector) = header.data else {
+            return None;
+        };
+        let length = usize::try_from(vector.length).ok()?;
+        let pointer = header.gengc_next_node.cast::<u8>();
+        if length == 0 && pointer.is_null() {
+            // Ordinary empty vectors need no allocation. An ALTREP provider
+            // with no registered payload has not committed typed storage.
+            return (!header.sxpinfo.alt()).then_some((pointer, length));
+        }
+        let owners = self.retained_backing()?;
+        let capacity = owners
+            .stores
+            .borrow()
+            .iter()
+            .find_map(|store| match store {
+                PhysicalBacking::Arena(store) => store.reference_payload_capacity(pointer),
+                PhysicalBacking::Persistent(store) => store.reference_payload_capacity(pointer),
+            })?;
+        (length <= capacity).then_some((pointer, length))
+    }
+
+    pub(crate) fn reference_elt(&self, parent: &CheckedNode, index: usize) -> Option<SEXP> {
+        let (pointer, length) = self.reference_payload(parent)?;
+        if index >= length {
+            return None;
+        }
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.reference_payload_elt(pointer, index),
+            PhysicalBacking::Persistent(store) => store.reference_payload_elt(pointer, index),
+        });
+        result
+    }
+
+    pub(crate) fn reference_elements(&self, parent: &CheckedNode) -> Option<Vec<SEXP>> {
+        let (pointer, length) = self.reference_payload(parent)?;
+        if length == 0 {
+            return Some(Vec::new());
+        }
+        self.copy_reference_payload(pointer, length)
+    }
+
+    pub(crate) fn set_reference_elt(
+        &self,
+        parent: &CheckedNode,
+        index: usize,
+        child: ReferenceChild<'_>,
+    ) -> Option<()> {
+        self.replace_reference_elements(parent, index, &[child])
+    }
+
+    /// Resolve every capability and bound before writing any element. Store
+    /// loans remain local, and singleton retention owns the actual referent.
+    pub(crate) fn replace_reference_elements(
+        &self,
+        parent: &CheckedNode,
+        start: usize,
+        children: &[ReferenceChild<'_>],
+    ) -> Option<()> {
+        let (pointer, length) = self.reference_payload(parent)?;
+        if start.checked_add(children.len())? > length {
+            return None;
+        }
+        let values = children
+            .iter()
+            .map(|child| match child {
+                ReferenceChild::Null => Some(std::ptr::null_mut()),
+                ReferenceChild::Node(node) => self.node_projection(node),
+                ReferenceChild::Singleton(lease) => Some(lease.projection()),
+            })
+            .collect::<Option<Vec<_>>>()?;
+        if children.is_empty() {
+            return Some(());
+        }
+        let owners = self.retained_backing()?;
+        owners
+            .stores
+            .borrow()
+            .iter()
+            .find_map(|store| match store {
+                PhysicalBacking::Arena(store) => {
+                    store.replace_reference_payload(pointer, start, &values)
+                }
+                PhysicalBacking::Persistent(store) => {
+                    store.replace_reference_payload(pointer, start, &values)
+                }
+            })?;
+        let mut retained = owners.singletons.borrow_mut();
+        for child in children {
+            if let ReferenceChild::Singleton(lease) = child {
+                if !retained
+                    .iter()
+                    .any(|owned| owned.projection() == lease.projection())
+                {
+                    retained.push((*lease).clone());
+                }
+            }
+        }
+        Some(())
     }
     /// Copy pointer-vector elements from canonical typed owners in this
     /// exact heap domain. The supplied address only selects registered
@@ -182,6 +344,9 @@ impl CheckedNode {
     }
     pub(crate) fn id(&self) -> &NodeId {
         &self.id
+    }
+    pub(crate) fn heap_identity(&self) -> HeapIdentity {
+        self.id.heap.clone()
     }
     /// Root this exact allocation without borrowing its header or owner.
     /// Cloning the returned Rc shares this single counted lease.

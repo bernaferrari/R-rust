@@ -5190,7 +5190,20 @@ pub unsafe fn installS3Signature(className: *const c_char, methodName: *const c_
 /// Looks up an internal function and dispatches to its C implementation.
 pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let s = CAR(args);
+        let factory = crate::sexp::object::SessionNodeFactory::new(
+            crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+        );
+        let args_owner = factory
+            .wrap(args)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let env_owner = factory
+            .wrap(env)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let call_owner = factory
+            .wrap(call)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let s = CAR(args_owner.as_raw());
         // s is the unevaluated call supplied to .Internal, represented as a
         // language object in ordinary source and as a pairlist in a few
         // low-level call paths.
@@ -5235,9 +5248,15 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         if internal_val.is_null() || internal_val == R_NilValue() {
             if let Some(handler) = internal_builtin_handler(&name_str) {
                 let actual_args = CDR(s);
-                let evaluated_args =
-                    crate::eval::dispatch::evalList(actual_args, env, call, -1);
-                return handler(s, R_NilValue(), evaluated_args, env);
+                let evaluated_args = crate::eval::dispatch::evalList(
+                    factory
+                        .wrap(actual_args)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                    env_owner.clone(),
+                    Some(call_owner.clone()),
+                    -1,
+                );
+                return handler(s, R_NilValue(), evaluated_args.as_raw(), env);
             }
             panic_any(RError {
                 message: format!("there is no .Internal function '{}'", name_str),
@@ -5246,17 +5265,27 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
         // On-demand primitives are not necessarily installed in a symbol's
         // INTERNAL slot. Argument evaluation can collect, so root this one.
-        let _internal_guard = protect(internal_val);
+        let _internal_owner = factory
+            .wrap(internal_val)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
         // Get the actual arguments (CDR of the pairlist)
         let actual_args = CDR(s);
 
         // For BUILTINSXP, evaluate the argument list; for SPECIALSXP, pass as-is
         let evaluated_args = if TYPEOF(internal_val) == SEXPTYPE::BUILTINSXP {
-            crate::eval::dispatch::evalList(actual_args, env, call, -1)
+            crate::eval::dispatch::evalList(
+                factory
+                    .wrap(actual_args)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                env_owner.clone(),
+                Some(call_owner.clone()),
+                -1,
+            )
         } else {
-            actual_args
+            factory
+                .wrap(actual_args)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
         };
-        let _evaluated_args_guard = protect(evaluated_args);
 
         // Get the PRIMPRINT flag (visibility hint)
         let flag = crate::eval::eval::PRIMPRINT(internal_val);
@@ -5277,7 +5306,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
         if let Some(handler) = internal_builtin_handler(name) {
             let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
-                handler(s, internal_val, evaluated_args, env)
+                handler(s, internal_val, evaluated_args.as_raw(), env)
             });
             resolve_internal_visibility(name, flag);
             return ans;
@@ -5285,7 +5314,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
         if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(name) {
             let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
-                handler(s, internal_val, evaluated_args, env)
+                handler(s, internal_val, evaluated_args.as_raw(), env)
             });
             resolve_internal_visibility(name, flag);
             return ans;
@@ -5296,7 +5325,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
         let ans = if let Some(f) = cfun {
             crate::mainutils::errors::attribute_handler_errors(s, || {
-                f(s, internal_val, evaluated_args, env)
+                f(s, internal_val, evaluated_args.as_raw(), env)
             })
         } else if name == "inspect" {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
@@ -5344,7 +5373,6 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "readDCF" => Some(crate::mainutils::dcf::do_readDCF),
         "compareNumericVersion" => Some(crate::mainutils::dcf::do_compareNumericVersion),
 
-
         "bodyCode" => Some(crate::mainutils::builtin::do_bodyCode),
         "refcnt" => Some(do_refcnt),
         "address" => Some(do_address),
@@ -5374,7 +5402,6 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "mean" => Some(crate::mainutils::summary::do_mean),
         "grepRaw" => Some(crate::mainutils::grep::do_grepraw),
 
-
         "save" => Some(crate::mainutils::saveload::do_save),
         "islistfactor" => Some(crate::mainutils::apply::do_islistfactor),
         "lapply" => Some(crate::mainutils::apply::do_lapply),
@@ -5393,19 +5420,8 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "seq" => Some(crate::mainutils::seq::do_seq),
         "split" => Some(crate::mainutils::split::do_split),
 
-
-
-
-
-
-
-        "getRegisteredNamespace" => {
-            Some(crate::mainutils::essentials::do_get_registered_namespace)
-        }
-        "isRegisteredNamespace" => {
-            Some(crate::mainutils::essentials::do_is_registered_namespace)
-        }
-
+        "getRegisteredNamespace" => Some(crate::mainutils::essentials::do_get_registered_namespace),
+        "isRegisteredNamespace" => Some(crate::mainutils::essentials::do_is_registered_namespace),
 
         "load" => Some(crate::mainutils::saveload::do_load),
         "strptime" => Some(crate::mainutils::datetime::do_strptime),

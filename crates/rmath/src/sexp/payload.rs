@@ -153,6 +153,37 @@ impl OwnedPayload {
         self.length
     }
 
+    pub(crate) fn reference_capacity(&self) -> Option<usize> {
+        matches!(self.storage, Storage::References(_)).then_some(self.length)
+    }
+
+    pub(crate) fn reference_elt(&self, index: usize) -> Option<SEXP> {
+        let Storage::References(chunks) = &self.storage else {
+            return None;
+        };
+        (index < self.length)
+            .then(|| chunks[index / POINTERS_PER_CHUNK].values[index % POINTERS_PER_CHUNK].get())
+    }
+
+    pub(crate) fn set_reference_elt(&self, index: usize, value: SEXP) -> Option<()> {
+        self.replace_references(index, &[value])
+    }
+
+    /// Check the entire range before writing any cell, including arithmetic
+    /// overflow and the logical end of the final alignment chunk.
+    pub(crate) fn replace_references(&self, start: usize, values: &[SEXP]) -> Option<()> {
+        let Storage::References(chunks) = &self.storage else {
+            return None;
+        };
+        if start.checked_add(values.len())? > self.length {
+            return None;
+        }
+        for (index, value) in (start..).zip(values.iter().copied()) {
+            chunks[index / POINTERS_PER_CHUNK].values[index % POINTERS_PER_CHUNK].set(value);
+        }
+        Some(())
+    }
+
     /// Copy graph edges from the actual typed cells. Header lengths cannot
     /// expose alignment padding or reinterpret a numeric/scratch allocation.
     pub(crate) fn copy_references(&self, length: usize) -> Option<Vec<SEXP>> {
@@ -191,6 +222,33 @@ impl OwnedPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reference_cell_writes_are_typed_bounded_and_atomic_on_failure() {
+        let payload = OwnedPayload::zeroed_vector(SEXPTYPE::VECSXP, 3).unwrap();
+        let first = std::ptr::dangling_mut::<super::super::ffi::SexprecCore>();
+        payload.set_reference_elt(2, first).unwrap();
+        assert_eq!(payload.reference_elt(2), Some(first));
+        assert!(payload.reference_elt(3).is_none());
+        assert!(payload.set_reference_elt(3, first).is_none());
+        assert!(payload.replace_references(2, &[first, first]).is_none());
+        assert!(payload.replace_references(usize::MAX, &[first]).is_none());
+        assert_eq!(
+            payload.copy_references(3),
+            Some(vec![std::ptr::null_mut(), std::ptr::null_mut(), first])
+        );
+        payload.replace_references(3, &[]).unwrap();
+        assert!(payload.replace_references(4, &[]).is_none());
+        for payload in [
+            OwnedPayload::zeroed_bytes(24).unwrap(),
+            OwnedPayload::zeroed_vector(SEXPTYPE::INTSXP, 3).unwrap(),
+        ] {
+            assert!(payload.reference_capacity().is_none());
+            assert!(payload.reference_elt(0).is_none());
+            assert!(payload.set_reference_elt(0, first).is_none());
+            assert!(payload.replace_references(0, &[]).is_none());
+        }
+    }
 
     #[test]
     fn graph_snapshots_check_actual_storage_type_and_logical_bounds() {

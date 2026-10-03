@@ -6,7 +6,7 @@
 //! R objects.
 //!
 //! Exports (from original C):
-//!   formatString, formatStringS, formatLogical, formatLogicalS,
+//!   formatStringS, formatLogical, formatLogicalS,
 //!   formatInteger, formatIntegerS, formatReal, formatRealS,
 //!   formatComplex, formatComplexS, formatRaw, formatRawS
 
@@ -378,34 +378,18 @@ pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// formatString  -- field width for character strings
-//
-// Ported from C: iterates SEXP array, calls Rstrlen for display width.
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatString(x: *const SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
+/// Display width of one character element, including quoting and NA widths.
+pub(crate) unsafe fn string_element_width(element: SEXP, quote: c_int) -> c_int {
     unsafe {
-        let mut xmax: c_int = 0;
-
-        for i in 0..n {
-            let si = *x.add(i as usize);
-            let l;
-            if si.is_null() || (!si.is_null() && si == crate::sexp::globals::R_NaString()) {
-                // NA_STRING
-                l = if quote != 0 {
-                    current_R_print().na_width
-                } else {
-                    current_R_print().na_width_noquote
-                };
+        if element.is_null() || element == crate::sexp::globals::R_NaString() {
+            if quote != 0 {
+                current_R_print().na_width
             } else {
-                l = Rstrlen(si, quote) + if quote != 0 { 2 } else { 0 };
+                current_R_print().na_width_noquote
             }
-            if l > xmax {
-                xmax = l;
-            }
+        } else {
+            Rstrlen(element, quote) + if quote != 0 { 2 } else { 0 }
         }
-        *fieldwidth = xmax;
     }
 }
 
@@ -421,24 +405,7 @@ pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote:
 
         for i in 0..n {
             let si = STRING_ELT(x, i);
-            let l;
-            if !si.is_null() && si == crate::sexp::globals::R_NaString() {
-                // Stock: NA_STRING occupies R_print.na_width (2) columns,
-                // quoted or not.
-                l = if quote != 0 {
-                    current_R_print().na_width
-                } else {
-                    current_R_print().na_width_noquote
-                };
-            } else if si.is_null() {
-                l = if quote != 0 {
-                    current_R_print().na_width
-                } else {
-                    current_R_print().na_width_noquote
-                };
-            } else {
-                l = Rstrlen(si, quote) + if quote != 0 { 2 } else { 0 };
-            }
+            let l = string_element_width(si, quote);
             if l > xmax {
                 xmax = l;
             }

@@ -172,7 +172,7 @@ unsafe fn local_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
 // Compare a tag symbol's printed name without reaching into private modules.
 unsafe fn tag_name_is(tag: SEXP, want: &str) -> bool {
     unsafe {
-        if tag.is_null() {
+        if tag.is_null() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
             return false;
         }
         let pname = crate::sexp::accessors::PRINTNAME(tag);
@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     fn test_do_parse_text_arg() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
             let text = crate::sexp::constructors::Rf_mkString(c"1 + 2".as_ptr());
             let n = crate::sexp::constructors::Rf_ScalarInteger(-1);
@@ -475,6 +475,11 @@ mod tests {
                     crate::sexp::constructors::Rf_cons(text, R_NilValue()),
                 ),
             );
+            let mut cell = args;
+            for _ in 0..3 {
+                crate::sexp::accessors::SETTAG(cell, R_NilValue());
+                cell = CDR(cell);
+            }
             let result = do_parse(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(TYPEOF(result), SEXPTYPE::EXPRSXP);
             assert_eq!(XLENGTH(result), 1);
@@ -492,7 +497,7 @@ mod tests {
 
     #[test]
     fn test_do_parse_records_error_message_and_context() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
             let text = crate::sexp::constructors::Rf_mkString(c"1 +".as_ptr());
             let n = crate::sexp::constructors::Rf_ScalarInteger(-1);
@@ -503,6 +508,11 @@ mod tests {
                     crate::sexp::constructors::Rf_cons(text, R_NilValue()),
                 ),
             );
+            let mut cell = args;
+            for _ in 0..3 {
+                crate::sexp::accessors::SETTAG(cell, R_NilValue());
+                cell = CDR(cell);
+            }
             let err = std::panic::catch_unwind(|| {
                 do_parse(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             });
