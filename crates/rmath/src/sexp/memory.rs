@@ -169,7 +169,9 @@ fn zeroed_vector_payload(kind: SEXPTYPE, length: R_xlen_t) -> Result<OwnedPayloa
         note_buffer_allocation_attempt();
     }
     OwnedPayload::zeroed_vector(kind, length).map_err(|error| match error {
-        PayloadError::Allocation | PayloadError::IdentityExhausted => ArenaError::OutOfMemory,
+        PayloadError::Allocation
+        | PayloadError::IdentityExhausted
+        | PayloadError::AliasedStorage => ArenaError::OutOfMemory,
         PayloadError::InvalidLength => ArenaError::InvalidLength,
         PayloadError::InvalidVectorType => ArenaError::InvalidVectorType { sexptype: kind },
     })
@@ -213,7 +215,7 @@ impl ArenaBudget {
 // ---------------------------------------------------------------------------
 
 fn empty_payload_shape(header: &SexprecCore) -> bool {
-    if !header.payload.is_empty() {
+    if !header.payload.is_empty() || header.sxpinfo.type_of() == SEXPTYPE::CHARSXP {
         return false;
     }
     match header.data {
@@ -293,6 +295,9 @@ impl ArenaBacking {
         let pages = self.node_pages.borrow();
         let page = pages.get(id.page())?;
         let mut header = page.storage.copy_live(id)?;
+        if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP || lease.is_immutable() {
+            return None;
+        }
         let mut payloads = page.payloads.borrow_mut();
         if header.payload != expected
             || payloads
@@ -337,9 +342,21 @@ impl ArenaBacking {
         if !value.has_valid_shape() {
             return None;
         }
+        if value.sxpinfo.type_of() == SEXPTYPE::CHARSXP && value.sxpinfo.alt() {
+            return None;
+        }
         let pages = self.node_pages.borrow();
         let page = pages.get(id.page())?;
         let current = page.storage.copy_live(id)?;
+        if (current.sxpinfo.type_of() == SEXPTYPE::CHARSXP
+            && (value.sxpinfo.type_of() != SEXPTYPE::CHARSXP
+                || value.data.vector().length != current.data.vector().length
+                || value.payload != current.payload))
+            || (value.sxpinfo.type_of() == SEXPTYPE::CHARSXP
+                && current.sxpinfo.type_of() != SEXPTYPE::CHARSXP)
+        {
+            return None;
+        }
         if current.sxpinfo.alt() && current.sxpinfo.type_of() != value.sxpinfo.type_of() {
             return None;
         }
@@ -348,7 +365,10 @@ impl ArenaBacking {
                 return None;
             }
             match page.payloads.borrow().get(&id.slot()) {
-                Some(lease) if lease.matches_header(&value) => {}
+                Some(lease)
+                    if lease.matches_header(&value)
+                        && (value.sxpinfo.type_of() != SEXPTYPE::CHARSXP
+                            || lease.is_immutable()) => {}
                 None if empty_payload_shape(&value) => {}
                 _ => return None,
             }
@@ -756,11 +776,30 @@ impl RArena {
 
     fn allocate_core_with_payload(
         &mut self,
-        header: SexprecCore,
-        payload: Option<PayloadLease>,
+        mut header: SexprecCore,
+        mut payload: Option<PayloadLease>,
     ) -> SEXP {
         if !header.has_valid_shape() {
             return ptr::null_mut();
+        }
+        if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP && header.sxpinfo.alt() {
+            return ptr::null_mut();
+        }
+        if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP && payload.is_none() {
+            if !header.payload.is_empty()
+                || header.data.vector().length != 0
+                || !self.can_allocate_node_with_payload(1)
+            {
+                return ptr::null_mut();
+            }
+            let Ok(bytes) = OwnedPayload::characters(b"") else {
+                return ptr::null_mut();
+            };
+            let Ok(lease) = PayloadLease::from_owned(bytes) else {
+                return ptr::null_mut();
+            };
+            header.payload = lease.link();
+            payload = Some(lease);
         }
         let payload_growth = payload
             .as_ref()
@@ -770,7 +809,10 @@ impl RArena {
             return ptr::null_mut();
         }
         match &payload {
-            Some(lease) if lease.matches_header(&header) => {
+            Some(lease)
+                if lease.matches_header(&header)
+                    && (!lease.is_immutable() || header.sxpinfo.type_of() == SEXPTYPE::CHARSXP) =>
+            {
                 if self.backing.admit_payload(lease).is_none() {
                     return ptr::null_mut();
                 }
@@ -790,7 +832,10 @@ impl RArena {
                 self.backing.node_pages.borrow()[page]
                     .payloads
                     .borrow_mut()
-                    .insert(slot, lease);
+                    .insert(slot, lease.clone());
+                if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP {
+                    lease.make_immutable();
+                }
             }
             return self.register_new_node(ptr);
         }
@@ -805,7 +850,10 @@ impl RArena {
             self.backing.node_pages.borrow()[self.slab_page]
                 .payloads
                 .borrow_mut()
-                .insert(self.slab_offset, lease);
+                .insert(self.slab_offset, lease.clone());
+            if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP {
+                lease.make_immutable();
+            }
         }
         self.slab_offset += 1;
         self.add_accounted_bytes(std::mem::size_of::<SexprecCore>());
@@ -2407,6 +2455,166 @@ mod tests {
             heap.retype_node(&pending, super::SEXPTYPE::INTSXP)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn published_characters_keep_exact_sealed_bytes_through_metadata_and_retirement() {
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let pointer = arena.alloc_charsxp(b"a\0z");
+        let node = arena.node_token(pointer).unwrap();
+        let original = heap.node_snapshot(&node).unwrap();
+        let lease = heap.payload_lease(&node).unwrap();
+        assert!(lease.is_immutable());
+        assert!(lease.set_byte_elt(0, b'b').is_none());
+        assert!(lease.set_byte_elt(3, b'x').is_none());
+        let replacement =
+            super::PayloadLease::from_owned(super::OwnedPayload::characters(b"b\0z").unwrap())
+                .unwrap();
+        let mut replaced = original;
+        replaced.payload = replacement.link();
+        assert!(replacement.matches_header(&replaced));
+        let before_bytes = arena.total_bytes_allocated();
+        assert!(
+            heap.publish_payload(&node, original.payload, &replacement)
+                .is_none()
+        );
+        assert!(
+            arena
+                .backing
+                .publish_payload(node.id(), original.payload, &replacement)
+                .is_none()
+        );
+        assert!(heap.replace_node(&node, replaced).is_none());
+        let mut shorter = original;
+        shorter.data.vector_mut().length = 1; // Even a valid earlier NUL cannot change the declared length.
+        assert!(lease.matches_header(&shorter));
+        assert!(heap.replace_node(&node, shorter).is_none());
+        let mut raw = original;
+        raw.sxpinfo.set_type(super::SEXPTYPE::RAWSXP);
+        assert!(heap.replace_node(&node, raw).is_none());
+        assert!(arena.backing.replace_node(node.id(), raw).is_none());
+        assert!(heap.retype_node(&node, super::SEXPTYPE::RAWSXP).is_none());
+        let mut lazy = original;
+        lazy.sxpinfo.set_alt(true);
+        assert!(heap.replace_node(&node, lazy).is_none());
+        let mut nil = super::SexprecCore::new(super::SEXPTYPE::NILSXP);
+        nil.attrib = original.attrib;
+        assert!(heap.replace_node(&node, nil).is_none());
+        assert_eq!(heap.node_snapshot(&node).unwrap().data, original.data);
+        assert_eq!(heap.node_snapshot(&node).unwrap().payload, original.payload);
+        assert_eq!(arena.total_bytes_allocated(), before_bytes);
+
+        let mut metadata = original;
+        metadata.sxpinfo.set_named(2);
+        metadata.sxpinfo.set_gp(1 << 3);
+        metadata.data.vector_mut().truelength = 99;
+        heap.replace_node(&node, metadata).unwrap();
+        assert_eq!(heap.node_snapshot(&node).unwrap().data, metadata.data);
+        assert_eq!(lease.byte_elt(0), Some(b'a'));
+        unsafe { arena.free_node(pointer) };
+        assert!(!node.is_live());
+        let reused = arena.alloc_charsxp(b"new");
+        assert_eq!(reused, pointer);
+        let new_node = arena.node_token(reused).unwrap();
+        assert!(heap.payload_lease(&new_node).unwrap().is_immutable());
+        assert_eq!(lease.byte_elt(0), Some(b'a'));
+
+        // An existing writable byte allocation cannot acquire character semantics.
+        let raw = arena.alloc_vector(super::SEXPTYPE::RAWSXP, 2);
+        let raw = arena.node_token(raw).unwrap();
+        let mut character = heap.node_snapshot(&raw).unwrap();
+        character.sxpinfo.set_type(super::SEXPTYPE::CHARSXP);
+        character.data.vector_mut().length = 1;
+        assert!(heap.payload_lease(&raw).unwrap().matches_header(&character));
+        assert!(heap.replace_node(&raw, character).is_none());
+        let raw_header = heap.node_snapshot(&raw).unwrap();
+        assert!(
+            heap.publish_payload(&raw, raw_header.payload, &lease)
+                .is_none()
+        );
+        assert!(
+            arena
+                .backing
+                .publish_payload(raw.id(), raw_header.payload, &lease)
+                .is_none()
+        );
+        assert_eq!(
+            heap.payload_lease(&raw).unwrap().set_byte_elt(0, b'w'),
+            Some(())
+        );
+    }
+
+    #[test]
+    fn generic_empty_character_allocation_is_sealed_and_budgeted() {
+        let mut denied = super::RArena::with_budget(super::ArenaBudget::new(super::NODE_BYTES, 0));
+        assert!(denied.alloc_node(super::SEXPTYPE::CHARSXP).is_null());
+        assert_eq!(denied.total_bytes_allocated(), 0);
+        let mut arena = super::RArena::new();
+        let pointer = arena.alloc_node(super::SEXPTYPE::CHARSXP);
+        let node = arena.node_token(pointer).unwrap();
+        let lease = arena.heap_identity().payload_lease(&node).unwrap();
+        assert_eq!(lease.capacity(), 1);
+        assert_eq!(lease.byte_elt(0), Some(0));
+        assert!(lease.is_immutable());
+        assert_eq!(arena.total_bytes_allocated(), super::NODE_BYTES + 1);
+        let mut lazy = super::SexprecCore::new(super::SEXPTYPE::CHARSXP);
+        lazy.sxpinfo.set_alt(true);
+        let before = arena.total_bytes_allocated();
+        assert!(arena.allocate_core_in_slab(|| lazy).is_null());
+        assert_eq!(arena.total_bytes_allocated(), before);
+    }
+
+    #[test]
+    fn character_allocation_callbacks_observe_only_sealed_initialized_bytes() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let heap = session
+                .owner_token()
+                .unwrap()
+                .with_arena(|arena| arena.heap_identity())
+                .unwrap();
+            let observed = std::rc::Rc::new(std::cell::Cell::new(0));
+            let callbacks = observed.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                let (_, node) = super::fresh_allocation_roots(&heap)
+                    .into_iter()
+                    .find(|(_, node)| {
+                        heap.node_snapshot(node).unwrap().sxpinfo.type_of()
+                            == super::SEXPTYPE::CHARSXP
+                    })
+                    .unwrap();
+                let header = heap.node_snapshot(&node).unwrap();
+                let lease = heap.payload_lease(&node).unwrap();
+                assert!(lease.is_immutable());
+                let length = usize::try_from(header.data.vector().length).unwrap();
+                assert_eq!(lease.byte_elt(length), Some(0));
+                assert!(lease.set_byte_elt(0, b'x').is_none());
+                assert!(
+                    heap.publish_payload(&node, header.payload, &lease)
+                        .is_none()
+                );
+                crate::sexp::gengc::full_gc();
+                assert!(node.is_live());
+                assert!(lease.matches_header(&heap.node_snapshot(&node).unwrap()));
+                callbacks.set(callbacks.get() + 1);
+            }));
+            session.with_active_in(|owner| unsafe {
+                (*owner).memory_state.gc_force_gap = 1;
+                (*owner).memory_state.gc_force_wait = 1;
+            });
+            let text = factory.character("µ").unwrap();
+            let header = text.header();
+            let payload = header.payload_lease().unwrap();
+            assert_eq!(payload.byte_elt(0), Some(0xc2));
+            assert_eq!(payload.byte_elt(1), Some(0xb5));
+            let empty = factory
+                .allocate(|arena| Some(arena.alloc_node(super::SEXPTYPE::CHARSXP)))
+                .unwrap();
+            assert_eq!(empty.header().payload_lease().unwrap().byte_elt(0), Some(0));
+            assert_eq!(observed.get(), 2);
+        });
     }
 
     struct NativeResourceSpy {

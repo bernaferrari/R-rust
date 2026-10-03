@@ -15,7 +15,7 @@ use std::{
 };
 
 fn empty_payload_shape(header: &SexprecCore) -> bool {
-    if !header.payload.is_empty() {
+    if !header.payload.is_empty() || header.sxpinfo.type_of() == SEXPTYPE::CHARSXP {
         return false;
     }
     match header.data {
@@ -87,6 +87,9 @@ impl PersistentBacking {
         let mut nodes = self.nodes.borrow_mut();
         let allocation = nodes.get_mut(&key)?;
         let mut header = allocation.header.copy_live(id)?;
+        if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP || lease.is_immutable() {
+            return None;
+        }
         if header.payload != expected
             || allocation
                 .payload
@@ -122,10 +125,22 @@ impl PersistentBacking {
         if !value.has_valid_shape() {
             return None;
         }
+        if value.sxpinfo.type_of() == SEXPTYPE::CHARSXP && value.sxpinfo.alt() {
+            return None;
+        }
         let key = *self.pages.borrow().get(&id.page_cookie())?;
         let mut nodes = self.nodes.borrow_mut();
         let allocation = nodes.get_mut(&key)?;
         let current = allocation.header.copy_live(id)?;
+        if (current.sxpinfo.type_of() == SEXPTYPE::CHARSXP
+            && (value.sxpinfo.type_of() != SEXPTYPE::CHARSXP
+                || value.data.vector().length != current.data.vector().length
+                || value.payload != current.payload))
+            || (value.sxpinfo.type_of() == SEXPTYPE::CHARSXP
+                && current.sxpinfo.type_of() != SEXPTYPE::CHARSXP)
+        {
+            return None;
+        }
         if current.sxpinfo.alt() && current.sxpinfo.type_of() != value.sxpinfo.type_of() {
             return None;
         }
@@ -134,7 +149,10 @@ impl PersistentBacking {
                 return None;
             }
             match &allocation.payload {
-                Some(lease) if lease.matches_header(&value) => {}
+                Some(lease)
+                    if lease.matches_header(&value)
+                        && (value.sxpinfo.type_of() != SEXPTYPE::CHARSXP
+                            || lease.is_immutable()) => {}
                 None if empty_payload_shape(&value) => {}
                 _ => return None,
             }
@@ -204,11 +222,24 @@ impl PersistentHeap {
     }
     fn allocate(
         &mut self,
-        header: SexprecCore,
-        payload: Option<PayloadLease>,
+        mut header: SexprecCore,
+        mut payload: Option<PayloadLease>,
     ) -> Result<SEXP, HeapError> {
         if !header.has_valid_shape() {
             return Err(HeapError::InvalidShape);
+        }
+        if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP && header.sxpinfo.alt() {
+            return Err(HeapError::InvalidShape);
+        }
+        if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP && payload.is_none() {
+            if !header.payload.is_empty() || header.data.vector().length != 0 {
+                return Err(HeapError::InvalidShape);
+            }
+            let bytes = crate::sexp::payload::OwnedPayload::characters(b"")
+                .map_err(|_| HeapError::Allocation)?;
+            let lease = PayloadLease::from_owned(bytes).map_err(|_| HeapError::Allocation)?;
+            header.payload = lease.link();
+            payload = Some(lease);
         }
         self.backing
             .nodes
@@ -221,7 +252,10 @@ impl PersistentHeap {
             .try_reserve(1)
             .map_err(|_| HeapError::Allocation)?;
         match &payload {
-            Some(lease) if lease.matches_header(&header) => {
+            Some(lease)
+                if lease.matches_header(&header)
+                    && (!lease.is_immutable() || header.sxpinfo.type_of() == SEXPTYPE::CHARSXP) =>
+            {
                 lease
                     .bind_to_heap(&self.identity, &self.backing.allocated_bytes)
                     .ok_or(HeapError::InvalidShape)?;
@@ -240,6 +274,12 @@ impl PersistentHeap {
         let pointer = page.raw_slot(0).ok_or(HeapError::InvalidSlot)?;
         let registration = register_node_page(&page);
         let page_cookie = page.metadata().cookie();
+        let character_payload = (header.sxpinfo.type_of() == SEXPTYPE::CHARSXP).then(|| {
+            payload
+                .as_ref()
+                .expect("character allocation has bytes")
+                .clone()
+        });
         self.backing.nodes.borrow_mut().insert(
             pointer as usize,
             PersistentAllocation {
@@ -248,6 +288,9 @@ impl PersistentHeap {
                 payload,
             },
         );
+        if let Some(lease) = character_payload {
+            lease.make_immutable();
+        }
         self.backing
             .pages
             .borrow_mut()
@@ -399,6 +442,64 @@ mod tests {
         assert_eq!(lease.integer_elt(0), Some(63));
         drop(lease);
         assert_eq!(charge.get(), 0);
+    }
+
+    #[test]
+    fn permanent_characters_are_sealed_and_cannot_replace_their_original_storage() {
+        let mut permanent = PersistentHeap::new(HeapIdentity::new());
+        let heap = permanent.heap_identity();
+        let pointer = permanent.allocate_chars(b"stable").unwrap();
+        let node = permanent.token(pointer).unwrap();
+        let original = heap.node_snapshot(&node).unwrap();
+        let lease = heap.payload_lease(&node).unwrap();
+        assert!(lease.is_immutable());
+        assert!(lease.set_byte_elt(0, b'u').is_none());
+        let replacement = PayloadLease::from_owned(
+            crate::sexp::payload::OwnedPayload::characters(b"mutate").unwrap(),
+        )
+        .unwrap();
+        let bytes = permanent.backing.allocated_bytes.get();
+        assert!(
+            heap.publish_payload(&node, original.payload, &replacement)
+                .is_none()
+        );
+        assert!(
+            permanent
+                .backing
+                .publish_payload(node.id(), original.payload, &replacement)
+                .is_none()
+        );
+        let mut raw = original;
+        raw.sxpinfo.set_type(SEXPTYPE::RAWSXP);
+        assert!(permanent.backing.replace_node(node.id(), raw).is_none());
+        let mut lazy = original;
+        lazy.sxpinfo.set_alt(true);
+        assert!(heap.replace_node(&node, lazy).is_none());
+        let mut nil = SexprecCore::new(SEXPTYPE::NILSXP);
+        nil.attrib = original.attrib;
+        assert!(heap.replace_node(&node, nil).is_none());
+        assert_eq!(permanent.backing.allocated_bytes.get(), bytes);
+        assert_eq!(heap.node_snapshot(&node).unwrap().payload, original.payload);
+        assert!(permanent.remove(pointer));
+        assert!(!node.is_live());
+        assert_eq!(lease.byte_elt(0), Some(b's'));
+
+        let empty = permanent
+            .allocate_header(SexprecCore::new(SEXPTYPE::CHARSXP))
+            .unwrap();
+        let empty = permanent.token(empty).unwrap();
+        let empty = heap.payload_lease(&empty).unwrap();
+        assert!(empty.is_immutable());
+        assert_eq!(empty.capacity(), 1);
+        assert_eq!(empty.byte_elt(0), Some(0));
+        let mut lazy = SexprecCore::new(SEXPTYPE::CHARSXP);
+        lazy.sxpinfo.set_alt(true);
+        let before = permanent.len();
+        assert_eq!(
+            permanent.allocate_header(lazy),
+            Err(HeapError::InvalidShape)
+        );
+        assert_eq!(permanent.len(), before);
     }
 
     #[test]

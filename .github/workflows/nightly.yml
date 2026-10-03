@@ -215,6 +215,15 @@ jobs:
             filters: >-
               owned_binding_index
               owned_binding_indexes
+          - subject: immutable character publication
+            filters: >-
+              byte_cell_ownership_rejects_safe_aliases_before_sealing
+              published_characters_keep_exact_sealed_bytes_through_metadata_and_retirement
+              generic_empty_character_allocation_is_sealed_and_budgeted
+              character_allocation_callbacks_observe_only_sealed_initialized_bytes
+              permanent_characters_are_sealed_and_cannot_replace_their_original_storage
+              character_native_reads_are_const_and_mutable_projection_is_rejected
+              immutable_na_character_keeps_its_const_sentinel_read
           - subject: graph rewrites
             filters: >-
               canonical_saved_link_rejects_same_address_reuse_without_marking_replacement

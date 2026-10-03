@@ -659,6 +659,9 @@ pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
     }
     let (value, _root) = unsafe { raw_value(x) };
     let kind = value.typeof_();
+    if kind == SEXPTYPE::CHARSXP {
+        super::context::r_error("character scalar payload is immutable");
+    }
     if !kind.is_vector_type() && kind != SEXPTYPE::CHARSXP {
         return ptr::null_mut();
     }
@@ -675,19 +678,16 @@ pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
         }
         super::context::r_error("nonempty vector has no committed typed allocation");
     };
-    if kind == SEXPTYPE::CHARSXP {
-        let length = usize::try_from(header.body.vector().length)
-            .unwrap_or_else(|_| super::context::r_error("invalid character length"));
-        if lease.byte_elt(length) != Some(0) {
-            super::context::r_error("character payload has no trailing NUL");
-        }
-    }
     lease.native_projection().cast::<c_void>()
 }
 
 /// Get the data pointer, returning a const pointer.
 pub unsafe fn ROBJ_DATAPTR(x: SEXP) -> *const c_void {
-    unsafe { DATAPTR(x) }
+    if header_snapshot(x).is_some_and(|header| header.sxpinfo.type_of() == SEXPTYPE::CHARSXP) {
+        unsafe { CHAR(x).cast::<c_void>() }
+    } else {
+        unsafe { DATAPTR(x) }
+    }
 }
 
 /// Get a pointer to the logical vector data.
@@ -791,12 +791,21 @@ pub unsafe fn CHAR(x: SEXP) -> *const c_char {
     {
         super::context::r_error("CHAR requires a character scalar");
     }
-    unsafe { DATAPTR(x).cast::<c_char>() }
-}
-
-/// Get a mutable pointer to the character data of a CHARSXP.
-pub unsafe fn CHAR_RW(x: SEXP) -> *mut c_char {
-    unsafe { CHAR(x).cast_mut() }
+    let (value, _root) = unsafe { raw_value(x) };
+    let header = value.header();
+    let Some(lease) = header.payload_lease() else {
+        // The immutable NA-string sentinel has no byte payload.
+        if value.is_na_string() {
+            return ptr::null();
+        }
+        super::context::r_error("character scalar has no committed byte allocation");
+    };
+    let length = usize::try_from(header.body.vector().length)
+        .unwrap_or_else(|_| super::context::r_error("invalid character length"));
+    if !lease.is_immutable() || lease.byte_elt(length) != Some(0) {
+        super::context::r_error("character payload must be sealed with a trailing NUL");
+    }
+    lease.native_projection().cast::<c_char>().cast_const()
 }
 
 // ---------------------------------------------------------------------------
@@ -1571,6 +1580,70 @@ mod tests {
         unsafe {
             assert!(DATAPTR(ptr::null_mut()).is_null());
         }
+    }
+
+    #[test]
+    fn character_native_reads_are_const_and_mutable_projection_is_rejected() {
+        let mut arena = super::super::memory::RArena::new();
+        let character = arena.alloc_charsxp("café".as_bytes());
+        let (_, node) = super::super::memory::checked_projection(character).unwrap();
+        let heap = node.heap_identity();
+        let original = heap.node_snapshot(&node).unwrap();
+        let lease = heap.payload_lease(&node).unwrap();
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            DATAPTR(character)
+        }));
+        assert!(rejected.is_err());
+        assert!(lease.is_immutable());
+        assert_eq!(heap.node_snapshot(&node).unwrap().payload, original.payload);
+        unsafe {
+            assert_eq!(
+                std::ffi::CStr::from_ptr(CHAR(character)).to_bytes(),
+                "café".as_bytes()
+            );
+            assert_eq!(ROBJ_DATAPTR(character), CHAR(character).cast::<c_void>());
+        }
+        let generic = arena.alloc_node(SEXPTYPE::CHARSXP);
+        assert_eq!(
+            unsafe { std::ffi::CStr::from_ptr(CHAR(generic)).to_bytes() },
+            b""
+        );
+
+        let mut permanent = super::super::instance::persistent::PersistentHeap::new(heap);
+        let character = permanent.allocate_chars(b"permanent").unwrap();
+        assert_eq!(
+            unsafe { std::ffi::CStr::from_ptr(CHAR(character)).to_bytes() },
+            b"permanent"
+        );
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                DATAPTR(character)
+            }))
+            .is_err()
+        );
+
+        // Writable raw and numeric vectors keep their ordinary native path.
+        let raw = arena.alloc_vector(SEXPTYPE::RAWSXP, 1);
+        unsafe { RAW(raw).write(b'x') };
+        assert_eq!(unsafe { RAW_ELT(raw, 0) }, b'x');
+        let integer = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        unsafe { INTEGER(integer).write(23) };
+        assert_eq!(unsafe { INTEGER_ELT(integer, 0) }, 23);
+    }
+
+    #[test]
+    fn immutable_na_character_keeps_its_const_sentinel_read() {
+        let session = super::super::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let sentinel = super::super::globals::R_NaString();
+            assert!(CHAR(sentinel).is_null());
+            assert!(ROBJ_DATAPTR(sentinel).is_null());
+            assert!(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| DATAPTR(sentinel)))
+                    .is_err()
+            );
+            assert_eq!(TYPEOF(sentinel), SEXPTYPE::CHARSXP.0);
+        });
     }
 
     #[test]

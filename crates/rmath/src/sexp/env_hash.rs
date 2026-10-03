@@ -19,6 +19,7 @@ pub(crate) struct BindingTables {
 struct BindingIndex {
     frame: NodeLink,
     bindings: HashMap<NodeLink, NodeLink>,
+    first_names: HashMap<Vec<u8>, NodeLink>,
     members: HashSet<NodeLink>,
     valid: bool,
 }
@@ -27,6 +28,7 @@ impl BindingIndex {
         Self {
             frame: NodeLink::NULL,
             bindings: HashMap::new(),
+            first_names: HashMap::new(),
             members: HashSet::new(),
             valid: false,
         }
@@ -83,7 +85,7 @@ fn symbol_bytes(heap: &HeapIdentity, symbol: &CheckedNode) -> Option<Vec<u8>> {
         ResolvedLink::Singleton(lease) => (lease.snapshot(), lease.payload_lease()?),
         ResolvedLink::Null => return None,
     };
-    if header.sxpinfo.type_of() != SEXPTYPE::CHARSXP {
+    if header.sxpinfo.type_of() != SEXPTYPE::CHARSXP || !lease.is_immutable() {
         return None;
     }
     let length = usize::try_from(header.vecsxp_length()).ok()?;
@@ -105,7 +107,6 @@ fn symbol_bytes(heap: &HeapIdentity, symbol: &CheckedNode) -> Option<Vec<u8>> {
 fn build_index(heap: &HeapIdentity, frame: NodeLink) -> Option<BindingIndex> {
     let mut table = BindingIndex::empty();
     table.frame = frame;
-    let mut first_names = HashMap::<Vec<u8>, NodeLink>::new();
     let mut cursor = frame;
     loop {
         let allocation = match heap.resolve_link(cursor)? {
@@ -134,8 +135,8 @@ fn build_index(heap: &HeapIdentity, frame: NodeLink) -> Option<BindingIndex> {
         }) = heap.resolve_link(body.tagval)
         {
             let bytes = symbol_bytes(heap, &tag)?;
-            first_names.try_reserve(1).ok()?;
-            let first = *first_names.entry(bytes).or_insert(cursor);
+            table.first_names.try_reserve(1).ok()?;
+            let first = *table.first_names.entry(bytes).or_insert(cursor);
             table.bindings.try_reserve(1).ok()?;
             table.bindings.entry(body.tagval).or_insert(first);
         } else if !body.tagval.is_null() {
@@ -152,7 +153,21 @@ fn build_index(heap: &HeapIdentity, frame: NodeLink) -> Option<BindingIndex> {
     Some(table)
 }
 
-fn binding_cell(heap: &HeapIdentity, env: &CheckedNode, symbol: &CheckedNode) -> Option<NodeLink> {
+/// Only a complete index over the exact current frame can establish absence.
+/// Unavailable includes unindexed frames, malformed names/cells and failed
+/// reservations; those cases retain the bounded authoritative frame walk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BindingLookup {
+    Unavailable,
+    Absent,
+    Cell(NodeLink),
+}
+
+fn binding_lookup(
+    heap: &HeapIdentity,
+    env: &CheckedNode,
+    symbol: &CheckedNode,
+) -> Option<BindingLookup> {
     let env_link = env.link()?;
     let symbol_link = symbol.link()?;
     let NodeBody::Environment(body) = heap.node_snapshot(env)?.data else {
@@ -173,31 +188,48 @@ fn binding_cell(heap: &HeapIdentity, env: &CheckedNode, symbol: &CheckedNode) ->
             Some(())
         })??;
     }
-    let cell = heap.with_binding_tables(|tables| {
-        tables
-            .tables
-            .get(&env_link)?
-            .bindings
-            .get(&symbol_link)
-            .copied()
+    let exact = heap.with_binding_tables(|tables| {
+        let table = tables.tables.get(&env_link)?;
+        (table.valid && table.frame == body.frame)
+            .then(|| table.bindings.get(&symbol_link).copied())
     })??;
+    let cell = if let Some(cell) = exact {
+        Some(cell)
+    } else {
+        // Distinct, noninterned symbols still select the first byte-equal
+        // binding. These bounded bytes share the frame walk's NUL semantics.
+        let name = symbol_bytes(heap, symbol)?;
+        heap.with_binding_tables(|tables| {
+            let table = tables.tables.get(&env_link)?;
+            (table.valid && table.frame == body.frame)
+                .then(|| table.first_names.get(name.as_slice()).copied())
+        })??
+    };
+    let Some(cell) = cell else {
+        return Some(BindingLookup::Absent);
+    };
     let ResolvedLink::Node { allocation, .. } = heap.resolve_link(cell)? else {
         return None;
     };
-    matches!(heap.node_snapshot(&allocation)?.data, NodeBody::List(_)).then_some(cell)
+    matches!(heap.node_snapshot(&allocation)?.data, NodeBody::List(_))
+        .then_some(BindingLookup::Cell(cell))
 }
 
-pub(crate) fn hash_binding_cell(
+pub(crate) fn hash_binding_lookup(
     env: &super::object::Sexp<'_>,
     symbol: &super::object::Sexp<'_>,
-) -> Option<NodeLink> {
-    let env_node = env.allocation().ok()?;
-    let symbol_node = symbol.allocation().ok()?;
+) -> BindingLookup {
+    let Ok(env_node) = env.allocation() else {
+        return BindingLookup::Unavailable;
+    };
+    let Ok(symbol_node) = symbol.allocation() else {
+        return BindingLookup::Unavailable;
+    };
     let heap = env_node.heap_identity();
     if !symbol_node.belongs_to(&heap) {
-        return None;
+        return BindingLookup::Unavailable;
     }
-    binding_cell(&heap, env_node, symbol_node)
+    binding_lookup(&heap, env_node, symbol_node).unwrap_or(BindingLookup::Unavailable)
 }
 
 // These explicit translated boundaries capture only the original heap field;
@@ -240,7 +272,9 @@ pub(crate) unsafe fn hash_get_in(
     if !symbol.belongs_to(&heap) {
         return None;
     }
-    let cell = binding_cell(&heap, &env, &symbol)?;
+    let BindingLookup::Cell(cell) = binding_lookup(&heap, &env, &symbol)? else {
+        return None;
+    };
     let ResolvedLink::Node { allocation, .. } = heap.resolve_link(cell)? else {
         return None;
     };
@@ -472,6 +506,10 @@ mod tests {
             .unwrap();
         let env = environment(&factory, &first);
         for key in [&alias, &interned, &lookup_alias] {
+            assert!(matches!(
+                hash_binding_lookup(&env, key),
+                BindingLookup::Cell(_)
+            ));
             assert_eq!(lookup(&env, key).unwrap().integer_elt(0), Some(11));
         }
         let renamed = symbol(&factory, "renamed_index_name")
@@ -510,8 +548,215 @@ mod tests {
             .unwrap();
         let env = environment(&factory, &first);
         for key in [&first_key, &later_key, &lookup_key] {
+            assert!(matches!(
+                hash_binding_lookup(&env, key),
+                BindingLookup::Cell(_)
+            ));
             assert_eq!(lookup(&env, key).unwrap().integer_elt(0), Some(11));
         }
+    }
+
+    #[test]
+    fn owned_binding_index_sealed_names_reject_mutation_and_payload_swaps_across_gc() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let key = symbol(&factory, "sealed_index_name");
+        let missing = symbol(&factory, "sealed_index_missing");
+        let alias = factory
+            .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::SYMSXP)))
+            .unwrap();
+        let name = key.try_printname().unwrap();
+        unsafe {
+            crate::sexp::accessors::SET_PRINTNAME(alias.as_raw(), name.as_raw());
+        }
+        let cell = factory
+            .pairlist_cell(&integer(&factory, 87), &factory.nil(), &key)
+            .unwrap();
+        let env = environment(&factory, &cell);
+        assert_eq!(lookup(&env, &alias).unwrap().integer_elt(0), Some(87));
+        assert_eq!(hash_binding_lookup(&env, &missing), BindingLookup::Absent);
+
+        let allocation = name.allocation().unwrap();
+        let heap = allocation.heap_identity();
+        let original = heap.node_snapshot(allocation).unwrap();
+        let lease = heap.payload_lease(allocation).unwrap();
+        assert!(lease.is_immutable());
+        assert_eq!(lease.set_byte_elt(0, b'x'), None);
+        assert_eq!(lease.byte_elt(0), Some(b's'));
+        let replacement = factory
+            .allocate(|arena| Some(arena.alloc_charsxp(b"mutate_index_name")))
+            .unwrap();
+        let replacement_lease = heap
+            .payload_lease(replacement.allocation().unwrap())
+            .unwrap();
+        let mut replacement_header = original;
+        replacement_header.payload = replacement_lease.link();
+        assert!(replacement_lease.matches_header(&replacement_header));
+        assert_eq!(
+            heap.publish_payload(allocation, original.payload, &replacement_lease),
+            None
+        );
+        // Byte storage accepts raw cells too, but a complete copied header
+        // cannot turn a published immutable name into a writable raw vector.
+        let mut retyped = original;
+        retyped.sxpinfo.set_type(SEXPTYPE::RAWSXP);
+        assert_eq!(heap.replace_node(allocation, retyped), None);
+        let after = heap.node_snapshot(allocation).unwrap();
+        assert_eq!(after.sxpinfo.type_of(), SEXPTYPE::CHARSXP);
+        assert_eq!(after.payload, original.payload);
+        assert_eq!(after.data, original.data);
+        assert!(name.try_char_eq(b"sealed_index_name").unwrap());
+        session.owner_token().unwrap().full_gc().unwrap();
+        assert!(matches!(
+            hash_binding_lookup(&env, &alias),
+            BindingLookup::Cell(_)
+        ));
+        assert_eq!(lookup(&env, &alias).unwrap().integer_elt(0), Some(87));
+        assert_eq!(hash_binding_lookup(&env, &missing), BindingLookup::Absent);
+    }
+
+    #[test]
+    fn owned_binding_index_warm_absence_tracks_insert_tag_name_frame_and_gc() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let present = symbol(&factory, "warm_present");
+        let missing = symbol(&factory, "warm_missing");
+        let renamed = symbol(&factory, "warm_renamed");
+        let alias = factory
+            .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::SYMSXP)))
+            .unwrap();
+        unsafe {
+            crate::sexp::accessors::SET_PRINTNAME(
+                alias.as_raw(),
+                missing.try_printname().unwrap().as_raw(),
+            );
+        }
+        let value = integer(&factory, 23);
+        let cell = factory
+            .pairlist_cell(&value, &factory.nil(), &present)
+            .unwrap();
+        let env = environment(&factory, &cell);
+        for key in [&missing, &alias] {
+            assert_eq!(hash_binding_lookup(&env, key), BindingLookup::Absent);
+            assert!(lookup(&env, key).is_none());
+        }
+        // Changing a query symbol which is not a member must use its current
+        // name, rather than caching an earlier negative result by symbol ID.
+        unsafe {
+            crate::sexp::accessors::SET_PRINTNAME(
+                alias.as_raw(),
+                present.try_printname().unwrap().as_raw(),
+            );
+        }
+        assert_eq!(
+            hash_binding_lookup(&env, &alias),
+            BindingLookup::Cell(cell.allocation().unwrap().link().unwrap())
+        );
+        assert_eq!(lookup(&env, &alias).unwrap().integer_elt(0), Some(23));
+        unsafe {
+            crate::sexp::envir::defineVar(missing.as_raw(), value.as_raw(), env.as_raw());
+        }
+        assert_eq!(lookup(&env, &missing).unwrap().integer_elt(0), Some(23));
+        assert!(matches!(
+            hash_binding_lookup(&env, &missing),
+            BindingLookup::Cell(_)
+        ));
+        unsafe {
+            crate::sexp::envir::remove_binding_raw(env.as_raw(), missing.as_raw());
+            crate::sexp::accessors::SETTAG(cell.as_raw(), alias.as_raw());
+            crate::sexp::accessors::SET_PRINTNAME(
+                alias.as_raw(),
+                missing.try_printname().unwrap().as_raw(),
+            );
+        }
+        assert_eq!(hash_binding_lookup(&env, &present), BindingLookup::Absent);
+        assert_eq!(lookup(&env, &missing).unwrap().integer_elt(0), Some(23));
+        unsafe {
+            crate::sexp::accessors::SET_PRINTNAME(
+                alias.as_raw(),
+                renamed.try_printname().unwrap().as_raw(),
+            );
+        }
+        assert_eq!(hash_binding_lookup(&env, &missing), BindingLookup::Absent);
+        assert_eq!(lookup(&env, &renamed).unwrap().integer_elt(0), Some(23));
+        unsafe {
+            crate::sexp::accessors::SET_FRAME(env.as_raw(), factory.nil().as_raw());
+        }
+        assert_eq!(hash_binding_lookup(&env, &renamed), BindingLookup::Absent);
+        let replacement = factory
+            .pairlist_cell(&integer(&factory, 61), &factory.nil(), &missing)
+            .unwrap();
+        unsafe {
+            crate::sexp::accessors::SET_FRAME(env.as_raw(), replacement.as_raw());
+        }
+        assert_eq!(lookup(&env, &missing).unwrap().integer_elt(0), Some(61));
+        session.owner_token().unwrap().full_gc().unwrap();
+        assert_eq!(hash_binding_lookup(&env, &renamed), BindingLookup::Absent);
+        assert_eq!(lookup(&env, &missing).unwrap().integer_elt(0), Some(61));
+    }
+
+    #[test]
+    fn owned_binding_index_shared_frames_invalidate_all_name_and_membership_results() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let first = symbol(&factory, "shared_first");
+        let missing = symbol(&factory, "shared_missing");
+        let later = symbol(&factory, "shared_later");
+        let alias = factory
+            .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::SYMSXP)))
+            .unwrap();
+        unsafe {
+            crate::sexp::accessors::SET_PRINTNAME(
+                alias.as_raw(),
+                first.try_printname().unwrap().as_raw(),
+            );
+        }
+        let cell = factory
+            .pairlist_cell(&integer(&factory, 31), &factory.nil(), &alias)
+            .unwrap();
+        let left = environment(&factory, &cell);
+        let right = environment(&factory, &cell);
+        for env in [&left, &right] {
+            assert_eq!(lookup(env, &first).unwrap().integer_elt(0), Some(31));
+            assert_eq!(hash_binding_lookup(env, &missing), BindingLookup::Absent);
+        }
+        unsafe {
+            crate::sexp::accessors::SET_PRINTNAME(
+                alias.as_raw(),
+                missing.try_printname().unwrap().as_raw(),
+            );
+        }
+        for env in [&left, &right] {
+            assert_eq!(hash_binding_lookup(env, &first), BindingLookup::Absent);
+            assert_eq!(lookup(env, &missing).unwrap().integer_elt(0), Some(31));
+        }
+        let tail = factory
+            .pairlist_cell(&integer(&factory, 42), &factory.nil(), &later)
+            .unwrap();
+        unsafe {
+            crate::sexp::accessors::SETCDR(cell.as_raw(), tail.as_raw());
+        }
+        for env in [&left, &right] {
+            assert_eq!(lookup(env, &later).unwrap().integer_elt(0), Some(42));
+        }
+        unsafe {
+            crate::sexp::accessors::SETTAG(tail.as_raw(), first.as_raw());
+            crate::sexp::accessors::SET_FRAME(left.as_raw(), tail.as_raw());
+        }
+        assert_eq!(hash_binding_lookup(&left, &missing), BindingLookup::Absent);
+        assert_eq!(lookup(&right, &missing).unwrap().integer_elt(0), Some(31));
+        session.owner_token().unwrap().full_gc().unwrap();
+        for env in [&left, &right] {
+            assert_eq!(hash_binding_lookup(env, &later), BindingLookup::Absent);
+            assert_eq!(lookup(env, &first).unwrap().integer_elt(0), Some(42));
+        }
+        unsafe {
+            crate::sexp::accessors::SETCDR(cell.as_raw(), factory.nil().as_raw());
+        }
+        // The detached tail remains owned by left; right must not keep a hit
+        // merely because that exact allocation is still live elsewhere.
+        assert_eq!(lookup(&left, &first).unwrap().integer_elt(0), Some(42));
+        assert_eq!(hash_binding_lookup(&right, &first), BindingLookup::Absent);
     }
 
     #[test]
@@ -528,6 +773,10 @@ mod tests {
         unsafe {
             crate::sexp::accessors::SETCDR(cell.as_raw(), cell.as_raw());
         }
+        assert_eq!(
+            hash_binding_lookup(&env, &missing),
+            BindingLookup::Unavailable
+        );
         let error =
             unsafe { crate::sexp::envir::find_var_in_frame_result(env, missing) }.unwrap_err();
         assert!(error.contains("cyclic binding chain"), "{error}");

@@ -480,15 +480,25 @@ pub unsafe fn find_var_in_frame_result<'a>(
         return Ok(None);
     }
 
-    // The index names exact binding cells, not copied values. Read current CAR
-    // only after membership validation; missing keys retain name-equality walk.
-    if let Some(link) = super::env_hash::hash_binding_cell(&rho, &symbol) {
-        let cell = rho.checked_child(link).map_err(|err| sexp_err("indexed binding cell", err))?;
-        if let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw()) {
-            return unsafe { Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None)) }
-                .map(Some).map_err(|err| sexp_err("active binding value", err));
+    // A valid exact-frame index proves name absence; unavailable indexes
+    // retain the bounded canonical walk. Hits read the cell's current CAR.
+    match super::env_hash::hash_binding_lookup(&rho, &symbol) {
+        super::env_hash::BindingLookup::Absent => return Ok(None),
+        super::env_hash::BindingLookup::Cell(link) => {
+            let cell = rho
+                .checked_child(link)
+                .map_err(|err| sexp_err("indexed binding cell", err))?;
+            if let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw()) {
+                return unsafe { Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None)) }
+                    .map(Some)
+                    .map_err(|err| sexp_err("active binding value", err));
+            }
+            return cell
+                .try_car()
+                .map(Some)
+                .map_err(|err| sexp_err("indexed binding value", err));
         }
-        return cell.try_car().map(Some).map_err(|err| sexp_err("indexed binding value", err));
+        super::env_hash::BindingLookup::Unavailable => {}
     }
 
     let frame = rho

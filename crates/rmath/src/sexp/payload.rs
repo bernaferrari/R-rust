@@ -88,7 +88,12 @@ impl PayloadLease {
     pub(crate) fn zeroed(kind: SEXPTYPE, length: R_xlen_t) -> Result<Self, PayloadError> {
         Self::from_owned(OwnedPayload::zeroed_vector(kind, length)?)
     }
-    pub(crate) fn from_byte_cells(cells: Rc<[Cell<u8>]>) -> Result<Self, PayloadError> {
+    pub(crate) fn from_byte_cells(mut cells: Rc<[Cell<u8>]>) -> Result<Self, PayloadError> {
+        // A later seal must cover every safe writer to these original cells.
+        // Retained strong or weak aliases could otherwise bypass the lease.
+        if Rc::get_mut(&mut cells).is_none() {
+            return Err(PayloadError::AliasedStorage);
+        }
         Self::from_owned(OwnedPayload::from_cells(
             Storage::ByteCells(cells),
             1,
@@ -159,6 +164,9 @@ impl PayloadLease {
     pub(crate) fn make_immutable(&self) {
         self.0.immutable.set(true);
     }
+    pub(crate) fn is_immutable(&self) -> bool {
+        self.0.immutable.get()
+    }
     pub(crate) fn belongs_to(&self, heap: &HeapIdentity) -> bool {
         self.0
             .domain
@@ -167,12 +175,14 @@ impl PayloadLease {
             .is_some_and(|domain| domain.same_domain(heap))
     }
     pub(crate) fn bind_to_heap(&self, heap: &HeapIdentity, total: &Rc<Cell<usize>>) -> Option<()> {
-        if self.0.immutable.get() {
-            return None;
-        }
         let mut domain = self.0.domain.borrow_mut();
         if let Some(original) = domain.as_ref() {
             return original.same_domain(heap).then_some(());
+        }
+        // A sealed allocation may be reused in its original charged domain,
+        // but an unbound singleton cannot become an unmetered heap payload.
+        if self.0.immutable.get() {
+            return None;
         }
         let bytes = self.logical_bytes();
         let next = total.get().checked_add(bytes)?;
@@ -186,7 +196,8 @@ impl PayloadLease {
     }
     /// A projection of this pinned actual allocation only. Dereferencing it
     /// requires an audited numerical boundary with no conflicting loans or R
-    /// callbacks; safe readers use the bounded copied element methods.
+    /// callbacks; safe readers use the bounded copied element methods. An
+    /// immutable lease permits only reads through this projection.
     pub(crate) fn native_projection(&self) -> *mut u8 {
         self.0.payload.as_ptr()
     }
@@ -271,6 +282,7 @@ const _: () = {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PayloadError {
     Allocation,
+    AliasedStorage,
     InvalidLength,
     InvalidVectorType,
     IdentityExhausted,
@@ -597,6 +609,41 @@ impl OwnedPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn byte_cell_ownership_rejects_safe_aliases_before_sealing() {
+        let cells: Rc<[Cell<u8>]> = Rc::from([Cell::new(b'a'), Cell::new(0)]);
+        assert!(matches!(
+            PayloadLease::from_byte_cells(cells.clone()),
+            Err(PayloadError::AliasedStorage)
+        ));
+        let weak = Rc::downgrade(&cells);
+        assert!(matches!(
+            PayloadLease::from_byte_cells(cells),
+            Err(PayloadError::AliasedStorage)
+        ));
+        assert!(weak.upgrade().is_none());
+
+        let cells: Rc<[Cell<u8>]> = Rc::from([Cell::new(b'a'), Cell::new(0)]);
+        let projection = cells.as_ptr().cast_mut().cast::<u8>();
+        let lease = PayloadLease::from_byte_cells(cells).unwrap();
+        assert_eq!(lease.native_projection(), projection);
+        let heap = HeapIdentity::new();
+        let charge = Rc::new(Cell::new(0));
+        lease.bind_to_heap(&heap, &charge).unwrap();
+        lease.make_immutable();
+        assert!(lease.is_immutable());
+        assert!(lease.set_byte_elt(0, b'b').is_none());
+        assert_eq!(lease.byte_elt(0), Some(b'a'));
+        // Reattaching in the original domain cannot mint another charge.
+        lease.bind_to_heap(&heap, &charge).unwrap();
+        assert_eq!(charge.get(), 2);
+        let foreign = Rc::new(Cell::new(0));
+        assert!(lease.bind_to_heap(&HeapIdentity::new(), &foreign).is_none());
+        assert_eq!(foreign.get(), 0);
+        drop(lease);
+        assert_eq!(charge.get(), 0);
+    }
 
     #[test]
     fn cell_wrappers_keep_original_storage_and_immutable_leases_reject_writes() {

@@ -4723,6 +4723,30 @@ mod methods_startup_tests {
     use super::*;
 
     #[test]
+    fn stats_only_namespace_startup_registers_method_table_and_survives_gc() {
+        let session = crate::sexp::session::RSession::new_without_default_packages();
+        session.with_active(|| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let namespace = factory.wrap(load_package_namespace_by_name("stats")
+                .expect("stats namespace must load independently of default attachments")).unwrap();
+            assert_eq!(namespace.typeof_(), SEXPTYPE::ENVSXP);
+            let table = factory.wrap(crate::sexp::envir::R_findVarInFrame(
+                namespace.as_raw(), Rf_install(c".__S3MethodsTable__.".as_ptr()),
+            )).unwrap();
+            assert_eq!(table.typeof_(), SEXPTYPE::ENVSXP);
+            let method_symbol = factory.wrap(Rf_install(c"predict.lm".as_ptr())).unwrap();
+            let method = crate::sexp::envir::find_var_in_frame_result(
+                table.clone(), method_symbol.clone(),
+            ).unwrap().expect("stats must register predict.lm");
+            assert!(is_function_value(method.as_raw()));
+            session.owner_token().unwrap().full_gc().unwrap();
+            assert_eq!(crate::sexp::envir::find_var_in_frame_result(table, method_symbol)
+                .unwrap().unwrap(), method);
+            assert_eq!(factory.wrap(cached_namespace_by_name("stats").unwrap()).unwrap(), namespace);
+        });
+    }
+
+    #[test]
     fn methods_source_guard_prevents_recompilation_at_actual_closure_entry() {
         use std::{cell::Cell, rc::Rc};
         let mut session = crate::sexp::session::RSession::new_without_default_packages();

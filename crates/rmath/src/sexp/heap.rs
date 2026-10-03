@@ -305,7 +305,11 @@ impl HeapIdentity {
         lease: &super::payload::PayloadLease,
     ) -> Option<()> {
         let header = self.node_snapshot(node)?;
-        if !header.has_valid_shape() || header.payload != expected {
+        if !header.has_valid_shape()
+            || header.payload != expected
+            || header.sxpinfo.type_of() == SEXPTYPE::CHARSXP
+            || lease.is_immutable()
+        {
             return None;
         }
         let NodeBody::Vector(vector) = header.data else {
@@ -427,7 +431,10 @@ impl HeapIdentity {
         }
     }
     /// Short index operations only; no storage loan or R callback spans f.
-    pub(crate) fn with_binding_tables<R>(&self, f: impl FnOnce(&mut super::env_hash::BindingTables) -> R) -> Option<R> {
+    pub(crate) fn with_binding_tables<R>(
+        &self,
+        f: impl FnOnce(&mut super::env_hash::BindingTables) -> R,
+    ) -> Option<R> {
         let owners = self.retained_backing()?;
         Some(f(&mut owners.binding_tables.borrow_mut()))
     }
@@ -438,7 +445,9 @@ impl HeapIdentity {
         self.with_binding_tables(super::env_hash::BindingTables::clear);
     }
     pub(crate) fn replace_node(&self, node: &CheckedNode, value: SexprecCore) -> Option<()> {
-        if !value.has_valid_shape() || !node.belongs_to(self) || !node.is_live() { return None; }
+        if !value.has_valid_shape() || !node.belongs_to(self) || !node.is_live() {
+            return None;
+        }
         let original = self.node_snapshot(node)?;
         let owners = self.retained_backing()?;
         let result = owners.stores.borrow().iter().find_map(|store| match store {
@@ -446,7 +455,10 @@ impl HeapIdentity {
             PhysicalBacking::Persistent(store) => store.replace_node(node.id(), value),
         });
         result?;
-        owners.binding_tables.borrow_mut().invalidate_node(node.link()?, &original, &value);
+        owners
+            .binding_tables
+            .borrow_mut()
+            .invalidate_node(node.link()?, &original, &value);
         Some(())
     }
 
