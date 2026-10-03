@@ -594,6 +594,45 @@ mod owned_warning_snapshot_tests {
     }
 
     #[test]
+    fn owned_error_warning_expression_can_clear_itself_and_collect_nested_warning() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let expression = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "{ options(warning.expression=NULL); gc(); warning('nested expression warning') }",
+                    arena,
+                    factory.domain(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let collected = Rc::new(Cell::new(0));
+        let observed = collected.clone();
+        session.with_active_in(|instance| unsafe {
+            crate::mainutils::options::SetOptionByName("warning.expression", expression.as_raw());
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                observed.set(observed.get() + 1);
+                crate::sexp::gengc::full_gc_in(instance);
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            super::super::render::vwarningcall_dflt(
+                globals::R_NilValue(),
+                c"outer expression warning".as_ptr(),
+                ptr::null_mut(),
+            );
+            assert!(collected.get() > 0);
+            assert_eq!((*instance).error_state.in_warning, 0);
+            assert_eq!((*instance).error_state.collect_warnings, 1);
+            let block = take_warnings_block().unwrap();
+            assert!(block.contains("nested expression warning"), "{block}");
+            assert!(!block.contains("outer expression warning"), "{block}");
+        });
+    }
+
+    #[test]
     fn owned_error_warning_print_flag_cleanup_uses_original_runtime_after_revocation() {
         let session = RSession::new_for_gc_tests();
         let _fixture = warnings_fixture(&session);

@@ -3035,10 +3035,13 @@ mod tests {
     #[test]
     fn owned_private_bytecode_calls_keep_argument_cells_across_collecting_closure_builtin_and_special()
      {
-        let mut session = RSession::new_without_default_packages();
+        // Core primitive resolution and closure evaluation suffice; loading
+        // the full base library is unrelated to this ownership regression.
+        let mut session = RSession::new_for_gc_tests();
         let (closure, _, _) =
             session.eval_code_with_output_capture("function(x, y) { gc(); x + y }");
         let closure = closure.unwrap().into_owned().unwrap();
+        assert_eq!(closure.typeof_(), SEXPTYPE::CLOSXP);
         let code = {
             let x = fixture_integer(&session, 17);
             let y = fixture_integer(&session, 29);
@@ -3057,8 +3060,9 @@ mod tests {
         assert!(callbacks.get() >= 2);
         assert_eq!(result.integer_elt(0), Some(46));
 
-        let (list, _, _) = session.eval_code_with_output_capture("get('list', envir=baseenv())");
+        let (list, _, _) = session.eval_code_with_output_capture("list");
         let list = list.unwrap().into_owned().unwrap();
+        assert_eq!(list.typeof_(), SEXPTYPE::BUILTINSXP);
         let code = {
             let x = fixture_integer(&session, 17);
             let y = fixture_integer(&session, 29);
@@ -3078,8 +3082,9 @@ mod tests {
         assert_eq!(result.try_vector_elt(0).unwrap().integer_elt(0), Some(17));
         assert_eq!(result.try_vector_elt(1).unwrap().integer_elt(0), Some(29));
 
-        let (quote, _, _) = session.eval_code_with_output_capture("get('quote', envir=baseenv())");
+        let (quote, _, _) = session.eval_code_with_output_capture("quote");
         let quote = quote.unwrap().into_owned().unwrap();
+        assert_eq!(quote.typeof_(), SEXPTYPE::SPECIALSXP);
         let (symbol, _, _) = session.eval_code_with_output_capture("quote(saved_private_argument)");
         let symbol = symbol.unwrap().into_owned().unwrap();
         let expected_symbol = symbol.as_raw();

@@ -2067,6 +2067,40 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             value.as_raw()
         };
 
+        let own_condition = |condition| {
+            factory
+                .wrap(condition)
+                .and_then(|value| value.into_owned())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        };
+        let invoke_handler = |handler, condition: &crate::sexp::object::Sexp<'static>| {
+            let call = own_condition(crate::sexp::constructors::Rf_lang2(
+                handler,
+                condition.as_raw(),
+            ));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::eval::eval::Rf_eval(call.as_raw(), rho_owner.as_raw())
+            }));
+            match result {
+                Ok(value) => return_after_finally(value),
+                Err(payload) => {
+                    // The handler runs after its exiting-handler frame has
+                    // been popped, but finally still runs if the handler exits.
+                    let raised = signalled_condition_owned();
+                    run_finally();
+                    owner
+                        .require_active()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    set_signalled_condition(
+                        raised
+                            .as_ref()
+                            .map_or(std::ptr::null_mut(), |value| value.as_raw()),
+                    );
+                    std::panic::resume_unwind(payload)
+                }
+            }
+        };
+
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(expr, rho_owner.as_raw())
         }));
@@ -2082,27 +2116,25 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             Err(payload) => {
                 let payload = match payload.downcast::<crate::sexp::context::RSignal>() {
                     Ok(signal) => match *signal {
-                        crate::sexp::context::RSignal::Message { message: _ } => {
-                            let stashed_owner = signalled_condition_owned();
-                            let stashed = stashed_owner
-                                .as_ref()
-                                .map_or(std::ptr::null_mut(), |value| value.as_raw());
+                        crate::sexp::context::RSignal::Message { message } => {
+                            let condition = signalled_condition_owned().unwrap_or_else(|| {
+                                own_condition(simple_condition(
+                                    &message,
+                                    &["simpleMessage", "message", "condition"],
+                                ))
+                            });
                             set_signalled_condition(std::ptr::null_mut());
-                            let classes = condition_classes(stashed);
+                            let classes = condition_classes(condition.as_raw());
                             let matching = handlers
                                 .iter()
                                 .find(|(tag, _)| classes.iter().any(|class| class == tag));
                             if let Some((_, handler)) = matching {
-                                let _cond_guard = protect(stashed);
-                                let call =
-                                    crate::sexp::constructors::Rf_lang2(handler.as_raw(), stashed);
-                                let handled = crate::eval::eval::Rf_eval(call, rho_owner.as_raw());
-                                return return_after_finally(handled);
+                                return invoke_handler(handler.as_raw(), &condition);
                             }
+                            run_finally();
+                            set_signalled_condition(condition.as_raw());
                             std::panic::resume_unwind(Box::new(
-                                crate::sexp::context::RSignal::Message {
-                                    message: String::new(),
-                                },
+                                crate::sexp::context::RSignal::Message { message },
                             ));
                         }
                         crate::sexp::context::RSignal::Warning { message } => {
@@ -2119,20 +2151,16 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                                     crate::sexp::globals::R_NilValue(),
                                 )
                             };
-                            let classes = condition_classes(condition);
+                            let condition = own_condition(condition);
+                            let classes = condition_classes(condition.as_raw());
                             let matching = handlers
                                 .iter()
                                 .find(|(tag, _)| classes.iter().any(|class| class == tag));
                             if let Some((_, handler)) = matching {
-                                let _cond_guard = protect(condition);
-                                let call = crate::sexp::constructors::Rf_lang2(
-                                    handler.as_raw(),
-                                    condition,
-                                );
-                                let handled = crate::eval::eval::Rf_eval(call, rho_owner.as_raw());
-                                return return_after_finally(handled);
+                                return invoke_handler(handler.as_raw(), &condition);
                             }
                             run_finally();
+                            set_signalled_condition(condition.as_raw());
                             std::panic::resume_unwind(Box::new(
                                 crate::sexp::context::RSignal::Warning { message },
                             ));
@@ -2142,21 +2170,20 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     Err(payload) => payload,
                 };
 
-                let message = match payload.downcast::<crate::sexp::context::RSignal>() {
-                    Ok(signal) => match *signal {
-                        crate::sexp::context::RSignal::Error { message } => message,
-                        other => {
-                            run_finally();
-                            std::panic::panic_any(other);
-                        }
-                    },
-                    Err(payload) => match payload.downcast::<crate::sexp::context::RError>() {
-                        Ok(err) => err.message.clone(),
-                        Err(payload) => {
-                            run_finally();
-                            std::panic::resume_unwind(payload);
-                        }
-                    },
+                let message = if let Some(signal) =
+                    payload.downcast_ref::<crate::sexp::context::RSignal>()
+                {
+                    if let crate::sexp::context::RSignal::Error { message } = signal {
+                        message.clone()
+                    } else {
+                        run_finally();
+                        std::panic::resume_unwind(payload);
+                    }
+                } else if let Some(error) = payload.downcast_ref::<crate::sexp::context::RError>() {
+                    error.message.clone()
+                } else {
+                    run_finally();
+                    std::panic::resume_unwind(payload);
                 };
 
                 let slot_cond_owner = signalled_condition_owned();
@@ -2180,7 +2207,8 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                         caught_call.as_ref().map(|value| value.as_raw()),
                     )
                 };
-                let classes = condition_classes(condition);
+                let condition = own_condition(condition);
+                let classes = condition_classes(condition.as_raw());
                 let Some(handler) = handlers
                     .iter()
                     .find(|(tag, _)| classes.iter().any(|class| class == tag))
@@ -2190,15 +2218,13 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     if let Some(call) = &caught_call {
                         crate::mainutils::errors::record_error_call(call.as_raw(), true);
                     }
-                    std::panic::panic_any(crate::sexp::context::RError { message });
+                    set_signalled_condition(condition.as_raw());
+                    std::panic::resume_unwind(payload);
                 };
                 if !original.is_null() {
                     set_signalled_condition(std::ptr::null_mut());
                 }
-                let _cond_guard = protect(condition);
-                let call = crate::sexp::constructors::Rf_lang2(handler.as_raw(), condition);
-                let handled = crate::eval::eval::Rf_eval(call, rho_owner.as_raw());
-                return_after_finally(handled)
+                invoke_handler(handler.as_raw(), &condition)
             }
         }
     }
@@ -3588,6 +3614,109 @@ mod owned_restart_transfer_tests {
 mod owned_error_trycatch_tests {
     use super::*;
     use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn owned_error_nested_trycatch_preserves_custom_conditions_through_collecting_finally() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let global = session.global_env().unwrap();
+        let flag = factory
+            .wrap(unsafe { Rf_install(c"owned_finally_collecting".as_ptr()) })
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let callback_global = global.clone().into_owned().unwrap();
+        let callbacks = Rc::new(Cell::new(0));
+        let observed = callbacks.clone();
+        session.with_active_in(|instance| unsafe {
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                let entered =
+                    crate::sexp::envir::R_findVarInFrame(callback_global.as_raw(), flag.as_raw());
+                if !entered.is_null()
+                    && entered != R_UnboundValue()
+                    && LOGICAL_ELT(entered, 0) == TRUE
+                {
+                    (*instance).error_state.signalled_condition =
+                        crate::sexp::instance::RuntimeValue::empty();
+                    crate::sexp::gengc::full_gc_in(instance);
+                    observed.set(observed.get() + 1);
+                }
+            }));
+        });
+        for (signal, family) in [
+            ("message", "message"),
+            ("warning", "warning"),
+            ("stop", "error"),
+        ] {
+            let script = format!(
+                "{{owned_finally_collecting<-FALSE;owned_finally_ran<-FALSE;tryCatch(tryCatch({signal}(structure(list(message='owned payload',call=NULL,extra=41L),class=c('ownedCustom','{family}','condition'))), unrelated=function(e)FALSE, finally={{owned_finally_collecting<<-TRUE;gc();owned_finally_collecting<<-FALSE;owned_finally_ran<<-TRUE}}), ownedCustom=function(e){{gc();identical(class(e),c('ownedCustom','{family}','condition'))&&identical(conditionMessage(e),'owned payload')&&identical(e$extra,41L)&&owned_finally_ran}})}}"
+            );
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(&script, arena, factory.domain()))
+                .unwrap()
+                .unwrap();
+            let result = factory
+                .wrap(unsafe { crate::eval::eval::Rf_eval(expression.as_raw(), global.as_raw()) })
+                .unwrap();
+            assert_eq!(
+                result.logical_elt(0),
+                Some(TRUE),
+                "{signal} must preserve its exact custom condition and run finally"
+            );
+            session.with_active_in(|instance| unsafe {
+                assert!((*instance).error_state.signalled_condition.is_null());
+                assert!((*instance).error_state.try_catch_handler_classes.is_empty());
+                assert!((*instance).error_state.try_catch_nframes.is_empty());
+            });
+        }
+        assert!(
+            callbacks.get() >= 3,
+            "each finally must actually invoke collection"
+        );
+    }
+
+    #[test]
+    fn owned_error_trycatch_finally_runs_when_matched_handler_unwinds() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let global = session.global_env().unwrap();
+        let expression = owner.with_arena(|arena| crate::eval::parser::parse(
+            "{owned_handler_finally<-FALSE;tryCatch(tryCatch(stop('original'),error=function(e)stop(structure(list(message='handler failure',call=NULL,extra=23L),class=c('handlerFailure','error','condition'))),finally={gc();owned_handler_finally<<-TRUE}),handlerFailure=function(e){gc();owned_handler_finally&&identical(conditionMessage(e),'handler failure')&&identical(e$extra,23L)})}",
+            arena, factory.domain(),
+        )).unwrap().unwrap();
+        let result = factory
+            .wrap(unsafe { crate::eval::eval::Rf_eval(expression.as_raw(), global.as_raw()) })
+            .unwrap();
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        session.with_active_in(|instance| unsafe {
+            assert!((*instance).error_state.signalled_condition.is_null());
+            assert!((*instance).error_state.try_catch_handler_classes.is_empty());
+            assert!((*instance).error_state.try_catch_nframes.is_empty());
+        });
+    }
+
+    #[test]
+    fn owned_error_trycatch_finally_new_condition_takes_precedence() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let global = session.global_env().unwrap();
+        let expression = owner.with_arena(|arena| crate::eval::parser::parse(
+            "tryCatch(tryCatch(stop(structure(list(message='pending failure',call=NULL),class=c('pendingFailure','error','condition'))),unrelated=function(e)FALSE,finally={gc();stop(structure(list(message='finally failure',call=NULL,extra=29L),class=c('finallyFailure','error','condition')))}),finallyFailure=function(e){gc();identical(conditionMessage(e),'finally failure')&&identical(e$extra,29L)},pendingFailure=function(e)FALSE)",
+            arena, factory.domain(),
+        )).unwrap().unwrap();
+        let result = factory
+            .wrap(unsafe { crate::eval::eval::Rf_eval(expression.as_raw(), global.as_raw()) })
+            .unwrap();
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        session.with_active_in(|instance| unsafe {
+            assert!((*instance).error_state.signalled_condition.is_null());
+            assert!((*instance).error_state.try_catch_handler_classes.is_empty());
+            assert!((*instance).error_state.try_catch_nframes.is_empty());
+        });
+    }
 
     #[test]
     fn owned_error_trycatch_roots_handlers_results_and_conditions_across_finally_gc() {

@@ -732,9 +732,6 @@ pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *m
                 return;
             }
 
-            (*pointer).error_state.in_warning = 1;
-            let _cleanup = WarningCollectionScope { owner: pin };
-
             // Check for warning.expression option
             let expression = collection_checked(access.with_native(|_| {
                 access
@@ -783,7 +780,7 @@ pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *m
             if w <= 0 && immediate_warning() {
                 w = 1;
             }
-            if w < 0 || in_error() != 0 {
+            if w < 0 || in_warning() != 0 || in_error() != 0 {
                 return;
             }
 
@@ -793,6 +790,11 @@ pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *m
             if suppress_warnings_depth() > 0 {
                 return;
             }
+
+            // GNU permits a warning.expression to remove itself and signal a
+            // nested warning. Guard only the default rendering/collection path.
+            (*pointer).error_state.in_warning = 1;
+            let _cleanup = WarningCollectionScope { owner: pin };
 
             // Format the variadic message into a string
             let (mut fmt_str, truncated) = format_varargs_to_buf(format, ap);
